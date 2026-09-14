@@ -108,8 +108,12 @@ int boot_run(void) {
   return BOOT_RECOVERY;
  }
  candidate=boot_validate(1,BOOT_CANDIDATE,&h)&&h.magic==BOOT_MAGIC;
+ /* Without a published candidate nothing was installed over the application.
+    Stale start/rollback words from a torn journal erase must not replace an
+    intact application with the older backup. */
+ if(!candidate&&app) return BOOT_OK;
  if(started==0xffffffffu) {
-  if(!candidate) return app?BOOT_OK:BOOT_RECOVERY;
+  if(!candidate) return BOOT_RECOVERY;
   if(app&&!snapshot()) {
    /* No backup, no install. Keep the running application, drop the request
       so it is not retried on every start, and leave the code for the FW. */

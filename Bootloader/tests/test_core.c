@@ -60,6 +60,16 @@ int main(void){
  {uint32_t error;assert(boot_read(1,BOOT_JOURNAL+12,&error,4)&&error==BOOT_BACKUP_ERROR);}
  total=mutations;assert(run()==BOOT_OK&&mutations==total&&version()==14);
  puts("backup failure: application kept, request dropped, error recorded");
+ /* The next update erases the journal. A cut inside that erase can leave the
+    completion word erased while the start or rollback word survives. The new
+    candidate is not published yet; the intact application must stay. */
+ for(k=0;k<2;k++){
+  initial();assert(run()==BOOT_OK&&version()==15);
+  image(ext,16,4096);((BootHeader*)ext)->magic=0xffffffffu;
+  memset(ext+BOOT_JOURNAL+4,255,4);if(k)memcpy(ext+BOOT_JOURNAL+8,"\x0f\xff\xf0\xff",4);
+  total=mutations;result=run();assert(version()==15);assert(result==BOOT_OK);assert(mutations==total);
+ }
+ puts("torn journal erase: running application kept, backup not restored");
  initial();ext[BOOT_HEADER_SIZE+44]^=1;assert(run()==BOOT_OK&&mutations==0&&version()==14);
  initial();ext[4]++;assert(run()==BOOT_OK&&mutations==0&&version()==14);
  initial();((BootHeader*)ext)->size=BOOT_MAX_CODE+4;assert(run()==BOOT_OK&&mutations==0);
