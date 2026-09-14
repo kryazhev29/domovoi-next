@@ -22,6 +22,7 @@ def application(path):
     if not match:raise ValueError('Expected HW.FW.UNIX_TIMESTAMP.bin')
     hw,fw,stamp=map(int,match.groups())
     if not 1<=hw<=255 or not 1<=fw<=65535 or not 0<=stamp<=0xffffffff:raise ValueError('Metadata outside wire format limits')
+    if not 8<=path.stat().st_size<=MAX_CODE:raise ValueError('Application exceeds existing Flash region')
     data=path.read_bytes();data+=b'\xff'*((-len(data))%4)
     if not 8<=len(data)<=MAX_CODE:raise ValueError('Application exceeds existing Flash region')
     sp,pc=struct.unpack_from('<II',data)
@@ -61,6 +62,18 @@ def upload(port,path):
             exchange(0x21,struct.pack('<I',offset)+data[offset:offset+256],5)
         exchange(0x22)
         print('Image accepted; installation follows. Verify application registration and firmware version on the device.')
+def legacy_package(path,output):
+    hw,fw,stamp,data=application(path)
+    if fw>255:raise ValueError('Old loader supports only an 8-bit firmware version')
+    header=bytearray(b'\xff'*512)
+    struct.pack_into('<IBHBII',header,0,0x57464c53,hw,fw,0,len(data),crc32(data))
+    struct.pack_into('<I',header,20,stamp)
+    crypt=0x5a;encoded=bytearray()
+    for b in data:
+        encoded.append(((b-fw)&255)^crypt);crypt=(crypt+b)&255
+    output.write_bytes(header+encoded)
+    print('Legacy encrypted package written:',output)
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='command',required=True)
     p=sub.add_parser('inspect');p.add_argument('image',type=Path)
@@ -78,13 +91,5 @@ def main():
         a.output.write_text(text);return
     hw,fw,stamp,data=application(a.image)
     if a.command=='inspect':print(f'HW={hw}, FW={fw}, build={stamp}, size={len(data)}, CRC=0x{crc32(data):08x}');return
-    if fw>255:raise ValueError('Old loader supports only an 8-bit firmware version')
-    header=bytearray(b'\xff'*512)
-    struct.pack_into('<IBHBII',header,0,0x57464c53,hw,fw,0,len(data),crc32(data))
-    struct.pack_into('<I',header,20,stamp)
-    crypt=0x5a;encoded=bytearray()
-    for b in data:
-        encoded.append(((b-fw)&255)^crypt);crypt=(crypt+b)&255
-    a.output.write_bytes(header+encoded)
-    print('Legacy encrypted package written:',a.output)
+    legacy_package(a.image,a.output)
 if __name__=='__main__':main()
