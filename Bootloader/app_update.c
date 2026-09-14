@@ -1,6 +1,7 @@
 #include "../includes.h"
 #include "app_update.h"
 #include "boot_core.h"
+#include "boot_manual.h"
 #ifdef __ICCARM__
 #include <intrinsics.h>
 #else
@@ -34,7 +35,9 @@ int app_boot_request(void) {
 }
 void app_boot_metadata(void) {
  const BootHeader *h=(const BootHeader*)BOOT_APP_BASE;uint32_t result;
- device.bootVersion=BOOT_VER;device.hardwareVersion=BOOTHW_VER;
+ device.bootVersion=BOOT_VER;
+ /* Legacy bootloaders do not identify the physical board reliably. */
+ device.hardwareVersion=(BOOT_VER>=BOOT_VERSION&&BOOT_VER!=0xffu)?BOOTHW_VER:0;
  if(h->magic==BOOT_MAGIC||h->magic==BOOT_LEGACY_MAGIC) {
   device.firmwareVersion=(h->magic==BOOT_LEGACY_MAGIC)?(h->version&255u):h->version;device.buildDate=h->timestamp;
   device.firmwareSize=h->size;device.firmwareCRC=h->crc;
@@ -44,11 +47,57 @@ void app_boot_metadata(void) {
   if(result==BOOT_PROGRAM_ERROR)device.firmwarePercent=252;
  }
 }
-/* Runs entirely in SRAM; no calls, literals in Flash or interrupt handlers.
- * Reset is intentional even on failure: do not continue normal operation
- * with a partly replaced boot area. External power must remain stable. */
-__ramfunc static void replace_ram(const uint8_t *image) {
- uint32_t page,i,timeout;uint16_t half;
+/* Candidate staging uses the existing external Flash driver of the running
+ * application. No embedded boot image and no automatic startup request. */
+int manual_platform_supported(void) {
+ return *(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS==BOOT_REQUIRED_FLASH_KIB;
+}
+int manual_stage_read(uint32_t off,void *data,uint32_t n) {
+ if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
+ mem_read(BOOT_CANDIDATE+off,data,n);return 1;
+}
+int manual_stage_write(uint32_t off,const void *data,uint32_t n) {
+ if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
+ mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);return 1;
+}
+int manual_stage_erase(uint32_t off) {
+ if(off>=MANUAL_BOOT_SIZE||(off&4095u))return 0;
+ mem_erase_sector(BOOT_CANDIDATE+off);return 1;
+}
+void manual_service(void) {wdt_reload();}
+/* All functions reachable after the first boot-sector erase reside in SRAM.
+ * SPI1 and the running application's chip select are already configured. */
+__ramfunc static int ram_spi(uint8_t tx) {
+ uint32_t timeout=100000u;
+ while(!(SPI1->SR&2u)&&--timeout){}
+ if(!timeout)return -1;
+ SPI1->DR=tx;timeout=100000u;
+ while(!(SPI1->SR&1u)&&--timeout){}
+ if(!timeout)return -1;
+ tx=(uint8_t)SPI1->DR;timeout=100000u;
+ while((SPI1->SR&128u)&&--timeout){}
+ return timeout?(int)tx:-1;
+}
+__ramfunc static int ram_read_page(uint32_t offset,uint8_t *data) {
+ uint32_t i;int byte;
+ SPI_CS_PORT->BRR=SPI_CS_PIN;
+ if(ram_spi(3)<0||ram_spi((uint8_t)(offset>>16))<0||
+    ram_spi((uint8_t)(offset>>8))<0||ram_spi((uint8_t)offset)<0)goto fail;
+ for(i=0;i<1024;i++) {byte=ram_spi(255);if(byte<0)goto fail;data[i]=(uint8_t)byte;}
+ SPI_CS_PORT->BSRR=SPI_CS_PIN;return 1;
+fail:
+ SPI_CS_PORT->BSRR=SPI_CS_PIN;return 0;
+}
+__ramfunc static uint32_t ram_page_crc(const uint8_t *data) {
+ uint32_t i,j,w,c=0xffffffffu;
+ for(i=0;i<1024;i+=4) {
+  w=(uint32_t)data[i]|((uint32_t)data[i+1]<<8)|((uint32_t)data[i+2]<<16)|((uint32_t)data[i+3]<<24);
+  c^=w;for(j=0;j<32;j++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0u);
+ }
+ return c;
+}
+__ramfunc static void replace_ram(const uint32_t *page_crc) {
+ uint32_t page,i,timeout;uint16_t half;uint8_t image[1024];
  volatile uint32_t *sr=(volatile uint32_t*)0x4002200cu;
  volatile uint32_t *cr=(volatile uint32_t*)0x40022010u;
  volatile uint32_t *ar=(volatile uint32_t*)0x40022014u;
@@ -57,12 +106,15 @@ __ramfunc static void replace_ram(const uint8_t *image) {
  *kr=0x45670123u;*kr=0xcdef89abu;
  for(page=0x08000000u;page<BOOT_APP_BASE;page+=1024) {
   *(volatile uint32_t*)0x40003000u=0xaaaau;
+  /* Verify each SPI read before erasing its internal Flash page. */
+  if(!ram_read_page(BOOT_CANDIDATE+page-0x08000000u,image)||
+     ram_page_crc(image)!=page_crc[(page-0x08000000u)/1024])break;
   *sr=0x34u;*cr=2u;*ar=page;*cr=0x42u;
   timeout=2000000u;while((*sr&1u)&&--timeout){}
   if(!timeout||(*sr&0x14u))break;
   *cr=0;
   for(i=0;i<1024;i+=2) {
-   half=(uint16_t)image[page-0x08000000u+i]|((uint16_t)image[page-0x08000000u+i+1]<<8);
+   half=(uint16_t)image[i]|((uint16_t)image[i+1]<<8);
    *sr=0x34u;*cr=1u;*(volatile uint16_t*)(page+i)=half;
    timeout=100000u;while((*sr&1u)&&--timeout){}
    if(!timeout||(*sr&0x14u)||*(volatile uint16_t*)(page+i)!=half)break;
@@ -74,26 +126,17 @@ __ramfunc static void replace_ram(const uint8_t *image) {
  *(volatile uint32_t*)0xe000ed0cu=0x05fa0004u;
  for(;;){}
 }
-int app_boot_replace(const uint8_t *image,uint32_t size,uint32_t crc) {
- uint32_t c=0xffffffffu,i,w,sp,pc,address=(uint32_t)image;
- if(*(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS!=BOOT_REQUIRED_FLASH_KIB)return 0;
- if(size!=0x8000u||(address&3u)||address<BOOT_APP_VECTOR||address>BOOT_FLASH_END-size)return 0;
- memcpy(&sp,image,4);memcpy(&pc,image+4,4);
- if(sp<0x20000008u||sp>0x20005000u||(sp&7u)||!(pc&1u)||(pc&~1u)<0x08000000u||(pc&~1u)>=0x08007ffcu||
-    image[0x7ffc]!=BOOT_VERSION||image[0x7ffd]!=BOOTHW_VER)return 0;
- for(i=0;i<size;i+=4){memcpy(&w,image+i,4);c=crc_word(c,w);wdt_reload();}
- if(c!=crc)return 0;
- replace_ram(image);return 0;
-}
-
-#ifdef DOMOVOI_BOOT_MIGRATION
-#include "generated/boot_image_v5.h"
-#endif
-void app_boot_migrate_if_needed(void) {
-#ifdef DOMOVOI_BOOT_MIGRATION
- /* Dedicated transition firmware for the current v5 application project.
-    Never select the MINI image based only on an old version number. */
- if((BOOT_VER==0x21u||BOOT_VER==0x22u||BOOT_VER==0x30u)&&BOOTHW_VER==0x8bu)
-  app_boot_replace(domovoi_boot_image,sizeof(domovoi_boot_image),DOMOVOI_BOOT_IMAGE_CRC);
-#endif
+int manual_program(uint32_t expected_crc) {
+ uint32_t page_crc[32],page,i,w,c,whole=0xffffffffu;uint8_t data[256];
+ if(!manual_platform_supported())return 0;
+ for(page=0;page<32;page++) {
+  c=0xffffffffu;
+  for(i=0;i<1024;i+=sizeof(data)) {
+   unsigned j;if(!manual_stage_read(page*1024+i,data,sizeof(data)))return 0;
+   for(j=0;j<sizeof(data);j+=4){memcpy(&w,data+j,4);c=crc_word(c,w);whole=crc_word(whole,w);}
+  }
+  page_crc[page]=c;wdt_reload();
+ }
+ if(whole!=expected_crc)return 0;
+ replace_ram(page_crc);return 0;
 }

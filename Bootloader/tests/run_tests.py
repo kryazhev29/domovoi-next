@@ -8,4 +8,7 @@ for name in ('test_core','test_usb'):
  exe=out/(name+'.exe' if sys.platform=='win32' else name)
  subprocess.run([*cmd,*flags,'-I'+str(b),str(b/'boot_core.c'),str(b/'tests'/f'{name}.c'),'-o',str(exe)],check=True)
  subprocess.run([str(exe)],check=True)
+exe=out/('test_manual.exe' if sys.platform=='win32' else 'test_manual')
+subprocess.run([*cmd,*flags,'-I'+str(b),str(b/'tests/test_manual.c'),'-o',str(exe)],check=True)
+subprocess.run([str(exe)],check=True)
 subprocess.run([sys.executable,str(b/'tests/test_tool.py')],check=True)

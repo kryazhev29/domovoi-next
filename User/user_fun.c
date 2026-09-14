@@ -3,6 +3,7 @@
 #include "user_fun.h"
 #include "usb_istr.h"
 #include "../Bootloader/app_update.h"
+#include "../Bootloader/boot_manual.h"
 
 // ************** Включить режим отладки **********
 #define DEBUG_USER
@@ -2979,6 +2980,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;      
       
     case 19: // Обновление прошивки
+      if (boot_manual_busy()) {
+        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+        break;
+      }
 #ifdef DEBUG_USER
   if (cch != CH_USB)    
     user_debug(">>U Recv cmd fw update (cmd 19)\r\n"); 
@@ -3106,6 +3111,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;      
       
     case 20: // Обновление прошивки
+      if (boot_manual_busy()) {
+        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+        break;
+      }
 #ifdef DEBUG_USER
 if (cch != CH_USB)   
   user_debug(">>U Recv cmd fw update (cmd 20)\r\n"); 
@@ -3279,6 +3288,27 @@ if (cch != CH_USB)
       user_send_anyData(107, NULL, 0, cch, uniqId);
       break;
       
+    case MANUAL_BOOT_COMMAND: { /* Manual bootloader file, USB only. */
+      uint8_t response[8];
+      if (cch != CH_USB || len < 4) {
+        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+        break;
+      }
+      if (device.FWinProgress || device.rebootToUpdate) {
+        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+        break;
+      }
+      boot_manual_command(1, &ptr[5], (uint16_t)(len-3), response);
+      user_send_anyData(MANUAL_BOOT_COMMAND, response, sizeof(response), cch, uniqId);
+      if (response[0] == 2 && response[1] == MANUAL_OK) {
+        /* Let USB send its acceptance. Success is checked after restart. */
+        delay_ms(200);
+        response[1] = (uint8_t)boot_manual_apply();
+        user_send_anyData(MANUAL_BOOT_COMMAND, response, sizeof(response), cch, uniqId);
+      }
+      break;
+    }
+
     case 108: // включить лог
       user_send_anyData(108, NULL, 0, cch, uniqId);
       if (cch == CH_USB)

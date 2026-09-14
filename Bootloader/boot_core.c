@@ -16,7 +16,7 @@ static int write_word(uint32_t address,uint32_t value) {
 }
 static int header_ok(const BootHeader *h) {
  return (h->magic==BOOT_MAGIC||h->magic==BOOT_LEGACY_MAGIC)&&
- h->hardware==BOOT_HW_VERSION&&h->size>=8&&h->size<=BOOT_MAX_CODE&&!(h->size&3);
+ (h->magic==BOOT_LEGACY_MAGIC||h->hardware==BOOT_HW_VERSION)&&h->size>=8&&h->size<=BOOT_MAX_CODE&&!(h->size&3);
 }
 int boot_validate(int external,uint32_t base,BootHeader *h) {
  uint32_t pos,n,i,crc=0xffffffffu,sp,pc;

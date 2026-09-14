@@ -21,10 +21,13 @@ class PackageTests(unittest.TestCase):
    p=Path(d)/'139.14.1.bin';p.write_bytes(struct.pack('<II',0x20005000,0x08000009))
    with self.assertRaises(ValueError):boot_tool.application(p)
  def test_embed_matches(self):
-  b=Path(__file__).resolve().parents[1];import re
-  text=(b/'generated/boot_image_v5.h').read_text()
-  data=bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})(?=,|\n)',text))
-  expected=int(re.search(r'CRC 0x([0-9a-f]+)',text)[1],16)
-  self.assertEqual(len(data),32768);self.assertEqual(boot_tool.crc32(data),expected)
-  self.assertEqual(data[0x7ffc:0x7ffe],bytes([0x31,139]))
+  import re
+  with tempfile.TemporaryDirectory() as d:
+   image=Path(d)/'boot.bin';header=Path(d)/'boot.h'
+   data=bytearray(b'\xff'*32768);data[0x7ffc:]=bytes([0x31,139,0,255]);image.write_bytes(data)
+   subprocess.run([sys.executable,str(Path(boot_tool.__file__)),'embed',str(image),str(header)],check=True,capture_output=True)
+   text=header.read_text()
+   packed=bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})(?=,|\n)',text))
+   expected=int(re.search(r'CRC 0x([0-9a-f]+)',text)[1],16)
+   self.assertEqual(packed,bytes(data));self.assertEqual(boot_tool.crc32(packed),expected)
 if __name__=='__main__':unittest.main()

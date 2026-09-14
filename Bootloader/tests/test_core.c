@@ -36,6 +36,12 @@ static int run(void){if(setjmp(reset))return -1;return boot_run();}
 static unsigned version(void){BootHeader h;assert(boot_validate(0,BOOT_APP_BASE,&h));return h.version;}
 int main(void){
  unsigned total,k,mode;int result;BootHeader h;
+ /* A legacy header's HW byte cannot identify a physical board. Preserve the
+    existing application across manual boot replacement, with CRC/vectors intact. */
+ initial();((BootHeader*)flash)->magic=BOOT_LEGACY_MAGIC;((BootHeader*)flash)->hardware=0;
+ assert(boot_validate(0,BOOT_APP_BASE,&h));
+ assert(run()==BOOT_OK);assert(boot_validate(1,BOOT_BACKUP,&h)&&h.hardware==0);
+ initial();((BootHeader*)flash)->hardware=0;assert(!boot_validate(0,BOOT_APP_BASE,&h));
  initial();assert(run()==BOOT_OK);assert(version()==15);assert(boot_validate(1,BOOT_BACKUP,&h)&&h.version==14);total=mutations;
  for(mode=0;mode<2;mode++)for(k=1;k<=total;k++){
   initial();cut=k;partial=(int)mode;assert(run()==-1);cut=0;result=run();
