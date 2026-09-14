@@ -5,6 +5,7 @@
 *****************/
 
 #include "main.h"
+#include "Bootloader/app_update.h"
 
 // основная программа
 void main()
@@ -39,6 +40,7 @@ void main()
   wdt_init(3750); // 3 сек
 
   // Инициализация пользовательской программы
+  app_boot_migrate_if_needed();
   user_init();
     
   // включаем питание gsm модуля

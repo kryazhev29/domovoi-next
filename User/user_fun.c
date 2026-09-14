@@ -2,6 +2,7 @@
 
 #include "user_fun.h"
 #include "usb_istr.h"
+#include "../Bootloader/app_update.h"
 
 // ************** Включить режим отладки **********
 #define DEBUG_USER
@@ -709,6 +710,7 @@ void user_init(void)
 
   // инициализация переменных
   user_initvariables();
+  app_boot_metadata();
 
   // Виганд
   if (config.wiegandType != 0)
@@ -893,9 +895,14 @@ void user_loop(void)
     
     // перезагрузиться в режим обновления FW
     if (device.rebootToUpdate){
-      // ставим флаг загрузки в режим загрузчика
-      //777
-      user_savereset();
+      device.rebootToUpdate = 0;
+      if (app_boot_request()) user_savereset();
+      else {
+        device.firmwarePercent = 252;
+        device.FWinProgress = 0;
+        device.status.readyToUpdate = 0;
+        user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
+      }
     }
     
     // таймаут обновления
@@ -2405,6 +2412,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
         device.datetime = tmp32;
         device.registredOnServer = 1;
+          if (device.firmwarePercent == 252)
+            user_send_statusUpdateFW(20, CMD_RUNERROR, cch, uniqIDCnt++);
         device.lmTimer = 5;
         device.lmCount = 0;
         break;
@@ -2990,7 +2999,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           memcpy((uint8_t*)&firmwareCRC, &ptr[15], 4);
           memcpy((uint8_t*)&FWblockCount, &ptr[19], 2);
           
-          if ((firmwareVersion == 0) ||
+          if ((BOOT_VER < 0x30) ||
+              (firmwareSize > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
+              ((firmwareSize & 3u) != 0) ||
+              (FWblockCount != (firmwareSize + 1023u) / 1024u) ||
+              (firmwareVersion == 0) ||
               (buildDate == 0) ||
               (firmwareSize == 0) ||
               (firmwareCRC == 0) ||  
@@ -3025,6 +3038,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                   user_clearMemBlock(MB_FIRMWARE);
                   for (uint32_t block = 0; block < (fwParam.firmwareSize + FWBLOCK_OFFSET); block += 128){
                     mem_read(mem[MB_BACKUP].start + block, bf, 128);
+                  if (block == 0) memset(bf, 0xff, 4);
                     mem_write(mem[MB_FIRMWARE].start + block, bf, 128);
                   }
                   
@@ -3050,37 +3064,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                   user_debug(">>U Erase FW memory ...\r\n"); 
                 #endif
                 
-                user_clearMemBlock(MB_BACKUP);
-                
-                #ifdef DEBUG_USER
-                if (cch != CH_USB)   
-                  user_debug(">>U Copy firmware ...\r\n"); 
-                #endif    
-
-                // копируем текущую прошивку в резервную память
-                uint32_t adr = mem[MB_BACKUP].start;
-                uint32_t endAdr = mem[MB_BACKUP].start + mem[MB_BACKUP].size;
+                user_clearMemBlock(MB_FIRMWARE);
                 bootFWparam_s fwParam;
-                             
-                fwParam.hardwareVersion = device.hardwareVersion;
-                fwParam.firmwareVersion = device.firmwareVersion;
-                fwParam.firmwareSize = device.firmwareSize;
-                fwParam.firmwareCRC = device.firmwareCRC;
-                fwParam.buildDate = device.buildDate;
-
-                // информация
-                mem_write(adr, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
-                adr += FWBLOCK_OFFSET;
-                // прошивка
-                for (uint32_t i = APLICATION_BASE; i < CPU_ENDMEMORYADDRESS; i += 4096){
-                  memcpy(data, (uint8_t*)i, 4096);
-                  mem_write(adr, data, 4096);
-                  adr += 4096;
-                  if (adr >= endAdr)
-                    break;
-                }
-                
-                // инфо о новой прошивке
+                memset(&fwParam, 0xff, sizeof(fwParam));
                 fwParam.hardwareVersion = device.hardwareVersion;
                 fwParam.firmwareVersion = firmwareVersion;
                 fwParam.firmwareSize = firmwareSize;
@@ -3088,7 +3074,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                 fwParam.buildDate = buildDate;
                 
                 // блок информации о прошивке
-                mem_rewrite(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s), ptr); 
+                mem_write(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
                 wdt_reload();
 
                 device.FWblockCount = FWblockCount;

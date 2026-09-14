@@ -1,0 +1,10 @@
+define memory mem with size = 4G;
+define region ROM = mem:[from 0x08000000 to 0x08007FFB];
+define region RAM = mem:[from 0x20000000 to 0x20004FFF];
+define block CSTACK with alignment = 8, size = 0x800 { };
+initialize by copy { readwrite };
+do not initialize { section .noinit };
+place at address mem:0x08000000 { readonly section .intvec };
+place at address mem:0x08007FFC { readonly section .boot_version };
+place in ROM { readonly };
+place in RAM { readwrite, block CSTACK };
