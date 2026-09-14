@@ -4,6 +4,9 @@
 #include <stddef.h>
 #define BOOT_APP_BASE 0x08008000u
 #define BOOT_APP_VECTOR 0x08008200u
+/* STM32F1 factory Flash-size signature, 16-bit size in KiB (RM0008). */
+#define BOOT_FLASH_SIZE_ADDRESS 0x1ffff7e0u
+#define BOOT_REQUIRED_FLASH_KIB 128u
 #define BOOT_FLASH_END 0x08020000u
 #define BOOT_HEADER_SIZE 512u
 #define BOOT_MAX_CODE (BOOT_FLASH_END-BOOT_APP_VECTOR)
@@ -16,7 +19,7 @@
 #ifndef BOOT_HW_VERSION
 #define BOOT_HW_VERSION 0x8bu
 #endif
-#define BOOT_VERSION 0x30u
+#define BOOT_VERSION 0x31u
 /* Wire layout matches bootFWparam_s, including its unaligned uint16_t. */
 #pragma pack(push,1)
 typedef struct {
@@ -29,7 +32,7 @@ typedef struct {
 } BootHeader;
 #pragma pack(pop)
 enum { BOOT_OK=0, BOOT_BAD_IMAGE=1, BOOT_IO=2, BOOT_BACKUP_ERROR=3,
-       BOOT_PROGRAM_ERROR=4, BOOT_RESTORED=5, BOOT_RECOVERY=6 };
+       BOOT_PROGRAM_ERROR=4, BOOT_RESTORED=5, BOOT_RECOVERY=6, BOOT_UNSUPPORTED_FLASH=7 };
 /* HAL returns 1 on success. Every write is checked by the core or HAL. */
 int boot_read(int external,uint32_t address,void *data,uint32_t size);
 int boot_ext_erase(uint32_t address);

@@ -26,5 +26,5 @@ class PackageTests(unittest.TestCase):
   data=bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})(?=,|\n)',text))
   expected=int(re.search(r'CRC 0x([0-9a-f]+)',text)[1],16)
   self.assertEqual(len(data),32768);self.assertEqual(boot_tool.crc32(data),expected)
-  self.assertEqual(data[0x7ffc:0x7ffe],bytes([0x30,139]))
+  self.assertEqual(data[0x7ffc:0x7ffe],bytes([0x31,139]))
 if __name__=='__main__':unittest.main()

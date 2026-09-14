@@ -13,7 +13,7 @@ static uint32_t crc_word(uint32_t c,uint32_t v) {
 }
 int app_boot_request(void) {
  BootHeader h;uint32_t crc=0xffffffffu,words[32],pos,n,i,magic=BOOT_MAGIC,check;
- if(BOOT_VER<BOOT_VERSION)return 0;
+ if(BOOT_VER<BOOT_VERSION||*(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS!=BOOT_REQUIRED_FLASH_KIB)return 0;
  mem_read(BOOT_CANDIDATE,(uint8_t*)&h,sizeof(h));
  if(h.hardware!=BOOTHW_VER||h.size<8||h.size>BOOT_MAX_CODE||(h.size&3))return 0;
  for(pos=0;pos<h.size;pos+=n) {
@@ -76,6 +76,7 @@ __ramfunc static void replace_ram(const uint8_t *image) {
 }
 int app_boot_replace(const uint8_t *image,uint32_t size,uint32_t crc) {
  uint32_t c=0xffffffffu,i,w,sp,pc,address=(uint32_t)image;
+ if(*(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS!=BOOT_REQUIRED_FLASH_KIB)return 0;
  if(size!=0x8000u||(address&3u)||address<BOOT_APP_VECTOR||address>BOOT_FLASH_END-size)return 0;
  memcpy(&sp,image,4);memcpy(&pc,image+4,4);
  if(sp<0x20000008u||sp>0x20005000u||(sp&7u)||!(pc&1u)||(pc&~1u)<0x08000000u||(pc&~1u)>=0x08007ffcu||
@@ -92,7 +93,7 @@ void app_boot_migrate_if_needed(void) {
 #ifdef DOMOVOI_BOOT_MIGRATION
  /* Dedicated transition firmware for the current v5 application project.
     Never select the MINI image based only on an old version number. */
- if((BOOT_VER==0x21u||BOOT_VER==0x22u)&&BOOTHW_VER==0x8bu)
+ if((BOOT_VER==0x21u||BOOT_VER==0x22u||BOOT_VER==0x30u)&&BOOTHW_VER==0x8bu)
   app_boot_replace(domovoi_boot_image,sizeof(domovoi_boot_image),DOMOVOI_BOOT_IMAGE_CRC);
 #endif
 }

@@ -45,9 +45,10 @@ static void dispatch(const uint8_t *p,uint16_t n) {
  if(n<2||p[0]!=0xaa)return;
  cmd=p[1];
  switch(cmd) {
- case 0:status=BOOT_OK;break;
+ case 0:status=boot_platform_supported()?BOOT_OK:BOOT_UNSUPPORTED_FLASH;break;
  case 0x20: /* size:u32, CRC:u32, NUL-terminated HW.FW.TIMESTAMP.bin */
   session=0;received=0;
+  if(!boot_platform_supported()){status=BOOT_UNSUPPORTED_FLASH;break;}
   if(n<12||p[n-1]!=0||memchr(p+10,0,n-10)!=p+n-1)break;
   if(!boot_parse_filename((const char*)p+10,&h))break;
   h.size=read_le32(p+2);h.crc=read_le32(p+6);
@@ -97,7 +98,7 @@ static void poll(void) {
 void main(void) {
  int held,result;
  boot_platform_init();held=boot_button();
- result=boot_run();
+ result=boot_platform_supported()?boot_run():BOOT_UNSUPPORTED_FLASH;
  if(!held&&(result==BOOT_OK||result==BOOT_RESTORED))boot_start_app();
  boot_usb_init();
  for(;;) {

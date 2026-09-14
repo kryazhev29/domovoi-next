@@ -50,11 +50,12 @@ def upload(port,path):
                 body=bytes(pending[6:6+size]);got=struct.unpack_from('<H',pending,6+size)[0];del pending[:size+8]
                 if got!=crc16(body) or body[:2]!=bytes([0x55,cmd]):continue
                 if len(body)!=10:raise RuntimeError('Unsupported bootloader response')
+                if body[2]==7:raise RuntimeError('Unsupported MCU Flash size: this build requires a factory-reported 128 KiB device')
                 if body[2]:raise RuntimeError(f'Bootloader status {body[2]} for command {cmd:02x}')
                 return body
             raise TimeoutError(f'No response to command {cmd:02x}; re-enter boot mode and restart upload')
         info=exchange(0)
-        if info[3]<0x30 or info[4]!=hw:raise ValueError('Wrong bootloader version or hardware ID')
+        if info[3]<0x31 or info[4]!=hw:raise ValueError('Wrong bootloader version or hardware ID')
         exchange(0x20,struct.pack('<II',len(data),crc32(data))+path.name.encode('ascii')+b'\0')
         for offset in range(0,len(data),256):
             exchange(0x21,struct.pack('<I',offset)+data[offset:offset+256],5)
@@ -70,7 +71,7 @@ def main():
     if a.command=='upload':upload(a.port,a.image);return
     if a.command=='embed':
         data=a.bootloader.read_bytes()
-        if len(data)!=32768 or data[0x7ffc]!=0x30:raise ValueError('Expected padded 32 KiB new bootloader')
+        if len(data)!=32768 or data[0x7ffc]!=0x31:raise ValueError('Expected padded 32 KiB new bootloader')
         text='#include <stdint.h>\n#ifdef __ICCARM__\n#pragma data_alignment=4\n#else\n__attribute__((aligned(4)))\n#endif\nstatic const uint8_t domovoi_boot_image[32768] = {\n'
         text+=''.join(','.join(f'0x{x:02x}' for x in data[i:i+16])+',\n' for i in range(0,len(data),16))
         text+='};\n#define DOMOVOI_BOOT_IMAGE_CRC 0x%08xu\n'%crc32(data)

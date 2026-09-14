@@ -11,15 +11,19 @@
 #endif
 static volatile uint32_t ticks;
 static int spi_fault;
+static uint16_t flash_kib;
+int boot_platform_supported(void) { return flash_kib==BOOT_REQUIRED_FLASH_KIB; }
 uint32_t boot_millis(void) { return ticks; }
 void SysTick_Handler(void) { ++ticks; }
 void USB_LP_CAN1_RX0_IRQHandler(void) { USB_Istr(); }
 void USBWakeUp_IRQHandler(void) { EXTI_ClearITPendingBit(EXTI_Line18); }
 void boot_service(void) {
  IWDG->KR=0xAAAA;
- /* PWR (red) and DATA (blue), mutually exclusive at 250 ms intervals. */
- if((ticks/250u)&1u) { GPIOB->BRR=BOOT_RED_PIN;GPIOB->BSRR=BOOT_BLUE_PIN; }
- else { GPIOB->BRR=BOOT_BLUE_PIN;GPIOB->BSRR=BOOT_RED_PIN; }
+#ifndef BOOT_BOARD_MINI
+ /* Dedicated PWR/DATA LEDs only. MINI LEDs are electrically shared with CAN. */
+ if((ticks/250u)&1u) { GPIOB->BRR=BOOT_LED_PRIMARY_PIN;GPIOB->BSRR=BOOT_LED_SECONDARY_PIN; }
+ else { GPIOB->BRR=BOOT_LED_SECONDARY_PIN;GPIOB->BSRR=BOOT_LED_PRIMARY_PIN; }
+#endif
 }
 static uint8_t spi_byte(uint8_t data) {
  uint32_t timeout=100000;
@@ -55,6 +59,7 @@ static int write_enable(void) {
 int boot_read(int external,uint32_t address,void *data,uint32_t size) {
  uint8_t *p=data;
  if(!external) {
+  if(!boot_platform_supported())return 0;
   if(address<BOOT_APP_BASE||address>BOOT_FLASH_END||size>BOOT_FLASH_END-address) return 0;
   memcpy(data,(const void*)address,size);return 1;
  }
@@ -91,6 +96,7 @@ int boot_ext_write(uint32_t address,const void *data,uint32_t size) {
 }
 int boot_int_erase(uint32_t address) {
  FLASH_Status status;uint32_t mask=__get_PRIMASK();
+ if(!boot_platform_supported())return 0;
  if(address<BOOT_APP_BASE||address>=BOOT_FLASH_END||(address&1023u))return 0;
  boot_service();__disable_interrupt();FLASH_Unlock();
  FLASH_ClearFlag(FLASH_FLAG_EOP|FLASH_FLAG_PGERR|FLASH_FLAG_WRPRTERR);
@@ -99,6 +105,7 @@ int boot_int_erase(uint32_t address) {
 }
 int boot_int_write(uint32_t address,const void *data,uint32_t size) {
  uint32_t i,word,mask;FLASH_Status status=FLASH_COMPLETE;
+ if(!boot_platform_supported())return 0;
  if(address<BOOT_APP_BASE||address>BOOT_FLASH_END||size>BOOT_FLASH_END-address||((address|size)&3u))return 0;
  mask=__get_PRIMASK();__disable_interrupt();FLASH_Unlock();
  FLASH_ClearFlag(FLASH_FLAG_EOP|FLASH_FLAG_PGERR|FLASH_FLAG_WRPRTERR);
@@ -112,17 +119,28 @@ int boot_int_write(uint32_t address,const void *data,uint32_t size) {
 }
 void boot_platform_init(void) {
  GPIO_InitTypeDef g;
+ /* Cache the factory signature before enabling USB/peripherals. */
+ flash_kib=*(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS;
  SCB->VTOR=0x08000000u;
  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA|RCC_APB2Periph_GPIOB|RCC_APB2Periph_GPIOC|RCC_APB2Periph_AFIO|RCC_APB2Periph_SPI1,ENABLE);
  GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable,ENABLE);
  GPIO_StructInit(&g);g.GPIO_Speed=GPIO_Speed_50MHz;g.GPIO_Mode=GPIO_Mode_Out_PP;
  /* Set inactive levels before enabling output drivers. */
  BOOT_USB_PORT->BRR=BOOT_USB_PIN;BOOT_CS_PORT->BSRR=BOOT_CS_PIN;
- GPIOB->BRR=BOOT_RED_PIN|BOOT_BLUE_PIN;
+#ifndef BOOT_BOARD_MINI
+ GPIOB->BRR=BOOT_LED_PINS;
+#endif
  g.GPIO_Pin=BOOT_USB_PIN;GPIO_Init(BOOT_USB_PORT,&g);
  g.GPIO_Pin=BOOT_CS_PIN;GPIO_Init(BOOT_CS_PORT,&g);
- g.GPIO_Pin=BOOT_RED_PIN|BOOT_BLUE_PIN;GPIO_Init(GPIOB,&g);
+#ifndef BOOT_BOARD_MINI
+ g.GPIO_Pin=BOOT_LED_PINS;GPIO_Init(GPIOB,&g);
+#endif
 #ifdef BOOT_BOARD_MINI
+ /* RXD is an output of the external CAN chip; never drive it from the MCU.
+    TXD high prevents a dominant bus level throughout bootloader operation. */
+ g.GPIO_Pin=BOOT_CAN_RX_PIN;g.GPIO_Mode=GPIO_Mode_IN_FLOATING;GPIO_Init(GPIOB,&g);
+ GPIOB->BSRR=BOOT_CAN_TX_PIN;
+ g.GPIO_Pin=BOOT_CAN_TX_PIN;g.GPIO_Mode=GPIO_Mode_Out_PP;GPIO_Init(GPIOB,&g);
  GPIOB->BRR=GPIO_Pin_0;g.GPIO_Pin=GPIO_Pin_0;GPIO_Init(GPIOB,&g);
  GPIOC->BRR=GPIO_Pin_14|GPIO_Pin_15;g.GPIO_Pin=GPIO_Pin_14|GPIO_Pin_15;GPIO_Init(GPIOC,&g);
 #else
