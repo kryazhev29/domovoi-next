@@ -7,6 +7,9 @@ void USART_To_USB_Send_Data(uint8_t *data,uint16_t size);
 #else
 #include "includes.h"
 #endif
+#ifdef __ICCARM__
+#include <intrinsics.h>
+#endif
 #include "boot_platform.h"
 #ifdef __ICCARM__
 #pragma location=".boot_version"
