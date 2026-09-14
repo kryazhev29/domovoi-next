@@ -2416,6 +2416,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd reg (cmd 1)\r\n"); 
 #endif        
+      if (cch != CH_SERVER) break; // ответ на регистрацию бывает только от сервера
       device.answerTimeout = 0;
       switch ((cmdCode_e)ptr[5]){
       case CMD_SUCCESS:
@@ -2423,7 +2424,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         device.datetime = tmp32;
         device.registredOnServer = 1;
         app_trial_confirm(); // прошивка дошла до сервера - обновление подтверждено
-        if (device.firmwarePercent == 252){
+        if (device.firmwarePercent == 252 && app_boot_error_unreported()){
           user_send_statusUpdateFW(20, CMD_RUNERROR, cch, uniqIDCnt++);
           app_boot_error_reported();
         }
@@ -2440,9 +2441,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         
       case CMD_UNDEFIMEI:
       case CMD_UNDEFOBJECT:
-        // сервер ответил осмысленно - прошивка исправна, подтверждаем до сброса
-        app_trial_confirm();
-        user_factoryReset();
+        // пробная прошивка могла сама прочитать IMEI неверно: не подтверждаем и базу не стираем,
+        // при повторении откат по таймауту вернёт прежнюю прошивку
+        if (!app_trial_active())
+          user_factoryReset();
         device.registredOnServer = 0;
         connection_reopen(device.connectionhandle);
         break;
@@ -3309,7 +3311,7 @@ if (cch != CH_USB)
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         break;
       }
-      if (device.FWinProgress || device.rebootToUpdate) {
+      if (device.FWinProgress || device.rebootToUpdate || app_trial_active()) {
         user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
         break;
       }

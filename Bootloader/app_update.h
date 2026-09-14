@@ -5,6 +5,8 @@
 int app_boot_request(void);
 void app_boot_metadata(void);
 void app_boot_error_reported(void);
+/* Nonzero while the journal holds an error not yet sent to the server. */
+int app_boot_error_unreported(void);
 /* Trial of this application after an update, read by app_boot_metadata(). */
 int app_trial_active(void);
 void app_trial_confirm(void);

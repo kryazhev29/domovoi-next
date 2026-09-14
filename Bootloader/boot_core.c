@@ -64,11 +64,17 @@ static int install(uint32_t base) {
      !boot_int_write(BOOT_APP_BASE+pos,buffer,sizeof(buffer))) return 0;
  return boot_validate(0,BOOT_APP_BASE,&check);
 }
+static int trial_pending(void);
 /* Start a new transaction only while a valid application is still intact.
  * A recovery session may also replace a damaged candidate, keeping the journal
- * and last known good backup until it has a complete replacement. */
+ * and last known good backup until it has a complete replacement.
+ * A running trial owns the candidate slot and the backup: erasing the slot
+ * would end it silently and the next install would snapshot an unconfirmed
+ * application over the last good one. A damaged application stays open to
+ * recovery. */
 int boot_prepare(void) {
- uint32_t pos;
+ BootHeader h; uint32_t pos;
+ if(trial_pending()&&boot_validate(0,BOOT_APP_BASE,&h)) return BOOT_TRIAL_BUSY;
  for(pos=0;pos<BOOT_SLOT_SIZE;pos+=4096)
   if(!boot_ext_erase(BOOT_CANDIDATE+pos)) return BOOT_IO;
  return BOOT_OK;
@@ -97,12 +103,23 @@ static void cleanup_failed_candidate(void) {
  write_word(BOOT_JOURNAL+16,0);
 }
 /* Only an exact 0 arms or confirms a trial, so a torn write of either word
-   keeps the safer state. An error code in +12 ends the transaction. */
+   keeps the safer state. An error code in +12 ends the transaction.
+   The installed candidate stays in its slot for the whole trial, magic
+   BOOT_MAGIC or 0. The next upload erases the slot and keeps the magic erased
+   until the journal is cleared, so a torn journal erase that sets bits of a
+   confirmation cannot revive a finished trial. */
 static int trial_pending(void) {
- uint32_t armed,confirmed,error;
+ uint32_t armed,confirmed,error,magic;
  return read_word(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,&armed)&&armed==0&&
  read_word(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,&confirmed)&&confirmed!=0&&
- read_word(BOOT_JOURNAL+12,&error)&&error==0xffffffffu;
+ read_word(BOOT_JOURNAL+12,&error)&&error==0xffffffffu&&
+ read_word(BOOT_CANDIDATE,&magic)&&magic!=0xffffffffu;
+}
+/* A restore interrupted after its last page leaves the backup running. */
+static int app_is_backup(void) {
+ BootHeader a,b;
+ return boot_validate(1,BOOT_BACKUP,&b)&&boot_read(0,BOOT_APP_BASE,&a,sizeof(a))&&
+ a.size==b.size&&a.crc==b.crc;
 }
 static int trial_marked(void) {
  uint32_t marker;
@@ -119,17 +136,16 @@ static int trial_launch(int app) {
  BootHeader h; uint32_t mask,request;
  if(!read_word(BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES,&mask)||
     !read_word(BOOT_JOURNAL+BOOT_JOURNAL_ROLLBACK,&request)) return app?BOOT_OK:BOOT_RECOVERY;
- if(app&&request==0xffffffffu&&launches_used(mask)<BOOT_TRIAL_LAUNCHES) {
-  /* A failed write means the external Flash with the backup is dead as well:
-     running the application is still the best choice. */
-  write_word(BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES,mask&(mask-1));
-  return BOOT_OK;
- }
- if(install(BOOT_BACKUP))
-  return write_word(BOOT_JOURNAL+12,BOOT_TRIAL_FAILED)?BOOT_RESTORED:BOOT_IO;
- /* install() validates the backup before erasing: a damaged backup leaves
-    the application in place. */
- return boot_validate(0,BOOT_APP_BASE,&h)?BOOT_OK:BOOT_RECOVERY;
+ /* A launch that cannot be counted is not granted: the rollback below is
+    attempted instead, and install() validates the backup before erasing, so
+    a dead external Flash still leaves the application running. */
+ if(app&&request==0xffffffffu&&launches_used(mask)<BOOT_TRIAL_LAUNCHES&&
+    write_word(BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES,mask&(mask-1))) return BOOT_OK;
+ /* Once the backup runs, do not rewrite internal Flash on every start when
+    the error code cannot be recorded. */
+ if(!(app&&app_is_backup())&&!install(BOOT_BACKUP))
+  return boot_validate(0,BOOT_APP_BASE,&h)?BOOT_OK:BOOT_RECOVERY;
+ return write_word(BOOT_JOURNAL+12,BOOT_TRIAL_FAILED)?BOOT_RESTORED:BOOT_IO;
 }
 int boot_run(void) {
  BootHeader h; uint32_t started,done,rollback;

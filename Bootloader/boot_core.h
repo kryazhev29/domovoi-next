@@ -49,7 +49,7 @@ typedef struct {
 #pragma pack(pop)
 enum { BOOT_OK=0, BOOT_BAD_IMAGE=1, BOOT_IO=2, BOOT_BACKUP_ERROR=3,
        BOOT_PROGRAM_ERROR=4, BOOT_RESTORED=5, BOOT_RECOVERY=6, BOOT_UNSUPPORTED_FLASH=7,
-       BOOT_TRIAL_FAILED=8 };
+       BOOT_TRIAL_FAILED=8, BOOT_TRIAL_BUSY=9 };
 /* HAL returns 1 on success. Every write is checked by the core or HAL. */
 int boot_read(int external,uint32_t address,void *data,uint32_t size);
 int boot_ext_erase(uint32_t address);

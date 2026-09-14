@@ -29,8 +29,10 @@ int app_boot_request(void) {
   for(i=0;i<n/4;i++)crc=crc_word(crc,words[i]);wdt_reload();
  }
  if(crc!=h.crc)return 0;
- /* The journal and the backup belong to the running trial until it ends. */
- if(trial)return 0;
+ /* The journal and the backup belong to the running trial until it ends.
+    A staged candidate keeps its magic erased until the journal is cleared:
+    the bootloader relies on it to tell a torn journal erase from a trial. */
+ if(trial||h.magic!=0xffffffffu)return 0;
  mem_erase_sector(BOOT_JOURNAL);
  for(pos=0;pos<4096;pos+=sizeof(words)) {
   mem_read(BOOT_JOURNAL+pos,(uint8_t*)words,sizeof(words));
@@ -86,13 +88,17 @@ int app_trial_expired(void) {
 /* Called after the failed update was sent to the server. Without the mark the
  * error would be sent again after every restart. FF->00 needs no erase; the
  * next update request erases the journal together with the mark. */
-void app_boot_error_reported(void) {
+int app_boot_error_unreported(void) {
  uint32_t result,reported;
- if(BOOT_VER<BOOT_VERSION||BOOT_VER==0xffu)return;
+ if(BOOT_VER<BOOT_VERSION||BOOT_VER==0xffu)return 0;
  mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
- if(result==0xffffffffu||reported!=0xffffffffu)return;
- reported=0;mem_write(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
+ return result!=0xffffffffu&&reported==0xffffffffu;
+}
+void app_boot_error_reported(void) {
+ uint32_t reported=0;
+ if(!app_boot_error_unreported())return;
+ mem_write(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
 }
 /* Candidate staging uses the existing external Flash driver of the running
  * application. No embedded boot image and no automatic startup request. */
