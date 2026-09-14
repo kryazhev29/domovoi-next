@@ -16,6 +16,12 @@ class PackageTests(unittest.TestCase):
    for c in package[512:]:
     b=((c^crypt)+fw)&255;decoded.append(b);crypt=(crypt+b)&255
    self.assertEqual(decoded[:len(original)],original);self.assertEqual(size,len(decoded));self.assertEqual(crc,boot_tool.crc32(decoded))
+ def test_inspect_trial_marker(self):
+  with tempfile.TemporaryDirectory() as d:
+   for marker,expected in ((boot_tool.TRIAL_MARKER,'trial=yes'),(0,'trial=no')):
+    p=Path(d)/'139.14.1.bin';p.write_bytes(struct.pack('<IIIIIIII',0x20005000,0x08008209,0,0,0,0,0,marker))
+    out=subprocess.run([sys.executable,str(Path(boot_tool.__file__)),'inspect',str(p)],check=True,capture_output=True,text=True).stdout
+    self.assertIn(expected,out)
  def test_wrong_link_address(self):
   with tempfile.TemporaryDirectory() as d:
    p=Path(d)/'139.14.1.bin';p.write_bytes(struct.pack('<II',0x20005000,0x08000009))
@@ -24,7 +30,7 @@ class PackageTests(unittest.TestCase):
   import re
   with tempfile.TemporaryDirectory() as d:
    image=Path(d)/'boot.bin';header=Path(d)/'boot.h'
-   data=bytearray(b'\xff'*32768);data[0x7ffc:]=bytes([0x31,139,0,255]);image.write_bytes(data)
+   data=bytearray(b'\xff'*32768);data[0x7ffc:]=bytes([0x32,139,0,255]);image.write_bytes(data)
    subprocess.run([sys.executable,str(Path(boot_tool.__file__)),'embed',str(image),str(header)],check=True,capture_output=True)
    text=header.read_text()
    packed=bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})(?=,|\n)',text))

@@ -4,6 +4,9 @@ No device is accessed unless the explicit upload subcommand is used.
 import argparse, struct, time, re
 from pathlib import Path
 MAX_CODE=0x17e00
+# boot_core.h BOOT_TRIAL_VECTOR/BOOT_TRIAL_MARKER: the application confirms itself after an update
+TRIAL_VECTOR=0x1c
+TRIAL_MARKER=0x4c495254
 def crc32(data):
     if len(data)%4: raise ValueError('CRC input must contain complete little-endian words')
     crc=0xffffffff
@@ -84,12 +87,14 @@ def main():
     if a.command=='upload':upload(a.port,a.image);return
     if a.command=='embed':
         data=a.bootloader.read_bytes()
-        if len(data)!=32768 or data[0x7ffc]!=0x31:raise ValueError('Expected padded 32 KiB new bootloader')
+        if len(data)!=32768 or data[0x7ffc]!=0x32:raise ValueError('Expected padded 32 KiB new bootloader')
         text='#include <stdint.h>\n#ifdef __ICCARM__\n#pragma data_alignment=4\n#else\n__attribute__((aligned(4)))\n#endif\nstatic const uint8_t domovoi_boot_image[32768] = {\n'
         text+=''.join(','.join(f'0x{x:02x}' for x in data[i:i+16])+',\n' for i in range(0,len(data),16))
         text+='};\n#define DOMOVOI_BOOT_IMAGE_CRC 0x%08xu\n'%crc32(data)
         a.output.write_text(text);return
     hw,fw,stamp,data=application(a.image)
-    if a.command=='inspect':print(f'HW={hw}, FW={fw}, build={stamp}, size={len(data)}, CRC=0x{crc32(data):08x}');return
+    if a.command=='inspect':
+        trial=struct.unpack_from('<I',data,TRIAL_VECTOR)[0]==TRIAL_MARKER if len(data)>=TRIAL_VECTOR+4 else False
+        print(f'HW={hw}, FW={fw}, build={stamp}, size={len(data)}, CRC=0x{crc32(data):08x}, trial={"yes" if trial else "no"}');return
     legacy_package(a.image,a.output)
 if __name__=='__main__':main()

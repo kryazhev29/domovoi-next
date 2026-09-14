@@ -28,5 +28,5 @@ prefix=str(Path(cc).parent/'arm-none-eabi-')
 subprocess.run([prefix+'objcopy.exe','-O','binary','--gap-fill','0xff',str(elf),str(out/'DomovoiBoot.bin')],check=True)
 subprocess.run([prefix+'size.exe',str(elf)],check=True)
 binary=(out/'DomovoiBoot.bin').read_bytes()
-assert len(binary)==32768 and binary[0x7ffc]==0x31
+assert len(binary)==32768 and binary[0x7ffc]==0x32
 print('Verified 32768-byte image:',out/'DomovoiBoot.bin')

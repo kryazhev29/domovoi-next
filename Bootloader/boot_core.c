@@ -96,6 +96,41 @@ static void cleanup_failed_candidate(void) {
   if(!boot_ext_erase(BOOT_CANDIDATE+pos)) return;
  write_word(BOOT_JOURNAL+16,0);
 }
+/* Only an exact 0 arms or confirms a trial, so a torn write of either word
+   keeps the safer state. An error code in +12 ends the transaction. */
+static int trial_pending(void) {
+ uint32_t armed,confirmed,error;
+ return read_word(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,&armed)&&armed==0&&
+ read_word(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,&confirmed)&&confirmed!=0&&
+ read_word(BOOT_JOURNAL+12,&error)&&error==0xffffffffu;
+}
+static int trial_marked(void) {
+ uint32_t marker;
+ return read_word(BOOT_CANDIDATE+BOOT_HEADER_SIZE+BOOT_TRIAL_VECTOR,&marker)&&marker==BOOT_TRIAL_MARKER;
+}
+static unsigned launches_used(uint32_t mask) {
+ unsigned n=0;
+ for(mask=~mask;mask;mask&=mask-1) n++;
+ return n;
+}
+/* Rollback conditions only accumulate: launch bits are never set again and
+   the request is never withdrawn, so a reset inside the restore repeats it. */
+static int trial_launch(int app) {
+ BootHeader h; uint32_t mask,request;
+ if(!read_word(BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES,&mask)||
+    !read_word(BOOT_JOURNAL+BOOT_JOURNAL_ROLLBACK,&request)) return app?BOOT_OK:BOOT_RECOVERY;
+ if(app&&request==0xffffffffu&&launches_used(mask)<BOOT_TRIAL_LAUNCHES) {
+  /* A failed write means the external Flash with the backup is dead as well:
+     running the application is still the best choice. */
+  write_word(BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES,mask&(mask-1));
+  return BOOT_OK;
+ }
+ if(install(BOOT_BACKUP))
+  return write_word(BOOT_JOURNAL+12,BOOT_TRIAL_FAILED)?BOOT_RESTORED:BOOT_IO;
+ /* install() validates the backup before erasing: a damaged backup leaves
+    the application in place. */
+ return boot_validate(0,BOOT_APP_BASE,&h)?BOOT_OK:BOOT_RECOVERY;
+}
 int boot_run(void) {
  BootHeader h; uint32_t started,done,rollback;
  int candidate,app,backup;
@@ -104,6 +139,7 @@ int boot_run(void) {
  app=boot_validate(0,BOOT_APP_BASE,&h);
  if(done!=0xffffffffu) {
   /* Any torn completion marker follows a fully verified installation. */
+  if(trial_pending()) return trial_launch(app);
   if(app) { cleanup_failed_candidate();return BOOT_OK; }
   return BOOT_RECOVERY;
  }
@@ -121,14 +157,17 @@ int boot_run(void) {
    return BOOT_BACKUP_ERROR;
   }
   backup=app||boot_validate(1,BOOT_BACKUP,&h);
-  /* Record whether a backup is available before touching internal flash. */
+  /* Record whether a backup is available before touching internal flash.
+     A trial is armed only with a backup to return to. */
+  if(backup&&trial_marked()&&!write_word(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,0)) return BOOT_IO;
   if(!write_word(BOOT_JOURNAL,backup?0x494e5354u:0x4e4f424bu)) return BOOT_IO;
   started=backup?0x494e5354u:0x4e4f424bu;
  }
  if(rollback==0xffffffffu&&candidate&&install(BOOT_CANDIDATE)) {
   if(!write_word(BOOT_JOURNAL+4,0)) return BOOT_IO;
   write_word(BOOT_CANDIDATE,0);
-  return BOOT_OK;
+  /* The first start of a trial application is one of its launches. */
+  return trial_pending()?trial_launch(1):BOOT_OK;
  }
  /* A torn start marker has not allowed an erase, but restoring a validated
     backup is also safe. Never overwrite a backup while recovering. */

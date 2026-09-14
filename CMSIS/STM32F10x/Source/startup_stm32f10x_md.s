@@ -65,7 +65,7 @@ __vector_table
         DCD     MemManage_Handler         ; MPU Fault Handler
         DCD     BusFault_Handler          ; Bus Fault Handler
         DCD     UsageFault_Handler        ; Usage Fault Handler
-        DCD     0                         ; Reserved
+        DCD     0x4C495254                ; Reserved: trial marker, Bootloader/boot_core.h BOOT_TRIAL_MARKER
         DCD     0                         ; Reserved
         DCD     0                         ; Reserved
         DCD     0                         ; Reserved

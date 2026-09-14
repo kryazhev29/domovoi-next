@@ -9,6 +9,10 @@
 #define __disable_interrupt __disable_irq
 #endif
 extern device_s device;
+/* An unconfirmed trial asks for a rollback after this many seconds. */
+#define TRIAL_SECONDS 1800u
+static uint8_t trial;
+static uint16_t trial_seconds;
 static uint32_t crc_word(uint32_t c,uint32_t v) {
  unsigned i;c^=v;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0);return c;
 }
@@ -25,6 +29,8 @@ int app_boot_request(void) {
   for(i=0;i<n/4;i++)crc=crc_word(crc,words[i]);wdt_reload();
  }
  if(crc!=h.crc)return 0;
+ /* The journal and the backup belong to the running trial until it ends. */
+ if(trial)return 0;
  mem_erase_sector(BOOT_JOURNAL);
  for(pos=0;pos<4096;pos+=sizeof(words)) {
   mem_read(BOOT_JOURNAL+pos,(uint8_t*)words,sizeof(words));
@@ -43,12 +49,39 @@ void app_boot_metadata(void) {
   device.firmwareSize=h->size;device.firmwareCRC=h->crc;
  }
  if(BOOT_VER>=BOOT_VERSION&&BOOT_VER!=0xffu) {
-  uint32_t reported;
+  uint32_t reported,done,armed,confirmed;
   mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
   mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
-  if((result==BOOT_PROGRAM_ERROR||result==BOOT_BACKUP_ERROR)&&reported==0xffffffffu)
+  /* Any written code is an update error, including one torn by a power cut. */
+  if(result!=0xffffffffu&&reported==0xffffffffu)
    device.firmwarePercent=252;
+  mem_read(BOOT_JOURNAL+4,(uint8_t*)&done,4);
+  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,(uint8_t*)&armed,4);
+  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&confirmed,4);
+  /* Same rule as the bootloader: only an exact 0 arms or confirms. */
+  trial=(done!=0xffffffffu&&armed==0&&confirmed!=0&&result==0xffffffffu)?1u:0u;
  }
+}
+int app_trial_active(void) {return trial;}
+/* Written and read back; a failed write leaves the trial for the next
+ * registration answer to confirm. */
+void app_trial_confirm(void) {
+ uint32_t zero=0,check;
+ if(!trial)return;
+ mem_write(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&zero,4);
+ mem_read(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&check,4);
+ if(check==0)trial=0;
+}
+/* The bootloader restores the backup on the next start. */
+void app_trial_rollback(void) {
+ uint32_t zero=0;
+ if(!trial)return;
+ mem_write(BOOT_JOURNAL+BOOT_JOURNAL_ROLLBACK,(uint8_t*)&zero,4);
+}
+int app_trial_expired(void) {
+ if(!trial)return 0;
+ if(trial_seconds<TRIAL_SECONDS)trial_seconds++;
+ return trial_seconds>=TRIAL_SECONDS;
 }
 /* Called after the failed update was sent to the server. Without the mark the
  * error would be sent again after every restart. FF->00 needs no erase; the
@@ -58,7 +91,7 @@ void app_boot_error_reported(void) {
  if(BOOT_VER<BOOT_VERSION||BOOT_VER==0xffu)return;
  mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
- if((result!=BOOT_PROGRAM_ERROR&&result!=BOOT_BACKUP_ERROR)||reported!=0xffffffffu)return;
+ if(result==0xffffffffu||reported!=0xffffffffu)return;
  reported=0;mem_write(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
 }
 /* Candidate staging uses the existing external Flash driver of the running

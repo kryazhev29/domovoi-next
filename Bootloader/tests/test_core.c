@@ -7,7 +7,7 @@
 static unsigned char ext[BOOT_BACKUP+BOOT_SLOT_SIZE],flash[BOOT_FLASH_END-BOOT_APP_BASE];
 static jmp_buf reset;
 static unsigned mutations,cut;
-static int fail_program,fail_backup,partial;
+static int fail_program,fail_backup,partial,trial_image;
 void boot_service(void){}
 static void checkpoint(void){++mutations;if(cut&&mutations==cut)longjmp(reset,1);}
 int boot_read(int e,uint32_t a,void *p,uint32_t n){
@@ -28,12 +28,32 @@ static void image(unsigned char *p,unsigned version,uint32_t size){
  BootHeader h;uint32_t i,w,crc=0xffffffffu;
  memset(&h,0,sizeof(h));h.magic=BOOT_MAGIC;h.hardware=BOOT_HW_VERSION;h.version=(uint16_t)version;h.size=size;
  memset(p,255,BOOT_HEADER_SIZE);
- for(i=0;i<size;i+=4){w=i==0?0x20005000u:(i==4?BOOT_APP_VECTOR+9u:i*17u+version);memcpy(p+BOOT_HEADER_SIZE+i,&w,4);crc=boot_crc_word(crc,w);}
+ for(i=0;i<size;i+=4){w=i==0?0x20005000u:(i==4?BOOT_APP_VECTOR+9u:(i==BOOT_TRIAL_VECTOR&&trial_image?BOOT_TRIAL_MARKER:i*17u+version));memcpy(p+BOOT_HEADER_SIZE+i,&w,4);crc=boot_crc_word(crc,w);}
  h.crc=crc;memcpy(p,&h,sizeof(h));
 }
-static void initial(void){memset(ext,255,sizeof(ext));memset(flash,255,sizeof(flash));image(flash,14,8192);image(ext,15,12288);mutations=cut=0;fail_program=fail_backup=partial=0;}
+static void initial(void){trial_image=0;memset(ext,255,sizeof(ext));memset(flash,255,sizeof(flash));image(flash,14,8192);image(ext,15,12288);mutations=cut=0;fail_program=fail_backup=partial=0;}
+/* Candidate 15 can confirm itself; the running application 14 cannot. */
+static void trial_initial(void){initial();trial_image=1;image(ext,15,12288);trial_image=0;}
 static int run(void){if(setjmp(reset))return -1;return boot_run();}
 static unsigned version(void){BootHeader h;assert(boot_validate(0,BOOT_APP_BASE,&h));return h.version;}
+static uint32_t journal(uint32_t offset){uint32_t v;assert(boot_read(1,BOOT_JOURNAL+offset,&v,4));return v;}
+/* The application writes a journal word itself, outside the bootloader HAL. */
+static void app_word(uint32_t offset,uint32_t value){unsigned char b[4];unsigned i;memcpy(b,&value,4);for(i=0;i<4;i++)ext[BOOT_JOURNAL+offset+i]&=b[i];}
+/* Starts without confirmation until the state settles. Every cut position must
+   end on the backup with the trial failure recorded, never in recovery, and
+   the trial application may start at most one launch more than allowed. */
+static void trial_settles(uint32_t first,uint32_t request){
+ unsigned i,launches=0;int r,torn=partial;
+ for(i=0;i<16;i++){
+  if(i==first&&request)app_word(BOOT_JOURNAL_ROLLBACK,0);
+  r=run();if(r==-1){cut=0;continue;}
+  assert(r==BOOT_OK||r==BOOT_RESTORED);
+  if(version()==15&&journal(12)==0xffffffffu)launches++;
+ }
+ /* A torn error code still ends the trial; the FW reports any written code. */
+ assert(version()==14);assert(journal(12)!=0xffffffffu);assert(torn||journal(12)==BOOT_TRIAL_FAILED);
+ assert(launches<=BOOT_TRIAL_LAUNCHES+1u);
+}
 int main(void){
  unsigned total,k,mode;int result;BootHeader h;
  /* A legacy header's HW byte cannot identify a physical board. Preserve the
@@ -70,6 +90,36 @@ int main(void){
   total=mutations;result=run();assert(version()==15);assert(result==BOOT_OK);assert(mutations==total);
  }
  puts("torn journal erase: running application kept, backup not restored");
+ /* Trial: armed before internal Flash changes, every start is a launch. */
+ trial_initial();assert(run()==BOOT_OK&&version()==15);
+ assert(journal(BOOT_JOURNAL_TRIAL)==0&&journal(BOOT_JOURNAL_LAUNCHES)==0xfffffffeu);
+ assert(run()==BOOT_OK&&run()==BOOT_OK&&version()==15&&journal(BOOT_JOURNAL_LAUNCHES)==0xfffffff8u);
+ assert(run()==BOOT_RESTORED&&version()==14&&journal(12)==BOOT_TRIAL_FAILED);
+ total=mutations;for(k=0;k<5;k++){assert(run()==BOOT_OK);assert(version()==14);}assert(mutations==total);
+ /* Confirmation ends the trial for good; a torn confirmation does not. */
+ trial_initial();assert(run()==BOOT_OK);app_word(BOOT_JOURNAL_CONFIRMED,0);
+ total=mutations;for(k=0;k<8;k++){assert(run()==BOOT_OK);assert(version()==15);}assert(mutations==total);
+ trial_initial();assert(run()==BOOT_OK);app_word(BOOT_JOURNAL_CONFIRMED,0x00ff0000u);
+ assert(run()==BOOT_OK&&run()==BOOT_OK&&run()==BOOT_RESTORED&&version()==14);
+ /* The application asks for a rollback: the next start restores the backup. */
+ trial_initial();assert(run()==BOOT_OK);app_word(BOOT_JOURNAL_ROLLBACK,0xfffeffffu);
+ assert(run()==BOOT_RESTORED&&version()==14&&journal(12)==BOOT_TRIAL_FAILED);
+ /* Images without the marker and installs without a backup are not trials. */
+ initial();assert(run()==BOOT_OK&&journal(BOOT_JOURNAL_TRIAL)==0xffffffffu);
+ total=mutations;for(k=0;k<8;k++){assert(run()==BOOT_OK);assert(version()==15);}assert(mutations==total);
+ trial_initial();memset(flash,255,sizeof(flash));assert(run()==BOOT_OK&&version()==15);
+ assert(journal(0)==0x4e4f424bu&&journal(BOOT_JOURNAL_TRIAL)==0xffffffffu);
+ /* A damaged backup cannot be restored: the trial application keeps running. */
+ trial_initial();assert(run()==BOOT_OK);ext[BOOT_BACKUP+BOOT_HEADER_SIZE+40]^=1;
+ for(k=0;k<6;k++){assert(run()==BOOT_OK);assert(version()==15);}
+ puts("trial: launches, confirmation, torn confirmation, request, no marker, no backup, damaged backup");
+ /* Power cut at every Flash change of install, launches and rollback. */
+ trial_initial();trial_settles(99,0);total=mutations;
+ for(mode=0;mode<2;mode++)for(k=1;k<=total;k++){trial_initial();cut=k;partial=(int)mode;trial_settles(99,0);}
+ printf("trial exhausted: %u complete/partial power-cut positions passed\n",total*2);
+ trial_initial();trial_settles(2,1);total=mutations;
+ for(mode=0;mode<2;mode++)for(k=1;k<=total;k++){trial_initial();cut=k;partial=(int)mode;trial_settles(2,1);}
+ printf("trial rollback request: %u complete/partial power-cut positions passed\n",total*2);
  initial();ext[BOOT_HEADER_SIZE+44]^=1;assert(run()==BOOT_OK&&mutations==0&&version()==14);
  initial();ext[4]++;assert(run()==BOOT_OK&&mutations==0&&version()==14);
  initial();((BootHeader*)ext)->size=BOOT_MAX_CODE+4;assert(run()==BOOT_OK&&mutations==0);

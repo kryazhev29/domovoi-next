@@ -916,6 +916,15 @@ void user_loop(void)
           user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
       }
     }
+
+    // пробная прошивка после обновления так и не зарегистрировалась на сервере - откат
+    if (app_trial_expired()){
+#ifdef DEBUG_USER
+  user_debug(">>U Trial expired, rollback\r\n");
+#endif
+      app_trial_rollback();
+      user_savereset();
+    }
   }
 
   // каждые 10 сек
@@ -2413,6 +2422,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
         device.datetime = tmp32;
         device.registredOnServer = 1;
+        app_trial_confirm(); // прошивка дошла до сервера - обновление подтверждено
         if (device.firmwarePercent == 252){
           user_send_statusUpdateFW(20, CMD_RUNERROR, cch, uniqIDCnt++);
           app_boot_error_reported();
@@ -2430,6 +2440,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         
       case CMD_UNDEFIMEI:
       case CMD_UNDEFOBJECT:
+        // сервер ответил осмысленно - прошивка исправна, подтверждаем до сброса
+        app_trial_confirm();
         user_factoryReset();
         device.registredOnServer = 0;
         connection_reopen(device.connectionhandle);
@@ -2982,7 +2994,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;      
       
     case 19: // Обновление прошивки
-      if (boot_manual_busy()) {
+      if (boot_manual_busy() || app_trial_active()) {
         user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
         break;
       }

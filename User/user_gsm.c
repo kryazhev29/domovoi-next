@@ -2,6 +2,7 @@
 // Алгоритм управления модулем gsm
 
 #include "user_gsm.h"
+#include "../Bootloader/app_update.h"
 
 // ************** Включить режим отладки **********
 #define DEBUG_USERGSM
@@ -442,6 +443,7 @@ void usergsm_work (uint16_t ms)
 #ifdef DEBUG_USERGSM
   usergsm_debug("*** Reset cpu\r\n");
 #endif
+        app_trial_rollback(); // пробная прошивка не вышла на связь - загрузчик вернёт прежнюю
         user_savereset();
         break;
       }
