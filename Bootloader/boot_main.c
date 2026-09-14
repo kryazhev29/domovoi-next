@@ -98,8 +98,11 @@ static void poll(void) {
 void main(void) {
  int held,result;
  boot_platform_init();held=boot_button();
- result=boot_platform_supported()?boot_run():BOOT_UNSUPPORTED_FLASH;
- if(!held&&(result==BOOT_OK||result==BOOT_RESTORED))boot_start_app();
+ if(boot_platform_supported())(void)boot_run();
+ /* boot_start_app() checks CRC and vectors itself. An intact application is
+    started whatever boot_run() reported, so a failed external Flash does not
+    keep the device offline in the bootloader. */
+ if(!held)boot_start_app();
  boot_usb_init();
  for(;;) {
   boot_service();poll();

@@ -42,10 +42,24 @@ void app_boot_metadata(void) {
   device.firmwareVersion=(h->magic==BOOT_LEGACY_MAGIC)?(h->version&255u):h->version;device.buildDate=h->timestamp;
   device.firmwareSize=h->size;device.firmwareCRC=h->crc;
  }
- if(BOOT_VER>=BOOT_VERSION) {
+ if(BOOT_VER>=BOOT_VERSION&&BOOT_VER!=0xffu) {
+  uint32_t reported;
   mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
-  if(result==BOOT_PROGRAM_ERROR)device.firmwarePercent=252;
+  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
+  if((result==BOOT_PROGRAM_ERROR||result==BOOT_BACKUP_ERROR)&&reported==0xffffffffu)
+   device.firmwarePercent=252;
  }
+}
+/* Called after the failed update was sent to the server. Without the mark the
+ * error would be sent again after every restart. FF->00 needs no erase; the
+ * next update request erases the journal together with the mark. */
+void app_boot_error_reported(void) {
+ uint32_t result,reported;
+ if(BOOT_VER<BOOT_VERSION||BOOT_VER==0xffu)return;
+ mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
+ mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
+ if((result!=BOOT_PROGRAM_ERROR&&result!=BOOT_BACKUP_ERROR)||reported!=0xffffffffu)return;
+ reported=0;mem_write(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
 }
 /* Candidate staging uses the existing external Flash driver of the running
  * application. No embedded boot image and no automatic startup request. */

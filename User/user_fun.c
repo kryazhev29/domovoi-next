@@ -2413,8 +2413,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
         device.datetime = tmp32;
         device.registredOnServer = 1;
-          if (device.firmwarePercent == 252)
-            user_send_statusUpdateFW(20, CMD_RUNERROR, cch, uniqIDCnt++);
+        if (device.firmwarePercent == 252){
+          user_send_statusUpdateFW(20, CMD_RUNERROR, cch, uniqIDCnt++);
+          app_boot_error_reported();
+        }
         device.lmTimer = 5;
         device.lmCount = 0;
         break;
@@ -3007,7 +3009,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           if ((BOOT_VER < 0x30) ||
               (firmwareSize > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
               ((firmwareSize & 3u) != 0) ||
-              (FWblockCount != (firmwareSize + 1023u) / 1024u) ||
+              (FWblockCount < (firmwareSize + 1023u) / 1024u) ||
+              ((FWBLOCK_OFFSET + (uint32_t)FWblockCount * 1024u) > mem[MB_FIRMWARE].size) ||
               (firmwareVersion == 0) ||
               (buildDate == 0) ||
               (firmwareSize == 0) ||

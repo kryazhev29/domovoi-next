@@ -110,7 +110,12 @@ int boot_run(void) {
  candidate=boot_validate(1,BOOT_CANDIDATE,&h)&&h.magic==BOOT_MAGIC;
  if(started==0xffffffffu) {
   if(!candidate) return app?BOOT_OK:BOOT_RECOVERY;
-  if(app&&!snapshot()) return BOOT_BACKUP_ERROR;
+  if(app&&!snapshot()) {
+   /* No backup, no install. Keep the running application, drop the request
+      so it is not retried on every start, and leave the code for the FW. */
+   write_word(BOOT_CANDIDATE,0);write_word(BOOT_JOURNAL+12,BOOT_BACKUP_ERROR);
+   return BOOT_BACKUP_ERROR;
+  }
   backup=app||boot_validate(1,BOOT_BACKUP,&h);
   /* Record whether a backup is available before touching internal flash. */
   if(!write_word(BOOT_JOURNAL,backup?0x494e5354u:0x4e4f424bu)) return BOOT_IO;

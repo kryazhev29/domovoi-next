@@ -7,7 +7,7 @@
 static unsigned char ext[BOOT_BACKUP+BOOT_SLOT_SIZE],flash[BOOT_FLASH_END-BOOT_APP_BASE];
 static jmp_buf reset;
 static unsigned mutations,cut;
-static int fail_program,partial;
+static int fail_program,fail_backup,partial;
 void boot_service(void){}
 static void checkpoint(void){++mutations;if(cut&&mutations==cut)longjmp(reset,1);}
 int boot_read(int e,uint32_t a,void *p,uint32_t n){
@@ -20,7 +20,7 @@ static int program(unsigned char *to,const void *from,uint32_t n){
  for(i=0;i<limit;i++){assert((to[i]&p[i])==p[i]);to[i]&=p[i];}
  checkpoint();return 1;
 }
-int boot_ext_write(uint32_t a,const void*p,uint32_t n){assert(a+n<=sizeof(ext));return program(ext+a,p,n);}
+int boot_ext_write(uint32_t a,const void*p,uint32_t n){assert(a+n<=sizeof(ext));if(fail_backup&&a>=BOOT_BACKUP)return 0;return program(ext+a,p,n);}
 int boot_ext_erase(uint32_t a){assert(!(a&4095)&&a+4096<=sizeof(ext));memset(ext+a,255,(partial&&cut&&mutations+1==cut)?2048:4096);checkpoint();return 1;}
 int boot_int_erase(uint32_t a){assert(a>=BOOT_APP_BASE&&a+1024<=BOOT_FLASH_END&&!(a&1023));memset(flash+a-BOOT_APP_BASE,255,(partial&&cut&&mutations+1==cut)?512:1024);checkpoint();return 1;}
 int boot_int_write(uint32_t a,const void*p,uint32_t n){assert(a>=BOOT_APP_BASE&&a+n<=BOOT_FLASH_END);if(fail_program){fail_program=0;return 0;}return program(flash+a-BOOT_APP_BASE,p,n);}
@@ -31,7 +31,7 @@ static void image(unsigned char *p,unsigned version,uint32_t size){
  for(i=0;i<size;i+=4){w=i==0?0x20005000u:(i==4?BOOT_APP_VECTOR+9u:i*17u+version);memcpy(p+BOOT_HEADER_SIZE+i,&w,4);crc=boot_crc_word(crc,w);}
  h.crc=crc;memcpy(p,&h,sizeof(h));
 }
-static void initial(void){memset(ext,255,sizeof(ext));memset(flash,255,sizeof(flash));image(flash,14,8192);image(ext,15,12288);mutations=cut=0;fail_program=partial=0;}
+static void initial(void){memset(ext,255,sizeof(ext));memset(flash,255,sizeof(flash));image(flash,14,8192);image(ext,15,12288);mutations=cut=0;fail_program=fail_backup=partial=0;}
 static int run(void){if(setjmp(reset))return -1;return boot_run();}
 static unsigned version(void){BootHeader h;assert(boot_validate(0,BOOT_APP_BASE,&h));return h.version;}
 int main(void){
@@ -54,6 +54,12 @@ int main(void){
   result=run();assert(result==BOOT_OK||result==BOOT_RESTORED);assert(version()==14||version()==15);
  }
  printf("rollback: %u complete/partial power-cut positions passed\n",total*2);
+ /* Backup cannot be written: the intact application keeps running, the request
+    is dropped instead of being retried on every start, and the FW gets a code. */
+ initial();fail_backup=1;assert(run()==BOOT_BACKUP_ERROR);fail_backup=0;assert(version()==14);
+ {uint32_t error;assert(boot_read(1,BOOT_JOURNAL+12,&error,4)&&error==BOOT_BACKUP_ERROR);}
+ total=mutations;assert(run()==BOOT_OK&&mutations==total&&version()==14);
+ puts("backup failure: application kept, request dropped, error recorded");
  initial();ext[BOOT_HEADER_SIZE+44]^=1;assert(run()==BOOT_OK&&mutations==0&&version()==14);
  initial();ext[4]++;assert(run()==BOOT_OK&&mutations==0&&version()==14);
  initial();((BootHeader*)ext)->size=BOOT_MAX_CODE+4;assert(run()==BOOT_OK&&mutations==0);

@@ -12,6 +12,9 @@
 #define BOOT_MAX_CODE (BOOT_FLASH_END-BOOT_APP_VECTOR)
 #define BOOT_CANDIDATE 0u
 #define BOOT_JOURNAL 0x20000u
+/* Journal words: +0 start, +4 done, +8 rollback, +12 error, +16 cleanup.
+   +20 is written by the FW only, once the error has been sent to the server. */
+#define BOOT_JOURNAL_REPORTED 20u
 #define BOOT_BACKUP 0x21000u
 #define BOOT_SLOT_SIZE 0x20000u
 #define BOOT_MAGIC 0x4E465744u
