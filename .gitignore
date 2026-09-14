@@ -1,0 +1,12 @@
+Debug/
+Release/
+**/build/
+*.dep
+*.pbi
+*.pbd
+*.pbw
+*.dnx
+*.wsdt
+*.crun
+*.dbgdt
+__pycache__/

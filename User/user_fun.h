@@ -1,0 +1,161 @@
+// Пользовательские функции
+
+#include "includes.h"
+
+#ifndef USERFUN_H
+#define USERFUN_H
+
+#define PORTBUFSIZE             (uint16_t)512
+#define GSMBUFSIZE              (uint16_t)2048
+
+extern cellMem_s mem[16];
+
+// > вспомогательные -----------------------------------------------------------
+// валиден ли IMEI
+Int8U user_imeivalid(void);
+// универсальный пароль на конфигурацию
+Int16U user_unipassword (void);
+// ожидание пока напряжение питания не станет выше порога
+void user_wait_stable_power(void);
+// Преобразует время в целочисленное
+uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec);
+// < ---------------------------------------------------------------------------
+
+// >>> переопределение функций --------------------------
+void user_connected (int8_t handle);
+void user_disconnected (int8_t handle, uint8_t arec);
+void user_errorconnection (int8_t handle);
+void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz);
+void user_smsreceived (char* num, char* data);
+void user_sendsms(char *mes, char *num);
+void user_smssended (void);
+bool user_incomingcall (char* num, uint8_t typ);
+void user_comanderror (int16_t er);
+void user_setconnections(void);
+void user_parseUSSD(char* ptr);
+// <<< переопределение функций --------------------------
+
+// инициализация
+void user_init (void);
+// очистить блок памяти
+void user_clearMemBlock(memBlock_e mb);
+// циклический обработчик
+void user_loop(void);
+// инициализация переменных
+void user_initvariables (void);
+// Чтение конфигурации с памяти
+void user_readconfig(void);
+// запись конфигурации в память
+void user_writeconfig (void);
+// Загрузить настройки по умолчанию
+void user_setdefault (void);
+// Сброс всего
+void user_factoryReset (void);
+// чтение сохраненной информации
+void user_readsavedinformation (void);
+// Безопастное завершение работы прибора
+void user_savereset (void);
+// Сохранение указателей чтения/записи в памяти
+void user_saveindex (void);
+// запись конфигурации и параметров device в память
+void user_writeConfigAndDevice(void);
+// проверка порта 485
+void port_check_data(void);
+// проверка входящих данных от модуля
+void gsm_check_data(void);
+// Отправка данных в формате протокола
+void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId);
+// расчет контрольной суммы структуры данных во flash
+uint16_t user_calcCRC16InFlash(uint32_t address, uint32_t crc);
+// Пакет 1 - пакет регистрации контроллера на сервере
+void user_send_registrationData(dataChanel_e cch);
+// Пакет 2 - пакет статуса 1
+void user_send_statusPack(dataChanel_e cch);
+// Пакет 3 - пакет статуса 2
+void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId);
+// Пакет 4 - пакет статуса обновления FW
+void user_send_statusUpdateFW(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId);
+// Пакет 5 - контрольные суммы данных структур
+void user_send_crcPack(dataChanel_e cch, uint8_t uniqId);
+// Пакет 6,16 -  пакет контрольные суммы стуктуры ID абонентов
+void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId);
+// Пакет 7 -  трансляция SMS
+void user_send_smsToServer(char* sms);
+// Пакет 8 - трансляция ID со считывателей
+void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState);
+// Пакет 11 - подтверждение приема команды от сервера
+void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId);
+// Пакет 12 - таймштамп структур
+void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataChanel_e cch, uint8_t uniqId);
+// Пакет 10 - выгрузка журнала событий
+void user_send_logRecords(dataChanel_e cch, uint8_t uniqId);
+// Пакет 9 - выгрузка ID из временного буфера
+void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId);
+// Пакет 13 - Запрос конкретного блока прошивки
+void user_getFWblockFromServer(dataChanel_e cch, uint16_t block);
+// Пакет 14 - передача фотографии
+void user_send_Photos(dataChanel_e cch, uint8_t uniqId);
+// Разбор данных
+void user_parse_comand(uint8_t* ptr, dataChanel_e cch);
+// индикация
+void user_indication (void);
+// опрос входов
+void user_readinputs(void);
+// вернуть указатель на 10ть последних цифр номера при номере более 10
+char* user_last10digitsnumber (char* num);
+// узнать текущий день недели 
+uint8_t user_getweakday (uint32_t t);
+
+// поиск ID в памяти, если есть то возвращаются параметры ячейки
+bool user_findID(char *id, cellID_s *cell);
+// поиск ID во временном буфере
+bool user_findTempID(char *id);
+// добавляет ID во временный буфер
+void user_addIdToTempBuffer(char *id, codeType_e tp);
+// проверка ID по параметрам и управление выходом
+void user_checkIdAndControl(char *id, codeType_e tp);
+// управление выходом в соответствии с настройками
+void user_activateOut(uint8_t out, codeType_e tp, char *id);
+// считать параметры группы
+bool user_getGroup(uint16_t num, cellGroup_s *group);
+// считать параметры расписания
+bool user_getShedule(uint16_t num, cellShedule_s *shedule);
+// проверить праздничный день
+bool user_dayIsHoliday(void);
+// очистить буфер временных ID
+void user_clearTempIdBuffer(void);
+// сколько номеров в памяти
+uint16_t user_getNumbersCount(void);
+// получаем кол-во ID во временном буфере и тут же обновляем адрес записи
+uint16_t user_getTempIDRecordsCount(void);
+// проверить расписание
+bool user_checkShedule(uint8_t shd);
+// обновить значение счетчика проходов на начало суток
+void user_reloadPassCounter(void);
+// обновить данные ID
+void user_updateID(cellID_s *c);
+
+// очистить буфер журнала
+void log_clearLogBuffer(void);
+// добавить событие в буфер
+bool log_addEvent(cellLog_s *cl);
+// получаем кол-во записей в журнале
+uint16_t log_getRecordsCount(void);
+// добавить системное событие
+bool log_addSystemEvent(logSystem_e num);
+// добавить системное событие
+bool log_addSystemEventID(logSystem_e num, char *id);
+// добавить событие команда
+bool log_addComandEvent(logComand_e num, uint8_t cnt);
+// добавить событие обмена
+bool log_addTransferEvent(logTransfer_e num);
+// добавить событие доступа
+bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt);
+
+// получаем кол-во фото в памяти
+uint16_t user_getPhotoCount(void);
+
+bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc);
+uint32_t CRC32(uint32_t crc, uint32_t data);
+
+#endif
