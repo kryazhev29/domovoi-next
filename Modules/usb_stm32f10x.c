@@ -15,18 +15,40 @@ volatile uint32_t usb_rx_errors = 0;
 uint8_t usb_enabled = 0;
 volatile uint32_t usb_tx_errors = 0;
 volatile uint32_t usb_debug_dropped = 0;
+volatile uint32_t usb_recovery_count = 0;
+static volatile uint8_t usb_recovery_pending = 0;
+static volatile uint8_t usb_recovery_ms = 0;
+
+/* Called on an unrecoverable USB reset timeout. Re-enumerate from main,
+ * never wait for a host or SysTick inside the USB interrupt. */
+void usb_request_recovery(void)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  _SetCNTR(CNTR_FRES);
+  USB_PULLUP_OFF;
+  usb_enabled = 0;
+  USB_Tx_Reset();
+  usb_clear_buffer();
+  bDeviceState = UNCONNECTED;
+  usb_recovery_ms = 20;
+  usb_recovery_pending = 1;
+  usb_recovery_count++;
+  __set_PRIMASK(mask);
+}
 
 
 // Инициализация --------------------------------------------------------------
 void usb_init(void)
 { 
-  USB_PULLUP_ON; // включаем подтягивающий резистор
+  USB_PULLUP_OFF; /* Publish the pull-up only after USB initialization. */
   
   Set_System();
   Set_USBClock();
   USB_Interrupts_Config();
   USB_Init();
   usb_enabled = 1;
+  USB_PULLUP_ON;
 }
 
 // Копируем даные из USB в буфер ----------------------------------------------
@@ -83,6 +105,7 @@ void usb_timer1ms (void)
   uint32_t mask = __get_PRIMASK();
   uint16_t silence, count;
   __disable_irq();
+  if (usb_recovery_ms != 0) --usb_recovery_ms;
   silence = usb_rx_silence;
   count = usb_buffer_count;
   if (count != 0 && silence < 200) {
@@ -111,6 +134,14 @@ void usb_check_data (void)
   uint16_t count, skip = 0, body, total, crc;
   __disable_irq();
   if (usb_rx_processing) { __set_PRIMASK(mask); return; }
+  if (usb_recovery_pending) {
+    if (usb_recovery_ms == 0 && USB_DETECT) {
+      usb_recovery_pending = 0;
+      usb_init();
+    }
+    __set_PRIMASK(mask);
+    return;
+  }
   if (usb_rx_discard) {
     usb_buffer_count = 0;
     usb_rx_discard = 0;

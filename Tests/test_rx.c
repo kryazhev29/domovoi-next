@@ -5,6 +5,12 @@
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 #define CH_USB 2
 #define USB_PULLUP_ON ((void)0)
+#define USB_PULLUP_OFF ((void)0)
+#define CNTR_FRES 1
+#define UNCONNECTED 0
+static unsigned bDeviceState;
+#define _SetCNTR(x) ((void)(x))
+#define USB_Tx_Reset() ((void)0)
 #define USB_DETECT 1
 #define Set_System() ((void)0)
 #define Set_USBClock() ((void)0)

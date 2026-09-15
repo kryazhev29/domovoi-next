@@ -43,6 +43,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=user[user.index('void user_parse_comand'):]
         code=code[:code.index('  switch (ptr[4])')]+'  (void)tmp32;\n}\n'
         unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='recovery':
+        code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
+        code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
+        code+=function(source('USB-FS-CDC_User/Src/usb_istr.c'),'USB_Istr')
+        unit=(ROOT/'Tests/test_usb_recovery.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='rx':
         code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)

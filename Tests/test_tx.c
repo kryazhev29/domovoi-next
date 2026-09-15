@@ -52,6 +52,9 @@ unsigned _GetISTR(void){reset_poll++;CHECK(reset_poll<1000000);return ISTR_ESOF;
 #define _SetCNTR(x) ((void)(x))
 #define _SetENDPOINT(i,x) ((void)(i),(void)(x))
 void usb_clear_buffer(void){}
+void USB_Tx_Reset(void);
+void usb_request_recovery(void){USB_Tx_Reset();bDeviceState=UNCONNECTED;}
+
 /* PRODUCTION */
 void __set_PRIMASK(uint32_t value){mask=value;irq_restore++;CHECK(irq_restore<1000000);if(!value&&pump==1){if(USB_Tx_State)EP1_IN_Callback();else Handle_USBAsynchXfer();}if(!value&&pump==2){pump=0;Virtual_Com_Port_Reset();}}
 int main(int argc,char**argv){uint8_t data[523];unsigned i;CHECK(argc>1);for(i=0;i<sizeof(data);i++)data[i]=(uint8_t)i;
