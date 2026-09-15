@@ -2379,6 +2379,19 @@ void user_send_Photos(dataChanel_e cch, uint8_t uniqId){
   }*/
 }
 
+/* Command 19 fields. Number 0 is reserved; number 1 rolls back to the backup
+ * copy, so build, size, CRC and block count are not used and may be zero. */
+static uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks)
+{
+  if (BOOT_VER < 0x30 || number == 0) return 1;
+  if (number == 1) return 0;
+  return (size > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
+         ((size & 3u) != 0) ||
+         (blocks < (size + 1023u) / 1024u) ||
+         ((FWBLOCK_OFFSET + (uint32_t)blocks * 1024u) > mem[MB_FIRMWARE].size) ||
+         (build == 0) || (size == 0) || (crc == 0) || (blocks == 0);
+}
+
 // Разбор данных
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
@@ -3013,16 +3026,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           memcpy((uint8_t*)&firmwareCRC, &ptr[15], 4);
           memcpy((uint8_t*)&FWblockCount, &ptr[19], 2);
           
-          if ((BOOT_VER < 0x30) ||
-              (firmwareSize > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
-              ((firmwareSize & 3u) != 0) ||
-              (FWblockCount < (firmwareSize + 1023u) / 1024u) ||
-              ((FWBLOCK_OFFSET + (uint32_t)FWblockCount * 1024u) > mem[MB_FIRMWARE].size) ||
-              (firmwareVersion == 0) ||
-              (buildDate == 0) ||
-              (firmwareSize == 0) ||
-              (firmwareCRC == 0) ||  
-              (FWblockCount == 0)){
+          if (fw_start_rejected(firmwareVersion, buildDate, firmwareSize, firmwareCRC, FWblockCount)){
             user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           } else{
             

@@ -37,6 +37,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             legacy_code=re.sub(r'\b'+n+r'\b','legacy_'+n,legacy_code)
         reset='#define TEST_STORAGE_BOOT() (cfg_legacy_checked = 0)\n' if 'cfg_legacy_checked' in code else '#define TEST_STORAGE_BOOT() ((void)0)\n'
         unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
+    elif kind=='fwstart':
+        user=source('User/user_fun.c')
+        case19=user[user.index('    case 19:'):user.index('    case 20:')]
+        # The rollback branch must be reached through the new gate, not the old field checks.
+        assert 'fw_start_rejected(' in case19 and case19.index('fw_start_rejected(')<case19.index('if (firmwareVersion == 1)'),'command 19 gate'
+        assert '(firmwareSize & 3u)' not in case19,'old field checks still in command 19'
+        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */',function(user,'fw_start_rejected'))
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
