@@ -2392,6 +2392,28 @@ static uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size,
          (build == 0) || (size == 0) || (crc == 0) || (blocks == 0);
 }
 
+/* Command 19 accepted (protocol E119, changes row 14): the server gets 5,
+ * "ready to receive". NextConfig over USB still expects 0 until it is updated. */
+static cmdCode_e fw_start_accepted(dataChanel_e cch)
+{
+  return cch == CH_USB ? CMD_SUCCESS : CMD_RUNNING;
+}
+
+/* All blocks received. A bad image CRC also ends the update: stop requesting
+ * blocks, clear status bit 11 (table F437) and report 252 (table D473). */
+static void fw_blocks_done(uint8_t crc_ok)
+{
+  device.FWinProgress = 0;
+  device.status.readyToUpdate = 0;
+  device.updateTimeout = 0;
+  if (crc_ok) {
+    device.rebootToUpdate = 1;
+    device.firmwarePercent = 248;
+  } else {
+    device.firmwarePercent = 252;
+  }
+}
+
 // Разбор данных
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
@@ -3061,7 +3083,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                     mem_write(mem[MB_FIRMWARE].start + block, bf, 128);
                   }
                   
-                  user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+                  user_send_answer_comand(ptr[4], CMD_ROLLBACKRUN, cch, uniqId);
                   //device.FWinProgress = 1;
                   device.rebootToUpdate = 1;
                 } else{
@@ -3102,7 +3124,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                 device.startWaitFWtime = 0;
                 device.cchFWupdate = cch;
                 
-                user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); 
+                user_send_answer_comand(ptr[4], fw_start_accepted(cch), cch, uniqId);
                 
                 if (cch != CH_USB){
                   device.FWinProgress = 1;
@@ -3169,13 +3191,9 @@ if (cch != CH_USB)
               device.firmwareSize = fwParam.firmwareSize;
               device.firmwareCRC = fwParam.firmwareCRC;
 
-              device.FWinProgress = 0;
-              device.rebootToUpdate = 1;
-              device.firmwarePercent = 248;
-              
-              device.status.readyToUpdate = 0;
+              fw_blocks_done(1);
             } else{
-              device.firmwarePercent = 252;             
+              fw_blocks_done(0);
             }
           } else{
             device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;

@@ -6,7 +6,7 @@ kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:void|uint8_t|uint16_t|uint32_t)\s+'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:void|uint8_t|uint16_t|uint32_t|cmdCode_e)\s+'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -43,7 +43,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         # The rollback branch must be reached through the new gate, not the old field checks.
         assert 'fw_start_rejected(' in case19 and case19.index('fw_start_rejected(')<case19.index('if (firmwareVersion == 1)'),'command 19 gate'
         assert '(firmwareSize & 3u)' not in case19,'old field checks still in command 19'
-        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */',function(user,'fw_start_rejected'))
+        # Answer codes: rollback 253, update accepted through fw_start_accepted; the last block ends the update either way.
+        assert 'CMD_ROLLBACKRUN, cch' in case19 and 'fw_start_accepted(cch), cch' in case19 and 'CMD_SUCCESS, cch' not in case19,'command 19 answers'
+        case20=user[user.index('    case 20:'):user.index('    case 21:')]
+        assert case20.count('fw_blocks_done(')==2 and 'firmwarePercent = 252' not in case20,'command 20 end of update'
+        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ['fw_start_rejected','fw_start_accepted','fw_blocks_done']))
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.

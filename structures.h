@@ -146,7 +146,7 @@ typedef enum{
   CMD_GOTONEXT = 7,
   CMD_UNDEFIMEI = 8,
   CMD_UNDEFOBJECT = 9,
-  CMD_GOTOBOOLOADER = 253,
+  CMD_ROLLBACKRUN = 253, /* protocol D532: firmware rollback started */
   CMD_CRCERROR = 254,
   CMD_UNDEFINE = 255
 }cmdCode_e;
