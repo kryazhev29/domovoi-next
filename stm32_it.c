@@ -30,6 +30,71 @@
 /* Includes ------------------------------------------------------------------*/
 #include "includes.h"
 
+/* Fixed noinit RAM, above the legacy loader's low-RAM work area.
+ * 12 LE words: magic, exception, EXC_RETURN, SP, PC, LR, xPSR,
+ * CFSR, HFSR, MMFAR, BFAR, frame_valid. Magic is committed last.
+ * No stack or watchdog reload; reject incomplete/out-of-RAM frames. */
+#pragma location=".fault_record"
+__root __no_init volatile uint32_t fault_record[12];
+
+__stackless void fault_capture(void)
+{
+  __asm(
+    "CPSID I\n"
+    "TST LR, #4\n"
+    "ITE EQ\n"
+    "MRSEQ R0, MSP\n"
+    "MRSNE R0, PSP\n"
+    "LDR R1, =fault_record\n"
+    "MOVS R2, #0\n"
+    "STR R2, [R1, #0]\n"
+    "STR R2, [R1, #16]\n"
+    "STR R2, [R1, #20]\n"
+    "STR R2, [R1, #24]\n"
+    "STR R2, [R1, #44]\n"
+    "MRS R2, IPSR\n"
+    "STR R2, [R1, #4]\n"
+    "STR LR, [R1, #8]\n"
+    "STR R0, [R1, #12]\n"
+    "LDR R3, =0xE000ED28\n"
+    "LDR R2, [R3, #0]\n"
+    "STR R2, [R1, #28]\n"
+    "LDR R2, [R3, #4]\n"
+    "STR R2, [R1, #32]\n"
+    "LDR R2, [R3, #12]\n"
+    "STR R2, [R1, #36]\n"
+    "LDR R2, [R3, #16]\n"
+    "STR R2, [R1, #40]\n"
+    "LDR R2, [R1, #28]\n"
+    "MOVW R3, #0x3838\n"
+    "TST R2, R3\n"
+    "BNE fault_commit\n"
+    "TST R0, #3\n"
+    "BNE fault_commit\n"
+    "LDR R2, =0x20000000\n"
+    "CMP R0, R2\n"
+    "BLO fault_commit\n"
+    "LDR R2, =0x20004FA0\n"
+    "CMP R0, R2\n"
+    "BHI fault_commit\n"
+    "LDR R2, [R0, #24]\n"
+    "STR R2, [R1, #16]\n"
+    "LDR R2, [R0, #20]\n"
+    "STR R2, [R1, #20]\n"
+    "LDR R2, [R0, #28]\n"
+    "STR R2, [R1, #24]\n"
+    "MOVS R2, #1\n"
+    "STR R2, [R1, #44]\n"
+    "fault_commit:\n"
+    "DSB\n"
+    "LDR R2, =0x31544C46\n"
+    "STR R2, [R1, #0]\n"
+    "DSB\n"
+    "fault_wait:\n"
+    "B fault_wait\n"
+  );
+}
+
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
@@ -60,18 +125,9 @@ void NMI_Handler(void)
 * Return         : None
 *******************************************************************************/
 #pragma call_graph_root="interrupt"
-void HardFault_Handler(void)
+__stackless void HardFault_Handler(void)
 {
-  /* Go to infinite loop when Hard Fault exception occurs */
-  LED2_OFF;
-  while (1)
-  {
-    LED1_ON;
-    delay_ms(100);
-    LED1_OFF;
-    delay_ms(100);
-    wdt_reload();
-  }
+  __asm("B fault_capture");
 }
 
 /*******************************************************************************
@@ -82,18 +138,9 @@ void HardFault_Handler(void)
 * Return         : None
 *******************************************************************************/
 #pragma call_graph_root="interrupt"
-void MemManage_Handler(void)
+__stackless void MemManage_Handler(void)
 {
-  /* Go to infinite loop when Memory Manage exception occurs */
-  LED2_ON;
-  while (1)
-  {
-    LED1_ON;
-    delay_ms(200);
-    LED1_OFF;
-    delay_ms(200);
-    wdt_reload();
-  }
+  __asm("B fault_capture");
 }
 
 /*******************************************************************************
@@ -104,18 +151,9 @@ void MemManage_Handler(void)
 * Return         : None
 *******************************************************************************/
 #pragma call_graph_root="interrupt"
-void BusFault_Handler(void)
+__stackless void BusFault_Handler(void)
 {
-  /* Go to infinite loop when Bus Fault exception occurs */
-  LED2_OFF;
-  while (1)
-  {
-    LED1_ON;
-    delay_ms(300);
-    LED1_OFF;
-    delay_ms(300);
-    wdt_reload();
-  }
+  __asm("B fault_capture");
 }
 
 /*******************************************************************************
@@ -126,18 +164,9 @@ void BusFault_Handler(void)
 * Return         : None
 *******************************************************************************/
 #pragma call_graph_root="interrupt"
-void UsageFault_Handler(void)
+__stackless void UsageFault_Handler(void)
 {
-  /* Go to infinite loop when Usage Fault exception occurs */
-  LED2_ON;
-  while (1)
-  {
-    LED1_ON;
-    delay_ms(400);
-    LED1_OFF;
-    delay_ms(400);
-    wdt_reload();
-  }
+  __asm("B fault_capture");
 }
 
 /*******************************************************************************

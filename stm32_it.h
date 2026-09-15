@@ -38,6 +38,9 @@
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions ------------------------------------------------------- */
 
+extern volatile uint32_t fault_record[12];
+#define FAULT_RECORD_MAGIC 0x31544C46u
+
 void NMI_Handler(void);
 void HardFault_Handler(void);
 void MemManage_Handler(void);
