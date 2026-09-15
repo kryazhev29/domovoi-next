@@ -689,6 +689,8 @@ void user_init(void)
   mem[MB_SHEDULE].size = 2048;
   mem[MB_HOLIDAY].start = 1884160;
   mem[MB_HOLIDAY].size = 1024;
+  /* Logical legacy address. memory.c stores new images in reserved
+     0x1F5000..0x1F8FFF (two data + two commit sectors). */
   mem[MB_CONFIG].start = 1889280;
   mem[MB_CONFIG].size = 4096;
   mem[MB_LOG].start = 1897472;
@@ -1232,7 +1234,6 @@ void user_writeConfigAndDevice(void)
     wdt_reload();
     
     mem_read (mem[MB_CONFIG].start, ptr, MEMSECTORSIZE);
-    mem_erase_sector (mem[MB_CONFIG].start);
     
     config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);    
     memcpy(ptr, (pInt8U)&config, sizeof(config));

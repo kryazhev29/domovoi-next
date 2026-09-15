@@ -8,6 +8,11 @@
 
 #define mem_check_power()       user_wait_stable_power() /* ждем пока напряжение не будет выше порога*/
 #define MEMSECTORSIZE         4096
+#define MEM_CONFIG_LEGACY     0x1CD400u
+#define MEM_CONFIG_SLOT0      0x1F5000u
+#define MEM_CONFIG_SLOT1      0x1F7000u
+#define MEM_CONFIG_SLOT_SIZE 8192u
+extern volatile uint32_t mem_config_errors;
 
 // Чтение данных с памяти
 void mem_read (Int32U adr, pInt8U buff, Int16U size);
