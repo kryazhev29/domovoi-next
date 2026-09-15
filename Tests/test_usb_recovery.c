@@ -17,6 +17,10 @@
 #define __IO volatile
 static unsigned mask,pullup=1,init_count,cntr,reset_poll,reset_after,delivered,tx_reset,ep_restore;
 static unsigned cable=1,tx_pending;
+#define ENDP1 1
+#define ENDP3 3
+#define _GetEPTxCount(i) (17u+(i))
+volatile uint8_t USB_Tx_State=1;volatile uint32_t usb_in_armed=7;
 uint8_t USB_Tx_Pending(void){return tx_pending!=0;}
 uint16_t USB_Tx_Queued(void){return tx_pending?42:0;}
 unsigned bDeviceState=CONFIGURED;
@@ -56,10 +60,14 @@ static void usb_watch_test(void){uint32_t v[23];unsigned base;uint8_t frame[11]=
  /* Host writes while the answer is never taken: recover after 2 s, not before. */
  usb_datareceived(frame,11);ticks(1999);CHECK(pullup&&usb_recovery_count==base);
  ticks(1);CHECK(!pullup&&usb_recovery_count==base+1&&usb_watch_in_recoveries==1);
+ /* Registers are captured before FRES: CNTR 0 then, FRES now. */
+ {uint32_t r[18];usb_diag_fill_regs(r);CHECK(r[0]==1&&r[1]==3&&r[2]==18&&r[4]==0&&r[5]==FNR_RXDP&&r[6]==1&&r[7]==7&&r[8]==0);
+  CHECK(r[9]==1&&r[10]==3&&r[13]==CNTR_FRES&&r[17]==0);}
  usb_diag_fill(v);CHECK(v[4]==1&&v[6]==2&&v[7]==CONFIGURED&&v[8]==1&&v[9]==42&&v[11]==2000);
  tx_pending=0;settle();base=usb_recovery_count;
  /* Slow but moving transfer: every taken IN packet restarts the 2 s window. */
  tx_pending=1;usb_datareceived(frame,11);ticks(1500);usb_in_done();ticks(1500);usb_in_done();ticks(1500);CHECK(pullup&&usb_recovery_count==base);
+ {uint32_t r[18];usb_in_armed=9;usb_diag_fill_regs(r);CHECK(r[7]==7&&r[8]==0&&r[16]==9&&r[17]==2);}
  /* Queue drained: disarm, a later pending answer without a new write stays quiet. */
  tx_pending=0;ticks(1);tx_pending=1;ticks(3000);CHECK(pullup&&usb_recovery_count==base);
  tx_pending=0;ticks(1);

@@ -40,11 +40,35 @@ static volatile uint16_t usb_unconf_ms = 0;
 static volatile uint8_t usb_hung_armed = 0;
 static volatile uint8_t usb_unconf_armed = 0;
 
+/* Command 111 v2: USB registers at the last recovery and now. EP1 TX NAK with
+ * USB_Tx_State 1 means a lost CTR_TX interrupt; TX VALID means the host stopped
+ * polling. Reads only, no register side effects. */
+#define USB_REGS 9u
+extern volatile uint8_t USB_Tx_State;
+extern volatile uint32_t usb_in_armed;
+static volatile uint32_t usb_in_taken = 0;
+static uint32_t usb_last_regs[USB_REGS];
+
+/* EP1R, EP3R, EP1 TX count, ISTR, CNTR, FNR, USB_Tx_State, IN armed, IN taken. */
+static void usb_regs_read(uint32_t *r)
+{
+  r[0] = _GetENDPOINT(ENDP1);
+  r[1] = _GetENDPOINT(ENDP3);
+  r[2] = _GetEPTxCount(ENDP1);
+  r[3] = _GetISTR();
+  r[4] = _GetCNTR();
+  r[5] = _GetFNR();
+  r[6] = USB_Tx_State;
+  r[7] = usb_in_armed;
+  r[8] = usb_in_taken;
+}
+
 /* USB IRQ: the host took an IN packet. */
 void usb_in_done(void)
 {
   usb_in_ago = 0;
   usb_hung_ms = 0;
+  usb_in_taken++;
 }
 
 /* USB IRQ: start of frame. */
@@ -66,6 +90,7 @@ void usb_request_recovery(void)
   usb_last_recovery[4] = usb_in_ago;
   usb_last_recovery[5] = usb_out_ago;
   usb_last_recovery[6] = usb_sof_ago;
+  usb_regs_read(usb_last_regs); /* before FRES and detach change them */
   usb_hung_armed = usb_unconf_armed = 0;
   usb_hung_ms = usb_unconf_ms = 0;
   usb_out_ago = USB_AGE_MAX;
@@ -314,5 +339,16 @@ void usb_diag_fill(uint32_t *v)
   v[20] = usb_rx_errors;
   v[21] = usb_debug_dropped;
   v[22] = usb_out_unconfigured;
+  __set_PRIMASK(mask);
+}
+
+/* Command 111 v2 tail: 9 register values at the last recovery, then 9 now. */
+void usb_diag_fill_regs(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  uint8_t i;
+  __disable_irq();
+  for (i = 0; i < USB_REGS; i++) v[i] = usb_last_regs[i];
+  usb_regs_read(&v[USB_REGS]);
   __set_PRIMASK(mask);
 }

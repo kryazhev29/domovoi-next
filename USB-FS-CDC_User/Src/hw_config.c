@@ -56,6 +56,7 @@ volatile uint32_t USART_Rx_ptr_out = 0;
 volatile uint32_t USART_Rx_length  = 0;
 
 volatile uint8_t  USB_Tx_State = 0;
+volatile uint32_t usb_in_armed = 0; /* IN packets handed to EP1, command 111 */
 static volatile uint32_t usb_tx_epoch = 0;
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len);
 /* Extern variables ----------------------------------------------------------*/
@@ -343,6 +344,7 @@ void Handle_USBAsynchXfer (void)
   USART_Rx_ptr_out = out;
   USART_Rx_length = 0;
   USB_Tx_State = 1;
+  usb_in_armed++;
   SetEPTxCount(ENDP1, (uint16_t)count);
   SetEPTxValid(ENDP1);
 }

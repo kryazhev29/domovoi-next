@@ -12,6 +12,14 @@
 static unsigned bDeviceState=CONFIGURED;
 uint8_t USB_Tx_Pending(void){return 0;}
 uint16_t USB_Tx_Queued(void){return 0;}
+#define ENDP1 1
+#define ENDP3 3
+#define _GetENDPOINT(i) (i)
+#define _GetEPTxCount(i) (i)
+#define _GetISTR() 0
+#define _GetCNTR() 0
+#define _GetFNR() 0
+volatile uint8_t USB_Tx_State;volatile uint32_t usb_in_armed;
 #define _SetCNTR(x) ((void)(x))
 #define USB_Tx_Reset() ((void)0)
 #define USB_DETECT 1

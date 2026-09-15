@@ -4398,7 +4398,7 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
   return crc;
 }
 
-/* Command 111, layout version 1: 33 little-endian uint32 values.
+/* Command 111, layout version 2: 51 little-endian uint32 values.
  *  0 version, 1 worktime s, 2 milliseconds,
  *  3 ESOF forced resets, 4 ESOF reset timeouts, 5 bus resets,
  *  6 USB recoveries, 7 watch: IN not taken, 8 watch: OUT while unconfigured,
@@ -4406,15 +4406,17 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
  *  16..21 now: bDeviceState, TX pending, queued bytes, ms since IN/OUT/SOF,
  *  22 TX errors, 23 RX errors, 24 debug bytes dropped, 25 OUT while unconfigured,
  *  26 longest main-loop pass ms, 27 passes >= 1 s, 28 config storage errors,
- *  29 GSM power-on events, 30 GSM no-answer events, 31 4 KiB heap failures, 32 fault record present.
+ *  29 GSM power-on events, 30 GSM no-answer events, 31 4 KiB heap failures, 32 fault record present,
+ *  33..41 at the last recovery, 42..50 now: EP1R, EP3R, EP1 TX count, ISTR, CNTR, FNR,
+ *  USB_Tx_State, IN packets armed, IN packets taken.
  */
 static void user_send_usbDiag(uint8_t uniqId)
 {
-  uint32_t v[33];
+  uint32_t v[51];
   uint8_t send_buffer[8 + 3 + sizeof(v)];
   uint16_t len = 3 + sizeof(v), crc;
 
-  v[0] = 1;
+  v[0] = 2;
   v[1] = device.worktime;
   v[2] = timers_getMillis();
   usb_diag_fill(&v[3]);
@@ -4425,6 +4427,7 @@ static void user_send_usbDiag(uint8_t uniqId)
   v[30] = diag_gsm_notanswer;
   v[31] = diag_heap_fail;
   v[32] = fault_record[0] == FAULT_RECORD_MAGIC;
+  usb_diag_fill_regs(&v[33]);
 
   send_buffer[0] = 'S';
   send_buffer[1] = 'L';
