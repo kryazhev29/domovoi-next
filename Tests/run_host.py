@@ -31,7 +31,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         header=source('User/memory.h')
         defines='\n'.join(x for x in header.splitlines() if x.startswith('#define MEM'))
         test=(ROOT/'Tests/test_storage.c').read_text()
-        unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+function(source('User/user_fun.c'),'user_writeConfigAndDevice'))
+        legacy=subprocess.check_output(['git','show','203c55b:User/user_fun.c'],cwd=ROOT).decode('cp1251')
+        legacy_code='\n'.join(function(legacy,n) for n in ['user_writeConfigAndDevice','user_readconfig'])
+        for n in ['user_writeConfigAndDevice','user_readconfig','user_setdefault','user_saveindex','mem_read','mem_write','mem_erase_sector']:
+            legacy_code=re.sub(r'\b'+n+r'\b','legacy_'+n,legacy_code)
+        reset='#define TEST_STORAGE_BOOT() (cfg_legacy_checked = 0)\n' if 'cfg_legacy_checked' in code else '#define TEST_STORAGE_BOOT() ((void)0)\n'
+        unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
