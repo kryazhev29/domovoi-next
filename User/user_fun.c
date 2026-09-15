@@ -2536,7 +2536,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
         device.datetime = tmp32;
         device.registredOnServer = 1;
-        app_trial_confirm(); // прошивка дошла до сервера - обновление подтверждено
+        /* BENCH FW 68: never confirms, the bootloader must roll back */ (void)0; // прошивка дошла до сервера - обновление подтверждено
         if (device.firmwarePercent == 252 && app_boot_error_unreported()){
           user_send_statusUpdateFW(20, CMD_RUNERROR, cch, uniqIDCnt++);
           app_boot_error_reported();
