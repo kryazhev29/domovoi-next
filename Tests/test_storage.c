@@ -37,6 +37,7 @@ static void legacy_mem_read(uint32_t a,uint8_t*p,uint16_t n){w25_read_data(a,p,n
 static void legacy_mem_write(uint32_t a,uint8_t*p,uint16_t n){w25_write_data(a,p,n);}
 static void legacy_mem_erase_sector(uint32_t a){w25_erase_sector(a);}
 uint16_t crc16_calcInit(uint8_t*p,uint16_t n,uint16_t c){unsigned j;while(n--){c^=*p++;for(j=0;j<8;j++)c=(c>>1)^((c&1)?0xa001:0);}return c;}
+static unsigned diag_heap_fail;
 /* PRODUCTION */
 static void seed(void){host_boot();TEST_STORAGE_BOOT();unsigned i;uint16_t crc;memset(flash,255,sizeof(flash));for(i=0;i<4096;i++)olddata[i]=(uint8_t)(i*31+7);crc=crc16_calc(olddata,510);memcpy(olddata+510,&crc,2);memcpy(flash+LEGACY,olddata,4096);memcpy(newdata,olddata,4096);newdata[600]^=0x55;operations=cut=0;partial=4096;}
 static void readback(void){host_boot();TEST_STORAGE_BOOT();mem_read(LEGACY,got,4096);}

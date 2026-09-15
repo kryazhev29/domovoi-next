@@ -146,8 +146,10 @@ void Virtual_Com_Port_init(void)
 * Return         : None.
 *******************************************************************************/
 extern void usb_clear_buffer(void);
+extern volatile uint32_t usb_bus_resets;
 void Virtual_Com_Port_Reset(void)
 {
+  usb_bus_resets++;
   USB_Tx_Reset();
   usb_clear_buffer();
   /* Set Virtual_Com_Port DEVICE as not configured */
