@@ -412,6 +412,19 @@ uint16_t USB_Send_Debug(uint8_t *data, uint16_t count)
   return count;
 }
 
+/* USB watch: data waits for the host or an IN packet is armed. */
+uint8_t USB_Tx_Pending(void)
+{
+  uint32_t out = USART_Rx_ptr_out;
+  if (out == USART_RX_DATA_SIZE) out = 0;
+  return USB_Tx_State == 1 || USART_Rx_ptr_in != out;
+}
+uint16_t USB_Tx_Queued(void)
+{
+  uint32_t out = USART_Rx_ptr_out;
+  if (out == USART_RX_DATA_SIZE) out = 0;
+  return (uint16_t)((USART_Rx_ptr_in + USART_RX_DATA_SIZE - out) % USART_RX_DATA_SIZE);
+}
 /*******************************************************************************
 * Function Name  : Get_SerialNum.
 * Description    : Create the serial number string descriptor.

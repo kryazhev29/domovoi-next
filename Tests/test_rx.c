@@ -8,7 +8,10 @@
 #define USB_PULLUP_OFF ((void)0)
 #define CNTR_FRES 1
 #define UNCONNECTED 0
-static unsigned bDeviceState;
+#define CONFIGURED 5
+static unsigned bDeviceState=CONFIGURED;
+uint8_t USB_Tx_Pending(void){return 0;}
+uint16_t USB_Tx_Queued(void){return 0;}
 #define _SetCNTR(x) ((void)(x))
 #define USB_Tx_Reset() ((void)0)
 #define USB_DETECT 1

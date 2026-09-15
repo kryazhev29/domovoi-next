@@ -7,6 +7,8 @@
 #include "main.h"
 #include "Bootloader/app_update.h"
 
+unsigned int loop_max_ms = 0, loop_stalls = 0;
+
 // основная программа
 void main()
 {
@@ -45,6 +47,8 @@ void main()
   // включаем питание gsm модуля
   usergsm_power(ON);
 
+  unsigned int loop_mark = timers_getMillis();
+
   // Входим в основной цикл работы
   while (true)
   {
@@ -59,5 +63,13 @@ void main()
 
     // циклический обработчик
     user_loop();
+
+    /* Command 111: the longest main-loop pass and passes of 1 s or more. */
+    {
+      unsigned int now = timers_getMillis(), took = now - loop_mark;
+      loop_mark = now;
+      if (took > loop_max_ms) loop_max_ms = took;
+      if (took >= 1000u) loop_stalls++;
+    }
   } // while
 } // main

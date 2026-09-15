@@ -56,6 +56,8 @@ void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
 void USB_Tx_Reset(void);
 uint16_t USB_Send_Debug(uint8_t *data, uint16_t count);
+uint8_t USB_Tx_Pending(void);
+uint16_t USB_Tx_Queued(void);
 void Handle_USBAsynchXfer (void);
 void Get_SerialNum(void);
 

@@ -54,6 +54,8 @@ unsigned _GetISTR(void){reset_poll++;CHECK(reset_poll<1000000);return ISTR_ESOF;
 void usb_clear_buffer(void){}
 void USB_Tx_Reset(void);
 void usb_request_recovery(void){USB_Tx_Reset();bDeviceState=UNCONNECTED;}
+volatile uint32_t usb_esof_forced,usb_esof_timeouts,usb_recovery_reason,usb_bus_resets;
+void usb_in_done(void){}
 
 /* PRODUCTION */
 void __set_PRIMASK(uint32_t value){mask=value;irq_restore++;CHECK(irq_restore<1000000);if(!value&&pump==1){if(USB_Tx_State)EP1_IN_Callback();else Handle_USBAsynchXfer();}if(!value&&pump==2){pump=0;Virtual_Com_Port_Reset();}}

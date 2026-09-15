@@ -19,12 +19,56 @@ volatile uint32_t usb_recovery_count = 0;
 static volatile uint8_t usb_recovery_pending = 0;
 static volatile uint8_t usb_recovery_ms = 0;
 
+/* USB watch. The ages count milliseconds and saturate. A stall is armed only
+ * after the host writes, so data left for a closed COM port never re-enumerates.
+ * Reasons: 1 ESOF reset timeout, 2 IN queue not taken, 3 OUT while unconfigured. */
+#define USB_WATCH_MS 2000u
+#define USB_AGE_MAX 0xFFFFu
+volatile uint32_t usb_esof_forced = 0;
+volatile uint32_t usb_esof_timeouts = 0;
+volatile uint32_t usb_bus_resets = 0;
+volatile uint32_t usb_recovery_reason = 0;
+volatile uint32_t usb_watch_in_recoveries = 0;
+volatile uint32_t usb_watch_unconf_recoveries = 0;
+volatile uint32_t usb_out_unconfigured = 0;
+static volatile uint32_t usb_last_recovery[7];
+static volatile uint16_t usb_in_ago = USB_AGE_MAX;
+static volatile uint16_t usb_out_ago = USB_AGE_MAX;
+static volatile uint16_t usb_sof_ago = USB_AGE_MAX;
+static volatile uint16_t usb_hung_ms = 0;
+static volatile uint16_t usb_unconf_ms = 0;
+static volatile uint8_t usb_hung_armed = 0;
+static volatile uint8_t usb_unconf_armed = 0;
+
+/* USB IRQ: the host took an IN packet. */
+void usb_in_done(void)
+{
+  usb_in_ago = 0;
+  usb_hung_ms = 0;
+}
+
+/* USB IRQ: start of frame. */
+void usb_sof_seen(void)
+{
+  usb_sof_ago = 0;
+}
+
 /* Called on an unrecoverable USB reset timeout. Re-enumerate from main,
  * never wait for a host or SysTick inside the USB interrupt. */
 void usb_request_recovery(void)
 {
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
+  usb_last_recovery[0] = usb_recovery_reason;
+  usb_last_recovery[1] = bDeviceState;
+  usb_last_recovery[2] = USB_Tx_Pending();
+  usb_last_recovery[3] = USB_Tx_Queued();
+  usb_last_recovery[4] = usb_in_ago;
+  usb_last_recovery[5] = usb_out_ago;
+  usb_last_recovery[6] = usb_sof_ago;
+  usb_hung_armed = usb_unconf_armed = 0;
+  usb_hung_ms = usb_unconf_ms = 0;
+  usb_out_ago = USB_AGE_MAX;
   _SetCNTR(CNTR_FRES);
   USB_PULLUP_OFF;
   usb_enabled = 0;
@@ -59,6 +103,11 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
   /* USB IRQ and SysTick share the silence counter; preserve incoming PRIMASK. */
   __disable_irq();
   count = usb_buffer_count;
+  if (len != 0) {
+    usb_out_ago = 0;
+    if (bDeviceState != CONFIGURED) { usb_out_unconfigured++; usb_unconf_armed = 1; }
+    else if (USB_Tx_Pending()) usb_hung_armed = 1;
+  }
   if (usb_rx_discard || len == 0) { __set_PRIMASK(mask); return; }
   if (!usb_rx_processing) {
     uint16_t expired = usb_rx_expired;
@@ -106,6 +155,13 @@ void usb_timer1ms (void)
   uint16_t silence, count;
   __disable_irq();
   if (usb_recovery_ms != 0) --usb_recovery_ms;
+  if (usb_in_ago < USB_AGE_MAX) usb_in_ago++;
+  if (usb_out_ago < USB_AGE_MAX) usb_out_ago++;
+  if (usb_sof_ago < USB_AGE_MAX) usb_sof_ago++;
+  if (!USB_Tx_Pending()) { usb_hung_armed = 0; usb_hung_ms = 0; }
+  else if (usb_hung_armed && usb_hung_ms < USB_AGE_MAX) usb_hung_ms++;
+  if (bDeviceState == CONFIGURED) { usb_unconf_armed = 0; usb_unconf_ms = 0; }
+  else if (usb_unconf_armed && usb_unconf_ms < USB_AGE_MAX) usb_unconf_ms++;
   silence = usb_rx_silence;
   count = usb_buffer_count;
   if (count != 0 && silence < 200) {
@@ -139,6 +195,13 @@ void usb_check_data (void)
       usb_recovery_pending = 0;
       usb_init();
     }
+    __set_PRIMASK(mask);
+    return;
+  }
+  if (usb_hung_ms >= USB_WATCH_MS || usb_unconf_ms >= USB_WATCH_MS) {
+    if (usb_hung_ms >= USB_WATCH_MS) { usb_recovery_reason = 2; usb_watch_in_recoveries++; }
+    else { usb_recovery_reason = 3; usb_watch_unconf_recoveries++; }
+    usb_request_recovery();
     __set_PRIMASK(mask);
     return;
   }
@@ -226,4 +289,30 @@ void usb_clear_buffer (void)
 // разбор принятых данных определяется пользователем ---------------------------
 __weak void usb_data_reading(uint8_t* ptr, uint16_t len)
 {
+}
+
+/* Command 111: 23 USB values, in the order documented at user_send_usbDiag. */
+void usb_diag_fill(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  uint8_t i;
+  __disable_irq();
+  v[0] = usb_esof_forced;
+  v[1] = usb_esof_timeouts;
+  v[2] = usb_bus_resets;
+  v[3] = usb_recovery_count;
+  v[4] = usb_watch_in_recoveries;
+  v[5] = usb_watch_unconf_recoveries;
+  for (i = 0; i < 7; i++) v[6 + i] = usb_last_recovery[i];
+  v[13] = bDeviceState;
+  v[14] = USB_Tx_Pending();
+  v[15] = USB_Tx_Queued();
+  v[16] = usb_in_ago;
+  v[17] = usb_out_ago;
+  v[18] = usb_sof_ago;
+  v[19] = usb_tx_errors;
+  v[20] = usb_rx_errors;
+  v[21] = usb_debug_dropped;
+  v[22] = usb_out_unconfigured;
+  __set_PRIMASK(mask);
 }

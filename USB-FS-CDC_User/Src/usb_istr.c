@@ -199,6 +199,7 @@ void USB_Istr(void)
         /*Store endpoints registers status */
         for (i=0;i<8;i++) EP[i] = _GetENDPOINT(i);
       
+        usb_esof_forced++;
         /*apply FRES */
         wCNTR|=CNTR_FRES;
         _SetCNTR(wCNTR);
@@ -214,6 +215,8 @@ void USB_Istr(void)
           if (budget == 0) {
             /* FRES alone leaves the port dead forever. Schedule a bounded
              * detach/re-enumeration; the main loop and modem keep running. */
+            usb_esof_timeouts++;
+            usb_recovery_reason = 1u; /* ESOF reset timeout */
             usb_request_recovery();
             esof_counter = 0;
             return;

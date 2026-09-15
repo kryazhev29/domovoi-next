@@ -38,6 +38,11 @@ device_s device;
 uint8_t gsm_buffer[GSMBUFSIZE];
 
 static void fw_resume_after_boot(void);
+/* Command 111 bench diagnostics, USB only, read-only. */
+#define USB_DIAG_COMMAND 111u
+extern unsigned int loop_max_ms, loop_stalls;
+static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
+static void user_send_usbDiag(uint8_t uniqId);
 
 // буфер под прием данных от внешнего порта
 #pragma data_alignment=4
@@ -90,6 +95,8 @@ void usb_data_reading(uint8_t* ptr, uint16_t len)
 // обработчик событий
 void usergsm_event(gsmevent_e ev)
 {
+  if (ev == E_PWRON) diag_gsm_pwron++;
+  if (ev == E_NOTANSWER) diag_gsm_notanswer++;
 #ifdef DEBUG_USER
   sprintf(tempStrBuffer, ">>U Event %d\r\n", ev);
   user_debug(tempStrBuffer); 
@@ -1051,6 +1058,7 @@ void user_readconfig(void)
 void user_writeconfig(void)
 {
   uint8_t *ptr = malloc(MEMSECTORSIZE);
+  if (ptr == NULL) diag_heap_fail++;
 
   if (ptr != NULL){
 #ifdef DEBUG_USER
@@ -1214,6 +1222,7 @@ void user_savereset (void)
 void user_saveindex (void)
 {
   uint8_t *ptr = malloc(MEMSECTORSIZE);
+  if (ptr == NULL) diag_heap_fail++;
   
   if (ptr != NULL){
 #ifdef DEBUG_USER
@@ -1233,6 +1242,7 @@ void user_saveindex (void)
 void user_writeConfigAndDevice(void)
 {
   uint8_t *ptr = malloc(MEMSECTORSIZE);
+  if (ptr == NULL) diag_heap_fail++;
 
   if (ptr != NULL){
 #ifdef DEBUG_USER
@@ -3392,6 +3402,11 @@ if (cch != CH_USB)
       user_send_anyData(107, NULL, 0, cch, uniqId);
       break;
       
+    case USB_DIAG_COMMAND:
+      if (cch == CH_USB)
+        user_send_usbDiag(uniqId);
+      break;
+
     case MANUAL_BOOT_COMMAND: { /* Manual bootloader file, USB only. */
       uint8_t response[8];
       if (cch != CH_USB || len < 4) {
@@ -4463,4 +4478,48 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
       crc <<= 1;
   }
   return crc;
+}
+
+/* Command 111, layout version 1: 33 little-endian uint32 values.
+ *  0 version, 1 worktime s, 2 milliseconds,
+ *  3 ESOF forced resets, 4 ESOF reset timeouts, 5 bus resets,
+ *  6 USB recoveries, 7 watch: IN not taken, 8 watch: OUT while unconfigured,
+ *  9..15 last recovery: reason, bDeviceState, TX pending, queued bytes, ms since IN/OUT/SOF,
+ *  16..21 now: bDeviceState, TX pending, queued bytes, ms since IN/OUT/SOF,
+ *  22 TX errors, 23 RX errors, 24 debug bytes dropped, 25 OUT while unconfigured,
+ *  26 longest main-loop pass ms, 27 passes >= 1 s, 28 config storage errors,
+ *  29 GSM power-on events, 30 GSM no-answer events, 31 4 KiB heap failures, 32 fault record present.
+ */
+static void user_send_usbDiag(uint8_t uniqId)
+{
+  uint32_t v[33];
+  uint8_t send_buffer[8 + 3 + sizeof(v)];
+  uint16_t len = 3 + sizeof(v), crc;
+
+  v[0] = 1;
+  v[1] = device.worktime;
+  v[2] = timers_getMillis();
+  usb_diag_fill(&v[3]);
+  v[26] = loop_max_ms;
+  v[27] = loop_stalls;
+  v[28] = mem_config_errors;
+  v[29] = diag_gsm_pwron;
+  v[30] = diag_gsm_notanswer;
+  v[31] = diag_heap_fail;
+  v[32] = fault_record[0] == FAULT_RECORD_MAGIC;
+
+  send_buffer[0] = 'S';
+  send_buffer[1] = 'L';
+  send_buffer[2] = 'D';
+  send_buffer[3] = 'N';
+  send_buffer[4] = _1B(len);
+  send_buffer[5] = _2B(len);
+  send_buffer[6] = 0;
+  send_buffer[7] = uniqId;
+  send_buffer[8] = USB_DIAG_COMMAND;
+  memcpy(&send_buffer[9], (uint8_t*)v, sizeof(v));
+  crc = crc16_calc(&send_buffer[4], len + 2);
+  send_buffer[len + 6] = crc & 0xff;
+  send_buffer[len + 7] = (crc >> 8) & 0xff;
+  usb_send(send_buffer, len + 8);
 }

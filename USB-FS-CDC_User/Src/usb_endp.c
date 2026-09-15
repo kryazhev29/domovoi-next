@@ -47,6 +47,8 @@ extern  uint8_t USART_Rx_Buffer[];
 extern volatile uint32_t USART_Rx_ptr_out;
 extern volatile uint32_t USART_Rx_length;
 extern volatile uint8_t  USB_Tx_State;
+extern void usb_in_done(void);
+extern void usb_sof_seen(void);
 
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
@@ -60,6 +62,7 @@ extern volatile uint8_t  USB_Tx_State;
 *******************************************************************************/
 void EP1_IN_Callback (void)
 {
+  usb_in_done();
   if (USB_Tx_State == 1) {
     USB_Tx_State = 0;
     Handle_USBAsynchXfer();
@@ -100,6 +103,7 @@ void EP3_OUT_Callback(void)
 void SOF_Callback(void)
 {
   static uint32_t FrameCount = 0;
+  usb_sof_seen();
   
   if(bDeviceState == CONFIGURED)
   {
