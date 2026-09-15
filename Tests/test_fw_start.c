@@ -43,8 +43,12 @@ static void resume_tests(void){uint32_t seed=12345u,i;uint16_t blocks=37,k,idx;u
  /* Nothing written: start from 0. Everything written: request the last block again. */
  stage(blocks,64);fw_resume_after_boot();CHECK(device.FWblockIdx==0&&device.firmwarePercent==0);
  stage(blocks,64);program(0x200,image,(uint32_t)blocks*1024u);fw_resume_after_boot();CHECK(device.FWblockIdx==blocks-1);
- /* No download in progress: nothing read back, nothing saved. */
- stage(blocks,64);device.FWinProgress=0;fw_resume_after_boot();CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&!saves);
+ /* No download in progress: nothing read back, nothing saved, a stale timeout is dropped. */
+ stage(blocks,64);device.FWinProgress=0;device.updateTimeout=900;fw_resume_after_boot();CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&!saves&&!device.updateTimeout);
+ /* The saved remaining time is kept; missing or impossible values restart at 60 minutes. */
+ stage(blocks,64);device.updateTimeout=1500;fw_resume_after_boot();CHECK(device.FWinProgress&&device.updateTimeout==1500);
+ stage(blocks,64);device.updateTimeout=5000;fw_resume_after_boot();CHECK(device.updateTimeout==3600);
+ stage(blocks,1);device.updateTimeout=1500;fw_resume_after_boot();CHECK(!device.FWinProgress&&!device.updateTimeout);
  /* A header that is not a download ends the update and saves that. */
  stage(blocks,1);fw_resume_after_boot();CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&saves==1);
  stage(blocks,64);{uint32_t magic=0x32544F42u;program(0,(uint8_t*)&magic,4);}fw_resume_after_boot();CHECK(!device.FWinProgress&&saves==1);

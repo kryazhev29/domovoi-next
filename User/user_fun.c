@@ -912,6 +912,8 @@ void user_loop(void)
         user_saveindex();
         if (device.registredOnServer)
           user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
+      } else if (device.FWinProgress && device.updateTimeout % 600u == 0){
+        user_saveindex(); /* a resume after a reset keeps the remaining time */
       }
     }
 
@@ -1123,6 +1125,12 @@ void user_factoryReset (void){
   // чистим память фото 
   user_clearMemBlock(MB_PHOTO);
   
+  /* A factory reset cancels a download: user_setdefault saves this state,
+     so nothing resumes after the restart. */
+  device.FWinProgress = 0;
+  device.status.readyToUpdate = 0;
+  device.updateTimeout = 0;
+
   // чистим конфиг
   user_setdefault();
   // реинициализируем переменные
@@ -1169,6 +1177,7 @@ void user_readsavedinformation (void)
       device.FWblockCount = DV.FWblockCount;
       device.firmwarePercent = DV.firmwarePercent;
       device.FWinProgress = DV.FWinProgress;
+      device.updateTimeout = DV.updateTimeout;
       
       device.moduleType = DV.moduleType;
        
@@ -2443,22 +2452,28 @@ static uint16_t fw_resume_block(void)
 
 /* After a reset, continue a server download that was in progress (customer
  * 15.09.2026). The staged header must still describe an update: erased magic,
- * a firmware number of 2 or more and fields command 19 would accept. */
+ * a firmware number of 2 or more and fields command 19 would accept. The
+ * remaining timeout is saved every 10 minutes, so reboots cannot extend the
+ * 60-minute limit by more than that each. */
 static void fw_resume_after_boot(void)
 {
   bootFWparam_s h;
-  if (!device.FWinProgress) return;
+  if (!device.FWinProgress) {
+    device.updateTimeout = 0;
+    return;
+  }
   mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h));
   if (h.appIdent != 0xFFFFFFFFu || h.firmwareVersion < 2 ||
       fw_start_rejected(h.firmwareVersion, h.buildDate, h.firmwareSize, h.firmwareCRC, device.FWblockCount)) {
     device.FWinProgress = 0;
+    device.updateTimeout = 0;
     user_saveindex();
     return;
   }
   device.FWblockIdx = fw_resume_block();
   device.startWaitFWtime = 0;
   device.cchFWupdate = CH_SERVER;
-  device.updateTimeout = 3600;
+  if (device.updateTimeout == 0 || device.updateTimeout > 3600) device.updateTimeout = 3600;
   device.status.readyToUpdate = 1;
   device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
 }

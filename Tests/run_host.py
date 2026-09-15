@@ -53,7 +53,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'device.FWinProgress = DV.FWinProgress;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
         assert 'if (cch != CH_USB) user_saveindex();' in case19,'command 19 saves the download'
         loop=user[user.index('    if (device.rebootToUpdate){'):user.index('    if (app_trial_expired()){')]
-        assert loop.count('user_saveindex();')==2,'loop saves boot failure and timeout'
+        assert loop.count('user_saveindex();')==3 and 'updateTimeout % 600u == 0' in loop,'loop saves boot failure, timeout and remaining time'
+        assert 'device.updateTimeout = DV.updateTimeout;' in saved,'remaining timeout restored'
+        reset=function(user,'user_factoryReset')
+        assert reset.index('device.FWinProgress = 0;')<reset.index('user_setdefault();'),'factory reset cancels a download'
         unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ['fw_start_rejected','fw_start_accepted','fw_blocks_done','fw_resume_block','fw_resume_after_boot']))
     elif kind=='crc':
         user=source('User/user_fun.c')
