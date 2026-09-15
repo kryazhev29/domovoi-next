@@ -1,3 +1,4 @@
+#include "stm32_it.h"
 // Пользовательские функции
 
 #include "user_fun.h"
@@ -1988,7 +1989,7 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
     
   uint16_t crc;
   uint16_t len = 34; // timeout comand + uniqIdCnt + id + payload
-  uint8_t send_buffer[42];
+  uint8_t send_buffer[42 + sizeof(fault_record)];
   uint32_t tmp32;
   
   send_buffer[0] = 'S'; // идент
@@ -2024,6 +2025,16 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
   send_buffer[39] = device.moduleType;
   // ------- меняемый блок ---------
   
+  /* Optional FLT1 extension after the original status payload. */
+  if (fault_record[0] == FAULT_RECORD_MAGIC) {
+    uint16_t i;
+    for (i = 0; i < sizeof(fault_record); i++)
+      send_buffer[40 + i] = ((volatile uint8_t*)fault_record)[i];
+    len += sizeof(fault_record);
+    send_buffer[4] = _1B(len);
+    send_buffer[5] = _2B(len);
+  }
+
   crc = crc16_calc(&send_buffer[4], len + 2);
   
   send_buffer[len + 6] = crc&0xff; // crc
