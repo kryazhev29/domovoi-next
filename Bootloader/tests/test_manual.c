@@ -6,7 +6,8 @@
 #define assert(x) do {if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 #include "../boot_manual.c"
 static uint8_t stage[MANUAL_BOOT_SIZE],image[MANUAL_BOOT_SIZE];
-static int writes,launches,supported=1,io_fail;
+static int writes,launches,supported=1,io_fail,v5_only;
+int manual_board_hw(uint8_t hw){return v5_only?hw==139:1;}
 int manual_stage_read(uint32_t off,void *p,uint32_t n){assert(off+n<=sizeof(stage));memcpy(p,stage+off,n);return !io_fail;}
 int manual_stage_write(uint32_t off,const void *p,uint32_t n){uint32_t i;const uint8_t *b=p;assert(off+n<=sizeof(stage));for(i=0;i<n;i++)stage[off+i]&=b[i];writes++;return !io_fail;}
 int manual_stage_erase(uint32_t off){assert(!(off&4095u)&&off+4096<=sizeof(stage));memset(stage+off,255,4096);writes++;return !io_fail;}
@@ -44,6 +45,11 @@ int main(void){
   if(cut==128)assert(call(1,&commit,1)==0);
   powercycle();assert(!boot_manual_busy());assert(boot_manual_apply()==MANUAL_DENIED&&launches==1);
  }
+ /* A v5 application refuses a MINI bootloader before touching the candidate slot. */
+ powercycle();v5_only=1;make_image(11);before=writes;
+ put32(p+1,32768);put32(p+5,checksum());p[0]=0;p[9]=11;
+ assert(call(1,p,10)==MANUAL_BAD&&writes==before&&!boot_manual_busy());
+ make_image(139);begin(139);v5_only=0;assert(call(1,&cancel,1)==0);
  io_fail=1;put32(p+1,32768);put32(p+5,checksum());p[0]=0;p[9]=139;
  assert(call(1,p,10)==MANUAL_IO&&!boot_manual_busy());
  puts("manual: validation, USB-only, explicit apply, retries, corruption, 129 reset positions passed");return 0;

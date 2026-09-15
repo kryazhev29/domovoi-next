@@ -17,6 +17,9 @@ int manual_stage_read(uint32_t off,void *data,uint32_t n);
 int manual_stage_write(uint32_t off,const void *data,uint32_t n);
 int manual_stage_erase(uint32_t off);
 int manual_platform_supported(void);
+/* Nonzero when a bootloader for this HW ID matches the board the running
+ * application is built for. A wrong file chosen by the board photo is refused. */
+int manual_board_hw(uint8_t hw);
 int manual_program(uint32_t expected_crc);
 void manual_service(void);
 #endif

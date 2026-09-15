@@ -105,6 +105,9 @@ void app_boot_error_reported(void) {
 int manual_platform_supported(void) {
  return *(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS==BOOT_REQUIRED_FLASH_KIB;
 }
+/* This application is built for the v5 board only (HW 139). A MINI bootloader
+ * (HW 11) drives other pins: button, USB pull-up and SPI chip select. */
+int manual_board_hw(uint8_t hw) {return hw==139u;}
 int manual_stage_read(uint32_t off,void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
  mem_read(BOOT_CANDIDATE+off,data,n);return 1;

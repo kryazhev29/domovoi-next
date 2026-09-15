@@ -35,7 +35,7 @@ void boot_manual_command(int usb,const uint8_t *p,uint16_t n,uint8_t reply[8]) {
  if(armed){status=MANUAL_BUSY;goto done;}
  if(op==3&&n==1){session=0;received=0;target_hw=0;status=MANUAL_OK;goto done;}
  if(op==0) {
-  if(n!=10||get32(p+1)!=MANUAL_BOOT_SIZE||(p[9]!=11&&p[9]!=139))goto done;
+  if(n!=10||get32(p+1)!=MANUAL_BOOT_SIZE||(p[9]!=11&&p[9]!=139)||!manual_board_hw(p[9]))goto done;
   if(!manual_platform_supported()){status=MANUAL_DENIED;goto done;}
   session=0;received=0;target_hw=0;
   for(off=0;off<MANUAL_BOOT_SIZE;off+=4096) {
