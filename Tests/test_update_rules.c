@@ -1,0 +1,101 @@
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
+typedef uint8_t Int8U;
+typedef uint16_t Int16U;
+#define _1B(a) (Int8U)(a)
+#define _2B(a) (Int8U)(a>>8)
+typedef enum {CH_USB=0, CH_SERVER, CH_SMS} dataChanel_e;
+typedef struct {
+  Int16U stateOut2:1, stateOut1:1, stateIn2:1, stateIn1:1, openAnyUser:1, autoRegistration:1,
+         unblockOnScene:1, unblockHand:1, res1:1, res2:1, res3:1, readyToUpdate:1,
+         readyLogData:1, readyPhoto:1, readyID:1, defaultConfig:1;
+} status_s;
+static struct {
+  status_s status; uint8_t answerID, answerTimeout, FWinProgress, firmwarePercent, cchFWupdate;
+  uint16_t updateTimeout, FWblockIdx, FWblockCount, freeBufferSize; uint32_t datetime; int8_t connectionhandle;
+} device;
+static uint8_t uniqIDCnt;
+static unsigned saves, sent_server, sent_usb;
+static uint32_t now_ms;
+static uint32_t timers_getMillis(void) { return now_ms; }
+static void user_saveindex(void) { saves++; }
+static uint16_t crc16_calc(uint8_t *p, uint16_t n) { (void)p; (void)n; return 0; }
+static int8_t connection_send(int8_t h, uint8_t *p, uint16_t n) { (void)h; (void)p; (void)n; sent_server++; return 0; }
+static void usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; sent_usb++; }
+/* PRODUCTION */
+static uint16_t bits(void) { uint16_t s; memcpy(&s, &device.status, 2); return s; }
+int main(void)
+{
+  uint8_t block[1024];
+  uint32_t w;
+  unsigned i;
+
+  /* Status 1 layout of table D433-D448: bit 0 output 2 ... bit 11 ready to update. */
+  device.status.stateOut2 = 1; CHECK(bits() == 0x0001); device.status.stateOut2 = 0;
+  device.status.readyToUpdate = 1; CHECK(bits() == 0x0800); device.status.readyToUpdate = 0;
+
+  /* Out of turn: inputs, outputs, triggers and bit 11; bits 8-10 and 12-15 wait for the schedule. */
+  now_ms = 5000; status_event_sent(0, 1000);
+  CHECK(!status_event_due(0, now_ms));
+  for (i = 0; i < 16; i++)
+    CHECK((unsigned)status_event_due((uint16_t)(1u << i), now_ms) == ((0x08FFu >> i) & 1u));
+  /* At least a second between extra statuses, counted from the last status sent. */
+  status_event_sent(0x0001, 5000);
+  CHECK(!status_event_due(0x0001, 5999) && !status_event_due(0x0003, 5999));
+  CHECK(status_event_due(0x0003, 6000) && !status_event_due(0x1001, 6000));
+  now_ms = 0xFFFFFF00u; status_event_sent(0, now_ms); CHECK(status_event_due(1, 0x000002E8u)); /* millis wrap */
+
+  /* Every status to the server records what it reported; USB does not. */
+  device.status.stateIn1 = 1; now_ms = 20000;
+  user_send_statusPack(CH_USB); CHECK(sent_usb == 1 && status_event_due(bits(), now_ms) && device.answerTimeout == 0);
+  user_send_statusPack(CH_SERVER); CHECK(sent_server == 1 && !status_event_due(bits(), now_ms + 5000));
+  /* A status with no wait running starts the 15 s wait. */
+  CHECK(device.answerID == 2 && device.answerTimeout == 15);
+  /* An extra status does not restart a running wait. */
+  device.answerTimeout = 7; user_send_statusPack(CH_SERVER); CHECK(device.answerTimeout == 7);
+  /* A registration wait ended by its answer is replaced. */
+  device.answerID = 1; device.answerTimeout = 3; user_send_statusPack(CH_SERVER);
+  CHECK(device.answerID == 2 && device.answerTimeout == 15);
+  device.status.stateIn1 = 0;
+
+  /* Update mode follows bit 11. */
+  CHECK(!fw_update_quiet()); device.status.readyToUpdate = 1; CHECK(fw_update_quiet());
+
+  /* Abort: download state cleared, further blocks refused, server downloads saved. */
+  device.FWinProgress = 1; device.updateTimeout = 1200; device.FWblockIdx = 7; device.FWblockCount = 64;
+  device.cchFWupdate = CH_SERVER; saves = 0; fw_abort(251);
+  CHECK(!device.FWinProgress && !device.status.readyToUpdate && !device.updateTimeout &&
+        device.FWblockIdx == 64 && device.firmwarePercent == 251 && saves == 1);
+  device.cchFWupdate = CH_USB; fw_abort(250); CHECK(device.firmwarePercent == 250 && saves == 1);
+
+  /* 251: ten minutes without a block; a block restarts the count; idle time outside a download is not counted. */
+  device.FWinProgress = 1;
+  for (i = 1; i < 600; i++) CHECK(!fw_idle_expired());
+  CHECK(fw_idle_expired());
+  fw_idle_block_received();
+  for (i = 1; i < 600; i++) CHECK(!fw_idle_expired());
+  device.FWinProgress = 0; CHECK(!fw_idle_expired());
+  device.FWinProgress = 1;
+  for (i = 1; i < 600; i++) CHECK(!fw_idle_expired());
+  CHECK(fw_idle_expired());
+  device.FWinProgress = 0; fw_idle_expired();
+
+  /* 250: board marker in reserved vector 8, little-endian. */
+  memset(block, 0xA5, sizeof block);
+  w = 0x4857008Bu; memcpy(block + 0x20, &w, 4);
+  CHECK(!fw_image_foreign(block, 139));
+  CHECK(fw_image_foreign(block, 11));
+  CHECK(!fw_image_foreign(block, 0));               /* old bootloader: board unknown */
+  w = 0; memcpy(block + 0x20, &w, 4);
+  CHECK(!fw_image_foreign(block, 11));              /* image built before the marker */
+  w = 0x4857018Bu; memcpy(block + 0x20, &w, 4);
+  CHECK(!fw_image_foreign(block, 11));              /* not a marker */
+  w = 0x4C495254u; memcpy(block + 0x1C, &w, 4); w = 0x4857000Bu; memcpy(block + 0x20, &w, 4);
+  CHECK(!fw_image_foreign(block, 11) && fw_image_foreign(block, 139));
+
+  puts("PASS update rules: status out of turn (mask, 1 s gap, wait not restarted), update mode, abort, 251 idle, 250 board marker");
+  return 0;
+}

@@ -66,7 +66,11 @@ __vector_table
         DCD     BusFault_Handler          ; Bus Fault Handler
         DCD     UsageFault_Handler        ; Usage Fault Handler
         DCD     0x4C495254                ; Reserved: trial marker, Bootloader/boot_core.h BOOT_TRIAL_MARKER
-        DCD     0                         ; Reserved
+#ifdef DOMOVOI_APP_HW
+        DCD     0x48570000+DOMOVOI_APP_HW ; Reserved: board marker, User/user_fun.c fw_image_foreign
+#else
+        DCD     0                         ; Reserved (bootloader build)
+#endif
         DCD     0                         ; Reserved
         DCD     0                         ; Reserved
         DCD     SVC_Handler               ; SVCall Handler

@@ -53,11 +53,40 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'device.FWinProgress = DV.FWinProgress;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
         assert 'if (cch != CH_USB) user_saveindex();' in case19,'command 19 saves the download'
         loop=user[user.index('    if (device.rebootToUpdate){'):user.index('    if (app_trial_expired()){')]
-        assert loop.count('user_saveindex();')==3 and 'updateTimeout % 600u == 0' in loop,'loop saves boot failure, timeout and remaining time'
+        assert loop.count('user_saveindex();')==2 and 'fw_abort(249);' in loop and 'updateTimeout % 600u == 0' in loop,'loop saves boot failure, timeout (fw_abort) and remaining time'
         assert 'device.updateTimeout = DV.updateTimeout;' in saved,'remaining timeout restored'
         reset=function(user,'user_factoryReset')
         assert reset.index('device.FWinProgress = 0;')<reset.index('user_setdefault();'),'factory reset cancels a download'
         unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ['fw_start_rejected','fw_start_accepted','fw_blocks_done','fw_resume_block','fw_resume_after_boot']))
+    elif kind=='rules':
+        user=source('User/user_fun.c')
+        rules=user[user.index('/* Status 1 out of turn (table E92'):user.index('/* Command 19 fields.')]
+        defines=[x for x in user.splitlines() if x.startswith('#define TIMETOSTATUSRESPONSE')][0]+'\n'
+        # Call sites: each rule must be applied where the table puts it.
+        loop=function(user,'user_loop')
+        assert loop.index('status_event_due(st, timers_getMillis())')>loop.index('device.status.stateOut2 = out_getstate(OUT2);'),'status out of turn after inputs and outputs are read'
+        second=loop[loop.index('    if (device.rebootToUpdate){'):loop.index('    if (app_trial_expired()){')]
+        assert 'fw_abort(249);' in second and 'if (fw_idle_expired()){\r\n      fw_abort(251);' in second,'249 and 251 end the download'
+        parse=user[user.index('void user_parse_comand'):]
+        def case(n):return parse[parse.index('\r\n    case %d:'%n):parse.index('\r\n    case %d:'%(n+1))]
+        assert 'status_event_sent(st, timers_getMillis());' in case(1),'registration does not trigger an extra status'
+        c8=case(8);head=c8[:c8.index('if (ptr[5] != 0)')]
+        assert 'if (fw_update_quiet()){' in head and 'CMD_RUNERROR' in head,'command 8 refused in update mode'
+        sms=function(user,'user_smsreceived')
+        gate=sms[sms.index('if (fw_update_quiet()'):sms.index('if (strcmp(v, "add") == 0){')]
+        assert all('strcmp(v, "%s") == 0'%c in gate for c in ('add','reset','setout','default')) and '"imei"' not in gate and '"status"' not in gate,'SMS control commands refused in update mode'
+        call=user[user.index('bool user_incomingcall (char* num, uint8_t typ)'):user.index('void user_comanderror')]
+        assert 'fw_update_quiet' not in call,'calls keep working in update mode'
+        c19=case(19)
+        assert c19.index('cch != CH_USB && firmwareVersion == device.firmwareVersion')<c19.index('malloc(MEMSECTORSIZE)') and 'firmwarePercent = 254' in c19,'254 before erasing'
+        c20=case(20)
+        assert '(device.FWblockIdx < device.FWblockCount)' in c20,'no block past the image'
+        assert c20.index('fw_image_foreign(&ptr[7], device.hardwareVersion)')<c20.index('mem_write(adr, &ptr[7], 1024)')<c20.index('fw_idle_block_received();'),'250 before writing, idle reset after'
+        for ev,n in (('GOTOUPDATE',2),('RUNUPDATE',1),('ENDUPDATE',1),('HWERRUPDATE',1),('ERRUPDATE',7)):
+            assert user.count('log_addSystemEvent(LOG_SYS_%s);'%ev)==n,(ev,user.count('log_addSystemEvent(LOG_SYS_%s);'%ev))
+        assert '0x48570000+DOMOVOI_APP_HW' in source('CMSIS/STM32F10x/Source/startup_stm32f10x_md.s'),'board marker in the vector table'
+        assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==2 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
+        unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))
     elif kind=='gsmreg':
         gsm=source('Modules/gsm.c')
         code='\n'.join(x for x in gsm.splitlines() if x.startswith('#define GSM_REG_'))+'\n'

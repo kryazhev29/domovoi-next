@@ -22,6 +22,18 @@ class PackageTests(unittest.TestCase):
     p=Path(d)/'139.14.1.bin';p.write_bytes(struct.pack('<IIIIIIII',0x20005000,0x08008209,0,0,0,0,0,marker))
     out=subprocess.run([sys.executable,str(Path(boot_tool.__file__)),'inspect',str(p)],check=True,capture_output=True,text=True).stdout
     self.assertIn(expected,out)
+ def test_board_marker(self):
+  with tempfile.TemporaryDirectory() as d:
+   words=[0x20005000,0x08008209,0,0,0,0,0,boot_tool.TRIAL_MARKER,0x4857008b]
+   p=Path(d)/'139.14.1.bin';p.write_bytes(struct.pack('<9I',*words))
+   out=subprocess.run([sys.executable,str(Path(boot_tool.__file__)),'inspect',str(p)],check=True,capture_output=True,text=True).stdout
+   self.assertIn('board=139',out)
+   wrong=Path(d)/'11.14.1.bin';wrong.write_bytes(p.read_bytes())
+   with self.assertRaises(ValueError):boot_tool.application(wrong)
+   words[8]=0;old=Path(d)/'11.15.1.bin';old.write_bytes(struct.pack('<9I',*words))
+   self.assertEqual(boot_tool.application(old)[0],11)
+   out=subprocess.run([sys.executable,str(Path(boot_tool.__file__)),'inspect',str(old)],check=True,capture_output=True,text=True).stdout
+   self.assertIn('board=none',out)
  def test_wrong_link_address(self):
   with tempfile.TemporaryDirectory() as d:
    p=Path(d)/'139.14.1.bin';p.write_bytes(struct.pack('<II',0x20005000,0x08000009))

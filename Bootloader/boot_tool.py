@@ -7,6 +7,13 @@ MAX_CODE=0x17e00
 # boot_core.h BOOT_TRIAL_VECTOR/BOOT_TRIAL_MARKER: the application confirms itself after an update
 TRIAL_VECTOR=0x1c
 TRIAL_MARKER=0x4c495254
+# User/user_fun.c fw_image_foreign: reserved vector 8 holds 0x4857 and the HW number in the low byte
+HW_MARKER_VECTOR=0x20
+HW_MARKER_TAG=0x48570000
+def board_marker(data):
+    if len(data)<HW_MARKER_VECTOR+4:return None
+    mark=struct.unpack_from('<I',data,HW_MARKER_VECTOR)[0]
+    return mark&0xff if (mark&0xffffff00)==HW_MARKER_TAG else None
 def crc32(data):
     if len(data)%4: raise ValueError('CRC input must contain complete little-endian words')
     crc=0xffffffff
@@ -30,6 +37,8 @@ def application(path):
     if not 8<=len(data)<=MAX_CODE:raise ValueError('Application exceeds existing Flash region')
     sp,pc=struct.unpack_from('<II',data)
     if not 0x20000008<=sp<=0x20005000 or sp%8 or not pc&1 or not 0x08008200<=pc&~1<0x08008200+len(data):raise ValueError('Invalid vectors: application must be linked at 0x08008200')
+    board=board_marker(data)
+    if board is not None and board!=hw:raise ValueError(f'Image is built for HW {board}, file name says HW {hw}')
     return hw,fw,stamp,data
 def frame(command,data=b''):
     body=bytes([0xaa,command])+data
@@ -95,6 +104,7 @@ def main():
     hw,fw,stamp,data=application(a.image)
     if a.command=='inspect':
         trial=struct.unpack_from('<I',data,TRIAL_VECTOR)[0]==TRIAL_MARKER if len(data)>=TRIAL_VECTOR+4 else False
-        print(f'HW={hw}, FW={fw}, build={stamp}, size={len(data)}, CRC=0x{crc32(data):08x}, trial={"yes" if trial else "no"}');return
+        board=board_marker(data)
+        print(f'HW={hw}, FW={fw}, build={stamp}, size={len(data)}, CRC=0x{crc32(data):08x}, trial={"yes" if trial else "no"}, board={"none" if board is None else board}');return
     legacy_package(a.image,a.output)
 if __name__=='__main__':main()
