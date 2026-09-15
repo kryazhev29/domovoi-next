@@ -32,6 +32,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         defines='\n'.join(x for x in header.splitlines() if x.startswith('#define MEM'))
         test=(ROOT/'Tests/test_storage.c').read_text()
         unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+function(source('User/user_fun.c'),'user_writeConfigAndDevice'))
+    elif kind=='crc':
+        user=source('User/user_fun.c')
+        # Compile the actual CRC gate; the command switch is unreachable here.
+        code=user[user.index('void user_parse_comand'):]
+        code=code[:code.index('  switch (ptr[4])')]+'  (void)tmp32;\n}\n'
+        unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='rx':
         code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)

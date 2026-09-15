@@ -2399,7 +2399,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
   if (crc != i) // ошибка контрольной суммы
   {
-    user_send_answer_comand(ptr[3], CMD_CRCERROR, cch, uniqId);
+    user_send_answer_comand(ptr[4], CMD_CRCERROR, cch, uniqId);
     return;
   }
 
