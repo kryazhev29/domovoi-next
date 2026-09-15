@@ -16,7 +16,12 @@ def function(text,name):
     return text[m.start():i]
 with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     d=pathlib.Path(d)
-    if kind=='tx':
+    if kind=='rx':
+        code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
+        code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
+        user=function(source('User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
+        unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)
+    elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
         globals=hw[hw.index('uint8_t  USART_Rx_Buffer'):hw.index('static void IntToUnicode')]

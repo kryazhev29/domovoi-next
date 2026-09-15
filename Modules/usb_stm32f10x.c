@@ -4,9 +4,10 @@
 
 #pragma data_alignment=4
 uint8_t usb_buffer[USBBUFFERSIZE]; // принятые данные по usb
-uint16_t usb_buffer_count = 0;
-uint8_t usb_time_to_check_buffer = 0;
-uint8_t usb_data_ready = 0;
+static volatile uint16_t usb_buffer_count = 0;
+static volatile uint8_t usb_rx_processing = 0;
+static volatile uint8_t usb_rx_discard = 0;
+volatile uint32_t usb_rx_errors = 0;
 uint8_t usb_enabled = 0;
 volatile uint32_t usb_tx_errors = 0;
 volatile uint32_t usb_debug_dropped = 0;
@@ -27,17 +28,19 @@ void usb_init(void)
 // Копируем даные из USB в буфер ----------------------------------------------
 void usb_datareceived (uint8_t* ptr, uint16_t len)
 {
-  if (len > (USBBUFFERSIZE - usb_buffer_count)){
-    len = USBBUFFERSIZE - usb_buffer_count; 
+  uint16_t count = usb_buffer_count;
+  if (usb_rx_discard) return;
+  if (len > USBBUFFERSIZE - count) {
+    /* A missing byte must never join the two sides of a broken stream. */
+    usb_rx_discard = 1;
+    usb_rx_errors++;
+    return;
   }
-
-  if (len){
-    while (len--) usb_buffer[usb_buffer_count++] = *ptr++;
-    usb_time_to_check_buffer = 2;
-  }
+  memcpy(usb_buffer + count, ptr, len);
+  __DMB();
+  usb_buffer_count = count + len;
 }
 
-// Отправить данные -----------------------------------------------------------
 /* Return complete-queue acceptance; failures are also retained for diagnostics. */
 uint8_t usb_send (uint8_t* ptr, uint16_t len)
 {
@@ -56,21 +59,59 @@ void usb_sendstr (char* str)
 // check time proccess, 1 ms --------------------------------------------------
 void usb_timer1ms (void)
 {
-  if (usb_time_to_check_buffer)
-   {
-     usb_time_to_check_buffer--;
-     if (usb_time_to_check_buffer == 0) usb_data_ready = 1;
-   }
+  /* Packet completeness is determined by SLDN length and CRC, not silence. */
 }
 
 // usb check data --------------------------------------------------------------
 void usb_check_data (void)
 {
-  if (usb_data_ready == 0) return;
-
-  // разбираем что пришло
-  usb_data_reading(usb_buffer, usb_buffer_count);
-  usb_clear_buffer();
+  uint32_t mask = __get_PRIMASK();
+  uint16_t count, skip = 0, body, total, crc;
+  __disable_irq();
+  if (usb_rx_processing) { __set_PRIMASK(mask); return; }
+  if (usb_rx_discard) {
+    usb_buffer_count = 0;
+    usb_rx_discard = 0;
+  }
+  count = usb_buffer_count;
+  /* Retain up to three trailing bytes: they may start the next SLDN. */
+  while (count - skip >= 4 && memcmp(usb_buffer + skip, "SLDN", 4)) skip++;
+  if (skip) {
+    count -= skip;
+    memmove(usb_buffer, usb_buffer + skip, count);
+    usb_buffer_count = count;
+  }
+  if (count < 6) { __set_PRIMASK(mask); return; }
+  body = (uint16_t)usb_buffer[4] | ((uint16_t)usb_buffer[5] << 8);
+  if (body < 3 || body > USBBUFFERSIZE - 8) {
+    memmove(usb_buffer, usb_buffer + 1, count - 1);
+    usb_buffer_count = count - 1;
+    usb_rx_errors++;
+    __set_PRIMASK(mask); return;
+  }
+  total = body + 8;
+  if (count < total) { __set_PRIMASK(mask); return; }
+  /* ISR may append while the application parses, but cannot change this prefix.
+   * A USB reset defers discard until the parser releases its borrowed buffer. */
+  usb_rx_processing = 1;
+  __set_PRIMASK(mask);
+  crc = (uint16_t)usb_buffer[total - 2] | ((uint16_t)usb_buffer[total - 1] << 8);
+  if (crc == crc16_calc(usb_buffer + 4, body + 2)) {
+    if (!usb_rx_discard) usb_data_reading(usb_buffer, total);
+  } else usb_rx_errors++;
+  mask = __get_PRIMASK();
+  __disable_irq();
+  if (usb_rx_discard) {
+    usb_buffer_count = 0;
+    usb_rx_discard = 0;
+  } else {
+    count = usb_buffer_count;
+    count -= total;
+    memmove(usb_buffer, usb_buffer + total, count);
+    usb_buffer_count = count;
+  }
+  usb_rx_processing = 0;
+  __set_PRIMASK(mask);
 }
 
 // активен usb или нет ---------------------------------------------------------
@@ -82,8 +123,14 @@ uint8_t usb_get_state (void)
 // очистка буфера --------------------------------------------------------------
 void usb_clear_buffer (void)
 {
-  usb_buffer_count = 0;
-  usb_data_ready = 0;
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  if (usb_rx_processing) usb_rx_discard = 1;
+  else {
+    usb_buffer_count = 0;
+    usb_rx_discard = 0;
+  }
+  __set_PRIMASK(mask);
 }
 
 // разбор принятых данных определяется пользователем ---------------------------

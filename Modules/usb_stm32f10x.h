@@ -4,6 +4,7 @@
 
 #include "main.h"
 
+extern volatile uint32_t usb_rx_errors;
 extern volatile uint32_t usb_tx_errors;
 extern volatile uint32_t usb_debug_dropped;
 void usb_init(void);
