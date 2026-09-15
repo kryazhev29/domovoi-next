@@ -32,6 +32,7 @@
 
 
 /* Includes ------------------------------------------------------------------*/
+#include "usb_stm32f10x.h"
 #include "usb_lib.h"
 #include "usb_prop.h"
 #include "usb_pwr.h"
@@ -211,10 +212,9 @@ void USB_Istr(void)
           uint32_t budget = 32000u;
           while ((_GetISTR() & ISTR_RESET) == 0 && budget != 0) --budget;
           if (budget == 0) {
-            /* Fail closed; the foreground and watchdog must keep running. */
-            _SetCNTR(CNTR_FRES);
-            USB_Tx_Reset();
-            bDeviceState = UNCONNECTED;
+            /* FRES alone leaves the port dead forever. Schedule a bounded
+             * detach/re-enumeration; the main loop and modem keep running. */
+            usb_request_recovery();
             esof_counter = 0;
             return;
           }
