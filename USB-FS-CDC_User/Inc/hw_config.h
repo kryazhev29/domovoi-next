@@ -42,7 +42,7 @@
 #define BULK_MAX_PACKET_SIZE  0x00000040
 
 
-#define USART_RX_DATA_SIZE   512
+#define USART_RX_DATA_SIZE   2048
 /* Exported functions ------------------------------------------------------- */
 void Set_System(void);
 void Set_USBClock(void);
@@ -53,7 +53,9 @@ void USB_Cable_Config (FunctionalState NewState);
 void USART_Config_Default(void);
 bool USART_Config(void);
 void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
-void USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
+uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
+void USB_Tx_Reset(void);
+uint16_t USB_Send_Debug(uint8_t *data, uint16_t count);
 void Handle_USBAsynchXfer (void);
 void Get_SerialNum(void);
 

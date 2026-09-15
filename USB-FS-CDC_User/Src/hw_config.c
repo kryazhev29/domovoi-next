@@ -51,11 +51,12 @@
 USART_InitTypeDef USART_InitStructure;
 EXTI_InitTypeDef EXTI_InitStructure;
 uint8_t  USART_Rx_Buffer [USART_RX_DATA_SIZE]; 
-uint32_t USART_Rx_ptr_in = 0;
-uint32_t USART_Rx_ptr_out = 0;
-uint32_t USART_Rx_length  = 0;
+volatile uint32_t USART_Rx_ptr_in = 0;
+volatile uint32_t USART_Rx_ptr_out = 0;
+volatile uint32_t USART_Rx_length  = 0;
 
-uint8_t  USB_Tx_State = 0;
+volatile uint8_t  USB_Tx_State = 0;
+static volatile uint32_t usb_tx_epoch = 0;
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len);
 /* Extern variables ----------------------------------------------------------*/
 
@@ -328,54 +329,22 @@ void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes)
 *******************************************************************************/
 void Handle_USBAsynchXfer (void)
 {
-  
-  uint16_t USB_Tx_ptr;
-  uint16_t USB_Tx_length;
-  
-  if(USB_Tx_State != 1)
-  {
-    if (USART_Rx_ptr_out == USART_RX_DATA_SIZE)
-    {
-      USART_Rx_ptr_out = 0;
-    }
-    
-    if(USART_Rx_ptr_out == USART_Rx_ptr_in) 
-    {
-      USB_Tx_State = 0; 
-      return;
-    }
-    
-    if(USART_Rx_ptr_out > USART_Rx_ptr_in) /* rollback */
-    { 
-      USART_Rx_length = USART_RX_DATA_SIZE - USART_Rx_ptr_out;
-    }
-    else 
-    {
-      USART_Rx_length = USART_Rx_ptr_in - USART_Rx_ptr_out;
-    }
-    
-    if (USART_Rx_length > VIRTUAL_COM_PORT_DATA_SIZE)
-    {
-      USB_Tx_ptr = USART_Rx_ptr_out;
-      USB_Tx_length = VIRTUAL_COM_PORT_DATA_SIZE;
-      
-      USART_Rx_ptr_out += VIRTUAL_COM_PORT_DATA_SIZE;	
-      USART_Rx_length -= VIRTUAL_COM_PORT_DATA_SIZE;	
-    }
-    else
-    {
-      USB_Tx_ptr = USART_Rx_ptr_out;
-      USB_Tx_length = USART_Rx_length;
-      
-      USART_Rx_ptr_out += USART_Rx_length;
-      USART_Rx_length = 0;
-    }
-    USB_Tx_State = 1; 
-    UserToPMABufferCopy(&USART_Rx_Buffer[USB_Tx_ptr], ENDP1_TXADDR, USB_Tx_length);
-    SetEPTxCount(ENDP1, USB_Tx_length);
-    SetEPTxValid(ENDP1); 
-  }  
-  
+  uint32_t in, out, count;
+  if (USB_Tx_State == 1 || bDeviceState != CONFIGURED) return;
+  in = USART_Rx_ptr_in;
+  out = USART_Rx_ptr_out;
+  if (out == USART_RX_DATA_SIZE) out = 0;
+  if (in == out) return;
+  count = out > in ? USART_RX_DATA_SIZE - out : in - out;
+  if (count > VIRTUAL_COM_PORT_DATA_SIZE) count = VIRTUAL_COM_PORT_DATA_SIZE;
+  UserToPMABufferCopy(&USART_Rx_Buffer[out], ENDP1_TXADDR, (uint16_t)count);
+  out += count;
+  if (out == USART_RX_DATA_SIZE) out = 0;
+  USART_Rx_ptr_out = out;
+  USART_Rx_length = 0;
+  USB_Tx_State = 1;
+  SetEPTxCount(ENDP1, (uint16_t)count);
+  SetEPTxValid(ENDP1);
 }
 /*******************************************************************************
 * Function Name  : UART_To_USB_Send_Data.
@@ -383,56 +352,64 @@ void Handle_USBAsynchXfer (void)
 * Input          : None.
 * Return         : none.
 *******************************************************************************/
-void USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
+/* Called from the USB reset ISR. Never retain an in-flight queue across reset. */
+void USB_Tx_Reset(void)
 {
-#ifdef FULL_CDC_MODULE  
-  if (linecoding.datatype == 7)
-  {
-    USART_Rx_Buffer[USART_Rx_ptr_in] = USART_ReceiveData(EVAL_COM1) & 0x7F;
+  USB_Tx_State = 0;
+  USART_Rx_ptr_in = 0;
+  USART_Rx_ptr_out = 0;
+  USART_Rx_length = 0;
+  usb_tx_epoch++;
+}
+static uint32_t usb_tx_space(void)
+{
+  uint32_t out = USART_Rx_ptr_out;
+  if (out == USART_RX_DATA_SIZE) out = 0;
+  return (out + USART_RX_DATA_SIZE - USART_Rx_ptr_in - 1u) % USART_RX_DATA_SIZE;
+}
+/* Caller holds PRIMASK: payload and producer index are published together. */
+static void usb_tx_enqueue(uint8_t *p, uint16_t n)
+{
+  uint32_t in = USART_Rx_ptr_in;
+  while (n--) {
+    USART_Rx_Buffer[in++] = *p++;
+    if (in == USART_RX_DATA_SIZE) in = 0;
   }
-  else if (linecoding.datatype == 8)
-  {
-    USART_Rx_Buffer[USART_Rx_ptr_in] = USART_ReceiveData(EVAL_COM1);
-  }
-  
-  USART_Rx_ptr_in++;
-    
-  /* To avoid buffer overflow */
-  if(USART_Rx_ptr_in == USART_RX_DATA_SIZE)
-  {
-    USART_Rx_ptr_in = 0;
-  }
-#else
-  uint32_t freespace, timeout = 320000; // ~10 ms
-  
-  while(Nb_bytes)
-   {
-   // сколько свободного места
-   if(USART_Rx_ptr_out > USART_Rx_ptr_in) 
-      freespace = USART_Rx_ptr_out - USART_Rx_ptr_in - 1;
-   else 
-      freespace = USART_RX_DATA_SIZE - USART_Rx_ptr_in + USART_Rx_ptr_out - 1; 
-     
-   while (Nb_bytes && freespace)
-    {
-    USART_Rx_Buffer[USART_Rx_ptr_in] = *data_buffer++;
-    USART_Rx_ptr_in++;
-    if(USART_Rx_ptr_in == USART_RX_DATA_SIZE) USART_Rx_ptr_in = 0;
-    Nb_bytes--;
-    freespace--;
+  __DMB();
+  USART_Rx_ptr_in = in;
+}
+/* Success means the complete frame was queued, not acknowledged by the host.
+ * One finite polling budget for the whole call; no watchdog reload here.
+ */
+uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
+{
+  uint32_t budget = 320000u, epoch = usb_tx_epoch;
+  if (Nb_bytes >= USART_RX_DATA_SIZE) return 0;
+  do {
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    if (bDeviceState != CONFIGURED || epoch != usb_tx_epoch) {
+      __set_PRIMASK(mask); return 0;
     }
-   
-   if (Nb_bytes == 0) break;
-   
-   if (freespace == 0) // есть данные на передачу, нет свободного места, ждем...
-    {
-    timeout = 320000;
-    while (USB_Tx_State && timeout--);
-    if (timeout == 0) break;
+    if (usb_tx_space() >= Nb_bytes) {
+      usb_tx_enqueue(data_buffer, Nb_bytes);
+      __set_PRIMASK(mask); return 1;
     }
-   }  
-  
-#endif
+    __set_PRIMASK(mask);
+    if (mask) return 0; /* The consumer cannot progress with IRQs masked. */
+    --budget;
+  } while (budget != 0);
+  return 0;
+}
+uint16_t USB_Send_Debug(uint8_t *data, uint16_t count)
+{
+  uint32_t mask = __get_PRIMASK(), available;
+  __disable_irq();
+  available = bDeviceState == CONFIGURED ? usb_tx_space() : 0;
+  if (count > available) count = (uint16_t)available;
+  usb_tx_enqueue(data, count);
+  __set_PRIMASK(mask);
+  return count;
 }
 
 /*******************************************************************************

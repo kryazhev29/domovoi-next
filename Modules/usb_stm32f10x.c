@@ -8,6 +8,8 @@ uint16_t usb_buffer_count = 0;
 uint8_t usb_time_to_check_buffer = 0;
 uint8_t usb_data_ready = 0;
 uint8_t usb_enabled = 0;
+volatile uint32_t usb_tx_errors = 0;
+volatile uint32_t usb_debug_dropped = 0;
 
 
 // Инициализация --------------------------------------------------------------
@@ -36,21 +38,19 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
 }
 
 // Отправить данные -----------------------------------------------------------
-void usb_send (uint8_t* ptr, uint16_t len)
+/* Return complete-queue acceptance; failures are also retained for diagnostics. */
+uint8_t usb_send (uint8_t* ptr, uint16_t len)
 {
-  if (!usb_enabled) return;
-  
-  if (USB_DETECT)
-    USART_To_USB_Send_Data(ptr, len);
+  if (usb_enabled && USB_DETECT && USART_To_USB_Send_Data(ptr, len)) return 1;
+  usb_tx_errors++;
+  return 0;
 }
 
-// Отправить строку -----------------------------------------------------------
 void usb_sendstr (char* str)
 {
-  if (!usb_enabled) return;
-
-  if (USB_DETECT)
-    USART_To_USB_Send_Data((uint8_t*)str, strlen(str));
+  uint16_t len = strlen(str), sent = 0;
+  if (usb_enabled && USB_DETECT) sent = USB_Send_Debug((uint8_t*)str, len);
+  usb_debug_dropped += len - sent;
 }
 
 // check time proccess, 1 ms --------------------------------------------------
