@@ -5,10 +5,11 @@
 
 /* Two 8 KiB slots: 4 KiB logical image + a separate commit sector.
  * 0x1F5000..0x1F8FFF is after TEMPID (ends 0x1F43FF), below PHOTO.
- * Keep the unaligned legacy image at 0x1CD400 untouched for migration.
+ * Mirror 0x1CD400 before publishing a slot, so older firmware can roll back.
  * No cached selection: a reset or failed write always selects a verified image.
  */
 volatile uint32_t mem_config_errors = 0;
+static uint8_t cfg_legacy_checked = 0;
 #define CFG_MAGIC 0x32474643u
 static uint32_t cfg_crc(uint32_t c, const uint8_t *p, uint16_t n)
 {
@@ -60,26 +61,118 @@ static uint8_t cfg_equal(uint32_t address, const uint8_t *p)
   }
   return 1;
 }
-static void cfg_commit(uint8_t *p)
+/* No 4 KiB allocation here: callers may already own all but 1 KiB of heap. */
+static uint8_t cfg_equal_flash(uint32_t a, uint32_t b)
 {
-  uint32_t generation, active = cfg_select(&generation), h[4], check;
+  uint8_t left[64], right[64];
+  uint16_t off;
+  for (off = 0; off < MEMSECTORSIZE; off += sizeof(left)) {
+    w25_read_data(a + off, left, sizeof(left));
+    w25_read_data(b + off, right, sizeof(right));
+    if (memcmp(left, right, sizeof(left))) return 0;
+  }
+  return 1;
+}
+static uint8_t cfg_legacy_crc(uint16_t offset)
+{
+  uint8_t b[64];
+  uint16_t off, count, expected, crc = 0xFFFF;
+  for (off = 0; off < 510; off += count) {
+    count = 510 - off;
+    if (count > sizeof(b)) count = sizeof(b);
+    w25_read_data(MEM_CONFIG_LEGACY + offset + off, b, count);
+    crc = crc16_calcInit(b, count, crc);
+  }
+  w25_read_data(MEM_CONFIG_LEGACY + offset + 510, (uint8_t*)&expected, 2);
+  return crc == expected;
+}
+/* Source is either RAM or a flash image. The old active slot is never erased. */
+static uint8_t cfg_publish(uint8_t *p, uint32_t source, uint32_t active, uint32_t generation)
+{
+  uint32_t h[4], check;
   uint32_t target = active == MEM_CONFIG_SLOT0 ? MEM_CONFIG_SLOT1 : MEM_CONFIG_SLOT0;
-  if (active != MEM_CONFIG_LEGACY && cfg_equal(active, p)) return;
-  /* Invalidate the old commit before changing its data. Active is untouched. */
+  uint16_t off;
+  uint8_t b[256];
   w25_erase_sector(target + MEMSECTORSIZE);
   w25_read_data(target + MEMSECTORSIZE, (uint8_t*)h, sizeof(h));
   if (h[0] != 0xFFFFFFFFu || h[1] != 0xFFFFFFFFu ||
-      h[2] != 0xFFFFFFFFu || h[3] != 0xFFFFFFFFu) { mem_config_errors++; return; }
+      h[2] != 0xFFFFFFFFu || h[3] != 0xFFFFFFFFu) return 0;
   w25_erase_sector(target);
-  w25_write_data(target, p, MEMSECTORSIZE);
-  if (!cfg_equal(target, p)) { mem_config_errors++; return; }
+  for (off = 0; off < MEMSECTORSIZE; off += sizeof(b)) {
+    if (p != NULL) memcpy(b, p + off, sizeof(b));
+    else w25_read_data(source + off, b, sizeof(b));
+    w25_write_data(target + off, b, sizeof(b));
+  }
+  if (p != NULL) { if (!cfg_equal(target, p)) return 0; }
+  else if (!cfg_equal_flash(target, source)) return 0;
   h[0] = CFG_MAGIC;
   h[1] = generation + 1u;
-  h[2] = cfg_crc(cfg_crc(0xFFFFFFFFu, (uint8_t*)&h[1], 4), p, MEMSECTORSIZE);
+  h[2] = p != NULL ? cfg_crc(cfg_crc(0xFFFFFFFFu, (uint8_t*)&h[1], 4), p, MEMSECTORSIZE)
+                   : cfg_image_crc(source, h[1]);
   h[3] = ~h[2];
-  /* Publication is last, and both generation and data are covered by CRC. */
   w25_write_data(target + MEMSECTORSIZE, (uint8_t*)h, sizeof(h));
-  if (!cfg_valid(target, &check) || check != h[1]) mem_config_errors++;
+  return cfg_valid(target, &check) && check == h[1];
+}
+/* At boot, valid legacy data wins: it may be an old-firmware update or a
+ * completed mirror whose slot publication was interrupted. Reserve bytes are
+ * opaque: the old writer reads them first, so its un-erased tail ANDs itself.
+ * Preserve all 4096 bytes, including a non-FF reserve, without normalizing it.
+ */
+static uint8_t cfg_prepare(void)
+{
+  uint32_t generation, active;
+  if (cfg_legacy_checked) return 1;
+  active = cfg_select(&generation);
+  if (cfg_legacy_crc(0) && (active == MEM_CONFIG_LEGACY || cfg_legacy_crc(512))) {
+    if (active == MEM_CONFIG_LEGACY || !cfg_equal_flash(active, MEM_CONFIG_LEGACY)) {
+      if (!cfg_publish(NULL, MEM_CONFIG_LEGACY, active, generation)) {
+        mem_config_errors++;
+        return 0;
+      }
+    }
+  }
+  cfg_legacy_checked = 1;
+  return 1;
+}
+static uint8_t cfg_blank_sector(uint32_t address)
+{
+  uint8_t b[64];
+  uint16_t off, i;
+  for (off = 0; off < MEMSECTORSIZE; off += sizeof(b)) {
+    w25_read_data(address + off, b, sizeof(b));
+    for (i = 0; i < sizeof(b); i++) if (b[i] != 0xFF) return 0;
+  }
+  return 1;
+}
+static uint8_t cfg_mirror(uint8_t *p)
+{
+  uint8_t b[64];
+  uint16_t off;
+  if (cfg_equal(MEM_CONFIG_LEGACY, p)) return 1;
+  /* Invalidate config before touching the second sector or the reserve. */
+  w25_erase_sector(0x1CD000u);
+  if (!cfg_blank_sector(0x1CD000u)) return 0;
+  w25_erase_sector(0x1CE000u);
+  if (!cfg_blank_sector(0x1CE000u)) return 0;
+  w25_write_data(MEM_CONFIG_LEGACY + 1024, p + 1024, 3072);
+  w25_write_data(MEM_CONFIG_LEGACY + 512, p + 512, 512);
+  /* Never publish a valid config over an incomplete device/reserve. */
+  for (off = 512; off < MEMSECTORSIZE; off += sizeof(b)) {
+    w25_read_data(MEM_CONFIG_LEGACY + off, b, sizeof(b));
+    if (memcmp(b, p + off, sizeof(b))) return 0;
+  }
+  w25_write_data(MEM_CONFIG_LEGACY, p, 512);
+  return cfg_equal(MEM_CONFIG_LEGACY, p);
+}
+static void cfg_commit(uint8_t *p)
+{
+  uint32_t generation, active;
+  /* First protect a legacy-only image, even when the first operation is a write. */
+  if (!cfg_prepare()) return;
+  active = cfg_select(&generation);
+  if (!cfg_mirror(p)) { mem_config_errors++; return; }
+  if (active != MEM_CONFIG_LEGACY && cfg_equal(active, p)) return;
+  if (!cfg_publish(p, 0, active, generation)) mem_config_errors++;
 }
 static uint8_t cfg_range(uint32_t adr, uint16_t size)
 {
@@ -88,23 +181,12 @@ static uint8_t cfg_range(uint32_t adr, uint16_t size)
 }
 static void cfg_read(uint32_t adr, uint8_t *buff, uint16_t size)
 {
-  uint32_t generation, active = cfg_select(&generation);
-  if (active == MEM_CONFIG_LEGACY) {
-    uint8_t *image = malloc(MEMSECTORSIZE);
-    if (image != NULL) {
-      uint16_t crc;
-      w25_read_data(active, image, MEMSECTORSIZE);
-      memcpy(&crc, image + 510, 2);
-      /* Migrate only an intact legacy config; preserve device and spare bytes. */
-      if (crc == crc16_calc(image, 510)) cfg_commit(image);
-      free(image);
-      active = cfg_select(&generation);
-    }
-  }
+  uint32_t generation, active;
+  /* A failed adoption still reads the intact legacy source; retry next time. */
+  if (cfg_prepare()) active = cfg_select(&generation);
+  else active = MEM_CONFIG_LEGACY;
   w25_read_data(active + adr - MEM_CONFIG_LEGACY, buff, size);
 }
-
-
 
 // Чтение данных с памяти
 void mem_read (Int32U adr, pInt8U buff, Int16U size)
