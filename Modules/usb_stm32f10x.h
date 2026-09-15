@@ -4,9 +4,11 @@
 
 #include "main.h"
 
+extern volatile uint32_t usb_tx_errors;
+extern volatile uint32_t usb_debug_dropped;
 void usb_init(void);
 void usb_datareceived (uint8_t* ptr, uint16_t len);
-void usb_send (uint8_t* ptr, uint16_t len);
+uint8_t usb_send (uint8_t* ptr, uint16_t len);
 void usb_sendstr (char* str);
 void usb_timer1ms (void);
 void usb_check_data (void);

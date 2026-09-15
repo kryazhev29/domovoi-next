@@ -36,6 +36,7 @@
 #include "usb_prop.h"
 #include "usb_pwr.h"
 #include "usb_istr.h"
+#include "hw_config.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -206,7 +207,18 @@ void USB_Istr(void)
         _SetCNTR(wCNTR);
        
         /*poll for RESET flag in ISTR*/
-        while((_GetISTR()&ISTR_RESET) == 0);
+        {
+          uint32_t budget = 32000u;
+          while ((_GetISTR() & ISTR_RESET) == 0 && budget != 0) --budget;
+          if (budget == 0) {
+            /* Fail closed; the foreground and watchdog must keep running. */
+            _SetCNTR(CNTR_FRES);
+            USB_Tx_Reset();
+            bDeviceState = UNCONNECTED;
+            esof_counter = 0;
+            return;
+          }
+        }
 
         /* clear RESET flag in ISTR */
         _SetISTR((uint16_t)CLR_RESET);
