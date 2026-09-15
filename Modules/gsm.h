@@ -88,6 +88,8 @@ typedef struct {
   };
   Int8U creg;
   Int8U cgreg;
+  Int8U regSilent; // registration polls in a row without any reply from the module
+  Int8U regSkip; // polls skipped since the last one sent while the module is silent
   pwrOp_e operation;
   Int16U timer; // таймер управления процессом вкл/выкл питания
   Int8U dataconnectionindex; // индекс подключения при приеме данных в режиме множественных подключений

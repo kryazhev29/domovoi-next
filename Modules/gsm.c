@@ -867,16 +867,35 @@ void gsm_sendsms (char *num, char *str)
 }
 
 // Запрос о состоянии регистрации в сети ---------------------------------------
+/* Every command waits up to GSMRESPTIMEOUT for a reply. A silent module used to
+ * cost two timeouts (about 1 s) on every poll, once a second, stalling the main
+ * loop for as long as the module stayed silent. Without a reply to +CREG the
+ * +CGREG query is not sent, and after two silent polls only every third poll
+ * reaches the module. Any reply restores polling on every call. */
+#define GSM_REG_SILENT_POLLS  2u
+#define GSM_REG_SILENT_EVERY  3u
 void gsm_getregstate (void)
 {
   char *p, *ps;
   uint8_t v;
+  
+  if (GSM.regSilent >= GSM_REG_SILENT_POLLS) {
+    if (++GSM.regSkip < GSM_REG_SILENT_EVERY) return;
+    GSM.regSkip = 0;
+  }
   
 #ifdef DEBUG_GSM
   gsm_debug(">>> GSM: Get reg state\r\n");
 #endif
   
   p = gsm_runcmd("AT+CREG?\r", "OK"); // Отображать информацию о регистрации
+  
+  if (p == NULL || *p == 0) { // модуль молчит: не ждать ещё и ответа на +CGREG
+    if (GSM.regSilent < 255) GSM.regSilent++;
+    return;
+  }
+  GSM.regSilent = 0;
+  GSM.regSkip = 0;
   
   if ((ps = strstr(p, "+CREG:")) != NULL){           
     if (*(ps+8) == ',')

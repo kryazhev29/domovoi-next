@@ -58,6 +58,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         reset=function(user,'user_factoryReset')
         assert reset.index('device.FWinProgress = 0;')<reset.index('user_setdefault();'),'factory reset cancels a download'
         unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ['fw_start_rejected','fw_start_accepted','fw_blocks_done','fw_resume_block','fw_resume_after_boot']))
+    elif kind=='gsmreg':
+        gsm=source('Modules/gsm.c')
+        code='\n'.join(x for x in gsm.splitlines() if x.startswith('#define GSM_REG_'))+'\n'
+        code+=function(gsm,'gsm_getregstate')
+        unit=(ROOT/'Tests/test_gsm_reg.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
