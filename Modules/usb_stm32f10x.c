@@ -48,6 +48,9 @@ extern volatile uint8_t USB_Tx_State;
 extern volatile uint32_t usb_in_armed;
 static volatile uint32_t usb_in_taken = 0;
 static uint32_t usb_last_regs[USB_REGS];
+/* ERR interrupts: no answer, CRC, bit stuffing or framing error on the bus. */
+static volatile uint32_t usb_bus_errors = 0;
+static uint32_t usb_last_bus_errors = 0;
 
 /* EP1R, EP3R, EP1 TX count, ISTR, CNTR, FNR, USB_Tx_State, IN armed, IN taken. */
 static void usb_regs_read(uint32_t *r)
@@ -71,6 +74,12 @@ void usb_in_done(void)
   usb_in_taken++;
 }
 
+/* USB IRQ: bus error. */
+void usb_bus_error_seen(void)
+{
+  usb_bus_errors++;
+}
+
 /* USB IRQ: start of frame. */
 void usb_sof_seen(void)
 {
@@ -91,6 +100,7 @@ void usb_request_recovery(void)
   usb_last_recovery[5] = usb_out_ago;
   usb_last_recovery[6] = usb_sof_ago;
   usb_regs_read(usb_last_regs); /* before FRES and detach change them */
+  usb_last_bus_errors = usb_bus_errors;
   usb_hung_armed = usb_unconf_armed = 0;
   usb_hung_ms = usb_unconf_ms = 0;
   usb_out_ago = USB_AGE_MAX;
@@ -350,5 +360,15 @@ void usb_diag_fill_regs(uint32_t *v)
   __disable_irq();
   for (i = 0; i < USB_REGS; i++) v[i] = usb_last_regs[i];
   usb_regs_read(&v[USB_REGS]);
+  __set_PRIMASK(mask);
+}
+
+/* Command 111 v3 tail: bus errors now, bus errors at the last recovery. */
+void usb_diag_fill_errors(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  v[0] = usb_bus_errors;
+  v[1] = usb_last_bus_errors;
   __set_PRIMASK(mask);
 }

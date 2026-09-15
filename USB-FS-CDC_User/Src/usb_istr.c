@@ -138,6 +138,7 @@ void USB_Istr(void)
   if (wIstr & ISTR_ERR & wInterrupt_Mask)
   {
     _SetISTR((uint16_t)CLR_ERR);
+    usb_bus_error_seen();
 #ifdef ERR_CALLBACK
     ERR_Callback();
 #endif

@@ -55,6 +55,7 @@ static void ticks(unsigned n){while(n--){usb_timer1ms();usb_check_data();}}
 static void settle(void){ticks(25);CHECK(pullup&&usb_enabled);bDeviceState=CONFIGURED;}
 static void usb_watch_test(void){uint32_t v[23];unsigned base;uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(frame+4,5);frame[9]=(uint8_t)crc;frame[10]=(uint8_t)(crc>>8);
  settle();base=usb_recovery_count;
+ usb_bus_error_seen();usb_bus_error_seen();usb_bus_error_seen();
  /* Data left for a closed port: no host write, no recovery. */
  tx_pending=1;ticks(5000);CHECK(pullup&&usb_recovery_count==base);
  /* Host writes while the answer is never taken: recover after 2 s, not before. */
@@ -63,6 +64,8 @@ static void usb_watch_test(void){uint32_t v[23];unsigned base;uint8_t frame[11]=
  /* Registers are captured before FRES: CNTR 0 then, FRES now. */
  {uint32_t r[18];usb_diag_fill_regs(r);CHECK(r[0]==1&&r[1]==3&&r[2]==18&&r[4]==0&&r[5]==FNR_RXDP&&r[6]==1&&r[7]==7&&r[8]==0);
   CHECK(r[9]==1&&r[10]==3&&r[13]==CNTR_FRES&&r[17]==0);}
+ /* Bus errors: the recovery keeps the count it saw, later errors only move the live one. */
+ {uint32_t e[2];usb_bus_error_seen();usb_diag_fill_errors(e);CHECK(e[0]==4&&e[1]==3);}
  usb_diag_fill(v);CHECK(v[4]==1&&v[6]==2&&v[7]==CONFIGURED&&v[8]==1&&v[9]==42&&v[11]==2000);
  tx_pending=0;settle();base=usb_recovery_count;
  /* Slow but moving transfer: every taken IN packet restarts the 2 s window. */
