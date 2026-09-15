@@ -36,6 +36,8 @@ device_s device;
 #pragma data_alignment=4
 uint8_t gsm_buffer[GSMBUFSIZE];
 
+static void fw_resume_after_boot(void);
+
 // буфер под прием данных от внешнего порта
 #pragma data_alignment=4
 uint8_t port_buffer[PORTBUFSIZE];
@@ -896,6 +898,7 @@ void user_loop(void)
         device.firmwarePercent = 252;
         device.FWinProgress = 0;
         device.status.readyToUpdate = 0;
+        user_saveindex();
         user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
       }
     }
@@ -906,6 +909,7 @@ void user_loop(void)
         device.FWinProgress = 0;
         device.status.readyToUpdate = 0;
         device.firmwarePercent = 249;
+        user_saveindex();
         if (device.registredOnServer)
           user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
       }
@@ -1164,6 +1168,7 @@ void user_readsavedinformation (void)
       device.firmwareCRC = DV.firmwareCRC;
       device.FWblockCount = DV.FWblockCount;
       device.firmwarePercent = DV.firmwarePercent;
+      device.FWinProgress = DV.FWinProgress;
       
       device.moduleType = DV.moduleType;
        
@@ -1171,6 +1176,7 @@ void user_readsavedinformation (void)
     }
     delay_ms(10);
   }
+  fw_resume_after_boot();
 }
 
 // Ѕезопастное завершение работы прибора
@@ -2412,6 +2418,49 @@ static void fw_blocks_done(uint8_t crc_ok)
   } else {
     device.firmwarePercent = 252;
   }
+  if (device.cchFWupdate != CH_USB) user_saveindex();
+}
+
+/* Blocks are programmed into the area erased by command 19 and never erased
+ * again: programming a block twice leaves the same bytes, programming a torn
+ * block completes it. Resume from the last block holding any programmed byte,
+ * the one that may be torn. */
+static uint16_t fw_resume_block(void)
+{
+  uint8_t b[64];
+  uint16_t block = device.FWblockCount, off, i;
+  while (block != 0) {
+    --block;
+    for (off = 0; off < 1024u; off += sizeof(b)) {
+      mem_read(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u + off, b, sizeof(b));
+      for (i = 0; i < sizeof(b); i++)
+        if (b[i] != 0xFF) return block;
+    }
+    wdt_reload();
+  }
+  return 0;
+}
+
+/* After a reset, continue a server download that was in progress (customer
+ * 15.09.2026). The staged header must still describe an update: erased magic,
+ * a firmware number of 2 or more and fields command 19 would accept. */
+static void fw_resume_after_boot(void)
+{
+  bootFWparam_s h;
+  if (!device.FWinProgress) return;
+  mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h));
+  if (h.appIdent != 0xFFFFFFFFu || h.firmwareVersion < 2 ||
+      fw_start_rejected(h.firmwareVersion, h.buildDate, h.firmwareSize, h.firmwareCRC, device.FWblockCount)) {
+    device.FWinProgress = 0;
+    user_saveindex();
+    return;
+  }
+  device.FWblockIdx = fw_resume_block();
+  device.startWaitFWtime = 0;
+  device.cchFWupdate = CH_SERVER;
+  device.updateTimeout = 3600;
+  device.status.readyToUpdate = 1;
+  device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
 }
 
 // –азбор данных
@@ -3133,7 +3182,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                   device.status.readyToUpdate = 1;
                 }
                 
-                free(data);    
+                free(data);
+                /* Resume after a reboot: the download state must survive a reset. */
+                if (cch != CH_USB) user_saveindex();
               } else{
                 user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId); 
               }
@@ -3160,9 +3211,7 @@ if (cch != CH_USB)
         log_addComandEvent(LOG_CMD_SENDUPDBLOCK, 0);
         
         // пишем в пам€ть
-        uint8_t *data = malloc(MEMSECTORSIZE);
-
-        if (data != NULL){
+        {
           #ifdef DEBUG_USER
           if (cch != CH_USB){
             sprintf(tempStrBuffer, ">>U Write FW block %d ...\r\n", device.FWblockIdx);
@@ -3172,7 +3221,9 @@ if (cch != CH_USB)
 
           uint32_t adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + ((uint32_t)device.FWblockIdx * 1024);
           
-          mem_rewrite(adr, &ptr[7], 1024, data); 
+          /* Command 19 erased the image area: program in place. mem_rewrite skipped
+           * every block crossing a 4 KiB sector (blocks 3, 7, 11, ...). */
+          mem_write(adr, &ptr[7], 1024);
           wdt_reload();
           
           device.FWblockIdx += 1;
@@ -3199,11 +3250,6 @@ if (cch != CH_USB)
             device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
           }
           user_send_statusUpdateFW(ptr[4], CMD_SUCCESS, cch, uniqId);
-
-          free(data);    
-        } else{
-          device.firmwarePercent = 255;
-          user_send_statusUpdateFW(ptr[4], CMD_RUNERROR, cch, uniqId);
         }
       } else{
         device.firmwarePercent = 255;

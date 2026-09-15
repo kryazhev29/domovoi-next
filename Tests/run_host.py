@@ -47,7 +47,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'CMD_ROLLBACKRUN, cch' in case19 and 'fw_start_accepted(cch), cch' in case19 and 'CMD_SUCCESS, cch' not in case19,'command 19 answers'
         case20=user[user.index('    case 20:'):user.index('    case 21:')]
         assert case20.count('fw_blocks_done(')==2 and 'firmwarePercent = 252' not in case20,'command 20 end of update'
-        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ['fw_start_rejected','fw_start_accepted','fw_blocks_done']))
+        # Blocks are programmed in place, the download flag survives a reset and every end of an update is saved.
+        assert 'mem_write(adr, &ptr[7], 1024)' in case20 and 'mem_rewrite(adr' not in case20 and 'malloc' not in case20,'command 20 write'
+        saved=function(user,'user_readsavedinformation')
+        assert 'device.FWinProgress = DV.FWinProgress;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
+        assert 'if (cch != CH_USB) user_saveindex();' in case19,'command 19 saves the download'
+        loop=user[user.index('    if (device.rebootToUpdate){'):user.index('    if (app_trial_expired()){')]
+        assert loop.count('user_saveindex();')==2,'loop saves boot failure and timeout'
+        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ['fw_start_rejected','fw_start_accepted','fw_blocks_done','fw_resume_block','fw_resume_after_boot']))
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
