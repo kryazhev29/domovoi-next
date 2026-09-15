@@ -76,20 +76,12 @@ void timers_user_handle(void)
 // обработка данных от usb
 void usb_data_reading(uint8_t* ptr, uint16_t len)
 {
-  uint16_t i;
-
-  for (i=0; i<(len - 4); i++) 
-   {
-    if (ptr[i] != 'S') continue;
-    i++;
-    if (ptr[i] != 'L') continue;
-    i++;
-    if (ptr[i] != 'D') continue;
-    i++;
-    if (ptr[i] != 'N') continue;
-    i++;
-    user_parse_comand(&ptr[i], CH_USB);
-   }
+  uint16_t body;
+  if (len < 11 || memcmp(ptr, "SLDN", 4)) return;
+  body = (uint16_t)ptr[4] | ((uint16_t)ptr[5] << 8);
+  if (body < 3 || body != len - 8) return;
+  /* The USB assembler hands over exactly one complete, CRC-checked frame. */
+  user_parse_comand(ptr + 4, CH_USB);
 }
 
 // обработчик событий

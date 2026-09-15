@@ -145,9 +145,11 @@ void Virtual_Com_Port_init(void)
 * Output         : None.
 * Return         : None.
 *******************************************************************************/
+extern void usb_clear_buffer(void);
 void Virtual_Com_Port_Reset(void)
 {
   USB_Tx_Reset();
+  usb_clear_buffer();
   /* Set Virtual_Com_Port DEVICE as not configured */
   pInformation->Current_Configuration = 0;
 
