@@ -42,7 +42,11 @@
 #define BULK_MAX_PACKET_SIZE  0x00000040
 
 
+#ifndef BOOTLOADER
 #define USART_RX_DATA_SIZE   2048
+#else
+#define USART_RX_DATA_SIZE   512
+#endif
 /* Exported functions ------------------------------------------------------- */
 void Set_System(void);
 void Set_USBClock(void);
@@ -53,7 +57,11 @@ void USB_Cable_Config (FunctionalState NewState);
 void USART_Config_Default(void);
 bool USART_Config(void);
 void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
+#ifndef BOOTLOADER
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
+#else
+void USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
+#endif
 void USB_Tx_Reset(void);
 uint16_t USB_Send_Debug(uint8_t *data, uint16_t count);
 uint8_t USB_Tx_Pending(void);

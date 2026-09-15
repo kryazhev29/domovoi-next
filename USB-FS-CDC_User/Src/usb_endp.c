@@ -44,11 +44,17 @@
 /* Private variables ---------------------------------------------------------*/
 uint8_t USB_Rx_Buffer[VIRTUAL_COM_PORT_DATA_SIZE];
 extern  uint8_t USART_Rx_Buffer[];
+#ifndef BOOTLOADER
 extern volatile uint32_t USART_Rx_ptr_out;
 extern volatile uint32_t USART_Rx_length;
 extern volatile uint8_t  USB_Tx_State;
 extern void usb_in_done(void);
 extern void usb_sof_seen(void);
+#else
+extern uint32_t USART_Rx_ptr_out;
+extern uint32_t USART_Rx_length;
+extern uint8_t  USB_Tx_State;
+#endif
 
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
@@ -62,11 +68,45 @@ extern void usb_sof_seen(void);
 *******************************************************************************/
 void EP1_IN_Callback (void)
 {
+#ifndef BOOTLOADER
   usb_in_done();
   if (USB_Tx_State == 1) {
     USB_Tx_State = 0;
     Handle_USBAsynchXfer();
   }
+#else
+  uint16_t USB_Tx_ptr;
+  uint16_t USB_Tx_length;
+  
+  if (USB_Tx_State == 1)
+  {
+    if (USART_Rx_length == 0) 
+    {
+      USB_Tx_State = 0;
+    }
+    else 
+    {
+      if (USART_Rx_length > VIRTUAL_COM_PORT_DATA_SIZE){
+        USB_Tx_ptr = USART_Rx_ptr_out;
+        USB_Tx_length = VIRTUAL_COM_PORT_DATA_SIZE;
+        
+        USART_Rx_ptr_out += VIRTUAL_COM_PORT_DATA_SIZE;
+        USART_Rx_length -= VIRTUAL_COM_PORT_DATA_SIZE;    
+      }
+      else 
+      {
+        USB_Tx_ptr = USART_Rx_ptr_out;
+        USB_Tx_length = USART_Rx_length;
+        
+        USART_Rx_ptr_out += USART_Rx_length;
+        USART_Rx_length = 0;
+      }
+      UserToPMABufferCopy(&USART_Rx_Buffer[USB_Tx_ptr], ENDP1_TXADDR, USB_Tx_length);
+      SetEPTxCount(ENDP1, USB_Tx_length);
+      SetEPTxValid(ENDP1); 
+    }
+  }
+#endif
 }
 
 /*******************************************************************************
@@ -103,7 +143,9 @@ void EP3_OUT_Callback(void)
 void SOF_Callback(void)
 {
   static uint32_t FrameCount = 0;
+#ifndef BOOTLOADER
   usb_sof_seen();
+#endif
   
   if(bDeviceState == CONFIGURED)
   {

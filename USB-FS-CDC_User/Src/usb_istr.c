@@ -32,12 +32,16 @@
 
 
 /* Includes ------------------------------------------------------------------*/
+#ifndef BOOTLOADER
 #include "usb_stm32f10x.h"
+#endif
 #include "usb_lib.h"
 #include "usb_prop.h"
 #include "usb_pwr.h"
 #include "usb_istr.h"
+#ifndef BOOTLOADER
 #include "hw_config.h"
+#endif
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -138,7 +142,9 @@ void USB_Istr(void)
   if (wIstr & ISTR_ERR & wInterrupt_Mask)
   {
     _SetISTR((uint16_t)CLR_ERR);
+#ifndef BOOTLOADER
     usb_bus_error_seen();
+#endif
 #ifdef ERR_CALLBACK
     ERR_Callback();
 #endif
@@ -200,7 +206,9 @@ void USB_Istr(void)
         /*Store endpoints registers status */
         for (i=0;i<8;i++) EP[i] = _GetENDPOINT(i);
       
+#ifndef BOOTLOADER
         usb_esof_forced++;
+#endif
         /*apply FRES */
         wCNTR|=CNTR_FRES;
         _SetCNTR(wCNTR);
@@ -210,6 +218,7 @@ void USB_Istr(void)
         _SetCNTR(wCNTR);
        
         /*poll for RESET flag in ISTR*/
+#ifndef BOOTLOADER
         {
           uint32_t budget = 32000u;
           while ((_GetISTR() & ISTR_RESET) == 0 && budget != 0) --budget;
@@ -223,6 +232,9 @@ void USB_Istr(void)
             return;
           }
         }
+#else
+        while((_GetISTR()&ISTR_RESET) == 0);
+#endif
 
         /* clear RESET flag in ISTR */
         _SetISTR((uint16_t)CLR_RESET);

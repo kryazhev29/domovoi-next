@@ -78,7 +78,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
         globals=hw[hw.index('uint8_t  USART_Rx_Buffer'):hw.index('static void IntToUnicode')]
-        code='\n'.join(x for x in header.splitlines() if x.startswith('#define USART_RX_DATA_SIZE'))+'\n'
+        # The first definition is the application's; the #else branch is the bootloader's.
+        code=[x for x in header.splitlines() if x.startswith('#define USART_RX_DATA_SIZE')][0]+'\n'
         if 'uint8_t USART_To_USB_Send_Data' in hw:code+='#define HOST_FIXED 1\n'
         code+=globals+'\n'
         for name in ['USB_Tx_Reset','usb_tx_space','usb_tx_enqueue','USART_To_USB_Send_Data','USB_Send_Debug','Handle_USBAsynchXfer']:

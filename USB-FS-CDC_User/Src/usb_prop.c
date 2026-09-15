@@ -145,13 +145,17 @@ void Virtual_Com_Port_init(void)
 * Output         : None.
 * Return         : None.
 *******************************************************************************/
+#ifndef BOOTLOADER
 extern void usb_clear_buffer(void);
 extern volatile uint32_t usb_bus_resets;
+#endif
 void Virtual_Com_Port_Reset(void)
 {
+#ifndef BOOTLOADER
   usb_bus_resets++;
   USB_Tx_Reset();
   usb_clear_buffer();
+#endif
   /* Set Virtual_Com_Port DEVICE as not configured */
   pInformation->Current_Configuration = 0;
 
