@@ -19,6 +19,7 @@ void usb_bus_error_seen(void);
 void usb_diag_fill(uint32_t *v);
 void usb_diag_fill_regs(uint32_t *v);
 void usb_diag_fill_errors(uint32_t *v);
+void usb_diag_fill_addr(uint32_t *v);
 void usb_init(void);
 void usb_datareceived (uint8_t* ptr, uint16_t len);
 uint8_t usb_send (uint8_t* ptr, uint16_t len);

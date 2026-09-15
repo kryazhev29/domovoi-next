@@ -51,6 +51,9 @@ static uint32_t usb_last_regs[USB_REGS];
 /* ERR interrupts: no answer, CRC, bit stuffing or framing error on the bus. */
 static volatile uint32_t usb_bus_errors = 0;
 static uint32_t usb_last_bus_errors = 0;
+/* Device address register and EP0R: a device that lost its address still sees
+ * SOF (broadcast) but no IN token addressed to it. */
+static uint32_t usb_last_addr[2];
 
 /* EP1R, EP3R, EP1 TX count, ISTR, CNTR, FNR, USB_Tx_State, IN armed, IN taken. */
 static void usb_regs_read(uint32_t *r)
@@ -101,6 +104,8 @@ void usb_request_recovery(void)
   usb_last_recovery[6] = usb_sof_ago;
   usb_regs_read(usb_last_regs); /* before FRES and detach change them */
   usb_last_bus_errors = usb_bus_errors;
+  usb_last_addr[0] = _GetDADDR();
+  usb_last_addr[1] = _GetENDPOINT(ENDP0);
   usb_hung_armed = usb_unconf_armed = 0;
   usb_hung_ms = usb_unconf_ms = 0;
   usb_out_ago = USB_AGE_MAX;
@@ -370,5 +375,17 @@ void usb_diag_fill_errors(uint32_t *v)
   __disable_irq();
   v[0] = usb_bus_errors;
   v[1] = usb_last_bus_errors;
+  __set_PRIMASK(mask);
+}
+
+/* Command 111 v4 tail: DADDR and EP0R at the last recovery, then now. */
+void usb_diag_fill_addr(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  v[0] = usb_last_addr[0];
+  v[1] = usb_last_addr[1];
+  v[2] = _GetDADDR();
+  v[3] = _GetENDPOINT(ENDP0);
   __set_PRIMASK(mask);
 }

@@ -17,8 +17,11 @@
 #define __IO volatile
 static unsigned mask,pullup=1,init_count,cntr,reset_poll,reset_after,delivered,tx_reset,ep_restore;
 static unsigned cable=1,tx_pending;
+#define ENDP0 0
 #define ENDP1 1
 #define ENDP3 3
+static unsigned daddr=0x85;
+#define _GetDADDR() daddr
 #define _GetEPTxCount(i) (17u+(i))
 volatile uint8_t USB_Tx_State=1;volatile uint32_t usb_in_armed=7;
 uint8_t USB_Tx_Pending(void){return tx_pending!=0;}
@@ -66,6 +69,8 @@ static void usb_watch_test(void){uint32_t v[23];unsigned base;uint8_t frame[11]=
   CHECK(r[9]==1&&r[10]==3&&r[13]==CNTR_FRES&&r[17]==0);}
  /* Bus errors: the recovery keeps the count it saw, later errors only move the live one. */
  {uint32_t e[2];usb_bus_error_seen();usb_diag_fill_errors(e);CHECK(e[0]==4&&e[1]==3);}
+ /* Address captured by the recovery, the live value read now. */
+ {uint32_t a[4];daddr=0;usb_diag_fill_addr(a);CHECK(a[0]==0x85&&a[1]==0&&a[2]==0&&a[3]==0);daddr=0x85;}
  usb_diag_fill(v);CHECK(v[4]==1&&v[6]==2&&v[7]==CONFIGURED&&v[8]==1&&v[9]==42&&v[11]==2000);
  tx_pending=0;settle();base=usb_recovery_count;
  /* Slow but moving transfer: every taken IN packet restarts the 2 s window. */

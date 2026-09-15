@@ -4480,7 +4480,7 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
   return crc;
 }
 
-/* Command 111, layout version 3: 53 little-endian uint32 values.
+/* Command 111, layout version 4: 57 little-endian uint32 values.
  *  0 version, 1 worktime s, 2 milliseconds,
  *  3 ESOF forced resets, 4 ESOF reset timeouts, 5 bus resets,
  *  6 USB recoveries, 7 watch: IN not taken, 8 watch: OUT while unconfigured,
@@ -4491,15 +4491,16 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
  *  29 GSM power-on events, 30 GSM no-answer events, 31 4 KiB heap failures, 32 fault record present,
  *  33..41 at the last recovery, 42..50 now: EP1R, EP3R, EP1 TX count, ISTR, CNTR, FNR,
  *  USB_Tx_State, IN packets armed, IN packets taken,
- *  51 USB bus errors (ERR interrupts) now, 52 bus errors at the last recovery.
+ *  51 USB bus errors (ERR interrupts) now, 52 bus errors at the last recovery,
+ *  53 DADDR and 54 EP0R at the last recovery, 55 DADDR and 56 EP0R now.
  */
 static void user_send_usbDiag(uint8_t uniqId)
 {
-  uint32_t v[53];
+  uint32_t v[57];
   uint8_t send_buffer[8 + 3 + sizeof(v)];
   uint16_t len = 3 + sizeof(v), crc;
 
-  v[0] = 3;
+  v[0] = 4;
   v[1] = device.worktime;
   v[2] = timers_getMillis();
   usb_diag_fill(&v[3]);
@@ -4512,6 +4513,7 @@ static void user_send_usbDiag(uint8_t uniqId)
   v[32] = fault_record[0] == FAULT_RECORD_MAGIC;
   usb_diag_fill_regs(&v[33]);
   usb_diag_fill_errors(&v[51]);
+  usb_diag_fill_addr(&v[53]);
 
   send_buffer[0] = 'S';
   send_buffer[1] = 'L';
