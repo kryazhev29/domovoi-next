@@ -85,6 +85,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert c8.index('server_out_event = cmd8_event(ptr[5]);')<c8.index('user_activateOut((ptr[6] != 0)'),'command 8 source'
         assert 'log_addControlEvent(LOG_CON_OUTONBYTEST, tempStrBuffer, 0, 255);' in c8,'admin test logged'
         assert 'log_addControlEvent(server_out_event, id, 0, cnt);' in function(user,'user_activateOut'),'server event from its source'
+        # Journal upload: the empty answer is 3 bytes (0 left, 0 in packet), sent before the erase; used sectors only.
+        up=function(user,'user_send_logRecords')
+        assert up.count('user_send_anyData(10, empty, sizeof(empty), cch, uniqId);')==2 and 'uint8_t empty[3] = {0, 0, 0};' in up and 'tmp16' not in up,'empty journal answer'
+        assert up.index('user_send_anyData(10, empty')<up.index('log_clearLogBuffer();'),'answer before the erase'
+        clr=function(user,'log_clearLogBuffer')
+        assert 'endAdr = device.newAddressLog;' in clr and 'mem[MB_LOG].start & ~(uint32_t)4095' in clr,'used sectors only'
         code='\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='access':

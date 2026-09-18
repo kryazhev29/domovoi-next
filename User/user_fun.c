@@ -2138,10 +2138,14 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
   // читаем кол-во записей в памяти
   device.logsCount = log_getRecordsCount();
 
+  /* Пустой ответ по таблице (пакет 10): осталось записей 0 (2 байта) и записей
+     в пакете 0 (1 байт). Двухбайтовый ответ с остатком не 0 сервер принимал, но
+     не закрывал выгрузку журнала и переставал отвечать на статус (18.09.2026). */
+  uint8_t empty[3] = {0, 0, 0};
+
   // записей нет
   if (device.logsCount == 0){
-    uint16_t tmp16 = device.logsCount;
-    user_send_anyData(10, (uint8_t*)&tmp16, 2, cch, uniqId);
+    user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
     device.status.readyLogData = 0;
     device.readLogIDIndex = 0;
     return;
@@ -2149,11 +2153,10 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
   
   uint32_t readAdr = mem[MB_LOG].start + ((uint32_t)device.readLogIDIndex * sizeof(cellLog_s));
   
-  // подтверждение приема - выгрузили все
+  // подтверждение приема - выгрузили все: сначала ответ, потом стирание
   if (readAdr >= device.newAddressLog){
-    uint16_t tmp16 = device.logsCount;
+    user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
     log_clearLogBuffer();
-    user_send_anyData(10, (uint8_t*)&tmp16, 2, cch, uniqId);
     return;
   }
 
@@ -2970,10 +2973,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-      if (ptr[5] != 0){
+      if (ptr[5] != 0 && (len - 3) >= 3){
         //ptr[5] - источник события, от него зависит номер события в журнале (E184)
         //ptr[8] - ID абонента для передачи контроллеру информации для какого ID нужно сделать декримент счетчика проходов в сутки.
-        strncpy(tempStrBuffer, (char*)&ptr[8], 10);
+        /* ID абонента есть только в полном пакете (13 байт); в коротком ID пустой,
+           за концом пакета ничего не читается. */
+        memset(tempStrBuffer, 0, 11);
+        if ((len - 3) >= 13) strncpy(tempStrBuffer, (char*)&ptr[8], 10);
         if (ptr[5] != 3){
           /* Запрошенные выходы (ptr[6], ptr[7]), которые настройки реле разрешают включать
              командой сервера (onCmdServer). */
@@ -4351,9 +4357,14 @@ void log_clearLogBuffer(void){
 
   uint32_t adr;
   uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
-  
+
+  /* Стираются только сектора с записями: весь буфер - 24 сектора и около
+     секунды простоя главного цикла, а выгрузка журнала идёт часто. Сектора
+     считаются от выровненного начала, чтобы не пропустить сектор на стыке. */
+  if (device.newAddressLog > mem[MB_LOG].start && device.newAddressLog < endAdr)
+    endAdr = device.newAddressLog;
   // по секторно стираем
-  for (adr = mem[MB_LOG].start; adr < endAdr; adr += 4096){
+  for (adr = mem[MB_LOG].start & ~(uint32_t)4095; adr < endAdr; adr += 4096){
     mem_erase_sector(adr);
     wdt_reload();
   }
