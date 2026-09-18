@@ -157,7 +157,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert loop.index('status_event_due(st, timers_getMillis())')>loop.index('device.status.stateOut2 = out_getstate(OUT2);'),'status out of turn after inputs and outputs are read'
         case=cases(user)
         assert 'status_event_sent(st, timers_getMillis());' in case(1),'registration does not trigger an extra status'
-        c8=case(8);head=c8[:c8.index('if (ptr[5] != 0)')]
+        c8=case(8);head=c8[:c8.index('if (ptr[5] != 0 &&')]
         assert 'if (fw_update_quiet()){' in head and 'CMD_RUNERROR' in head,'command 8 refused in update mode'
         sms=function(user,'user_smsreceived')
         gate=sms[sms.index('if (fw_update_quiet()'):sms.index('if (strcmp(v, "add") == 0){')]

@@ -2452,27 +2452,6 @@ void user_send_Photos(dataChanel_e cch, uint8_t uniqId){
   }*/
 }
 
-/* Статус 1 вне очереди (таблица E92, A57, A58): входы, выходы и триггеры (биты 0-7) и
- * готовность к обновлению (бит 11). Биты 12-15 следуют за журналом и выгрузками и идут по
- * расписанию раз в 15 с. Входы читаются без антидребезга, поэтому внеочередные статусы - не
- * чаще раза в секунду. */
-#define STATUS_EVENT_MASK       0x08FFu
-#define STATUS_EVENT_GAP_MS     1000u
-static uint16_t status_reported;
-static uint32_t status_reported_ms;
-
-static uint8_t status_event_due(uint16_t status, uint32_t now_ms)
-{
-  return ((status ^ status_reported) & STATUS_EVENT_MASK) != 0 &&
-         (uint32_t)(now_ms - status_reported_ms) >= STATUS_EVENT_GAP_MS;
-}
-
-static void status_event_sent(uint16_t status, uint32_t now_ms)
-{
-  status_reported = status;
-  status_reported_ms = now_ms;
-}
-
 /* >>> время действия ID
  * Протокол2, строка 284: через useTime минут после первого прохода ID помечается на удаление -
  * больше не открывает. Время первого прохода контроллер хранит в первых 4 байтах резерва записи
@@ -2496,6 +2475,27 @@ static bool id_expired(cellID_s *c){
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
   return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;
+}
+
+/* Статус 1 вне очереди (таблица E92, A57, A58): входы, выходы и триггеры (биты 0-7) и
+ * готовность к обновлению (бит 11). Биты 12-15 следуют за журналом и выгрузками и идут по
+ * расписанию раз в 15 с. Входы читаются без антидребезга, поэтому внеочередные статусы - не
+ * чаще раза в секунду. */
+#define STATUS_EVENT_MASK       0x08FFu
+#define STATUS_EVENT_GAP_MS     1000u
+static uint16_t status_reported;
+static uint32_t status_reported_ms;
+
+static uint8_t status_event_due(uint16_t status, uint32_t now_ms)
+{
+  return ((status ^ status_reported) & STATUS_EVENT_MASK) != 0 &&
+         (uint32_t)(now_ms - status_reported_ms) >= STATUS_EVENT_GAP_MS;
+}
+
+static void status_event_sent(uint16_t status, uint32_t now_ms)
+{
+  status_reported = status;
+  status_reported_ms = now_ms;
 }
 
 /* Режим обновления, бит 11 статуса 1 (Протокол2 E440): команда 8 и управляющие SMS отвергаются.
