@@ -208,8 +208,12 @@ void usergsm_event(gsmevent_e ev)
     break;
     
   case E_MODULETYPE:
-    device.moduleType = gsm_getModuleType();
-    user_saveindex();
+    /* The modem reports its type at every power-on, and it restarts every
+       half minute without a network: save only a change. */
+    if (device.moduleType != gsm_getModuleType()){
+      device.moduleType = gsm_getModuleType();
+      user_saveindex();
+    }
     break;
     
   default:
@@ -1237,23 +1241,13 @@ void user_savereset (void)
 }
 
 // Сохранение указателей чтения/записи в памяти
+/* The settings go into the sector from RAM, where they were checked at start,
+ * not from a read of the sector: a read spoilt at a supply dip (modem
+ * power-on) was published into a slot with a valid slot CRC, and the next
+ * start found a bad settings CRC and wrote the factory defaults (18.09.2026). */
 void user_saveindex (void)
 {
-  uint8_t *ptr = malloc(MEMSECTORSIZE);
-  if (ptr == NULL) diag_heap_fail++;
-  
-  if (ptr != NULL){
-#ifdef DEBUG_USER
-  user_debug(">>U Save index ...\r\n"); 
-#endif    
-    wdt_reload();
-    // считаем контрольную сумму
-    device.crc = crc16_calc((pInt8U)&device, sizeof(device)-2);
-    mem_rewrite(mem[MB_CONFIG].start + sizeof(config), (pInt8U)&device, sizeof(device), ptr);
-    wdt_reload();
-    
-    free(ptr);    
-  }
+  user_writeConfigAndDevice();
 } 
 
 // запись конфигурации и параметров device в память

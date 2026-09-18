@@ -113,6 +113,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         c24=user[user.index('    case 24:'):user.index('    case 27:')]
         assert '#define MAXSTATUSANSWERERROR    (uint8_t)3' in user and '++device.lmCount >= MAXSTATUSANSWERERROR' in user,'three misses'
         assert 'device.lmCount = 0;' in c24 and 'switch (ptr[5])' not in c24,'answer 24'
+        # Settings sector: device saves take the settings from RAM; the modem type is saved on a change only.
+        assert 'user_writeConfigAndDevice();' in function(user,'user_saveindex') and 'mem_rewrite' not in function(user,'user_saveindex'),'saveindex from RAM'
+        assert 'if (device.moduleType != gsm_getModuleType()){' in function(user,'usergsm_event'),'module type on change'
         types=typedefs(st,'logControl_e','codeType_e','releMode_s','cellShedule_s','cellID_s')
         code=re.search(r'(?m)^static uint16_t id_cells_end;',user).group(0)+'\n'
         code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_activateOut'])
