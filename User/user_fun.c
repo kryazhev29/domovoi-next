@@ -1110,8 +1110,8 @@ void user_setdefault (void)
   memset((pInt8U)&config, 0, sizeof(config));
 
   config.pinCode = 0x31323334;
-  strcpy(config.server1, "93.189.229.197:15010");
-  strcpy(config.server2, "93.189.229.197:15020");
+  strcpy(config.server1, "gate.gsmgate.ru:15010");
+  strcpy(config.server2, "gate.gsmgate.ru:15020");
   strcpy(config.countryCode, "+7");
   strcpy(config.netOperator, "internet,gdata,gdata");
   config.netType = 0; // автоматически: плата с модемом 4G
