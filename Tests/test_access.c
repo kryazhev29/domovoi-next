@@ -93,6 +93,14 @@ int main(void)
   clear_outs(); server_out_event = LOG_CON_OUTONBYAPP; user_activateOut(false, true, CT_SERVER, "0000000000");
   CHECK(loads[1] == 1 && nlogs == 1 && log_num == LOG_CON_OUTONBYAPP && log_cnt == 255);
 
+  /* Command 8 without an ID (short packet): a base cell whose ID is all zeros must not match it -
+     neither block the command by its empty counter nor lose a pass. */
+  { static const char none[10] = {0}; put(9, none, 5, 0); user_getNumbersCount();
+    clear_outs(); user_activateOut(true, false, CT_SERVER, (char*)none);
+    CHECK(loads[0] == 1 && nlogs == 1 && log_cnt == 255 && left_of(9) == 0);
+    put(9, none, 5, 3); user_getNumbersCount(); clear_outs(); user_activateOut(true, false, CT_SERVER, (char*)none);
+    CHECK(loads[0] == 1 && left_of(9) == 3); }
+
   puts("PASS access: schedule window by minutes, ID base with holes, requested relays only, one counter step and one record per pass");
   return 0;
 }
