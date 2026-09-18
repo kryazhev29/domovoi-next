@@ -6,7 +6,7 @@
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 /* TYPES */
 enum {MB_ID = 0};
-enum {OUT_IMP = 1, OUT_INV = 2};
+enum {OUT_IMP = 1, OUT_INV = 2, OUT_ON = 3};
 static struct {uint32_t start, size;} mem[1] = {{0, 4096}};   /* 128 cells */
 static uint8_t flash[4096];
 static struct {releMode_s rele[2];} config;
@@ -107,6 +107,22 @@ int main(void)
   clear_outs(); CHECK(!user_activateOut(false, false, CT_SERVER, "7900000007"));
   put(7, "7900000007", 5, 0);
   clear_outs(); CHECK(!user_activateOut(true, true, CT_PHONE, "7900000007") && !loads[0]);
+  /* Use time (Protokol2 row 284): the first pass starts it, only with the server time. */
+  { cellID_s c; memset(flash, 0xff, sizeof(flash)); put(7, "7900000007", 255, 255);
+    ((cellID_s*)flash)[6].useTime = 2; memset(((cellID_s*)flash)[6].reserve, 0, 10); user_getNumbersCount();
+    device.datetime = 1000; clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007"));
+    CHECK(user_findID("7900000007", &c) && id_first_pass(&c) == 0);
+    device.datetime = 1789700000u; clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007"));
+    CHECK(user_findID("7900000007", &c) && id_first_pass(&c) == 1789700000u && !id_expired(&c));
+    device.datetime = 1789700100u; clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007"));
+    CHECK(user_findID("7900000007", &c) && id_first_pass(&c) == 1789700000u && !id_expired(&c));
+    device.datetime = 1789700119u; CHECK(!id_expired(&c));
+    device.datetime = 1789700120u; CHECK(id_expired(&c));
+    c.useTime = 0; CHECK(!id_expired(&c)); }
+  /* Level relay: an ID pass toggles it, server command 8 switches it on (Protokol2 row 186). */
+  put(7, "7900000007", 255, 255); user_getNumbersCount();
+  clear_outs(); CHECK(user_activateOut(false, true, CT_SERVER, "7900000007") && load_mode[1] == OUT_ON);
+  clear_outs(); CHECK(user_activateOut(false, true, CT_PHONE, "7900000007") && load_mode[1] == OUT_INV);
 
   puts("PASS access: schedule window by minutes, ID base with holes, requested relays only, one counter step and one record per pass");
   return 0;

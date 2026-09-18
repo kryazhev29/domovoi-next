@@ -45,7 +45,7 @@ static const struct { int value, sheet; const char *name; } table[] = {
   {LOG_CON_OUTONBYAVTO, 48, "output by plate"}, {LOG_CON_OUTONBYTEST, 49, "server command: admin test"},
   {LOG_CON_OUTONBYAPI, 50, "server command: API"}, {LOG_CON_OUTONBYVOICE, 51, "server command: voice assistant"},
   {LOG_CON_OUTONBYAPP, 52, "server command: mobile app"}, {LOG_CON_RECVIDONREADER, 53, "ID from reader"},
-  {LOG_CON_PHOTOFIX, 54, "photo"},
+  {LOG_CON_PHOTOFIX, 54, "photo"}, {LOG_CON_IDEXPIRED, 55, "ID use time expired"},
 };
 
 int main(void)

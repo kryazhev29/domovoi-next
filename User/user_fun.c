@@ -17,6 +17,10 @@
 #define STATUSTIMERINTERVAL     (uint8_t)15 // интервал отправки статуса
 #define MAXSTATUSANSWERERROR    (uint8_t)3 // пропущенных подряд ответов на статус до переподключения (лист «Проверка связи контроллером»: один пропуск - ничего не делать)
 #define PROTOCOL_VERSION        (uint8_t)1 // версия протокола в регистрации (Протокол2 E424)
+/* Ответ сервера на регистрацию (Протокол2, строка 135): 4 - такого IMEI нет в системе,
+   5 - не привязан ни к одному объекту; в обоих случаях контроллер делает заводской сброс. */
+#define REG_UNKNOWN_IMEI        4
+#define REG_NOT_BOUND           5
 
 // команда 7 запрос фото
 // если getPhoto не равно нулю то сделать фото
@@ -1188,7 +1192,7 @@ void user_readsavedinformation (void)
     if (DV.crc == crc16_calc((pInt8U)&DV, sizeof(DV)-2)){ // контрольная сумма совпала
       strcpy(device.IMEIGSM, DV.IMEIGSM); // восстанавливаем IMEI GSM
 
-      device.protocolVersion = DV.protocolVersion;
+      device.protocolVersion = PROTOCOL_VERSION; // всегда версия из таблицы (строка 426), не сохранённая
       device.hardwareVersion = DV.hardwareVersion;
       device.firmwareVersion = DV.firmwareVersion;
       device.bootVersion = DV.bootVersion;
@@ -2469,6 +2473,25 @@ static void status_event_sent(uint16_t status, uint32_t now_ms)
   status_reported_ms = now_ms;
 }
 
+/* >>> время действия ID
+ * Протокол2, строка 284: через useTime минут после первого прохода ID помечается на удаление -
+ * больше не открывает. Время первого прохода контроллер хранит в первых 4 байтах резерва записи
+ * ID (сервер шлёт там нули) и отсчитывает только по времени сервера (18.09.2026). */
+#define ID_TIME_VALID 1600000000u // раньше этого времени часы ещё не получены от сервера
+static uint32_t id_first_pass(cellID_s *c){
+  uint32_t t;
+  memcpy(&t, c->reserve, 4);
+  return (t == 0xffffffff || t < ID_TIME_VALID) ? 0 : t;
+}
+static void id_set_first_pass(cellID_s *c, uint32_t t){
+  memcpy(c->reserve, &t, 4);
+}
+static bool id_expired(cellID_s *c){
+  uint32_t first = id_first_pass(c);
+  return c->useTime != 0 && first != 0 && device.datetime >= first + (uint32_t)c->useTime * 60u;
+}
+/* <<< время действия ID */
+
 /* USB без верного ПИНа: только опознание, статус, проверка ПИНа и диагностика USB. */
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
@@ -2854,8 +2877,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         connection_reopen(device.connectionhandle);
         break;
         
-      case CMD_UNDEFIMEI:
-      case CMD_UNDEFOBJECT:
+      case REG_UNKNOWN_IMEI:
+      case REG_NOT_BOUND:
         // пробная прошивка могла сама прочитать IMEI неверно: не подтверждаем и базу не стираем,
         // при повторении откат по таймауту вернёт прежнюю прошивку
         if (!app_trial_active())
@@ -2886,7 +2909,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         delay_ms(1000);
         user_savereset();
       } else{
-        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // кода 5 в ответе 11 нет (строка 537)
         device.timeToReset = ptr[5];
       }
       break;
@@ -2899,7 +2922,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_factoryReset();
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
       } else{
-        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // кода 5 в ответе 11 нет (строка 537)
         device.timeToDefault = ptr[5];
       }
       break;      
@@ -3008,20 +3031,22 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
            за концом пакета ничего не читается. */
         memset(tempStrBuffer, 0, 11);
         if ((len - 3) >= 13) strncpy(tempStrBuffer, (char*)&ptr[8], 10);
-        if (ptr[5] != 3){
-          /* Запрошенные выходы (ptr[6], ptr[7]), которые настройки реле разрешают включать
-             командой сервера (onCmdServer). */
+        if (ptr[6] > 1 || ptr[7] > 1){
+          res8 = CMD_PARAMERROR;
+        } else{
+          /* Протокол2, строки 185-188: 1 - включить, 0 - выключить; источник задаёт только номер
+             события в журнале (тест из админки - тоже). Управляются только выходы, которым
+             настройки реле разрешают команды сервера (onCmdServer); включение - по режиму реле
+             и счётчику проходов ID. */
           server_out_event = cmd8_event(ptr[5]);
+          if (ptr[6] == 0 && config.rele[0].onCmdServer) out_load(OUT1, OUT_OFF, 0, 0, 0);
+          if (ptr[7] == 0 && config.rele[1].onCmdServer) out_load(OUT2, OUT_OFF, 0, 0, 0);
           /* Запрошенный выход не включился (не разрешён, занят, кончились проходы) - ответ 2,
              а не «выполнено»: сервер должен знать, что дверь не открылась (18.09.2026). */
-          if (!user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,
-                           (ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer)
-              && (ptr[6] != 0 || ptr[7] != 0))
+          if ((ptr[6] == 1 || ptr[7] == 1) &&
+              !user_activateOut((ptr[6] == 1) && config.rele[0].onCmdServer,
+                           (ptr[7] == 1) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer))
             res8 = CMD_RUNERROR;
-        } else{
-          out_load (OUT1, (ptr[6] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
-          out_load (OUT2, (ptr[7] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
-          log_addControlEvent(LOG_CON_OUTONBYTEST, tempStrBuffer, 0, 255);
         }
         user_send_answer_comand(ptr[4], res8, cch, uniqId);
       }
@@ -3150,7 +3175,17 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           }
           // копируем ячейку
           cellNum = mem[MB_ID].start + (cellNum*sizeof(cellID_s)) - newSector;
-          memcpy(membfr + cellNum, &ptr[(i*sizeof(cellID_s)) + 10], sizeof(cellID_s));
+          {
+            /* Время первого прохода ведёт контроллер: синхронизация той же карточки его не
+               сбрасывает - сервер рассылает карточку после каждого прохода (счётчик), и
+               время действия иначе начиналось бы заново. */
+            cellID_s *old = (cellID_s*)(membfr + cellNum);
+            uint8_t first[4];
+            bool keep = (old->index != 0xffff) && (memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0);
+            memcpy(first, old->reserve, 4);
+            memcpy(membfr + cellNum, &ptr[(i*sizeof(cellID_s)) + 10], sizeof(cellID_s));
+            if (keep) memcpy(old->reserve, first, 4);
+          }
           cnt++;
         }
         
@@ -3898,6 +3933,14 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #endif         
         return;
       }
+      // время действия истекло (строка 284): не открываем, в журнал событие 55
+      if (id_expired(&cellId)){
+#ifdef DEBUG_USER
+    user_debug(">>U Check ID: Use time expired\r\n");
+#endif
+        log_addControlEvent(LOG_CON_IDEXPIRED, id, 0, 255);
+        return;
+      }
             
       cellGroup_s group;
           
@@ -4042,6 +4085,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 /* Один проход ID открывает запрошенные выходы по их настройкам. Реле для разблокировки и уже
  * работающие пропускаются; счётчик проходов уменьшается и в журнал пишется одна запись на
  * проход, а не на каждое реле (Д-07). */
+
 /* Возвращает true, если включён хотя бы один выход. */
 bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 
@@ -4065,18 +4109,25 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
      по настройкам реле: пустой ID совпадал с ячейкой базы, где ID из нулей, и по её счётчику
      команда молча не выполнялась или списывала проходы чужому абоненту (18.09.2026). */
   if (id != NULL && id[0] != 0 && user_findID(id, &cellId)){
+    bool save = false;
     // задано кол-во проходов
     if (cellId.cntPassOnDay != 255){
       // есть проходы
       if (cellId.cntPass != 0){
         cellId.cntPass -= 1;
         cnt = cellId.cntPass;
-        user_updateID(&cellId);
+        save = true;
       }
       else{
         return false;
       }
     }
+    // первый проход ID со временем действия - начало отсчёта
+    if (cellId.useTime != 0 && id_first_pass(&cellId) == 0 && device.datetime >= ID_TIME_VALID){
+      id_set_first_pass(&cellId, device.datetime);
+      save = true;
+    }
+    if (save) user_updateID(&cellId);
   }
 
   switch (tp){
@@ -4111,8 +4162,8 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
     if (config.rele[out].mode == 0){
       out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
     } else{
-      // уровень
-      out_load(out, OUT_INV, 0, 0, 0);
+      // уровень: проход ID переключает выход, команда сервера 8 включает (строка 186)
+      out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
     }
   }
   return true;

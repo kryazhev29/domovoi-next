@@ -82,7 +82,8 @@ typedef enum{
   LOG_CON_OUTONBYVOICE,   // 51 команда 8: голосовой помощник
   LOG_CON_OUTONBYAPP,     // 52 команда 8: мобильное приложение
   LOG_CON_RECVIDONREADER, // 53 получен ID со считывателя
-  LOG_CON_PHOTOFIX        // 54 фотофиксация
+  LOG_CON_PHOTOFIX,       // 54 фотофиксация
+  LOG_CON_IDEXPIRED       // 55 истекло время действия ID (Протокол2, строка 284)
 }logControl_e;
 
 // Командные и обменные события контроллер в журнал не пишет: их ведёт сервер

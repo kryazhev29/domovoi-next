@@ -82,8 +82,16 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'log_addComandEvent' not in user and 'log_addTransferEvent' not in user and 'LOG_CMD_' not in st and 'LOG_TR_' not in st and 'LT_SYSTEM' not in st,'command and exchange events'
         # Command 8: the source picks the event before the outputs; the admin test is logged too.
         c8=case(8)
-        assert c8.index('server_out_event = cmd8_event(ptr[5]);')<c8.index('user_activateOut((ptr[6] != 0)'),'command 8 source'
-        assert 'log_addControlEvent(LOG_CON_OUTONBYTEST, tempStrBuffer, 0, 255);' in c8,'admin test logged'
+        assert c8.index('server_out_event = cmd8_event(ptr[5]);')<c8.index('user_activateOut((ptr[6] == 1)'),'command 8 source'
+        # The source only picks the journal event: the admin test goes the same way as any source.
+        assert 'LOG_CON_OUTONBYTEST' not in c8 and 'case 3: return LOG_CON_OUTONBYTEST;' in user,'admin test logged'
+        # Protokol2 row 135: registration answers 4 and 5 reset to factory settings; row 537: no code 5 in answer 11.
+        assert '#define REG_UNKNOWN_IMEI        4' in user and '#define REG_NOT_BOUND           5' in user and 'case REG_UNKNOWN_IMEI:' in case(1) and 'case REG_NOT_BOUND:' in case(1) and 'CMD_UNDEFIMEI' not in case(1),'registration answers'
+        assert function(user,'user_parse_comand').count('CMD_RUNNING')==1 and 'CMD_RUNNING' not in case(2),'no code 5 for delayed reset'
+        assert 'device.protocolVersion = DV.protocolVersion;' not in user,'protocol version is constant'
+        # Protokol2 row 284: an expired ID does not open and logs 55; a sync of the same card keeps the first pass.
+        assert 'if (id_expired(&cellId)){' in user and 'log_addControlEvent(LOG_CON_IDEXPIRED, id, 0, 255);' in user,'use time expired'
+        assert 'if (keep) memcpy(old->reserve, first, 4);' in case(13) and 'memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0' in case(13),'use time kept on sync'
         assert 'log_addControlEvent(server_out_event, id, 0, cnt);' in function(user,'user_activateOut'),'server event from its source'
         # Journal upload: the empty answer is 3 bytes (0 left, 0 in packet), sent before the erase; used sectors only.
         up=function(user,'user_send_logRecords')
@@ -112,7 +120,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert check.index('bool onOut[2]')<check.index('if (user_findTempID(id)){'),'relay permissions first'
         assert 'user_activateOut(0,' not in user and 'user_activateOut(1,' not in user and check.count('user_activateOut(onOut[0], onOut[1], tp, id);')==5 and check.count('user_activateOut(')==5,'requested relays only'
         c8=case(8)
-        assert 'user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,' in c8 and '(ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer)' in c8,'command 8 outputs'
+        assert 'user_activateOut((ptr[6] == 1) && config.rele[0].onCmdServer,' in c8 and '(ptr[7] == 1) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer))' in c8,'command 8 outputs'
+        # Protokol2 rows 185-188: 0 switches an allowed output off; values above 1 are a parameter error.
+        assert 'if (ptr[6] == 0 && config.rele[0].onCmdServer) out_load(OUT1, OUT_OFF, 0, 0, 0);' in c8 and 'if (ptr[7] == 0 && config.rele[1].onCmdServer) out_load(OUT2, OUT_OFF, 0, 0, 0);' in c8 and 'res8 = CMD_PARAMERROR;' in c8,'command 8 off'
         # Schedule time (Д-09) in both places.
         assert 'flag = shedule_time_ok(&shedule);' in check and 'flag = shedule_time_ok(&shedule);' in function(user,'user_checkShedule') and 'device.minute >= shedule.startMinute' not in user,'schedule window'
         # ID base end (Д-11): recounted at start, after a sync and after clearing.
@@ -135,6 +145,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'if (device.moduleType != gsm_getModuleType()){' in function(user,'usergsm_event'),'module type on change'
         types=typedefs(st,'logControl_e','codeType_e','releMode_s','cellShedule_s','cellID_s')
         code=re.search(r'(?m)^static uint16_t id_cells_end;',user).group(0)+'\n'
+        code+=user[user.index('/* >>> время действия ID'):user.index('/* <<< время действия ID */')]
         code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_activateOut'])
         unit=(ROOT/'Tests/test_access.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='rules':
