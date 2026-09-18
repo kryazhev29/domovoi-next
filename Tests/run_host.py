@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         # Call sites: commands 19 and 20 go through the tested functions, command 4 carries their code.
         c19=case(19);c20=case(20)
         assert '(len - 3) == 16' in c19 and 'user_send_answer_comand(ptr[4], fw_start(&ptr[5], cch), cch, uniqId);' in c19,'command 19'
-        assert 'fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);' in c20 and 'if (code != FW_BLOCK_SKIP)' in c20 and 'user_send_statusUpdateFW(ptr[4], code, cch, uniqId);' in c20,'command 20'
+        assert 'fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);' in c20 and 'FW_BLOCK_SKIP' not in user and 'user_send_statusUpdateFW(ptr[4], code, cch, uniqId);' in c20,'command 20'
         # Command 2: a download is cancelled before the reset, a rollback or install is left alone.
         c2=case(2)
         assert c2.index('if (device.rebootToUpdate){')<c2.index('fw_abort("CANCEL");')<c2.index('user_savereset();'),'command 2 during an update'

@@ -111,16 +111,16 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
   CHECK(device.firmwarePercent==(k+1u)*100u/blocks);CHECK((k+1u<blocks)==(device.FWinProgress!=0));}
  CHECK(device.rebootToUpdate&&!device.status.readyToUpdate&&!device.updateTimeout&&device.firmwarePercent==100);
  CHECK(!memcmp(flash+0x200,image,(uint32_t)blocks*1024u));
- /* After the end a late block is ignored; one past the image gets 253. */
- CHECK(block(blocks-1,1026,CH_SERVER)==FW_BLOCK_SKIP&&block(blocks,1026,CH_SERVER)==FW_BLOCK_END);
+ /* After the end a late block is confirmed with 0; one past the image gets 253. */
+ CHECK(block(blocks-1,1026,CH_SERVER)==FW_BLOCK_OK&&block(blocks,1026,CH_SERVER)==FW_BLOCK_END);
  /* The table's padding to 1024 works the same way. */
  make_image(67584);download(67584,66,stm_crc(image,67584));for(k=0;k<66;k++)CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);CHECK(device.rebootToUpdate);
  make_image(size);
- /* Wrong length or a block ahead: 255, asked for again at once; a late copy: no answer, nothing written. */
+ /* Wrong length or a block ahead: 255, asked for again at once; a late copy: 0, nothing written. */
  download(size,blocks,crc);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&block(1,1026,CH_SERVER)==FW_BLOCK_OK);
  device.startWaitFWtime=5;CHECK(block(2,1025,CH_SERVER)==FW_BLOCK_BADFRAME&&!device.startWaitFWtime&&device.FWblockIdx==2);
  CHECK(block(3,1026,CH_SERVER)==FW_BLOCK_BADFRAME&&device.FWblockIdx==2&&flash[0x200+3*1024]==0xff);
- CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_SKIP&&device.FWblockIdx==2);
+ CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&device.FWblockIdx==2);
  /* A block on the other channel: 253, the download goes on. */
  CHECK(block(2,1026,CH_USB)==FW_BLOCK_END&&device.FWinProgress&&device.FWblockIdx==2&&flash[0x200+2*1024]==0xff);
  /* A torn program: 254, the same block again completes it. */

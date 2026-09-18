@@ -54,7 +54,6 @@ static void user_send_usbDiag(uint8_t uniqId);
 #define FW_BLOCK_END            253u
 #define FW_BLOCK_BADWRITE       254u
 #define FW_BLOCK_BADFRAME       255u
-#define FW_BLOCK_SKIP           1u      /* late copy of a written block: no answer */
 static void status_event_sent(uint16_t status, uint32_t now_ms);
 static uint8_t status_event_due(uint16_t status, uint32_t now_ms);
 static uint8_t fw_update_quiet(void);
@@ -2672,8 +2671,10 @@ static uint8_t fw_blocks_done(uint8_t crc_ok)
 
 /* Command 20 (E96, E123, E477): the block number and 1024 bytes. Returns the
  * command 4 code: 0 taken, 254 failed its read-back, 255 wrong length or
- * number (both asked for again at once), 253 the download is over. A late
- * copy of a block already written gets no answer at all. */
+ * number (both asked for again at once), 253 the download is over. Command
+ * 4 confirms every command 20 (the server drops a command only when it is
+ * confirmed): a late copy of a block already written gets 0, nothing is
+ * written again. */
 static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
 {
   uint16_t block;
@@ -2682,7 +2683,7 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
 
   if (boot_manual_busy() || cch != (dataChanel_e)device.cchFWupdate) return FW_BLOCK_END;
   memcpy((uint8_t*)&block, p, 2);
-  if (n == 1026u && block < device.FWblockIdx) return FW_BLOCK_SKIP;
+  if (n == 1026u && block < device.FWblockIdx) return FW_BLOCK_OK;
   if (device.FWblockIdx >= device.FWblockCount) return FW_BLOCK_END;
   device.startWaitFWtime = 0;
   if (n != 1026u || block != device.FWblockIdx) return FW_BLOCK_BADFRAME;
@@ -3418,8 +3419,7 @@ if (cch != CH_USB){
 #endif
       {
         uint8_t code = fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);
-        if (code != FW_BLOCK_SKIP)
-          user_send_statusUpdateFW(ptr[4], code, cch, uniqId);
+        user_send_statusUpdateFW(ptr[4], code, cch, uniqId);
       }
       break;
 
