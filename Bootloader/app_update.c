@@ -1,3 +1,4 @@
+/* Разработчик: Кряжев А., 2026 */
 #include "../includes.h"
 #include "app_update.h"
 #include "boot_core.h"
@@ -9,7 +10,7 @@
 #define __disable_interrupt __disable_irq
 #endif
 extern device_s device;
-/* An unconfirmed trial asks for a rollback after this many seconds. */
+/* Неподтверждённая проба просит откат через столько секунд. */
 #define TRIAL_SECONDS 1800u
 static uint8_t trial;
 static uint16_t trial_seconds;
@@ -29,9 +30,9 @@ int app_boot_request(void) {
   for(i=0;i<n/4;i++)crc=crc_word(crc,words[i]);wdt_reload();
  }
  if(crc!=h.crc)return 0;
- /* The journal and the backup belong to the running trial until it ends.
-    A staged candidate keeps its magic erased until the journal is cleared:
-    the bootloader relies on it to tell a torn journal erase from a trial. */
+ /* Журнал и резервная копия принадлежат идущей пробе, пока она не закончится. Метка
+    подготовленного кандидата остаётся стёртой, пока журнал не очищен: по ней загрузчик отличает
+    оборванное стирание журнала от пробы. */
  if(trial||h.magic!=0xffffffffu)return 0;
  mem_erase_sector(BOOT_JOURNAL);
  for(pos=0;pos<4096;pos+=sizeof(words)) {
@@ -44,7 +45,7 @@ int app_boot_request(void) {
 void app_boot_metadata(void) {
  const BootHeader *h=(const BootHeader*)BOOT_APP_BASE;uint32_t result;
  device.bootVersion=BOOT_VER;
- /* Legacy bootloaders do not identify the physical board reliably. */
+ /* Старые загрузчики не определяют плату надёжно. */
  device.hardwareVersion=(BOOT_VER>=BOOT_VERSION&&BOOT_VER!=0xffu)?BOOTHW_VER:0;
  if(h->magic==BOOT_MAGIC||h->magic==BOOT_LEGACY_MAGIC) {
   device.firmwareVersion=(h->magic==BOOT_LEGACY_MAGIC)?(h->version&255u):h->version;device.buildDate=h->timestamp;
@@ -56,13 +57,13 @@ void app_boot_metadata(void) {
   mem_read(BOOT_JOURNAL+4,(uint8_t*)&done,4);
   mem_read(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,(uint8_t*)&armed,4);
   mem_read(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&confirmed,4);
-  /* Same rule as the bootloader: only an exact 0 arms or confirms. */
+  /* То же правило, что в загрузчике: взводит и подтверждает только точный 0. */
   trial=(done!=0xffffffffu&&armed==0&&confirmed!=0&&result==0xffffffffu)?1u:0u;
  }
 }
 int app_trial_active(void) {return trial;}
-/* Written and read back; a failed write leaves the trial for the next
- * registration answer to confirm. */
+/* Записывается и читается обратно; если запись не удалась, пробу подтвердит следующий ответ на
+ * регистрацию. */
 void app_trial_confirm(void) {
  uint32_t zero=0,check;
  if(!trial)return;
@@ -70,7 +71,7 @@ void app_trial_confirm(void) {
  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&check,4);
  if(check==0)trial=0;
 }
-/* The bootloader restores the backup on the next start. */
+/* Загрузчик восстановит резервную копию при следующем старте. */
 void app_trial_rollback(void) {
  uint32_t zero=0;
  if(!trial)return;
@@ -81,9 +82,9 @@ int app_trial_expired(void) {
  if(trial_seconds<TRIAL_SECONDS)trial_seconds++;
  return trial_seconds>=TRIAL_SECONDS;
 }
-/* Called after the failed update was sent to the server. Without the mark the
- * error would be sent again after every restart. FF->00 needs no erase; the
- * next update request erases the journal together with the mark. */
+/* Вызывается после того, как ошибка обновления отправлена на сервер. Без отметки ошибка уходила
+ * бы после каждого перезапуска. FF->00 не требует стирания; следующий запрос обновления стирает
+ * журнал вместе с отметкой. */
 int app_boot_error_unreported(void) {
  uint32_t result,reported;
  if(BOOT_VER<BOOT_VERSION||BOOT_VER==0xffu)return 0;
@@ -91,7 +92,7 @@ int app_boot_error_unreported(void) {
  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
  return result!=0xffffffffu&&reported==0xffffffffu;
 }
-/* Any written code is an error, including one torn by a power cut. */
+/* Ошибкой считается любой записанный код, в том числе оборванный пропаданием питания. */
 void app_boot_error_text(char *text) {
  uint32_t result;
  mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
@@ -105,13 +106,13 @@ void app_boot_error_reported(void) {
  if(!app_boot_error_unreported())return;
  mem_write(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
 }
-/* Candidate staging uses the existing external Flash driver of the running
- * application. No embedded boot image and no automatic startup request. */
+/* Кандидат готовится через имеющийся драйвер внешней флеш-памяти работающей прошивки.
+ * Встроенного образа загрузчика нет, автоматического запроса при старте нет. */
 int manual_platform_supported(void) {
  return *(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS==BOOT_REQUIRED_FLASH_KIB;
 }
-/* This application is built for the v5 board only (HW 139). A MINI bootloader
- * (HW 11) drives other pins: button, USB pull-up and SPI chip select. */
+/* Эта прошивка собирается только для платы v5 (HW 139). Загрузчик MINI (HW 11) управляет
+ * другими выводами: кнопкой, подтяжкой USB и выбором SPI. */
 int manual_board_hw(uint8_t hw) {return hw==139u;}
 int manual_stage_read(uint32_t off,void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
@@ -126,8 +127,8 @@ int manual_stage_erase(uint32_t off) {
  mem_erase_sector(BOOT_CANDIDATE+off);return 1;
 }
 void manual_service(void) {wdt_reload();}
-/* All functions reachable after the first boot-sector erase reside in SRAM.
- * SPI1 and the running application's chip select are already configured. */
+/* Все функции, доступные после стирания первого сектора загрузчика, находятся в ОЗУ. SPI1 и
+ * выбор микросхемы работающей прошивки уже настроены. */
 __ramfunc static int ram_spi(uint8_t tx) {
  uint32_t timeout=100000u;
  while(!(SPI1->SR&2u)&&--timeout){}
@@ -167,7 +168,7 @@ __ramfunc static void replace_ram(const uint32_t *page_crc) {
  *kr=0x45670123u;*kr=0xcdef89abu;
  for(page=0x08000000u;page<BOOT_APP_BASE;page+=1024) {
   *(volatile uint32_t*)0x40003000u=0xaaaau;
-  /* Verify each SPI read before erasing its internal Flash page. */
+  /* Каждое чтение по SPI проверяется до стирания своей страницы внутренней флеш-памяти. */
   if(!ram_read_page(BOOT_CANDIDATE+page-0x08000000u,image)||
      ram_page_crc(image)!=page_crc[(page-0x08000000u)/1024])break;
   *sr=0x34u;*cr=2u;*ar=page;*cr=0x42u;

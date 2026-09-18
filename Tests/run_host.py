@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert reset.index('device.FWinProgress = 0;')<reset.index('user_setdefault();'),'factory reset cancels a download'
         types=typedefs(source('structures.h'),'logSystem_e','logControl_e','cmdCode_e','dataChanel_e','bootFWparam_s')
         defines='\n'.join(x for x in user.splitlines() if x.startswith('#define FW_'))+'\n'
-        helpers=user[user.index('/* Update mode, status 1 bit 11'):user.index('// Разбор данных')]
+        helpers=user[user.index('/* Режим обновления, бит 11 статуса 1'):user.index('// Разбор данных')]
         unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers)
     elif kind=='log':
         user=source('User/user_fun.c');st=source('structures.h')
@@ -122,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_access.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='rules':
         user=source('User/user_fun.c')
-        rules=user[user.index('/* Status 1 out of turn (table E92'):user.index('/* Update mode, status 1 bit 11')]
+        rules=user[user.index('/* Статус 1 вне очереди (таблица E92'):user.index('/* Режим обновления, бит 11 статуса 1')]
         defines=[x for x in user.splitlines() if x.startswith('#define TIMETOSTATUSRESPONSE')][0]+'\n'
         # Call sites: each rule must be applied where the table puts it.
         loop=function(user,'user_loop')

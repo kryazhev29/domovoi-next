@@ -1,3 +1,4 @@
+/* Разработчик: Кряжев А., 2026 */
 #include "boot_manual.h"
 #include "boot_core.h"
 #include <string.h>

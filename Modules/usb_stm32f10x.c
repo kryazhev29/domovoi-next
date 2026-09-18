@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 #include "usb_stm32f10x.h"
 
 #define USBBUFFERSIZE                   (uint16_t)2048
@@ -8,7 +9,7 @@ static volatile uint16_t usb_buffer_count = 0;
 static volatile uint8_t usb_rx_processing = 0;
 static volatile uint8_t usb_rx_discard = 0;
 static volatile uint16_t usb_rx_silence = 0;
-/* Byte boundary present at expiry; later input must not revive that prefix. */
+/* Граница байта на момент истечения; поздний ввод не должен оживить этот префикс. */
 static volatile uint16_t usb_rx_expired = 0;
 static void usb_rx_consume(uint16_t length);
 volatile uint32_t usb_rx_errors = 0;
@@ -19,9 +20,10 @@ volatile uint32_t usb_recovery_count = 0;
 static volatile uint8_t usb_recovery_pending = 0;
 static volatile uint8_t usb_recovery_ms = 0;
 
-/* USB watch. The ages count milliseconds and saturate. A stall is armed only
- * after the host writes, so data left for a closed COM port never re-enumerates.
- * Reasons: 1 ESOF reset timeout, 2 IN queue not taken, 3 OUT while unconfigured. */
+/* Сторож USB. Возраст считается в миллисекундах и не переполняется. Зависание взводится только
+ * после записи хоста, поэтому данные для закрытого COM-порта никогда не вызывают
+ * переподключение. Причины: 1 таймаут сброса ESOF, 2 очередь IN не забирается, 3 OUT при
+ * ненастроенном USB. */
 #define USB_WATCH_MS 2000u
 #define USB_AGE_MAX 0xFFFFu
 volatile uint32_t usb_esof_forced = 0;
@@ -40,22 +42,22 @@ static volatile uint16_t usb_unconf_ms = 0;
 static volatile uint8_t usb_hung_armed = 0;
 static volatile uint8_t usb_unconf_armed = 0;
 
-/* Command 111 v2: USB registers at the last recovery and now. EP1 TX NAK with
- * USB_Tx_State 1 means a lost CTR_TX interrupt; TX VALID means the host stopped
- * polling. Reads only, no register side effects. */
+/* Команда 111 v2: регистры USB на момент последнего восстановления и сейчас. EP1 TX NAK при
+ * USB_Tx_State 1 означает потерянное прерывание CTR_TX; TX VALID - хост перестал опрашивать.
+ * Только чтение, без побочных действий над регистрами. */
 #define USB_REGS 9u
 extern volatile uint8_t USB_Tx_State;
 extern volatile uint32_t usb_in_armed;
 static volatile uint32_t usb_in_taken = 0;
 static uint32_t usb_last_regs[USB_REGS];
-/* ERR interrupts: no answer, CRC, bit stuffing or framing error on the bus. */
+/* Прерывания ERR: нет ответа, ошибка CRC, битстаффинга или кадра на шине. */
 static volatile uint32_t usb_bus_errors = 0;
 static uint32_t usb_last_bus_errors = 0;
-/* Device address register and EP0R: a device that lost its address still sees
- * SOF (broadcast) but no IN token addressed to it. */
+/* Регистр адреса устройства и EP0R: устройство, потерявшее адрес, по-прежнему видит SOF
+ * (широковещательный), но не получает адресованных ему IN. */
 static uint32_t usb_last_addr[2];
 
-/* EP1R, EP3R, EP1 TX count, ISTR, CNTR, FNR, USB_Tx_State, IN armed, IN taken. */
+/* EP1R, EP3R, счётчик TX EP1, ISTR, CNTR, FNR, USB_Tx_State, IN выставлен, IN забран. */
 static void usb_regs_read(uint32_t *r)
 {
   r[0] = _GetENDPOINT(ENDP1);
@@ -69,7 +71,7 @@ static void usb_regs_read(uint32_t *r)
   r[8] = usb_in_taken;
 }
 
-/* USB IRQ: the host took an IN packet. */
+/* Прерывание USB: хост забрал пакет IN. */
 void usb_in_done(void)
 {
   usb_in_ago = 0;
@@ -77,20 +79,20 @@ void usb_in_done(void)
   usb_in_taken++;
 }
 
-/* USB IRQ: bus error. */
+/* Прерывание USB: ошибка шины. */
 void usb_bus_error_seen(void)
 {
   usb_bus_errors++;
 }
 
-/* USB IRQ: start of frame. */
+/* Прерывание USB: начало кадра. */
 void usb_sof_seen(void)
 {
   usb_sof_ago = 0;
 }
 
-/* Called on an unrecoverable USB reset timeout. Re-enumerate from main,
- * never wait for a host or SysTick inside the USB interrupt. */
+/* Вызывается при неустранимом таймауте сброса USB. Переподключение делается из главного цикла,
+ * внутри прерывания USB никогда не ждать хоста или SysTick. */
 void usb_request_recovery(void)
 {
   uint32_t mask = __get_PRIMASK();
@@ -102,7 +104,7 @@ void usb_request_recovery(void)
   usb_last_recovery[4] = usb_in_ago;
   usb_last_recovery[5] = usb_out_ago;
   usb_last_recovery[6] = usb_sof_ago;
-  usb_regs_read(usb_last_regs); /* before FRES and detach change them */
+  usb_regs_read(usb_last_regs); /* до того, как FRES и отключение их изменят */
   usb_last_bus_errors = usb_bus_errors;
   usb_last_addr[0] = _GetDADDR();
   usb_last_addr[1] = _GetENDPOINT(ENDP0);
@@ -125,7 +127,7 @@ void usb_request_recovery(void)
 // Инициализация --------------------------------------------------------------
 void usb_init(void)
 { 
-  USB_PULLUP_OFF; /* Publish the pull-up only after USB initialization. */
+  USB_PULLUP_OFF; /* Подтяжка включается только после инициализации USB. */
   
   Set_System();
   Set_USBClock();
@@ -140,7 +142,7 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
 {
   uint32_t mask = __get_PRIMASK();
   uint16_t count;
-  /* USB IRQ and SysTick share the silence counter; preserve incoming PRIMASK. */
+  /* Прерывание USB и SysTick делят счётчик тишины; входящий PRIMASK сохраняется. */
   __disable_irq();
   count = usb_buffer_count;
   if (len != 0) {
@@ -155,7 +157,7 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
     if (expired >= 6 && !memcmp(usb_buffer, "SLDN", 4))
       total = ((uint32_t)usb_buffer[4] | ((uint32_t)usb_buffer[5] << 8)) + 8;
     if (expired && (expired < 6 || (total > expired && total <= USBBUFFERSIZE))) {
-      /* Make room before append, even if main has not serviced the timeout. */
+      /* Место освобождается до добавления, даже если главный цикл ещё не обработал таймаут. */
       usb_rx_consume(expired);
       count = usb_buffer_count;
     }
@@ -173,7 +175,7 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
   __set_PRIMASK(mask);
 }
 
-/* Return complete-queue acceptance; failures are also retained for diagnostics. */
+/* Возвращает, принята ли очередь целиком; отказы также сохраняются для диагностики. */
 uint8_t usb_send (uint8_t* ptr, uint16_t len)
 {
   if (usb_enabled && USB_DETECT && USART_To_USB_Send_Data(ptr, len)) return 1;
@@ -212,7 +214,7 @@ void usb_timer1ms (void)
   __set_PRIMASK(mask);
 }
 
-/* Called with interrupts masked, after a borrowed parser prefix is released. */
+/* Вызывается с запрещёнными прерываниями, после освобождения префикса, взятого разборщиком. */
 static void usb_rx_consume(uint16_t length)
 {
   uint16_t count = usb_buffer_count, expired = usb_rx_expired;
@@ -252,7 +254,7 @@ void usb_check_data (void)
     usb_rx_expired = 0;
   }
   count = usb_buffer_count;
-  /* Retain up to three trailing bytes: they may start the next SLDN. */
+  /* Оставить до трёх последних байт: с них может начинаться следующий SLDN. */
   while (count - skip >= 4 && memcmp(usb_buffer + skip, "SLDN", 4)) skip++;
   if (skip) {
     count -= skip;
@@ -273,15 +275,15 @@ void usb_check_data (void)
   {
     uint16_t expired = usb_rx_expired;
     if (expired != 0 && expired < total) {
-      /* Discard only the expired incomplete prefix, preserving fresh bytes. */
+      /* Отбрасывается только истёкший незаконченный префикс, свежие байты сохраняются. */
       usb_rx_consume(expired);
       usb_rx_errors++;
       __set_PRIMASK(mask); return;
     }
   }
   if (count < total) { __set_PRIMASK(mask); return; }
-  /* ISR may append while the application parses, but cannot change this prefix.
-   * A USB reset defers discard until the parser releases its borrowed buffer. */
+  /* Прерывание может дописывать, пока прошивка разбирает кадр, но не может изменить этот
+   * префикс. Сброс USB откладывает отбрасывание, пока разборщик не вернёт буфер. */
   usb_rx_processing = 1;
   __set_PRIMASK(mask);
   crc = (uint16_t)usb_buffer[total - 2] | ((uint16_t)usb_buffer[total - 1] << 8);
@@ -289,7 +291,7 @@ void usb_check_data (void)
     if (!usb_rx_discard) usb_data_reading(usb_buffer, total);
   } else {
     usb_rx_errors++;
-    total = 4; /* The advertised length is untrusted: search after this SLDN. */
+    total = 4; /* Заявленной длине доверять нельзя: поиск продолжается после этого SLDN. */
   }
   mask = __get_PRIMASK();
   __disable_irq();
@@ -331,7 +333,7 @@ __weak void usb_data_reading(uint8_t* ptr, uint16_t len)
 {
 }
 
-/* Command 111: 23 USB values, in the order documented at user_send_usbDiag. */
+/* Команда 111: 23 значения USB в порядке, описанном у user_send_usbDiag. */
 void usb_diag_fill(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -357,7 +359,8 @@ void usb_diag_fill(uint32_t *v)
   __set_PRIMASK(mask);
 }
 
-/* Command 111 v2 tail: 9 register values at the last recovery, then 9 now. */
+/* Хвост команды 111 v2: 9 значений регистров на момент последнего восстановления, затем 9
+ * текущих. */
 void usb_diag_fill_regs(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -368,7 +371,7 @@ void usb_diag_fill_regs(uint32_t *v)
   __set_PRIMASK(mask);
 }
 
-/* Command 111 v3 tail: bus errors now, bus errors at the last recovery. */
+/* Хвост команды 111 v3: ошибки шины сейчас и на момент последнего восстановления. */
 void usb_diag_fill_errors(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -378,7 +381,7 @@ void usb_diag_fill_errors(uint32_t *v)
   __set_PRIMASK(mask);
 }
 
-/* Command 111 v4 tail: DADDR and EP0R at the last recovery, then now. */
+/* Хвост команды 111 v4: DADDR и EP0R на момент последнего восстановления, затем текущие. */
 void usb_diag_fill_addr(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();

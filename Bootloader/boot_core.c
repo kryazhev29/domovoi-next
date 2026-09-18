@@ -1,3 +1,4 @@
+/* Разработчик: Кряжев А., 2026 */
 #include "boot_core.h"
 #include <string.h>
 static uint32_t buffer[64], verify[64];
@@ -38,7 +39,7 @@ static int snapshot(void) {
  if(!boot_validate(0,BOOT_APP_BASE,&h)) return 0;
  for(pos=0;pos<h.size+BOOT_HEADER_SIZE;pos+=4096)
   if(!boot_ext_erase(BOOT_BACKUP+pos)) return 0;
- /* Copy the existing header at offset zero, not before an extra header. */
+ /* Копируется имеющийся заголовок по нулевому смещению, а не перед лишним заголовком. */
  for(pos=0;pos<h.size+BOOT_HEADER_SIZE;pos+=n) {
   n=h.size+BOOT_HEADER_SIZE-pos;if(n>sizeof(buffer)) n=sizeof(buffer);
   if(!boot_read(0,BOOT_APP_BASE+pos,buffer,n)||
@@ -53,7 +54,7 @@ static int install(uint32_t base) {
  if(!boot_validate(1,base,&h)) return 0;
  for(pos=0;pos<h.size+BOOT_HEADER_SIZE;pos+=1024)
   if(!boot_int_erase(BOOT_APP_BASE+pos)) return 0;
- /* Header is written last: incomplete images never become bootable. */
+ /* Заголовок пишется последним: незаконченный образ никогда не станет загрузочным. */
  for(pos=BOOT_HEADER_SIZE;pos<h.size+BOOT_HEADER_SIZE;pos+=n) {
   n=h.size+BOOT_HEADER_SIZE-pos;if(n>sizeof(buffer)) n=sizeof(buffer);
   if(!boot_read(1,base+pos,buffer,n)||!boot_int_write(BOOT_APP_BASE+pos,buffer,n)) return 0;
@@ -65,13 +66,11 @@ static int install(uint32_t base) {
  return boot_validate(0,BOOT_APP_BASE,&check);
 }
 static int trial_pending(void);
-/* Start a new transaction only while a valid application is still intact.
- * A recovery session may also replace a damaged candidate, keeping the journal
- * and last known good backup until it has a complete replacement.
- * A running trial owns the candidate slot and the backup: erasing the slot
- * would end it silently and the next install would snapshot an unconfirmed
- * application over the last good one. A damaged application stays open to
- * recovery. */
+/* Новая операция начинается, только пока исправная прошивка цела. Сеанс восстановления может
+ * заменить и повреждённого кандидата, сохраняя журнал и последнюю исправную резервную копию до
+ * полной замены. Идущая проба владеет слотом кандидата и резервной копией: стирание слота молча
+ * закончило бы её, а следующая установка сохранила бы неподтверждённую прошивку поверх
+ * последней исправной. Повреждённая прошивка остаётся доступной для восстановления. */
 int boot_prepare(void) {
  BootHeader h; uint32_t pos;
  if(trial_pending()&&boot_validate(0,BOOT_APP_BASE,&h)) return BOOT_TRIAL_BUSY;
@@ -87,8 +86,8 @@ int boot_stage_header(const BootHeader *h) {
 }
 int boot_request(void) {
  BootHeader h;
- /* Clear the previous transaction before publishing a new candidate.
-    On reset in between, the current application/backup remains intact. */
+ /* Предыдущая операция очищается до публикации нового кандидата. При сбросе между ними текущая
+    прошивка и резервная копия остаются целыми. */
  if(!boot_ext_erase(BOOT_JOURNAL)) return BOOT_IO;
  if(!write_word(BOOT_CANDIDATE,BOOT_MAGIC)||!boot_validate(1,BOOT_CANDIDATE,&h)) return BOOT_BAD_IMAGE;
  return BOOT_OK;
@@ -102,12 +101,11 @@ static void cleanup_failed_candidate(void) {
   if(!boot_ext_erase(BOOT_CANDIDATE+pos)) return;
  write_word(BOOT_JOURNAL+16,0);
 }
-/* Only an exact 0 arms or confirms a trial, so a torn write of either word
-   keeps the safer state. An error code in +12 ends the transaction.
-   The installed candidate stays in its slot for the whole trial, magic
-   BOOT_MAGIC or 0. The next upload erases the slot and keeps the magic erased
-   until the journal is cleared, so a torn journal erase that sets bits of a
-   confirmation cannot revive a finished trial. */
+/* Пробу взводит и подтверждает только точный 0, поэтому оборванная запись любого из слов
+   оставляет более безопасное состояние. Код ошибки в +12 заканчивает операцию. Установленный
+   кандидат остаётся в своём слоте всю пробу, метка BOOT_MAGIC или 0. Следующая загрузка стирает
+   слот и держит метку стёртой, пока журнал не очищен, поэтому оборванное стирание журнала,
+   выставившее биты подтверждения, не оживит законченную пробу. */
 static int trial_pending(void) {
  uint32_t armed,confirmed,error,magic;
  return read_word(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,&armed)&&armed==0&&
@@ -115,7 +113,7 @@ static int trial_pending(void) {
  read_word(BOOT_JOURNAL+12,&error)&&error==0xffffffffu&&
  read_word(BOOT_CANDIDATE,&magic)&&magic!=0xffffffffu;
 }
-/* A restore interrupted after its last page leaves the backup running. */
+/* Восстановление, прерванное после последней страницы, оставляет работающей резервную копию. */
 static int app_is_backup(void) {
  BootHeader a,b;
  return boot_validate(1,BOOT_BACKUP,&b)&&boot_read(0,BOOT_APP_BASE,&a,sizeof(a))&&
@@ -130,19 +128,19 @@ static unsigned launches_used(uint32_t mask) {
  for(mask=~mask;mask;mask&=mask-1) n++;
  return n;
 }
-/* Rollback conditions only accumulate: launch bits are never set again and
-   the request is never withdrawn, so a reset inside the restore repeats it. */
+/* Условия отката только накапливаются: биты запусков больше не выставляются, а запрос не
+   отзывается, поэтому сброс внутри восстановления повторяет его. */
 static int trial_launch(int app) {
  BootHeader h; uint32_t mask,request;
  if(!read_word(BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES,&mask)||
     !read_word(BOOT_JOURNAL+BOOT_JOURNAL_ROLLBACK,&request)) return app?BOOT_OK:BOOT_RECOVERY;
- /* A launch that cannot be counted is not granted: the rollback below is
-    attempted instead, and install() validates the backup before erasing, so
-    a dead external Flash still leaves the application running. */
+ /* Запуск, который нельзя учесть, не разрешается: вместо него делается откат ниже, а install()
+    проверяет резервную копию до стирания, поэтому при неисправной внешней флеш-памяти прошивка
+    всё равно работает. */
  if(app&&request==0xffffffffu&&launches_used(mask)<BOOT_TRIAL_LAUNCHES&&
     write_word(BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES,mask&(mask-1))) return BOOT_OK;
- /* Once the backup runs, do not rewrite internal Flash on every start when
-    the error code cannot be recorded. */
+ /* Когда работает резервная копия, не переписывать внутреннюю флеш-память при каждом старте,
+    если код ошибки нельзя записать. */
  if(!(app&&app_is_backup())&&!install(BOOT_BACKUP))
   return boot_validate(0,BOOT_APP_BASE,&h)?BOOT_OK:BOOT_RECOVERY;
  return write_word(BOOT_JOURNAL+12,BOOT_TRIAL_FAILED)?BOOT_RESTORED:BOOT_IO;
@@ -154,27 +152,27 @@ int boot_run(void) {
     !read_word(BOOT_JOURNAL+8,&rollback)) return BOOT_IO;
  app=boot_validate(0,BOOT_APP_BASE,&h);
  if(done!=0xffffffffu) {
-  /* Any torn completion marker follows a fully verified installation. */
+  /* Любая оборванная отметка завершения следует за полностью проверенной установкой. */
   if(trial_pending()) return trial_launch(app);
   if(app) { cleanup_failed_candidate();return BOOT_OK; }
   return BOOT_RECOVERY;
  }
  candidate=boot_validate(1,BOOT_CANDIDATE,&h)&&h.magic==BOOT_MAGIC;
- /* Without a published candidate nothing was installed over the application.
-    Stale start/rollback words from a torn journal erase must not replace an
-    intact application with the older backup. */
+ /* Без опубликованного кандидата поверх прошивки ничего не ставилось. Устаревшие слова начала и
+    отката от оборванного стирания журнала не должны заменять целую прошивку более старой
+    резервной копией. */
  if(!candidate&&app) return BOOT_OK;
  if(started==0xffffffffu) {
   if(!candidate) return BOOT_RECOVERY;
   if(app&&!snapshot()) {
-   /* No backup, no install. Keep the running application, drop the request
-      so it is not retried on every start, and leave the code for the FW. */
+   /* Нет резервной копии - нет установки. Работающая прошивка остаётся, запрос снимается, чтобы
+      не повторяться при каждом старте, код ошибки остаётся для прошивки. */
    write_word(BOOT_CANDIDATE,0);write_word(BOOT_JOURNAL+12,BOOT_BACKUP_ERROR);
    return BOOT_BACKUP_ERROR;
   }
   backup=app||boot_validate(1,BOOT_BACKUP,&h);
-  /* Record whether a backup is available before touching internal flash.
-     A trial is armed only with a backup to return to. */
+  /* До работы с внутренней флеш-памятью записывается, есть ли резервная копия. Проба взводится,
+     только если есть к чему вернуться. */
   if(backup&&trial_marked()&&!write_word(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,0)) return BOOT_IO;
   if(!write_word(BOOT_JOURNAL,backup?0x494e5354u:0x4e4f424bu)) return BOOT_IO;
   started=backup?0x494e5354u:0x4e4f424bu;
@@ -182,11 +180,11 @@ int boot_run(void) {
  if(rollback==0xffffffffu&&candidate&&install(BOOT_CANDIDATE)) {
   if(!write_word(BOOT_JOURNAL+4,0)) return BOOT_IO;
   write_word(BOOT_CANDIDATE,0);
-  /* The first start of a trial application is one of its launches. */
+  /* Первый старт пробной прошивки - один из её запусков. */
   return trial_pending()?trial_launch(1):BOOT_OK;
  }
- /* A torn start marker has not allowed an erase, but restoring a validated
-    backup is also safe. Never overwrite a backup while recovering. */
+ /* Оборванная отметка начала не разрешала стирание, но восстановление проверенной резервной
+    копии тоже безопасно. При восстановлении резервная копия никогда не перезаписывается. */
  if(!write_word(BOOT_JOURNAL+8,0)) return BOOT_IO;
  if(started!=0x4e4f424bu&&install(BOOT_BACKUP)) {
   if(!write_word(BOOT_JOURNAL+12,BOOT_PROGRAM_ERROR)||!write_word(BOOT_JOURNAL+4,0)) return BOOT_IO;

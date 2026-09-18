@@ -1,8 +1,8 @@
+/* Разработчик: Кряжев А., 2026 */
 #ifndef BOOT_BOARD_PROFILE_H
 #define BOOT_BOARD_PROFILE_H
-/* GPIO mappings from supplied v5 and RELEASE_ON_MINI/MODEM_PCB sources.
- * Old hardware IDs are preserved: MINI=11, MODEM/v5=139.
- * These IDs do not distinguish every chronological revision. */
+/* Назначение выводов по присланным исходникам v5 и RELEASE_ON_MINI/MODEM_PCB. Старые номера
+ * железа сохранены: MINI=11, MODEM/v5=139. Эти номера различают не все ревизии плат. */
 #ifdef BOOT_BOARD_MINI
 #define BOOT_CS_PORT GPIOA
 #define BOOT_CS_PIN GPIO_Pin_4
@@ -10,8 +10,8 @@
 #define BOOT_BUTTON_PIN GPIO_Pin_1
 #define BOOT_USB_PORT GPIOB
 #define BOOT_USB_PIN GPIO_Pin_14
-/* v1 CAN transceiver drives PB8/RXD. LEDs share the CAN nets: neither
- * pin may be toggled for indication. Keep TXD recessive and RXD input. */
+/* На v1 трансивер CAN управляет PB8/RXD. Светодиоды сидят на линиях CAN: ни один из этих
+ * выводов нельзя переключать для индикации. TXD держать в пассивном уровне, RXD - входом. */
 #define BOOT_LED_PINS 0u
 #define BOOT_CAN_RX_PIN GPIO_Pin_8
 #define BOOT_CAN_TX_PIN GPIO_Pin_9
@@ -23,7 +23,7 @@
 #define BOOT_USB_PORT GPIOA
 #define BOOT_USB_PIN GPIO_Pin_8
 #define BOOT_LED_PRIMARY_PIN GPIO_Pin_8 /* PWRLED */
-#define BOOT_LED_SECONDARY_PIN GPIO_Pin_6 /* DATALED; colour is board-dependent */
+#define BOOT_LED_SECONDARY_PIN GPIO_Pin_6 /* DATALED; цвет зависит от платы */
 #define BOOT_LED_PINS (BOOT_LED_PRIMARY_PIN|BOOT_LED_SECONDARY_PIN)
 #endif
 #define USB_PULLUP_ON (BOOT_USB_PORT->BSRR=BOOT_USB_PIN)

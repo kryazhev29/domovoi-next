@@ -1,4 +1,5 @@
-/* STM32F103CB / Domovoi v5, based on the supplied v5 board wiring. */
+/* Разработчик: Кряжев А., 2026 */
+/* STM32F103CB / Домовой v5, по разводке присланной платы v5. */
 #include "includes.h"
 #include "boot_platform.h"
 #include "usb_istr.h"
@@ -20,7 +21,7 @@ void USBWakeUp_IRQHandler(void) { EXTI_ClearITPendingBit(EXTI_Line18); }
 void boot_service(void) {
  IWDG->KR=0xAAAA;
 #ifndef BOOT_BOARD_MINI
- /* Dedicated PWR/DATA LEDs only. MINI LEDs are electrically shared with CAN. */
+ /* Только отдельные светодиоды PWR/DATA. Светодиоды MINI электрически общие с CAN. */
  if((ticks/250u)&1u) { GPIOB->BRR=BOOT_LED_PRIMARY_PIN;GPIOB->BSRR=BOOT_LED_SECONDARY_PIN; }
  else { GPIOB->BRR=BOOT_LED_SECONDARY_PIN;GPIOB->BSRR=BOOT_LED_PRIMARY_PIN; }
 #endif
@@ -73,7 +74,7 @@ int boot_ext_erase(uint32_t address) {
  spi_fault=0;if(!write_enable()) return 0;
  command(0x20,address);select_chip(0);
  if(!wait_flash()) return 0;
- /* Reject a protected/failed erase before attempting any journal transition. */
+ /* Защищённое или неудачное стирание отвергается до любого перехода журнала. */
  command(3,address);
  {unsigned i;int ok=1;for(i=0;i<4096;i++) if(spi_byte(0xff)!=0xff) ok=0;
  select_chip(0);return ok&&!spi_fault;}
@@ -119,13 +120,13 @@ int boot_int_write(uint32_t address,const void *data,uint32_t size) {
 }
 void boot_platform_init(void) {
  GPIO_InitTypeDef g;
- /* Cache the factory signature before enabling USB/peripherals. */
+ /* Заводская запись объёма запоминается до включения USB и периферии. */
  flash_kib=*(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS;
  SCB->VTOR=0x08000000u;
  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA|RCC_APB2Periph_GPIOB|RCC_APB2Periph_GPIOC|RCC_APB2Periph_AFIO|RCC_APB2Periph_SPI1,ENABLE);
  GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable,ENABLE);
  GPIO_StructInit(&g);g.GPIO_Speed=GPIO_Speed_50MHz;g.GPIO_Mode=GPIO_Mode_Out_PP;
- /* Set inactive levels before enabling output drivers. */
+ /* Пассивные уровни выставляются до включения выходных драйверов. */
  BOOT_USB_PORT->BRR=BOOT_USB_PIN;BOOT_CS_PORT->BSRR=BOOT_CS_PIN;
 #ifndef BOOT_BOARD_MINI
  GPIOB->BRR=BOOT_LED_PINS;
@@ -136,8 +137,8 @@ void boot_platform_init(void) {
  g.GPIO_Pin=BOOT_LED_PINS;GPIO_Init(GPIOB,&g);
 #endif
 #ifdef BOOT_BOARD_MINI
- /* RXD is an output of the external CAN chip; never drive it from the MCU.
-    TXD high prevents a dominant bus level throughout bootloader operation. */
+ /* RXD - выход внешней микросхемы CAN; микроконтроллер его никогда не ведёт. TXD в высоком
+    уровне не даёт доминантного уровня на шине всё время работы загрузчика. */
  g.GPIO_Pin=BOOT_CAN_RX_PIN;g.GPIO_Mode=GPIO_Mode_IN_FLOATING;GPIO_Init(GPIOB,&g);
  GPIOB->BSRR=BOOT_CAN_TX_PIN;
  g.GPIO_Pin=BOOT_CAN_TX_PIN;g.GPIO_Mode=GPIO_Mode_Out_PP;GPIO_Init(GPIOB,&g);

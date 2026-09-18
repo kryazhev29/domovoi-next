@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 // Модуль работы с gsm модулем
 // Автор: Корякин Сергей
 
@@ -867,11 +868,10 @@ void gsm_sendsms (char *num, char *str)
 }
 
 // Запрос о состоянии регистрации в сети ---------------------------------------
-/* Every command waits up to GSMRESPTIMEOUT for a reply. A silent module used to
- * cost two timeouts (about 1 s) on every poll, once a second, stalling the main
- * loop for as long as the module stayed silent. Without a reply to +CREG the
- * +CGREG query is not sent, and after two silent polls only every third poll
- * reaches the module. Any reply restores polling on every call. */
+/* Каждая команда ждёт ответа до GSMRESPTIMEOUT. Молчащий модуль стоил двух таймаутов (около 1
+ * с) на каждом опросе раз в секунду и тормозил главный цикл, пока модуль молчал. Без ответа на
+ * +CREG запрос +CGREG не отправляется, а после двух опросов без ответа до модуля доходит только
+ * каждый третий. Любой ответ возвращает опрос на каждом вызове. */
 #define GSM_REG_SILENT_POLLS  2u
 #define GSM_REG_SILENT_EVERY  3u
 void gsm_getregstate (void)

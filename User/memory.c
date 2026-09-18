@@ -1,12 +1,13 @@
+// Доработка: Кряжев А., 2026
 // Модуль работы с памятью
 // Автор: Корякин Сергей
 
 #include "memory.h"
 
-/* Two 8 KiB slots: 4 KiB logical image + a separate commit sector.
- * 0x1F5000..0x1F8FFF is after TEMPID (ends 0x1F43FF), below PHOTO.
- * Mirror 0x1CD400 before publishing a slot, so older firmware can roll back.
- * No cached selection: a reset or failed write always selects a verified image.
+/* Два слота по 8 КиБ: 4 КиБ логического образа и отдельный сектор фиксации. 0x1F5000..0x1F8FFF
+ * - после TEMPID (конец 0x1F43FF), ниже PHOTO. Перед публикацией слота образ зеркалируется в
+ * 0x1CD400, чтобы более старая прошивка могла откатиться. Выбор не кэшируется: после сброса или
+ * неудачной записи всегда выбирается проверенный образ.
  */
 volatile uint32_t mem_config_errors = 0;
 static uint8_t cfg_legacy_checked = 0;
@@ -61,7 +62,7 @@ static uint8_t cfg_equal(uint32_t address, const uint8_t *p)
   }
   return 1;
 }
-/* No 4 KiB allocation here: callers may already own all but 1 KiB of heap. */
+/* Здесь нет выделения 4 КиБ: вызывающий уже может занимать всю кучу, кроме 1 КиБ. */
 static uint8_t cfg_equal_flash(uint32_t a, uint32_t b)
 {
   uint8_t left[64], right[64];
@@ -86,7 +87,7 @@ static uint8_t cfg_legacy_crc(uint16_t offset)
   w25_read_data(MEM_CONFIG_LEGACY + offset + 510, (uint8_t*)&expected, 2);
   return crc == expected;
 }
-/* Source is either RAM or a flash image. The old active slot is never erased. */
+/* Источник - ОЗУ или образ во флеш-памяти. Прежний активный слот никогда не стирается. */
 static uint8_t cfg_publish(uint8_t *p, uint32_t source, uint32_t active, uint32_t generation)
 {
   uint32_t h[4], check;
@@ -113,10 +114,10 @@ static uint8_t cfg_publish(uint8_t *p, uint32_t source, uint32_t active, uint32_
   w25_write_data(target + MEMSECTORSIZE, (uint8_t*)h, sizeof(h));
   return cfg_valid(target, &check) && check == h[1];
 }
-/* At boot, valid legacy data wins: it may be an old-firmware update or a
- * completed mirror whose slot publication was interrupted. Reserve bytes are
- * opaque: the old writer reads them first, so its un-erased tail ANDs itself.
- * Preserve all 4096 bytes, including a non-FF reserve, without normalizing it.
+/* При старте побеждают целые данные старого места: это может быть обновление старой прошивкой
+ * или законченное зеркало, публикация слота которого прервалась. Резервные байты не трактуются:
+ * старая запись сначала читает их, поэтому её нестёртый хвост совпадает сам с собой. Все 4096
+ * байт сохраняются, включая резерв не из FF, без приведения.
  */
 static uint8_t cfg_prepare(void)
 {
@@ -149,14 +150,14 @@ static uint8_t cfg_mirror(uint8_t *p)
   uint8_t b[64];
   uint16_t off;
   if (cfg_equal(MEM_CONFIG_LEGACY, p)) return 1;
-  /* Invalidate config before touching the second sector or the reserve. */
+  /* Настройки делаются недействительными до работы со вторым сектором и резервом. */
   w25_erase_sector(0x1CD000u);
   if (!cfg_blank_sector(0x1CD000u)) return 0;
   w25_erase_sector(0x1CE000u);
   if (!cfg_blank_sector(0x1CE000u)) return 0;
   w25_write_data(MEM_CONFIG_LEGACY + 1024, p + 1024, 3072);
   w25_write_data(MEM_CONFIG_LEGACY + 512, p + 512, 512);
-  /* Never publish a valid config over an incomplete device/reserve. */
+  /* Действительные настройки никогда не публикуются поверх незаконченных device и резерва. */
   for (off = 512; off < MEMSECTORSIZE; off += sizeof(b)) {
     w25_read_data(MEM_CONFIG_LEGACY + off, b, sizeof(b));
     if (memcmp(b, p + off, sizeof(b))) return 0;
@@ -167,7 +168,8 @@ static uint8_t cfg_mirror(uint8_t *p)
 static void cfg_commit(uint8_t *p)
 {
   uint32_t generation, active;
-  /* First protect a legacy-only image, even when the first operation is a write. */
+  /* Сначала защитить образ, который есть только в старом месте, даже если первая операция -
+   * запись. */
   if (!cfg_prepare()) return;
   active = cfg_select(&generation);
   if (!cfg_mirror(p)) { mem_config_errors++; return; }
@@ -182,7 +184,7 @@ static uint8_t cfg_range(uint32_t adr, uint16_t size)
 static void cfg_read(uint32_t adr, uint8_t *buff, uint16_t size)
 {
   uint32_t generation, active;
-  /* A failed adoption still reads the intact legacy source; retry next time. */
+  /* Неудачное принятие всё равно читает целый старый источник; повтор при следующем обращении. */
   if (cfg_prepare()) active = cfg_select(&generation);
   else active = MEM_CONFIG_LEGACY;
   w25_read_data(active + adr - MEM_CONFIG_LEGACY, buff, size);

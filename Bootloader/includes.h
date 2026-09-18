@@ -1,3 +1,4 @@
+/* Разработчик: Кряжев А., 2026 */
 #ifndef BOOT_INCLUDES_H
 #define BOOT_INCLUDES_H
 #include "stm32f10x.h"

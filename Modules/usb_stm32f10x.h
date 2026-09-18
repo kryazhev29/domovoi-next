@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 
 #ifndef _USB_H
 #define _USB_H

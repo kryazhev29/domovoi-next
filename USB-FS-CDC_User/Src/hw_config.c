@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 /**
   ******************************************************************************
   * @file    hw_config.c
@@ -56,7 +57,7 @@ volatile uint32_t USART_Rx_ptr_out = 0;
 volatile uint32_t USART_Rx_length  = 0;
 
 volatile uint8_t  USB_Tx_State = 0;
-volatile uint32_t usb_in_armed = 0; /* IN packets handed to EP1, command 111 */
+volatile uint32_t usb_in_armed = 0; /* пакеты IN, отданные EP1, команда 111 */
 static volatile uint32_t usb_tx_epoch = 0;
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len);
 /* Extern variables ----------------------------------------------------------*/
@@ -354,7 +355,7 @@ void Handle_USBAsynchXfer (void)
 * Input          : None.
 * Return         : none.
 *******************************************************************************/
-/* Called from the USB reset ISR. Never retain an in-flight queue across reset. */
+/* Вызывается из прерывания сброса USB. Незаконченную очередь через сброс никогда не сохранять. */
 void USB_Tx_Reset(void)
 {
   USB_Tx_State = 0;
@@ -369,7 +370,7 @@ static uint32_t usb_tx_space(void)
   if (out == USART_RX_DATA_SIZE) out = 0;
   return (out + USART_RX_DATA_SIZE - USART_Rx_ptr_in - 1u) % USART_RX_DATA_SIZE;
 }
-/* Caller holds PRIMASK: payload and producer index are published together. */
+/* Вызывающий держит PRIMASK: данные и индекс записи публикуются вместе. */
 static void usb_tx_enqueue(uint8_t *p, uint16_t n)
 {
   uint32_t in = USART_Rx_ptr_in;
@@ -380,8 +381,8 @@ static void usb_tx_enqueue(uint8_t *p, uint16_t n)
   __DMB();
   USART_Rx_ptr_in = in;
 }
-/* Success means the complete frame was queued, not acknowledged by the host.
- * One finite polling budget for the whole call; no watchdog reload here.
+/* Успех означает, что кадр целиком поставлен в очередь, а не подтверждён хостом. Один
+ * ограниченный бюджет ожидания на весь вызов; сторожевой таймер здесь не перезаряжается.
  */
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
 {
@@ -398,7 +399,7 @@ uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
       __set_PRIMASK(mask); return 1;
     }
     __set_PRIMASK(mask);
-    if (mask) return 0; /* The consumer cannot progress with IRQs masked. */
+    if (mask) return 0; /* Потребитель не продвинется при запрещённых прерываниях. */
     --budget;
   } while (budget != 0);
   return 0;
@@ -414,7 +415,7 @@ uint16_t USB_Send_Debug(uint8_t *data, uint16_t count)
   return count;
 }
 
-/* USB watch: data waits for the host or an IN packet is armed. */
+/* Сторож USB: данные ждут хоста или выставлен пакет IN. */
 uint8_t USB_Tx_Pending(void)
 {
   uint32_t out = USART_Rx_ptr_out;

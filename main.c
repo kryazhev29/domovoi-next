@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 /*****************
 Основная программа
 Автор: Корякин С.А.
@@ -64,7 +65,7 @@ void main()
     // циклический обработчик
     user_loop();
 
-    /* Command 111: the longest main-loop pass and passes of 1 s or more. */
+    /* Команда 111: самый долгий проход главного цикла и проходы от 1 с. */
     {
       unsigned int now = timers_getMillis(), took = now - loop_mark;
       loop_mark = now;

@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 /**
   ******************************************************************************
   * @file    stm32_it.c
@@ -30,10 +31,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "includes.h"
 
-/* Fixed noinit RAM, above the legacy loader's low-RAM work area.
- * 12 LE words: magic, exception, EXC_RETURN, SP, PC, LR, xPSR,
- * CFSR, HFSR, MMFAR, BFAR, frame_valid. Magic is committed last.
- * No stack or watchdog reload; reject incomplete/out-of-RAM frames. */
+/* Фиксированное ОЗУ без инициализации, выше рабочей области старого загрузчика в начале ОЗУ.
+ * 12 слов LE: метка, исключение, EXC_RETURN, SP, PC, LR, xPSR,
+ * CFSR, HFSR, MMFAR, BFAR, frame_valid. Метка записывается последней.
+ * Без стека и без перезарядки сторожевого таймера; незаконченные кадры и кадры вне ОЗУ отвергаются. */
 #pragma location=".fault_record"
 __root __no_init volatile uint32_t fault_record[12];
 

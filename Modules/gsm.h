@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 // Модуль работы с gsm модулем
 // Автор: Корякин Сергей
 
@@ -88,8 +89,8 @@ typedef struct {
   };
   Int8U creg;
   Int8U cgreg;
-  Int8U regSilent; // registration polls in a row without any reply from the module
-  Int8U regSkip; // polls skipped since the last one sent while the module is silent
+  Int8U regSilent; // опросов регистрации подряд без единого ответа модуля
+  Int8U regSkip; // пропущено опросов с последнего отправленного, пока модуль молчит
   pwrOp_e operation;
   Int16U timer; // таймер управления процессом вкл/выкл питания
   Int8U dataconnectionindex; // индекс подключения при приеме данных в режиме множественных подключений

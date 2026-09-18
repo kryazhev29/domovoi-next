@@ -1,3 +1,4 @@
+/* Разработчик: Кряжев А., 2026 */
 #ifndef BOOT_STM32_CONF_H
 #define BOOT_STM32_CONF_H
 #include "stm32f10x_rcc.h"

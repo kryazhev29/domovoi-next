@@ -1,3 +1,4 @@
+/* Разработчик: Кряжев А., 2026 */
 #ifndef BOOT_PLATFORM_H
 #define BOOT_PLATFORM_H
 #include "boot_core.h"

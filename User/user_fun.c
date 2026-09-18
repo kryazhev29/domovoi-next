@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 #include "stm32_it.h"
 // Пользовательские функции
 
@@ -39,18 +40,18 @@ device_s device;
 uint8_t gsm_buffer[GSMBUFSIZE];
 
 static void fw_resume_after_boot(void);
-/* Command 111 bench diagnostics, USB only, read-only. */
+/* Диагностика стенда, команда 111, только по USB, только чтение. */
 #define USB_DIAG_COMMAND 111u
 extern unsigned int loop_max_ms, loop_stalls;
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
 static void user_send_usbDiag(uint8_t uniqId);
-/* Update order of sheet "Протокол2": status 1 out of turn (E95), update mode
- * bit 11 (E440), command 19 (E122), blocks 13 and 20 (E96, E123), command 4
- * (E476, E477). Defined before command 19. */
-#define FW_TIMEOUT_S            600u    /* the whole download, from command 19 */
-#define FW_BLOCK_RETRY_MS       20000u  /* lifetime of command 13 */
-#define FW_WRITE_TRIES          3u      /* one block failing its read-back */
-#define FW_BLOCK_OK             0u      /* command 4 codes */
+/* Порядок обновления по листу "Протокол2": статус 1 вне очереди (E95), режим обновления - бит
+ * 11 (E440), команда 19 (E122), блоки 13 и 20 (E96, E123), команда 4 (E476, E477). Объявлено до
+ * команды 19. */
+#define FW_TIMEOUT_S            600u    /* вся загрузка, от команды 19 */
+#define FW_BLOCK_RETRY_MS       20000u  /* время актуальности команды 13 */
+#define FW_WRITE_TRIES          3u      /* один блок не прошёл проверку после записи */
+#define FW_BLOCK_OK             0u      /* коды команды 4 */
 #define FW_BLOCK_END            253u
 #define FW_BLOCK_BADWRITE       254u
 #define FW_BLOCK_BADFRAME       255u
@@ -103,7 +104,7 @@ void usb_data_reading(uint8_t* ptr, uint16_t len)
   if (len < 11 || memcmp(ptr, "SLDN", 4)) return;
   body = (uint16_t)ptr[4] | ((uint16_t)ptr[5] << 8);
   if (body < 3 || body != len - 8) return;
-  /* The USB assembler hands over exactly one complete, CRC-checked frame. */
+  /* Сборщик USB передаёт ровно один целый кадр с проверенной CRC. */
   user_parse_comand(ptr + 4, CH_USB);
 }
 
@@ -208,8 +209,8 @@ void usergsm_event(gsmevent_e ev)
     break;
     
   case E_MODULETYPE:
-    /* The modem reports its type at every power-on, and it restarts every
-       half minute without a network: save only a change. */
+    /* Модем сообщает свой тип при каждом включении, а без сети перезапускается каждые
+       полминуты: сохраняется только изменение. */
     if (device.moduleType != gsm_getModuleType()){
       device.moduleType = gsm_getModuleType();
       user_saveindex();
@@ -493,7 +494,7 @@ void user_smsreceived (char* num, char* data)
     user_strcpy(v, dt, ' ', 10);
 
     if (validPin == true){
-      /* Update mode (table E437): control commands wait for the update. */
+      /* Режим обновления (таблица E437): управляющие команды ждут окончания обновления. */
       if (fw_update_quiet() && (strcmp(v, "add") == 0 || strcmp(v, "reset") == 0 ||
                                 strcmp(v, "setout") == 0 || strcmp(v, "default") == 0)){
         strcat(v, ": Error \"Update in progress\"");
@@ -716,8 +717,8 @@ void user_init(void)
   mem[MB_SHEDULE].size = 2048;
   mem[MB_HOLIDAY].start = 1884160;
   mem[MB_HOLIDAY].size = 1024;
-  /* Logical legacy address. memory.c stores new images in reserved
-     0x1F5000..0x1F8FFF (two data + two commit sectors). */
+  /* Логический адрес старого места. memory.c хранит новые образы в резерве 0x1F5000..0x1F8FFF
+     (два сектора данных и два сектора фиксации). */
   mem[MB_CONFIG].start = 1889280;
   mem[MB_CONFIG].size = 4096;
   mem[MB_LOG].start = 1897472;
@@ -816,7 +817,7 @@ void user_loop(void)
     // состояние выходов
     device.status.stateOut1 = out_getstate(OUT1);
     device.status.stateOut2 = out_getstate(OUT2);
-    /* Status 1 out of turn after an input, output, trigger or bit 11 change. */
+    /* Статус 1 вне очереди после изменения входа, выхода, триггера или бита 11. */
     if (device.registredOnServer){
       uint16_t st;
       memcpy((uint8_t*)&st, (uint8_t*)&device.status, 2);
@@ -942,7 +943,7 @@ void user_loop(void)
       if (--device.updateTimeout == 0){
         fw_end("TIMEOUT", uniqIDCnt++);
       } else if (device.FWinProgress && device.updateTimeout % 60u == 0){
-        user_saveindex(); /* a resume after a reset keeps the remaining time */
+        user_saveindex(); /* после сброса докачка продолжает с оставшимся временем */
       }
     }
 
@@ -1156,8 +1157,8 @@ void user_factoryReset (void){
   // чистим память фото 
   user_clearMemBlock(MB_PHOTO);
   
-  /* A factory reset cancels a download: user_setdefault saves this state,
-     so nothing resumes after the restart. */
+  /* Заводской сброс отменяет загрузку: user_setdefault сохраняет это состояние, и после
+     перезапуска ничего не продолжается. */
   device.FWinProgress = 0;
   device.status.readyToUpdate = 0;
   device.updateTimeout = 0;
@@ -1241,10 +1242,9 @@ void user_savereset (void)
 }
 
 // Сохранение указателей чтения/записи в памяти
-/* The settings go into the sector from RAM, where they were checked at start,
- * not from a read of the sector: a read spoilt at a supply dip (modem
- * power-on) was published into a slot with a valid slot CRC, and the next
- * start found a bad settings CRC and wrote the factory defaults (18.09.2026). */
+/* Настройки попадают в сектор из ОЗУ, где их проверили при старте, а не из чтения сектора:
+ * чтение, испорченное на провале питания (включение модема), публиковалось в слот с верной CRC
+ * слота, и следующий старт находил неверную CRC настроек и записывал заводские (18.09.2026). */
 void user_saveindex (void)
 {
   user_writeConfigAndDevice();
@@ -1515,8 +1515,8 @@ void user_send_statusPack(dataChanel_e cch){
     break;
     
   case CH_SERVER:
-    /* An extra status (table E92) must not restart a confirmation wait that
-     * is already running: the wait keeps the 15 s limit of table A86. */
+    /* Внеочередной статус (таблица E92) не должен перезапускать уже идущее ожидание
+     * подтверждения: ожидание держит предел 15 с из таблицы A86. */
     if (device.answerID != 2 || device.answerTimeout == 0){
       device.answerID = 2;
       device.answerTimeout = TIMETOSTATUSRESPONSE;
@@ -2052,7 +2052,7 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
   send_buffer[39] = device.moduleType;
   // ------- меняемый блок ---------
   
-  /* Optional FLT1 extension after the original status payload. */
+  /* Необязательное расширение FLT1 после исходных данных статуса. */
   if (fault_record[0] == FAULT_RECORD_MAGIC) {
     uint16_t i;
     for (i = 0; i < sizeof(fault_record); i++)
@@ -2432,10 +2432,10 @@ void user_send_Photos(dataChanel_e cch, uint8_t uniqId){
   }*/
 }
 
-/* Status 1 out of turn (table E92, A57, A58): inputs, outputs and triggers
- * (bits 0-7) and ready-to-update (bit 11). Bits 12-15 follow the journal and
- * uploads and stay on the 15 s schedule. Inputs are read without debounce,
- * so extra statuses are at least a second apart. */
+/* Статус 1 вне очереди (таблица E92, A57, A58): входы, выходы и триггеры (биты 0-7) и
+ * готовность к обновлению (бит 11). Биты 12-15 следуют за журналом и выгрузками и идут по
+ * расписанию раз в 15 с. Входы читаются без антидребезга, поэтому внеочередные статусы - не
+ * чаще раза в секунду. */
 #define STATUS_EVENT_MASK       0x08FFu
 #define STATUS_EVENT_GAP_MS     1000u
 static uint16_t status_reported;
@@ -2453,17 +2453,15 @@ static void status_event_sent(uint16_t status, uint32_t now_ms)
   status_reported_ms = now_ms;
 }
 
-/* Update mode, status 1 bit 11 (Протокол2 E440): output command 8 and SMS
- * control commands are refused. Calls, cards and inputs keep working: a call
- * has the highest priority. */
+/* Режим обновления, бит 11 статуса 1 (Протокол2 E440): команда 8 и управляющие SMS отвергаются.
+ * Звонки, карты и входы работают: у звонка высший приоритет. */
 static uint8_t fw_update_quiet(void)
 {
   return device.status.readyToUpdate;
 }
 
-/* An update event with its detail as text in the ID field: the firmware
- * number, ROLLBACK, or the reason of an error (E122: the reason of a refusal
- * goes to the journal). */
+/* Событие обновления с подробностью текстом в поле ID: номер прошивки, ROLLBACK или причина
+ * ошибки (E122: причина отказа пишется в журнал). */
 static void fw_log(logSystem_e num, const char *text)
 {
   char id[10];
@@ -2474,8 +2472,7 @@ static void fw_log(logSystem_e num, const char *text)
 
 static uint8_t fw_write_errors;
 
-/* End a download without installing it. Blocks get 253 until the next
- * command 19. */
+/* Загрузка заканчивается без установки. Блоки получают 253 до следующей команды 19. */
 static void fw_abort(const char *reason)
 {
   device.FWinProgress = 0;
@@ -2487,8 +2484,8 @@ static void fw_abort(const char *reason)
   if (device.cchFWupdate != CH_USB) user_saveindex();
 }
 
-/* The controller stops a download by itself (E96): command 4 with 253 on the
- * channel of the download, the reason in the journal. */
+/* Контроллер сам прекращает загрузку (E96): команда 4 с кодом 253 по каналу загрузки, причина -
+ * в журнал. */
 static void fw_end(const char *reason, uint8_t uniqId)
 {
   fw_abort(reason);
@@ -2496,9 +2493,9 @@ static void fw_end(const char *reason, uint8_t uniqId)
     user_send_statusUpdateFW(20, FW_BLOCK_END, (dataChanel_e)device.cchFWupdate, uniqId);
 }
 
-/* Reserved vector 8 of an image holds 0x4857 and the HW number in its low
- * byte (startup_stm32f10x_md.s, DOMOVOI_APP_HW). A foreign board ends the
- * download with event 6. Images built before the marker existed are accepted. */
+/* В зарезервированном векторе 8 образа - 0x4857 и номер железа в младшем байте
+ * (startup_stm32f10x_md.s, DOMOVOI_APP_HW). Чужая плата заканчивает загрузку событием 6.
+ * Образы, собранные до появления метки, принимаются. */
 #define FW_HW_MARKER_OFFSET     0x20u
 #define FW_HW_MARKER_TAG        0x48570000u
 static uint8_t fw_image_foreign(const uint8_t *block0, uint8_t hw)
@@ -2508,11 +2505,10 @@ static uint8_t fw_image_foreign(const uint8_t *block0, uint8_t hw)
   return hw != 0 && (w & 0xFFFFFF00u) == FW_HW_MARKER_TAG && (uint8_t)w != hw;
 }
 
-/* Command 19 fields (rows 368-372). Number 0 is reserved; number 1 rolls back
- * to the backup copy, so the other fields may be zero. An update needs a
- * build, a CRC and a size that fits the image area. The table pads the file
- * to a multiple of 1024; a size that is only a multiple of 4 is accepted too,
- * with enough 1024-byte blocks to hold it. */
+/* Поля команды 19 (строки 368-372). Номер 0 зарезервирован; номер 1 - откат на резервную копию,
+ * остальные поля могут быть нулевыми. Обновлению нужны билд, CRC и размер, помещающийся в
+ * область образа. Таблица дописывает файл до кратного 1024; размер, кратный только 4, тоже
+ * принимается, если блоков по 1024 байта хватает. */
 static uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks)
 {
   if (number == 0) return 1;
@@ -2524,7 +2520,7 @@ static uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size,
          (build == 0) || (size == 0) || (crc == 0) || (blocks == 0);
 }
 
-/* Answer 2, "not now" (E122): the reason, or NULL when command 19 may run. */
+/* Ответ 2, "сейчас нельзя" (E122): причина, или NULL, если команду 19 можно выполнять. */
 static const char *fw_start_refused(void)
 {
   if (BOOT_VER < 0x30) return "OLD BOOT";
@@ -2534,7 +2530,7 @@ static const char *fw_start_refused(void)
   return NULL;
 }
 
-/* The download in progress on this channel was started with these fields. */
+/* Идущая по этому каналу загрузка начата с этими полями. */
 static uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks, dataChanel_e cch)
 {
   bootFWparam_s h;
@@ -2544,8 +2540,8 @@ static uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, 
          h.firmwareSize == size && h.firmwareCRC == crc;
 }
 
-/* Number 1: stage the backup copy for the bootloader and restart. Possible
- * while the copy is intact, otherwise answer 2. */
+/* Номер 1: подготовить резервную копию для загрузчика и перезапуститься. Возможно, пока копия
+ * цела, иначе ответ 2. */
 static cmdCode_e fw_rollback(dataChanel_e cch)
 {
   bootFWparam_s fwParam;
@@ -2565,7 +2561,7 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
   user_clearMemBlock(MB_FIRMWARE);
   for (block = 0; block < (fwParam.firmwareSize + FWBLOCK_OFFSET); block += 128){
     mem_read(mem[MB_BACKUP].start + block, bf, 128);
-    if (block == 0) memset(bf, 0xff, 4); /* app_boot_request writes the magic */
+    if (block == 0) memset(bf, 0xff, 4); /* метку пишет app_boot_request */
     mem_write(mem[MB_FIRMWARE].start + block, bf, 128);
     wdt_reload();
   }
@@ -2576,9 +2572,9 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
   return CMD_SUCCESS;
 }
 
-/* Command 19 (E122): answer 0 accepted, 1 bad fields, 2 not now. The number
- * is not compared with the installed one: what to install is the server's
- * decision. The same file again during its download carries on. */
+/* Команда 19 (E122): ответ 0 принято, 1 неверные поля, 2 сейчас нельзя. Номер с установленным
+ * не сверяется: что ставить, решает сервер. Тот же файл во время его загрузки - загрузка
+ * продолжается. */
 static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
 {
   uint16_t number, blocks;
@@ -2598,7 +2594,7 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
     return CMD_PARAMERROR;
   }
   if (number != 1 && fw_same_download(number, build, size, crc, blocks, cch)){
-    device.startWaitFWtime = 0; /* ask for the missing block at once */
+    device.startWaitFWtime = 0; /* запросить недостающий блок сразу */
     return CMD_SUCCESS;
   }
   busy = fw_start_refused();
@@ -2626,8 +2622,8 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   fw_write_errors = 0;
   sprintf(text, "%u", (unsigned)number);
   fw_log(LOG_SYS_GOTOUPDATE, text);
-  /* Server: bit 11, blocks requested by the controller, one timeout for the
-     whole download, all kept across a reset. USB: NextConfig sends blocks. */
+  /* Сервер: бит 11, блоки запрашивает контроллер, один срок на всю загрузку, всё переживает
+     сброс. USB: блоки шлёт NextConfig. */
   if (cch != CH_USB){
     device.FWinProgress = 1;
     device.updateTimeout = FW_TIMEOUT_S;
@@ -2637,7 +2633,7 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   return CMD_SUCCESS;
 }
 
-/* Read the block back: a torn or failed program shows here (code 254). */
+/* Блок читается обратно: оборванная или неудачная запись видна здесь (код 254). */
 static uint8_t fw_block_written(uint32_t adr, const uint8_t *data)
 {
   uint8_t b[64];
@@ -2649,9 +2645,8 @@ static uint8_t fw_block_written(uint32_t adr, const uint8_t *data)
   return 1;
 }
 
-/* All blocks received. A good image restarts into the bootloader to install
- * (event 3 just before the restart); a bad CRC ends the download. Bit 11
- * clears either way. */
+/* Все блоки приняты. Исправный образ - перезапуск в загрузчик на установку (событие 3 перед
+ * перезапуском); неверная CRC заканчивает загрузку. Бит 11 снимается в обоих случаях. */
 static uint8_t fw_blocks_done(uint8_t crc_ok)
 {
   device.FWinProgress = 0;
@@ -2663,12 +2658,11 @@ static uint8_t fw_blocks_done(uint8_t crc_ok)
   return crc_ok ? FW_BLOCK_OK : FW_BLOCK_END;
 }
 
-/* Command 20 (E96, E123, E477): the block number and 1024 bytes. Returns the
- * command 4 code: 0 taken, 254 failed its read-back, 255 wrong length or
- * number (both asked for again at once), 253 the download is over. Command
- * 4 confirms every command 20 (the server drops a command only when it is
- * confirmed): a late copy of a block already written gets 0, nothing is
- * written again. */
+/* Команда 20 (E96, E123, E477): номер блока и 1024 байта. Возвращает код команды 4: 0 принят,
+ * 254 не прошёл чтение после записи, 255 неверная длина или номер (оба сразу запрашиваются
+ * заново), 253 загрузка окончена. Команда 4 подтверждает каждую команду 20 (сервер снимает
+ * команду только по подтверждению): запоздавший повтор уже записанного блока получает 0,
+ * повторно ничего не пишется. */
 static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
 {
   uint16_t block;
@@ -2686,8 +2680,8 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
     log_addSystemEvent(LOG_SYS_HWERRUPDATE);
     return FW_BLOCK_END;
   }
-  /* Command 19 erased the image area: program in place. Programming the same
-     bytes again changes nothing and completes a torn block. */
+  /* Команда 19 стёрла область образа: пишем на место. Повторная запись тех же байт ничего не
+     меняет и дописывает оборванный блок. */
   adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u;
   mem_write(adr, (uint8_t*)&p[2], 1024);
   wdt_reload();
@@ -2704,10 +2698,9 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   return fw_blocks_done(user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC));
 }
 
-/* Blocks are programmed into the area erased by command 19 and never erased
- * again: programming a block twice leaves the same bytes, programming a torn
- * block completes it. Resume from the last block holding any programmed byte,
- * the one that may be torn. */
+/* Блоки пишутся в область, стёртую командой 19, и больше не стираются: повторная запись блока
+ * оставляет те же байты, запись оборванного блока его дописывает. Докачка начинается с
+ * последнего блока, где есть хоть один записанный байт, - он мог оборваться. */
 static uint16_t fw_resume_block(void)
 {
   uint8_t b[64];
@@ -2724,11 +2717,10 @@ static uint16_t fw_resume_block(void)
   return 0;
 }
 
-/* After a reset, continue a server download that was in progress (bit 11
- * survives a reset, E440). The staged header must still describe an update:
- * erased magic, a firmware number of 2 or more and fields command 19 would
- * accept. The remaining time is saved every minute. Without a download every
- * block gets 253. */
+/* После сброса продолжить загрузку с сервера, если она шла (бит 11 переживает сброс, E440).
+ * Подготовленный заголовок должен по-прежнему описывать обновление: стёртая метка, номер
+ * прошивки от 2 и поля, которые приняла бы команда 19. Остаток времени сохраняется раз в
+ * минуту. Без загрузки любой блок получает 253. */
 static void fw_resume_after_boot(void)
 {
   bootFWparam_s h;
@@ -2754,9 +2746,8 @@ static void fw_resume_after_boot(void)
   device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
 }
 
-/* Command 8 source (E184) to its journal event: 1 mobile app 52, 2 API 50,
- * 3 admin test 49, 4 voice assistant 51. Sources the table does not define
- * are written as API. */
+/* Источник команды 8 (E184) -> событие журнала: 1 мобильное приложение 52, 2 API 50, 3 тест из
+ * админки 49, 4 голосовой помощник 51. Источники, которых нет в таблице, пишутся как API. */
 static logControl_e cmd8_event(uint8_t source)
 {
   switch (source){
@@ -2809,8 +2800,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           app_trial_confirm();
           if (!app_trial_active()) log_addSystemEvent(LOG_SYS_ENDUPDATE);
         } // прошивка дошла до сервера - обновление подтверждено
-        /* A failed install or trial before this start: journal only, the
-           server sees the version in status 2 (E122). */
+        /* Неудачная установка или проба до этого старта: только журнал, версию сервер видит в
+           статусе 2 (E122). */
         if (app_boot_error_unreported()){
           char reason[11];
           app_boot_error_text(reason);
@@ -2852,8 +2843,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd reset (cmd 2)\r\n");
 #endif
-      /* Bit 11 (E440): a reset cancels a download; a rollback or an install
-         already on its way to the bootloader is left alone. */
+      /* Бит 11 (E440): перезагрузка отменяет загрузку; откат или установка, уже идущие в
+         загрузчик, не трогаются. */
       if (device.rebootToUpdate){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
@@ -2984,8 +2975,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         //ptr[8] - ID абонента для передачи контроллеру информации для какого ID нужно сделать декримент счетчика проходов в сутки.
         strncpy(tempStrBuffer, (char*)&ptr[8], 10);
         if (ptr[5] != 3){
-          /* The requested outputs (ptr[6], ptr[7]) that the relay settings
-             allow a server command to switch (onCmdServer). */
+          /* Запрошенные выходы (ptr[6], ptr[7]), которые настройки реле разрешают включать
+             командой сервера (onCmdServer). */
           server_out_event = cmd8_event(ptr[5]);
           user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,
                            (ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer);
@@ -3037,8 +3028,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if ((len - 3) == sizeof(config)){
         uint8_t* p = &ptr[5];
         
-        /* Server 1 and the country code are required; server 2 may be empty,
-           its use is switched by useServer2. */
+        /* Сервер 1 и код страны обязательны; сервер 2 может быть пустым, его использование
+           задаёт useServer2. */
         if ((p[8] == 0) || (p[137] == 0)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         }
@@ -3444,9 +3435,9 @@ if (cch != CH_USB){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd answer (cmd 24)\r\n"); 
 #endif 
-      /* The answer to status 1 ends its wait and the run of missed answers.
-         ptr[5] is the unique number of the confirmed message, not a command:
-         it must not end the wait for the registration answer. */
+      /* Ответ на статус 1 заканчивает ожидание и счёт пропущенных ответов. ptr[5] - уникальный
+         номер подтверждаемого сообщения, а не команда: он не должен заканчивать ожидание ответа
+         на регистрацию. */
       if (device.answerID == 2){
         device.answerTimeout = 0;
         device.lmCount = 0;
@@ -3518,7 +3509,7 @@ if (cch != CH_USB){
         user_send_usbDiag(uniqId);
       break;
 
-    case MANUAL_BOOT_COMMAND: { /* Manual bootloader file, USB only. */
+    case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */
       uint8_t response[8];
       if (cch != CH_USB || len < 4) {
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -3531,7 +3522,7 @@ if (cch != CH_USB){
       boot_manual_command(1, &ptr[5], (uint16_t)(len-3), response);
       user_send_anyData(MANUAL_BOOT_COMMAND, response, sizeof(response), cch, uniqId);
       if (response[0] == 2 && response[1] == MANUAL_OK) {
-        /* Let USB send its acceptance. Success is checked after restart. */
+        /* Дать USB отправить подтверждение. Успех проверяется после перезапуска. */
         delay_ms(200);
         response[1] = (uint8_t)boot_manual_apply();
         user_send_anyData(MANUAL_BOOT_COMMAND, response, sizeof(response), cch, uniqId);
@@ -3643,9 +3634,9 @@ uint8_t user_getweakday (uint32_t t)
 
 // ********************** Работа с ID **************************
 
-/* Command 13 writes a cell at the place of its number, so the base may have
- * holes. The lookup runs up to the last written cell, counted at start and
- * after every sync, and skips empty cells on the way. */
+/* Команда 13 пишет ячейку на место её номера, поэтому в базе бывают пропуски. Поиск идёт до
+ * последней записанной ячейки (считается при старте и после каждой синхронизации) и пропускает
+ * пустые. */
 static uint16_t id_cells_end;
 
 // поиск ID в памяти, если есть то возвращаются параметры ячейки
@@ -3746,8 +3737,8 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
   }
 }
 
-/* Schedule window in minutes of the day: 08:30-17:15 includes 09:00, a
- * window past midnight (22:00-06:00) wraps. */
+/* Окно расписания в минутах суток: 08:30-17:15 включает 09:00, окно через полночь (22:00-06:00)
+ * переходит через ноль. */
 static bool shedule_time_ok(const cellShedule_s *s)
 {
   uint16_t now = (uint16_t)device.hour * 60u + device.minute;
@@ -4010,9 +4001,9 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   }
 }
 
-/* One pass of an ID opens the requested outputs by their settings. The
- * relays in unlock use or already running are left out; the day counter goes
- * down and the journal gets one record per pass, not one per relay (Д-07). */
+/* Один проход ID открывает запрошенные выходы по их настройкам. Реле для разблокировки и уже
+ * работающие пропускаются; счётчик проходов уменьшается и в журнал пишется одна запись на
+ * проход, а не на каждое реле (Д-07). */
 void user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 
   bool run[2];
@@ -4170,8 +4161,7 @@ void user_clearTempIdBuffer(void){
 }
 
 // сколько номеров в памяти
-/* Written cells over the whole area, holes included; also finds the end of
- * the base for user_findID. */
+/* Записанные ячейки по всей области, с пропусками; заодно находит конец базы для user_findID. */
 uint16_t user_getNumbersCount(void){
 
   uint32_t adr;
@@ -4549,19 +4539,19 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
   return crc;
 }
 
-/* Command 111, layout version 4: 57 little-endian uint32 values.
- *  0 version, 1 worktime s, 2 milliseconds,
- *  3 ESOF forced resets, 4 ESOF reset timeouts, 5 bus resets,
- *  6 USB recoveries, 7 watch: IN not taken, 8 watch: OUT while unconfigured,
- *  9..15 last recovery: reason, bDeviceState, TX pending, queued bytes, ms since IN/OUT/SOF,
- *  16..21 now: bDeviceState, TX pending, queued bytes, ms since IN/OUT/SOF,
- *  22 TX errors, 23 RX errors, 24 debug bytes dropped, 25 OUT while unconfigured,
- *  26 longest main-loop pass ms, 27 passes >= 1 s, 28 config storage errors,
- *  29 GSM power-on events, 30 GSM no-answer events, 31 4 KiB heap failures, 32 fault record present,
- *  33..41 at the last recovery, 42..50 now: EP1R, EP3R, EP1 TX count, ISTR, CNTR, FNR,
- *  USB_Tx_State, IN packets armed, IN packets taken,
- *  51 USB bus errors (ERR interrupts) now, 52 bus errors at the last recovery,
- *  53 DADDR and 54 EP0R at the last recovery, 55 DADDR and 56 EP0R now.
+/* Команда 111, раскладка версии 4: 57 значений uint32, младшим байтом вперёд.
+ *  0 версия, 1 время работы с, 2 миллисекунды,
+ *  3 принудительные сбросы ESOF, 4 таймауты сброса ESOF, 5 сбросы шины,
+ *  6 восстановления USB, 7 сторож: IN не забран, 8 сторож: OUT при ненастроенном USB,
+ *  9..15 последнее восстановление: причина, bDeviceState, TX в пути, байт в очереди, мс с IN/OUT/SOF,
+ *  16..21 сейчас: bDeviceState, TX в пути, байт в очереди, мс с IN/OUT/SOF,
+ *  22 ошибки TX, 23 ошибки RX, 24 потерянные байты отладки, 25 OUT при ненастроенном USB,
+ *  26 самый долгий проход главного цикла мс, 27 проходов >= 1 с, 28 ошибки хранилища настроек,
+ *  29 включения GSM, 30 GSM без ответа, 31 отказы кучи 4 КиБ, 32 есть запись аварии,
+ *  33..41 на момент последнего восстановления, 42..50 сейчас: EP1R, EP3R, счётчик TX EP1, ISTR, CNTR, FNR,
+ *  USB_Tx_State, выставлено пакетов IN, забрано пакетов IN,
+ *  51 ошибки шины USB (прерывания ERR) сейчас, 52 ошибки шины на момент последнего восстановления,
+ *  53 DADDR и 54 EP0R на момент последнего восстановления, 55 DADDR и 56 EP0R сейчас.
  */
 static void user_send_usbDiag(uint8_t uniqId)
 {

@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 /**
   ******************************************************************************
   * @file    usb_istr.c
@@ -223,10 +224,10 @@ void USB_Istr(void)
           uint32_t budget = 32000u;
           while ((_GetISTR() & ISTR_RESET) == 0 && budget != 0) --budget;
           if (budget == 0) {
-            /* FRES alone leaves the port dead forever. Schedule a bounded
-             * detach/re-enumeration; the main loop and modem keep running. */
+            /* Один FRES оставляет порт мёртвым навсегда. Назначается ограниченное отключение и
+             * переподключение; главный цикл и модем продолжают работать. */
             usb_esof_timeouts++;
-            usb_recovery_reason = 1u; /* ESOF reset timeout */
+            usb_recovery_reason = 1u; /* таймаут сброса ESOF */
             usb_request_recovery();
             esof_counter = 0;
             return;

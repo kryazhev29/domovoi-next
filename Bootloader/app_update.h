@@ -1,18 +1,19 @@
+/* Разработчик: Кряжев А., 2026 */
 #ifndef DOMOVOI_APP_UPDATE_H
 #define DOMOVOI_APP_UPDATE_H
 #include <stdint.h>
-/* Returns zero on error; does not reset or write the bootloader automatically. */
+/* Возвращает 0 при ошибке; сам не перезагружает и не записывает загрузчик. */
 int app_boot_request(void);
 void app_boot_metadata(void);
 void app_boot_error_reported(void);
-/* Nonzero while the journal holds an error not yet sent to the server. */
+/* Не ноль, пока в журнале есть ошибка, ещё не отправленная на сервер. */
 int app_boot_error_unreported(void);
-/* Reason of that error for the event journal: up to 10 characters and a NUL. */
+/* Причина этой ошибки для журнала событий: до 10 символов и завершающий ноль. */
 void app_boot_error_text(char *text);
-/* Trial of this application after an update, read by app_boot_metadata(). */
+/* Проба этой прошивки после обновления, читается в app_boot_metadata(). */
 int app_trial_active(void);
 void app_trial_confirm(void);
 void app_trial_rollback(void);
-/* Call once per second; nonzero when the trial ran out of time unconfirmed. */
+/* Вызывать раз в секунду; не ноль, когда время пробы вышло без подтверждения. */
 int app_trial_expired(void);
 #endif
