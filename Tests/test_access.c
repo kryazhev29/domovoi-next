@@ -99,7 +99,14 @@ int main(void)
     clear_outs(); user_activateOut(true, false, CT_SERVER, (char*)none);
     CHECK(loads[0] == 1 && nlogs == 1 && log_cnt == 255 && left_of(9) == 0);
     put(9, none, 5, 3); user_getNumbersCount(); clear_outs(); user_activateOut(true, false, CT_SERVER, (char*)none);
-    CHECK(loads[0] == 1 && left_of(9) == 3); }
+    CHECK(loads[0] == 1 && left_of(9) == 3);
+    CHECK(!user_findID((char*)none, &found)); }
+  /* The answer to command 8 follows the result: true only when an output was switched. */
+  put(7, "7900000007", 5, 3); user_getNumbersCount();
+  clear_outs(); CHECK(user_activateOut(true, false, CT_SERVER, "7900000007"));
+  clear_outs(); CHECK(!user_activateOut(false, false, CT_SERVER, "7900000007"));
+  put(7, "7900000007", 5, 0);
+  clear_outs(); CHECK(!user_activateOut(true, true, CT_PHONE, "7900000007") && !loads[0]);
 
   puts("PASS access: schedule window by minutes, ID base with holes, requested relays only, one counter step and one record per pass");
   return 0;

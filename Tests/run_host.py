@@ -92,6 +92,16 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         clr=function(user,'log_clearLogBuffer')
         assert 'endAdr = device.newAddressLog;' in clr and 'mem[MB_LOG].start & ~(uint32_t)4095' in clr,'used sectors only'
         pend=user[user.index('/* >>> отложенные события журнала'):user.index('/* <<< отложенные события журнала */')]
+        pend+=user[user.index('/* >>> номер записи журнала'):user.index('/* <<< номер записи журнала */')]
+        # USB reads the journal from its own position and never erases it; only the server upload erases.
+        assert 'uint16_t readIdx = (cch == CH_USB) ? log_usbReadIndex : device.readLogIDIndex;' in up and up.count('device.readLogIDIndex')==1,'USB journal position'
+        assert 'if (cch == CH_USB) log_setReadIndex(cch, 0);' in up and 'else log_clearLogBuffer();' in up and 'log_usbReadIndex = 0;' in clr,'USB does not erase'
+        # USB commands other than ident, status, PIN and USB diagnostics need the PIN.
+        pc=function(user,'user_parse_comand')
+        assert pc.index('CMD_CRCERROR')<pc.index('if (cch == CH_USB && !device.userAutorized && !usb_cmd_without_pin(ptr[4])){')<pc.index('switch (ptr[4])'),'PIN gate'
+        assert 'return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
+        # Command 8: a requested output that did not switch answers 2, not success.
+        assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
         code=pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='access':
@@ -102,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert check.index('bool onOut[2]')<check.index('if (user_findTempID(id)){'),'relay permissions first'
         assert 'user_activateOut(0,' not in user and 'user_activateOut(1,' not in user and check.count('user_activateOut(onOut[0], onOut[1], tp, id);')==5 and check.count('user_activateOut(')==5,'requested relays only'
         c8=case(8)
-        assert 'user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,' in c8 and '(ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer);' in c8,'command 8 outputs'
+        assert 'user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,' in c8 and '(ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer)' in c8,'command 8 outputs'
         # Schedule time (Д-09) in both places.
         assert 'flag = shedule_time_ok(&shedule);' in check and 'flag = shedule_time_ok(&shedule);' in function(user,'user_checkShedule') and 'device.minute >= shedule.startMinute' not in user,'schedule window'
         # ID base end (Д-11): recounted at start, after a sync and after clearing.
@@ -161,7 +171,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
         code=user[user.index('void user_parse_comand'):]
-        code=code[:code.index('  switch (ptr[4])')]+'  (void)tmp32;\n}\n'
+        code=code[:code.index('  /* ПИН (команда 102)')]+'  (void)tmp32;\n}\n'
         unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='recovery':
         code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')

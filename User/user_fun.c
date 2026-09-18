@@ -846,6 +846,8 @@ void user_loop(void)
       if (usb_get_state() != ON)
         usb_init();
     }
+    else
+      device.userAutorized = 0; // кабель вынут - ПИН вводится заново
     
     user_indication(); // индикация
         
@@ -2134,8 +2136,16 @@ void user_send_configToConfigurator(dataChanel_e cch){
   }
 }
 
+/* USB читает журнал со своей позиции и не стирает его - стирает только выгрузка сервером.
+   Раньше позиция была общей, и чтение по USB забирало события у сервера (18.09.2026). */
+static uint16_t log_usbReadIndex;
+static void log_setReadIndex(dataChanel_e cch, uint16_t v){
+  if (cch == CH_USB) log_usbReadIndex = v; else device.readLogIDIndex = v;
+}
+
 // Пакет 10 - выгрузка журнала событий
 void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
+  uint16_t readIdx = (cch == CH_USB) ? log_usbReadIndex : device.readLogIDIndex;
  
   // читаем кол-во записей в памяти
   device.logsCount = log_getRecordsCount();
@@ -2148,28 +2158,29 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
   // записей нет
   if (device.logsCount == 0){
     user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
-    device.status.readyLogData = 0;
-    device.readLogIDIndex = 0;
+    if (cch != CH_USB) device.status.readyLogData = 0;
+    log_setReadIndex(cch, 0);
     return;
   }
   
-  uint32_t readAdr = mem[MB_LOG].start + ((uint32_t)device.readLogIDIndex * sizeof(cellLog_s));
+  uint32_t readAdr = mem[MB_LOG].start + ((uint32_t)readIdx * sizeof(cellLog_s));
   
   // подтверждение приема - выгрузили все: сначала ответ, потом стирание
   if (readAdr >= device.newAddressLog){
     user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
-    log_clearLogBuffer();
+    if (cch == CH_USB) log_setReadIndex(cch, 0); // следующее чтение по USB - снова с начала
+    else log_clearLogBuffer();
     return;
   }
 
   uint16_t crc;  
-  uint16_t cntId = device.logsCount - device.readLogIDIndex;
+  uint16_t cntId = device.logsCount - readIdx;
 
   if (cntId > 32) cntId = 32;
   // выделим память 1 кБ под записи журнала (32 * 32)
   uint8_t *send_buffer = malloc((cntId * sizeof(cellLog_s)) + 16);
   uint16_t len = (cntId * sizeof(cellLog_s)) + 6;
-  uint16_t cntId2 = device.logsCount - device.readLogIDIndex - cntId;
+  uint16_t cntId2 = device.logsCount - readIdx - cntId;
   
   if (send_buffer != NULL){
     
@@ -2213,8 +2224,8 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
       break;
     }    
     
-    device.readLogIDIndex += cntId;
-    device.status.readyLogData = 1;
+    log_setReadIndex(cch, readIdx + cntId);
+    if (cch != CH_USB) device.status.readyLogData = 1;
     
     free(send_buffer);
   }
@@ -2456,6 +2467,12 @@ static void status_event_sent(uint16_t status, uint32_t now_ms)
 {
   status_reported = status;
   status_reported_ms = now_ms;
+}
+
+/* USB без верного ПИНа: только опознание, статус, проверка ПИНа и диагностика USB. */
+static bool usb_cmd_without_pin(uint8_t cmd)
+{
+  return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;
 }
 
 /* Режим обновления, бит 11 статуса 1 (Протокол2 E440): команда 8 и управляющие SMS отвергаются.
@@ -2788,6 +2805,14 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     return;
   }
 
+  /* ПИН (команда 102) проверялся, но нигде не требовался: без него по USB стирались база ID
+     и настройки. Теперь остальные команды по USB - только после верного ПИНа, иначе ответ 4
+     «нужен пароль» (18.09.2026). */
+  if (cch == CH_USB && !device.userAutorized && !usb_cmd_without_pin(ptr[4])){
+    user_send_answer_comand(ptr[4], CMD_GETPASSWORD, cch, uniqId);
+    return;
+  }
+
   switch (ptr[4]) // команда
   {
     case 1: // Ответ контроллеру на регистрацию
@@ -2976,6 +3001,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         break;
       }
       if (ptr[5] != 0 && (len - 3) >= 3){
+        cmdCode_e res8 = CMD_SUCCESS;
         //ptr[5] - источник события, от него зависит номер события в журнале (E184)
         //ptr[8] - ID абонента для передачи контроллеру информации для какого ID нужно сделать декримент счетчика проходов в сутки.
         /* ID абонента есть только в полном пакете (13 байт); в коротком ID пустой,
@@ -2986,14 +3012,18 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           /* Запрошенные выходы (ptr[6], ptr[7]), которые настройки реле разрешают включать
              командой сервера (onCmdServer). */
           server_out_event = cmd8_event(ptr[5]);
-          user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,
-                           (ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer);
+          /* Запрошенный выход не включился (не разрешён, занят, кончились проходы) - ответ 2,
+             а не «выполнено»: сервер должен знать, что дверь не открылась (18.09.2026). */
+          if (!user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,
+                           (ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer)
+              && (ptr[6] != 0 || ptr[7] != 0))
+            res8 = CMD_RUNERROR;
         } else{
           out_load (OUT1, (ptr[6] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
           out_load (OUT2, (ptr[7] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
           log_addControlEvent(LOG_CON_OUTONBYTEST, tempStrBuffer, 0, 255);
         }
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);        
+        user_send_answer_comand(ptr[4], res8, cch, uniqId);
       }
       else{
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -3667,7 +3697,7 @@ bool user_findID(char *id, cellID_s *cell){
       uint16_t sum = 0;
       for (uint8_t i = 0; i<10; i++)
         sum += (uint8_t)c->ID[i];
-      if (sum == 2550) continue;
+      if (sum == 2550 || sum == 0) continue; // поле ID пустое: 0xFF или нули
       // проверяем на совпадение
       if (memcmp(c->ID, id, 10) == 0){
         memcpy(cell, c, sizeof(cellID_s));
@@ -4012,7 +4042,8 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 /* Один проход ID открывает запрошенные выходы по их настройкам. Реле для разблокировки и уже
  * работающие пропускаются; счётчик проходов уменьшается и в журнал пишется одна запись на
  * проход, а не на каждое реле (Д-07). */
-void user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
+/* Возвращает true, если включён хотя бы один выход. */
+bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 
   bool run[2];
   uint8_t out;
@@ -4024,7 +4055,7 @@ void user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 #ifdef DEBUG_USER
     user_debug(">>U Act Out: No output to switch\r\n");
 #endif
-    return;
+    return false;
   }
 
   // проверим счетчик проходов
@@ -4043,7 +4074,7 @@ void user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
         user_updateID(&cellId);
       }
       else{
-        return;
+        return false;
       }
     }
   }
@@ -4084,6 +4115,7 @@ void user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
       out_load(out, OUT_INV, 0, 0, 0);
     }
   }
+  return true;
 }
 
 // считать параметры группы
@@ -4374,10 +4406,28 @@ void log_clearLogBuffer(void){
   }
   
   device.readLogIDIndex = 0;
+  log_usbReadIndex = 0;
   device.logsCount = 0;
   device.status.readyLogData = 0;
   device.newAddressLog = mem[MB_LOG].start;
 }
+
+/* >>> номер записи журнала
+ * Номер - время события, но два события в одну секунду получали одинаковый «уникальный»
+ * номер. Теперь он всегда больше предыдущего: по последней записи во флешке (переживает
+ * перезапуск) и по последнему выданному (переживает стирание журнала) (18.09.2026). */
+static uint32_t log_lastIndex;
+static void log_uniqueIndex(cellLog_s *cl, uint32_t adr){
+  cellLog_s prev;
+  uint32_t last = log_lastIndex;
+  if (adr >= mem[MB_LOG].start + sizeof(cellLog_s)){
+    mem_read(adr - sizeof(cellLog_s), (uint8_t*)&prev, sizeof(prev));
+    if (prev.index != 0xffffffff && prev.index > last) last = prev.index;
+  }
+  if (last != 0 && cl->index <= last) cl->index = last + 1;
+  log_lastIndex = cl->index;
+}
+/* <<< номер записи журнала */
 
 // добавить событие в буфер
 bool log_addEvent(cellLog_s *cl){
@@ -4392,6 +4442,7 @@ bool log_addEvent(cellLog_s *cl){
     mem_read(adr, (uint8_t*)&cell, sizeof(cellLog_s));
     // ячейка пустая, она должна быть стерта
     if (cell.index == 0xffffffff){
+      log_uniqueIndex(cl, adr);
       mem_write(adr, (uint8_t*)cl, sizeof(cellLog_s));
       device.newAddressLog = adr + sizeof(cellLog_s);
       device.status.readyLogData = 1;

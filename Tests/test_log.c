@@ -6,6 +6,10 @@
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 /* TYPES */
 static struct { uint32_t datetime, worktime; } device;
+enum { MB_LOG };
+static struct { uint32_t start, size; } mem[1] = {{4096, 4096}};
+static uint8_t logflash[4096];
+static void mem_read(uint32_t a, uint8_t *p, uint32_t n) { memcpy(p, logflash + a - mem[MB_LOG].start, n); }
 static cellLog_s last;
 static unsigned added;
 static cellLog_s written[64];
@@ -89,6 +93,18 @@ int main(void)
   log_timeKnown = 0; log_pendingCount = 0; added = 0; device.worktime = 7;
   log_addSystemEvent(LOG_SYS_RESETONCMD); log_flushPending(); CHECK(added == 1 && last.logType == 34);
 
-  puts("PASS journal: 54 event numbers match the sheet, logType is the event number, events wait for the server time");
+  /* Record numbers only grow: two events in one second, after a restart and after the erase. */
+  { cellLog_s c; uint32_t at = mem[MB_LOG].start;
+    memset(logflash, 0xff, sizeof(logflash)); log_lastIndex = 0;
+    memset(&c, 0, sizeof(c)); c.index = 1000; log_uniqueIndex(&c, at); CHECK(c.index == 1000);
+    memcpy(logflash, &c, sizeof(c)); at += sizeof(c);
+    c.index = 1000; log_uniqueIndex(&c, at); CHECK(c.index == 1001);
+    memcpy(logflash + 32, &c, sizeof(c)); at += sizeof(c);
+    log_lastIndex = 0; c.index = 999; log_uniqueIndex(&c, at); CHECK(c.index == 1002);
+    memset(logflash, 0xff, sizeof(logflash));
+    c.index = 1002; log_uniqueIndex(&c, mem[MB_LOG].start); CHECK(c.index == 1003);
+    c.index = 5000; log_uniqueIndex(&c, mem[MB_LOG].start); CHECK(c.index == 5000); }
+
+  puts("PASS journal: 54 event numbers match the sheet, logType is the event number, events wait for the server time, record numbers grow");
   return 0;
 }
