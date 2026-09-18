@@ -115,7 +115,7 @@ void user_addIdToTempBuffer(char *id, codeType_e tp);
 // проверка ID по параметрам и управление выходом
 void user_checkIdAndControl(char *id, codeType_e tp);
 // управление выходом в соответствии с настройками
-void user_activateOut(uint8_t out, codeType_e tp, char *id);
+void user_activateOut(bool out1, bool out2, codeType_e tp, char *id);
 // считать параметры группы
 bool user_getGroup(uint16_t num, cellGroup_s *group);
 // считать параметры расписания

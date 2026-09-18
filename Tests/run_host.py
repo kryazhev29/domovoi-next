@@ -19,7 +19,7 @@ def typedefs(text,*names):
     # Packed like structures.h, so the tests see the real layouts and numbers.
     out=[]
     for name in names:
-        m=re.search(r'typedef\s+(?:enum|struct)\s*\{[^{}]*\}\s*'+name+r'\s*;',text)
+        m=re.search(r'typedef\s+(?:enum|struct)\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*'+name+r'\s*;',text)
         assert m,name
         out.append(m.group(0))
     return '#pragma pack(push,1)\n'+'\n'.join(out)+'\n#pragma pack(pop)\n'
@@ -82,11 +82,41 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'log_addComandEvent' not in user and 'log_addTransferEvent' not in user and 'LOG_CMD_' not in st and 'LOG_TR_' not in st and 'LT_SYSTEM' not in st,'command and exchange events'
         # Command 8: the source picks the event before the outputs; the admin test is logged too.
         c8=case(8)
-        assert c8.index('server_out_event = cmd8_event(ptr[5]);')<c8.index('user_activateOut(0, CT_SERVER, tempStrBuffer);'),'command 8 source'
+        assert c8.index('server_out_event = cmd8_event(ptr[5]);')<c8.index('user_activateOut((ptr[6] != 0)'),'command 8 source'
         assert 'log_addControlEvent(LOG_CON_OUTONBYTEST, tempStrBuffer, 0, 255);' in c8,'admin test logged'
         assert 'log_addControlEvent(server_out_event, id, 0, cnt);' in function(user,'user_activateOut'),'server event from its source'
         code='\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','cellLog_s')).replace('/* PRODUCTION */',code)
+    elif kind=='access':
+        user=source('User/user_fun.c');st=source('structures.h')
+        case=cases(user)
+        # Relays (Д-07): permissions are worked out before any way of opening, both relays never forced.
+        check=function(user,'user_checkIdAndControl')
+        assert check.index('bool onOut[2]')<check.index('if (user_findTempID(id)){'),'relay permissions first'
+        assert 'user_activateOut(0,' not in user and 'user_activateOut(1,' not in user and check.count('user_activateOut(onOut[0], onOut[1], tp, id);')==5 and check.count('user_activateOut(')==5,'requested relays only'
+        c8=case(8)
+        assert 'user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,' in c8 and '(ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer);' in c8,'command 8 outputs'
+        # Schedule time (Д-09) in both places.
+        assert 'flag = shedule_time_ok(&shedule);' in check and 'flag = shedule_time_ok(&shedule);' in function(user,'user_checkShedule') and 'device.minute >= shedule.startMinute' not in user,'schedule window'
+        # ID base end (Д-11): recounted at start, after a sync and after clearing.
+        assert 'device.numbersCount = user_getNumbersCount();' in case(13) and 'device.numbersCount++' not in user,'count after sync'
+        c103=user[user.index('    case 103:'):user.index('    case 105:')]
+        assert c103.index('user_clearMemBlock(MB_ID);')<c103.index('device.numbersCount = user_getNumbersCount();'),'count after clearing'
+        # Settings (Д-13): an empty server 2 is accepted.
+        c12=case(12)
+        assert 'if ((p[8] == 0) || (p[137] == 0)){' in c12 and 'p[40]' not in c12,'server 2 may be empty'
+        # Factory network type automatic (Д-24), protocol version 1 (Д-06, Протокол2 E424).
+        assert 'config.netType = 0;' in function(user,'user_setdefault') and 'NT_GSM' not in function(user,'user_setdefault'),'automatic network'
+        init=function(user,'user_initvariables')
+        assert '#define PROTOCOL_VERSION        (uint8_t)1' in user and init.index('user_readsavedinformation();')<init.index('device.protocolVersion = PROTOCOL_VERSION;'),'protocol version'
+        # Status answers: three misses in a row, an answer to status 1 restarts the run.
+        c24=user[user.index('    case 24:'):user.index('    case 27:')]
+        assert '#define MAXSTATUSANSWERERROR    (uint8_t)3' in user and '++device.lmCount >= MAXSTATUSANSWERERROR' in user,'three misses'
+        assert 'device.lmCount = 0;' in c24 and 'switch (ptr[5])' not in c24,'answer 24'
+        types=typedefs(st,'logControl_e','codeType_e','releMode_s','cellShedule_s','cellID_s')
+        code=re.search(r'(?m)^static uint16_t id_cells_end;',user).group(0)+'\n'
+        code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_activateOut'])
+        unit=(ROOT/'Tests/test_access.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='rules':
         user=source('User/user_fun.c')
         rules=user[user.index('/* Status 1 out of turn (table E92'):user.index('/* Update mode, status 1 bit 11')]

@@ -14,7 +14,8 @@
 #define TIMETOREGRESPONSE    (uint8_t)5 // время на получение ответа от сервера
 #define TIMETOSTATUSRESPONSE    (uint8_t)15 
 #define STATUSTIMERINTERVAL     (uint8_t)15 // интервал отправки статуса
-#define MAXSTATUSANSWERERROR    (uint8_t)1 // кол-во не получения ответа на статус
+#define MAXSTATUSANSWERERROR    (uint8_t)3 // пропущенных подряд ответов на статус до переподключения (лист «Проверка связи контроллером»: один пропуск - ничего не делать)
+#define PROTOCOL_VERSION        (uint8_t)1 // версия протокола в регистрации (Протокол2 E424)
 
 // команда 7 запрос фото
 // если getPhoto не равно нулю то сделать фото
@@ -899,7 +900,7 @@ void user_loop(void)
           break;
           
         case 2:
-          if (++device.lmCount == MAXSTATUSANSWERERROR){
+          if (++device.lmCount >= MAXSTATUSANSWERERROR){
 #ifdef DEBUG_USER
   user_debug(">>U Not answer to status\r\n"); 
 #endif            
@@ -1015,6 +1016,7 @@ void user_initvariables (void)
  
   // чтение сохранённой информации
   user_readsavedinformation();
+  device.protocolVersion = PROTOCOL_VERSION;
   
   // загружаем параметры gsm
   GsmParam_t param;
@@ -1108,7 +1110,7 @@ void user_setdefault (void)
   strcpy(config.server2, "93.189.229.197:15020");
   strcpy(config.countryCode, "+7");
   strcpy(config.netOperator, "internet,gdata,gdata");
-  config.netType = NT_GSM;
+  config.netType = 0; // автоматически: плата с модемом 4G
   config.useServer1 = 1;
   
   config.rele[0].mode = 0;
@@ -2987,9 +2989,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         //ptr[8] - ID абонента для передачи контроллеру информации для какого ID нужно сделать декримент счетчика проходов в сутки.
         strncpy(tempStrBuffer, (char*)&ptr[8], 10);
         if (ptr[5] != 3){
+          /* The requested outputs (ptr[6], ptr[7]) that the relay settings
+             allow a server command to switch (onCmdServer). */
           server_out_event = cmd8_event(ptr[5]);
-          user_activateOut(0, CT_SERVER, tempStrBuffer);
-          user_activateOut(1, CT_SERVER, tempStrBuffer);
+          user_activateOut((ptr[6] != 0) && config.rele[0].onCmdServer,
+                           (ptr[7] != 0) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer);
         } else{
           out_load (OUT1, (ptr[6] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
           out_load (OUT2, (ptr[7] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
@@ -3038,7 +3042,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if ((len - 3) == sizeof(config)){
         uint8_t* p = &ptr[5];
         
-        if ((p[8] == 0) || (p[40] == 0) || (p[137] == 0)){
+        /* Server 1 and the country code are required; server 2 may be empty,
+           its use is switched by useServer2. */
+        if ((p[8] == 0) || (p[137] == 0)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         }
         else{
@@ -3122,7 +3128,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           cellNum = mem[MB_ID].start + (cellNum*sizeof(cellID_s)) - newSector;
           memcpy(membfr + cellNum, &ptr[(i*sizeof(cellID_s)) + 10], sizeof(cellID_s));
           cnt++;
-          device.numbersCount++;
         }
         
         // ранее сектор был считан, сохраняем
@@ -3132,9 +3137,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           mem_write(sector, membfr, MEMSECTORSIZE);
         }        
         
-        user_send_timeshtamp(SHTAMP_ID, device.datetimeID, 
+        device.numbersCount = user_getNumbersCount();
+        user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
                            user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size), cch, uniqId);
-        
+
         free(membfr);
       }
       break;
@@ -3444,19 +3450,12 @@ if (cch != CH_USB){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd answer (cmd 24)\r\n"); 
 #endif 
-      if (device.answerID == 2)
+      /* The answer to status 1 ends its wait and the run of missed answers.
+         ptr[5] is the unique number of the confirmed message, not a command:
+         it must not end the wait for the registration answer. */
+      if (device.answerID == 2){
         device.answerTimeout = 0;
-  
-      //ptr[5] - На какую именно команду выдается подтверждение
-      //ptr[6] - код выполнения
-      switch (ptr[5]){
-        case 1:
-          
-          break;
-          
-        case 2:
-          device.answerTimeout = 0;
-          break;
+        device.lmCount = 0;
       }
       break;      
 
@@ -3491,6 +3490,7 @@ if (cch != CH_USB){
     case 103: // очистить память идентификаторов
       if (cch == CH_USB){
         user_clearMemBlock(MB_ID);
+        device.numbersCount = user_getNumbersCount();
         user_send_anyData(103, NULL, 0, cch, uniqId);
       } 
       break;
@@ -3649,27 +3649,32 @@ uint8_t user_getweakday (uint32_t t)
 
 // ********************** Работа с ID **************************
 
+/* Command 13 writes a cell at the place of its number, so the base may have
+ * holes. The lookup runs up to the last written cell, counted at start and
+ * after every sync, and skips empty cells on the way. */
+static uint16_t id_cells_end;
+
 // поиск ID в памяти, если есть то возвращаются параметры ячейки
 bool user_findID(char *id, cellID_s *cell){
-  
+
   uint32_t adr;
-  uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
+  uint32_t endAdr = mem[MB_ID].start + (uint32_t)id_cells_end * sizeof(cellID_s);
   uint8_t tbuffer[1024];
   cellID_s *c;
-  
+
   // по странично читаем
   for (adr = mem[MB_ID].start; adr < endAdr; adr += 1024){
     mem_read(adr, tbuffer, 1024);
     // перебираем ячейки
-    for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
+    for (uint16_t a = 0; a < 1024 && adr + a < endAdr; a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
       // пустая ячейка
-      if (c->index == 0xffff) return false;
+      if (c->index == 0xffff) continue;
       // пустое поле ID
       uint16_t sum = 0;
       for (uint8_t i = 0; i<10; i++)
-        sum += c->ID[i];
-      if (sum == 2550) return false;
+        sum += (uint8_t)c->ID[i];
+      if (sum == 2550) continue;
       // проверяем на совпадение
       if (memcmp(c->ID, id, 10) == 0){
         memcpy(cell, c, sizeof(cellID_s));
@@ -3747,6 +3752,16 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
   }
 }
 
+/* Schedule window in minutes of the day: 08:30-17:15 includes 09:00, a
+ * window past midnight (22:00-06:00) wraps. */
+static bool shedule_time_ok(const cellShedule_s *s)
+{
+  uint16_t now = (uint16_t)device.hour * 60u + device.minute;
+  uint16_t start = (uint16_t)s->startHour * 60u + s->startMinute;
+  uint16_t stop = (uint16_t)s->stopHour * 60u + s->stopMinute;
+  return start <= stop ? (now >= start && now <= stop) : (now >= start || now <= stop);
+}
+
 // проверка ID по параметрам и управление выходом
 // через нее проходят все ID
 void user_checkIdAndControl(char *id, codeType_e tp){
@@ -3777,50 +3792,10 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #endif    
     return; // разблокировка по сценарию включена
   }
-  
-  // проверяем ID из временного буфера
-  if (user_findTempID(id)){
-#ifdef DEBUG_USER
-    user_debug(">>U Check ID: Open by temp ID\r\n"); 
-#endif
-    user_activateOut(0, tp, id);
-    user_activateOut(1, tp, id);
-    return;    
-  }
-  
-  // авторегистрация
-  if (device.status.autoRegistration){
-    user_addIdToTempBuffer(id, tp);
-    log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0, 0);
-  }
-  
-  // открывать всем без разбора
-  if (device.status.openAnyUser){
-#ifdef DEBUG_USER
-    user_debug(">>U Check ID: Open any user\r\n"); 
-#endif
-    user_activateOut(0, tp, id);
-    user_activateOut(1, tp, id);
-    return;
-  }
 
-  // открывать всем по расписанию
-  if (device.triggers.openAllByShedule){
-    // проверяем рассписание
-#ifdef DEBUG_USER
-    user_debug(">>U Check ID: Open all by schedule\r\n"); 
-#endif
-    // проходим по расписанию
-    if (user_checkShedule(device.triggers.openAllByShedule) == true){
-      user_activateOut(0, tp, id);
-      user_activateOut(1, tp, id);      
-    }
-    return;
-  }
-  
   bool onOut[2] = {false, false};
-  
-  // проверим можно ли управлять этим способом
+
+  // проверим можно ли управлять этим способом: настройки реле действуют для любого пути открытия
   for (uint8_t i = 0; i < 2; i++){
     if (config.rele[i].useInBlock == 0){
       switch (tp){
@@ -3846,7 +3821,44 @@ void user_checkIdAndControl(char *id, codeType_e tp){
         if (config.rele[i].onOther) onOut[i] = true;
         break;
       }
-    }    
+    }
+  }
+
+  // проверяем ID из временного буфера
+  if (user_findTempID(id)){
+#ifdef DEBUG_USER
+    user_debug(">>U Check ID: Open by temp ID\r\n"); 
+#endif
+    user_activateOut(onOut[0], onOut[1], tp, id);
+    return;
+  }
+  
+  // авторегистрация
+  if (device.status.autoRegistration){
+    user_addIdToTempBuffer(id, tp);
+    log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0, 0);
+  }
+  
+  // открывать всем без разбора
+  if (device.status.openAnyUser){
+#ifdef DEBUG_USER
+    user_debug(">>U Check ID: Open any user\r\n"); 
+#endif
+    user_activateOut(onOut[0], onOut[1], tp, id);
+    return;
+  }
+
+  // открывать всем по расписанию
+  if (device.triggers.openAllByShedule){
+    // проверяем рассписание
+#ifdef DEBUG_USER
+    user_debug(">>U Check ID: Open all by schedule\r\n"); 
+#endif
+    // проходим по расписанию
+    if (user_checkShedule(device.triggers.openAllByShedule) == true){
+      user_activateOut(onOut[0], onOut[1], tp, id);
+    }
+    return;
   }
   
   // можно, ищем ID
@@ -3910,8 +3922,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #ifdef DEBUG_USER
     user_debug(">>U Check ID: Any time\r\n"); 
 #endif 
-        user_activateOut(0, tp, id);
-        user_activateOut(1, tp, id);
+        user_activateOut(onOut[0], onOut[1], tp, id);
         return;
       }
       
@@ -3947,17 +3958,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
       bool flag = false;
       
       // проверим время
-      if (shedule.startHour <= shedule.stopHour){
-        if ((device.hour >= shedule.startHour) && (device.minute >= shedule.startMinute) &&
-            (device.hour <= shedule.stopHour) && (device.minute <= shedule.stopMinute)){
-          flag = true;
-        } 
-      } else{
-        if (((device.hour >= shedule.stopHour) && (device.minute >= shedule.stopMinute)) ||
-            ((device.hour <= shedule.startHour) && (device.minute <= shedule.startMinute))){
-          flag = true;
-        }
-      }
+      flag = shedule_time_ok(&shedule);
       
       // не прошли по времени
       if (flag == false)
@@ -3994,8 +3995,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
         return;
       }
       
-      user_activateOut(0, tp, id);
-      user_activateOut(1, tp, id);
+      user_activateOut(onOut[0], onOut[1], tp, id);
     } else{
 #ifdef DEBUG_USER
     user_debug(">>U Check ID: Not founded\r\n"); 
@@ -4016,30 +4016,21 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   }
 }
 
-// управление выходом в соответствии с настройками
-void user_activateOut(uint8_t out, codeType_e tp, char *id){
-  
-  if (out >= 2) return;  
-#ifdef DEBUG_USER
-  if (out == 0)
-    user_debug(">>U Act Out: Out 1\r\n");
-  else
-    user_debug(">>U Act Out: Out 2\r\n");
-#endif   
-  // используется в режиме блокировки
-  if (config.rele[out].useInBlock)
+/* One pass of an ID opens the requested outputs by their settings. The
+ * relays in unlock use or already running are left out; the day counter goes
+ * down and the journal gets one record per pass, not one per relay (Д-07). */
+void user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
+
+  bool run[2];
+  uint8_t out;
+
+  run[0] = out1 && !config.rele[0].useInBlock && !out_getmodestate(0);
+  run[1] = out2 && !config.rele[1].useInBlock && !out_getmodestate(1);
+  if (!run[0] && !run[1])
   {
 #ifdef DEBUG_USER
-    user_debug(">>U Act Out: Use in blocking\r\n"); 
-#endif     
-    return;
-  }
-  // узнаем выполняется алгоритм выхода или нет
-  if (out_getmodestate(out))
-  {
-#ifdef DEBUG_USER
-    user_debug(">>U Act Out: Is running\r\n"); 
-#endif     
+    user_debug(">>U Act Out: No output to switch\r\n");
+#endif
     return;
   }
 
@@ -4054,14 +4045,14 @@ void user_activateOut(uint8_t out, codeType_e tp, char *id){
       if (cellId.cntPass != 0){
         cellId.cntPass -= 1;
         cnt = cellId.cntPass;
-        user_updateID(&cellId);      
+        user_updateID(&cellId);
       }
       else{
         return;
       }
     }
   }
-    
+
   switch (tp){
   case CT_PHONE:
     log_addControlEvent(LOG_CON_OUTONBYPHONE, id, 0, cnt);
@@ -4085,15 +4076,18 @@ void user_activateOut(uint8_t out, codeType_e tp, char *id){
     break;
   }
 
+  for (out = 0; out < 2; out++){
+    if (!run[out]) continue;
 #ifdef DEBUG_USER
-    user_debug(">>U Act Out: Activate\r\n"); 
-#endif   
-  // импульс
-  if (config.rele[out].mode == 0){
-    out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
-  } else{
-    // уровень
-    out_load(out, OUT_INV, 0, 0, 0);
+    user_debug(out == 0 ? ">>U Act Out: Out 1\r\n" : ">>U Act Out: Out 2\r\n");
+#endif
+    // импульс
+    if (config.rele[out].mode == 0){
+      out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
+    } else{
+      // уровень
+      out_load(out, OUT_INV, 0, 0, 0);
+    }
   }
 }
 
@@ -4182,27 +4176,33 @@ void user_clearTempIdBuffer(void){
 }
 
 // сколько номеров в памяти
+/* Written cells over the whole area, holes included; also finds the end of
+ * the base for user_findID. */
 uint16_t user_getNumbersCount(void){
-  
+
   uint32_t adr;
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint8_t tbuffer[1024];
   cellID_s *c;
-  uint16_t cnt = 0;
-  
+  uint16_t cnt = 0, cell = 0;
+
+  id_cells_end = 0;
   // по странично читаем
   for (adr = mem[MB_ID].start; adr < endAdr; adr += 1024){
     mem_read(adr, tbuffer, 1024);
     // перебираем ячейки
     for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
+      cell++;
       // пустая ячейка
-      if (c->index == 0xffff) return cnt;
-      
+      if (c->index == 0xffff) continue;
+
       cnt++;
+      id_cells_end = cell;
     }
+    wdt_reload();
   }
-  
+
   return cnt;
 }
 
@@ -4266,17 +4266,7 @@ bool user_checkShedule(uint8_t shd){
   bool flag = false;
   
   // проверим время
-  if (shedule.startHour <= shedule.stopHour){
-    if ((device.hour >= shedule.startHour) && (device.minute >= shedule.startMinute) &&
-        (device.hour <= shedule.stopHour) && (device.minute <= shedule.stopMinute)){
-      flag = true;
-    } 
-  } else{
-    if (((device.hour >= shedule.stopHour) && (device.minute >= shedule.stopMinute)) ||
-        ((device.hour <= shedule.startHour) && (device.minute <= shedule.startMinute))){
-      flag = true;
-    }
-  }
+  flag = shedule_time_ok(&shedule);
       
   // не прошли по времени
   if (flag == false){
