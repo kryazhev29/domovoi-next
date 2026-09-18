@@ -19,13 +19,8 @@
 #define ONE_WEEK        (ONE_DAY * ONE_WEEKDAYS)
 
 
-// Тип события журнала
-typedef enum{
-  LT_SYSTEM = 0,
-  LT_COMAND,
-  LT_TRANSFER,
-  LT_CONTROL
-}logEventType_e;
+// Журнал: в поле logType пишется номер события листа «Журнал событий»
+// (Протокол2 E525), категорию сервер определяет сам по номеру.
 
 // Системное событи журнала
 typedef enum{
@@ -81,47 +76,16 @@ typedef enum{
   LOG_CON_OUTONBYWIEGAND,
   LOG_CON_OUTONBYRF433,
   LOG_CON_OUTONBYAVTO,
-  LOG_CON_OUTONBYCMD,
-  LOG_CON_RECVIDONREADER,
-  LOG_CON_PHOTOFIX
+  LOG_CON_OUTONBYTEST,    // 49 команда 8 от сервера: тест из админки
+  LOG_CON_OUTONBYAPI,     // 50 команда 8: API
+  LOG_CON_OUTONBYVOICE,   // 51 команда 8: голосовой помощник
+  LOG_CON_OUTONBYAPP,     // 52 команда 8: мобильное приложение
+  LOG_CON_RECVIDONREADER, // 53 получен ID со считывателя
+  LOG_CON_PHOTOFIX        // 54 фотофиксация
 }logControl_e;
 
-// событиe обмена журнала
-typedef enum{
-  LOG_TR_CONNECTED = 0,
-  LOG_TR_NOBINDING = 1,
-  LOG_TR_NOINSYSTEM = 2,
-  LOG_TR_STATUS1 = 3,
-  LOG_TR_STATUS2 = 4,
-  LOG_TR_ANSWERONBINDING = 5
-}logTransfer_e;
-
-// событиe команды журнала
-typedef enum{
-  LOG_CMD_OUTEN = 7,
-  LOG_CMD_RESET,
-  LOG_CMD_SENDSMS,
-  LOG_CMD_FACTORY,
-  LOG_CMD_SETTRIGGER,
-  LOG_CMD_GETIDHARD,
-  LOG_CMD_GETPHOTO,
-  LOG_CMD_OUTSEN,
-  LOG_CMD_GETLOG,
-  LOG_CMD_GETIDAUTOREGSMS,
-  LOG_CMD_SENDINGSMS,
-  LOG_CMD_SYNCCONFIG,
-  LOG_CMD_SYNCID,
-  LOG_CMD_SYNCSHEDULE,
-  LOG_CMD_SYNCGROUP,
-  LOG_CMD_SYNCHOLLIDAY,
-  LOG_CMD_GETCRCSTRUCT,
-  LOG_CMD_GETCRCIDBLOCK,
-  LOG_CMD_RUNUPDATE,
-  LOG_CMD_SENDUPDBLOCK,
-  LOG_CMD_GETSTATUS2,
-  LOG_CMD_SETTIME,
-  LOG_CMD_ANSWER
-}logComand_e;
+// Командные и обменные события контроллер в журнал не пишет: их ведёт сервер
+// (ответы Алексея 16.09.2026, Протокол2 E525).
 
 // 
 typedef enum{
@@ -146,7 +110,6 @@ typedef enum{
   CMD_GOTONEXT = 7,
   CMD_UNDEFIMEI = 8,
   CMD_UNDEFOBJECT = 9,
-  CMD_ROLLBACKRUN = 253, /* protocol D532: firmware rollback started */
   CMD_CRCERROR = 254,
   CMD_UNDEFINE = 255
 }cmdCode_e;

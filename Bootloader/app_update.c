@@ -51,12 +51,8 @@ void app_boot_metadata(void) {
   device.firmwareSize=h->size;device.firmwareCRC=h->crc;
  }
  if(BOOT_VER>=BOOT_VERSION&&BOOT_VER!=0xffu) {
-  uint32_t reported,done,armed,confirmed;
+  uint32_t done,armed,confirmed;
   mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
-  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
-  /* Any written code is an update error, including one torn by a power cut. */
-  if(result!=0xffffffffu&&reported==0xffffffffu)
-   device.firmwarePercent=252;
   mem_read(BOOT_JOURNAL+4,(uint8_t*)&done,4);
   mem_read(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,(uint8_t*)&armed,4);
   mem_read(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&confirmed,4);
@@ -94,6 +90,15 @@ int app_boot_error_unreported(void) {
  mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
  return result!=0xffffffffu&&reported==0xffffffffu;
+}
+/* Any written code is an error, including one torn by a power cut. */
+void app_boot_error_text(char *text) {
+ uint32_t result;
+ mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
+ if(result==BOOT_TRIAL_FAILED){strcpy(text,"TRIAL FAIL");return;}
+ if(result==BOOT_BACKUP_ERROR){strcpy(text,"BACKUP");return;}
+ strcpy(text,"BOOT ?");
+ if(result<=9u)text[5]=(char)('0'+result);
 }
 void app_boot_error_reported(void) {
  uint32_t reported=0;

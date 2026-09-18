@@ -43,15 +43,21 @@ static void fw_resume_after_boot(void);
 extern unsigned int loop_max_ms, loop_stalls;
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
 static void user_send_usbDiag(uint8_t uniqId);
-/* Update rules from the customer table: status 1 out of turn (E92), update
- * mode (E437), progress codes 250, 251 and 254 (D473). Defined before
- * command 19. */
+/* Update order of sheet "Протокол2": status 1 out of turn (E95), update mode
+ * bit 11 (E440), command 19 (E122), blocks 13 and 20 (E96, E123), command 4
+ * (E476, E477). Defined before command 19. */
+#define FW_TIMEOUT_S            600u    /* the whole download, from command 19 */
+#define FW_BLOCK_RETRY_MS       20000u  /* lifetime of command 13 */
+#define FW_WRITE_TRIES          3u      /* one block failing its read-back */
+#define FW_BLOCK_OK             0u      /* command 4 codes */
+#define FW_BLOCK_END            253u
+#define FW_BLOCK_BADWRITE       254u
+#define FW_BLOCK_BADFRAME       255u
+#define FW_BLOCK_SKIP           1u      /* late copy of a written block: no answer */
 static void status_event_sent(uint16_t status, uint32_t now_ms);
 static uint8_t status_event_due(uint16_t status, uint32_t now_ms);
 static uint8_t fw_update_quiet(void);
-static void fw_abort(uint8_t code);
-static uint8_t fw_idle_expired(void);
-static void fw_idle_block_received(void);
+static void fw_end(const char *reason, uint8_t uniqId);
 
 // буфер под прием данных от внешнего порта
 #pragma data_alignment=4
@@ -786,7 +792,7 @@ void user_loop(void)
         device.startWaitFWtime = timers_getMillis();
       } else{
         // не дождались блока прошивки
-        if ((timers_getMillis() - device.startWaitFWtime) > 15000){
+        if ((timers_getMillis() - device.startWaitFWtime) >= FW_BLOCK_RETRY_MS){
           // повторяем запрос
           device.startWaitFWtime = 0;
         }
@@ -912,10 +918,6 @@ void user_loop(void)
         if (--device.lmTimer == 0){
           device.lmTimer = STATUSTIMERINTERVAL;
           user_send_statusPack(CH_SERVER);
-          /*if (config.fullLog != 0)
-          {
-            log_addTransferEvent(LOG_TR_STATUS1);
-          }*/
         }
       }
     }
@@ -927,32 +929,17 @@ void user_loop(void)
         log_addSystemEvent(LOG_SYS_RUNUPDATE);
         user_savereset();
       } else {
-        log_addSystemEvent(LOG_SYS_ERRUPDATE);
-        device.firmwarePercent = 252;
-        device.FWinProgress = 0;
-        device.status.readyToUpdate = 0;
-        user_saveindex();
-        user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
-      }
-    }
-    
-    // таймаут обновления
-    if (device.updateTimeout){
-      if (--device.updateTimeout == 0){
-        fw_abort(249);
-        log_addSystemEvent(LOG_SYS_ERRUPDATE);
-        if (device.registredOnServer)
-          user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
-      } else if (device.FWinProgress && device.updateTimeout % 600u == 0){
-        user_saveindex(); /* a resume after a reset keeps the remaining time */
+        fw_end("INSTALL", uniqIDCnt++);
       }
     }
 
-    if (fw_idle_expired()){
-      fw_abort(251);
-      log_addSystemEvent(LOG_SYS_ERRUPDATE);
-      if (device.registredOnServer)
-        user_send_statusUpdateFW(20, CMD_RUNERROR, (dataChanel_e)device.cchFWupdate, uniqIDCnt++);
+    // таймаут обновления
+    if (device.updateTimeout){
+      if (--device.updateTimeout == 0){
+        fw_end("TIMEOUT", uniqIDCnt++);
+      } else if (device.FWinProgress && device.updateTimeout % 60u == 0){
+        user_saveindex(); /* a resume after a reset keeps the remaining time */
+      }
     }
 
     // пробная прошивка после обновления так и не зарегистрировалась на сервере - откат
@@ -1606,7 +1593,7 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
 }
 
 // Пакет 4 - пакет статуса обновления FW
-void user_send_statusUpdateFW(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId){
+void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8_t uniqId){
   uint16_t crc;
   uint16_t len = 5; // timeout comand + uniqId + id + payload
   uint8_t send_buffer[13];
@@ -1628,7 +1615,7 @@ void user_send_statusUpdateFW(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8
   send_buffer[8] = 4; // id
   //send_buffer[9] = 20; // Отправка блока прошивки
   send_buffer[9] = device.firmwarePercent; // Процент хода обновления или код ошибки
-  send_buffer[10] = cc;
+  send_buffer[10] = code; // 0 блок принят, 253 загрузка прекращена, 254 и 255 блок запрошен снова
   // ------- меняемый блок ---------
   
   crc = crc16_calc(&send_buffer[4], len + 2);
@@ -2471,48 +2458,52 @@ static void status_event_sent(uint16_t status, uint32_t now_ms)
   status_reported_ms = now_ms;
 }
 
-/* Update mode (table E437, F108): while status bit 11 is set, output command 8
- * and SMS control commands are refused. Calls, cards and inputs keep working:
- * a call has the highest priority (non-functional requirement 45). */
+/* Update mode, status 1 bit 11 (Протокол2 E440): output command 8 and SMS
+ * control commands are refused. Calls, cards and inputs keep working: a call
+ * has the highest priority. */
 static uint8_t fw_update_quiet(void)
 {
   return device.status.readyToUpdate;
 }
 
-/* End a download without installing it (table D473: 249, 250, 251). Further
- * blocks are refused until the next command 19. */
-static void fw_abort(uint8_t code)
+/* An update event with its detail as text in the ID field: the firmware
+ * number, ROLLBACK, or the reason of an error (E122: the reason of a refusal
+ * goes to the journal). */
+static void fw_log(logSystem_e num, const char *text)
+{
+  char id[10];
+  memset(id, 0, sizeof(id));
+  strncpy(id, text, sizeof(id));
+  log_addSystemEventID(num, id);
+}
+
+static uint8_t fw_write_errors;
+
+/* End a download without installing it. Blocks get 253 until the next
+ * command 19. */
+static void fw_abort(const char *reason)
 {
   device.FWinProgress = 0;
   device.status.readyToUpdate = 0;
   device.updateTimeout = 0;
-  device.FWblockIdx = device.FWblockCount;
-  device.firmwarePercent = code;
+  device.FWblockIdx = device.FWblockCount = 0;
+  fw_write_errors = 0;
+  if (reason != NULL) fw_log(LOG_SYS_ERRUPDATE, reason);
   if (device.cchFWupdate != CH_USB) user_saveindex();
 }
 
-/* Table D473 251: no block from the server for 10 minutes. Called once a
- * second; the 60-minute limit (249) still bounds the whole download. */
-#define FW_IDLE_LIMIT_S         600u
-static uint16_t fw_idle_seconds;
-
-static uint8_t fw_idle_expired(void)
+/* The controller stops a download by itself (E96): command 4 with 253 on the
+ * channel of the download, the reason in the journal. */
+static void fw_end(const char *reason, uint8_t uniqId)
 {
-  if (!device.FWinProgress) {
-    fw_idle_seconds = 0;
-    return 0;
-  }
-  return ++fw_idle_seconds >= FW_IDLE_LIMIT_S;
+  fw_abort(reason);
+  if (device.cchFWupdate == CH_USB || device.registredOnServer)
+    user_send_statusUpdateFW(20, FW_BLOCK_END, (dataChanel_e)device.cchFWupdate, uniqId);
 }
 
-static void fw_idle_block_received(void)
-{
-  fw_idle_seconds = 0;
-}
-
-/* Table D473 250, customer A73: reserved vector 8 of an image holds 0x4857 and
- * the HW number in its low byte (startup_stm32f10x_md.s, DOMOVOI_APP_HW).
- * Images built before the marker existed are accepted. */
+/* Reserved vector 8 of an image holds 0x4857 and the HW number in its low
+ * byte (startup_stm32f10x_md.s, DOMOVOI_APP_HW). A foreign board ends the
+ * download with event 6. Images built before the marker existed are accepted. */
 #define FW_HW_MARKER_OFFSET     0x20u
 #define FW_HW_MARKER_TAG        0x48570000u
 static uint8_t fw_image_foreign(const uint8_t *block0, uint8_t hw)
@@ -2522,11 +2513,14 @@ static uint8_t fw_image_foreign(const uint8_t *block0, uint8_t hw)
   return hw != 0 && (w & 0xFFFFFF00u) == FW_HW_MARKER_TAG && (uint8_t)w != hw;
 }
 
-/* Command 19 fields. Number 0 is reserved; number 1 rolls back to the backup
- * copy, so build, size, CRC and block count are not used and may be zero. */
+/* Command 19 fields (rows 368-372). Number 0 is reserved; number 1 rolls back
+ * to the backup copy, so the other fields may be zero. An update needs a
+ * build, a CRC and a size that fits the image area. The table pads the file
+ * to a multiple of 1024; a size that is only a multiple of 4 is accepted too,
+ * with enough 1024-byte blocks to hold it. */
 static uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks)
 {
-  if (BOOT_VER < 0x30 || number == 0) return 1;
+  if (number == 0) return 1;
   if (number == 1) return 0;
   return (size > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
          ((size & 3u) != 0) ||
@@ -2535,27 +2529,182 @@ static uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size,
          (build == 0) || (size == 0) || (crc == 0) || (blocks == 0);
 }
 
-/* Command 19 accepted (protocol E119, changes row 14): the server gets 5,
- * "ready to receive". NextConfig over USB still expects 0 until it is updated. */
-static cmdCode_e fw_start_accepted(dataChanel_e cch)
+/* Answer 2, "not now" (E122): the reason, or NULL when command 19 may run. */
+static const char *fw_start_refused(void)
 {
-  return cch == CH_USB ? CMD_SUCCESS : CMD_RUNNING;
+  if (BOOT_VER < 0x30) return "OLD BOOT";
+  if (boot_manual_busy()) return "BOOT BUSY";
+  if (app_trial_active()) return "IN TRIAL";
+  if (device.rebootToUpdate || device.FWinProgress) return "BUSY";
+  return NULL;
 }
 
-/* All blocks received. A bad image CRC also ends the update: stop requesting
- * blocks, clear status bit 11 (table F437) and report 252 (table D473). */
-static void fw_blocks_done(uint8_t crc_ok)
+/* The download in progress on this channel was started with these fields. */
+static uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks, dataChanel_e cch)
+{
+  bootFWparam_s h;
+  if (!device.FWinProgress || device.cchFWupdate != cch || blocks != device.FWblockCount) return 0;
+  mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h));
+  return h.firmwareVersion == number && h.buildDate == build &&
+         h.firmwareSize == size && h.firmwareCRC == crc;
+}
+
+/* Number 1: stage the backup copy for the bootloader and restart. Possible
+ * while the copy is intact, otherwise answer 2. */
+static cmdCode_e fw_rollback(dataChanel_e cch)
+{
+  bootFWparam_s fwParam;
+  uint32_t block;
+
+  mem_read(mem[MB_BACKUP].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
+  if ((fwParam.buildDate == 0xffffffff) || (fwParam.firmwareSize == 0xffffffff) ||
+      (fwParam.firmwareCRC == 0xffffffff) || (fwParam.firmwareVersion == 0xffff)){
+    fw_log(LOG_SYS_ERRUPDATE, "NO BACKUP");
+    return CMD_RUNERROR;
+  }
+  if ((fwParam.firmwareSize > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
+      !user_checkFirmware(mem[MB_BACKUP].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC)){
+    fw_log(LOG_SYS_ERRUPDATE, "BAD BACKUP");
+    return CMD_RUNERROR;
+  }
+  user_clearMemBlock(MB_FIRMWARE);
+  for (block = 0; block < (fwParam.firmwareSize + FWBLOCK_OFFSET); block += 128){
+    mem_read(mem[MB_BACKUP].start + block, bf, 128);
+    if (block == 0) memset(bf, 0xff, 4); /* app_boot_request writes the magic */
+    mem_write(mem[MB_FIRMWARE].start + block, bf, 128);
+    wdt_reload();
+  }
+  fw_log(LOG_SYS_GOTOUPDATE, "ROLLBACK");
+  device.cchFWupdate = cch;
+  device.status.readyToUpdate = 1;
+  device.rebootToUpdate = 1;
+  return CMD_SUCCESS;
+}
+
+/* Command 19 (E122): answer 0 accepted, 1 bad fields, 2 not now. The number
+ * is not compared with the installed one: what to install is the server's
+ * decision. The same file again during its download carries on. */
+static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
+{
+  uint16_t number, blocks;
+  uint32_t build, size, crc;
+  const char *busy;
+  bootFWparam_s fwParam;
+  char text[11];
+
+  memcpy((uint8_t*)&number, &p[0], 2);
+  memcpy((uint8_t*)&build, &p[2], 4);
+  memcpy((uint8_t*)&size, &p[6], 4);
+  memcpy((uint8_t*)&crc, &p[10], 4);
+  memcpy((uint8_t*)&blocks, &p[14], 2);
+
+  if (fw_start_rejected(number, build, size, crc, blocks)){
+    fw_log(LOG_SYS_ERRUPDATE, "PARAM");
+    return CMD_PARAMERROR;
+  }
+  if (number != 1 && fw_same_download(number, build, size, crc, blocks, cch)){
+    device.startWaitFWtime = 0; /* ask for the missing block at once */
+    return CMD_SUCCESS;
+  }
+  busy = fw_start_refused();
+  if (busy != NULL){
+    fw_log(LOG_SYS_ERRUPDATE, busy);
+    return CMD_RUNERROR;
+  }
+  if (number == 1) return fw_rollback(cch);
+
+  user_clearMemBlock(MB_FIRMWARE);
+  memset(&fwParam, 0xff, sizeof(fwParam));
+  fwParam.hardwareVersion = device.hardwareVersion;
+  fwParam.firmwareVersion = number;
+  fwParam.firmwareSize = size;
+  fwParam.firmwareCRC = crc;
+  fwParam.buildDate = build;
+  mem_write(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
+  wdt_reload();
+
+  device.FWblockCount = blocks;
+  device.FWblockIdx = 0;
+  device.firmwarePercent = 0;
+  device.startWaitFWtime = 0;
+  device.cchFWupdate = cch;
+  fw_write_errors = 0;
+  sprintf(text, "%u", (unsigned)number);
+  fw_log(LOG_SYS_GOTOUPDATE, text);
+  /* Server: bit 11, blocks requested by the controller, one timeout for the
+     whole download, all kept across a reset. USB: NextConfig sends blocks. */
+  if (cch != CH_USB){
+    device.FWinProgress = 1;
+    device.updateTimeout = FW_TIMEOUT_S;
+    device.status.readyToUpdate = 1;
+    user_saveindex();
+  }
+  return CMD_SUCCESS;
+}
+
+/* Read the block back: a torn or failed program shows here (code 254). */
+static uint8_t fw_block_written(uint32_t adr, const uint8_t *data)
+{
+  uint8_t b[64];
+  uint16_t off;
+  for (off = 0; off < 1024u; off += sizeof(b)){
+    mem_read(adr + off, b, sizeof(b));
+    if (memcmp(b, data + off, sizeof(b)) != 0) return 0;
+  }
+  return 1;
+}
+
+/* All blocks received. A good image restarts into the bootloader to install
+ * (event 3 just before the restart); a bad CRC ends the download. Bit 11
+ * clears either way. */
+static uint8_t fw_blocks_done(uint8_t crc_ok)
 {
   device.FWinProgress = 0;
   device.status.readyToUpdate = 0;
   device.updateTimeout = 0;
-  if (crc_ok) {
-    device.rebootToUpdate = 1;
-    device.firmwarePercent = 248;
-  } else {
-    device.firmwarePercent = 252;
-  }
+  if (crc_ok) device.rebootToUpdate = 1;
+  else fw_log(LOG_SYS_ERRUPDATE, "CRC");
   if (device.cchFWupdate != CH_USB) user_saveindex();
+  return crc_ok ? FW_BLOCK_OK : FW_BLOCK_END;
+}
+
+/* Command 20 (E96, E123, E477): the block number and 1024 bytes. Returns the
+ * command 4 code: 0 taken, 254 failed its read-back, 255 wrong length or
+ * number (both asked for again at once), 253 the download is over. A late
+ * copy of a block already written gets no answer at all. */
+static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
+{
+  uint16_t block;
+  uint32_t adr;
+  bootFWparam_s fwParam;
+
+  if (boot_manual_busy() || cch != (dataChanel_e)device.cchFWupdate) return FW_BLOCK_END;
+  memcpy((uint8_t*)&block, p, 2);
+  if (n == 1026u && block < device.FWblockIdx) return FW_BLOCK_SKIP;
+  if (device.FWblockIdx >= device.FWblockCount) return FW_BLOCK_END;
+  device.startWaitFWtime = 0;
+  if (n != 1026u || block != device.FWblockIdx) return FW_BLOCK_BADFRAME;
+  if (block == 0 && fw_image_foreign(&p[2], device.hardwareVersion)){
+    fw_abort(NULL);
+    log_addSystemEvent(LOG_SYS_HWERRUPDATE);
+    return FW_BLOCK_END;
+  }
+  /* Command 19 erased the image area: program in place. Programming the same
+     bytes again changes nothing and completes a torn block. */
+  adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u;
+  mem_write(adr, (uint8_t*)&p[2], 1024);
+  wdt_reload();
+  if (!fw_block_written(adr, &p[2])){
+    if (++fw_write_errors < FW_WRITE_TRIES) return FW_BLOCK_BADWRITE;
+    fw_abort("WRITE");
+    return FW_BLOCK_END;
+  }
+  fw_write_errors = 0;
+  device.FWblockIdx++;
+  device.firmwarePercent = (uint8_t)((uint32_t)device.FWblockIdx * 100u / device.FWblockCount);
+  if (device.FWblockIdx < device.FWblockCount) return FW_BLOCK_OK;
+  mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
+  return fw_blocks_done(user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC));
 }
 
 /* Blocks are programmed into the area erased by command 19 and never erased
@@ -2578,33 +2727,49 @@ static uint16_t fw_resume_block(void)
   return 0;
 }
 
-/* After a reset, continue a server download that was in progress (customer
- * 15.09.2026). The staged header must still describe an update: erased magic,
- * a firmware number of 2 or more and fields command 19 would accept. The
- * remaining timeout is saved every 10 minutes, so reboots cannot extend the
- * 60-minute limit by more than that each. */
+/* After a reset, continue a server download that was in progress (bit 11
+ * survives a reset, E440). The staged header must still describe an update:
+ * erased magic, a firmware number of 2 or more and fields command 19 would
+ * accept. The remaining time is saved every minute. Without a download every
+ * block gets 253. */
 static void fw_resume_after_boot(void)
 {
   bootFWparam_s h;
   if (!device.FWinProgress) {
     device.updateTimeout = 0;
+    device.FWblockIdx = device.FWblockCount = 0;
     return;
   }
   mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h));
-  if (h.appIdent != 0xFFFFFFFFu || h.firmwareVersion < 2 ||
+  if (BOOT_VER < 0x30 || h.appIdent != 0xFFFFFFFFu || h.firmwareVersion < 2 ||
       fw_start_rejected(h.firmwareVersion, h.buildDate, h.firmwareSize, h.firmwareCRC, device.FWblockCount)) {
     device.FWinProgress = 0;
     device.updateTimeout = 0;
+    device.FWblockIdx = device.FWblockCount = 0;
     user_saveindex();
     return;
   }
   device.FWblockIdx = fw_resume_block();
   device.startWaitFWtime = 0;
   device.cchFWupdate = CH_SERVER;
-  if (device.updateTimeout == 0 || device.updateTimeout > 3600) device.updateTimeout = 3600;
+  if (device.updateTimeout == 0 || device.updateTimeout > FW_TIMEOUT_S) device.updateTimeout = FW_TIMEOUT_S;
   device.status.readyToUpdate = 1;
   device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
 }
+
+/* Command 8 source (E184) to its journal event: 1 mobile app 52, 2 API 50,
+ * 3 admin test 49, 4 voice assistant 51. Sources the table does not define
+ * are written as API. */
+static logControl_e cmd8_event(uint8_t source)
+{
+  switch (source){
+  case 1: return LOG_CON_OUTONBYAPP;
+  case 3: return LOG_CON_OUTONBYTEST;
+  case 4: return LOG_CON_OUTONBYVOICE;
+  default: return LOG_CON_OUTONBYAPI;
+  }
+}
+static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 
 // Разбор данных
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
@@ -2647,9 +2812,12 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           app_trial_confirm();
           if (!app_trial_active()) log_addSystemEvent(LOG_SYS_ENDUPDATE);
         } // прошивка дошла до сервера - обновление подтверждено
-        if (device.firmwarePercent == 252 && app_boot_error_unreported()){
-          user_send_statusUpdateFW(20, CMD_RUNERROR, cch, uniqIDCnt++);
-          log_addSystemEvent(LOG_SYS_ERRUPDATE);
+        /* A failed install or trial before this start: journal only, the
+           server sees the version in status 2 (E122). */
+        if (app_boot_error_unreported()){
+          char reason[11];
+          app_boot_error_text(reason);
+          fw_log(LOG_SYS_ERRUPDATE, reason);
           app_boot_error_reported();
         }
         device.lmTimer = 5;
@@ -2685,9 +2853,15 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
     case 2: // перезагрузить
 #ifdef DEBUG_USER
-  user_debug(">>U Recv cmd reset (cmd 2)\r\n"); 
-#endif 
-      log_addComandEvent(LOG_CMD_RESET, 0);
+  user_debug(">>U Recv cmd reset (cmd 2)\r\n");
+#endif
+      /* Bit 11 (E440): a reset cancels a download; a rollback or an install
+         already on its way to the bootloader is left alone. */
+      if (device.rebootToUpdate){
+        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+        break;
+      }
+      if (device.FWinProgress) fw_abort("CANCEL");
       if (ptr[5] == 0){
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
         log_addSystemEvent(LOG_SYS_RESETONCMD);
@@ -2703,7 +2877,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd factory (cmd 3)\r\n"); 
 #endif 
-      log_addComandEvent(LOG_CMD_FACTORY, 0);
       if (ptr[5] == 0){
         user_factoryReset();
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
@@ -2718,7 +2891,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   user_debug(">>U Recv cmd triggers (cmd 5)\r\n"); 
 #endif 
       if ((len - 3) == 16){
-        log_addComandEvent(LOG_CMD_SETTRIGGER, 0);
         memcpy((uint8_t*)&device.triggers, &ptr[5], 16);
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
         
@@ -2771,7 +2943,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
       }
       else{
-        log_addComandEvent(LOG_CMD_GETIDHARD, 0);
         device.timeToGetID = ptr[5];
         if (device.timeToGetID){
           device.sourceGetID = ptr[6];
@@ -2787,7 +2958,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   user_debug(">>U Recv cmd get photo (cmd 7)\r\n"); 
 #endif 
       if (ptr[5] != 0){
-        log_addComandEvent(LOG_CMD_GETPHOTO, 0);
         if (device.status.readyPhoto)
         {
           user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
@@ -2813,15 +2983,17 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         break;
       }
       if (ptr[5] != 0){
-        //ptr[5] - источник события (3 - тест из админки)
+        //ptr[5] - источник события, от него зависит номер события в журнале (E184)
         //ptr[8] - ID абонента для передачи контроллеру информации для какого ID нужно сделать декримент счетчика проходов в сутки.
+        strncpy(tempStrBuffer, (char*)&ptr[8], 10);
         if (ptr[5] != 3){
-          strncpy(tempStrBuffer, (char*)&ptr[8], 10);
+          server_out_event = cmd8_event(ptr[5]);
           user_activateOut(0, CT_SERVER, tempStrBuffer);
-          user_activateOut(1, CT_SERVER, tempStrBuffer);        
+          user_activateOut(1, CT_SERVER, tempStrBuffer);
         } else{
           out_load (OUT1, (ptr[6] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
-          out_load (OUT2, (ptr[7] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);          
+          out_load (OUT2, (ptr[7] != 0)?OUT_ON:OUT_OFF, 0, 0, 0);
+          log_addControlEvent(LOG_CON_OUTONBYTEST, tempStrBuffer, 0, 255);
         }
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);        
       }
@@ -2834,7 +3006,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd get log (cmd 9)\r\n"); 
 #endif 
-      //log_addComandEvent(LOG_CMD_GETLOG);
       user_send_logRecords(cch, uniqId);
       break;      
 
@@ -2842,7 +3013,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd get IDs (cmd 10)\r\n"); 
 #endif       
-      log_addComandEvent(LOG_CMD_GETIDAUTOREGSMS, 0);
       user_send_tempIDs(cch, uniqId);
       break;      
       
@@ -2851,7 +3021,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   user_debug(">>U Recv cmd send sms (cmd 11)\r\n"); 
 #endif 
       if ((ptr[5] != 0) && (ptr[15] != 0)){
-        log_addComandEvent(LOG_CMD_SENDINGSMS, 0);
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
         strcpy(tempStrBuffer, config.countryCode);
         strncat(tempStrBuffer, (char*)&ptr[5], 10);
@@ -2873,7 +3042,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         }
         else{
-          log_addComandEvent(LOG_CMD_SYNCCONFIG, 0);
           memcpy((uint8_t*)&config, &ptr[5], sizeof(config));
           user_send_timeshtamp(SHTAMP_CONFIG, config.datetime, 
                                user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size), cch, uniqId);
@@ -2912,7 +3080,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;         
         }
           
-        log_addComandEvent(LOG_CMD_SYNCID, 0);
 
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
@@ -2994,7 +3161,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;         
         }
         
-        log_addComandEvent(LOG_CMD_SYNCSHEDULE, 0);
 
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
@@ -3074,7 +3240,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;         
         }
                 
-        log_addComandEvent(LOG_CMD_SYNCGROUP, 0);
 
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
@@ -3154,7 +3319,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;         
         }
   
-        log_addComandEvent(LOG_CMD_SYNCHOLLIDAY, 0);
 
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
@@ -3216,7 +3380,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd get crc (cmd 17)\r\n"); 
 #endif 
-      log_addComandEvent(LOG_CMD_GETCRCSTRUCT, 0);
       user_send_crcPack(cch, uniqId);
       break;      
       
@@ -3224,215 +3387,36 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd crc ID (cmd 18)\r\n"); 
 #endif       
-      log_addComandEvent(LOG_CMD_GETCRCIDBLOCK, 0);
       user_send_crcMemoryID(ptr[5], cch, uniqId);
       break;      
       
     case 19: // Обновление прошивки
-      if (boot_manual_busy() || app_trial_active()) {
-        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
-        break;
-      }
 #ifdef DEBUG_USER
-  if (cch != CH_USB)    
-    user_debug(">>U Recv cmd fw update (cmd 19)\r\n"); 
-#endif   
+  if (cch != CH_USB)
+    user_debug(">>U Recv cmd fw update (cmd 19)\r\n");
+#endif
       if ((len - 3) == 16){
-        if (device.FWinProgress){
-          user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
-        } else{
-          uint16_t firmwareVersion;
-          uint32_t buildDate;
-          uint32_t firmwareSize;
-          uint32_t firmwareCRC;
-          uint16_t FWblockCount;
-
-          memcpy((uint8_t*)&firmwareVersion, &ptr[5], 2);
-          memcpy((uint8_t*)&buildDate, &ptr[7], 4);
-          memcpy((uint8_t*)&firmwareSize, &ptr[11], 4);
-          memcpy((uint8_t*)&firmwareCRC, &ptr[15], 4);
-          memcpy((uint8_t*)&FWblockCount, &ptr[19], 2);
-          
-          if (fw_start_rejected(firmwareVersion, buildDate, firmwareSize, firmwareCRC, FWblockCount)){
-            user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          } else{
-            
-            log_addComandEvent(LOG_CMD_RUNUPDATE, 0);
-            
-            // обновиться на предыдущую
-            if (firmwareVersion == 1){
-              bootFWparam_s fwParam;
-              // читаем параметры
-              mem_read(mem[MB_BACKUP].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
-              // пусто
-              if ((fwParam.buildDate == 0xffffffff) ||
-                  (fwParam.firmwareSize == 0xffffffff) ||
-                    (fwParam.firmwareCRC == 0xffffffff) ||
-                      (fwParam.firmwareVersion == 0xffff)){
-                user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-                log_addSystemEvent(LOG_SYS_ERRUPDATE);
-                device.firmwarePercent = 253;
-                user_send_statusUpdateFW(ptr[4], CMD_RUNERROR, cch, uniqId);
-              } else{
-                // проверим контрольную сумму
-                if (user_checkFirmware(mem[MB_BACKUP].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC)){
-                  device.hardwareVersion = fwParam.hardwareVersion;
-                  device.firmwareVersion = fwParam.firmwareVersion;
-                  device.buildDate = fwParam.buildDate;
-                  device.firmwareSize = fwParam.firmwareSize;
-                  device.firmwareCRC = fwParam.firmwareCRC;
-                  // копируем из резервной в основную
-                  user_clearMemBlock(MB_FIRMWARE);
-                  for (uint32_t block = 0; block < (fwParam.firmwareSize + FWBLOCK_OFFSET); block += 128){
-                    mem_read(mem[MB_BACKUP].start + block, bf, 128);
-                  if (block == 0) memset(bf, 0xff, 4);
-                    mem_write(mem[MB_FIRMWARE].start + block, bf, 128);
-                  }
-                  
-                  user_send_answer_comand(ptr[4], CMD_ROLLBACKRUN, cch, uniqId);
-                  log_addSystemEvent(LOG_SYS_GOTOUPDATE);
-                  //device.FWinProgress = 1;
-                  device.rebootToUpdate = 1;
-                } else{
-                  user_send_answer_comand(ptr[4], CMD_CRCERROR, cch, uniqId); 
-                  log_addSystemEvent(LOG_SYS_ERRUPDATE);
-                  device.firmwarePercent = 252;
-                  user_send_statusUpdateFW(ptr[4], CMD_RUNERROR, cch, uniqId);
-                }
-              }
-            } else if (cch != CH_USB && firmwareVersion == device.firmwareVersion){
-              /* Table D473 254: this firmware number is already installed.
-               * NextConfig over USB may reinstall it on purpose. */
-              user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-              device.firmwarePercent = 254;
-              user_send_statusUpdateFW(ptr[4], CMD_RUNERROR, cch, uniqId);
-            } else{
-
-              /* The board is checked on the first block: fw_image_foreign. */
-              
-              uint8_t *data = malloc(MEMSECTORSIZE);
-
-              if (data != NULL){
-                
-                #ifdef DEBUG_USER
-                if (cch != CH_USB)   
-                  user_debug(">>U Erase FW memory ...\r\n"); 
-                #endif
-                
-                user_clearMemBlock(MB_FIRMWARE);
-                bootFWparam_s fwParam;
-                memset(&fwParam, 0xff, sizeof(fwParam));
-                fwParam.hardwareVersion = device.hardwareVersion;
-                fwParam.firmwareVersion = firmwareVersion;
-                fwParam.firmwareSize = firmwareSize;
-                fwParam.firmwareCRC = firmwareCRC;
-                fwParam.buildDate = buildDate;
-                
-                // блок информации о прошивке
-                mem_write(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
-                wdt_reload();
-
-                device.FWblockCount = FWblockCount;
-                device.FWblockIdx = 0;
-                device.firmwarePercent = 0;
-                device.startWaitFWtime = 0;
-                device.cchFWupdate = cch;
-                
-                user_send_answer_comand(ptr[4], fw_start_accepted(cch), cch, uniqId);
-                log_addSystemEvent(LOG_SYS_GOTOUPDATE);
-                
-                if (cch != CH_USB){
-                  device.FWinProgress = 1;
-                  device.updateTimeout = 3600; // запускаем таймаут на обновление
-                  
-                  device.status.readyToUpdate = 1;
-                }
-                
-                free(data);
-                /* Resume after a reboot: the download state must survive a reset. */
-                if (cch != CH_USB) user_saveindex();
-              } else{
-                user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId); 
-              }
-            }
-          }        
-        }        
-      }
-      else{
+        user_send_answer_comand(ptr[4], fw_start(&ptr[5], cch), cch, uniqId);
+      } else{
+        fw_log(LOG_SYS_ERRUPDATE, "PARAM");
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
       }
-      break;      
-      
-    case 20: // Обновление прошивки
-      if (boot_manual_busy()) {
-        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
-        break;
-      }
+      break;
+
+    case 20: // Блок прошивки, ответ командой 4
 #ifdef DEBUG_USER
-if (cch != CH_USB)   
-  user_debug(">>U Recv cmd fw update (cmd 20)\r\n"); 
-#endif 
-      /* Never past the last block: the bootloader journal follows the image area. */
-      if (((len - 5) == 1024) && (*(uint16_t*)&ptr[5] == device.FWblockIdx) &&
-          (device.FWblockIdx < device.FWblockCount)){
-
-        log_addComandEvent(LOG_CMD_SENDUPDBLOCK, 0);
-        
-        // пишем в память
-        {
-          #ifdef DEBUG_USER
-          if (cch != CH_USB){
-            sprintf(tempStrBuffer, ">>U Write FW block %d ...\r\n", device.FWblockIdx);
-            user_debug(tempStrBuffer);
-          }
-          #endif    
-
-          uint32_t adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + ((uint32_t)device.FWblockIdx * 1024);
-          
-          /* Command 19 erased the image area: program in place. mem_rewrite skipped
-           * every block crossing a 4 KiB sector (blocks 3, 7, 11, ...). */
-          if (device.FWblockIdx == 0 && fw_image_foreign(&ptr[7], device.hardwareVersion)){
-            fw_abort(250);
-            log_addSystemEvent(LOG_SYS_HWERRUPDATE);
-            user_send_statusUpdateFW(ptr[4], CMD_RUNERROR, cch, uniqId);
-            break;
-          }
-          mem_write(adr, &ptr[7], 1024);
-          wdt_reload();
-          fw_idle_block_received();
-          
-          device.FWblockIdx += 1;
-          device.startWaitFWtime = 0;
-
-          // получены все блоки
-          if (device.FWblockIdx == device.FWblockCount){
-            bootFWparam_s fwParam;
-            
-            // блок информации о прошивке
-            mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s)); 
-            // проверяем контрольную сумму
-            if (user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC)){
-              device.firmwareVersion = fwParam.firmwareVersion;
-              device.buildDate = fwParam.buildDate;
-              device.firmwareSize = fwParam.firmwareSize;
-              device.firmwareCRC = fwParam.firmwareCRC;
-
-              fw_blocks_done(1);
-            } else{
-              fw_blocks_done(0);
-              log_addSystemEvent(LOG_SYS_ERRUPDATE);
-            }
-          } else{
-            device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
-          }
-          user_send_statusUpdateFW(ptr[4], CMD_SUCCESS, cch, uniqId);
-        }
-      } else{
-        device.firmwarePercent = 255;
-        user_send_statusUpdateFW(ptr[4], CMD_PARAMERROR, cch, uniqId);
+if (cch != CH_USB){
+  sprintf(tempStrBuffer, ">>U Recv FW block %u (cmd 20)\r\n", (unsigned)(ptr[5] | (ptr[6] << 8)));
+  user_debug(tempStrBuffer);
+}
+#endif
+      {
+        uint8_t code = fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);
+        if (code != FW_BLOCK_SKIP)
+          user_send_statusUpdateFW(ptr[4], code, cch, uniqId);
       }
-      break;      
-      
+      break;
+
     case 21: // запрос фотографий 
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd get photo (cmd 21)\r\n"); 
@@ -3444,19 +3428,13 @@ if (cch != CH_USB)
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd get status (cmd 22)\r\n"); 
 #endif 
-      log_addComandEvent(LOG_CMD_GETSTATUS2, 0);
       user_send_statusPackSecond(cch, uniqId);
-      /*if (config.fullLog != 0)
-      {
-        log_addTransferEvent(LOG_TR_STATUS2);
-      }*/
       break;      
       
     case 23: // установить время контроллера
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd set time (cmd 23)\r\n"); 
 #endif 
-      log_addComandEvent(LOG_CMD_SETTIME, 0);
       memcpy((uint8_t*)&tmp32, &ptr[5], 4);
       device.datetime = tmp32;
       user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); 
@@ -3469,7 +3447,6 @@ if (cch != CH_USB)
       if (device.answerID == 2)
         device.answerTimeout = 0;
   
-      log_addComandEvent(LOG_CMD_ANSWER, 0);
       //ptr[5] - На какую именно команду выдается подтверждение
       //ptr[6] - код выполнения
       switch (ptr[5]){
@@ -4102,7 +4079,7 @@ void user_activateOut(uint8_t out, codeType_e tp, char *id){
     log_addControlEvent(LOG_CON_OUTONBYAVTO, id, 0, cnt);
     break;
   case CT_SERVER:
-    log_addControlEvent(LOG_CON_OUTONBYCMD, id, 0, cnt);
+    log_addControlEvent(server_out_event, id, 0, cnt);
     break;
   default:
     break;
@@ -4471,8 +4448,7 @@ bool log_addSystemEvent(logSystem_e num){
   
   cell.index = device.datetime;
   cell.datetime = device.datetime;
-  cell.logType = (uint8_t)LT_SYSTEM;
-  //cell.logNum = (uint16_t)num;
+  cell.logType = (uint8_t)num; // номер события листа «Журнал событий»
   
   return log_addEvent(&cell);
 }
@@ -4485,42 +4461,12 @@ bool log_addSystemEventID(logSystem_e num, char *id){
   
   cell.index = device.datetime;
   cell.datetime = device.datetime;
-  cell.logType = (uint8_t)LT_SYSTEM;
-  //cell.logNum = (uint16_t)num;
+  cell.logType = (uint8_t)num; // номер события листа «Журнал событий»
   
   if (id != NULL)
     memcpy(cell.ID, id, 10);
     
   return log_addEvent(&cell);
-}
-
-// добавить событие команда
-bool log_addComandEvent(logComand_e num, uint8_t cnt){
-  cellLog_s cell;
-
-  memset((uint8_t*)&cell, 0, sizeof(cellLog_s));
-  
-  cell.index = device.datetime;
-  cell.datetime = device.datetime;
-  cell.logType = (uint8_t)LT_COMAND;
-  //cell.logNum = (uint16_t)num;
-  cell.passCnt = cnt;
-  
-  return log_addEvent(&cell);  
-}
-
-// добавить событие обмена
-bool log_addTransferEvent(logTransfer_e num){
-  cellLog_s cell;
-  
-  memset((uint8_t*)&cell, 0, sizeof(cellLog_s));
-  
-  cell.index = device.datetime;
-  cell.datetime = device.datetime;
-  cell.logType = (uint8_t)LT_TRANSFER;
-  //cell.logNum = (uint16_t)num;  
-  
-  return log_addEvent(&cell);  
 }
 
 // добавить событие доступа
@@ -4531,8 +4477,7 @@ bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt
   
   cell.index = device.datetime;
   cell.datetime = device.datetime;
-  cell.logType = (uint8_t)LT_CONTROL;
-  //cell.logNum = (uint16_t)num;
+  cell.logType = (uint8_t)num; // номер события листа «Журнал событий»
   cell.passCnt = cnt;
   
   if (id != NULL)

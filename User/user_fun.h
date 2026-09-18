@@ -74,7 +74,7 @@ void user_send_statusPack(dataChanel_e cch);
 // Пакет 3 - пакет статуса 2
 void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId);
 // Пакет 4 - пакет статуса обновления FW
-void user_send_statusUpdateFW(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId);
+void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8_t uniqId);
 // Пакет 5 - контрольные суммы данных структур
 void user_send_crcPack(dataChanel_e cch, uint8_t uniqId);
 // Пакет 6,16 -  пакет контрольные суммы стуктуры ID абонентов
@@ -145,10 +145,6 @@ uint16_t log_getRecordsCount(void);
 bool log_addSystemEvent(logSystem_e num);
 // добавить системное событие
 bool log_addSystemEventID(logSystem_e num, char *id);
-// добавить событие команда
-bool log_addComandEvent(logComand_e num, uint8_t cnt);
-// добавить событие обмена
-bool log_addTransferEvent(logTransfer_e num);
 // добавить событие доступа
 bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt);
 

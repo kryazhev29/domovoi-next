@@ -1,12 +1,13 @@
-import pathlib, subprocess, sys, tempfile, re
-ROOT=pathlib.Path(__file__).resolve().parents[1]
+import os, pathlib, subprocess, sys, tempfile, re
+# DOMOVOI_ROOT runs the tests against a copy, e.g. with a deliberate fault.
+ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
 ZIG=r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe'
 ref=sys.argv[1] if len(sys.argv)>1 and sys.argv[1]!='work' else None
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:void|uint8_t|uint16_t|uint32_t|cmdCode_e)\s+'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:const char \*|(?:void|bool|uint8_t|uint16_t|uint32_t|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -14,6 +15,17 @@ def function(text,name):
         elif text[i]=='}':depth-=1
         i+=1
     return text[m.start():i]
+def typedefs(text,*names):
+    # Packed like structures.h, so the tests see the real layouts and numbers.
+    out=[]
+    for name in names:
+        m=re.search(r'typedef\s+(?:enum|struct)\s*\{[^{}]*\}\s*'+name+r'\s*;',text)
+        assert m,name
+        out.append(m.group(0))
+    return '#pragma pack(push,1)\n'+'\n'.join(out)+'\n#pragma pack(pop)\n'
+def cases(user):
+    parse=user[user.index('void user_parse_comand'):]
+    return lambda n:parse[parse.index('\r\n    case %d:'%n):parse.index('\r\n    case %d:'%(n+1))]
 with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     d=pathlib.Path(d)
     if kind=='storage':
@@ -39,36 +51,50 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
     elif kind=='fwstart':
         user=source('User/user_fun.c')
-        case19=user[user.index('    case 19:'):user.index('    case 20:')]
-        # The rollback branch must be reached through the new gate, not the old field checks.
-        assert 'fw_start_rejected(' in case19 and case19.index('fw_start_rejected(')<case19.index('if (firmwareVersion == 1)'),'command 19 gate'
-        assert '(firmwareSize & 3u)' not in case19,'old field checks still in command 19'
-        # Answer codes: rollback 253, update accepted through fw_start_accepted; the last block ends the update either way.
-        assert 'CMD_ROLLBACKRUN, cch' in case19 and 'fw_start_accepted(cch), cch' in case19 and 'CMD_SUCCESS, cch' not in case19,'command 19 answers'
-        case20=user[user.index('    case 20:'):user.index('    case 21:')]
-        assert case20.count('fw_blocks_done(')==2 and 'firmwarePercent = 252' not in case20,'command 20 end of update'
-        # Blocks are programmed in place, the download flag survives a reset and every end of an update is saved.
-        assert 'mem_write(adr, &ptr[7], 1024)' in case20 and 'mem_rewrite(adr' not in case20 and 'malloc' not in case20,'command 20 write'
+        case=cases(user)
+        # Call sites: commands 19 and 20 go through the tested functions, command 4 carries their code.
+        c19=case(19);c20=case(20)
+        assert '(len - 3) == 16' in c19 and 'user_send_answer_comand(ptr[4], fw_start(&ptr[5], cch), cch, uniqId);' in c19,'command 19'
+        assert 'fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);' in c20 and 'if (code != FW_BLOCK_SKIP)' in c20 and 'user_send_statusUpdateFW(ptr[4], code, cch, uniqId);' in c20,'command 20'
+        # Command 2: a download is cancelled before the reset, a rollback or install is left alone.
+        c2=case(2)
+        assert c2.index('if (device.rebootToUpdate){')<c2.index('fw_abort("CANCEL");')<c2.index('user_savereset();'),'command 2 during an update'
+        # A failed install or trial goes to the journal after registration, command 4 is not sent.
+        c1=case(1)
+        assert 'app_boot_error_text(reason);' in c1 and 'app_boot_error_reported();' in c1 and 'user_send_statusUpdateFW' not in c1,'boot error after registration'
+        # Timing: one command 13 in flight for 20 s, one 10-minute limit saved every minute, install failure ends the update.
+        assert '#define FW_BLOCK_RETRY_MS       20000u' in user and '#define FW_TIMEOUT_S            600u' in user,'timing constants'
+        loop=function(user,'user_loop')
+        assert '>= FW_BLOCK_RETRY_MS){' in loop and 'fw_end("TIMEOUT", uniqIDCnt++);' in loop and 'updateTimeout % 60u == 0' in loop and 'fw_end("INSTALL", uniqIDCnt++);' in loop,'loop'
+        assert 'fw_idle' not in user and '15000' not in loop,'old limits'
         saved=function(user,'user_readsavedinformation')
-        assert 'device.FWinProgress = DV.FWinProgress;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
-        assert 'if (cch != CH_USB) user_saveindex();' in case19,'command 19 saves the download'
-        loop=user[user.index('    if (device.rebootToUpdate){'):user.index('    if (app_trial_expired()){')]
-        assert loop.count('user_saveindex();')==2 and 'fw_abort(249);' in loop and 'updateTimeout % 600u == 0' in loop,'loop saves boot failure, timeout (fw_abort) and remaining time'
-        assert 'device.updateTimeout = DV.updateTimeout;' in saved,'remaining timeout restored'
+        assert 'device.FWinProgress = DV.FWinProgress;' in saved and 'device.updateTimeout = DV.updateTimeout;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
         reset=function(user,'user_factoryReset')
         assert reset.index('device.FWinProgress = 0;')<reset.index('user_setdefault();'),'factory reset cancels a download'
-        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ['fw_start_rejected','fw_start_accepted','fw_blocks_done','fw_resume_block','fw_resume_after_boot']))
+        types=typedefs(source('structures.h'),'logSystem_e','logControl_e','cmdCode_e','dataChanel_e','bootFWparam_s')
+        defines='\n'.join(x for x in user.splitlines() if x.startswith('#define FW_'))+'\n'
+        helpers=user[user.index('/* Update mode, status 1 bit 11'):user.index('// Разбор данных')]
+        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers)
+    elif kind=='log':
+        user=source('User/user_fun.c');st=source('structures.h')
+        case=cases(user)
+        # The controller writes no command or exchange events (answers of 16.09, sheet E525).
+        assert 'log_addComandEvent' not in user and 'log_addTransferEvent' not in user and 'LOG_CMD_' not in st and 'LOG_TR_' not in st and 'LT_SYSTEM' not in st,'command and exchange events'
+        # Command 8: the source picks the event before the outputs; the admin test is logged too.
+        c8=case(8)
+        assert c8.index('server_out_event = cmd8_event(ptr[5]);')<c8.index('user_activateOut(0, CT_SERVER, tempStrBuffer);'),'command 8 source'
+        assert 'log_addControlEvent(LOG_CON_OUTONBYTEST, tempStrBuffer, 0, 255);' in c8,'admin test logged'
+        assert 'log_addControlEvent(server_out_event, id, 0, cnt);' in function(user,'user_activateOut'),'server event from its source'
+        code='\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent'])
+        unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='rules':
         user=source('User/user_fun.c')
-        rules=user[user.index('/* Status 1 out of turn (table E92'):user.index('/* Command 19 fields.')]
+        rules=user[user.index('/* Status 1 out of turn (table E92'):user.index('/* Update mode, status 1 bit 11')]
         defines=[x for x in user.splitlines() if x.startswith('#define TIMETOSTATUSRESPONSE')][0]+'\n'
         # Call sites: each rule must be applied where the table puts it.
         loop=function(user,'user_loop')
         assert loop.index('status_event_due(st, timers_getMillis())')>loop.index('device.status.stateOut2 = out_getstate(OUT2);'),'status out of turn after inputs and outputs are read'
-        second=loop[loop.index('    if (device.rebootToUpdate){'):loop.index('    if (app_trial_expired()){')]
-        assert 'fw_abort(249);' in second and 'if (fw_idle_expired()){\r\n      fw_abort(251);' in second,'249 and 251 end the download'
-        parse=user[user.index('void user_parse_comand'):]
-        def case(n):return parse[parse.index('\r\n    case %d:'%n):parse.index('\r\n    case %d:'%(n+1))]
+        case=cases(user)
         assert 'status_event_sent(st, timers_getMillis());' in case(1),'registration does not trigger an extra status'
         c8=case(8);head=c8[:c8.index('if (ptr[5] != 0)')]
         assert 'if (fw_update_quiet()){' in head and 'CMD_RUNERROR' in head,'command 8 refused in update mode'
@@ -77,13 +103,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert all('strcmp(v, "%s") == 0'%c in gate for c in ('add','reset','setout','default')) and '"imei"' not in gate and '"status"' not in gate,'SMS control commands refused in update mode'
         call=user[user.index('bool user_incomingcall (char* num, uint8_t typ)'):user.index('void user_comanderror')]
         assert 'fw_update_quiet' not in call,'calls keep working in update mode'
-        c19=case(19)
-        assert c19.index('cch != CH_USB && firmwareVersion == device.firmwareVersion')<c19.index('malloc(MEMSECTORSIZE)') and 'firmwarePercent = 254' in c19,'254 before erasing'
-        c20=case(20)
-        assert '(device.FWblockIdx < device.FWblockCount)' in c20,'no block past the image'
-        assert c20.index('fw_image_foreign(&ptr[7], device.hardwareVersion)')<c20.index('mem_write(adr, &ptr[7], 1024)')<c20.index('fw_idle_block_received();'),'250 before writing, idle reset after'
-        for ev,n in (('GOTOUPDATE',2),('RUNUPDATE',1),('ENDUPDATE',1),('HWERRUPDATE',1),('ERRUPDATE',7)):
+        # Update events of the journal sheet: 2 start (number or ROLLBACK), 3 just before the install
+        # restart, 4 trial confirmed, 5 always with its reason, 6 foreign board.
+        for ev,n in (('RUNUPDATE',1),('ENDUPDATE',1),('HWERRUPDATE',1),('GOTOUPDATE',0),('ERRUPDATE',0)):
             assert user.count('log_addSystemEvent(LOG_SYS_%s);'%ev)==n,(ev,user.count('log_addSystemEvent(LOG_SYS_%s);'%ev))
+        assert user.count('fw_log(LOG_SYS_GOTOUPDATE, ')==2 and 'log_addSystemEvent(LOG_SYS_RUNUPDATE);\r\n        user_savereset();' in loop,'events 2 and 3'
+        assert 'app_trial_confirm();\r\n          if (!app_trial_active()) log_addSystemEvent(LOG_SYS_ENDUPDATE);' in case(1),'event 4 on confirmation'
         assert '0x48570000+DOMOVOI_APP_HW' in source('CMSIS/STM32F10x/Source/startup_stm32f10x_md.s'),'board marker in the vector table'
         assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==2 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
         unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))

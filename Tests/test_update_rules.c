@@ -18,10 +18,9 @@ static struct {
   uint16_t updateTimeout, FWblockIdx, FWblockCount, freeBufferSize; uint32_t datetime; int8_t connectionhandle;
 } device;
 static uint8_t uniqIDCnt;
-static unsigned saves, sent_server, sent_usb;
+static unsigned sent_server, sent_usb;
 static uint32_t now_ms;
 static uint32_t timers_getMillis(void) { return now_ms; }
-static void user_saveindex(void) { saves++; }
 static uint16_t crc16_calc(uint8_t *p, uint16_t n) { (void)p; (void)n; return 0; }
 static int8_t connection_send(int8_t h, uint8_t *p, uint16_t n) { (void)h; (void)p; (void)n; sent_server++; return 0; }
 static void usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; sent_usb++; }
@@ -29,8 +28,6 @@ static void usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; sent_usb++; }
 static uint16_t bits(void) { uint16_t s; memcpy(&s, &device.status, 2); return s; }
 int main(void)
 {
-  uint8_t block[1024];
-  uint32_t w;
   unsigned i;
 
   /* Status 1 layout of table D433-D448: bit 0 output 2 ... bit 11 ready to update. */
@@ -61,41 +58,10 @@ int main(void)
   CHECK(device.answerID == 2 && device.answerTimeout == 15);
   device.status.stateIn1 = 0;
 
-  /* Update mode follows bit 11. */
-  CHECK(!fw_update_quiet()); device.status.readyToUpdate = 1; CHECK(fw_update_quiet());
+  /* Bit 11 goes out of turn too: the server sees a download start at once (E95, item 5). */
+  now_ms = 40000; status_event_sent(bits(), 30000);
+  device.status.readyToUpdate = 1; CHECK(status_event_due(bits(), now_ms)); device.status.readyToUpdate = 0;
 
-  /* Abort: download state cleared, further blocks refused, server downloads saved. */
-  device.FWinProgress = 1; device.updateTimeout = 1200; device.FWblockIdx = 7; device.FWblockCount = 64;
-  device.cchFWupdate = CH_SERVER; saves = 0; fw_abort(251);
-  CHECK(!device.FWinProgress && !device.status.readyToUpdate && !device.updateTimeout &&
-        device.FWblockIdx == 64 && device.firmwarePercent == 251 && saves == 1);
-  device.cchFWupdate = CH_USB; fw_abort(250); CHECK(device.firmwarePercent == 250 && saves == 1);
-
-  /* 251: ten minutes without a block; a block restarts the count; idle time outside a download is not counted. */
-  device.FWinProgress = 1;
-  for (i = 1; i < 600; i++) CHECK(!fw_idle_expired());
-  CHECK(fw_idle_expired());
-  fw_idle_block_received();
-  for (i = 1; i < 600; i++) CHECK(!fw_idle_expired());
-  device.FWinProgress = 0; CHECK(!fw_idle_expired());
-  device.FWinProgress = 1;
-  for (i = 1; i < 600; i++) CHECK(!fw_idle_expired());
-  CHECK(fw_idle_expired());
-  device.FWinProgress = 0; fw_idle_expired();
-
-  /* 250: board marker in reserved vector 8, little-endian. */
-  memset(block, 0xA5, sizeof block);
-  w = 0x4857008Bu; memcpy(block + 0x20, &w, 4);
-  CHECK(!fw_image_foreign(block, 139));
-  CHECK(fw_image_foreign(block, 11));
-  CHECK(!fw_image_foreign(block, 0));               /* old bootloader: board unknown */
-  w = 0; memcpy(block + 0x20, &w, 4);
-  CHECK(!fw_image_foreign(block, 11));              /* image built before the marker */
-  w = 0x4857018Bu; memcpy(block + 0x20, &w, 4);
-  CHECK(!fw_image_foreign(block, 11));              /* not a marker */
-  w = 0x4C495254u; memcpy(block + 0x1C, &w, 4); w = 0x4857000Bu; memcpy(block + 0x20, &w, 4);
-  CHECK(!fw_image_foreign(block, 11) && fw_image_foreign(block, 139));
-
-  puts("PASS update rules: status out of turn (mask, 1 s gap, wait not restarted), update mode, abort, 251 idle, 250 board marker");
+  puts("PASS update rules: status out of turn (mask, 1 s gap, wait not restarted, bit 11)");
   return 0;
 }
