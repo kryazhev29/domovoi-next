@@ -851,6 +851,7 @@ void user_loop(void)
         
     device.worktime++; // время работы от момента включения, в секундах
     device.datetime++; // внутренние часы
+    log_checkPending(); // события, ждущие времени от сервера
     // вычислим день недели, час и минуту
     device.day = user_getweakday(device.datetime);
     device.hour = div(div(device.datetime, 86400).rem, 3600).quot;
@@ -1223,6 +1224,7 @@ void user_readsavedinformation (void)
 // Безопастное завершение работы прибора
 void user_savereset (void)
 {
+  log_flushPending(); // события, не дождавшиеся времени, - в журнал до перезагрузки
   user_saveindex(); // сохраняем индексы и т.п.
   wdt_reload();
   
@@ -2797,7 +2799,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       switch ((cmdCode_e)ptr[5]){
       case CMD_SUCCESS:
         memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
-        device.datetime = tmp32;
+        log_setTime(tmp32);
         device.registredOnServer = 1;
         if (app_trial_active()){
           app_trial_confirm();
@@ -3433,7 +3435,7 @@ if (cch != CH_USB){
   user_debug(">>U Recv cmd set time (cmd 23)\r\n"); 
 #endif 
       memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-      device.datetime = tmp32;
+      log_setTime(tmp32);
       user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); 
       break;      
        
@@ -4427,6 +4429,56 @@ uint16_t log_getRecordsCount(void){
   return cnt;
 }
 
+/* >>> отложенные события журнала
+ * После запуска время платы неизвестно, пока сервер не пришлёт его в ответе на регистрацию
+ * или командой 23: часы идут от нуля, и события получали дату 1970 года (18.09.2026). Такие
+ * события ждут в памяти и пишутся, когда время придёт, с поправкой на прошедшие секунды.
+ * Если время не пришло за LOG_TIME_WAIT секунд, очередь заполнена или плата уходит в
+ * перезагрузку, события пишутся как есть, чтобы не пропасть. */
+#define LOG_PENDING_MAX 16
+#define LOG_TIME_WAIT   600
+static cellLog_s log_pending[LOG_PENDING_MAX];
+static uint32_t log_pendingAt[LOG_PENDING_MAX]; // device.worktime в момент события
+static uint8_t log_pendingCount;
+static uint8_t log_timeKnown;
+
+// записать отложенные события как есть
+void log_flushPending(void){
+  uint8_t i;
+  for (i = 0; i < log_pendingCount; i++) log_addEvent(&log_pending[i]);
+  log_pendingCount = 0;
+}
+
+// время пришло от сервера: отложенные события получают настоящее время
+void log_setTime(uint32_t now){
+  uint8_t i;
+  device.datetime = now;
+  for (i = 0; i < log_pendingCount; i++){
+    log_pending[i].datetime = now - (device.worktime - log_pendingAt[i]);
+    log_pending[i].index = log_pending[i].datetime;
+    log_addEvent(&log_pending[i]);
+  }
+  log_pendingCount = 0;
+  log_timeKnown = 1;
+}
+
+// раз в секунду: если время так и не пришло, события дольше LOG_TIME_WAIT не держим
+void log_checkPending(void){
+  if (!log_timeKnown && log_pendingCount && device.worktime >= LOG_TIME_WAIT) log_flushPending();
+}
+
+static bool log_put(cellLog_s *cell){
+  if (log_timeKnown || device.worktime >= LOG_TIME_WAIT){
+    log_flushPending();
+    return log_addEvent(cell);
+  }
+  if (log_pendingCount == LOG_PENDING_MAX) log_flushPending();
+  log_pendingAt[log_pendingCount] = device.worktime;
+  log_pending[log_pendingCount++] = *cell;
+  return true;
+}
+/* <<< отложенные события журнала */
+
 // добавить системное событие
 bool log_addSystemEvent(logSystem_e num){
   cellLog_s cell;
@@ -4437,7 +4489,7 @@ bool log_addSystemEvent(logSystem_e num){
   cell.datetime = device.datetime;
   cell.logType = (uint8_t)num; // номер события листа «Журнал событий»
   
-  return log_addEvent(&cell);
+  return log_put(&cell);
 }
 
 // добавить системное событие
@@ -4453,7 +4505,7 @@ bool log_addSystemEventID(logSystem_e num, char *id){
   if (id != NULL)
     memcpy(cell.ID, id, 10);
     
-  return log_addEvent(&cell);
+  return log_put(&cell);
 }
 
 // добавить событие доступа
@@ -4472,7 +4524,7 @@ bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt
   
   cell.photoNum = photo;
   
-  return log_addEvent(&cell);  
+  return log_put(&cell);
 }
 
 

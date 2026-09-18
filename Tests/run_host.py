@@ -91,7 +91,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert up.index('user_send_anyData(10, empty')<up.index('log_clearLogBuffer();'),'answer before the erase'
         clr=function(user,'log_clearLogBuffer')
         assert 'endAdr = device.newAddressLog;' in clr and 'mem[MB_LOG].start & ~(uint32_t)4095' in clr,'used sectors only'
-        code='\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent'])
+        pend=user[user.index('/* >>> отложенные события журнала'):user.index('/* <<< отложенные события журнала */')]
+        code=pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='access':
         user=source('User/user_fun.c');st=source('structures.h')

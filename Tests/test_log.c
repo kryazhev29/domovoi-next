@@ -5,10 +5,11 @@
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 /* TYPES */
-static struct { uint32_t datetime; } device;
+static struct { uint32_t datetime, worktime; } device;
 static cellLog_s last;
 static unsigned added;
-static bool log_addEvent(cellLog_s *cl) { last = *cl; added++; return true; }
+static cellLog_s written[64];
+static bool log_addEvent(cellLog_s *cl) { last = *cl; if (added < 64) written[added] = *cl; added++; return true; }
 /* PRODUCTION */
 
 /* Event journal sheet of the protocol table, column A: the number the server reads in logType. */
@@ -54,6 +55,20 @@ int main(void)
       exit(1);
     }
 
+  /* Before the server time arrives the clock runs from zero: events wait in memory and are
+     written with the real time minus the seconds passed since each of them (18.09.2026). */
+  device.datetime = 31; device.worktime = 31;
+  CHECK(log_addSystemEvent(LOG_SYS_CONNECT1) && added == 0);
+  device.datetime = 40; device.worktime = 40;
+  CHECK(log_addControlEvent(LOG_CON_OUTONBYAPP, id, 0, 255) && added == 0);
+  device.worktime = 42; log_checkPending(); CHECK(added == 0);
+  log_setTime(1789600000u);
+  CHECK(added == 2 && device.datetime == 1789600000u);
+  CHECK(written[0].logType == 15 && written[0].datetime == 1789600000u - 11 && written[0].index == written[0].datetime);
+  CHECK(written[1].logType == 52 && written[1].datetime == 1789600000u - 2 && !memcmp(written[1].ID, id, 10));
+  log_setTime(1789600005u); CHECK(added == 2);
+  added = 0;
+
   /* Every record carries the event number itself, not a category. */
   device.datetime = 1789600000u;
   CHECK(log_addSystemEvent(LOG_SYS_ERRUPDATE) && last.logType == 5 && last.datetime == 1789600000u && last.index == 1789600000u);
@@ -62,6 +77,18 @@ int main(void)
   CHECK(log_addControlEvent(LOG_CON_PHOTOFIX, NULL, 0, 0) && last.logType == 54 && last.ID[0] == 0);
   CHECK(added == 4);
 
-  puts("PASS journal: 54 event numbers match the sheet, logType is the event number");
+  /* No server time: a full queue, the time limit and a reset write the events as they are. */
+  log_timeKnown = 0; log_pendingCount = 0; added = 0; device.worktime = 5; device.datetime = 5;
+  for (i = 0; i < LOG_PENDING_MAX; i++) log_addSystemEvent(LOG_SYS_NOTGSMREG);
+  CHECK(added == 0 && log_pendingCount == LOG_PENDING_MAX);
+  log_addSystemEvent(LOG_SYS_NOTGPRSREG);
+  CHECK(added == LOG_PENDING_MAX && log_pendingCount == 1 && written[0].datetime == 5);
+  device.worktime = LOG_TIME_WAIT - 1; log_checkPending(); CHECK(added == LOG_PENDING_MAX);
+  device.worktime = LOG_TIME_WAIT; log_checkPending(); CHECK(added == LOG_PENDING_MAX + 1 && log_pendingCount == 0);
+  log_addSystemEvent(LOG_SYS_NOTGSMREG); CHECK(added == LOG_PENDING_MAX + 2);
+  log_timeKnown = 0; log_pendingCount = 0; added = 0; device.worktime = 7;
+  log_addSystemEvent(LOG_SYS_RESETONCMD); log_flushPending(); CHECK(added == 1 && last.logType == 34);
+
+  puts("PASS journal: 54 event numbers match the sheet, logType is the event number, events wait for the server time");
   return 0;
 }

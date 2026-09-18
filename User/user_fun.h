@@ -140,6 +140,9 @@ void user_updateID(cellID_s *c);
 void log_clearLogBuffer(void);
 // добавить событие в буфер
 bool log_addEvent(cellLog_s *cl);
+void log_flushPending(void);
+void log_setTime(uint32_t now);
+void log_checkPending(void);
 // получаем кол-во записей в журнале
 uint16_t log_getRecordsCount(void);
 // добавить системное событие

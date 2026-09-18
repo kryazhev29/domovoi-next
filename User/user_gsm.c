@@ -278,7 +278,8 @@ void gsm_dataread (gsmresp_e gsmop, char* ptr1, char* ptr2, uint32_t v1, int32_t
     s = atoi(ptr1);
     z = atoi(ptr1+2)*900; // поправка на часовой пояс в секундах
 
-    gsm.datetime = user_timeToInt(y, mm, d, h, m, s) + z;
+    /* +CCLK отдаёт местное время и пояс в четвертях часа: UTC = местное - пояс. */
+    gsm.datetime = user_timeToInt(y, mm, d, h, m, s) - z;
     }
     break;
 
