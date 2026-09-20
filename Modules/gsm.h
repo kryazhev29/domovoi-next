@@ -116,6 +116,9 @@ void gsm_init(void);
 // Обработка данных c модуля gsm
 void gsm_read(char* ptr, Int16U size);
 
+// Разбор URC, отложенных на время AT-команды
+void gsm_takeurc (void);
+
 // Инициализация GPRS
 void gsm_initgprs(char *apn, char *login, char *pass);
 

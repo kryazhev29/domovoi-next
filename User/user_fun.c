@@ -1350,6 +1350,9 @@ void port_check_data(void)
 // проверка вход€щих данных от модул€
 void gsm_check_data (void)
 {
+  // —начала URC, отложенные на врем€ AT-команды: они пришли раньше того, что в буфере
+  gsm_takeurc();
+
   // есть данные
   if (uart_getstate(GSM_PORT)){
     // ждем завершени€ приема

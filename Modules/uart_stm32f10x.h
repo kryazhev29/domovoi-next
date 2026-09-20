@@ -110,7 +110,7 @@ void uart_setrxbuffer (uint8_t u, uint8_t* rxbuffer, uint16_t bfsize);
 // timeout - время, через которое выходим, в мс
 // uart - порт по которому ждем
 // pattern - то что ищем
-bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U t_ms, char* pattern);
+bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, Int16U t_ms, char* pattern);
 
 // Проверить что идет прием или нет
 bool uart_isReceiving(uint8_t num);

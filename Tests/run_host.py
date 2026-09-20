@@ -7,7 +7,7 @@ kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:const char \*|(?:void|bool|uint8_t|uint16_t|uint32_t|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -188,6 +188,17 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code='\n'.join(x for x in gsm.splitlines() if x.startswith('#define GSM_REG_'))+'\n'
         code+=function(gsm,'gsm_getregstate')
         unit=(ROOT/'Tests/test_gsm_reg.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='gsmurc':
+        gsm=source('Modules/gsm.c');uart=source('Modules/uart_stm32f10x.c')
+        # The answer copy is bounded: a URC carrying server data is far longer than gsm_strbuf.
+        assert 'strcpy(rec,' not in uart and 'memcpy(rec, &uart[num].rxbuffer[0], len);' in uart,'bounded answer copy'
+        assert 'uart_sendStrAndWaitResp(GSM_PORT, a, b, sizeof(gsm_strbuf), d, c)' in gsm,'answer buffer size'
+        # Wiring: the stash is taken before the command clears the port and parsed by the main loop.
+        run=function(gsm,'gsm_runcmd')
+        assert run.index('gsm_stashurc();')<run.index('gsm_sendStrAndWaitResp'),'stash before the command'
+        assert 'gsm_takeurc();' in function(source('User/user_fun.c'),'gsm_check_data'),'main loop parses the stash'
+        code=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'+run
+        unit=(ROOT/'Tests/test_gsm_urc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.

@@ -423,7 +423,7 @@ void uart_setrxbuffer (uint8_t u, uint8_t* rxbuffer, uint16_t bfsize)
 // timeout - время, через которое выходим, в мс
 // uart - порт по которому ждем
 // pattern - то что ищем
-bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U t_ms, char* pattern)
+bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, Int16U t_ms, char* pattern)
 {
   if (num >= UARTS) return false;
 
@@ -454,9 +454,16 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U t_ms, char*
     if (uart[num].state){
       // копируем в приемный буфер
       if (rec != NULL){
-        strcpy(rec, (char*)&uart[num].rxbuffer[0]);
-        //memcpy((uint8_t*)rec, &uart[num].rxbuffer[0], uart[num].received);
-        //rec[uart[num].received] = '\0';
+        // Ответ бывает длиннее приёмника: в кадр попадает URC с данными от сервера
+        Int16U len = uart[num].received;
+
+        if (recsize == 0)
+          len = 0;
+        else if (len > (Int16U)(recsize - 1))
+          len = (Int16U)(recsize - 1);
+
+        memcpy(rec, &uart[num].rxbuffer[0], len);
+        rec[len] = 0;
       }
       
       if (pattern == NULL){

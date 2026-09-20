@@ -11,7 +11,7 @@
 #define GSMRESPTIMEOUTLONG              (uint16_t)3000 //время ожидания ответа на команду
 
 #define gsm_send(a,b)                   uart_send(GSM_PORT,a,b)
-#define gsm_sendStrAndWaitResp(a,b,c,d) uart_sendStrAndWaitResp(GSM_PORT, a, b, d, c)
+#define gsm_sendStrAndWaitResp(a,b,c,d) uart_sendStrAndWaitResp(GSM_PORT, a, b, sizeof(gsm_strbuf), d, c)
 
 #ifdef DEBUG_GSM
   #define gsm_sendstr(a)                  uart_sendstr(GSM_PORT,a); gsm_user_debug(">>> "); gsm_user_debug(a)
@@ -146,9 +146,106 @@ bool gsm_power (Int8U pwr)
   return true;
 }
 
+// URC, пришедшие в ответ на команду -------------------------------------------
+/* >>> URC из ответа на команду */
+/* Модем шлёт URC (данные от сервера, SMS, разрыв связи) в любой момент, в том числе пока идёт
+ * обмен AT-командой. uart_sendStrAndWaitResp отдаёт такой URC как ответ на команду, а uart_clear
+ * в начале следующей команды стирает его из буфера: цикл main до него не доходит и кадр пропадает.
+ * Поэтому перед отправкой команды URC откладывается сюда, а цикл main забирает его через
+ * gsm_takeurc. Разбирать URC на месте нельзя: gsm_read зовёт gsm_dataread, а тот из обработчика
+ * приложения может снова вызвать gsm_runcmd и затереть gsm_strbuf. */
+#define GSM_URC_MAX                     (uint16_t)2048 // предел отложенного, дальше кадр теряется
+
+static char *gsm_urcbuf = NULL; // отложенные URC, ждут цикл main
+static uint16_t gsm_urclen = 0;
+
+// Поиск подстроки в двоичных данных: нули внутри кадра не останавливают поиск
+static char* gsm_memfind (char *ptr, uint16_t size, const char *pattern)
+{
+  uint16_t l = (uint16_t)strlen(pattern);
+  uint16_t i;
+
+  if ((ptr == NULL) || (l == 0) || (size < l)) return NULL;
+
+  for (i = 0; i <= (uint16_t)(size - l); i++){
+    if (memcmp(&ptr[i], pattern, l) == 0)
+      return &ptr[i];
+  }
+  return NULL;
+}
+
+// Первое в кадре сообщение модема, которое не может быть ответом на команду
+static char* gsm_findurc (char *ptr, uint16_t size)
+{
+  static const char *marks[] = {"+QIURC:", "+CMT:", "+CIEV:", "+CLIP:", "+RECEIVE:", "+IPD", "PDP: DEACT"};
+  char *first = NULL;
+  char *p;
+  uint8_t i;
+
+  for (i = 0; i < (uint8_t)(sizeof(marks) / sizeof(marks[0])); i++){
+    p = gsm_memfind(ptr, size, marks[i]);
+    if ((p != NULL) && ((first == NULL) || (p < first)))
+      first = p;
+  }
+  return first;
+}
+
+// Отложить URC из буфера приёма, пока его не стёрла очередная команда
+static void gsm_stashurc (void)
+{
+  uint16_t count = uart_received(GSM_PORT);
+  char *raw;
+  char *urc;
+  char *buf;
+
+  if (count == 0) return;
+
+  raw = (char*)uart_getptr(GSM_PORT);
+  urc = gsm_findurc(raw, count);
+
+  if (urc == NULL) return; // обычный ответ на команду, откладывать нечего
+
+  count -= (uint16_t)(urc - raw);
+
+  // Обрезанный кадр хуже потерянного: длина в заголовке перестанет сходиться с данными
+  if (count > (uint16_t)(GSM_URC_MAX - gsm_urclen)) return;
+
+  buf = calloc((uint32_t)gsm_urclen + count + 8, 1);
+
+  if (buf == NULL) return; // памяти нет, хуже прежнего не будет
+
+  if (gsm_urcbuf != NULL)
+    memcpy(buf, gsm_urcbuf, gsm_urclen);
+  memcpy(&buf[gsm_urclen], urc, count);
+
+  free(gsm_urcbuf);
+  gsm_urcbuf = buf;
+  gsm_urclen += count;
+}
+
+// Разобрать отложенные URC, вызывается из цикла main
+void gsm_takeurc (void)
+{
+  char *buf = gsm_urcbuf;
+  uint16_t len = gsm_urclen;
+
+  if (buf == NULL) return;
+
+  gsm_urcbuf = NULL; // снимаем заранее: gsm_read может отложить следующий
+  gsm_urclen = 0;
+
+  gsm_read(buf, len);
+  free(buf);
+}
+/* <<< URC из ответа на команду */
+
 // Выполнить команду -----------------------------------------------------------
 char* gsm_runcmd(char *str, char *resp)
 {
+  /* То, что уже лежит в буфере: uart_sendStrAndWaitResp начинает с uart_clear, и любой URC
+   * пропал бы до того, как его увидит цикл main. */
+  gsm_stashurc();
+
 #ifdef DEBUG_GSM
   gsm_debug(">>> GSM: Cmd "); 
   gsm_debug(str);
