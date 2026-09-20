@@ -173,6 +173,16 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert '0x48570000+DOMOVOI_APP_HW' in source('CMSIS/STM32F10x/Source/startup_stm32f10x_md.s'),'board marker in the vector table'
         assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==2 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
         unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))
+    elif kind=='serverrx':
+        user=source('User/user_fun.c')
+        for name in ['user_connected','user_disconnected']:
+            assert 'server_rx_reset();' in function(user,name),name
+        code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
+        unit=(ROOT/'Tests/test_server_rx.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='commands':
+        user=source('User/user_fun.c');case=cases(user)
+        code='void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
+        unit=(ROOT/'Tests/test_commands.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='gsmreg':
         gsm=source('Modules/gsm.c')
         code='\n'.join(x for x in gsm.splitlines() if x.startswith('#define GSM_REG_'))+'\n'

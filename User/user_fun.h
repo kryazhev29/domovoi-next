@@ -6,7 +6,8 @@
 #ifndef USERFUN_H
 #define USERFUN_H
 
-#define PORTBUFSIZE             (uint16_t)512
+/* RS485 parser is not implemented; received data is discarded by port_check_data. */
+#define PORTBUFSIZE             (uint16_t)32
 #define GSMBUFSIZE              (uint16_t)2048
 
 extern cellMem_s mem[16];

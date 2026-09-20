@@ -44,7 +44,8 @@
 
 
 #ifndef BOOTLOADER
-#define USART_RX_DATA_SIZE   2048
+/* Largest application reply: 32 log records, 1038 bytes including framing. */
+#define USART_RX_DATA_SIZE   1280
 #else
 #define USART_RX_DATA_SIZE   512
 #endif

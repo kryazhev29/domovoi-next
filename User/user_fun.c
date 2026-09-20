@@ -44,6 +44,7 @@ device_s device;
 uint8_t gsm_buffer[GSMBUFSIZE];
 
 static void fw_resume_after_boot(void);
+static void server_rx_reset(void);
 /* Диагностика стенда, команда 111, только по USB, только чтение. */
 #define USB_DIAG_COMMAND 111u
 extern unsigned int loop_max_ms, loop_stalls;
@@ -375,6 +376,7 @@ uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, u
 // подключились к серверу
 void user_connected (int8_t handle)
 {
+  server_rx_reset();
 #ifdef DEBUG_USER
   user_debug(">>U Connected ...\r\n"); 
 #endif 
@@ -388,6 +390,7 @@ void user_connected (int8_t handle)
 void user_disconnected (int8_t handle, uint8_t arec)
 {
   if (handle != device.connectionhandle) return; 
+  server_rx_reset();
   
 #ifdef DEBUG_USER
   user_debug(">>U Disconnected ...\r\n"); 
@@ -417,28 +420,58 @@ void user_errorconnection (int8_t handle){
   log_addSystemEvent(LOG_SYS_ERRCONNECTION);
 }
 
+/* TCP не сохраняет границы пакетов. Буфер хранит один кадр до проверки длины и CRC.
+ * Неполный кадр живёт не дольше 30 с; новое соединение всегда начинается с чистого буфера. */
+#define SERVER_RX_CAPACITY 2048u
+#define SERVER_RX_TIMEOUT_MS 30000u
+static uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
+static uint16_t server_rx_count = 0;
+static uint32_t server_rx_last = 0;
+
+static void server_rx_reset(void)
+{
+  server_rx_count = 0;
+}
+
+static void server_rx_consume(uint16_t n)
+{
+  server_rx_count -= n;
+  memmove(server_rx_buffer, server_rx_buffer + n, server_rx_count);
+}
+
 // данные с сервера
 void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz)
 {
+  uint16_t body, total, crc;
+  uint32_t now = timers_getMillis();
   if (handle != device.connectionhandle) return;
-  
-  uint16_t i;
+  if (server_rx_count && (uint32_t)(now - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
+    server_rx_reset();
+  if (siz) server_rx_last = now;
 
-#ifdef DEBUG_USER
-  user_debug(">>U Data from server ...\r\n"); 
-#endif  
-  
-  for (i=0; i<(siz - 4); i++)
-  {
-    if (data[i] != 'S') continue;
-    i++;
-    if (data[i] != 'L') continue;
-    i++;
-    if (data[i] != 'D') continue;
-    i++;
-    if (data[i] != 'N') continue;
-    i++;
-    user_parse_comand(&data[i], CH_SERVER);
+  while (siz--){
+    server_rx_buffer[server_rx_count++] = *data++;
+    while (server_rx_count){
+      if (memcmp(server_rx_buffer, "SLDN", server_rx_count < 4 ? server_rx_count : 4)){
+        server_rx_consume(1);
+        continue;
+      }
+      if (server_rx_count < 6) break;
+      body = (uint16_t)server_rx_buffer[4] | ((uint16_t)server_rx_buffer[5] << 8);
+      if (body < 3 || body > SERVER_RX_CAPACITY - 8){
+        server_rx_consume(1);
+        continue;
+      }
+      total = body + 8;
+      if (server_rx_count < total) break;
+      crc = (uint16_t)server_rx_buffer[total - 2] | ((uint16_t)server_rx_buffer[total - 1] << 8);
+      if (crc != crc16_calc(server_rx_buffer + 4, body + 2)){
+        server_rx_consume(1);
+        continue;
+      }
+      user_parse_comand(server_rx_buffer + 4, CH_SERVER);
+      server_rx_reset();
+    }
   }
 }
 
@@ -3073,11 +3106,24 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd send sms (cmd 11)\r\n"); 
 #endif 
-      if ((ptr[5] != 0) && (ptr[15] != 0)){
+      /* Номер занимает 10 байт. Текст ограничен длиной кадра, NUL на проводе необязателен.
+       * Собственная копия не позволяет захватить CRC или соседний пакет в текст SMS. */
+      if (len >= 14 && ptr[5] != 0 && ptr[15] != 0 &&
+          memchr(config.countryCode, 0, sizeof(config.countryCode)) != NULL){
+        uint16_t text_size = len - 13;
+        char number[sizeof(config.countryCode) + 11];
+        char *text = malloc(text_size + 1u);
+        if (text == NULL){
+          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          break;
+        }
+        strcpy(number, config.countryCode);
+        strncat(number, (char*)&ptr[5], 10);
+        memcpy(text, &ptr[15], text_size);
+        text[text_size] = 0;
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
-        strcpy(tempStrBuffer, config.countryCode);
-        strncat(tempStrBuffer, (char*)&ptr[5], 10);
-        user_sendsms((char*)&ptr[15], tempStrBuffer);        
+        user_sendsms(text, number);
+        free(text);
       }
       else{
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -3098,12 +3144,12 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
         else{
           memcpy((uint8_t*)&config, &ptr[5], sizeof(config));
-          user_send_timeshtamp(SHTAMP_CONFIG, config.datetime, 
-                               user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size), cch, uniqId);
-          // дататайм
+          // Сначала сохранить, затем отвечать таймштампом и CRC сохранённых настроек.
           device.datetimeConfig = config.datetime;
           device.status.defaultConfig = 0;
-          user_writeConfigAndDevice();           
+          user_writeConfigAndDevice();
+          user_send_timeshtamp(SHTAMP_CONFIG, config.datetime,
+                               user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size), cch, uniqId);
         }
       }
       else{
