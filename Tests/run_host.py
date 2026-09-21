@@ -62,12 +62,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         # A failed install or trial goes to the journal after registration, command 4 is not sent.
         c1=case(1)
         assert 'app_boot_error_text(reason);' in c1 and 'app_boot_error_reported();' in c1 and 'user_send_statusUpdateFW' not in c1,'boot error after registration'
-        # Timing: one command 13 in flight for 20 s, a 10-minute silence limit restarted by each block and saved every minute.
+        # Timing: one command 13 in flight for 20 s, one 10-minute limit for the whole download, saved every minute.
         assert '#define FW_BLOCK_RETRY_MS       20000u' in user and '#define FW_TIMEOUT_S            600u' in user,'timing constants'
         loop=function(user,'user_loop')
         assert '>= FW_BLOCK_RETRY_MS){' in loop and 'fw_end("TIMEOUT", uniqIDCnt++);' in loop and 'updateTimeout % 60u == 0' in loop and 'fw_end("INSTALL", uniqIDCnt++);' in loop,'loop'
         assert 'fw_idle' not in user and '15000' not in loop,'old limits'
-        assert 'device.updateTimeout = FW_TIMEOUT_S;' in function(user,'fw_take_block'),'each block restarts the limit'
+        assert 'updateTimeout' not in function(user,'fw_take_block'),'a block must not touch the limit'
         saved=function(user,'user_readsavedinformation')
         assert 'device.FWinProgress = DV.FWinProgress;' in saved and 'device.updateTimeout = DV.updateTimeout;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
         reset=function(user,'user_factoryReset')

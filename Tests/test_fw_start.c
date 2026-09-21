@@ -110,8 +110,8 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  /* A whole download: 0 for every block, percent follows, the last one requests the install. */
  download(size,blocks,crc);
  for(k=0;k<blocks;k++){device.startWaitFWtime=5;device.updateTimeout=5;CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);CHECK(!device.startWaitFWtime);
-  /* Every accepted block restarts the limit; the last one ends the download. */
-  CHECK(device.updateTimeout==(k+1u<blocks?600:0));
+  /* No block touches the limit; the last one ends the download. */
+  CHECK(device.updateTimeout==(k+1u<blocks?5:0));
   CHECK(device.firmwarePercent==(k+1u)*100u/blocks);CHECK((k+1u<blocks)==(device.FWinProgress!=0));}
  CHECK(device.rebootToUpdate&&!device.status.readyToUpdate&&!device.updateTimeout&&device.firmwarePercent==100);
  CHECK(!memcmp(flash+0x200,image,(uint32_t)blocks*1024u));
@@ -123,7 +123,7 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  /* Wrong length or a block ahead: 255, asked for again at once; a late copy: 0, nothing written. */
  download(size,blocks,crc);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&block(1,1026,CH_SERVER)==FW_BLOCK_OK);
  device.startWaitFWtime=5;device.updateTimeout=5;CHECK(block(2,1025,CH_SERVER)==FW_BLOCK_BADFRAME&&!device.startWaitFWtime&&device.FWblockIdx==2);
- /* A rejected block does not extend the limit; a late copy does not either. */
+ /* Neither a rejected block nor a late copy extends the limit. */
  CHECK(device.updateTimeout==5);CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&device.updateTimeout==5);
  CHECK(block(3,1026,CH_SERVER)==FW_BLOCK_BADFRAME&&device.FWblockIdx==2&&flash[0x200+3*1024]==0xff);
  CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&device.FWblockIdx==2);
@@ -219,40 +219,43 @@ static void user_getFWblockFromServer(dataChanel_e ch,uint16_t idx){
 static void audit_seconds(unsigned n){while(n--){audit_ms+=1000;audit_poll();audit_tick();}}
 static void slow_server_tests(void){
  uint16_t k;uint32_t size=68784,crc;unsigned requests;
+ /* Темп сервера 15 с на блок: 600 секунд кончаются на середине, загрузка прекращается. */
  reset();make_image(size);crc=stm_crc(image,size);audit_ms=1000;audit_requests=0;
  CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
- for(k=0;k<68;k++){
-  audit_seconds(15);CHECK(device.FWinProgress&&device.FWblockIdx==k);
-  if(k==20){
-   device.registredOnServer=0;requests=audit_requests;audit_seconds(120);
-   CHECK(audit_requests==requests&&device.FWblockIdx==20&&device.cchFWupdate==CH_SERVER);
-   device.registredOnServer=1;audit_seconds(2);
-  }
+ for(k=0;k<68&&device.FWinProgress;k++){
+  audit_seconds(15);
+  if(!device.FWinProgress) break;
   CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
-  if(k<67){
-   audit_seconds(1);requests=audit_requests;
-   CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
-   CHECK(device.FWblockIdx==k+1&&device.updateTimeout==599);
-   audit_poll();CHECK(audit_requests==requests);
-  }
  }
- CHECK(device.rebootToUpdate&&!device.updateTimeout&&!device.FWinProgress);
+ CHECK(!device.FWinProgress&&!device.rebootToUpdate&&!device.status.readyToUpdate);
+ /* fw_abort() обнуляет счётчик блоков, поэтому считаем принятые сами. */
+ CHECK(sent_code==FW_BLOCK_END&&last_log(LOG_SYS_ERRUPDATE,"TIMEOUT"));
+ printf("slow server: %u of 68 blocks in 600 s at 15 s each\n",k);CHECK(k==39);
+ /* Тот же образ при быстрой отдаче укладывается в срок с большим запасом. */
+ reset();audit_ms=1000;CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ for(k=0;k<68;k++){audit_seconds(1);CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);}
+ CHECK(device.rebootToUpdate&&!device.FWinProgress&&!device.updateTimeout);
  CHECK(!memcmp(flash+FWBLOCK_OFFSET,image,size));
- reset();CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ /* Пауза связи: блоки не запрашиваются, но срок идёт - он один на всю загрузку. */
+ reset();audit_ms=1000;audit_requests=0;
+ CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ audit_seconds(5);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK);
+ device.registredOnServer=0;requests=audit_requests;audit_seconds(120);
+ CHECK(audit_requests==requests&&device.FWblockIdx==1&&device.cchFWupdate==CH_SERVER);
+ CHECK(device.updateTimeout==600-125);
+ /* Запоздавший дубль ничего не двигает и лишнего запроса не рождает. */
+ device.registredOnServer=1;audit_seconds(1);requests=audit_requests;
+ CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&device.FWblockIdx==1&&device.updateTimeout==600-126);
+ audit_poll();CHECK(audit_requests==requests);
+ /* Остаток срока пишется раз в минуту и переживает сброс. */
+ reset();audit_ms=1000;CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ audit_seconds(300);CHECK(saved_timeout==300&&saves==6);
+ device.updateTimeout=saved_timeout;fw_resume_after_boot();CHECK(device.updateTimeout==300);
+ /* Срок молчания выходит целиком и заканчивает загрузку кодом 253. */
+ reset();audit_ms=1000;CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
  audit_seconds(599);CHECK(device.FWinProgress&&device.updateTimeout==1&&saves==10);
  audit_seconds(1);CHECK(!device.FWinProgress&&!device.updateTimeout&&sent_code==FW_BLOCK_END&&sent==1);
- /* Частые блоки не увеличивают число записей настроек. */
- reset();CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
- audit_seconds(15);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&saves==1);
- audit_seconds(60);CHECK(saved_timeout==540);
- CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&saved_timeout==600&&saves==3);
- /* Долгая пауза, принятый блок и сброс: нельзя восстановить старые 60 вместо новых 600. */
- reset();CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
- audit_seconds(540);CHECK(saved_timeout==60);
- CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&device.updateTimeout==600);
- device.updateTimeout=saved_timeout;fw_resume_after_boot();
- CHECK(device.updateTimeout==600);
- puts("audit: slow 68-block download, connection pause, duplicates, periodic saves and silence timeout passed");
+ puts("audit: one 600 s limit for the whole download - a 15 s/block server does not fit, a fast one does");
 }
 
 int main(void){slow_server_tests();start_tests();rollback_tests();block_tests();end_tests();resume_tests();
