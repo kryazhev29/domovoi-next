@@ -26,7 +26,8 @@ static void user_clearMemBlock(memBlock_e mb){memset(flash+mem[mb].start,0xff,me
 static uint32_t crc_word(uint32_t c,uint32_t v){unsigned i;c^=v;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0);return c;}
 static uint32_t stm_crc(const uint8_t*p,uint32_t n){uint32_t c=0xffffffffu,w,i;for(i=0;i<n;i+=4){memcpy(&w,p+i,4);c=crc_word(c,w);}return c;}
 static bool user_checkFirmware(uint32_t adr,uint32_t size,uint32_t crc){return adr+size<=sizeof(flash)&&stm_crc(flash+adr,size)==crc;}
-static void user_saveindex(void){saves++;}
+static uint16_t saved_timeout;
+static void user_saveindex(void);
 static void wdt_reload(void){wdt++;}
 static int app_trial_active(void){return trial;}
 static int boot_manual_busy(void){return manual;}
@@ -35,6 +36,7 @@ static bool log_addSystemEvent(logSystem_e num){CHECK(nlogs<64);logs[nlogs].num=
 static bool log_addSystemEventID(logSystem_e num,char*id){CHECK(nlogs<64);logs[nlogs].num=num;memcpy(logs[nlogs].id,id,10);logs[nlogs].id[10]=0;nlogs++;return true;}
 static struct{uint8_t FWinProgress,rebootToUpdate,firmwarePercent,cchFWupdate,hardwareVersion,registredOnServer;
  uint16_t updateTimeout,FWblockIdx,FWblockCount;uint32_t startWaitFWtime;struct{uint16_t readyToUpdate:1;}status;}device;
+static void user_saveindex(void){saves++;saved_timeout=device.updateTimeout;}
 static void user_send_statusUpdateFW(uint8_t cmd,uint8_t code,dataChanel_e cch,uint8_t uniqId){(void)cmd;(void)uniqId;sent++;sent_code=code;sent_cch=cch;}
 static void fw_resume_after_boot(void);
 /* PRODUCTION */
@@ -239,6 +241,17 @@ static void slow_server_tests(void){
  reset();CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
  audit_seconds(599);CHECK(device.FWinProgress&&device.updateTimeout==1&&saves==10);
  audit_seconds(1);CHECK(!device.FWinProgress&&!device.updateTimeout&&sent_code==FW_BLOCK_END&&sent==1);
+ /* Частые блоки не увеличивают число записей настроек. */
+ reset();CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ audit_seconds(15);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&saves==1);
+ audit_seconds(60);CHECK(saved_timeout==540);
+ CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&saved_timeout==600&&saves==3);
+ /* Долгая пауза, принятый блок и сброс: нельзя восстановить старые 60 вместо новых 600. */
+ reset();CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ audit_seconds(540);CHECK(saved_timeout==60);
+ CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&device.updateTimeout==600);
+ device.updateTimeout=saved_timeout;fw_resume_after_boot();
+ CHECK(device.updateTimeout==600);
  puts("audit: slow 68-block download, connection pause, duplicates, periodic saves and silence timeout passed");
 }
 

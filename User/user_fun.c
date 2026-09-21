@@ -2774,7 +2774,13 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   fw_write_errors = 0;
   /* Срок отсчитывается заново от каждого принятого блока: медленный сервер загрузку не рвёт.
      Отвергнутый блок (254, 255) срок не продлевает. */
-  if (device.FWinProgress) device.updateTimeout = FW_TIMEOUT_S;
+  if (device.FWinProgress){
+    /* Доработка: Кряжев А., 2026. После долгой паузы сохраняем новый срок сразу:
+       иначе сброс вернёт старый остаток. При частых блоках лишней записи нет. */
+    uint8_t saveTimeout = device.updateTimeout <= FW_TIMEOUT_S - 60u;
+    device.updateTimeout = FW_TIMEOUT_S;
+    if (saveTimeout) user_saveindex();
+  }
   device.FWblockIdx++;
   device.firmwarePercent = (uint8_t)((uint32_t)device.FWblockIdx * 100u / device.FWblockCount);
   if (device.FWblockIdx < device.FWblockCount) return FW_BLOCK_OK;
