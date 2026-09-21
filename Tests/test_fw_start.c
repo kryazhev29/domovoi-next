@@ -107,7 +107,9 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  make_image(size);crc=stm_crc(image,size);
  /* A whole download: 0 for every block, percent follows, the last one requests the install. */
  download(size,blocks,crc);
- for(k=0;k<blocks;k++){device.startWaitFWtime=5;CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);CHECK(!device.startWaitFWtime);
+ for(k=0;k<blocks;k++){device.startWaitFWtime=5;device.updateTimeout=5;CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);CHECK(!device.startWaitFWtime);
+  /* Every accepted block restarts the limit; the last one ends the download. */
+  CHECK(device.updateTimeout==(k+1u<blocks?600:0));
   CHECK(device.firmwarePercent==(k+1u)*100u/blocks);CHECK((k+1u<blocks)==(device.FWinProgress!=0));}
  CHECK(device.rebootToUpdate&&!device.status.readyToUpdate&&!device.updateTimeout&&device.firmwarePercent==100);
  CHECK(!memcmp(flash+0x200,image,(uint32_t)blocks*1024u));
@@ -118,7 +120,9 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  make_image(size);
  /* Wrong length or a block ahead: 255, asked for again at once; a late copy: 0, nothing written. */
  download(size,blocks,crc);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&block(1,1026,CH_SERVER)==FW_BLOCK_OK);
- device.startWaitFWtime=5;CHECK(block(2,1025,CH_SERVER)==FW_BLOCK_BADFRAME&&!device.startWaitFWtime&&device.FWblockIdx==2);
+ device.startWaitFWtime=5;device.updateTimeout=5;CHECK(block(2,1025,CH_SERVER)==FW_BLOCK_BADFRAME&&!device.startWaitFWtime&&device.FWblockIdx==2);
+ /* A rejected block does not extend the limit; a late copy does not either. */
+ CHECK(device.updateTimeout==5);CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&device.updateTimeout==5);
  CHECK(block(3,1026,CH_SERVER)==FW_BLOCK_BADFRAME&&device.FWblockIdx==2&&flash[0x200+3*1024]==0xff);
  CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&device.FWblockIdx==2);
  /* A block on the other channel: 253, the download goes on. */
@@ -142,7 +146,7 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  download(size,blocks,crc^1u);for(k=0;k+1<blocks;k++)CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
  CHECK(block(blocks-1,1026,CH_SERVER)==FW_BLOCK_END&&last_log(LOG_SYS_ERRUPDATE,"CRC")&&!device.rebootToUpdate&&!device.status.readyToUpdate);
  /* USB: blocks from NextConfig, the same codes. */
- reset();CHECK(start(71,1,size,crc,blocks,CH_USB)==CMD_SUCCESS);for(k=0;k<blocks;k++)CHECK(block(k,1026,CH_USB)==FW_BLOCK_OK);
+ reset();CHECK(start(71,1,size,crc,blocks,CH_USB)==CMD_SUCCESS);for(k=0;k<blocks;k++)CHECK(block(k,1026,CH_USB)==FW_BLOCK_OK&&!device.updateTimeout);
  CHECK(device.rebootToUpdate&&!saves);
  /* No download after a start: blocks are not taken. */
  reset();device.FWblockCount=66;fw_resume_after_boot();

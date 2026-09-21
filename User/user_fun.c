@@ -53,7 +53,7 @@ static void user_send_usbDiag(uint8_t uniqId);
 /* Порядок обновления по листу "Протокол2": статус 1 вне очереди (E95), режим обновления - бит
  * 11 (E440), команда 19 (E122), блоки 13 и 20 (E96, E123), команда 4 (E476, E477). Объявлено до
  * команды 19. */
-#define FW_TIMEOUT_S            600u    /* вся загрузка, от команды 19 */
+#define FW_TIMEOUT_S            600u    /* тишина без блока; принятый блок начинает отсчёт заново */
 #define FW_BLOCK_RETRY_MS       20000u  /* время актуальности команды 13 */
 #define FW_WRITE_TRIES          3u      /* один блок не прошёл проверку после записи */
 #define FW_BLOCK_OK             0u      /* коды команды 4 */
@@ -2703,7 +2703,7 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   fw_write_errors = 0;
   sprintf(text, "%u", (unsigned)number);
   fw_log(LOG_SYS_GOTOUPDATE, text);
-  /* Сервер: бит 11, блоки запрашивает контроллер, один срок на всю загрузку, всё переживает
+  /* Сервер: бит 11, блоки запрашивает контроллер, срок идёт от последнего блока, всё переживает
      сброс. USB: блоки шлёт NextConfig. */
   if (cch != CH_USB){
     device.FWinProgress = 1;
@@ -2772,6 +2772,9 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
     return FW_BLOCK_END;
   }
   fw_write_errors = 0;
+  /* Срок отсчитывается заново от каждого принятого блока: медленный сервер загрузку не рвёт.
+     Отвергнутый блок (254, 255) срок не продлевает. */
+  if (device.FWinProgress) device.updateTimeout = FW_TIMEOUT_S;
   device.FWblockIdx++;
   device.firmwarePercent = (uint8_t)((uint32_t)device.FWblockIdx * 100u / device.FWblockCount);
   if (device.FWblockIdx < device.FWblockCount) return FW_BLOCK_OK;
