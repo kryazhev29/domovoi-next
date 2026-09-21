@@ -205,5 +205,42 @@ static void resume_tests(void){uint32_t seed=12345u,i;uint16_t blocks=37,k,idx;u
  stage(blocks,64);boot_ver=0x21;fw_resume_after_boot();CHECK(!device.FWinProgress&&saves==1);boot_ver=0x32;
  printf("resume: %u power cuts over %u blocks restore the image byte for byte\n",cuts,blocks);}
 
-int main(void){start_tests();rollback_tests();block_tests();end_tests();resume_tests();
+/* Доработка: Кряжев А., 2026. Проверка реального цикла при медленном сервере. */
+static uint32_t audit_ms;
+static unsigned audit_requests;
+static uint8_t uniqIDCnt;
+static uint32_t timers_getMillis(void){return audit_ms;}
+static void user_getFWblockFromServer(dataChanel_e ch,uint16_t idx){
+ CHECK(ch==CH_SERVER&&idx==device.FWblockIdx);audit_requests++;
+}
+/* AUDIT LOOP */
+static void audit_seconds(unsigned n){while(n--){audit_ms+=1000;audit_poll();audit_tick();}}
+static void slow_server_tests(void){
+ uint16_t k;uint32_t size=68784,crc;unsigned requests;
+ reset();make_image(size);crc=stm_crc(image,size);audit_ms=1000;audit_requests=0;
+ CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ for(k=0;k<68;k++){
+  audit_seconds(15);CHECK(device.FWinProgress&&device.FWblockIdx==k);
+  if(k==20){
+   device.registredOnServer=0;requests=audit_requests;audit_seconds(120);
+   CHECK(audit_requests==requests&&device.FWblockIdx==20&&device.cchFWupdate==CH_SERVER);
+   device.registredOnServer=1;audit_seconds(2);
+  }
+  CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
+  if(k<67){
+   audit_seconds(1);requests=audit_requests;
+   CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
+   CHECK(device.FWblockIdx==k+1&&device.updateTimeout==599);
+   audit_poll();CHECK(audit_requests==requests);
+  }
+ }
+ CHECK(device.rebootToUpdate&&!device.updateTimeout&&!device.FWinProgress);
+ CHECK(!memcmp(flash+FWBLOCK_OFFSET,image,size));
+ reset();CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ audit_seconds(599);CHECK(device.FWinProgress&&device.updateTimeout==1&&saves==10);
+ audit_seconds(1);CHECK(!device.FWinProgress&&!device.updateTimeout&&sent_code==FW_BLOCK_END&&sent==1);
+ puts("audit: slow 68-block download, connection pause, duplicates, periodic saves and silence timeout passed");
+}
+
+int main(void){slow_server_tests();start_tests();rollback_tests();block_tests();end_tests();resume_tests();
  puts("PASS firmware update of sheet Protokol2: commands 19, 20 and 4, rollback, end of a download, resume after a reset");return 0;}

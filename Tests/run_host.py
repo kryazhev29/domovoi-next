@@ -75,7 +75,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         types=typedefs(source('structures.h'),'logSystem_e','logControl_e','cmdCode_e','dataChanel_e','bootFWparam_s')
         defines='\n'.join(x for x in user.splitlines() if x.startswith('#define FW_'))+'\n'
         helpers=user[user.index('/* Режим обновления, бит 11 статуса 1'):user.index('// Разбор данных')]
-        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers)
+        # Доработка: Кряжев А., 2026. Исполняем реальные участки цикла, не модель таймеров.
+        poll=loop[loop.index('    if (device.registredOnServer && device.FWinProgress){'):loop.index('  // каждые 100 мс')]
+        poll=poll[:poll.rfind('  }')]
+        tick=loop[loop.index('    if (device.updateTimeout){'):loop.index('    if (app_trial_expired()){')]
+        audit='static void audit_poll(void){\n'+poll+'\n}\nstatic void audit_tick(void){\n'+tick+'\n}\n'
+        unit=(ROOT/'Tests/test_fw_start.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers).replace('/* AUDIT LOOP */',audit)
     elif kind=='log':
         user=source('User/user_fun.c');st=source('structures.h')
         case=cases(user)
