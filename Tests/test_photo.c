@@ -16,7 +16,7 @@ typedef enum {CH_USB, CH_SERVER, CH_SMS} dataChanel_e;
 typedef struct { uint32_t start, size; } cellMem_s;
 typedef struct { uint32_t datetime, size; } photoParam_s;
 typedef struct { uint8_t address,type; } periphery_s;
-typedef struct { uint8_t rs485Mode; periphery_s rs485Periphery[8]; } config_s;
+typedef struct { uint8_t rs485Mode, reserv[4]; periphery_s rs485Periphery[8]; } config_s;
 typedef struct {
  struct { uint8_t readyToUpdate, readyPhoto; } status;
  uint32_t datetime, newAddressPhoto; uint16_t countPhoto, readPhotoIndex; uint8_t getPhoto, connectionhandle;
@@ -32,7 +32,7 @@ static uint8_t flash[1024*1024], *rx, wire[1100];
 static uint16_t rxcap, rxcount, wirelen;
 static uint32_t now, image_size, sent_commands, packet_requests, watchdog;
 static uint8_t *bridge_jpeg;
-static uint32_t rxready;
+static uint32_t rxready, baudrate;
 static int quiet, nack, bad_once, fail_send, sends, erases, fail_write;
 static uint8_t pixel(uint32_t i) {
  if (bridge_jpeg) return bridge_jpeg[i];
@@ -49,7 +49,7 @@ static void mem_write(uint32_t a,uint8_t *p,uint16_t n) {
 }
 static void mem_erase_sector(uint32_t a) { assert(a%4096 == 0); assert(a+4096 <= sizeof(flash)); memset(flash+a,255,4096); erases++; power_cut(); }
 static void user_clearMemBlock(uint8_t block) { (void)block; for(uint32_t a=0;a<mem[0].size;a+=4096) {wdt_reload();mem_erase_sector(a);} }
-static int uart_init(uint8_t u,uint32_t rate,uint8_t stop,uint8_t *p,uint16_t n) {(void)u;assert(rate==115200 && !stop);rx=p;rxcap=n;rxcount=0;return 1;}
+static int uart_init(uint8_t u,uint32_t rate,uint8_t stop,uint8_t *p,uint16_t n) {(void)u;assert((rate==115200 || rate==57600 || rate==38400 || rate==19200 || rate==9600) && !stop);baudrate=rate;rx=p;rxcap=n;rxcount=0;return 1;}
 static int uart_getstate(uint8_t u) {(void)u;return rxcount!=0 && now>=rxready;}
 static int uart_isReceiving(uint8_t u) {(void)u;return 0;}
 static uint16_t uart_received(uint8_t u) {(void)u;return rxcount;}
@@ -108,6 +108,8 @@ static void user_debug(const char *text){(void)text;debug_reasons++;}
 #define malloc host_malloc
 #define calloc host_calloc
 #define free host_free
+static void uart_setRecTimeout(uint8_t p,uint16_t t){(void)p;(void)t;}
+uint32_t rs485_baud(void);
 /* PRODUCTION */
 #undef malloc
 #undef calloc

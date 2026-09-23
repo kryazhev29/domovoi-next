@@ -790,7 +790,7 @@ void user_init(void)
   uart_setRecTimeout(GSM_PORT, 10); // время заполнения/ожидания приемного буфера 10 мс
   
   // внешний порт
-  uart_init(PORT1_PORT, 115200, 0, port_buffer, PORTBUFSIZE); // порт 485
+  rs485_init(); // порт 485
   uart_setRecTimeout(PORT1_PORT, 10); // время заполнения/ожидания приемного буфера 10 мс  
 }
 
@@ -3028,7 +3028,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         }
         else{
-          memcpy((uint8_t*)&config, &ptr[5], sizeof(config));
+          rs485_set_config(&ptr[5]);
           // Сначала сохранить, затем отвечать таймштампом и CRC сохранённых настроек.
           device.datetimeConfig = config.datetime;
           device.status.defaultConfig = 0;

@@ -23,6 +23,7 @@ static void user_sendsms(char *text,char *num){sms++;strcpy(sent_number,num);str
 static void user_writeConfigAndDevice(void){CHECK(device.datetimeConfig==config.datetime&&!device.status.defaultConfig);saved++;}
 static uint16_t user_calcCRC16InFlash(uint32_t a,uint32_t n){CHECK(a==4096&&n==512);CHECK(saved==1);return 0x1234;}
 static void user_send_timeshtamp(unsigned kind,uint32_t time,uint16_t crc,unsigned ch,unsigned id){CHECK(saved==1&&kind==SHTAMP_CONFIG&&time==config.datetime&&crc==0x1234&&ch==1&&id==42);stamp++;}
+static void rs485_set_config(const uint8_t *p){memcpy(&config,p,sizeof(config));}
 /* PRODUCTION */
 int main(void){uint8_t p[2052];unsigned n;
  strcpy(config.countryCode,"+7");

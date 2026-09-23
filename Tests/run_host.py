@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             legacy_code=re.sub(r'\b'+n+r'\b','legacy_'+n,legacy_code)
         reset='#define TEST_STORAGE_BOOT() (cfg_legacy_checked = 0)\n' if 'cfg_legacy_checked' in code else '#define TEST_STORAGE_BOOT() ((void)0)\n'
         unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
-    elif kind=='photo':
+    elif kind in ('photo','rs485cfg'):
         user=source('User/user_fun.c'); case=cases(user)
         assert 'len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR' in case(7)
         assert 'if (len == 3 || len == 9)' in case(21)
@@ -60,6 +60,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=source('User/photo.c').replace('#include "photo.h"','')
         code += '\n'+function(user,'user_send_Photos')+'\nstatic void command(uint8_t cmd,uint16_t len,uint8_t address,uint8_t uniqId){ uint8_t data[11]={0}; uint8_t *ptr=data; dataChanel_e cch=CH_SERVER; ptr[5]=address; switch(cmd){'+case(7)+case(21)+'default: break;}}'
         unit=source('Tests/test_photo.c').replace('/* PRODUCTION */',function(user,'user_getPhotoCount')+'\n'+code)
+        if kind=='rs485cfg':
+            types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')
+            unit=re.sub(r'typedef struct \{ uint8_t rs485Mode, reserv\[4\]; periphery_s rs485Periphery\[8\]; \} config_s;',types,unit)
+            unit=unit.replace('uint8_t readyToUpdate, readyPhoto;', 'uint8_t readyToUpdate, readyPhoto, defaultConfig;').replace('uint32_t datetime, newAddressPhoto;', 'uint32_t datetime, datetimeConfig, newAddressPhoto;')
+            extra=source('Tests/test_rs485cfg.c').replace('/* COMMAND12 */',case(12))
+            unit=unit.replace('int main(int argc,char **argv) {',extra+'\nint main(int argc,char **argv) {\n test_rs485cfg();')
     elif kind=='fwstart':
         user=source('User/user_fun.c')
         case=cases(user)

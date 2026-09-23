@@ -30,10 +30,51 @@ static uint8_t photo_alloc(void)
 }
 static void photo_stop(void)
 {
-  uart_init(PORT1_PORT, 115200, 0, port_buffer, PORTBUFSIZE);
+  uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
   photo->stage = P_IDLE;
   photo->used = 0;
   device.getPhoto = 0;
+}
+// Доработка: Кряжев А., 2026. Скорость общая для всей шины.
+uint32_t rs485_baud(void)
+{
+  switch (config.reserv[0]) {
+  case 1: return 57600;
+  case 2: return 38400;
+  case 3: return 19200;
+  case 4: return 9600;
+  default: return 115200;
+  }
+}
+void rs485_init(void)
+{
+  uint8_t i, camera = 0, other = 0;
+  if (config.rs485Mode > 1) config.rs485Mode = 0;
+  if (config.reserv[0] > 4) {
+    user_debug("RS485: invalid baud code, using 115200\r\n");
+    config.reserv[0] = 0;
+  }
+  for (i = 0; i < 8; i++) {
+    if (config.rs485Periphery[i].type == 3) camera = 1;
+    else if (config.rs485Periphery[i].type) other = 1;
+  }
+  if (camera && other) user_debug("RS485: C328 exclusive, other devices ignored\r\n");
+  uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
+  uart_setRecTimeout(PORT1_PORT, 10);
+}
+void rs485_set_config(const uint8_t *data)
+{
+  const config_s *next = (const config_s *)data;
+  uint8_t changed = config.reserv[0] != next->reserv[0] ||
+    config.rs485Mode != next->rs485Mode ||
+    memcmp(config.rs485Periphery, next->rs485Periphery, sizeof(config.rs485Periphery)) != 0;
+  // Не трогаем курсор и запросы выгрузки уже сохранённых фотографий.
+  if (changed && photo && photo->stage) {
+    user_debug("Photo: capture error, RS485 settings changed\r\n");
+    photo_stop();
+  }
+  memcpy(&config, data, sizeof(config));
+  if (!photo || !photo->stage) rs485_init();
 }
 static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
@@ -59,7 +100,6 @@ cmdCode_e photo_start(uint8_t address)
   uint8_t i, found = 0;
   uint32_t scan;
   photoParam_s previous;
-  if (!address) return CMD_PARAMERROR;
   for (i = 0; i < 8; i++)
     if (config.rs485Periphery[i].type == 3 && config.rs485Periphery[i].address == address) found = 1;
   if (!found || config.rs485Mode != 1) return CMD_PARAMERROR;
@@ -85,7 +125,7 @@ cmdCode_e photo_start(uint8_t address)
   photo->started = timers_getMillis();
   photo->last = photo->started - 50u;
   photo->deadline = photo->started;
-  uart_init(PORT1_PORT, 115200, 0, photo->rx, sizeof(photo->rx));
+  uart_init(PORT1_PORT, rs485_baud(), 0, photo->rx, sizeof(photo->rx));
   device.getPhoto = address;
   return CMD_SUCCESS;
 }
