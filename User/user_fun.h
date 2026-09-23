@@ -11,6 +11,7 @@
 #define GSMBUFSIZE              (uint16_t)2048
 
 extern cellMem_s mem[16];
+void user_debug(char *text);
 
 // > вспомогательные -----------------------------------------------------------
 // валиден ли IMEI

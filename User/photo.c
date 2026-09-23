@@ -8,14 +8,16 @@ extern uint8_t port_buffer[PORTBUFSIZE];
 #define PHOTO_RX 70u
 #define PHOTO_DATA (PHOTO_PACKET - 6u)
 #define PHOTO_LIMIT 65535u
+#define PHOTO_BLOCK 512u
+#define PHOTO_RESOLUTION 7u // C328: 5 = 320x240, 7 = 640x480
 /* Только указатель в статической RAM. Буферы существуют в heap во время работы.
  * Размер SETPACKSIZE включает ID, длину и verify; RX оставлен с запасом 6 байт. */
 typedef struct {
   uint32_t stamp, size, written, address, deadline, started, last;
-  uint32_t readAddress, offset, requestAt;
-  uint16_t packet, used, sent, index;
-  uint8_t stage, retry, syncAck, syncSeen, pending, requestId, lastId, valid;
-  dataChanel_e channel, lastChannel;
+  uint32_t readAddress, offset, requestAt, requestNumber;
+  uint16_t packet, used, index, requestOffset;
+  uint8_t stage, retry, syncAck, syncSeen, pending, requestId, hasOffset, valid;
+  dataChanel_e channel;
   uint8_t rx[PHOTO_RX], frame[PHOTO_RX];
 } photo_s;
 static photo_s *photo;
@@ -44,7 +46,7 @@ static void photo_issue(void)
 {
   switch (photo->stage) {
   case P_SYNC: photo_command(0x0D,0,0,0,0); break;
-  case P_INIT: photo_command(1,0,7,0,5); break; // JPEG 320x240
+  case P_INIT: photo_command(1,0,7,0,PHOTO_RESOLUTION); break; // JPEG
   case P_SIZE: photo_command(6,8,PHOTO_PACKET,0,0); break;
   case P_SNAP: photo_command(5,0,0,0,0); break;
   case P_GET: photo_command(4,1,0,0,0); break;
@@ -55,6 +57,8 @@ static void photo_issue(void)
 cmdCode_e photo_start(uint8_t address)
 {
   uint8_t i, found = 0;
+  uint32_t scan;
+  photoParam_s previous;
   if (!address) return CMD_PARAMERROR;
   for (i = 0; i < 8; i++)
     if (config.rs485Periphery[i].type == 3 && config.rs485Periphery[i].address == address) found = 1;
@@ -66,6 +70,15 @@ cmdCode_e photo_start(uint8_t address)
   photo->address = device.newAddressPhoto;
   photo->stamp = device.datetime;
   if (photo->stamp == 0xFFFFFFFFu) return CMD_RUNERROR;
+  // Номер фото — datetime: два снимка с одинаковым номером нельзя различить в подтверждении.
+  for (scan = mem[MB_PHOTO].start; scan < device.newAddressPhoto; scan += 8u + previous.size) {
+    mem_read(scan, (uint8_t*)&previous, sizeof(previous));
+    if (previous.datetime == photo->stamp) {
+      user_debug("Photo: duplicate datetime, retry capture later\r\n");
+      return CMD_RUNERROR;
+    }
+    wdt_reload();
+  }
   photo->size = photo->written = photo->packet = photo->used = 0;
   photo->retry = photo->syncAck = photo->syncSeen = 0;
   photo->stage = P_SYNC;
@@ -220,17 +233,34 @@ static void photo_frame(uint8_t *p, uint16_t n)
   photo->retry = 0;
   photo->deadline = timers_getMillis();
 }
-/* Единственная точка трактовки подтверждения: тот же uniqId и канал повторяют
- * блок, новый uniqId подтверждает предыдущий. Требует согласования с заказчиком. */
-static uint8_t photo_ack(dataChanel_e channel, uint8_t id)
+/* Явное подтверждение: только запрошенное смещение, uniqId — лишь метка ответа.
+ * Расчёт кандидата; состояние фиксируется после принятия пакета транспортом.
+ * Повтор завершения старого фото попадёт в несовпадение номера: блок 0 нового,
+ * без его удаления. После сброса сверка начинается с первого сохранённого фото. */
+static void photo_ack(uint32_t *address, uint32_t *offset, uint16_t *index, uint16_t count)
 {
-  return photo->valid && photo->lastChannel == channel && photo->lastId != id;
+  photoParam_s h;
+  if (!photo->hasOffset || *index >= count) return;
+  mem_read(*address, (uint8_t*)&h, sizeof(h));
+  if (photo->requestNumber != h.datetime) {
+    user_debug("Photo: number mismatch, restart at 0\r\n");
+    *offset = 0;
+  } else if (photo->requestOffset > h.size) {
+    user_debug("Photo: offset beyond size, restart at 0\r\n");
+    *offset = 0;
+  } else if (photo->requestOffset == h.size) {
+    *address += 8u + h.size; *offset = 0; (*index)++;
+  } else *offset = photo->requestOffset;
 }
-cmdCode_e photo_request(dataChanel_e channel, uint8_t id)
+cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
+  if (size != 0 && size != 6) return CMD_PARAMERROR;
   if (device.status.readyToUpdate || channel == CH_SMS || !photo_alloc() || photo->stage) return CMD_RUNERROR;
-  if (photo->pending && (photo->requestId != id || photo->channel != channel)) return CMD_RUNERROR;
-  if (photo->valid && photo->lastChannel != channel) return CMD_RUNERROR;
+  photo->hasOffset = size == 6;
+  if (size) {
+    memcpy(&photo->requestNumber, args, 4);
+    memcpy(&photo->requestOffset, args + 4, 2);
+  }
   photo->channel = channel; photo->requestId = id;
   photo->requestAt = timers_getMillis(); photo->pending = 1;
   return CMD_SUCCESS;
@@ -243,18 +273,15 @@ static void photo_send(void)
   photoParam_s h;
   if (!address) address = mem[MB_PHOTO].start;
   count = user_getPhotoCount();
-  if (photo_ack(photo->channel, photo->requestId)) {
-    mem_read(address, (uint8_t*)&h, sizeof(h));
-    offset += photo->sent;
-    if (offset >= h.size) { address += 8u + h.size; offset = 0; index++; }
-  }
+  // Выделение до подтверждения: отказ malloc не сдвигает очередь.
+  p = malloc(PHOTO_BLOCK + 22u);
+  if (!p) return;
+  photo_ack(&address, &offset, &index, count);
   if (index < count) {
     mem_read(address, (uint8_t*)&h, sizeof(h));
-    n = h.size - offset > 1024u ? 1024u : (uint16_t)(h.size - offset);
+    n = h.size - offset > PHOTO_BLOCK ? PHOTO_BLOCK : (uint16_t)(h.size - offset);
   }
   len = n ? n + 14u : 4u;
-  p = malloc(len + 8u);
-  if (!p) return;
   memcpy(p, "SLDN", 4); p[4] = (uint8_t)len; p[5] = (uint8_t)(len >> 8);
   p[6] = 60; p[7] = photo->requestId; p[8] = 14;
   p[9] = n ? (count - index > 255u ? 255 : (uint8_t)(count - index)) : 0;
@@ -270,10 +297,9 @@ static void photo_send(void)
   if (!ok) return;
   photo->pending = 0;
   photo->readAddress = address; photo->offset = offset; photo->index = index;
-  photo->sent = n; photo->lastId = photo->requestId; photo->lastChannel = photo->channel;
   photo->valid = n != 0;
   if (!n) {
-    user_clearMemBlock(MB_PHOTO);
+    if (count) user_clearMemBlock(MB_PHOTO);
     device.countPhoto = 0; device.status.readyPhoto = 0; device.readPhotoIndex = 0;
     device.newAddressPhoto = mem[MB_PHOTO].start;
     photo->readAddress = photo->offset = photo->index = 0;
@@ -304,8 +330,9 @@ void photo_poll(void)
     }
     uart_clear(PORT1_PORT);
   }
+  now = timers_getMillis(); // после записи Flash следующий пакет запрашивается в этом же проходе
   if (photo->stage && (uint32_t)(now - photo->started) >= 60000u) photo_stop();
-  if (photo->stage && (int32_t)(now - photo->deadline) >= 0 && (uint32_t)(now - photo->last) >= 50u) {
+  if (photo->stage && (int32_t)(now - photo->deadline) >= 0 && (photo->stage == P_DATA || (uint32_t)(now - photo->last) >= 50u)) {
     if (photo->retry++ >= (photo->stage == P_SYNC ? 30 : 3)) photo_stop();
     else { photo->used = 0; photo_issue(); }
   }

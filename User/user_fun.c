@@ -2385,7 +2385,7 @@ void user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
 // Пакет 14 - передача фотографии
 void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
 {
-  user_send_answer_comand(21, photo_request(cch, uniqId), cch, uniqId);
+  user_send_answer_comand(21, photo_request(cch, uniqId, NULL, 0), cch, uniqId);
 }
 
 /* >>> время действия ID
@@ -3416,7 +3416,8 @@ if (cch != CH_USB){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd get photo (cmd 21)\r\n"); 
 #endif 
-      if (len == 3) user_send_Photos(cch, uniqId);
+      if (len == 3 || len == 9)
+        user_send_answer_comand(21, photo_request(cch, uniqId, ptr + 5, (uint8_t)(len - 3)), cch, uniqId);
       else user_send_answer_comand(21, CMD_PARAMERROR, cch, uniqId);
       break;      
       

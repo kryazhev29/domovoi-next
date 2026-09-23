@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 /* A URC that arrives while an AT command is running must still reach gsm_read.
    Log of 20.09.2026: +QIURC: "recv" answered AT+CREG?, the next command cleared the buffer
    and the 13-byte server frame was gone. */
@@ -56,7 +57,24 @@ static uint16_t seenlen;
 static unsigned reads;
 static void gsm_read(char *ptr, Int16U size) { reads++; seenlen = size; memcpy(seen, ptr, size); }
 
+/* Счётчик с выравниванием и заголовком basic heap IAR. */
+static size_t heap_live, heap_peak;
+static void *checked_calloc(size_t count,size_t size) {
+ size_t n=count*size, use=(n+15u)&~7u;
+ size_t *p=calloc(1,n+2*sizeof(size_t));CHECK(p);p[0]=use;
+ heap_live+=use;if(heap_live>heap_peak)heap_peak=heap_live;return p+2;
+}
+static void checked_free(void *ptr) {if(ptr){size_t *p=(size_t*)ptr-2;heap_live-=p[0];free(p);}}
+static void *checked_realloc(void *ptr,size_t n) {
+ size_t *p=(size_t*)ptr-2, old=p[0], use=(n+15u)&~7u;
+ p=realloc(p,n+2*sizeof(size_t));CHECK(p);p[0]=use;heap_live=heap_live-old+use;
+ if(heap_live>heap_peak)heap_peak=heap_live;return p+2;
+}
+#define calloc checked_calloc
+#define realloc checked_realloc
+#define free checked_free
 /* PRODUCTION */
+
 
 static const char creg[] = "\r\n+CREG: 1,1\r\n\r\nOK\r\n";
 static const char cgreg[] = "\r\n+CGREG: 1,1\r\n\r\nOK\r\n";
@@ -145,6 +163,10 @@ int main(void)
   gsm_takeurc();
   CHECK(reads == 0);
 
+  reset();memset(big,'x',1024);memcpy(big,"+IPD",4);
+  pending(big,1024);gsm_stashurc();pending(big,1024);gsm_stashurc();
+  CHECK(gsm_urclen==2048 && heap_peak==2064 && heap_live==2064);
+  gsm_takeurc();CHECK(!heap_live && seenlen==2048);
   puts("PASS URC in an AT answer: kept for the main loop, byte for byte, before and after the command, two in a row, longer than the answer buffer");
   return 0;
 }

@@ -196,8 +196,6 @@ static void gsm_stashurc (void)
   uint16_t count = uart_received(GSM_PORT);
   char *raw;
   char *urc;
-  char *buf;
-
   if (count == 0) return;
 
   raw = (char*)uart_getptr(GSM_PORT);
@@ -210,16 +208,10 @@ static void gsm_stashurc (void)
   // Обрезанный кадр хуже потерянного: длина в заголовке перестанет сходиться с данными
   if (count > (uint16_t)(GSM_URC_MAX - gsm_urclen)) return;
 
-  buf = calloc((uint32_t)gsm_urclen + count + 8, 1);
-
-  if (buf == NULL) return; // памяти нет, хуже прежнего не будет
-
-  if (gsm_urcbuf != NULL)
-    memcpy(buf, gsm_urcbuf, gsm_urclen);
-  memcpy(&buf[gsm_urclen], urc, count);
-
-  free(gsm_urcbuf);
-  gsm_urcbuf = buf;
+  // Один накопитель фиксированного размера: нет пика старый + новый при росте.
+  if (gsm_urcbuf == NULL) gsm_urcbuf = calloc(GSM_URC_MAX + 8u, 1);
+  if (gsm_urcbuf == NULL) return;
+  memcpy(gsm_urcbuf + gsm_urclen, urc, count);
   gsm_urclen += count;
 }
 
@@ -228,8 +220,12 @@ void gsm_takeurc (void)
 {
   char *buf = gsm_urcbuf;
   uint16_t len = gsm_urclen;
+  char *compact;
 
   if (buf == NULL) return;
+  // Перед разбором отдаём неиспользованный хвост heap другим командам.
+  compact = realloc(buf, (uint32_t)len + 8u);
+  if (compact != NULL) buf = compact;
 
   gsm_urcbuf = NULL; // снимаем заранее: gsm_read может отложить следующий
   gsm_urclen = 0;
