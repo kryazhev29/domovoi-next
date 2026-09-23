@@ -2305,6 +2305,9 @@
     <group>
         <name>User</name>
         <file>
+            <name>$PROJ_DIR$\User\photo.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\crc.c</name>
         </file>
         <file>

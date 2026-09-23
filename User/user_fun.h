@@ -6,7 +6,7 @@
 #ifndef USERFUN_H
 #define USERFUN_H
 
-/* RS485 parser is not implemented; received data is discarded by port_check_data. */
+/* Обычный RX 485; на время съёмки photo.c подключает буфер из heap. */
 #define PORTBUFSIZE             (uint16_t)32
 #define GSMBUFSIZE              (uint16_t)2048
 

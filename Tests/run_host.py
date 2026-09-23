@@ -1,3 +1,4 @@
+# Доработка: Кряжев А., 2026
 import os, pathlib, subprocess, sys, tempfile, re
 # DOMOVOI_ROOT runs the tests against a copy, e.g. with a deliberate fault.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
@@ -49,6 +50,16 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             legacy_code=re.sub(r'\b'+n+r'\b','legacy_'+n,legacy_code)
         reset='#define TEST_STORAGE_BOOT() (cfg_legacy_checked = 0)\n' if 'cfg_legacy_checked' in code else '#define TEST_STORAGE_BOOT() ((void)0)\n'
         unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
+    elif kind=='photo':
+        user=source('User/user_fun.c'); case=cases(user)
+        assert 'len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR' in case(7)
+        assert 'if (len == 3) user_send_Photos(cch, uniqId);' in case(21)
+        assert 'photo_request(cch, uniqId)' in function(user,'user_send_Photos')
+        assert 'photo_poll();' in function(user,'port_check_data')
+        assert '(cmd == 7 || cmd == 21) ? 5 : 255' in function(user,'user_send_answer_comand')
+        code=source('User/photo.c').replace('#include "photo.h"','')
+        code += '\n'+function(user,'user_send_Photos')+'\nstatic void command(uint8_t cmd,uint16_t len,uint8_t address,uint8_t uniqId){ uint8_t data[6]={0}; uint8_t *ptr=data; dataChanel_e cch=CH_SERVER; ptr[5]=address; switch(cmd){'+case(7)+case(21)+'default: break;}}'
+        unit=source('Tests/test_photo.c').replace('/* PRODUCTION */',function(user,'user_getPhotoCount')+'\n'+code)
     elif kind=='fwstart':
         user=source('User/user_fun.c')
         case=cases(user)

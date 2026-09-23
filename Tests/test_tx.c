@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,9 +87,9 @@ int main(int argc,char**argv){uint8_t data[523];unsigned i;CHECK(argc>1);for(i=0
 #endif
  }
  else CHECK(0);
- /* The largest real reply is the 32-entry event log (1038 bytes). */
+ /* Самый большой ответ: пакет фото 14, 1024 + 11 + 11 = 1046 байт. */
  if(!strcmp(argv[1],"large")){
-  uint8_t largest[1038];for(i=0;i<sizeof(largest);i++)largest[i]=(uint8_t)(i*7u);
+  uint8_t largest[1046];for(i=0;i<sizeof(largest);i++)largest[i]=(uint8_t)(i*7u);
   USB_Tx_Reset();wirelen=0;CHECK(USART_To_USB_Send_Data(largest,sizeof(largest)));
   for(i=0;i<100;i++){if(USB_Tx_State)EP1_IN_Callback();else Handle_USBAsynchXfer();}
   CHECK(wirelen==sizeof(largest)&&!memcmp(wire,largest,sizeof(largest)));

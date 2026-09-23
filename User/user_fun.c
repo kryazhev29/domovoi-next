@@ -3,6 +3,7 @@
 // Пользовательские функции
 
 #include "user_fun.h"
+#include "photo.h"
 #include "usb_istr.h"
 #include "../Bootloader/app_update.h"
 #include "../Bootloader/boot_manual.h"
@@ -1323,28 +1324,9 @@ void user_writeConfigAndDevice(void)
 // проверка порта 485
 void port_check_data(void)
 {
-  // есть данные
-  if (uart_getstate(PORT1_PORT)){
-    // ждем завершения приема
-    while (uart_isReceiving(PORT1_PORT)){
-      wdt_reload();
-    }
-    
-    uint16_t count = uart_received(PORT1_PORT);
-    char *buf = calloc(count + 8, 1);
-    
-    if (buf != NULL){
-      // копируем во временный
-      memcpy(buf, uart_getptr(PORT1_PORT), count);
-      uart_clear(PORT1_PORT);
-      
-      //777 парсим
-      
-      free(buf);
-    } else{
-      uart_clear(PORT1_PORT);
-    }
-  }
+  photo_poll();
+  if (!device.getPhoto && uart_getstate(PORT1_PORT) && !uart_isReceiving(PORT1_PORT))
+    uart_clear(PORT1_PORT);
 }
 
 // проверка входящих данных от модуля
@@ -1904,7 +1886,7 @@ void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_
   send_buffer[3] = 'N';
   send_buffer[4] = _1B(len);  // длина
   send_buffer[5] = _2B(len);
-  send_buffer[6] = 255; // таймаут актуальности команды
+  send_buffer[6] = (cmd == 7 || cmd == 21) ? 5 : 255; // таймаут актуальности команды
   send_buffer[7] = uniqId; // uniqId
   send_buffer[8] = 11; // id
   send_buffer[9] = cmd; // На какую именно команду выдается подтверждение
@@ -2401,91 +2383,9 @@ void user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
 }
 
 // Пакет 14 - передача фотографии
-void user_send_Photos(dataChanel_e cch, uint8_t uniqId){
-//777
-/*Фото в очереди	1	Кол-во фото в очереди		0 - нет фото на передачу (следующие поля не включены в пакет) 
-Номер фото	4	Дататайм формирования фото		
-Размер фото	4	Размер фото в байтах		
-Номер блока	2	Блок размером не более 1024 байт		Номер блока можно заменить адресом смещения от начала файла. Как удобнее серверу?
-Блок данных	N	Данные фото		*/ 
-  
-  // читаем кол-во записей в памяти
-  device.countPhoto = user_getPhotoCount();
-
-  // записей нет
-  if (device.countPhoto == 0){
-    uint16_t tmp16 = device.countPhoto;
-    user_send_anyData(14, (uint8_t*)&tmp16, 2, cch, uniqId);
-    device.status.readyPhoto = 0;
-    device.readPhotoIndex = 0;
-    return;
-  }
-  //777
-/*  uint32_t readAdr = mem[MB_TEMPID].start + ((uint32_t)device.readTempIDIndex * sizeof(cellID_s));
-  
-  // подтверждение приема - выгрузили все
-  if (readAdr >= device.newAddressTempID){
-    user_clearTempIdBuffer();
-    user_send_anyData(9, (uint8_t*)&device.tempIDsCount, 2, cch);
-    return;
-  }
-
-  uint16_t crc;  
-  uint16_t cntId = device.tempIDsCount - device.readTempIDIndex;
-
-  if (cntId > 100) cntId = 100;
-  // выделим память 1 кБ под ID (100 * 10)
-  uint8_t *send_buffer = malloc((cntId * 10) + 16);
-  uint16_t len = (cntId * 10) + 5;
-  uint16_t cntId2 = device.tempIDsCount - device.readTempIDIndex - cntId;
-  
-  if (send_buffer != NULL){
-    
-#ifdef DEBUG_USER
-  usb_sendstr(">>U Send temp IDs (cmd 9)\r\n"); 
-#endif      
-    
-    send_buffer[0] = 'S'; // идент
-    send_buffer[1] = 'L';
-    send_buffer[2] = 'D';
-    send_buffer[3] = 'N';
-    send_buffer[4] = _1B(len);  // длина
-    send_buffer[5] = _2B(len);
-    send_buffer[6] = 255; // таймаут актуальности команды
-    send_buffer[7] = 9; // id        
-    send_buffer[8] = _1B(cntId2);  // остаток записей
-    send_buffer[9] = _2B(cntId2);
-    send_buffer[10] = cntId; // записей в текущем пакете
-    // читаем из памяти
-    for (uint16_t i = 0; i < cntId; i++){
-      mem_read (readAdr + 2, &send_buffer[11 + (i*10)], 10);
-      readAdr += sizeof(cellID_s);
-    }
-
-    crc = crc16_calc(&send_buffer[4], len+2);
-    
-    send_buffer[len+6] = crc&0xff; // crc
-    send_buffer[len+7] = (crc>>8)&0xff;
-    
-    switch (cch){
-    case CH_USB:
-      usb_send(send_buffer, len+8);
-      break;
-      
-    case CH_SERVER:
-      connection_send(device.connectionhandle, send_buffer, len+8);
-      break;
-      
-    case CH_SMS:
-      
-      break;
-    }    
-    
-    device.readTempIDIndex += cntId;
-    device.status.readyID = 1;
-    
-    free(send_buffer);
-  }*/
+void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
+{
+  user_send_answer_comand(21, photo_request(cch, uniqId), cch, uniqId);
 }
 
 /* >>> время действия ID
@@ -3030,26 +2930,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;      
 
     case 7: // запрос фото с камеры
-      //777
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd get photo (cmd 7)\r\n"); 
-#endif 
-      if (ptr[5] != 0){
-        if (device.status.readyPhoto)
-        {
-          user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
-          device.getPhoto = ptr[5];      
-        }
-        else
-        {
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          device.getPhoto = 0; 
-        }        
-      }
-      else{
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-      }
-      break;      
+      user_send_answer_comand(7, len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR, cch, uniqId);
+      break;
 
     case 8: // управление выходами
 #ifdef DEBUG_USER
@@ -3534,7 +3416,8 @@ if (cch != CH_USB){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd get photo (cmd 21)\r\n"); 
 #endif 
-      user_send_Photos(cch, uniqId);
+      if (len == 3) user_send_Photos(cch, uniqId);
+      else user_send_answer_comand(21, CMD_PARAMERROR, cch, uniqId);
       break;      
       
     case 22: // запрос статуса 2
@@ -4682,25 +4565,24 @@ bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt
 // ********************** Память фото **************
 
 // получаем кол-во фото в памяти
-uint16_t user_getPhotoCount(void){
-  // 4 байта ID, 4 байта размер фото, N данные фото
-  
-  uint32_t adr;
-  uint32_t endAdr = mem[MB_PHOTO].start + mem[MB_PHOTO].size;
-  uint16_t cnt = 0;
-  photoParam_s param;
-  
-  for (adr = mem[MB_PHOTO].start; adr < endAdr;){
-    mem_read(adr, (uint8_t*)&param, sizeof(photoParam_s));
-    // пустая ячейка
-    if (param.datetime == 0xffffffff){
-      device.newAddressPhoto = adr;
-      return cnt;
+uint16_t user_getPhotoCount(void)
+{
+  uint32_t adr = mem[MB_PHOTO].start;
+  uint32_t end = photo_storage_end();
+  uint16_t count = 0;
+  photoParam_s h;
+  if (!photo_recover()) { device.newAddressPhoto = end; return 0; }
+  while (adr + sizeof(h) <= end) {
+    mem_read(adr, (uint8_t*)&h, sizeof(h));
+    if (h.datetime == 0xFFFFFFFFu) break;
+    if (!h.size || h.size > 65535u || h.size > end - adr - sizeof(h)) {
+      adr = end; break; // повреждённую запись не обходим за границу области
     }
-    adr += sizeof(photoParam_s) + param.size;
-    cnt++;   
+    count++;
+    adr += sizeof(h) + h.size;
   }
-  return cnt;
+  device.newAddressPhoto = adr;
+  return count;
 }
 
 
