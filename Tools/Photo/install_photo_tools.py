@@ -13,7 +13,7 @@ def install(stand):
         raise ValueError('Не найден каталог Стенд_Domovoi/Скрипты')
     old = target / 'fw_server.py'
     digest = hashlib.sha256(old.read_bytes()).hexdigest()
-    for name in ['photo_server_gui.py', 'camera_emulator.py', 'sample_640x480.jpg']:
+    for name in ['photo_server_gui.py', 'camera_emulator.py', 'sample_640x480.jpg', 'rs485_config.py', 'periphery.ini']:
         shutil.copyfile(HERE/name, target/name)
     manual = target / 'КАК_ПОЛЬЗОВАТЬСЯ.txt'
     content = manual.read_text(encoding='utf-8-sig')

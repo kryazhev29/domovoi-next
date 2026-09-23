@@ -12,6 +12,7 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk, messagebox
+from rs485_config import Settings485
 
 try:
     from PIL import Image, ImageTk
@@ -228,8 +229,13 @@ class Server(threading.Thread):
             if peer.status & (1 << 11) and peer.transfer:
                 peer.transfer.active = False; peer.due = peer.deadline = None
                 self.emit('log', f'{peer.imei}: стоп выгрузки, бит 11 установлен')
+        elif cmd == 12 and len(payload) >= 7 and payload[0] == 4:
+            self.emit('log', f'{peer.imei}: настройки приняты, ответ 12 (таймштамп/CRC): {payload.hex()}')
+            self.emit('settings_result', f'{peer.imei}: настройки приняты (ответ 12)')
         elif cmd == 11 and len(payload) >= 2:
             self.emit('log', f'{peer.imei}: ответ команды {payload[0]}, код {payload[1]}')
+            if payload[0] == 12:
+                self.emit('settings_result', f'{peer.imei}: ответ 11 на команду 12, код {payload[1]}')
             if payload[0] == 21 and payload[1] and peer.transfer and peer.transfer.active:
                 if uniq == peer.last_command_id:
                     self.schedule(peer, retry=True)
@@ -262,10 +268,12 @@ class Server(threading.Thread):
                 self.emit('log', f'{peer.imei}: остановлено пользователем'); continue
             if peer.status & (1 << 11):
                 self.emit('log', f'{peer.imei}: команда запрещена при бите 11'); continue
-            if action == 'capture':
+            if action == 'settings485':
+                self.send(peer, 12, options['config'])
+            elif action == 'capture':
                 address = int(options.get('address', 1))
-                if not 1 <= address <= 255:
-                    self.emit('log', 'Адрес камеры: 1–255'); continue
+                if not 0 <= address <= 255:
+                    self.emit('log', 'Адрес камеры: 0–255'); continue
                 self.send(peer, 7, bytes([address]))
             elif action == 'get':
                 if int(options.get('drop', 0)) < 0 or float(options.get('delay', 0)) < 0:
@@ -346,6 +354,7 @@ class App:
         ttk.Label(top, text='Адрес камеры').pack(side='left'); ttk.Entry(top, textvariable=self.camera, width=5).pack(side='left', padx=5)
         for title, action in [('Сделать снимок', 'capture'), ('Забрать фото', 'get'), ('Стоп', 'stop')]:
             ttk.Button(top, text=title, command=lambda a=action: self.action(a)).pack(side='left', padx=4)
+        ttk.Button(top, text='Настройки 485', command=self.settings485).pack(side='left', padx=4)
         self.tree = ttk.Treeview(root, columns=('imei','ip','last','status','b11','b13'), show='headings', height=4)
         for key, title in [('imei','IMEI'),('ip','IP:порт'),('last','Последний статус'),('status','Статус 1'),('b11','Бит 11: обновление'),('b13','Бит 13: фото')]:
             self.tree.heading(key, text=title); self.tree.column(key, width=150)
@@ -387,10 +396,21 @@ class App:
         try:
             options = dict(address=int(self.camera.get()), drop=int(self.drop.get()),
                            delay=float(self.delay.get().replace(',','.')), repeat=self.repeat.get(), disconnect=self.cut.get())
-            if not 1 <= options['address'] <= 255 or options['drop'] < 0 or not 0 <= options['delay'] <= 3600: raise ValueError()
+            if not 0 <= options['address'] <= 255 or options['drop'] < 0 or not 0 <= options['delay'] <= 3600: raise ValueError()
         except ValueError:
-            messagebox.showerror('Параметры', 'Адрес 1–255; N ≥ 0; задержка 0–3600 с'); return
+            messagebox.showerror('Параметры', 'Адрес 0–255; N ≥ 0; задержка 0–3600 с'); return
         self.server.command(selected[0], action, options)
+
+    def settings485(self):
+        selected = self.tree.selection()
+        if not self.server or not selected:
+            messagebox.showinfo('Контроллер', 'Запустите сервер и выберите контроллер'); return
+        server, key = self.server, selected[0]
+        try:
+            Settings485(self.root, lambda data: server.command(key, 'settings485', {'config': data}),
+                        endpoint=os.environ.get('DOMOVOI_SERVER', ''))
+        except (OSError, ValueError) as exc:
+            messagebox.showerror('Настройки 485', str(exc))
 
     def show_bits(self, event=None):
         selected = self.tree.selection()
@@ -410,6 +430,8 @@ class App:
                     self.log.configure(state='normal'); self.log.insert('end', value + '\n'); self.log.see('end')
                     if int(self.log.index('end-1c').split('.')[0]) > 2000: self.log.delete('1.0','200.0')
                     self.log.configure(state='disabled')
+                elif kind == 'settings_result':
+                    messagebox.showinfo('Настройки 485', value, parent=self.root)
                 elif kind == 'clients':
                     self.states = {p['key']:p for p in value}
                     for key in self.tree.get_children():
