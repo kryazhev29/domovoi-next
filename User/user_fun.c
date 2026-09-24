@@ -4573,6 +4573,10 @@ uint16_t user_getPhotoCount(void)
   uint32_t end = photo_storage_end();
   uint16_t count = 0;
   photoParam_s h;
+  if (photo_cleanup_active()) {
+    device.newAddressPhoto = adr; device.countPhoto = 0; device.status.readyPhoto = 0;
+    return 0;
+  }
   if (!photo_recover()) { device.newAddressPhoto = end; device.countPhoto = 0; device.status.readyPhoto = 0; return 0; }
   while (adr + sizeof(h) <= end) {
     mem_read(adr, (uint8_t*)&h, sizeof(h));

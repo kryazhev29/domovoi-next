@@ -1,11 +1,11 @@
-# Доработка: Кряжев А., 2026
+﻿# Доработка: Кряжев А., 2026
 # Каждая мутация должна компилироваться и падать на проверке поведения.
 import os, pathlib, shutil, subprocess, sys, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 mutations=[
  ('duplicate_number','previous.datetime >= photo->stamp','0'),
  ('stream_advance','offset += n;','offset += 0;'),
- ('no_early_erase','if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start && !photo_clear_confirmed()) return CMD_RUNERROR;','if (device.newAddressPhoto != mem[MB_PHOTO].start && !photo_clear_confirmed()) return CMD_RUNERROR;'),
+ ('no_early_erase','if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start) {','if (device.newAddressPhoto != mem[MB_PHOTO].start) {'),
  ('final_confirmation','if (!device.countPhoto && !photo_clear_confirmed())','if (0 && !photo_clear_confirmed())'),
  ('first_number','(!number && photo_confirmed_offset(a, (uint16_t)h.size) < h.size)','(0 && photo_confirmed_offset(a, (uint16_t)h.size) < h.size)'),
  ('foreign_photo','if (!found || offset > h.size)','if ((found && number == 0xDEADBEEFu) || offset > h.size)'),
@@ -19,8 +19,8 @@ mutations=[
  ('camera_speed','photo->stage == P_DATA || (uint32_t)(now - photo->last)', '(uint32_t)(now - photo->last)'),
  ('flash_data','photo->address + PHOTO_RECORD_HEAD + photo->written, p + 4','photo->address + PHOTO_RECORD_HEAD + 1u + photo->written, p + 4'),
  ('empty_count',': 0;\n  if (n) {',': 1;\n  if (n) {'),
- ('ready_bit','device.countPhoto = 0; device.status.readyPhoto = 0;','device.countPhoto = 0; device.status.readyPhoto = 1;'),
- ('early_header','photo->size = size;','photoParam_s early = {photo->stamp, size}; mem_write(photo->address, (uint8_t*)&early, 8);\n  photo->size = size;'),
+ ('ready_bit','device.countPhoto = 0; device.status.readyPhoto = 0; device.readPhotoIndex = 0;','device.countPhoto = 0; device.status.readyPhoto = 1; device.readPhotoIndex = 0;'),
+ ('early_header','photo->size = (uint16_t)size;','photoParam_s early = {photo->stamp, size}; mem_write(photo->address, (uint8_t*)&early, 8);\n  photo->size = (uint16_t)size;'),
  ('oversize','size > PHOTO_LIMIT','size > 0xFFFFFFu'),
  ('space','size > end - photo->address - PHOTO_RECORD_HEAD','size > end - photo->address'),
  ('update_start','device.status.readyToUpdate || !photo_alloc()','!photo_alloc()'),
@@ -28,12 +28,20 @@ mutations=[
  ('address','config.rs485Periphery[i].address == address','config.rs485Periphery[i].address != 0'),
  ('checksum','p[n-2] != sum','(p[n-2] != sum && 0)'),
  ('timeout','P_SYNC ? 30 : 3','P_SYNC ? 31 : 3'),
- ('previous_photo','if (prefix) a += MEMSECTORSIZE;','if (prefix) a += 0;'),
+ ('previous_photo','photo_erased_to = prefix ? photo->address - prefix + MEMSECTORSIZE : photo->address;','photo_erased_to = photo->address - prefix;'),
  ('capture_pending','if (photo->stage) return CMD_RUNERROR;','if (photo->stage || photo->pending) return CMD_RUNERROR;'),
  ('capture_waiting_ack','if (photo->stage) return CMD_RUNERROR;','if (photo->stage || device.status.readyPhoto) return CMD_RUNERROR;'),
  ('ack_persistence','return done;','return 0;'),
  ('empty_success','if (size && device.countPhoto) {','if (size) {'),
- ('empty_no_flash_write','if (size && device.countPhoto) {','if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start) photo_clear_confirmed();\n  if (size && device.countPhoto) {'),
+ ('recover_gap','if (!photo_cleanup_active() && photo_recover() && !device.countPhoto &&','if (0 && !photo_cleanup_active() && photo_recover() && !device.countPhoto &&'),
+ ('restore_stream','(photo_cleanup_active() || photo_recover()) &&','1 &&'),
+ ('no_cleanup_marker','!photo_write(at, (uint8_t*)marker, 4)','0'),
+ ('cleanup_batch','if (!erased && photo_cleanup_active()) photo_cleanup_step();','if (photo_cleanup_active()) { photo_cleanup_step(); photo_cleanup_step(); }'),
+ ('lazy_batch','wdt_reload(); mem_erase_sector(photo_erased_to);','wdt_reload(); mem_erase_sector(photo_erased_to); mem_erase_sector(photo_erased_to + MEMSECTORSIZE);'),
+ ('zero_time','device.datetime ? device.datetime : 1u','device.datetime'),
+ ('pending_timeout','(uint32_t)(now - photo_pending_since) >= 60000u','(uint32_t)(now - photo_pending_since) >= 600000u'),
+ ('pending_progress','photo_pending_since = timers_getMillis();\n  } else photo->pending = 0;','photo_pending_since = 0;\n  } else photo->pending = 0;'),
+ ('empty_no_flash_write','if (size && device.countPhoto) {','if (!device.countPhoto) { uint8_t zero = 0; mem_write(photo_storage_end() + MEMSECTORSIZE + 64u, &zero, 1); }\n  if (size && device.countPhoto) {'),
 ]
 
 subprocess.run([sys.executable,str(ROOT/"Tests/run_host.py"),"work","photo"],check=True)

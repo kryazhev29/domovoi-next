@@ -21,8 +21,13 @@ typedef struct {
   uint8_t rx[PHOTO_RX], frame[PHOTO_RX];
 } photo_s;
 static photo_s *photo;
+// —лужебное состо€ние хранитс€ в статической RAM и не расходует heap.
+static uint32_t photo_erased_to, photo_pending_since;
+static uint16_t photo_copy_off;
+static uint8_t photo_prep_phase, photo_restore_phase;
 static uint8_t photo_clear_confirmed(void);
-enum { P_IDLE, P_SYNC, P_INIT, P_SIZE, P_SNAP, P_GET, P_DATA };
+uint8_t photo_cleanup_active(void);
+enum { P_IDLE, P_SYNC, P_INIT, P_SIZE, P_SNAP, P_GET, P_DATA, P_PREP };
 
 static uint8_t photo_alloc(void)
 {
@@ -107,13 +112,22 @@ cmdCode_e photo_start(uint8_t address)
   if (device.status.readyToUpdate || !photo_alloc()) return CMD_RUNERROR;
   if (photo->stage) return CMD_RUNERROR;
   device.countPhoto = user_getPhotoCount();
-  if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start && !photo_clear_confirmed()) return CMD_RUNERROR;
+  if (photo_cleanup_active()) {
+    user_debug("Photo: clearing storage\r\n");
+    return CMD_RUNERROR;
+  }
+  if (!photo_recover()) return CMD_RUNERROR;
+  if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start) {
+    if (!photo_clear_confirmed()) return CMD_RUNERROR;
+    user_debug("Photo: clearing storage\r\n");
+    return CMD_RUNERROR;
+  }
   if (device.newAddressPhoto + PHOTO_RECORD_HEAD >= photo_storage_end()) {
     user_debug("Photo: no space for next image\r\n");
     return CMD_RUNERROR;
   }
   photo->address = device.newAddressPhoto;
-  photo->stamp = device.datetime;
+  photo->stamp = device.datetime ? device.datetime : 1u;
   // Ќомер уникален среди фото в пам€ти и растЄт по очереди.
   // ≈сли дататайм не больше предыдущего номера, берЄм наибольший имеющийс€ + 1.
   for (scan = mem[MB_PHOTO].start; scan < device.newAddressPhoto; scan += PHOTO_RECORD_HEAD + previous.size) {
@@ -123,6 +137,7 @@ cmdCode_e photo_start(uint8_t address)
   }
   if (photo->stamp == 0xFFFFFFFFu) return CMD_RUNERROR;
   photo->size = photo->written = photo->packet = photo->used = 0;
+  photo_erased_to = 0; photo_prep_phase = 0;
   photo->retry = photo->syncAck = photo->syncSeen = 0;
   photo->stage = P_SYNC;
   photo->started = timers_getMillis();
@@ -168,30 +183,53 @@ static uint32_t photo_backup_crc(uint32_t address, uint16_t n)
   }
   return crc;
 }
+uint8_t photo_cleanup_active(void)
+{
+  uint32_t marker, scratch = photo_storage_end();
+  if (mem[MB_PHOTO].size < 8192u) return 0;
+  mem_read(scratch + MEMSECTORSIZE + 32u, (uint8_t*)&marker, 4);
+  return marker == 0u;
+}
 uint8_t photo_recover(void)
 {
   uint32_t h[4], scratch = photo_storage_end();
-  uint16_t off, step;
-  uint8_t b[64];
-  if (mem[MB_PHOTO].size < 8192u) return 0;
-  mem_read(scratch + MEMSECTORSIZE + 32u, (uint8_t*)h, 4);
-  if (h[0] == 0u) { user_clearMemBlock(MB_PHOTO); return 1; }
+  if (mem[MB_PHOTO].size < 8192u || photo_cleanup_active()) return 0;
   mem_read(scratch + MEMSECTORSIZE, (uint8_t*)h, sizeof(h));
   if (h[3] != 0x50484F54u) return 1;
   if (h[0] < mem[MB_PHOTO].start || h[0] >= scratch || (h[0] & 4095u) ||
-      !h[1] || h[1] >= MEMSECTORSIZE || photo_backup_crc(scratch, (uint16_t)h[1]) != h[2]) return 0;
-  wdt_reload(); mem_erase_sector(h[0]);
-  for (off = 0; off < h[1]; off += step) {
-    step = h[1] - off > sizeof(b) ? sizeof(b) : (uint16_t)(h[1] - off);
-    mem_read(scratch + off, b, step);
-    if (!photo_write(h[0] + off, b, step)) return 0;
+      !h[1] || h[1] >= MEMSECTORSIZE || (!photo_restore_phase && photo_backup_crc(scratch, (uint16_t)h[1]) != h[2])) return 0;
+  return 0; //  опи€ восстанавливаетс€ по шагам из photo_poll.
+}
+static uint8_t photo_restore_step(void)
+{
+  uint32_t h[4], scratch = photo_storage_end();
+  uint8_t b[64];
+  uint16_t step;
+  mem_read(scratch + MEMSECTORSIZE, (uint8_t*)h, sizeof(h));
+  if (h[3] != 0x50484F54u) { photo_restore_phase = 0; return 0; }
+  if (h[0] < mem[MB_PHOTO].start || h[0] >= scratch || (h[0] & 4095u) ||
+      !h[1] || h[1] >= MEMSECTORSIZE || (!photo_restore_phase && photo_backup_crc(scratch, (uint16_t)h[1]) != h[2])) return 0;
+  if (!photo_restore_phase) {
+    wdt_reload(); mem_erase_sector(h[0]);
+    photo_restore_phase = 1; photo_copy_off = 0;
+    return 1;
+  }
+  if (photo_restore_phase == 1) {
+    step = h[1] - photo_copy_off > sizeof(b) ? sizeof(b) : (uint16_t)(h[1] - photo_copy_off);
+    mem_read(scratch + photo_copy_off, b, step);
+    if (!photo_write(h[0] + photo_copy_off, b, step)) return 0;
+    photo_copy_off += step;
+    if (photo_copy_off == h[1]) photo_restore_phase = 2;
+    return 0;
   }
   wdt_reload(); mem_erase_sector(scratch + MEMSECTORSIZE);
+  photo_restore_phase = 0;
+  user_getPhotoCount();
   return 1;
 }
 static uint8_t photo_prepare(uint32_t size)
 {
-  uint32_t a, eraseEnd, end = photo_storage_end(), h[4];
+  uint32_t a, end = photo_storage_end();
   uint16_t prefix = photo->address & (MEMSECTORSIZE - 1u);
   uint8_t b[64], dirty = 0;
   uint16_t off, step;
@@ -205,7 +243,7 @@ static uint8_t photo_prepare(uint32_t size)
     return 0;
   }
   if (prefix) {
-    // ќбычное дописывание не требует стирать уже пустой хвост сектора.
+    // ”же пустой хвост общего сектора можно дописать без стирани€.
     for (a = photo->address; a < photo->address - prefix + MEMSECTORSIZE; a += step) {
       step = photo->address - prefix + MEMSECTORSIZE - a > sizeof(b) ? sizeof(b) :
              (uint16_t)(photo->address - prefix + MEMSECTORSIZE - a);
@@ -213,29 +251,65 @@ static uint8_t photo_prepare(uint32_t size)
       for (off = 0; off < step; off++) if (b[off] != 0xFF) dirty = 1;
       wdt_reload();
     }
-    if (dirty) {
-      wdt_reload(); mem_erase_sector(end + MEMSECTORSIZE);
-      wdt_reload(); mem_erase_sector(end);
-      for (off = 0; off < prefix; off += step) {
-        step = prefix - off > sizeof(b) ? sizeof(b) : (uint16_t)(prefix - off);
-        mem_read(photo->address - prefix + off, b, step);
-        if (!photo_write(end + off, b, step)) return 0;
-      }
-      h[0] = photo->address - prefix; h[1] = prefix;
-      h[2] = photo_backup_crc(end, prefix); h[3] = 0x50484F54u;
-      if (!photo_write(end + MEMSECTORSIZE, (uint8_t*)h, 12) ||
-          !photo_write(end + MEMSECTORSIZE + 12u, (uint8_t*)&h[3], 4) || !photo_recover()) return 0;
-    }
   }
-  eraseEnd = photo->address + PHOTO_RECORD_HEAD + size;
-  if (end - eraseEnd >= sizeof(photoParam_s)) eraseEnd += sizeof(photoParam_s); // пустой заголовок следующего кадра
-  a = photo->address - prefix;
-  if (prefix) a += MEMSECTORSIZE;
-  for (; a < eraseEnd; a += MEMSECTORSIZE) {
-    wdt_reload(); mem_erase_sector(a);
+  photo->size = (uint16_t)size;
+  photo_copy_off = 0;
+  if (dirty) { photo_prep_phase = 1; photo->stage = P_PREP; }
+  else {
+    photo_erased_to = prefix ? photo->address - prefix + MEMSECTORSIZE : photo->address;
+    photo->stage = P_DATA;
   }
-  photo->size = size;
   return 1;
+}
+static uint8_t photo_prepare_step(void)
+{
+  uint32_t end = photo_storage_end(), h[4];
+  uint16_t prefix = photo->address & (MEMSECTORSIZE - 1u), step;
+  uint8_t b[64];
+  if (photo_prep_phase == 1) {
+    wdt_reload(); mem_erase_sector(end + MEMSECTORSIZE);
+    photo_prep_phase = 2; return 1;
+  }
+  if (photo_prep_phase == 2) {
+    wdt_reload(); mem_erase_sector(end);
+    photo_prep_phase = 3; return 1;
+  }
+  if (photo_prep_phase == 3) {
+    step = prefix - photo_copy_off > sizeof(b) ? sizeof(b) : (uint16_t)(prefix - photo_copy_off);
+    mem_read(photo->address - prefix + photo_copy_off, b, step);
+    if (!photo_write(end + photo_copy_off, b, step)) { photo_stop(); return 0; }
+    photo_copy_off += step;
+    if (photo_copy_off == prefix) photo_prep_phase = 4;
+    return 0;
+  }
+  if (photo_prep_phase == 4) {
+    h[0] = photo->address - prefix; h[1] = prefix;
+    h[2] = photo_backup_crc(end, prefix); h[3] = 0x50484F54u;
+    if (!photo_write(end + MEMSECTORSIZE, (uint8_t*)h, 12) ||
+        !photo_write(end + MEMSECTORSIZE + 12u, (uint8_t*)&h[3], 4)) { photo_stop(); return 0; }
+    photo_prep_phase = 5;
+    return 0;
+  }
+  if (photo_prep_phase == 5 && photo_recover()) {
+    photo_erased_to = photo->address - prefix + MEMSECTORSIZE;
+    photo->stage = P_DATA;
+    photo->deadline = timers_getMillis();
+  }
+  return 0;
+}
+// ѕеред запросом пакета стираем только сектор, в который попадут его данные.
+static uint8_t photo_data_ready(void)
+{
+  uint32_t end, used = photo->written + PHOTO_DATA;
+  if (used > photo->size) used = photo->size;
+  end = photo->address + PHOTO_RECORD_HEAD + used;
+  if (used == photo->size && photo_storage_end() - end >= sizeof(photoParam_s))
+    end += sizeof(photoParam_s); // «аголовок следующей записи должен быть пустым.
+  if (end <= photo_erased_to) return 1;
+  if (photo_erased_to >= photo_storage_end()) { photo_stop(); return 0; }
+  wdt_reload(); mem_erase_sector(photo_erased_to);
+  photo_erased_to += MEMSECTORSIZE;
+  return 0;
 }
 static void photo_frame(uint8_t *p, uint16_t n)
 {
@@ -276,7 +350,6 @@ static void photo_frame(uint8_t *p, uint16_t n)
     } else if (photo->stage == P_GET && p[1] == 0x0A && p[2] == 1) {
       uint32_t size = p[3] | ((uint32_t)p[4] << 8) | ((uint32_t)p[5] << 16);
       if (!photo_prepare(size)) { photo_stop(); return; }
-      photo->stage = P_DATA;
     } else if (p[1] == 0x0E &&
               ((photo->stage == P_INIT && p[2] == 1) ||
                (photo->stage == P_SIZE && p[2] == 6) ||
@@ -335,13 +408,46 @@ static uint8_t photo_ack_write(uint32_t address, uint16_t size, uint16_t offset)
  * заставл€ет завершить очистку; до неЄ все записи уже подтверждены. */
 static uint8_t photo_clear_confirmed(void)
 {
-  uint32_t marker = 0, at = photo_storage_end() + MEMSECTORSIZE + 32u;
-  if (!photo_write(at, (uint8_t*)&marker, sizeof(marker))) return 0;
-  user_clearMemBlock(MB_PHOTO);
-  device.newAddressPhoto = mem[MB_PHOTO].start;
+  uint32_t marker[3], at = photo_storage_end() + MEMSECTORSIZE + 32u;
+  uint32_t first = mem[MB_PHOTO].start, end = photo_storage_end();
+  if (photo_cleanup_active()) return 1;
+  if (device.newAddressPhoto <= first) return 1;
+  if (device.newAddressPhoto > end || end - device.newAddressPhoto < sizeof(photoParam_s))
+    marker[1] = end;
+  else marker[1] = device.newAddressPhoto + sizeof(photoParam_s);
+  marker[1] = (marker[1] + MEMSECTORSIZE - 1u) & ~(MEMSECTORSIZE - 1u);
+  if (marker[1] > end || marker[1] <= first) return 0;
+  marker[0] = 0; marker[2] = ~marker[1];
+  // —начала граница и дополнение, последним фиксируетс€ признак очистки.
+  if (!photo_write(at + 4u, (uint8_t*)&marker[1], 8) ||
+      !photo_write(at, (uint8_t*)marker, 4)) return 0;
+  device.newAddressPhoto = first;
   device.countPhoto = 0; device.status.readyPhoto = 0; device.readPhotoIndex = 0;
-  if (photo) { photo->readAddress = mem[MB_PHOTO].start; photo->offset = 0; }
+  if (photo) { photo->readAddress = first; photo->offset = 0; }
   return 1;
+}
+static void photo_cleanup_step(void)
+{
+  uint32_t marker[3], at = photo_storage_end() + MEMSECTORSIZE + 32u;
+  uint32_t first = mem[MB_PHOTO].start;
+  uint8_t done[256], zero = 0;
+  uint16_t i, sectors;
+  mem_read(at, (uint8_t*)marker, sizeof(marker));
+  if (marker[0] != 0) return;
+  if (marker[1] != ~marker[2] || marker[1] > photo_storage_end() ||
+      marker[1] <= first || ((marker[1] - first) & (MEMSECTORSIZE - 1u))) return;
+  sectors = (uint16_t)((marker[1] - first) / MEMSECTORSIZE);
+  if (sectors > sizeof(done)) return;
+  mem_read(at + sizeof(marker), done, sectors);
+  for (i = 0; i < sectors; i++) if (done[i] != 0) {
+    wdt_reload(); mem_erase_sector(first + (uint32_t)i * MEMSECTORSIZE);
+    photo_write(at + sizeof(marker) + i, &zero, 1);
+    return;
+  }
+  // ∆урнал стираетс€ последним: до этого очередь после сброса пуста.
+  wdt_reload(); mem_erase_sector(photo_storage_end() + MEMSECTORSIZE);
+  device.newAddressPhoto = first;
+  device.countPhoto = 0; device.status.readyPhoto = 0;
 }
 static uint8_t photo_first_pending(uint32_t *address, uint32_t *offset)
 {
@@ -398,6 +504,7 @@ cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, u
   if (size != 0 && size != 6) return CMD_PARAMERROR;
   if (device.status.readyToUpdate || channel == CH_SMS || !photo_alloc() || photo->stage) return CMD_RUNERROR;
   user_getPhotoCount();
+  if (!photo_cleanup_active() && !photo_recover()) return CMD_RUNERROR;
   if (size && device.countPhoto) {
     memcpy(&number, args, 4); memcpy(&requested, args + 4, 2);
     result = photo_ack_request(number, requested);
@@ -408,6 +515,7 @@ cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, u
   photo_first_pending(&address, &offset);
   photo->readAddress = address; photo->offset = offset;
   photo->channel = channel; photo->requestId = id; photo->pending = 1;
+  photo_pending_since = timers_getMillis();
   return CMD_SUCCESS;
 }
 static uint8_t photo_next(uint32_t *address, uint32_t *offset, photoParam_s *head)
@@ -453,6 +561,7 @@ static void photo_send(void)
     offset += n;
     if (offset == h.size) { address += PHOTO_RECORD_HEAD + h.size; offset = 0; }
     photo->readAddress = address; photo->offset = offset;
+    photo_pending_since = timers_getMillis();
   } else photo->pending = 0;
 }
 void photo_connection_lost(void)
@@ -463,38 +572,57 @@ void photo_poll(void)
 {
   uint32_t now;
   uint16_t i, n, want;
-  if (!photo) return;
-  now = timers_getMillis();
-  if (device.status.readyToUpdate) {
-    if (photo->stage) photo_stop();
-    photo->pending = 0;
-    return;
-  }
-  if (photo->stage && uart_getstate(PORT1_PORT) && !uart_isReceiving(PORT1_PORT)) {
-    n = uart_received(PORT1_PORT);
-    for (i = 0; i < n && photo->stage; i++) {
-      if (photo->used >= sizeof(photo->frame)) { photo_stop(); break; }
-      photo->frame[photo->used++] = photo->rx[i];
-      want = 6;
-      if (photo->stage == P_DATA && photo->used >= 4) {
-        want = 6u + photo->frame[2] + ((uint16_t)photo->frame[3] << 8);
-        if (want > PHOTO_PACKET) { photo_stop(); break; }
-      }
-      if (photo->used == want) { photo_frame(photo->frame, want); photo->used = 0; }
-    }
-    uart_clear(PORT1_PORT);
-  }
-  now = timers_getMillis(); // после записи Flash следующий пакет запрашиваетс€ в этом же проходе
-  if (photo->stage && (uint32_t)(now - photo->started) >= 60000u) photo_stop();
-  if (photo->stage && (int32_t)(now - photo->deadline) >= 0 && (photo->stage == P_DATA || (uint32_t)(now - photo->last) >= 50u)) {
-    if (photo->retry++ >= (photo->stage == P_SYNC ? 30 : 3)) photo_stop();
-    else { photo->used = 0; photo_issue(); }
-  }
-  if (photo->pending) {
-    if (photo->channel == CH_SERVER && connection_state(device.connectionhandle) != CE_CONNECTED)
+  uint8_t erased = 0;
+  // ѕосле сброса завершаем подтверждЄнную очередь без команды сервера.
+  if (!photo_cleanup_active() && photo_recover() && !device.countPhoto &&
+      device.newAddressPhoto > mem[MB_PHOTO].start && (!photo || !photo->stage))
+    photo_clear_confirmed();
+  // ѕосле сброса журнал восстанавливаетс€ без ожидани€ команды камеры.
+  if (!photo_cleanup_active() && !photo_recover()) erased = photo_restore_step();
+  if (photo) {
+    now = timers_getMillis();
+    if (device.status.readyToUpdate) {
+      if (photo->stage) photo_stop();
       photo->pending = 0;
-    else if (photo->channel != CH_SERVER || connection_datasended(device.connectionhandle))
-      photo_send();
+    } else {
+      if (photo->stage && uart_getstate(PORT1_PORT) && !uart_isReceiving(PORT1_PORT)) {
+        n = uart_received(PORT1_PORT);
+        for (i = 0; i < n && photo->stage; i++) {
+          if (photo->used >= sizeof(photo->frame)) { photo_stop(); break; }
+          photo->frame[photo->used++] = photo->rx[i];
+          want = 6;
+          if (photo->stage == P_DATA && photo->used >= 4) {
+            want = 6u + photo->frame[2] + ((uint16_t)photo->frame[3] << 8);
+            if (want > PHOTO_PACKET) { photo_stop(); break; }
+          }
+          if (photo->used == want) { photo_frame(photo->frame, want); photo->used = 0; }
+        }
+        uart_clear(PORT1_PORT);
+      }
+      if (photo->stage == P_PREP && photo_recover() && !erased)
+        erased = photo_prepare_step();
+      now = timers_getMillis();
+      if (photo->stage && (uint32_t)(now - photo->started) >= 60000u) photo_stop();
+      if (photo->stage && photo->stage != P_PREP &&
+          (int32_t)(now - photo->deadline) >= 0 &&
+          (photo->stage == P_DATA || (uint32_t)(now - photo->last) >= 50u)) {
+        if (photo->stage != P_DATA || (erased || photo_data_ready())) {
+          if (photo->retry++ >= (photo->stage == P_SYNC ? 30 : 3)) photo_stop();
+          else { photo->used = 0; photo_issue(); }
+        } else erased = 1;
+      }
+      if (photo->pending) {
+        if ((uint32_t)(now - photo_pending_since) >= 60000u) {
+          photo->pending = 0;
+          user_debug("Photo: upload stalled for 60 seconds\r\n");
+        } else if (photo->channel == CH_SERVER && connection_state(device.connectionhandle) != CE_CONNECTED)
+          photo->pending = 0;
+        else if ((photo_cleanup_active() || photo_recover()) &&
+                 (photo->channel != CH_SERVER || connection_datasended(device.connectionhandle)))
+          photo_send();
+      }
+    }
+    if (!photo->stage && !photo->pending) { free(photo); photo = NULL; }
   }
-  if (!photo->stage && !photo->pending) { free(photo); photo = NULL; }
+  if (!erased && photo_cleanup_active()) photo_cleanup_step();
 }

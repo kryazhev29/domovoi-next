@@ -53,7 +53,6 @@ static void mem_write(uint32_t a,uint8_t *p,uint16_t n) {
  assert(a+n <= sizeof(flash)); if (fail_write) return; programs++; while(n--) {flash[a++] &= *p++; if(byte_cuts) power_cut();} if(!byte_cuts) power_cut();
 }
 static void mem_erase_sector(uint32_t a) { assert(a%4096 == 0); assert(a+4096 <= sizeof(flash)); memset(flash+a,255,4096); erases++; power_cut(); }
-static void user_clearMemBlock(uint8_t block) { (void)block; for(uint32_t a=mem[0].start;a<mem[0].start+mem[0].size;a+=4096) {wdt_reload();mem_erase_sector(a);} }
 static int uart_init(uint8_t u,uint32_t rate,uint8_t stop,uint8_t *p,uint16_t n) {(void)u;assert((rate==115200 || rate==57600 || rate==38400 || rate==19200 || rate==9600) && !stop);baudrate=rate;rx=p;rxcap=n;rxcount=0;return 1;}
 static int uart_getstate(uint8_t u) {(void)u;return rxcount!=0 && now>=rxready;}
 static int uart_isReceiving(uint8_t u) {(void)u;return 0;}
@@ -101,6 +100,7 @@ static cmdCode_e answer;
 static void user_send_answer_comand(uint8_t cmd,cmdCode_e code,dataChanel_e channel,uint8_t id) {(void)cmd;(void)channel;(void)id;answer=code;}
 uint32_t photo_storage_end(void);
 uint8_t photo_recover(void);
+uint8_t photo_cleanup_active(void);
 uint16_t photo_confirmed_offset(uint32_t address,uint16_t size);
 static int fail_alloc;
 static size_t live_heap, peak_heap;
@@ -123,22 +123,22 @@ uint32_t rs485_baud(void);
 #undef calloc
 #undef free
 
-static void reset_ram(void) {host_free(photo);photo=NULL;memset(&device,0,sizeof(device));device.datetime=1789900000;uart_init(0,115200,0,port_buffer,32);device.countPhoto=user_getPhotoCount();device.status.readyPhoto=device.countPhoto!=0;}
+static void reset_ram(void) {host_free(photo);photo=NULL;photo_erased_to=photo_pending_since=0;photo_copy_off=photo_prep_phase=photo_restore_phase=0;memset(&device,0,sizeof(device));device.datetime=1789900000;uart_init(0,115200,0,port_buffer,32);for(int i=0;i<100 && !photo_cleanup_active() && !photo_recover();i++){int prior=erases;now++;photo_poll();assert(erases-prior<=1);}device.countPhoto=user_getPhotoCount();device.status.readyPhoto=device.countPhoto!=0;}
 static void clean(void) {
  reset_ram();memset(flash,255,sizeof(flash));device.status.readyPhoto=0;mem[0].start=0;mem[0].size=1024*1024;
  memset(&config,0,sizeof(config));config.rs485Mode=1;config.rs485Periphery[0].address=17;config.rs485Periphery[0].type=3;
  rxready=0;now=0;image_size=2507;sent_commands=packet_requests=watchdog=0;
  quiet=nack=bad_once=fail_send=sends=erases=programs=fail_write=0;wirelen=0;connected=1;send_ready_at=0;send_attempts=0;
 }
-static void step(void){now+=1;photo_poll();}
-static void capture(void){if(user_getPhotoCount())device.datetime++;assert(photo_start(17)==CMD_SUCCESS);for(int i=0;i<100000 && device.getPhoto;i++)step();assert(!device.getPhoto);}
+static void step(void){int prior=erases;now+=1;photo_poll();assert(erases-prior<=1);}
+static void capture(void){if(user_getPhotoCount())device.datetime++;cmdCode_e result=photo_start(17);if(result==CMD_RUNERROR && photo_cleanup_active()){for(int i=0;i<300 && photo_cleanup_active();i++)step();assert(!photo_cleanup_active());result=photo_start(17);}assert(result==CMD_SUCCESS);for(int i=0;i<100000 && device.getPhoto;i++)step();assert(!device.getPhoto);}
 static void check_image(uint32_t a) {
  photoParam_s h;mem_read(a,(uint8_t*)&h,8);assert(h.datetime==device.datetime && h.size==image_size);
  for(uint32_t i=0;i<image_size;i++)assert(flash[a+PHOTO_RECORD_HEAD+i]==pixel(i));
 }
 static void request_at(uint8_t id,uint32_t number,uint16_t offset,int explicit_offset) {
  uint8_t args[6];memcpy(args,&number,4);memcpy(args+4,&offset,2);
- assert(photo_request(CH_SERVER,id,args,explicit_offset?6:0)==CMD_SUCCESS);
+ int prior=erases;assert(photo_request(CH_SERVER,id,args,explicit_offset?6:0)==CMD_SUCCESS);assert(erases==prior);
 }
 static void drain(void){for(int i=0;i<1000 && photo && photo->pending;i++)step();assert(!photo || !photo->pending);}
 static void request(uint8_t id){request_at(id,0,0,0);}
@@ -218,8 +218,19 @@ int main(int argc,char **argv) {
  request(42);drain();check_saved(17,0,512,1,appended);
  request_at(43,streamed,2507,1);drain();assert(user_getPhotoCount()==1);
  request_at(44,appended,2507,1);drain();assert(!user_getPhotoCount() && !device.status.readyPhoto);
- capture();check_image(0);puts("photo: capture during upload, durable prefix, reclaim OK");
- clean();capture();uint32_t partial=device.datetime;
+ capture();check_image(0);
+ // Во время восстановления общего сектора выгрузка читает только готовые данные.
+ clean();image_size=1000;capture();uint32_t guarded=device.datetime;
+ assert(photo_start(17)==CMD_SUCCESS);while(photo && !photo->written)step();
+ device.status.readyToUpdate=1;step();device.status.readyToUpdate=0;
+ request(97);send_ready_at=now+120000u;
+ assert(photo_start(17)==CMD_SUCCESS);
+ for(int i=0;i<1000 && photo_restore_phase!=1;i++)step();
+ assert(photo_restore_phase==1 && photo && photo->pending);
+ int guarded_sends=sends;send_ready_at=now;step();assert(sends==guarded_sends);
+ for(int i=0;i<100000 && device.getPhoto;i++)step();
+ drain();assert(sends && (history[0][9]==1 || history[0][9]==2));check_saved(0,0,512,history[0][9],guarded);
+ puts("photo: capture during upload, durable prefix, reclaim OK"); clean();capture();uint32_t partial=device.datetime;
  request_at(45,partial,1024,1);drain();assert(photo_confirmed_offset(0,2507)==1024);
  reset_ram();assert(user_getPhotoCount()==1 && device.status.readyPhoto);request_at(46,0,0,1);drain();check_saved(4,1024,512,1,partial);
  request_at(47,partial,1536,1);drain();reset_ram();assert(photo_confirmed_offset(0,2507)==1536);
@@ -276,6 +287,47 @@ int main(int argc,char **argv) {
  clean();nack=1;capture();assert(!user_getPhotoCount());
  clean();bad_once=1;capture();check_image(0);assert(packet_requests==(image_size+57)/58+1);
  clean();fail_write=1;capture();assert(!user_getPhotoCount() && !device.status.readyPhoto);
+ // Сектор стирается по ходу записи, а не во время команды 7.
+ clean();int command_erases=erases;command(7,4,17,98);assert(answer==CMD_SUCCESS && erases==command_erases);
+ for(int i=0;i<100000 && device.getPhoto;i++)step();check_image(0);
+ clean();image_size=50*1024;int before_erase=erases;
+ assert(photo_start(17)==CMD_SUCCESS && erases==before_erase);
+ for(int i=0;i<100000 && device.getPhoto;i++)step();
+ assert(!device.getPhoto && erases>before_erase);check_image(0);
+ // До получения времени номер нулевого кадра начинается с единицы.
+ clean();device.datetime=0;capture();photoParam_s zero_time;
+ mem_read(0,(uint8_t*)&zero_time,sizeof(zero_time));assert(zero_time.datetime==1);
+ capture();mem_read(PHOTO_RECORD_HEAD+image_size,(uint8_t*)&zero_time,sizeof(zero_time));
+ assert(zero_time.datetime==2);
+ // Успешный блок продлевает время ожидания следующего блока.
+ clean();capture();request(95);uint32_t stream_begin=photo_pending_since;
+ step();assert(photo && photo->pending);
+ now=stream_begin+59000u;send_ready_at=now;step();assert(photo && photo->pending);
+ now=stream_begin+60000u;send_ready_at=now+120000u;step();
+ assert(photo && photo->pending && photo->offset==1024);
+ // За 60 секунд без продвижения поток снимается, подтверждения остаются.
+ clean();capture();request_at(91,device.datetime,512,1);uint32_t held=photo->readAddress;
+ uint16_t held_offset=photo->offset;unsigned old_debug=debug_reasons;
+ fail_alloc=1;now=photo_pending_since+59998u;step();assert(photo && photo->pending);
+ step();assert(!photo || !photo->pending);fail_alloc=0;
+ assert(debug_reasons>old_debug && user_getPhotoCount()==1);
+ request_at(92,device.datetime,512,1);assert(photo->readAddress==held && photo->offset==held_offset);
+ send_ready_at=now+120000u;old_debug=debug_reasons;now=photo_pending_since+59998u;
+ step();assert(photo && photo->pending);step();assert(!photo || !photo->pending);
+ assert(debug_reasons>old_debug && user_getPhotoCount()==1);
+ // После старого длинного фото короткое не открывает остатки старой записи.
+ clean();image_size=50000;capture();uint32_t old_number=device.datetime;
+ before_erase=erases;uint8_t final_request[6];memcpy(final_request,&old_number,4);final_request[4]=0x50;final_request[5]=0xC3;
+ user_send_answer_comand(21,photo_request(CH_SERVER,93,final_request,6),CH_SERVER,93);
+ assert(answer==CMD_SUCCESS && erases==before_erase);
+ assert(photo_cleanup_active() && erases==before_erase && !device.status.readyPhoto);
+ assert(photo_start(17)==CMD_RUNERROR && erases==before_erase);
+ reset_ram();assert(photo_cleanup_active() && !user_getPhotoCount());
+ for(int i=0;i<300 && photo_cleanup_active();i++)step();
+ assert(!photo_cleanup_active() && erases-before_erase<=15);
+ image_size=1000;capture();assert(user_getPhotoCount()==1 && device.newAddressPhoto==PHOTO_RECORD_HEAD+1000u);
+ reset_ram();assert(user_getPhotoCount()==1);
+ puts("photo: one erase per poll, number 1, stalled upload and shorter image OK");
  puts("photo: power interruption, limits, silence, NAK, checksum, write error OK");
  clean();assert(photo_start(17)==CMD_SUCCESS);step();assert(rxcount==12);uint8_t rest[9];memcpy(rest,rx+3,9);rxcount=3;now=rxready;photo_poll();assert(photo->used==3);memcpy(rx,rest,9);rxcount=9;now++;photo_poll();
  for(int i=0;i<100000 && device.getPhoto;i++)step();check_image(0);
@@ -317,7 +369,7 @@ int main(int argc,char **argv) {
  int clear_cuts=0,completed_clear=0,checked_physical_empty=0;
  for(int cut=1;cut<300;cut++) {
   cut_after=0;reset_ram();memcpy(flash,fixture,sizeof(flash));flash_ops=0;byte_cuts=1;cut_after=cut;
-  int interrupted=setjmp(power_reset);if(!interrupted)request_at(71,ack_last,2507,1);
+  int interrupted=setjmp(power_reset);if(!interrupted){request_at(71,ack_last,2507,1);for(int i=0;i<300 && photo_cleanup_active();i++)step();assert(!photo_cleanup_active());}
   cut_after=byte_cuts=0;reset_ram();uint16_t count=user_getPhotoCount();assert(count<=1);
   if(count)assert(!memcmp(flash+PHOTO_RECORD_HEAD,fixture+PHOTO_RECORD_HEAD,2507));
   else if(device.newAddressPhoto) {int old_erases=erases,old_programs=programs;request_at(72,0xA5A5A5A5u,65535,1);
@@ -327,5 +379,50 @@ int main(int argc,char **argv) {
   if(!interrupted){completed_clear=1;break;}clear_cuts++;
  }
  assert(completed_clear && checked_physical_empty);free(fixture);
- printf("photo: power loss at %d acknowledgement bytes and %d clear boundaries OK\n",ack_cuts,clear_cuts);reset_ram();assert(!live_heap);return 0;
+ printf("photo: power loss at %d acknowledgement bytes and %d clear boundaries OK\n",ack_cuts,clear_cuts);
+ // Все точки стирания заполненной области: после сброса очередь остаётся пустой.
+ clean();image_size=50000;for(int i=0;i<20;i++)capture();
+ uint32_t clear_bound=device.newAddressPhoto;uint32_t clear_last=device.datetime;
+ request_at(94,clear_last,50000,1);assert(photo_cleanup_active());
+ fixture=malloc(sizeof(flash));assert(fixture);memcpy(fixture,flash,sizeof(flash));
+ int full_cuts=0,full_done=0;
+ for(int cut=1;cut<600;cut++) {
+   cut_after=0;reset_ram();memcpy(flash,fixture,sizeof(flash));
+   flash_ops=0;byte_cuts=1;cut_after=cut;
+   int interrupted=setjmp(power_reset);
+   if(!interrupted){for(int i=0;i<300 && photo_cleanup_active();i++)step();assert(!photo_cleanup_active());}
+   cut_after=byte_cuts=0;reset_ram();
+   assert(!user_getPhotoCount() && !device.status.readyPhoto);
+   if(photo_cleanup_active()) {
+     int old_erases=erases;assert(photo_start(17)==CMD_RUNERROR && erases==old_erases);
+     for(int i=0;i<300 && photo_cleanup_active();i++)step();
+   }
+   assert(!photo_cleanup_active() && !user_getPhotoCount());
+   if(!interrupted){full_done=1;break;}full_cuts++;
+ }
+ assert(full_done && full_cuts>=500);
+ for(uint32_t a=0;a<clear_bound+sizeof(photoParam_s);a++)assert(flash[a]==0xFF);
+ free(fixture);printf("photo: full-area cleanup survives %d flash cuts OK\n",full_cuts);
+ // Сброс между последним подтверждением и маркером тоже запускает очистку.
+ clean();capture();capture();
+ assert(photo_ack_request(device.datetime,2507)==CMD_SUCCESS);
+ reset_ram();assert(!photo_cleanup_active() && !device.countPhoto && device.newAddressPhoto);
+ step();assert(photo_cleanup_active() && !device.status.readyPhoto);
+ for(int i=0;i<300 && photo_cleanup_active();i++)step();
+ assert(!photo_cleanup_active() && !user_getPhotoCount() && !device.newAddressPhoto);
+ // Длинный кадр пересекает 13 секторов; проверяем каждую запись и стирание.
+ clean();image_size=50000;capture();fixture=malloc(sizeof(flash));assert(fixture);
+ memcpy(fixture,flash,sizeof(flash));int lazy_cuts=0,lazy_done=0;
+ for(int cut=1;cut<1100;cut++) {
+   cut_after=0;reset_ram();memcpy(flash,fixture,sizeof(flash));
+   flash_ops=0;cut_after=cut;int interrupted=setjmp(power_reset);
+   if(!interrupted)capture();
+   cut_after=0;reset_ram();uint16_t n=user_getPhotoCount();assert(n==1 || n==2);
+   assert(!memcmp(flash,fixture,PHOTO_RECORD_HEAD+50000u));
+   if(n==1){capture();assert(user_getPhotoCount()==2);}
+   if(!interrupted){lazy_done=1;break;}lazy_cuts++;
+ }
+ assert(lazy_done && lazy_cuts>850);free(fixture);
+ printf("photo: lazy sector erase survives %d flash cuts OK\n",lazy_cuts);
+ reset_ram();assert(!live_heap);return 0;
 }
