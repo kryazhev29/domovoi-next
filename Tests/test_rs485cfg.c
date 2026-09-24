@@ -43,7 +43,7 @@ static void test_rs485cfg(void) {
  request(1);request_at(2,device.datetime-1,512,1);step();
  assert(photo_request(CH_SERVER,3,NULL,0)==CMD_SUCCESS);
  uint32_t cursor=photo->offset;next=config;next.reserv[0]=2;next.rs485Periphery[1].type=2;
- rs485_set_config((const uint8_t*)&next);assert(photo->pending && photo->offset==cursor && photo->valid);
+ rs485_set_config((const uint8_t*)&next);assert(photo->pending && photo->offset==cursor && device.status.readyPhoto);
  int at=sends;step();assert(photo->offset==cursor && user_getPhotoCount()==1);drain();check_saved(at,512,512,1,device.datetime-1);
  // Камера в смешанном списке: никакого трафика для других типов.
  clean();config.rs485Periphery[1].type=2;config.rs485Periphery[1].address=99;

@@ -35,7 +35,7 @@ for n in [state,2056,2056,534]:
     chunk=struct.unpack('<I',u.mem_read(p-8,4))[0]
     assert n<=chunk<=n+16,(n,p,chunk)
     pointers.append(p);sizes.append(chunk)
-assert sum(sizes)<=5120
+assert sum(sizes)<=4888
 print(f'IAR heap: photo_s={state}, chunks={sizes}, peak={sum(sizes)}/5120, free={5120-sum(sizes)}')
 # Неудачное выделение не повреждает живые объекты и следующий вызов.
 for i,p in enumerate(pointers):u.mem_write(p,bytes([0xA0+i])*16)

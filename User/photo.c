@@ -5,7 +5,7 @@ extern device_s device;
 extern config_s config;
 extern uint8_t port_buffer[PORTBUFSIZE];
 #define PHOTO_PACKET 64u
-#define PHOTO_RX 70u
+#define PHOTO_RX PHOTO_PACKET
 #define PHOTO_DATA (PHOTO_PACKET - 6u)
 #define PHOTO_LIMIT 65535u
 #define PHOTO_BLOCK 512u
@@ -13,14 +13,15 @@ extern uint8_t port_buffer[PORTBUFSIZE];
 /* Только указатель в статической RAM. Буферы существуют в heap во время работы.
  * Размер SETPACKSIZE включает ID, длину и verify; RX оставлен с запасом 6 байт. */
 typedef struct {
-  uint32_t stamp, size, written, address, deadline, started, last;
-  uint32_t readAddress, offset, ackAddress, ackOffset;
-  uint16_t packet, used, index, ackIndex;
-  uint8_t stage, retry, syncAck, syncSeen, pending, requestId, clearOnEnd, valid;
+  uint32_t stamp, address, deadline, started, last;
+  uint32_t readAddress;
+  uint16_t size, written, offset, packet, used;
+  uint8_t stage, retry, syncAck, syncSeen, pending, requestId;
   dataChanel_e channel;
   uint8_t rx[PHOTO_RX], frame[PHOTO_RX];
 } photo_s;
 static photo_s *photo;
+static uint8_t photo_clear_confirmed(void);
 enum { P_IDLE, P_SYNC, P_INIT, P_SIZE, P_SNAP, P_GET, P_DATA };
 
 static uint8_t photo_alloc(void)
@@ -104,21 +105,22 @@ cmdCode_e photo_start(uint8_t address)
     if (config.rs485Periphery[i].type == 3 && config.rs485Periphery[i].address == address) found = 1;
   if (!found || config.rs485Mode != 1) return CMD_PARAMERROR;
   if (device.status.readyToUpdate || !photo_alloc()) return CMD_RUNERROR;
-  if (photo->stage || photo->pending || photo->valid) return CMD_RUNERROR;
+  if (photo->stage) return CMD_RUNERROR;
   device.countPhoto = user_getPhotoCount();
-  if (device.newAddressPhoto + 8u >= photo_storage_end()) return CMD_RUNERROR;
+  if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start && !photo_clear_confirmed()) return CMD_RUNERROR;
+  if (device.newAddressPhoto + PHOTO_RECORD_HEAD >= photo_storage_end()) {
+    user_debug("Photo: no space for next image\r\n");
+    return CMD_RUNERROR;
+  }
   photo->address = device.newAddressPhoto;
   photo->stamp = device.datetime;
-  if (photo->stamp == 0xFFFFFFFFu) return CMD_RUNERROR;
-  // Номер фото — datetime: два снимка с одинаковым номером нельзя различить в подтверждении.
-  for (scan = mem[MB_PHOTO].start; scan < device.newAddressPhoto; scan += 8u + previous.size) {
+  // Номера остаются различимыми, если несколько кадров сняты в одну секунду.
+  for (scan = mem[MB_PHOTO].start; scan < device.newAddressPhoto; scan += PHOTO_RECORD_HEAD + previous.size) {
     mem_read(scan, (uint8_t*)&previous, sizeof(previous));
-    if (previous.datetime == photo->stamp) {
-      user_debug("Photo: duplicate datetime, retry capture later\r\n");
-      return CMD_RUNERROR;
-    }
+    if (previous.datetime >= photo->stamp) photo->stamp = previous.datetime + 1u;
     wdt_reload();
   }
+  if (photo->stamp == 0xFFFFFFFFu) return CMD_RUNERROR;
   photo->size = photo->written = photo->packet = photo->used = 0;
   photo->retry = photo->syncAck = photo->syncSeen = 0;
   photo->stage = P_SYNC;
@@ -171,6 +173,8 @@ uint8_t photo_recover(void)
   uint16_t off, step;
   uint8_t b[64];
   if (mem[MB_PHOTO].size < 8192u) return 0;
+  mem_read(scratch + MEMSECTORSIZE + 32u, (uint8_t*)h, 4);
+  if (h[0] == 0u) { user_clearMemBlock(MB_PHOTO); return 1; }
   mem_read(scratch + MEMSECTORSIZE, (uint8_t*)h, sizeof(h));
   if (h[3] != 0x50484F54u) return 1;
   if (h[0] < mem[MB_PHOTO].start || h[0] >= scratch || (h[0] & 4095u) ||
@@ -190,7 +194,15 @@ static uint8_t photo_prepare(uint32_t size)
   uint16_t prefix = photo->address & (MEMSECTORSIZE - 1u);
   uint8_t b[64], dirty = 0;
   uint16_t off, step;
-  if (!size || size > PHOTO_LIMIT || end < photo->address + 8u || size > end - photo->address - 8u) return 0;
+  if (!size || size > PHOTO_LIMIT) {
+    user_debug("Photo: invalid image size\r\n");
+    return 0;
+  }
+  if (end < photo->address + PHOTO_RECORD_HEAD ||
+      size > end - photo->address - PHOTO_RECORD_HEAD) {
+    user_debug("Photo: no space for image, queue retained\r\n");
+    return 0;
+  }
   if (prefix) {
     // Обычное дописывание не требует стирать уже пустой хвост сектора.
     for (a = photo->address; a < photo->address - prefix + MEMSECTORSIZE; a += step) {
@@ -214,8 +226,8 @@ static uint8_t photo_prepare(uint32_t size)
           !photo_write(end + MEMSECTORSIZE + 12u, (uint8_t*)&h[3], 4) || !photo_recover()) return 0;
     }
   }
-  eraseEnd = photo->address + 8u + size;
-  if (end - eraseEnd >= 8u) eraseEnd += 8u; // пустой заголовок следующего кадра
+  eraseEnd = photo->address + PHOTO_RECORD_HEAD + size;
+  if (end - eraseEnd >= sizeof(photoParam_s)) eraseEnd += sizeof(photoParam_s); // пустой заголовок следующего кадра
   a = photo->address - prefix;
   if (prefix) a += MEMSECTORSIZE;
   for (; a < eraseEnd; a += MEMSECTORSIZE) {
@@ -236,7 +248,7 @@ static void photo_frame(uint8_t *p, uint16_t n)
         p[n-2] != sum || p[n-1] != 0 || length > photo->size - photo->written) {
       photo->used = 0; return; // повтор того же пакета по таймауту
     }
-    if (!photo_write(photo->address + 8u + photo->written, p + 4, length)) { photo_stop(); return; }
+    if (!photo_write(photo->address + PHOTO_RECORD_HEAD + photo->written, p + 4, length)) { photo_stop(); return; }
     photo->written += length;
     photo->packet++;
     if (photo->written == photo->size) {
@@ -273,98 +285,180 @@ static void photo_frame(uint8_t *p, uint16_t n)
   photo->retry = 0;
   photo->deadline = timers_getMillis();
 }
-/* Команда 21 задаёт подтверждённый префикс очереди. Отдельный курсор
- * передачи позволяет повторить его после обрыва или запроса без аргументов. */
-static cmdCode_e photo_seek(uint32_t number, uint16_t offset, uint16_t count,
-                             uint32_t *address, uint16_t *index, uint8_t *clear)
+/* В каждой записи 128 ячеек по 8 байт и отдельный байт полного подтверждения.
+ * Ячейка содержит смещение, дополнение и фиксацию.
+ * Недописанная ячейка не подтверждает данные. Повтор не расходует ячейку. */
+uint16_t photo_confirmed_offset(uint32_t address, uint16_t size)
 {
-  photoParam_s h;
-  uint16_t i;
-  uint32_t a = mem[MB_PHOTO].start;
-  *clear = 0;
-  if (!count) { *address = a; *index = 0; photo->offset = 0; return CMD_SUCCESS; }
-  for (i = 0; i < count; i++) {
-    mem_read(a, (uint8_t*)&h, sizeof(h));
-    if (!number || number == h.datetime) break;
-    a += 8u + h.size;
+  uint16_t i, done = 0, entry[4];
+  uint8_t full;
+  mem_read(address + PHOTO_RECORD_HEAD - 1u, &full, 1);
+  if (full == 0) return size;
+  for (i = 0; i < PHOTO_ACK_SLOTS; i++) {
+    mem_read(address + sizeof(photoParam_s) + 8u * i, (uint8_t*)entry, sizeof(entry));
+    if (entry[0] == 0xFFFFu && entry[1] == 0xFFFFu &&
+        entry[2] == 0xFFFFu && entry[3] == 0xFFFFu) break;
+    if (entry[2] == 0 && entry[3] == 0 &&
+        (uint16_t)(entry[0] ^ entry[1]) == 0xFFFFu &&
+        entry[0] <= size && entry[0] > done) done = entry[0];
   }
-  if (i == count || offset > h.size) {
+  return done;
+}
+static uint32_t photo_ack_slot(uint32_t address)
+{
+  uint16_t i, entry[4];
+  for (i = 0; i < PHOTO_ACK_SLOTS; i++) {
+    uint32_t at = address + sizeof(photoParam_s) + 8u * i;
+    mem_read(at, (uint8_t*)entry, sizeof(entry));
+    if (entry[0] == 0xFFFFu && entry[1] == 0xFFFFu &&
+        entry[2] == 0xFFFFu && entry[3] == 0xFFFFu) return at;
+  }
+  return 0;
+}
+static uint8_t photo_ack_write(uint32_t address, uint16_t size, uint16_t offset)
+{
+  uint16_t value[2];
+  uint32_t at, commit = 0;
+  if (offset <= photo_confirmed_offset(address, size)) return 1;
+  if (offset == size) {
+    uint8_t full = 0;
+    return photo_write(address + PHOTO_RECORD_HEAD - 1u, &full, 1);
+  }
+  at = photo_ack_slot(address);
+  if (!at) return 0;
+  value[0] = offset; value[1] = (uint16_t)~offset;
+  return photo_write(at, (uint8_t*)value, sizeof(value)) &&
+         photo_write(at + 4u, (uint8_t*)&commit, sizeof(commit));
+}
+/* Сектор фиксации стирается последним. После обрыва питания нулевой маркер
+ * заставляет завершить очистку; до неё все записи уже подтверждены. */
+static uint8_t photo_clear_confirmed(void)
+{
+  uint32_t marker = 0, at = photo_storage_end() + MEMSECTORSIZE + 32u;
+  if (!photo_write(at, (uint8_t*)&marker, sizeof(marker))) return 0;
+  user_clearMemBlock(MB_PHOTO);
+  device.newAddressPhoto = mem[MB_PHOTO].start;
+  device.countPhoto = 0; device.status.readyPhoto = 0; device.readPhotoIndex = 0;
+  if (photo) { photo->readAddress = mem[MB_PHOTO].start; photo->offset = 0; }
+  return 1;
+}
+static uint8_t photo_first_pending(uint32_t *address, uint32_t *offset)
+{
+  uint32_t a;
+  photoParam_s h;
+  for (a = mem[MB_PHOTO].start; a < device.newAddressPhoto; a += PHOTO_RECORD_HEAD + h.size) {
+    uint16_t confirmed;
+    mem_read(a, (uint8_t*)&h, sizeof(h));
+    confirmed = photo_confirmed_offset(a, (uint16_t)h.size);
+    if (confirmed < h.size) { *address = a; *offset = confirmed; return 1; }
+  }
+  *address = device.newAddressPhoto; *offset = 0;
+  return 0;
+}
+/* Сначала проверяем весь запрос и свободные ячейки, затем фиксируем префикс.
+ * При сбое питания подтверждённым может стать только уже запрошенный префикс. */
+static cmdCode_e photo_ack_request(uint32_t number, uint16_t offset)
+{
+  uint32_t a, target = 0;
+  photoParam_s h;
+  uint8_t found = 0;
+  for (a = mem[MB_PHOTO].start; a < device.newAddressPhoto; a += PHOTO_RECORD_HEAD + h.size) {
+    mem_read(a, (uint8_t*)&h, sizeof(h));
+    if ((!number && photo_confirmed_offset(a, (uint16_t)h.size) < h.size) ||
+        (number && h.datetime == number)) { target = a; found = 1; break; }
+  }
+  if (!found || offset > h.size) {
     user_debug("Photo: invalid number or offset\r\n");
     return CMD_PARAMERROR;
   }
-  if (offset == h.size) {
-    a += 8u + h.size; i++; offset = 0;
-    if (i == count && number == h.datetime) *clear = 1;
+  for (a = mem[MB_PHOTO].start; a <= target; a += PHOTO_RECORD_HEAD + h.size) {
+    uint16_t want, done;
+    mem_read(a, (uint8_t*)&h, sizeof(h));
+    done = photo_confirmed_offset(a, (uint16_t)h.size);
+    want = a == target ? offset : (uint16_t)h.size;
+    if (want > done && want != h.size && !photo_ack_slot(a)) {
+      user_debug("Photo: confirmation journal full\r\n");
+      return CMD_RUNERROR;
+    }
   }
-  *address = a; *index = i; photo->offset = offset;
+  for (a = mem[MB_PHOTO].start; a <= target; a += PHOTO_RECORD_HEAD + h.size) {
+    uint16_t want;
+    mem_read(a, (uint8_t*)&h, sizeof(h));
+    want = a == target ? offset : (uint16_t)h.size;
+    if (!photo_ack_write(a, (uint16_t)h.size, want)) return CMD_RUNERROR;
+  }
   return CMD_SUCCESS;
 }
 cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
-  uint32_t address, number;
-  uint16_t index, offset;
-  uint8_t clear = 0;
+  uint32_t number, address, offset;
+  uint16_t requested;
   cmdCode_e result;
   if (size != 0 && size != 6) return CMD_PARAMERROR;
   if (device.status.readyToUpdate || channel == CH_SMS || !photo_alloc() || photo->stage) return CMD_RUNERROR;
+  user_getPhotoCount();
+  if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start &&
+      !photo_clear_confirmed()) return CMD_RUNERROR;
   if (size) {
-    memcpy(&number, args, 4); memcpy(&offset, args + 4, 2);
-    result = photo_seek(number, offset, user_getPhotoCount(), &address, &index, &clear);
-    if (result != CMD_SUCCESS) return result;
-    photo->ackAddress = address; photo->ackOffset = photo->offset; photo->ackIndex = index;
-  } else {
-    address = photo->ackAddress ? photo->ackAddress : mem[MB_PHOTO].start;
-    index = photo->ackIndex; photo->offset = photo->ackOffset;
+    memcpy(&number, args, 4); memcpy(&requested, args + 4, 2);
+    if (device.newAddressPhoto == mem[MB_PHOTO].start) {
+      if (number || requested) return CMD_PARAMERROR;
+    } else {
+      result = photo_ack_request(number, requested);
+      if (result != CMD_SUCCESS) return result;
+      user_getPhotoCount();
+      if (!device.countPhoto && !photo_clear_confirmed()) return CMD_RUNERROR;
+    }
   }
-  photo->readAddress = address; photo->index = index; photo->clearOnEnd = clear;
+  photo_first_pending(&address, &offset);
+  photo->readAddress = address; photo->offset = offset;
   photo->channel = channel; photo->requestId = id; photo->pending = 1;
   return CMD_SUCCESS;
+}
+static uint8_t photo_next(uint32_t *address, uint32_t *offset, photoParam_s *head)
+{
+  uint32_t a, first = *address;
+  photoParam_s h;
+  for (a = first; a < device.newAddressPhoto; a += PHOTO_RECORD_HEAD + h.size) {
+    uint16_t confirmed;
+    mem_read(a, (uint8_t*)&h, sizeof(h));
+    confirmed = photo_confirmed_offset(a, (uint16_t)h.size);
+    if (confirmed == h.size) continue;
+    *address = a; *head = h;
+    if (a != first || *offset < confirmed) *offset = confirmed;
+    return 1;
+  }
+  return 0;
 }
 static void photo_send(void)
 {
   uint32_t address = photo->readAddress, offset = photo->offset;
-  uint16_t index = photo->index, count, n = 0, len, crc;
+  uint16_t count, n = 0, len, crc;
   uint8_t *p, ok;
   photoParam_s h;
-  if (!address) address = mem[MB_PHOTO].start;
-  count = user_getPhotoCount();
-  // Один буфер на пакет; отказ malloc не сдвигает курсор передачи.
+  count = photo_next(&address, &offset, &h);
   p = malloc(PHOTO_BLOCK + 22u);
   if (!p) return;
-  if (index < count) {
-    mem_read(address, (uint8_t*)&h, sizeof(h));
-    n = h.size - offset > PHOTO_BLOCK ? PHOTO_BLOCK : (uint16_t)(h.size - offset);
-  }
+  if (count) n = h.size - offset > PHOTO_BLOCK ? PHOTO_BLOCK : (uint16_t)(h.size - offset);
   len = n ? n + 14u : 4u;
   memcpy(p, "SLDN", 4); p[4] = (uint8_t)len; p[5] = (uint8_t)(len >> 8);
   p[6] = 60; p[7] = photo->requestId; p[8] = 14;
-  p[9] = n ? (count - index > 255u ? 255 : (uint8_t)(count - index)) : 0;
+  p[9] = n ? (device.countPhoto > 255u ? 255 : (uint8_t)device.countPhoto) : 0;
   if (n) {
     memcpy(p + 10, (uint8_t*)&h, 4); memcpy(p + 14, ((uint8_t*)&h) + 4, 4);
     p[18] = (uint8_t)offset; p[19] = (uint8_t)(offset >> 8);
-    mem_read(address + 8u + offset, p + 20, n);
+    mem_read(address + PHOTO_RECORD_HEAD + offset, p + 20, n);
   }
   crc = crc16_calc(p + 4, len + 2u);
   p[len+6] = (uint8_t)crc; p[len+7] = (uint8_t)(crc >> 8);
   ok = photo->channel == CH_USB ? usb_send(p, len + 8u) : connection_send(device.connectionhandle, p, len + 8u) == CE_OK;
   free(p);
   if (!ok) return;
-  photo->valid = count != 0;
   if (n) {
     offset += n;
-    if (offset == h.size) { address += 8u + h.size; offset = 0; index++; }
-    photo->readAddress = address; photo->offset = offset; photo->index = index;
-  } else {
-    photo->pending = 0;
-    if (photo->clearOnEnd && count) {
-      user_clearMemBlock(MB_PHOTO);
-      device.countPhoto = 0; device.status.readyPhoto = 0; device.readPhotoIndex = 0;
-      device.newAddressPhoto = mem[MB_PHOTO].start;
-      photo->readAddress = photo->offset = photo->index = 0;
-      photo->ackAddress = photo->ackOffset = photo->ackIndex = 0;
-      photo->valid = 0;
-    }
-  }
+    if (offset == h.size) { address += PHOTO_RECORD_HEAD + h.size; offset = 0; }
+    photo->readAddress = address; photo->offset = offset;
+  } else photo->pending = 0;
 }
 void photo_connection_lost(void)
 {
@@ -407,5 +501,5 @@ void photo_poll(void)
     else if (photo->channel != CH_SERVER || connection_datasended(device.connectionhandle))
       photo_send();
   }
-  if (!photo->stage && !photo->pending && !photo->valid) { free(photo); photo = NULL; }
+  if (!photo->stage && !photo->pending) { free(photo); photo = NULL; }
 }

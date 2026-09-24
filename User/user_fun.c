@@ -4573,17 +4573,19 @@ uint16_t user_getPhotoCount(void)
   uint32_t end = photo_storage_end();
   uint16_t count = 0;
   photoParam_s h;
-  if (!photo_recover()) { device.newAddressPhoto = end; return 0; }
+  if (!photo_recover()) { device.newAddressPhoto = end; device.countPhoto = 0; device.status.readyPhoto = 0; return 0; }
   while (adr + sizeof(h) <= end) {
     mem_read(adr, (uint8_t*)&h, sizeof(h));
     if (h.datetime == 0xFFFFFFFFu) break;
-    if (!h.size || h.size > 65535u || h.size > end - adr - sizeof(h)) {
+    if (!h.size || h.size > 65535u || end - adr < PHOTO_RECORD_HEAD ||
+        h.size > end - adr - PHOTO_RECORD_HEAD) {
       adr = end; break; // повреждённую запись не обходим за границу области
     }
-    count++;
-    adr += sizeof(h) + h.size;
+    if (photo_confirmed_offset(adr, (uint16_t)h.size) < h.size) count++;
+    adr += PHOTO_RECORD_HEAD + h.size;
   }
   device.newAddressPhoto = adr;
+  device.countPhoto = count; device.status.readyPhoto = count != 0;
   return count;
 }
 
