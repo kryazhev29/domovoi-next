@@ -38,7 +38,7 @@ static uint32_t now, image_size, sent_commands, packet_requests, watchdog;
 static uint8_t *bridge_jpeg;
 static uint32_t rxready, baudrate, send_ready_at;
 static int connected, send_attempts;
-static int quiet, nack, bad_once, fail_send, sends, erases, fail_write;
+static int quiet, nack, bad_once, fail_send, sends, erases, programs, fail_write;
 static uint8_t pixel(uint32_t i) {
  if (bridge_jpeg) return bridge_jpeg[i];
  if (!i || i == image_size-2) return 0xFF;
@@ -50,7 +50,7 @@ static uint32_t timers_getMillis(void) { return now; }
 static void wdt_reload(void) { watchdog++; }
 static void mem_read(uint32_t a,uint8_t *p,uint16_t n) { assert(a+n <= sizeof(flash)); memcpy(p,flash+a,n); }
 static void mem_write(uint32_t a,uint8_t *p,uint16_t n) {
- assert(a+n <= sizeof(flash)); if (fail_write) return; while(n--) {flash[a++] &= *p++; if(byte_cuts) power_cut();} if(!byte_cuts) power_cut();
+ assert(a+n <= sizeof(flash)); if (fail_write) return; programs++; while(n--) {flash[a++] &= *p++; if(byte_cuts) power_cut();} if(!byte_cuts) power_cut();
 }
 static void mem_erase_sector(uint32_t a) { assert(a%4096 == 0); assert(a+4096 <= sizeof(flash)); memset(flash+a,255,4096); erases++; power_cut(); }
 static void user_clearMemBlock(uint8_t block) { (void)block; for(uint32_t a=mem[0].start;a<mem[0].start+mem[0].size;a+=4096) {wdt_reload();mem_erase_sector(a);} }
@@ -128,7 +128,7 @@ static void clean(void) {
  reset_ram();memset(flash,255,sizeof(flash));device.status.readyPhoto=0;mem[0].start=0;mem[0].size=1024*1024;
  memset(&config,0,sizeof(config));config.rs485Mode=1;config.rs485Periphery[0].address=17;config.rs485Periphery[0].type=3;
  rxready=0;now=0;image_size=2507;sent_commands=packet_requests=watchdog=0;
- quiet=nack=bad_once=fail_send=sends=erases=fail_write=0;wirelen=0;connected=1;send_ready_at=0;send_attempts=0;
+ quiet=nack=bad_once=fail_send=sends=erases=programs=fail_write=0;wirelen=0;connected=1;send_ready_at=0;send_attempts=0;
 }
 static void step(void){now+=1;photo_poll();}
 static void capture(void){if(user_getPhotoCount())device.datetime++;assert(photo_start(17)==CMD_SUCCESS);for(int i=0;i<100000 && device.getPhoto;i++)step();assert(!device.getPhoto);}
@@ -158,6 +158,11 @@ int main(int argc,char **argv) {
    bridge_jpeg=malloc(image_size);assert(bridge_jpeg);assert(fread(bridge_jpeg,1,image_size,f)==image_size);fclose(f);
    capture();check_image(0);printf("BRIDGE_OK bytes=%u ms=%u\n",image_size,now);reset_ram();free(bridge_jpeg);return 0;
  }
+ clean();uint8_t empty_args[6];uint32_t arbitrary=0xA5A5A5A5u;
+ memcpy(empty_args,&arbitrary,4);empty_args[4]=0xFF;empty_args[5]=0xFF;
+ user_send_answer_comand(21,photo_request(CH_SERVER,90,empty_args,6),CH_SERVER,90);
+ assert(answer==CMD_SUCCESS && !programs && !erases && !device.status.readyPhoto);
+ drain();assert(sends==1);check_saved(0,0,0,0,0);
  clean();command(7,4,99,1);assert(answer==CMD_PARAMERROR);command(7,3,17,1);assert(answer==CMD_PARAMERROR);
  command(21,4,0,1);assert(answer==CMD_PARAMERROR);capture();check_image(0);assert(user_getPhotoCount()==1 && device.status.readyPhoto);
  uint32_t stamp=device.datetime;
@@ -179,6 +184,15 @@ int main(int argc,char **argv) {
  // Занятый модем удерживает блок; отсутствие QISACK не даёт отправить следующий.
  int sent=sends, attempts=send_attempts;step();assert(sends==sent && send_attempts==attempts);drain();
  memcpy(args,&stamp,4);args[4]=0;args[5]=0;uint32_t foreign=stamp+1;memcpy(args,&foreign,4);assert(photo_request(CH_SERVER,8,args,6)==CMD_PARAMERROR);memcpy(args,&stamp,4);args[4]=0xB8;args[5]=0x0B;assert(photo_request(CH_SERVER,9,args,6)==CMD_PARAMERROR);assert(debug_reasons);
+ clean();capture();stamp=device.datetime;request_at(8,stamp,0,1);step();assert(photo && photo->pending);
+ uint32_t prior_address=photo->readAddress;uint16_t prior_offset=photo->offset;
+ foreign=stamp+1u;memcpy(args,&foreign,4);args[4]=args[5]=0;
+ user_send_answer_comand(21,photo_request(CH_SERVER,8,args,6),CH_SERVER,8);
+ assert(answer==CMD_PARAMERROR && photo->pending && photo->readAddress==prior_address && photo->offset==prior_offset);
+ memcpy(args,&stamp,4);args[4]=0xB8;args[5]=0x0B;
+ user_send_answer_comand(21,photo_request(CH_SERVER,9,args,6),CH_SERVER,9);
+ assert(answer==CMD_PARAMERROR && photo->pending && photo->readAddress==prior_address && photo->offset==prior_offset);
+ drain();
  clean();capture();uint32_t first=device.datetime,next=device.newAddressPhoto;assert(photo_start(17)==CMD_SUCCESS);
  for(int i=0;i<100000 && device.getPhoto;i++)step();assert(!device.getPhoto);
  photoParam_s repeated;mem_read(next,(uint8_t*)&repeated,sizeof(repeated));assert(repeated.datetime==first+1u);
@@ -187,7 +201,14 @@ int main(int argc,char **argv) {
  check_saved(0,0,512,2,first);check_saved(5,0,512,2,device.datetime);check_saved(10,0,0,0,device.datetime);
  request_at(11,first,2507,1);drain();assert(sends==17);check_saved(11,0,512,1,device.datetime);assert(user_getPhotoCount()==1 && device.status.readyPhoto);
  uint32_t last=device.datetime;request_at(12,last,2507,1);assert(!device.status.readyPhoto);drain();assert(sends==18);check_saved(17,0,0,0,last);assert(!user_getPhotoCount() && !device.status.readyPhoto);int erased=erases;
- uint8_t stale[6];memcpy(stale,&last,4);stale[4]=0xCB;stale[5]=9;assert(photo_request(CH_SERVER,13,stale,6)==CMD_PARAMERROR && erases==erased);request(13);drain();assert(sends==19);check_saved(18,0,0,0,last);
+ int programmed=programs;uint8_t stale[6];memcpy(stale,&last,4);stale[4]=0xCB;stale[5]=9;
+ user_send_answer_comand(21,photo_request(CH_SERVER,13,stale,6),CH_SERVER,13);
+ assert(answer==CMD_SUCCESS && erases==erased && programs==programmed && !device.status.readyPhoto);
+ drain();assert(sends==19);check_saved(18,0,0,0,last);
+ memcpy(stale,&arbitrary,4);stale[4]=0xFF;stale[5]=0xFF;
+ user_send_answer_comand(21,photo_request(CH_SERVER,14,stale,6),CH_SERVER,14);
+ assert(answer==CMD_SUCCESS && erases==erased && programs==programmed);
+ drain();assert(sends==20);check_saved(19,0,0,0,last);
  clean();capture();uint32_t streamed=device.datetime;
  request(40);send_ready_at=now+20000;capture();uint32_t appended=device.datetime;
  assert(photo && photo->pending && user_getPhotoCount()==2 && device.status.readyPhoto);
@@ -200,7 +221,7 @@ int main(int argc,char **argv) {
  capture();check_image(0);puts("photo: capture during upload, durable prefix, reclaim OK");
  clean();capture();uint32_t partial=device.datetime;
  request_at(45,partial,1024,1);drain();assert(photo_confirmed_offset(0,2507)==1024);
- reset_ram();assert(user_getPhotoCount()==1 && device.status.readyPhoto);request(46);drain();check_saved(4,1024,512,1,partial);
+ reset_ram();assert(user_getPhotoCount()==1 && device.status.readyPhoto);request_at(46,0,0,1);drain();check_saved(4,1024,512,1,partial);
  request_at(47,partial,1536,1);drain();reset_ram();assert(photo_confirmed_offset(0,2507)==1536);
  request(48);drain();check_saved(11,1536,512,1,partial);
  puts("photo: partial acknowledgement survives reset OK"); clean();capture();uint32_t journal_first=device.datetime;capture();uint32_t journal_last=device.datetime;
@@ -293,15 +314,18 @@ int main(int argc,char **argv) {
  assert(ack_cuts>0);free(fixture);
  clean();capture();capture();uint32_t ack_last=device.datetime;
  fixture=malloc(sizeof(flash));assert(fixture);memcpy(fixture,flash,sizeof(flash));
- int clear_cuts=0,completed_clear=0;
+ int clear_cuts=0,completed_clear=0,checked_physical_empty=0;
  for(int cut=1;cut<300;cut++) {
   cut_after=0;reset_ram();memcpy(flash,fixture,sizeof(flash));flash_ops=0;byte_cuts=1;cut_after=cut;
   int interrupted=setjmp(power_reset);if(!interrupted)request_at(71,ack_last,2507,1);
   cut_after=byte_cuts=0;reset_ram();uint16_t count=user_getPhotoCount();assert(count<=1);
   if(count)assert(!memcmp(flash+PHOTO_RECORD_HEAD,fixture+PHOTO_RECORD_HEAD,2507));
-  else if(device.newAddressPhoto) {request(72);assert(device.newAddressPhoto==0);}
+  else if(device.newAddressPhoto) {int old_erases=erases,old_programs=programs;request_at(72,0xA5A5A5A5u,65535,1);
+    assert(erases==old_erases && programs==old_programs && device.newAddressPhoto!=0 && !device.status.readyPhoto);
+    if(!checked_physical_empty){int at=sends;drain();assert(sends==at+1);check_saved(at,0,0,0,0);checked_physical_empty=1;}
+    else photo_connection_lost();}
   if(!interrupted){completed_clear=1;break;}clear_cuts++;
  }
- assert(completed_clear);free(fixture);
+ assert(completed_clear && checked_physical_empty);free(fixture);
  printf("photo: power loss at %d acknowledgement bytes and %d clear boundaries OK\n",ack_cuts,clear_cuts);reset_ram();assert(!live_heap);return 0;
 }

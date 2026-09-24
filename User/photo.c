@@ -114,7 +114,8 @@ cmdCode_e photo_start(uint8_t address)
   }
   photo->address = device.newAddressPhoto;
   photo->stamp = device.datetime;
-  // Номера остаются различимыми, если несколько кадров сняты в одну секунду.
+  // Номер уникален среди фото в памяти и растёт по очереди.
+  // Если дататайм не больше предыдущего номера, берём наибольший имеющийся + 1.
   for (scan = mem[MB_PHOTO].start; scan < device.newAddressPhoto; scan += PHOTO_RECORD_HEAD + previous.size) {
     mem_read(scan, (uint8_t*)&previous, sizeof(previous));
     if (previous.datetime >= photo->stamp) photo->stamp = previous.datetime + 1u;
@@ -397,18 +398,12 @@ cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, u
   if (size != 0 && size != 6) return CMD_PARAMERROR;
   if (device.status.readyToUpdate || channel == CH_SMS || !photo_alloc() || photo->stage) return CMD_RUNERROR;
   user_getPhotoCount();
-  if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start &&
-      !photo_clear_confirmed()) return CMD_RUNERROR;
-  if (size) {
+  if (size && device.countPhoto) {
     memcpy(&number, args, 4); memcpy(&requested, args + 4, 2);
-    if (device.newAddressPhoto == mem[MB_PHOTO].start) {
-      if (number || requested) return CMD_PARAMERROR;
-    } else {
-      result = photo_ack_request(number, requested);
-      if (result != CMD_SUCCESS) return result;
-      user_getPhotoCount();
-      if (!device.countPhoto && !photo_clear_confirmed()) return CMD_RUNERROR;
-    }
+    result = photo_ack_request(number, requested);
+    if (result != CMD_SUCCESS) return result;
+    user_getPhotoCount();
+    if (!device.countPhoto && !photo_clear_confirmed()) return CMD_RUNERROR;
   }
   photo_first_pending(&address, &offset);
   photo->readAddress = address; photo->offset = offset;

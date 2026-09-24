@@ -22,12 +22,14 @@ JPEG = (HERE / 'sample_640x480.jpg').read_bytes()
 
 class Board(threading.Thread):
     daemon = True
-    def __init__(self, port, imei='123456789012345', reset=False, status=8192):
+    def __init__(self, port, imei='123456789012345', reset=False, status=8192, param_once=False, repeat_final=False):
         super().__init__(); self.port, self.imei, self.reset, self.status = port, imei, reset, status
         self.stop_event = threading.Event(); self.requests = []; self.commands = []; self.connections = 0
         self.index = self.offset = 0; self.error = None; self.reset_done = False
         self.images = [(1789990001, JPEG), (1789990002, JPEG)]
         self.expected = list(self.images)
+        self.param_once, self.repeat_final = param_once, repeat_final
+        self.param_done = self.final_timeout_done = False
 
     def stream(self, args):
         self.requests.append(args)
@@ -71,9 +73,21 @@ class Board(threading.Thread):
                                 if cmd==1:
                                     sock.sendall(gui.build(2,struct.pack('<IH',int(time.time()),self.status),2))
                                 elif cmd==21:
+                                    asked,offset=struct.unpack('<IH',args)
+                                    final=bool(self.images) and asked==self.images[-1][0] and offset==len(self.images[-1][1])
+                                    if final and self.param_once and not self.param_done:
+                                        self.param_done=True
+                                        self.requests.append(args)
+                                        sock.sendall(gui.build(11,bytes([21,1]),uniq))
+                                        continue
                                     # В настоящей прошивке ответ 11 всегда идёт первым.
                                     sock.sendall(gui.build(11,bytes([21,0]),uniq))
-                                    for block in self.stream(args):
+                                    blocks=self.stream(args)
+                                    if final and self.repeat_final and not self.final_timeout_done:
+                                        self.final_timeout_done=True
+                                        for _ in blocks: pass
+                                        continue
+                                    for block in blocks:
                                         sock.sendall(gui.build(14,block,uniq))
                 except OSError:
                     if not self.stop_event.is_set(): time.sleep(.02)
@@ -112,10 +126,10 @@ class Tests(unittest.TestCase):
             spec=importlib.util.spec_from_file_location('existing_fw_server',source);mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
             self.assertEqual(mod.take_frames(frame)[0],gui.take_frames(frame)[0])
 
-    def run_server(self, faults, reset=False, count=1):
+    def run_server(self, faults, reset=False, count=1, param_once=False, repeat_final=False):
         with tempfile.TemporaryDirectory() as td:
             events=queue.Queue();server=gui.Server(0,'127.0.0.1',td,events,retry=.12);server.start();self.assertTrue(server.ready.wait(3));self.assertIsNone(server.error)
-            boards=[Board(server.port,f'{123456789012345+i:015d}',reset) for i in range(count)]
+            boards=[Board(server.port,f'{123456789012345+i:015d}',reset,param_once=param_once,repeat_final=repeat_final) for i in range(count)]
             for board in boards:board.start()
             started=set();finished=set();messages=[];deadline=time.monotonic()+35
             try:
@@ -137,9 +151,15 @@ class Tests(unittest.TestCase):
                     self.assertIsNone(b.error)
                     for number,_ in b.expected:self.assertEqual((Path(td)/'Фото_с_камеры'/f'{b.imei}_{number}.jpg').read_bytes(),JPEG)
                     self.assertEqual(b.requests[0],struct.pack('<IH',0,0))
-                    if not faults and not reset:
+                    if not faults and not reset and not param_once and not repeat_final:
                         self.assertEqual(b.requests, [struct.pack('<IH',0,0),
                                                       struct.pack('<IH',b.expected[-1][0],len(JPEG))])
+                    if param_once:
+                        self.assertTrue(b.param_done)
+                        self.assertEqual(b.requests[2],struct.pack('<IH',0,0))
+                    if repeat_final:
+                        self.assertTrue(b.final_timeout_done)
+                        self.assertEqual(b.requests[-1],b.requests[-2])
                     if faults.get('disconnect'):self.assertGreaterEqual(b.connections,2)
                 self.assertTrue(list((Path(td)/'Логи').glob('*_photo_server.log')))
                 self.assertIsNone(server.error)
@@ -150,6 +170,7 @@ class Tests(unittest.TestCase):
             return messages
 
     def test_tcp_two_controllers(self):self.run_server({},count=2)
+    def test_tcp_param_fallback_and_repeat_final(self):self.run_server({},param_once=True,repeat_final=True)
     def test_tcp_loss_repeat_delay_reset(self):self.run_server(dict(drop=3,repeat=True,delay=.002),reset=True)
     def test_tcp_reset_during_second_photo(self):self.run_server({},reset='second')
 

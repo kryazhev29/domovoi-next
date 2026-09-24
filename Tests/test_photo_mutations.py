@@ -32,6 +32,8 @@ mutations=[
  ('capture_pending','if (photo->stage) return CMD_RUNERROR;','if (photo->stage || photo->pending) return CMD_RUNERROR;'),
  ('capture_waiting_ack','if (photo->stage) return CMD_RUNERROR;','if (photo->stage || device.status.readyPhoto) return CMD_RUNERROR;'),
  ('ack_persistence','return done;','return 0;'),
+ ('empty_success','if (size && device.countPhoto) {','if (size) {'),
+ ('empty_no_flash_write','if (size && device.countPhoto) {','if (!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start) photo_clear_confirmed();\n  if (size && device.countPhoto) {'),
 ]
 
 subprocess.run([sys.executable,str(ROOT/"Tests/run_host.py"),"work","photo"],check=True)

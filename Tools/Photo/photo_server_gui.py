@@ -261,6 +261,10 @@ class Server(threading.Thread):
                 self.emit('settings_result', f'{peer.imei}: ответ 11 на команду 12, код {payload[1]}')
             if payload[0] == 21 and payload[1] and peer.transfer and peer.transfer.active:
                 if uniq == peer.last_command_id:
+                    if payload[1] == 1:
+                        peer.transfer.request = struct.pack('<IH', 0, 0)
+                        peer.transfer.resuming = False
+                        self.emit('log', f'{peer.imei}: код 1, повтор команды 21 с 0/0')
                     self.schedule(peer, retry=True)
         elif cmd == 14 and peer.transfer and peer.transfer.active:
             result = peer.transfer.receive(payload)
