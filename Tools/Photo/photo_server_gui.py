@@ -73,11 +73,13 @@ class Transfer:
         self.imei, self.directory, self.emit = imei, Path(directory), emit
         self.faults = faults or {}
         self.active, self.number, self.size = True, None, 0
-        self.data, self.request = bytearray(), b''
+        self.data, self.request = bytearray(), struct.pack('<IH', 0, 0)
         self.blocks = self.retries = self.packets = 0
         self.started = time.monotonic()
         self.cut_done = False
         self.awaiting_end = False
+        self.resuming = False
+        self.repeat_sent = False
 
     def progress(self):
         elapsed = max(time.monotonic() - self.started, 0.001)
@@ -94,8 +96,16 @@ class Transfer:
             self.emit('log', f'{self.imei}: искусственно потерян пакет 14 №{self.packets}')
             return 'lost'
         if payload == b'\0':
+            if self.resuming:
+                return 'stale'
             if self.data and len(self.data) != self.size:
-                raise ValueError('Очередь исчезла до получения целого фото')
+                self.request = struct.pack('<IH', self.number, len(self.data))
+                self.resuming = True
+                return 'resume'
+            if self.data and not self.awaiting_end:
+                self.request = struct.pack('<IH', self.number, self.size)
+                self.awaiting_end = True
+                return 'confirm'
             self.active = False; self.progress()
             self.emit('log', f'{self.imei}: очередь пуста, выгрузка завершена')
             return 'done'
@@ -106,21 +116,35 @@ class Transfer:
         if not count or not 0 < size <= 65535 or not 0 < len(block) <= 1024 or offset + len(block) > size:
             raise ValueError('Неверные границы пакета 14')
         if self.number != number:
+            if self.data and len(self.data) != self.size:
+                if self.resuming:
+                    return 'stale'
+                self.request = struct.pack('<IH', self.number, len(self.data))
+                self.resuming = True
+                return 'resume'
             if offset:
+                if self.resuming:
+                    return 'stale'
                 self.request = struct.pack('<IH', number, 0)
-                return 'next'
+                self.resuming = True
+                return 'resume'
             self.number, self.size, self.data = number, size, bytearray()
-            self.blocks, self.started, self.awaiting_end = 0, time.monotonic(), False
+            self.blocks, self.started = 0, time.monotonic()
+            self.awaiting_end = False
         if size != self.size:
             raise ValueError('Размер того же фото изменился')
         if offset > len(self.data):
+            if self.resuming:
+                return 'stale'
             self.request = struct.pack('<IH', number, len(self.data))
-            return 'next'
+            self.resuming = True
+            return 'resume'
         if offset < len(self.data):
             if self.data[offset:offset + len(block)] != block:
                 raise ValueError('Повтор блока отличается от уже принятых данных')
             # Старый дубль не откатывает текущий запрос и не пишет файл повторно.
             self.progress(); return 'duplicate'
+        self.resuming = False
         self.data.extend(block); self.blocks += 1
         if len(self.data) == self.size:
             valid_jpeg(self.data)
@@ -130,7 +154,6 @@ class Transfer:
             with temp.open('wb') as stream:
                 stream.write(self.data); stream.flush(); os.fsync(stream.fileno())
             os.replace(temp, path)
-            self.awaiting_end = True
             self.emit('image', str(path))
             self.emit('log', f'{self.imei}: сохранено {path.name}, {size} байт, JPEG проверен')
         self.request = struct.pack('<IH', number, len(self.data))
@@ -138,7 +161,7 @@ class Transfer:
         if self.faults.get('disconnect') and not self.cut_done and len(self.data) >= self.size / 2:
             self.cut_done = True
             return 'disconnect'
-        return 'next'
+        return 'block'
 
 
 class Peer:
@@ -243,11 +266,13 @@ class Server(threading.Thread):
             result = peer.transfer.receive(payload)
             if result == 'disconnect':
                 self.disconnect(peer, 'искусственный разрыв на середине фото')
-            elif result == 'next':
-                self.schedule(peer)
+            elif result in ('resume', 'confirm'):
+                self.schedule(peer, retry=result == 'resume')
             elif result == 'done':
                 peer.due = peer.deadline = None
-            # Потерянный/дублированный пакет не меняет таймаут текущего запроса.
+            elif result in ('block', 'duplicate'):
+                peer.deadline = time.monotonic() + self.retry
+            # Потерянный пакет не меняет таймаут; по нему повторим команду 21.
 
     def command(self, key, action, options=None):
         self.actions.put((key, action, options or {}))
@@ -328,8 +353,9 @@ class Server(threading.Thread):
                             self.schedule(peer, retry=True)
                         if peer.due is not None and now >= peer.due:
                             peer.last_command_id = self.send(peer, 21, tr.request)
-                            if tr.faults.get('repeat'):
+                            if tr.faults.get('repeat') and not tr.repeat_sent:
                                 peer.last_command_id = self.send(peer, 21, tr.request)
+                                tr.repeat_sent = True
                             peer.due, peer.deadline = None, now + self.retry
                 for peer in list(self.peers.values()):
                     self.disconnect(peer, 'сервер остановлен')

@@ -14,9 +14,9 @@ extern uint8_t port_buffer[PORTBUFSIZE];
  * Размер SETPACKSIZE включает ID, длину и verify; RX оставлен с запасом 6 байт. */
 typedef struct {
   uint32_t stamp, size, written, address, deadline, started, last;
-  uint32_t readAddress, offset, requestAt, requestNumber;
-  uint16_t packet, used, index, requestOffset;
-  uint8_t stage, retry, syncAck, syncSeen, pending, requestId, hasOffset, valid;
+  uint32_t readAddress, offset, ackAddress, ackOffset;
+  uint16_t packet, used, index, ackIndex;
+  uint8_t stage, retry, syncAck, syncSeen, pending, requestId, clearOnEnd, valid;
   dataChanel_e channel;
   uint8_t rx[PHOTO_RX], frame[PHOTO_RX];
 } photo_s;
@@ -273,36 +273,51 @@ static void photo_frame(uint8_t *p, uint16_t n)
   photo->retry = 0;
   photo->deadline = timers_getMillis();
 }
-/* Явное подтверждение: только запрошенное смещение, uniqId — лишь метка ответа.
- * Расчёт кандидата; состояние фиксируется после принятия пакета транспортом.
- * Повтор завершения старого фото попадёт в несовпадение номера: блок 0 нового,
- * без его удаления. После сброса сверка начинается с первого сохранённого фото. */
-static void photo_ack(uint32_t *address, uint32_t *offset, uint16_t *index, uint16_t count)
+/* Команда 21 задаёт подтверждённый префикс очереди. Отдельный курсор
+ * передачи позволяет повторить его после обрыва или запроса без аргументов. */
+static cmdCode_e photo_seek(uint32_t number, uint16_t offset, uint16_t count,
+                             uint32_t *address, uint16_t *index, uint8_t *clear)
 {
   photoParam_s h;
-  if (!photo->hasOffset || *index >= count) return;
-  mem_read(*address, (uint8_t*)&h, sizeof(h));
-  if (photo->requestNumber != h.datetime) {
-    user_debug("Photo: number mismatch, restart at 0\r\n");
-    *offset = 0;
-  } else if (photo->requestOffset > h.size) {
-    user_debug("Photo: offset beyond size, restart at 0\r\n");
-    *offset = 0;
-  } else if (photo->requestOffset == h.size) {
-    *address += 8u + h.size; *offset = 0; (*index)++;
-  } else *offset = photo->requestOffset;
+  uint16_t i;
+  uint32_t a = mem[MB_PHOTO].start;
+  *clear = 0;
+  if (!count) { *address = a; *index = 0; photo->offset = 0; return CMD_SUCCESS; }
+  for (i = 0; i < count; i++) {
+    mem_read(a, (uint8_t*)&h, sizeof(h));
+    if (!number || number == h.datetime) break;
+    a += 8u + h.size;
+  }
+  if (i == count || offset > h.size) {
+    user_debug("Photo: invalid number or offset\r\n");
+    return CMD_PARAMERROR;
+  }
+  if (offset == h.size) {
+    a += 8u + h.size; i++; offset = 0;
+    if (i == count && number == h.datetime) *clear = 1;
+  }
+  *address = a; *index = i; photo->offset = offset;
+  return CMD_SUCCESS;
 }
 cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
+  uint32_t address, number;
+  uint16_t index, offset;
+  uint8_t clear = 0;
+  cmdCode_e result;
   if (size != 0 && size != 6) return CMD_PARAMERROR;
   if (device.status.readyToUpdate || channel == CH_SMS || !photo_alloc() || photo->stage) return CMD_RUNERROR;
-  photo->hasOffset = size == 6;
   if (size) {
-    memcpy(&photo->requestNumber, args, 4);
-    memcpy(&photo->requestOffset, args + 4, 2);
+    memcpy(&number, args, 4); memcpy(&offset, args + 4, 2);
+    result = photo_seek(number, offset, user_getPhotoCount(), &address, &index, &clear);
+    if (result != CMD_SUCCESS) return result;
+    photo->ackAddress = address; photo->ackOffset = photo->offset; photo->ackIndex = index;
+  } else {
+    address = photo->ackAddress ? photo->ackAddress : mem[MB_PHOTO].start;
+    index = photo->ackIndex; photo->offset = photo->ackOffset;
   }
-  photo->channel = channel; photo->requestId = id;
-  photo->requestAt = timers_getMillis(); photo->pending = 1;
+  photo->readAddress = address; photo->index = index; photo->clearOnEnd = clear;
+  photo->channel = channel; photo->requestId = id; photo->pending = 1;
   return CMD_SUCCESS;
 }
 static void photo_send(void)
@@ -313,10 +328,9 @@ static void photo_send(void)
   photoParam_s h;
   if (!address) address = mem[MB_PHOTO].start;
   count = user_getPhotoCount();
-  // Выделение до подтверждения: отказ malloc не сдвигает очередь.
+  // Один буфер на пакет; отказ malloc не сдвигает курсор передачи.
   p = malloc(PHOTO_BLOCK + 22u);
   if (!p) return;
-  photo_ack(&address, &offset, &index, count);
   if (index < count) {
     mem_read(address, (uint8_t*)&h, sizeof(h));
     n = h.size - offset > PHOTO_BLOCK ? PHOTO_BLOCK : (uint16_t)(h.size - offset);
@@ -335,15 +349,26 @@ static void photo_send(void)
   ok = photo->channel == CH_USB ? usb_send(p, len + 8u) : connection_send(device.connectionhandle, p, len + 8u) == CE_OK;
   free(p);
   if (!ok) return;
-  photo->pending = 0;
-  photo->readAddress = address; photo->offset = offset; photo->index = index;
-  photo->valid = n != 0;
-  if (!n) {
-    if (count) user_clearMemBlock(MB_PHOTO);
-    device.countPhoto = 0; device.status.readyPhoto = 0; device.readPhotoIndex = 0;
-    device.newAddressPhoto = mem[MB_PHOTO].start;
-    photo->readAddress = photo->offset = photo->index = 0;
+  photo->valid = count != 0;
+  if (n) {
+    offset += n;
+    if (offset == h.size) { address += 8u + h.size; offset = 0; index++; }
+    photo->readAddress = address; photo->offset = offset; photo->index = index;
+  } else {
+    photo->pending = 0;
+    if (photo->clearOnEnd && count) {
+      user_clearMemBlock(MB_PHOTO);
+      device.countPhoto = 0; device.status.readyPhoto = 0; device.readPhotoIndex = 0;
+      device.newAddressPhoto = mem[MB_PHOTO].start;
+      photo->readAddress = photo->offset = photo->index = 0;
+      photo->ackAddress = photo->ackOffset = photo->ackIndex = 0;
+      photo->valid = 0;
+    }
   }
+}
+void photo_connection_lost(void)
+{
+  if (photo && photo->channel == CH_SERVER) photo->pending = 0;
 }
 void photo_poll(void)
 {
@@ -377,8 +402,10 @@ void photo_poll(void)
     else { photo->used = 0; photo_issue(); }
   }
   if (photo->pending) {
-    if ((uint32_t)(now - photo->requestAt) >= 60000u) photo->pending = 0;
-    else photo_send();
+    if (photo->channel == CH_SERVER && connection_state(device.connectionhandle) != CE_CONNECTED)
+      photo->pending = 0;
+    else if (photo->channel != CH_SERVER || connection_datasended(device.connectionhandle))
+      photo_send();
   }
   if (!photo->stage && !photo->pending && !photo->valid) { free(photo); photo = NULL; }
 }

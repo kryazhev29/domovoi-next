@@ -26,13 +26,16 @@ typedef struct {
 #define MEMSECTORSIZE 4096u
 #define MB_PHOTO 0
 #define CE_OK 0
+#define CE_CONNECTED 1
 cellMem_s mem[16]; config_s config; device_s device;
 uint8_t port_buffer[PORTBUFSIZE];
-static uint8_t flash[1024*1024], *rx, wire[1100];
+static uint8_t flash[1024*1024], *rx, wire[1100], history[32][1100];
+static uint16_t history_len[32];
 static uint16_t rxcap, rxcount, wirelen;
 static uint32_t now, image_size, sent_commands, packet_requests, watchdog;
 static uint8_t *bridge_jpeg;
-static uint32_t rxready, baudrate;
+static uint32_t rxready, baudrate, send_ready_at;
+static int connected, send_attempts;
 static int quiet, nack, bad_once, fail_send, sends, erases, fail_write;
 static uint8_t pixel(uint32_t i) {
  if (bridge_jpeg) return bridge_jpeg[i];
@@ -88,8 +91,10 @@ static void uart_send(uint8_t u,uint8_t *p,uint16_t n) {
  rxready=now+((n+rxcount)*10000u+115199u)/115200u+2u;
 }
 static uint16_t crc16_calc(uint8_t *p,uint16_t n) {uint16_t c=0;while(n--)c+=*p++;return c;}
-static uint8_t usb_send(uint8_t *p,uint16_t n) {if(fail_send)return 0;assert(n<=sizeof(wire));memcpy(wire,p,n);wirelen=n;sends++;return 1;}
-static int8_t connection_send(uint8_t h,uint8_t *p,uint16_t n) {(void)h;return usb_send(p,n)?CE_OK:-1;}
+static uint8_t usb_send(uint8_t *p,uint16_t n) {if(fail_send)return 0;assert(n<=sizeof(wire));memcpy(wire,p,n);wirelen=n;assert(sends<32);memcpy(history[sends],p,n);history_len[sends]=n;sends++;return 1;}
+static int8_t connection_state(uint8_t h) {(void)h;return connected?CE_CONNECTED:-1;}
+static int connection_datasended(uint8_t h) {(void)h;return now>=send_ready_at;}
+static int8_t connection_send(uint8_t h,uint8_t *p,uint16_t n) {(void)h;send_attempts++;if(now<send_ready_at)return -1;if(!usb_send(p,n))return -1;send_ready_at=now+3;return CE_OK;}
 static cmdCode_e answer;
 static void user_send_answer_comand(uint8_t cmd,cmdCode_e code,dataChanel_e channel,uint8_t id) {(void)cmd;(void)channel;(void)id;answer=code;}
 uint32_t photo_storage_end(void);
@@ -120,7 +125,7 @@ static void clean(void) {
  reset_ram();memset(flash,255,sizeof(flash));device.status.readyPhoto=0;mem[0].start=0;mem[0].size=sizeof(flash);
  memset(&config,0,sizeof(config));config.rs485Mode=1;config.rs485Periphery[0].address=17;config.rs485Periphery[0].type=3;
  rxready=0;now=0;image_size=2507;sent_commands=packet_requests=watchdog=0;
- quiet=nack=bad_once=fail_send=sends=erases=fail_write=0;wirelen=0;
+ quiet=nack=bad_once=fail_send=sends=erases=fail_write=0;wirelen=0;connected=1;send_ready_at=0;send_attempts=0;
 }
 static void step(void){now+=1;photo_poll();}
 static void capture(void){if(user_getPhotoCount())device.datetime++;assert(photo_start(17)==CMD_SUCCESS);for(int i=0;i<100000 && device.getPhoto;i++)step();assert(!device.getPhoto);}
@@ -131,8 +136,8 @@ static void check_image(uint32_t a) {
 static void request_at(uint8_t id,uint32_t number,uint16_t offset,int explicit_offset) {
  uint8_t args[6];memcpy(args,&number,4);memcpy(args+4,&offset,2);
  assert(photo_request(CH_SERVER,id,args,explicit_offset?6:0)==CMD_SUCCESS);
- step();assert(!photo || !photo->pending);
 }
+static void drain(void){for(int i=0;i<1000 && photo && photo->pending;i++)step();assert(!photo || !photo->pending);}
 static void request(uint8_t id){request_at(id,0,0,0);}
 static void check_wire(uint16_t off,uint16_t n,uint8_t count) {
  assert(wire[6]==60 && wire[8]==14 && wire[9]==count);
@@ -140,6 +145,9 @@ static void check_wire(uint16_t off,uint16_t n,uint8_t count) {
  assert(wirelen==n+22);assert((wire[18]|((uint16_t)wire[19]<<8))==off);
  uint32_t stamp,size;memcpy(&stamp,wire+10,4);memcpy(&size,wire+14,4);assert(stamp==device.datetime && size==image_size);
  for(uint16_t i=0;i<n;i++)assert(wire[20+i]==pixel(off+i));
+}
+static void check_saved(int i,uint16_t off,uint16_t n,uint8_t count,uint32_t number) {
+ assert(i<sends);wirelen=history_len[i];memcpy(wire,history[i],wirelen);uint32_t old=device.datetime;device.datetime=number;check_wire(off,n,count);device.datetime=old;
 }
 int main(int argc,char **argv) {
  if(argc>2 && !strcmp(argv[1],"bridge")) {
@@ -149,27 +157,39 @@ int main(int argc,char **argv) {
  }
  clean();command(7,4,99,1);assert(answer==CMD_PARAMERROR);command(7,3,17,1);assert(answer==CMD_PARAMERROR);
  command(21,4,0,1);assert(answer==CMD_PARAMERROR);capture();check_image(0);assert(user_getPhotoCount()==1 && device.status.readyPhoto);
- uint32_t stamp=device.datetime;request(1);check_wire(0,512,1);
- // Пакет потерян: повтор с любым uniqId не подтверждает его.
- request(2);check_wire(0,512,1);request_at(3,stamp,512,1);check_wire(512,512,1);
- request_at(4,stamp,512,1);check_wire(512,512,1);request(5);check_wire(512,512,1);
- request_at(6,stamp+1,1024,1);check_wire(0,512,1);assert(debug_reasons);
- request_at(7,stamp,3000,1);check_wire(0,512,1);
- request_at(8,stamp,1024,1);check_wire(1024,512,1);reset_ram();request_at(9,stamp,1536,1);check_wire(1536,512,1);
- request_at(10,stamp,2048,1);check_wire(2048,459,1);request(11);check_wire(2048,459,1);assert(device.status.readyPhoto);
- request_at(12,stamp,2507,1);check_wire(0,0,0);assert(!device.status.readyPhoto && !user_getPhotoCount());request_at(13,stamp,2507,1);check_wire(0,0,0);
- puts("photo: explicit offsets, lost packet, repeat/new uniqId, foreign number/range, reset, end OK");
+ uint32_t stamp=device.datetime;
+ request_at(1,0,0,1);drain();assert(sends==6 && user_getPhotoCount()==1 && device.status.readyPhoto);
+ for(int i=0;i<5;i++)check_saved(i,512*i,i==4?459:512,1,stamp);
+ check_saved(5,0,0,0,stamp);
+ request(2);drain();assert(sends==12);check_saved(6,0,512,1,stamp);
+ request_at(22,0,2507,1);drain();assert(sends==13 && user_getPhotoCount()==1 && device.status.readyPhoto);check_saved(12,0,0,0,stamp);
+ // Обрыв останавливает поток, а явная команда начинает его с принятого смещения.
+ clean();capture();stamp=device.datetime;request_at(3,stamp,0,1);step();assert(sends==1);
+ photo_connection_lost();for(int i=0;i<5;i++)step();assert(sends==1 && !photo->pending);
+ request_at(4,stamp,512,1);drain();assert(sends==6);check_saved(1,512,512,1,stamp);check_saved(5,0,0,0,stamp);
+ // Новая команда внутри потока заменяет старый курсор.
+ clean();capture();stamp=device.datetime;request_at(5,stamp,0,1);step();assert(sends==1);
+ request_at(6,stamp,1024,1);drain();assert(sends==5);check_saved(1,1024,512,1,stamp);check_saved(4,0,0,0,stamp);
+ uint8_t args[6];memcpy(args,&stamp,4);args[4]=0;args[5]=2;
+ assert(photo_request(CH_SERVER,7,args,6)==CMD_SUCCESS);now=send_ready_at;fail_send=1;step();assert(sends==5 && photo->offset==512 && photo->pending);
+ fail_send=0;step();assert(sends==6);check_saved(5,512,512,1,stamp);
+ // Занятый модем удерживает блок; отсутствие QISACK не даёт отправить следующий.
+ int sent=sends, attempts=send_attempts;step();assert(sends==sent && send_attempts==attempts);drain();
+ memcpy(args,&stamp,4);args[4]=0;args[5]=0;uint32_t foreign=stamp+1;memcpy(args,&foreign,4);assert(photo_request(CH_SERVER,8,args,6)==CMD_PARAMERROR);memcpy(args,&stamp,4);args[4]=0xB8;args[5]=0x0B;assert(photo_request(CH_SERVER,9,args,6)==CMD_PARAMERROR);assert(debug_reasons);
  clean();capture();assert(photo_start(17)==CMD_RUNERROR);uint32_t first=device.datetime,next=device.newAddressPhoto;device.datetime++;capture();check_image(next);assert(user_getPhotoCount()==2);
- request_at(254,first,2507,1);check_wire(0,512,1);request_at(255,first,2507,1);check_wire(0,512,1);assert(user_getPhotoCount()==2);
- request_at(0,device.datetime,512,1);check_wire(512,512,1);request_at(1,device.datetime,2507,1);check_wire(0,0,0);assert(!user_getPhotoCount());
- puts("photo: two images, repeated completion never deletes next image OK");
- clean();capture();request(1);int sent=sends;fail_alloc=1;
- uint8_t args[6];memcpy(args,&device.datetime,4);args[4]=0;args[5]=2;
- assert(photo_request(CH_SERVER,2,args,6)==CMD_SUCCESS);step();assert(photo->pending && photo->offset==0 && sends==sent);
- fail_alloc=0;request_at(3,device.datetime,512,1);check_wire(512,512,1);
- fail_send=1;assert(photo_request(CH_SERVER,4,args,6)==CMD_SUCCESS);step();assert(photo->offset==512 && photo->pending);fail_send=0;step();check_wire(512,512,1);
- // Искусственно совмещаем оба максимальных буфера с пакетом и контекстом фото.
- void *tcp=host_calloc(2056,1),*urc=host_calloc(2056,1);assert(tcp && urc);request_at(5,device.datetime,1024,1);check_wire(1024,512,1);
+ request_at(10,0,0,1);drain();assert(sends==11 && user_getPhotoCount()==2);
+ check_saved(0,0,512,2,first);check_saved(5,0,512,1,device.datetime);check_saved(10,0,0,0,device.datetime);
+ request_at(11,first,2507,1);drain();assert(sends==17);check_saved(11,0,512,1,device.datetime);assert(user_getPhotoCount()==2);
+ uint32_t last=device.datetime;request_at(12,last,2507,1);drain();assert(sends==18);check_saved(17,0,0,0,last);assert(!user_getPhotoCount() && !device.status.readyPhoto);int erased=erases;
+ request_at(13,last,2507,1);drain();assert(sends==19 && erases==erased);check_saved(18,0,0,0,last);
+ puts("photo: stream, resume, preemption, busy modem, two photos, explicit erase OK");
+ clean();capture();request_at(21,device.datetime,512,1);fail_alloc=1;step();assert(!sends && photo->pending && photo->offset==512);fail_alloc=0;drain();check_saved(0,512,512,1,device.datetime);
+ clean();capture();request_at(19,device.datetime,1024,1);drain();int again=sends;request(20);drain();check_saved(again,1024,512,1,device.datetime);
+ clean();capture();request_at(14,device.datetime,0,1);step();int before=sends;device.status.readyToUpdate=1;step();assert(sends==before && !photo->pending);device.status.readyToUpdate=0;
+ request_at(15,device.datetime,512,1);drain();check_saved(before,512,512,1,device.datetime);
+ clean();capture();request_at(16,device.datetime,0,1);step();before=sends;connected=0;step();assert(sends==before && !photo->pending);connected=1;request_at(17,device.datetime,512,1);drain();check_saved(before,512,512,1,device.datetime);
+ // Heap: один буфер 14 рядом с двумя буферами приёма.
+ clean();capture();void *tcp=host_calloc(2056,1),*urc=host_calloc(2056,1);assert(tcp && urc);request_at(18,device.datetime,0,1);drain();
  printf("photo: heap upper bound (8-byte alignment +16 per allocation)=%zu/5120 OK\n",peak_heap);host_free(tcp);host_free(urc);
  clean();assert(photo_start(17)==CMD_SUCCESS);
  tcp=host_calloc(2056,1);urc=host_calloc(2056,1);assert(tcp && urc);
@@ -191,7 +211,6 @@ int main(int argc,char **argv) {
  clean();bad_once=1;capture();check_image(0);assert(packet_requests==(image_size+57)/58+1);
  clean();fail_write=1;capture();assert(!user_getPhotoCount() && !device.status.readyPhoto);
  puts("photo: power interruption, limits, silence, NAK, checksum, write error OK");
- clean();capture();request(10);assert(photo_request(CH_SERVER,11,NULL,0)==CMD_SUCCESS);int before=sends;device.status.readyToUpdate=1;step();assert(sends==before);device.status.readyToUpdate=0;request(12);check_wire(0,512,1);
  clean();assert(photo_start(17)==CMD_SUCCESS);step();assert(rxcount==12);uint8_t rest[9];memcpy(rest,rx+3,9);rxcount=3;now=rxready;photo_poll();assert(photo->used==3);memcpy(rx,rest,9);rxcount=9;now++;photo_poll();
  for(int i=0;i<100000 && device.getPhoto;i++)step();check_image(0);
  clean();capture();uint8_t *fixture=malloc(sizeof(flash));assert(fixture);device.datetime++;assert(photo_start(17)==CMD_SUCCESS);while(photo->written<200)step();memcpy(fixture,flash,sizeof(flash));

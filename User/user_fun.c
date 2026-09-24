@@ -392,6 +392,7 @@ void user_disconnected (int8_t handle, uint8_t arec)
 {
   if (handle != device.connectionhandle) return; 
   server_rx_reset();
+  photo_connection_lost();
   
 #ifdef DEBUG_USER
   user_debug(">>U Disconnected ...\r\n"); 

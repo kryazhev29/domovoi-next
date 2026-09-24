@@ -27,22 +27,32 @@ class Board(threading.Thread):
         self.stop_event = threading.Event(); self.requests = []; self.commands = []; self.connections = 0
         self.index = self.offset = 0; self.error = None; self.reset_done = False
         self.images = [(1789990001, JPEG), (1789990002, JPEG)]
+        self.expected = list(self.images)
 
-    def block(self, args):
+    def stream(self, args):
         self.requests.append(args)
-        if self.reset and not self.reset_done and ((self.reset is True and len(self.requests) == 15) or (self.reset == 'second' and self.index == 1 and self.offset >= 1024)):
-            self.index = self.offset = 0; self.reset_done = True
-        if self.index < len(self.images):
-            number, data = self.images[self.index]
-            if args:
-                asked, offset = struct.unpack('<IH', args)
-                if asked != number or offset > len(data): self.offset = 0
-                elif offset == len(data): self.index += 1; self.offset = 0
-                else: self.offset = offset
-        if self.index >= len(self.images):
-            return b'\0'
+        asked, offset = struct.unpack('<IH', args)
+        if not self.images:
+            yield b'\0'; return
+        self.index = next((i for i, (n, _) in enumerate(self.images) if n == asked), 0) if asked else 0
         number, data = self.images[self.index]
-        return struct.pack('<BIIH',len(self.images)-self.index,number,len(data),self.offset)+data[self.offset:self.offset+512]
+        self.offset = min(offset, len(data))
+        if self.offset == len(data):
+            self.index += 1; self.offset = 0
+            if self.index == len(self.images):
+                self.images.clear(); yield b'\0'; return
+        sent = 0
+        while self.index < len(self.images):
+            number, data = self.images[self.index]
+            while self.offset < len(data):
+                if self.reset and not self.reset_done and ((self.reset is True and sent == 15) or (self.reset == 'second' and self.index == 1 and self.offset >= 1024)):
+                    self.reset_done = True
+                    raise ConnectionResetError('модель сброса посреди потока')
+                block = data[self.offset:self.offset + 512]
+                yield struct.pack('<BIIH', len(self.images) - self.index, number, len(data), self.offset) + block
+                self.offset += len(block); sent += 1
+            self.index += 1; self.offset = 0
+        yield b'\0'
 
     def run(self):
         try:
@@ -62,7 +72,9 @@ class Board(threading.Thread):
                                     sock.sendall(gui.build(2,struct.pack('<IH',int(time.time()),self.status),2))
                                 elif cmd==21:
                                     # В настоящей прошивке ответ 11 всегда идёт первым.
-                                    sock.sendall(gui.build(11,bytes([21,0]),uniq)+gui.build(14,self.block(args),uniq))
+                                    sock.sendall(gui.build(11,bytes([21,0]),uniq))
+                                    for block in self.stream(args):
+                                        sock.sendall(gui.build(14,block,uniq))
                 except OSError:
                     if not self.stop_event.is_set(): time.sleep(.02)
         except Exception as exc: self.error=repr(exc)
@@ -108,7 +120,9 @@ class Tests(unittest.TestCase):
             started=set();finished=set();messages=[];deadline=time.monotonic()+35
             try:
                 while time.monotonic()<deadline and len(finished)<count:
-                    kind,value=events.get(timeout=5)
+                    try: kind,value=events.get(timeout=5)
+                    except queue.Empty:
+                        self.fail('\n'.join(messages[-20:]) + '\n' + repr([b.error for b in boards]))
                     if kind=='clients':
                         for p in value:
                             if p['imei'] and p['status'] and p['imei'] not in started:
@@ -121,8 +135,11 @@ class Tests(unittest.TestCase):
                 self.assertEqual(len(finished),count, '\n'.join(messages[-12:]))
                 for b in boards:
                     self.assertIsNone(b.error)
-                    for number,_ in b.images:self.assertEqual((Path(td)/'Фото_с_камеры'/f'{b.imei}_{number}.jpg').read_bytes(),JPEG)
-                    self.assertEqual(b.requests[0],b'')
+                    for number,_ in b.expected:self.assertEqual((Path(td)/'Фото_с_камеры'/f'{b.imei}_{number}.jpg').read_bytes(),JPEG)
+                    self.assertEqual(b.requests[0],struct.pack('<IH',0,0))
+                    if not faults and not reset:
+                        self.assertEqual(b.requests, [struct.pack('<IH',0,0),
+                                                      struct.pack('<IH',b.expected[-1][0],len(JPEG))])
                     if faults.get('disconnect'):self.assertGreaterEqual(b.connections,2)
                 self.assertTrue(list((Path(td)/'Логи').glob('*_photo_server.log')))
                 self.assertIsNone(server.error)
