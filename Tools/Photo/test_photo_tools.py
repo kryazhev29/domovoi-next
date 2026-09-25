@@ -30,6 +30,7 @@ class Board(threading.Thread):
         self.expected = list(self.images)
         self.param_once, self.repeat_final = param_once, repeat_final
         self.param_done = self.final_timeout_done = False
+        self.busy_once = self.busy_done = False; self.request_times = []
 
     def stream(self, args):
         self.requests.append(args)
@@ -75,6 +76,12 @@ class Board(threading.Thread):
                                 elif cmd==21:
                                     asked,offset=struct.unpack('<IH',args)
                                     final=bool(self.images) and asked==self.images[-1][0] and offset==len(self.images[-1][1])
+                                    self.request_times.append(time.monotonic())
+                                    if self.busy_once and not self.busy_done:
+                                        # Код 2: плата занята съёмкой или восстановлением сектора.
+                                        self.busy_done=True
+                                        sock.sendall(gui.build(11,bytes([21,2]),uniq))
+                                        continue
                                     if final and self.param_once and not self.param_done:
                                         self.param_done=True
                                         self.requests.append(args)
@@ -126,11 +133,11 @@ class Tests(unittest.TestCase):
             spec=importlib.util.spec_from_file_location('existing_fw_server',source);mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
             self.assertEqual(mod.take_frames(frame)[0],gui.take_frames(frame)[0])
 
-    def run_server(self, faults, reset=False, count=1, param_once=False, repeat_final=False):
+    def run_server(self, faults, reset=False, count=1, param_once=False, repeat_final=False, busy_once=False):
         with tempfile.TemporaryDirectory() as td:
             events=queue.Queue();server=gui.Server(0,'127.0.0.1',td,events,retry=.12);server.start();self.assertTrue(server.ready.wait(3));self.assertIsNone(server.error)
             boards=[Board(server.port,f'{123456789012345+i:015d}',reset,param_once=param_once,repeat_final=repeat_final) for i in range(count)]
-            for board in boards:board.start()
+            for board in boards:board.busy_once=busy_once;board.start()
             started=set();finished=set();messages=[];deadline=time.monotonic()+35
             try:
                 while time.monotonic()<deadline and len(finished)<count:
@@ -161,6 +168,10 @@ class Tests(unittest.TestCase):
                         self.assertTrue(b.final_timeout_done)
                         self.assertEqual(b.requests[-1],b.requests[-2])
                     if faults.get('disconnect'):self.assertGreaterEqual(b.connections,2)
+                    if busy_once:
+                        self.assertTrue(b.busy_done)
+                        self.assertGreaterEqual(b.request_times[1]-b.request_times[0],.1)
+                    self.assertFalse(list((Path(td)/'Фото_с_камеры').glob('*.partial')))
                 self.assertTrue(list((Path(td)/'Логи').glob('*_photo_server.log')))
                 self.assertIsNone(server.error)
             finally:
@@ -173,6 +184,31 @@ class Tests(unittest.TestCase):
     def test_tcp_param_fallback_and_repeat_final(self):self.run_server({},param_once=True,repeat_final=True)
     def test_tcp_loss_repeat_delay_reset(self):self.run_server(dict(drop=3,repeat=True,delay=.002),reset=True)
     def test_tcp_reset_during_second_photo(self):self.run_server({},reset='second')
+    def test_tcp_busy_waits_before_repeat(self):self.run_server({},busy_once=True)
+
+    def test_restart_resumes_from_confirmed_offset(self):
+        # Подтверждённое начало плата хранит во Flash и повторно не отдаёт.
+        number=1789990001
+        def packet(offset):
+            return struct.pack('<BIIH',1,number,len(JPEG),offset)+JPEG[offset:offset+1024]
+        with tempfile.TemporaryDirectory() as td:
+            logs=[];emit=lambda kind,value:logs.append(value) if kind=='log' else None
+            first=gui.Transfer('123456789012345',td,emit)
+            for offset in range(0,3072,1024):self.assertEqual(first.receive(packet(offset)),'block')
+            self.assertEqual(first.request,struct.pack('<IH',number,3072))
+            # Перезапуск сервера после подтверждения 2048: хвост 2048–3072 придёт заново.
+            second=gui.Transfer('123456789012345',td,emit)
+            for offset in range(2048,len(JPEG),1024):self.assertEqual(second.receive(packet(offset)),'block')
+            self.assertEqual((Path(td)/f'123456789012345_{number}.jpg').read_bytes(),JPEG)
+            self.assertFalse((Path(td)/f'123456789012345_{number}.partial').exists())
+            # Без сохранённого начала выгрузка останавливается, а не просит 0 по кругу.
+            third=gui.Transfer('123456789012346',td,emit)
+            self.assertEqual(third.receive(packet(2048)),'resume')
+            self.assertEqual(third.request,struct.pack('<IH',number,0))
+            third.new_stream()
+            self.assertEqual(third.receive(packet(2048)),'abort')
+            self.assertFalse(third.active)
+            self.assertIn('подтверждены платой',logs[-1])
 
     def test_optional_pillow(self):
         original=gui.Image

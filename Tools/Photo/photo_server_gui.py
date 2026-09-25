@@ -80,6 +80,11 @@ class Transfer:
         self.awaiting_end = False
         self.resuming = False
         self.repeat_sent = False
+        self.new_stream()
+
+    def partial_path(self, number):
+        # Принятая часть фото переживает перезапуск сервера: подтверждения плата хранит во Flash.
+        return self.directory / f'{self.imei}_{number}.partial'
 
     def progress(self):
         elapsed = max(time.monotonic() - self.started, 0.001)
@@ -87,9 +92,14 @@ class Transfer:
                   received=len(self.data), blocks=self.blocks, speed=len(self.data) / elapsed,
                   retries=self.retries, active=self.active))
 
-    def receive(self, payload):
+    def new_stream(self):
+        self.sent, self.first = self.request, None
+
+    def receive(self, payload, current=True):
         if not self.active:
             return None
+        if current and self.first is None and len(payload) >= 11:
+            self.first = struct.unpack_from('<I', payload, 1)[0], struct.unpack_from('<H', payload, 9)[0]
         self.packets += 1
         every = self.faults.get('drop', 0)
         if every and self.packets % every == 0:
@@ -122,13 +132,31 @@ class Transfer:
                 self.request = struct.pack('<IH', self.number, len(self.data))
                 self.resuming = True
                 return 'resume'
+            data = bytearray()
             if offset:
-                if self.resuming:
-                    return 'stale'
-                self.request = struct.pack('<IH', number, 0)
-                self.resuming = True
-                return 'resume'
-            self.number, self.size, self.data = number, size, bytearray()
+                # Подтверждённое начало плата хранит во Flash и повторно не отдаёт: берём его с диска.
+                partial = self.partial_path(number)
+                data = bytearray(partial.read_bytes()) if partial.exists() else bytearray()
+                if len(data) < offset:
+                    have = struct.pack('<IH', number, len(data))
+                    if self.sent == have and self.first == (number, offset):
+                        # Плата на прямой запрос начала отвечает дальше — начало у неё подтверждено.
+                        self.active = False; self.progress()
+                        self.emit('log', f'{self.imei}: фото {number}: первые {offset} байт подтверждены платой, '
+                                         f'а у сервера есть только {len(data)} — выгрузка остановлена')
+                        return 'abort'
+                    if self.resuming:
+                        return 'stale'
+                    self.request = have
+                    self.resuming = True
+                    return 'resume'
+                # Плата продолжает ровно с подтверждённого места, хвост после него придёт заново.
+                del data[offset:]
+                partial.write_bytes(data)
+                self.emit('log', f'{self.imei}: фото {number}: продолжение с {offset} байт из {partial.name}')
+            else:
+                self.partial_path(number).unlink(missing_ok=True)
+            self.number, self.size, self.data = number, size, data
             self.blocks, self.started = 0, time.monotonic()
             self.awaiting_end = False
         if size != self.size:
@@ -145,6 +173,9 @@ class Transfer:
             # Старый дубль не откатывает текущий запрос и не пишет файл повторно.
             self.progress(); return 'duplicate'
         self.resuming = False
+        self.directory.mkdir(parents=True, exist_ok=True)
+        with self.partial_path(number).open('ab') as stream:
+            stream.write(block); stream.flush(); os.fsync(stream.fileno())
         self.data.extend(block); self.blocks += 1
         if len(self.data) == self.size:
             valid_jpeg(self.data)
@@ -154,6 +185,7 @@ class Transfer:
             with temp.open('wb') as stream:
                 stream.write(self.data); stream.flush(); os.fsync(stream.fileno())
             os.replace(temp, path)
+            self.partial_path(number).unlink(missing_ok=True)
             self.emit('image', str(path))
             self.emit('log', f'{self.imei}: сохранено {path.name}, {size} байт, JPEG проверен')
         self.request = struct.pack('<IH', number, len(self.data))
@@ -266,13 +298,16 @@ class Server(threading.Thread):
                         peer.transfer.resuming = False
                         self.emit('log', f'{peer.imei}: код 1, повтор команды 21 с 0/0')
                     self.schedule(peer, retry=True)
+                    if payload[1] == 2:
+                        # Плата занята съёмкой или восстановлением сектора: не засыпать её командами 21.
+                        peer.due = time.monotonic() + self.retry
         elif cmd == 14 and peer.transfer and peer.transfer.active:
-            result = peer.transfer.receive(payload)
+            result = peer.transfer.receive(payload, uniq == peer.last_command_id)
             if result == 'disconnect':
                 self.disconnect(peer, 'искусственный разрыв на середине фото')
             elif result in ('resume', 'confirm'):
                 self.schedule(peer, retry=result == 'resume')
-            elif result == 'done':
+            elif result in ('done', 'abort'):
                 peer.due = peer.deadline = None
             elif result in ('block', 'duplicate'):
                 peer.deadline = time.monotonic() + self.retry
@@ -356,7 +391,7 @@ class Server(threading.Thread):
                         if peer.deadline is not None and now >= peer.deadline:
                             self.schedule(peer, retry=True)
                         if peer.due is not None and now >= peer.due:
-                            peer.last_command_id = self.send(peer, 21, tr.request)
+                            peer.last_command_id = self.send(peer, 21, tr.request); tr.new_stream()
                             if tr.faults.get('repeat') and not tr.repeat_sent:
                                 peer.last_command_id = self.send(peer, 21, tr.request)
                                 tr.repeat_sent = True
