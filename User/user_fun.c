@@ -1043,9 +1043,6 @@ void user_loop(void)
         gsm_sendussd(config.ussdBalance);
       }
       
-      // перезагрузить счетчик проходов раз в сутки
-      user_reloadPassCounter();
-      
     }
     device.last_hour = device.hour;
   } // 1 минута
@@ -2409,6 +2406,33 @@ static bool id_expired(cellID_s *c){
 }
 /* <<< время действия ID */
 
+/* >>> проходы в сутки
+ * Остаток восстанавливается до «проходов в сутки» первым проходом новых суток: день последнего
+ * списания хранится в байтах 4-5 резерва записи ID. Прежний сброс всей базы в полночь выходил
+ * до записи последней страницы, писал Flash без стирания и пропускал сутки после перезагрузки
+ * около полуночи (28.09.2026). День 0 - неизвестен: остаток, пришедший до времени сервера,
+ * берётся как есть. */
+static uint16_t id_today(void){
+  return device.datetime >= ID_TIME_VALID ? (uint16_t)(device.datetime / ONE_DAY) : 0;
+}
+static uint16_t id_pass_day(cellID_s *c){
+  uint16_t d;
+  memcpy(&d, &c->reserve[4], 2);
+  return d == 0xffff ? 0 : d;
+}
+static void id_set_pass_day(cellID_s *c, uint16_t day){
+  memcpy(&c->reserve[4], &day, 2);
+}
+// новые сутки: остаток = лимит; true - запись ID изменилась
+static bool id_new_day(cellID_s *c){
+  uint16_t today = id_today(), last = id_pass_day(c);
+  if (today == 0 || last == today) return false;
+  if (last != 0) c->cntPass = c->cntPassOnDay;
+  id_set_pass_day(c, today);
+  return true;
+}
+/* <<< проходы в сутки */
+
 /* USB без верного ПИНа: только опознание, статус, проверка ПИНа и диагностика USB. */
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
@@ -3126,6 +3150,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             memcpy(first, old->reserve, 4);
             memcpy(membfr + cellNum, &ptr[(i*sizeof(cellID_s)) + 10], sizeof(cellID_s));
             if (keep) memcpy(old->reserve, first, 4);
+            id_set_pass_day(old, id_today()); // остаток с сервера - на текущие сутки
           }
           cnt++;
         }
@@ -4055,6 +4080,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
     bool save = false;
     // задано кол-во проходов
     if (cellId.cntPassOnDay != 255){
+      if (id_new_day(&cellId)) save = true;
       // есть проходы
       if (cellId.cntPass != 0){
         cellId.cntPass -= 1;
@@ -4062,6 +4088,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
         save = true;
       }
       else{
+        if (save) user_updateID(&cellId); // день отмечен: завтра остаток восстановится
         return false;
       }
     }
@@ -4324,40 +4351,6 @@ bool user_checkShedule(uint8_t shd){
   }
       
   return true;
-}
-
-// обновить значение счетчика проходов на начало суток
-void user_reloadPassCounter(void){
-  uint32_t adr;
-  uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
-  uint8_t tbuffer[1024];
-  cellID_s *c;
-  bool change = false;
-  
-  // по странично читаем
-  for (adr = mem[MB_ID].start; adr < endAdr; adr += 1024){
-    mem_read(adr, tbuffer, 1024);
-    // перебираем ячейки
-    for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
-      c = (cellID_s*)&tbuffer[a];
-      // пустая ячейка
-      if (c->index == 0xffff) return;
-      // пустое поле ID
-      uint16_t sum = 0;
-      for (uint8_t i = 0; i<10; i++)
-        sum += c->ID[i];
-      if (sum == 2550) return;
-      // кол-во проходов задано
-      if (c->cntPassOnDay != 255){
-        c->cntPass = c->cntPassOnDay;
-        change = true;
-      }
-    }
-    // обновляем информацию, если были изменения
-    if (change == true){
-      mem_write(adr, tbuffer, 1024);
-    }
-  }
 }
 
 // обновить данные ID

@@ -10,6 +10,7 @@ enum {OUT_IMP = 1, OUT_INV = 2, OUT_ON = 3};
 static struct {uint32_t start, size;} mem[1] = {{0, 4096}};   /* 128 cells */
 static uint8_t flash[4096];
 static struct {releMode_s rele[2];} config;
+#define ONE_DAY (3600*24)
 static struct {uint8_t hour, minute; uint32_t datetime;} device;
 static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 static unsigned wdt, loads[2], load_mode[2], nlogs, npass, busy[2];
@@ -120,6 +121,21 @@ int main(void)
     device.datetime = 1789700119u; CHECK(!id_expired(&c));
     device.datetime = 1789700120u; CHECK(id_expired(&c));
     c.useTime = 0; CHECK(!id_expired(&c)); }
+  /* Passes per day: the first pass of a new day restores the limit, the day of the last pass is kept
+     in bytes 4-5 of the reserve. An unknown day (no server time, or the record from the server)
+     takes the counter as it is, a refused pass still marks the day (28.09.2026). */
+  { cellID_s c; const uint32_t d1 = 1789700000u;
+    memset(flash, 0xff, sizeof(flash)); put(7, "7900000007", 5, 0); user_getNumbersCount();
+    device.datetime = 1000; clear_outs(); CHECK(!user_activateOut(true, false, CT_PHONE, "7900000007") && !loads[0]);
+    CHECK(user_findID("7900000007", &c) && id_pass_day(&c) == 0);
+    device.datetime = d1; clear_outs(); CHECK(!user_activateOut(true, false, CT_PHONE, "7900000007") && !loads[0]);
+    CHECK(user_findID("7900000007", &c) && id_pass_day(&c) == d1 / ONE_DAY && c.cntPass == 0);
+    device.datetime = d1 + ONE_DAY; clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007"));
+    CHECK(left_of(7) == 4 && npass == 1 && pass_cnt == 4);
+    clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007") && left_of(7) == 3);
+    device.datetime = 1000; clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007") && left_of(7) == 2);
+    device.datetime = d1 + 3 * ONE_DAY; clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007") && left_of(7) == 4);
+    device.datetime = 0; }
   /* Level relay: an ID pass toggles it, server command 8 switches it on (Protokol2 row 186). */
   put(7, "7900000007", 255, 255); user_getNumbersCount();
   clear_outs(); CHECK(user_activateOut(false, true, CT_SERVER, "7900000007") && load_mode[1] == OUT_ON);

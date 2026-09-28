@@ -171,8 +171,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'user_writeConfigAndDevice();' in function(user,'user_saveindex') and 'mem_rewrite' not in function(user,'user_saveindex'),'saveindex from RAM'
         assert 'if (device.moduleType != gsm_getModuleType()){' in function(user,'usergsm_event'),'module type on change'
         types=typedefs(st,'logControl_e','codeType_e','releMode_s','cellShedule_s','cellID_s')
+        # Passes per day: the counter restores on the first pass of a new day; a record from the server is today's.
+        assert 'user_reloadPassCounter' not in user and 'id_set_pass_day(old, id_today());' in cases(user)(13),'passes per day'
         code=re.search(r'(?m)^static uint16_t id_cells_end;',user).group(0)+'\n'
-        code+=user[user.index('/* >>> время действия ID'):user.index('/* <<< время действия ID */')]
+        code+=user[user.index('/* >>> время действия ID'):user.index('/* <<< проходы в сутки */')]
         code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_activateOut'])
         unit=(ROOT/'Tests/test_access.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='rules':

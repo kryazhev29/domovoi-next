@@ -133,8 +133,6 @@ uint16_t user_getNumbersCount(void);
 uint16_t user_getTempIDRecordsCount(void);
 // проверить расписание
 bool user_checkShedule(uint8_t shd);
-// обновить значение счетчика проходов на начало суток
-void user_reloadPassCounter(void);
 // обновить данные ID
 void user_updateID(cellID_s *c);
 
