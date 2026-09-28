@@ -334,6 +334,7 @@ static void photo_frame(uint8_t *p, uint16_t n)
           photo_write(photo->address, (uint8_t*)&h, 4)) {
         device.countPhoto = user_getPhotoCount();
         device.status.readyPhoto = device.countPhoto != 0;
+        log_addPhotoEvent(photo->stamp); // номер фото = его datetime
       }
       photo_command(0x0E,0,0,0xF0,0xF0);
       photo_stop(); return;

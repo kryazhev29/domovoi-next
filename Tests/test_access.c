@@ -12,13 +12,13 @@ static uint8_t flash[4096];
 static struct {releMode_s rele[2];} config;
 static struct {uint8_t hour, minute; uint32_t datetime;} device;
 static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
-static unsigned wdt, loads[2], load_mode[2], nlogs, busy[2];
-static int log_num, log_cnt;
+static unsigned wdt, loads[2], load_mode[2], nlogs, npass, busy[2];
+static int log_num, log_cnt, pass_cnt;
 static void wdt_reload(void) { wdt++; }
 static void mem_read(uint32_t a, uint8_t *p, uint16_t n) { CHECK(a + n <= sizeof(flash)); memcpy(p, flash + a, n); }
 static uint8_t out_getmodestate(uint8_t out) { return (uint8_t)busy[out]; }
 static void out_load(uint8_t out, int mode, uint8_t t, uint8_t p, uint8_t c) { (void)t; (void)p; (void)c; loads[out]++; load_mode[out] = (unsigned)mode; }
-static bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt) { (void)id; (void)photo; nlogs++; log_num = num; log_cnt = cnt; return true; }
+static bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt) { (void)id; if (num == LOG_CON_PASSCOUNT) { npass++; pass_cnt = cnt; return true; } nlogs++; log_num = num; log_cnt = cnt; return true; }
 static void user_updateID(cellID_s *c)
 {
   uint32_t a;
@@ -37,7 +37,7 @@ static void put(uint16_t index, const char *id, uint8_t per_day, uint8_t left)
 }
 static uint8_t left_of(uint16_t index) { return ((cellID_s*)(flash + (uint32_t)(index - 1) * sizeof(cellID_s)))->cntPass; }
 static void at(uint8_t h, uint8_t m) { device.hour = h; device.minute = m; }
-static void clear_outs(void) { loads[0] = loads[1] = 0; nlogs = 0; busy[0] = busy[1] = 0; }
+static void clear_outs(void) { loads[0] = loads[1] = 0; nlogs = npass = 0; busy[0] = busy[1] = 0; }
 
 int main(void)
 {
@@ -74,6 +74,7 @@ int main(void)
   config.rele[0].mode = 0; config.rele[1].mode = 1;
   clear_outs(); user_activateOut(true, false, CT_WIEGAND, "7900000007");
   CHECK(loads[0] == 1 && loads[1] == 0 && load_mode[0] == OUT_IMP && nlogs == 1 && log_num == LOG_CON_OUTONBYWIEGAND && log_cnt == 2 && left_of(7) == 2);
+  CHECK(npass == 1 && pass_cnt == 2); /* 131 after every pass of a limited ID */
   clear_outs(); user_activateOut(true, true, CT_PHONE, "7900000007");
   CHECK(loads[0] == 1 && loads[1] == 1 && load_mode[1] == OUT_INV && nlogs == 1 && log_cnt == 1 && left_of(7) == 1);
   /* A running relay or one used for unlocking is left out; nothing to switch means no pass. */
@@ -91,7 +92,7 @@ int main(void)
   clear_outs(); user_activateOut(true, true, CT_PHONE, "7900000007"); CHECK(!loads[0] && !loads[1] && !nlogs);
   /* An ID outside the base opens without a counter; a server command logs its source event. */
   clear_outs(); server_out_event = LOG_CON_OUTONBYAPP; user_activateOut(false, true, CT_SERVER, "0000000000");
-  CHECK(loads[1] == 1 && nlogs == 1 && log_num == LOG_CON_OUTONBYAPP && log_cnt == 255);
+  CHECK(loads[1] == 1 && nlogs == 1 && log_num == LOG_CON_OUTONBYAPP && log_cnt == 255 && npass == 0);
 
   /* Command 8 without an ID (short packet): a base cell whose ID is all zeros must not match it -
      neither block the command by its empty counter nor lose a pass. */

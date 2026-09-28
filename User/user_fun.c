@@ -544,7 +544,7 @@ void user_smsreceived (char* num, char* data)
         if (validFormat){
           strncpy(&tempStrBuffer[96], arg, 10);
           user_addIdToTempBuffer(arg, CT_OTHER);
-          log_addControlEvent(LOG_CON_IDADDBYSMS, arg, 0, 0);
+          log_addControlEvent(LOG_CON_IDADDBYSMS, arg, 0);
           strcat(v, ": ");
           strcat(v, &tempStrBuffer[96]);
           strcat(v, " - Ok");
@@ -3828,7 +3828,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   // авторегистрация
   if (device.status.autoRegistration){
     user_addIdToTempBuffer(id, tp);
-    log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0, 0);
+    log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0);
   }
   
   // открывать всем без разбора
@@ -3872,7 +3872,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #ifdef DEBUG_USER
     user_debug(">>U Check ID: Use time expired\r\n");
 #endif
-        log_addControlEvent(LOG_CON_IDEXPIRED, id, 0, 255);
+        log_addControlEvent(LOG_CON_IDEXPIRED, id, 255);
         return;
       }
             
@@ -3892,7 +3892,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #ifdef DEBUG_USER
     user_debug(">>U Check ID: Group is blocked\r\n"); 
 #endif 
-        log_addControlEvent(LOG_CON_IDBLOCKED, id, 0, 0);
+        log_addControlEvent(LOG_CON_IDBLOCKED, id, 0);
         return;
       }
       
@@ -3942,7 +3942,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #ifdef DEBUG_USER
     user_debug(">>U Check ID: Shedule is blocked\r\n"); 
 #endif 
-        log_addControlEvent(LOG_CON_IDBLOCKED, id, 0, 0);
+        log_addControlEvent(LOG_CON_IDBLOCKED, id, 0);
         return;
       }
       
@@ -4001,7 +4001,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
     user_debug(">>U Check ID: Not founded\r\n"); 
 #endif
       // ID не найден - включено информирование админа
-      log_addControlEvent(LOG_CON_IDNOTINBASE, id, 0, 0);
+      log_addControlEvent(LOG_CON_IDNOTINBASE, id, 0);
       if (device.triggers.smsUnreg){
         sprintf(tempStrBuffer, "%s: ID is unregistred!", id);
         user_send_smsToServer(tempStrBuffer);
@@ -4066,26 +4066,28 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 
   switch (tp){
   case CT_PHONE:
-    log_addControlEvent(LOG_CON_OUTONBYPHONE, id, 0, cnt);
+    log_addControlEvent(LOG_CON_OUTONBYPHONE, id, cnt);
     break;
   case CT_WIEGAND:
-    log_addControlEvent(LOG_CON_OUTONBYWIEGAND, id, 0, cnt);
+    log_addControlEvent(LOG_CON_OUTONBYWIEGAND, id, cnt);
     break;
   case CT_RF433:
-    log_addControlEvent(LOG_CON_OUTONBYRF433, id, 0, cnt);
+    log_addControlEvent(LOG_CON_OUTONBYRF433, id, cnt);
     break;
   case CT_RFID:
-    log_addControlEvent(LOG_CON_OUTONBYRFID, id, 0, cnt);
+    log_addControlEvent(LOG_CON_OUTONBYRFID, id, cnt);
     break;
   case CT_AUTO:
-    log_addControlEvent(LOG_CON_OUTONBYAVTO, id, 0, cnt);
+    log_addControlEvent(LOG_CON_OUTONBYAVTO, id, cnt);
     break;
   case CT_SERVER:
-    log_addControlEvent(server_out_event, id, 0, cnt);
+    log_addControlEvent(server_out_event, id, cnt);
     break;
   default:
     break;
   }
+  // проходы ограничены: сервер раздаёт остаток остальным контроллерам объекта
+  if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);
 
   for (out = 0; out < 2; out++){
     if (!run[out]) continue;
@@ -4545,7 +4547,7 @@ bool log_addSystemEventID(logSystem_e num, char *id){
 }
 
 // добавить событие доступа
-bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt){
+bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt){
   cellLog_s cell;
   
   memset((uint8_t*)&cell, 0, sizeof(cellLog_s));
@@ -4558,7 +4560,19 @@ bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt
   if (id != NULL)
     memcpy(cell.ID, id, 10);
   
-  cell.photoNum = photo;
+  return log_put(&cell);
+}
+
+// фотофиксация: номер фото в первых 4 байтах аргумента 1 (Протокол2 E532)
+bool log_addPhotoEvent(uint32_t number){
+  cellLog_s cell;
+  
+  memset((uint8_t*)&cell, 0, sizeof(cellLog_s));
+  
+  cell.index = device.datetime;
+  cell.datetime = device.datetime;
+  cell.logType = (uint8_t)LOG_CON_PHOTOFIX;
+  memcpy(cell.ID, &number, 4);
   
   return log_put(&cell);
 }

@@ -152,7 +152,8 @@ bool log_addSystemEvent(logSystem_e num);
 // добавить системное событие
 bool log_addSystemEventID(logSystem_e num, char *id);
 // добавить событие доступа
-bool log_addControlEvent(logControl_e num, char *id, uint32_t photo, uint8_t cnt);
+bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt);
+bool log_addPhotoEvent(uint32_t number);
 
 // получаем кол-во фото в памяти
 uint16_t user_getPhotoCount(void);

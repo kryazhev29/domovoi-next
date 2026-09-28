@@ -113,6 +113,8 @@ static void host_free(void *p){if(p){size_t *h=(size_t*)p-2;live_heap-=*h;free(h
 static void *host_calloc(size_t n,size_t size){void *p=host_malloc(n*size);if(p)memset(p,0,n*size);return p;}
 static unsigned debug_reasons;
 static void user_debug(const char *text){(void)text;debug_reasons++;}
+static unsigned photo_events;static uint32_t photo_logged;
+static uint8_t log_addPhotoEvent(uint32_t number){photo_events++;photo_logged=number;return 1;}
 #define malloc host_malloc
 #define calloc host_calloc
 #define free host_free
@@ -164,8 +166,8 @@ int main(int argc,char **argv) {
  assert(answer==CMD_SUCCESS && !programs && !erases && !device.status.readyPhoto);
  drain();assert(sends==1);check_saved(0,0,0,0,0);
  clean();command(7,4,99,1);assert(answer==CMD_PARAMERROR);command(7,3,17,1);assert(answer==CMD_PARAMERROR);
- command(21,4,0,1);assert(answer==CMD_PARAMERROR);capture();check_image(0);assert(user_getPhotoCount()==1 && device.status.readyPhoto);
- uint32_t stamp=device.datetime;
+ command(21,4,0,1);assert(answer==CMD_PARAMERROR);unsigned events=photo_events;capture();check_image(0);assert(user_getPhotoCount()==1 && device.status.readyPhoto);
+ uint32_t stamp=device.datetime;assert(photo_events==events+1 && photo_logged==stamp); /* journal 129: number of the stored photo */
  request_at(1,0,0,1);drain();assert(sends==6 && user_getPhotoCount()==1 && device.status.readyPhoto);
  for(int i=0;i<5;i++)check_saved(i,512*i,i==4?459:512,1,stamp);
  check_saved(5,0,0,0,stamp);

@@ -113,10 +113,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert '#define REG_UNKNOWN_IMEI        4' in user and '#define REG_NOT_BOUND           5' in user and 'case REG_UNKNOWN_IMEI:' in case(1) and 'case REG_NOT_BOUND:' in case(1) and 'CMD_UNDEFIMEI' not in case(1),'registration answers'
         assert function(user,'user_parse_comand').count('CMD_RUNNING')==1 and 'CMD_RUNNING' not in case(2),'no code 5 for delayed reset'
         assert 'device.protocolVersion = DV.protocolVersion;' not in user,'protocol version is constant'
-        # Protokol2 row 284: an expired ID does not open and logs 55; a sync of the same card keeps the first pass.
-        assert 'if (id_expired(&cellId)){' in user and 'log_addControlEvent(LOG_CON_IDEXPIRED, id, 0, 255);' in user,'use time expired'
+        # Protokol2 row 284: an expired ID does not open and logs 130; a sync of the same card keeps the first pass.
+        assert 'if (id_expired(&cellId)){' in user and 'log_addControlEvent(LOG_CON_IDEXPIRED, id, 255);' in user,'use time expired'
         assert 'if (keep) memcpy(old->reserve, first, 4);' in case(13) and 'memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0' in case(13),'use time kept on sync'
-        assert 'log_addControlEvent(server_out_event, id, 0, cnt);' in function(user,'user_activateOut'),'server event from its source'
+        assert 'log_addControlEvent(server_out_event, id, cnt);' in function(user,'user_activateOut'),'server event from its source'
+        # Journal sheet 131: after every pass of an ID with limited passes; 129: photo number when the photo is stored.
+        assert 'if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);' in function(user,'user_activateOut'),'pass counter event'
+        assert 'log_addPhotoEvent(photo->stamp);' in source('User/photo.c'),'photo event'
         # Journal upload: the empty answer is 3 bytes (0 left, 0 in packet), sent before the erase; used sectors only.
         up=function(user,'user_send_logRecords')
         assert up.count('user_send_anyData(10, empty, sizeof(empty), cch, uniqId);')==2 and 'uint8_t empty[3] = {0, 0, 0};' in up and 'tmp16' not in up,'empty journal answer'
@@ -134,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
         # Command 8: a requested output that did not switch answers 2, not success.
         assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
-        code=pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent'])
+        code=pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='access':
         user=source('User/user_fun.c');st=source('structures.h')

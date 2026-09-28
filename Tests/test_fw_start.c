@@ -170,7 +170,7 @@ static void end_tests(void){
   w=0;memcpy(b+0x20,&w,4);CHECK(!fw_image_foreign(b,11));w=0x4857018Bu;memcpy(b+0x20,&w,4);CHECK(!fw_image_foreign(b,11));}
  /* Command 8 source to the journal event (E184). */
  CHECK(server_out_event==LOG_CON_OUTONBYAPI);
- CHECK(cmd8_event(1)==52&&cmd8_event(2)==50&&cmd8_event(3)==49&&cmd8_event(4)==51&&cmd8_event(0)==50&&cmd8_event(5)==50&&cmd8_event(255)==50);
+ CHECK(cmd8_event(1)==77&&cmd8_event(2)==75&&cmd8_event(3)==74&&cmd8_event(4)==76&&cmd8_event(0)==75&&cmd8_event(5)==75&&cmd8_event(255)==75);
  puts("controller ends a download, update mode, board marker, command 8 sources");}
 
 static void stage(uint16_t blocks,uint16_t version){bootFWparam_s h;reset();memset(&h,0xff,sizeof(h));h.hardwareVersion=139;h.firmwareVersion=version;

@@ -21,11 +21,12 @@
 
 
 // Журнал: в поле logType пишется номер события листа «Журнал событий»
-// (Протокол2 E525), категорию сервер определяет сам по номеру.
+// (Протокол2 E531). Группы по 64: 0-63 системные и 64-127 доступ сервер только
+// пишет в лог, 128-191 сообщения сервер разбирает при приёме (Протокол2, ИЗМЕНЕНИЯ 20).
 
 // Системное событи журнала
 typedef enum{
-  LOG_SYS_DEFCONF = 1,
+  LOG_SYS_DEFCONF = 0,
   LOG_SYS_GOTOUPDATE,
   LOG_SYS_RUNUPDATE,
   LOG_SYS_ENDUPDATE,
@@ -68,7 +69,7 @@ typedef enum{
 
 // событиe доступа журнала
 typedef enum{
-  LOG_CON_IDNOTINBASE = 40,
+  LOG_CON_IDNOTINBASE = 65,
   LOG_CON_IDBLOCKED,
   LOG_CON_IDADDBYSMS,
   LOG_CON_IDADDBYAUTOREG,
@@ -77,13 +78,15 @@ typedef enum{
   LOG_CON_OUTONBYWIEGAND,
   LOG_CON_OUTONBYRF433,
   LOG_CON_OUTONBYAVTO,
-  LOG_CON_OUTONBYTEST,    // 49 команда 8 от сервера: тест из админки
-  LOG_CON_OUTONBYAPI,     // 50 команда 8: API
-  LOG_CON_OUTONBYVOICE,   // 51 команда 8: голосовой помощник
-  LOG_CON_OUTONBYAPP,     // 52 команда 8: мобильное приложение
-  LOG_CON_RECVIDONREADER, // 53 получен ID со считывателя
-  LOG_CON_PHOTOFIX,       // 54 фотофиксация
-  LOG_CON_IDEXPIRED       // 55 истекло время действия ID (Протокол2, строка 284)
+  LOG_CON_OUTONBYTEST,    // 74 команда 8 от сервера: тест из админки
+  LOG_CON_OUTONBYAPI,     // 75 команда 8: API
+  LOG_CON_OUTONBYVOICE,   // 76 команда 8: голосовой помощник
+  LOG_CON_OUTONBYAPP,     // 77 команда 8: мобильное приложение
+  LOG_CON_RECVIDONREADER, // 78 получен ID со считывателя
+  // сообщения: сервер разбирает при приёме
+  LOG_CON_PHOTOFIX = 129, // фотофиксация, в аргументе 1 номер фото
+  LOG_CON_IDEXPIRED,      // 130 истекло время действия ID (Протокол2, строка 284)
+  LOG_CON_PASSCOUNT       // 131 значение счётчика проходов после управления выходом
 }logControl_e;
 
 // Командные и обменные события контроллер в журнал не пишет: их ведёт сервер
@@ -409,8 +412,8 @@ typedef struct {
   uint32_t index; // уникальный номер
   uint32_t datetime; // время
   uint8_t logType;
-  char ID[10]; // Значение ID Абонента
-  uint32_t photoNum;
+  char ID[10]; // аргумент 1: ID абонента, у фотофиксации - номер фото
+  uint32_t arg2; // аргумент 2: резерв, 0 (Протокол2 E533)
   uint8_t passCnt;
   uint8_t reserve[8];
 } cellLog_s; // 32 байта

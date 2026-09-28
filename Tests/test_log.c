@@ -18,34 +18,35 @@ static bool log_addEvent(cellLog_s *cl) { last = *cl; if (added < 64) written[ad
 
 /* Event journal sheet of the protocol table, column A: the number the server reads in logType. */
 static const struct { int value, sheet; const char *name; } table[] = {
-  {LOG_SYS_DEFCONF, 1, "factory settings"}, {LOG_SYS_GOTOUPDATE, 2, "update mode"},
-  {LOG_SYS_RUNUPDATE, 3, "update started"}, {LOG_SYS_ENDUPDATE, 4, "update done"},
-  {LOG_SYS_ERRUPDATE, 5, "update error"}, {LOG_SYS_HWERRUPDATE, 6, "wrong HW"},
-  {LOG_SYS_ENDIDUPDATE, 7, "ID sync done"}, {LOG_SYS_ENDCONFUPDATE, 8, "settings sync done"},
-  {LOG_SYS_ENDGROUPUPDATE, 9, "groups sync done"}, {LOG_SYS_ENDSHEDULEUPDATE, 10, "schedules sync done"},
-  {LOG_SYS_ENDHOLLIDAYUPDATE, 11, "holidays sync done"}, {LOG_SYS_NOTGSMREG, 12, "no network"},
-  {LOG_SYS_NOTGPRSREG, 13, "no internet"}, {LOG_SYS_ERRCONNECTION, 14, "no traffic"},
-  {LOG_SYS_CONNECT1, 15, "server 1"}, {LOG_SYS_CONNECT2, 16, "server 2"},
-  {LOG_SYS_ERRCONNECT1, 17, "server 1 error"}, {LOG_SYS_ERRCONNECT2, 18, "server 2 error"},
-  {LOG_SYS_FAILCONNECT1, 19, "server 1 lost"}, {LOG_SYS_FAILCONNECT2, 20, "server 2 lost"},
-  {LOG_SYS_IN1ON, 21, "input 1 on"}, {LOG_SYS_IN1OFF, 22, "input 1 off"},
-  {LOG_SYS_IN2ON, 23, "input 2 on"}, {LOG_SYS_IN2OFF, 24, "input 2 off"},
-  {LOG_SYS_AUTOREGEN, 25, "autoregistration on"}, {LOG_SYS_AUTOREGDIS, 26, "autoregistration off"},
-  {LOG_SYS_OPENALLEN, 27, "open all on"}, {LOG_SYS_OPENALLDIS, 28, "open all off"},
-  {LOG_SYS_UNBLOCKSHEDEN, 29, "unlock by schedule on"}, {LOG_SYS_UNBLOCKSHEDDIS, 30, "unlock by schedule off"},
-  {LOG_SYS_UNDLOCKHANDEN, 31, "forced unlock on"}, {LOG_SYS_UNDLOCKHANDDIS, 32, "forced unlock off"},
-  {LOG_SYS_RESETONTIMER, 33, "daily reset"}, {LOG_SYS_RESETONCMD, 34, "reset by command"},
-  {LOG_SYS_RESETONSHEDULE, 35, "reset by schedule"}, {LOG_SYS_RECVSMS, 36, "SMS in"},
-  {LOG_SYS_SENDSMS, 37, "SMS out"}, {LOG_SYS_LOWBALANCE, 38, "low balance"},
-  {LOG_SYS_LOWSIGNAL, 39, "low signal"},
-  {LOG_CON_IDNOTINBASE, 40, "ID not in base"}, {LOG_CON_IDBLOCKED, 41, "ID blocked"},
-  {LOG_CON_IDADDBYSMS, 42, "ID added by SMS"}, {LOG_CON_IDADDBYAUTOREG, 43, "ID added by autoregistration"},
-  {LOG_CON_OUTONBYPHONE, 44, "output by phone"}, {LOG_CON_OUTONBYRFID, 45, "output by RFID 485"},
-  {LOG_CON_OUTONBYWIEGAND, 46, "output by Wiegand"}, {LOG_CON_OUTONBYRF433, 47, "output by key fob"},
-  {LOG_CON_OUTONBYAVTO, 48, "output by plate"}, {LOG_CON_OUTONBYTEST, 49, "server command: admin test"},
-  {LOG_CON_OUTONBYAPI, 50, "server command: API"}, {LOG_CON_OUTONBYVOICE, 51, "server command: voice assistant"},
-  {LOG_CON_OUTONBYAPP, 52, "server command: mobile app"}, {LOG_CON_RECVIDONREADER, 53, "ID from reader"},
-  {LOG_CON_PHOTOFIX, 54, "photo"}, {LOG_CON_IDEXPIRED, 55, "ID use time expired"},
+  {LOG_SYS_DEFCONF, 0, "factory settings"}, {LOG_SYS_GOTOUPDATE, 1, "update mode"},
+  {LOG_SYS_RUNUPDATE, 2, "update started"}, {LOG_SYS_ENDUPDATE, 3, "update done"},
+  {LOG_SYS_ERRUPDATE, 4, "update error"}, {LOG_SYS_HWERRUPDATE, 5, "wrong HW"},
+  {LOG_SYS_ENDIDUPDATE, 6, "ID sync done"}, {LOG_SYS_ENDCONFUPDATE, 7, "settings sync done"},
+  {LOG_SYS_ENDGROUPUPDATE, 8, "groups sync done"}, {LOG_SYS_ENDSHEDULEUPDATE, 9, "schedules sync done"},
+  {LOG_SYS_ENDHOLLIDAYUPDATE, 10, "holidays sync done"}, {LOG_SYS_NOTGSMREG, 11, "no network"},
+  {LOG_SYS_NOTGPRSREG, 12, "no internet"}, {LOG_SYS_ERRCONNECTION, 13, "no traffic"},
+  {LOG_SYS_CONNECT1, 14, "server 1"}, {LOG_SYS_CONNECT2, 15, "server 2"},
+  {LOG_SYS_ERRCONNECT1, 16, "server 1 error"}, {LOG_SYS_ERRCONNECT2, 17, "server 2 error"},
+  {LOG_SYS_FAILCONNECT1, 18, "server 1 lost"}, {LOG_SYS_FAILCONNECT2, 19, "server 2 lost"},
+  {LOG_SYS_IN1ON, 20, "input 1 on"}, {LOG_SYS_IN1OFF, 21, "input 1 off"},
+  {LOG_SYS_IN2ON, 22, "input 2 on"}, {LOG_SYS_IN2OFF, 23, "input 2 off"},
+  {LOG_SYS_AUTOREGEN, 24, "autoregistration on"}, {LOG_SYS_AUTOREGDIS, 25, "autoregistration off"},
+  {LOG_SYS_OPENALLEN, 26, "open all on"}, {LOG_SYS_OPENALLDIS, 27, "open all off"},
+  {LOG_SYS_UNBLOCKSHEDEN, 28, "unlock by schedule on"}, {LOG_SYS_UNBLOCKSHEDDIS, 29, "unlock by schedule off"},
+  {LOG_SYS_UNDLOCKHANDEN, 30, "forced unlock on"}, {LOG_SYS_UNDLOCKHANDDIS, 31, "forced unlock off"},
+  {LOG_SYS_RESETONTIMER, 32, "daily reset"}, {LOG_SYS_RESETONCMD, 33, "reset by command"},
+  {LOG_SYS_RESETONSHEDULE, 34, "reset by schedule"}, {LOG_SYS_RECVSMS, 35, "SMS in"},
+  {LOG_SYS_SENDSMS, 36, "SMS out"}, {LOG_SYS_LOWBALANCE, 37, "low balance"},
+  {LOG_SYS_LOWSIGNAL, 38, "low signal"},
+  {LOG_CON_IDNOTINBASE, 65, "ID not in base"}, {LOG_CON_IDBLOCKED, 66, "ID blocked"},
+  {LOG_CON_IDADDBYSMS, 67, "ID added by SMS"}, {LOG_CON_IDADDBYAUTOREG, 68, "ID added by autoregistration"},
+  {LOG_CON_OUTONBYPHONE, 69, "output by phone"}, {LOG_CON_OUTONBYRFID, 70, "output by RFID 485"},
+  {LOG_CON_OUTONBYWIEGAND, 71, "output by Wiegand"}, {LOG_CON_OUTONBYRF433, 72, "output by key fob"},
+  {LOG_CON_OUTONBYAVTO, 73, "output by plate"}, {LOG_CON_OUTONBYTEST, 74, "server command: admin test"},
+  {LOG_CON_OUTONBYAPI, 75, "server command: API"}, {LOG_CON_OUTONBYVOICE, 76, "server command: voice assistant"},
+  {LOG_CON_OUTONBYAPP, 77, "server command: mobile app"}, {LOG_CON_RECVIDONREADER, 78, "ID from reader"},
+  {LOG_CON_PHOTOFIX, 129, "photo"}, {LOG_CON_IDEXPIRED, 130, "ID use time expired"},
+  {LOG_CON_PASSCOUNT, 131, "pass counter"},
 };
 
 int main(void)
@@ -64,21 +65,23 @@ int main(void)
   device.datetime = 31; device.worktime = 31;
   CHECK(log_addSystemEvent(LOG_SYS_CONNECT1) && added == 0);
   device.datetime = 40; device.worktime = 40;
-  CHECK(log_addControlEvent(LOG_CON_OUTONBYAPP, id, 0, 255) && added == 0);
+  CHECK(log_addControlEvent(LOG_CON_OUTONBYAPP, id, 255) && added == 0);
   device.worktime = 42; log_checkPending(); CHECK(added == 0);
   log_setTime(1789600000u);
   CHECK(added == 2 && device.datetime == 1789600000u);
-  CHECK(written[0].logType == 15 && written[0].datetime == 1789600000u - 11 && written[0].index == written[0].datetime);
-  CHECK(written[1].logType == 52 && written[1].datetime == 1789600000u - 2 && !memcmp(written[1].ID, id, 10));
+  CHECK(written[0].logType == 14 && written[0].datetime == 1789600000u - 11 && written[0].index == written[0].datetime);
+  CHECK(written[1].logType == 77 && written[1].datetime == 1789600000u - 2 && !memcmp(written[1].ID, id, 10));
   log_setTime(1789600005u); CHECK(added == 2);
   added = 0;
 
   /* Every record carries the event number itself, not a category. */
   device.datetime = 1789600000u;
-  CHECK(log_addSystemEvent(LOG_SYS_ERRUPDATE) && last.logType == 5 && last.datetime == 1789600000u && last.index == 1789600000u);
-  CHECK(log_addSystemEventID(LOG_SYS_RECVSMS, id) && last.logType == 36 && !memcmp(last.ID, id, 10));
-  CHECK(log_addControlEvent(LOG_CON_OUTONBYAPP, id, 77, 3) && last.logType == 52 && last.photoNum == 77 && last.passCnt == 3 && !memcmp(last.ID, id, 10));
-  CHECK(log_addControlEvent(LOG_CON_PHOTOFIX, NULL, 0, 0) && last.logType == 54 && last.ID[0] == 0);
+  CHECK(log_addSystemEvent(LOG_SYS_ERRUPDATE) && last.logType == 4 && last.datetime == 1789600000u && last.index == 1789600000u);
+  CHECK(log_addSystemEventID(LOG_SYS_RECVSMS, id) && last.logType == 35 && !memcmp(last.ID, id, 10));
+  CHECK(log_addControlEvent(LOG_CON_OUTONBYAPP, id, 3) && last.logType == 77 && last.arg2 == 0 && last.passCnt == 3 && !memcmp(last.ID, id, 10));
+  /* Photo number goes to the first 4 bytes of argument 1, argument 2 stays reserved (Protocol2 E532, E533). */
+  { static const char num[10] = {0x78,0x56,0x34,0x12};
+    CHECK(log_addPhotoEvent(0x12345678u) && last.logType == 129 && !memcmp(last.ID, num, 10) && last.arg2 == 0 && last.passCnt == 0); }
   CHECK(added == 4);
 
   /* No server time: a full queue, the time limit and a reset write the events as they are. */
@@ -91,7 +94,7 @@ int main(void)
   device.worktime = LOG_TIME_WAIT; log_checkPending(); CHECK(added == LOG_PENDING_MAX + 1 && log_pendingCount == 0);
   log_addSystemEvent(LOG_SYS_NOTGSMREG); CHECK(added == LOG_PENDING_MAX + 2);
   log_timeKnown = 0; log_pendingCount = 0; added = 0; device.worktime = 7;
-  log_addSystemEvent(LOG_SYS_RESETONCMD); log_flushPending(); CHECK(added == 1 && last.logType == 34);
+  log_addSystemEvent(LOG_SYS_RESETONCMD); log_flushPending(); CHECK(added == 1 && last.logType == 33);
 
   /* Record numbers only grow: two events in one second, after a restart and after the erase. */
   { cellLog_s c; uint32_t at = mem[MB_LOG].start;
