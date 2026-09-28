@@ -17,6 +17,8 @@ typedef struct {
   uint32_t readAddress;
   uint16_t size, written, offset, packet, used;
   uint8_t stage, retry, syncAck, syncSeen, pending, requestId;
+  uint16_t rxBytes; // диагностика св€зи с камерой: байт с 485 за съЄмку
+  uint8_t rxHead[8]; // и первые из них
   dataChanel_e channel;
   uint8_t rx[PHOTO_RX], frame[PHOTO_RX];
 } photo_s;
@@ -82,6 +84,29 @@ void rs485_set_config(const uint8_t *data)
   memcpy(&config, data, sizeof(config));
   if (!photo || !photo->stage) rs485_init();
 }
+/* —ъЄмка не удалась: в отладку (бит 4) шаг, попытки и что пришло с 485 - по этому видно,
+ * есть ли св€зь с камерой (28.09.2026). */
+static void photo_fail(const char *why)
+{
+  static const char hex[] = "0123456789ABCDEF";
+  char text[96] = "Photo: ";
+  uint8_t i, n = 7, stage = photo->stage, retry = photo->retry;
+  uint16_t bytes = photo->rxBytes;
+  while (*why && n < 40) text[n++] = *why++;
+  memcpy(&text[n], ", stage ", 8); n += 8; text[n++] = (char)('0' + stage);
+  memcpy(&text[n], ", retry ", 8); n += 8;
+  text[n++] = (char)('0' + retry / 10 % 10); text[n++] = (char)('0' + retry % 10);
+  memcpy(&text[n], ", RX ", 5); n += 5;
+  text[n++] = (char)('0' + bytes / 10000 % 10); text[n++] = (char)('0' + bytes / 1000 % 10);
+  text[n++] = (char)('0' + bytes / 100 % 10); text[n++] = (char)('0' + bytes / 10 % 10);
+  text[n++] = (char)('0' + bytes % 10);
+  for (i = 0; i < sizeof(photo->rxHead) && i < bytes; i++) {
+    text[n++] = ' '; text[n++] = hex[photo->rxHead[i] >> 4]; text[n++] = hex[photo->rxHead[i] & 15];
+  }
+  memcpy(&text[n], "\r\n", 3);
+  user_debug(text);
+  photo_stop();
+}
 static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
   uint8_t p[6] = {0xAA, cmd, a, b, c, d};
@@ -139,6 +164,7 @@ cmdCode_e photo_start(uint8_t address)
   photo->size = photo->written = photo->packet = photo->used = 0;
   photo_erased_to = 0; photo_prep_phase = 0;
   photo->retry = photo->syncAck = photo->syncSeen = 0;
+  photo->rxBytes = 0;
   photo->stage = P_SYNC;
   photo->started = timers_getMillis();
   photo->last = photo->started - 50u;
@@ -348,6 +374,7 @@ static void photo_frame(uint8_t *p, uint16_t n)
       if (!photo->syncAck || !photo->syncSeen) return;
       photo_command(0x0E,0x0D,0,0,0);
       photo->stage = P_INIT;
+      user_debug("Photo: camera sync OK\r\n");
     } else if (photo->stage == P_GET && p[1] == 0x0A && p[2] == 1) {
       uint32_t size = p[3] | ((uint32_t)p[4] << 8) | ((uint32_t)p[5] << 16);
       if (!photo_prepare(size)) { photo_stop(); return; }
@@ -590,6 +617,8 @@ void photo_poll(void)
         n = uart_received(PORT1_PORT);
         for (i = 0; i < n && photo->stage; i++) {
           if (photo->used >= sizeof(photo->frame)) { photo_stop(); break; }
+          if (photo->rxBytes < sizeof(photo->rxHead)) photo->rxHead[photo->rxBytes] = photo->rx[i];
+          if (photo->rxBytes != 0xFFFFu) photo->rxBytes++;
           photo->frame[photo->used++] = photo->rx[i];
           want = 6;
           if (photo->stage == P_DATA && photo->used >= 4) {
@@ -603,12 +632,12 @@ void photo_poll(void)
       if (photo->stage == P_PREP && photo_recover() && !erased)
         erased = photo_prepare_step();
       now = timers_getMillis();
-      if (photo->stage && (uint32_t)(now - photo->started) >= 60000u) photo_stop();
+      if (photo->stage && (uint32_t)(now - photo->started) >= 60000u) photo_fail("60 s limit");
       if (photo->stage && photo->stage != P_PREP &&
           (int32_t)(now - photo->deadline) >= 0 &&
           (photo->stage == P_DATA || (uint32_t)(now - photo->last) >= 50u)) {
         if (photo->stage != P_DATA || (erased || photo_data_ready())) {
-          if (photo->retry++ >= (photo->stage == P_SYNC ? 30 : 3)) photo_stop();
+          if (photo->retry++ >= (photo->stage == P_SYNC ? 30 : 3)) photo_fail("no answer");
           else { photo->used = 0; photo_issue(); }
         } else erased = 1;
       }
