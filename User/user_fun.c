@@ -2467,7 +2467,7 @@ static uint8_t fw_update_quiet(void)
   return device.status.readyToUpdate;
 }
 
-/* Код причины для аргумента 2 событий обновления (Протокол2 E533; E122: причина отказа пишется
+/* Код причины для аргумента 2 событий обновления (Протокол2 E534; E122: причина отказа пишется
  * в журнал). Номер в списке + 1; «BOOT n» - код загрузчика n + 20. */
 static uint32_t fw_reason_code(const char *text)
 {
@@ -4566,7 +4566,7 @@ bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt){
 }
 
 // обновление FW: в аргументе 1 текущая версия - HW 1 байт, FW 2 байта, билд 4 байта,
-// в аргументе 2 код причины (Протокол2 E532, E533)
+// в аргументе 2 код причины (Протокол2 E533, E534)
 bool log_addUpdateEvent(logUpdate_e num, uint32_t reason){
   cellLog_s cell;
   uint16_t fw = device.firmwareVersion; // device упакована: копируем через переменные
@@ -4585,7 +4585,7 @@ bool log_addUpdateEvent(logUpdate_e num, uint32_t reason){
   return log_put(&cell);
 }
 
-// фотофиксация: номер фото в первых 4 байтах аргумента 1 (Протокол2 E532)
+// фотофиксация: номер фото в первых 4 байтах аргумента 1 (Протокол2 E533)
 bool log_addPhotoEvent(uint32_t number){
   cellLog_s cell;
   

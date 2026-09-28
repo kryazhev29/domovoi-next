@@ -80,7 +80,7 @@ int main(void)
   CHECK(log_addSystemEvent(LOG_SYS_ENDIDUPDATE) && last.logType == 6 && last.datetime == 1789600000u && last.index == 1789600000u);
   CHECK(log_addSystemEventID(LOG_SYS_RECVSMS, id) && last.logType == 35 && !memcmp(last.ID, id, 10));
   CHECK(log_addControlEvent(LOG_CON_OUTONBYAPP, id, 3) && last.logType == 77 && last.arg2 == 0 && last.passCnt == 3 && !memcmp(last.ID, id, 10));
-  /* Photo number goes to the first 4 bytes of argument 1, argument 2 stays reserved (Protocol2 E532, E533). */
+  /* Photo number goes to the first 4 bytes of argument 1, argument 2 stays reserved (Protocol2 E533, E534). */
   { static const char num[10] = {0x78,0x56,0x34,0x12};
     CHECK(log_addPhotoEvent(0x12345678u) && last.logType == 129 && !memcmp(last.ID, num, 10) && last.arg2 == 0 && last.passCnt == 0); }
   /* FW events: argument 1 is the running version HW 1 byte, FW 2, build 4; argument 2 the reason code. */

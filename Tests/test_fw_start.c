@@ -43,7 +43,7 @@ static void fw_resume_after_boot(void);
 static uint8_t image[96*1024];
 static void reset(void){memset(flash,0xff,sizeof(flash));memset(&device,0,sizeof(device));device.hardwareVersion=139;device.registredOnServer=1;
  saves=torn=sent=trial=manual=nlogs=0;stuck=0xffffffffu;boot_ver=0x32;}
-/* Update events carry a reason code (Protocol2 E533): the text names the reason, NULL - code 0. */
+/* Update events carry a reason code (Protocol2 E534): the text names the reason, NULL - code 0. */
 static int last_log(int num,const char*reason){return nlogs&&logs[nlogs-1].num==num&&logs[nlogs-1].reason==fw_reason_code(reason);}
 static cmdCode_e start(uint16_t number,uint32_t build,uint32_t size,uint32_t crc,uint16_t blocks,dataChanel_e cch){
  uint8_t p[16];memcpy(p,&number,2);memcpy(p+2,&build,4);memcpy(p+6,&size,4);memcpy(p+10,&crc,4);memcpy(p+14,&blocks,2);return fw_start(p,cch);}
