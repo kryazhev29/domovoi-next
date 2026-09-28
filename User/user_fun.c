@@ -3901,7 +3901,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #endif         
         return;
       }
-      // время действия истекло (строка 284): не открываем, в журнал событие 55
+      // время действия истекло (строка 284): не открываем, в журнал событие 130
       if (id_expired(&cellId)){
 #ifdef DEBUG_USER
     user_debug(">>U Check ID: Use time expired\r\n");
