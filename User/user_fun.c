@@ -65,6 +65,7 @@ static void status_event_sent(uint16_t status, uint32_t now_ms);
 static uint8_t status_event_due(uint16_t status, uint32_t now_ms);
 static uint8_t fw_update_quiet(void);
 static void fw_end(const char *reason, uint8_t uniqId);
+static void fw_log(logUpdate_e num, const char *reason);
 
 // буфер под прием данных от внешнего порта
 #pragma data_alignment=4
@@ -973,7 +974,7 @@ void user_loop(void)
     if (device.rebootToUpdate){
       device.rebootToUpdate = 0;
       if (app_boot_request()) {
-        log_addSystemEvent(LOG_SYS_RUNUPDATE);
+        fw_log(LOG_FW_INSTALL, NULL);
         user_savereset();
       } else {
         fw_end("INSTALL", uniqIDCnt++);
@@ -2442,14 +2443,24 @@ static uint8_t fw_update_quiet(void)
   return device.status.readyToUpdate;
 }
 
-/* Событие обновления с подробностью текстом в поле ID: номер прошивки, ROLLBACK или причина
- * ошибки (E122: причина отказа пишется в журнал). */
-static void fw_log(logSystem_e num, const char *text)
+/* Код причины для аргумента 2 событий обновления (Протокол2 E533; E122: причина отказа пишется
+ * в журнал). Номер в списке + 1; «BOOT n» - код загрузчика n + 20. */
+static uint32_t fw_reason_code(const char *text)
 {
-  char id[10];
-  memset(id, 0, sizeof(id));
-  strncpy(id, text, sizeof(id));
-  log_addSystemEventID(num, id);
+  static const char *const names[] = {"PARAM", "BUSY", "OLD BOOT", "BOOT BUSY", "IN TRIAL",
+    "NO BACKUP", "BAD BACKUP", "CRC", "WRITE", "CANCEL", "INSTALL", "HW", "TRIAL FAIL", "BACKUP",
+    "TIMEOUT"};
+  uint8_t i;
+  if (text == NULL) return 0;
+  for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+    if (strcmp(text, names[i]) == 0) return i + 1u;
+  if (strncmp(text, "BOOT ", 5) == 0 && text[5] >= '0' && text[5] <= '9') return 20u + (uint32_t)(text[5] - '0');
+  return 30;
+}
+
+static void fw_log(logUpdate_e num, const char *reason)
+{
+  log_addUpdateEvent(num, fw_reason_code(reason));
 }
 
 static uint8_t fw_write_errors;
@@ -2462,7 +2473,7 @@ static void fw_abort(const char *reason)
   device.updateTimeout = 0;
   device.FWblockIdx = device.FWblockCount = 0;
   fw_write_errors = 0;
-  if (reason != NULL) fw_log(LOG_SYS_ERRUPDATE, reason);
+  if (reason != NULL) fw_log(strcmp(reason, "TIMEOUT") == 0 ? LOG_FW_TIMEOUT : LOG_FW_FAIL, reason);
   if (device.cchFWupdate != CH_USB) user_saveindex();
 }
 
@@ -2532,12 +2543,12 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
   mem_read(mem[MB_BACKUP].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
   if ((fwParam.buildDate == 0xffffffff) || (fwParam.firmwareSize == 0xffffffff) ||
       (fwParam.firmwareCRC == 0xffffffff) || (fwParam.firmwareVersion == 0xffff)){
-    fw_log(LOG_SYS_ERRUPDATE, "NO BACKUP");
+    fw_log(LOG_FW_FAIL, "NO BACKUP");
     return CMD_RUNERROR;
   }
   if ((fwParam.firmwareSize > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
       !user_checkFirmware(mem[MB_BACKUP].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC)){
-    fw_log(LOG_SYS_ERRUPDATE, "BAD BACKUP");
+    fw_log(LOG_FW_FAIL, "BAD BACKUP");
     return CMD_RUNERROR;
   }
   user_clearMemBlock(MB_FIRMWARE);
@@ -2547,7 +2558,7 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
     mem_write(mem[MB_FIRMWARE].start + block, bf, 128);
     wdt_reload();
   }
-  fw_log(LOG_SYS_GOTOUPDATE, "ROLLBACK");
+  fw_log(LOG_FW_ROLLBACK, NULL); // откат по команде сервера: причина 0
   device.cchFWupdate = cch;
   device.status.readyToUpdate = 1;
   device.rebootToUpdate = 1;
@@ -2563,7 +2574,6 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   uint32_t build, size, crc;
   const char *busy;
   bootFWparam_s fwParam;
-  char text[11];
 
   memcpy((uint8_t*)&number, &p[0], 2);
   memcpy((uint8_t*)&build, &p[2], 4);
@@ -2572,7 +2582,7 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   memcpy((uint8_t*)&blocks, &p[14], 2);
 
   if (fw_start_rejected(number, build, size, crc, blocks)){
-    fw_log(LOG_SYS_ERRUPDATE, "PARAM");
+    fw_log(LOG_FW_FAIL, "PARAM");
     return CMD_PARAMERROR;
   }
   if (number != 1 && fw_same_download(number, build, size, crc, blocks, cch)){
@@ -2581,7 +2591,7 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   }
   busy = fw_start_refused();
   if (busy != NULL){
-    fw_log(LOG_SYS_ERRUPDATE, busy);
+    fw_log(LOG_FW_FAIL, busy);
     return CMD_RUNERROR;
   }
   if (number == 1) return fw_rollback(cch);
@@ -2602,8 +2612,7 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   device.startWaitFWtime = 0;
   device.cchFWupdate = cch;
   fw_write_errors = 0;
-  sprintf(text, "%u", (unsigned)number);
-  fw_log(LOG_SYS_GOTOUPDATE, text);
+  fw_log(LOG_FW_START, NULL);
   /* Сервер: бит 11, блоки запрашивает контроллер, один срок на всю загрузку, всё переживает
      сброс. USB: блоки шлёт NextConfig. */
   if (cch != CH_USB){
@@ -2635,7 +2644,7 @@ static uint8_t fw_blocks_done(uint8_t crc_ok)
   device.status.readyToUpdate = 0;
   device.updateTimeout = 0;
   if (crc_ok) device.rebootToUpdate = 1;
-  else fw_log(LOG_SYS_ERRUPDATE, "CRC");
+  else fw_log(LOG_FW_FAIL, "CRC");
   if (device.cchFWupdate != CH_USB) user_saveindex();
   return crc_ok ? FW_BLOCK_OK : FW_BLOCK_END;
 }
@@ -2659,7 +2668,7 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   if (n != 1026u || block != device.FWblockIdx) return FW_BLOCK_BADFRAME;
   if (block == 0 && fw_image_foreign(&p[2], device.hardwareVersion)){
     fw_abort(NULL);
-    log_addSystemEvent(LOG_SYS_HWERRUPDATE);
+    fw_log(LOG_FW_FAIL, "HW");
     return FW_BLOCK_END;
   }
   /* Команда 19 стёрла область образа: пишем на место. Повторная запись тех же байт ничего не
@@ -2788,14 +2797,14 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         device.registredOnServer = 1;
         if (app_trial_active()){
           app_trial_confirm();
-          if (!app_trial_active()) log_addSystemEvent(LOG_SYS_ENDUPDATE);
+          if (!app_trial_active()) fw_log(LOG_FW_DONE, NULL);
         } // прошивка дошла до сервера - обновление подтверждено
         /* Неудачная установка или проба до этого старта: только журнал, версию сервер видит в
            статусе 2 (E122). */
         if (app_boot_error_unreported()){
           char reason[11];
           app_boot_error_text(reason);
-          fw_log(LOG_SYS_ERRUPDATE, reason);
+          fw_log(strcmp(reason, "TRIAL FAIL") == 0 ? LOG_FW_ROLLBACK : LOG_FW_FAIL, reason);
           app_boot_error_reported();
         }
         device.lmTimer = 5;
@@ -3395,7 +3404,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if ((len - 3) == 16){
         user_send_answer_comand(ptr[4], fw_start(&ptr[5], cch), cch, uniqId);
       } else{
-        fw_log(LOG_SYS_ERRUPDATE, "PARAM");
+        fw_log(LOG_FW_FAIL, "PARAM");
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
       }
       break;
@@ -4559,6 +4568,26 @@ bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt){
   
   if (id != NULL)
     memcpy(cell.ID, id, 10);
+  
+  return log_put(&cell);
+}
+
+// обновление FW: в аргументе 1 текущая версия - HW 1 байт, FW 2 байта, билд 4 байта,
+// в аргументе 2 код причины (Протокол2 E532, E533)
+bool log_addUpdateEvent(logUpdate_e num, uint32_t reason){
+  cellLog_s cell;
+  uint16_t fw = device.firmwareVersion; // device упакована: копируем через переменные
+  uint32_t build = device.buildDate;
+  
+  memset((uint8_t*)&cell, 0, sizeof(cellLog_s));
+  
+  cell.index = device.datetime;
+  cell.datetime = device.datetime;
+  cell.logType = (uint8_t)num;
+  cell.ID[0] = (char)device.hardwareVersion;
+  memcpy(&cell.ID[1], &fw, 2);
+  memcpy(&cell.ID[3], &build, 4);
+  cell.arg2 = reason;
   
   return log_put(&cell);
 }

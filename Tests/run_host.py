@@ -90,7 +90,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'device.FWinProgress = DV.FWinProgress;' in saved and 'device.updateTimeout = DV.updateTimeout;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
         reset=function(user,'user_factoryReset')
         assert reset.index('device.FWinProgress = 0;')<reset.index('user_setdefault();'),'factory reset cancels a download'
-        types=typedefs(source('structures.h'),'logSystem_e','logControl_e','cmdCode_e','dataChanel_e','bootFWparam_s')
+        types=typedefs(source('structures.h'),'logSystem_e','logControl_e','logUpdate_e','cmdCode_e','dataChanel_e','bootFWparam_s')
         defines='\n'.join(x for x in user.splitlines() if x.startswith('#define FW_'))+'\n'
         helpers=user[user.index('/* Режим обновления, бит 11 статуса 1'):user.index('// Разбор данных')]
         # Доработка: Кряжев А., 2026. Исполняем реальные участки цикла, не модель таймеров.
@@ -137,8 +137,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
         # Command 8: a requested output that did not switch answers 2, not success.
         assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
-        code=pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent'])
-        unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','cellLog_s')).replace('/* PRODUCTION */',code)
+        code=pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
+        unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','logUpdate_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='access':
         user=source('User/user_fun.c');st=source('structures.h')
         case=cases(user)
@@ -191,12 +191,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert all('strcmp(v, "%s") == 0'%c in gate for c in ('add','reset','setout','default')) and '"imei"' not in gate and '"status"' not in gate,'SMS control commands refused in update mode'
         call=user[user.index('bool user_incomingcall (char* num, uint8_t typ)'):user.index('void user_comanderror')]
         assert 'fw_update_quiet' not in call,'calls keep working in update mode'
-        # Update events of the journal sheet: 2 start (number or ROLLBACK), 3 just before the install
-        # restart, 4 trial confirmed, 5 always with its reason, 6 foreign board.
-        for ev,n in (('RUNUPDATE',1),('ENDUPDATE',1),('HWERRUPDATE',1),('GOTOUPDATE',0),('ERRUPDATE',0)):
-            assert user.count('log_addSystemEvent(LOG_SYS_%s);'%ev)==n,(ev,user.count('log_addSystemEvent(LOG_SYS_%s);'%ev))
-        assert user.count('fw_log(LOG_SYS_GOTOUPDATE, ')==2 and 'log_addSystemEvent(LOG_SYS_RUNUPDATE);\r\n        user_savereset();' in loop,'events 2 and 3'
-        assert 'app_trial_confirm();\r\n          if (!app_trial_active()) log_addSystemEvent(LOG_SYS_ENDUPDATE);' in case(1),'event 4 on confirmation'
+        # Update events of the journal sheet (system 1-5 struck out): 132 start, 133 failure with its
+        # reason code, 134 time limit, 135 just before the install restart, 136 trial confirmed, 137 rollback.
+        rest=user
+        for n in ('ENDIDUPDATE','ENDCONFUPDATE','ENDGROUPUPDATE','ENDSHEDULEUPDATE','ENDHOLLIDAYUPDATE'): rest=rest.replace('LOG_SYS_'+n,'')
+        assert 'UPDATE)' not in rest,'no system update events'
+        assert user.count('fw_log(LOG_FW_START, NULL);')==1 and 'fw_log(LOG_FW_INSTALL, NULL);\r\n        user_savereset();' in loop,'events 132 and 135'
+        assert 'app_trial_confirm();\r\n          if (!app_trial_active()) fw_log(LOG_FW_DONE, NULL);' in case(1),'event 136 on confirmation'
+        assert 'fw_log(strcmp(reason, "TRIAL FAIL") == 0 ? LOG_FW_ROLLBACK : LOG_FW_FAIL, reason);' in case(1),'bootloader result: 137 after a failed trial'
         assert '0x48570000+DOMOVOI_APP_HW' in source('CMSIS/STM32F10x/Source/startup_stm32f10x_md.s'),'board marker in the vector table'
         assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==2 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
         unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))

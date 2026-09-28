@@ -27,12 +27,8 @@
 // —истемное событи журнала
 typedef enum{
   LOG_SYS_DEFCONF = 0,
-  LOG_SYS_GOTOUPDATE,
-  LOG_SYS_RUNUPDATE,
-  LOG_SYS_ENDUPDATE,
-  LOG_SYS_ERRUPDATE,
-  LOG_SYS_HWERRUPDATE,
-  LOG_SYS_ENDIDUPDATE,
+  // 1-5 - резерв: обновление FW пишетс€ событи€ми 132-137
+  LOG_SYS_ENDIDUPDATE = 6,
   LOG_SYS_ENDCONFUPDATE,
   LOG_SYS_ENDGROUPUPDATE,
   LOG_SYS_ENDSHEDULEUPDATE,
@@ -88,6 +84,16 @@ typedef enum{
   LOG_CON_IDEXPIRED,      // 130 истекло врем€ действи€ ID (ѕротокол2, строка 284)
   LOG_CON_PASSCOUNT       // 131 значение счЄтчика проходов после управлени€ выходом
 }logControl_e;
+
+// обновление FW: в аргументе 1 текуща€ верси€, в аргументе 2 код причины (ѕротокол2 E532, E533)
+typedef enum{
+  LOG_FW_START = 132,     // начало загрузки новой FW
+  LOG_FW_FAIL,            // 133 сбой загрузки, операци€ отменена
+  LOG_FW_TIMEOUT,         // 134 загрузка остановлена по таймауту 10 минут
+  LOG_FW_INSTALL,         // 135 FW загружена, выполн€етс€ обновление
+  LOG_FW_DONE,            // 136 обновление завершено успешно
+  LOG_FW_ROLLBACK         // 137 откат FW
+}logUpdate_e;
 
 //  омандные и обменные событи€ контроллер в журнал не пишет: их ведЄт сервер
 // (ответы јлексе€ 16.09.2026, ѕротокол2 E525).

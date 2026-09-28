@@ -31,9 +31,8 @@ static void user_saveindex(void);
 static void wdt_reload(void){wdt++;}
 static int app_trial_active(void){return trial;}
 static int boot_manual_busy(void){return manual;}
-static struct{int num;char id[11];}logs[64];static unsigned nlogs;
-static bool log_addSystemEvent(logSystem_e num){CHECK(nlogs<64);logs[nlogs].num=num;logs[nlogs].id[0]=0;nlogs++;return true;}
-static bool log_addSystemEventID(logSystem_e num,char*id){CHECK(nlogs<64);logs[nlogs].num=num;memcpy(logs[nlogs].id,id,10);logs[nlogs].id[10]=0;nlogs++;return true;}
+static struct{int num;uint32_t reason;}logs[64];static unsigned nlogs;
+static bool log_addUpdateEvent(logUpdate_e num,uint32_t reason){CHECK(nlogs<64);logs[nlogs].num=num;logs[nlogs].reason=reason;nlogs++;return true;}
 static struct{uint8_t FWinProgress,rebootToUpdate,firmwarePercent,cchFWupdate,hardwareVersion,registredOnServer;
  uint16_t updateTimeout,FWblockIdx,FWblockCount;uint32_t startWaitFWtime;struct{uint16_t readyToUpdate:1;}status;}device;
 static void user_saveindex(void){saves++;saved_timeout=device.updateTimeout;}
@@ -44,7 +43,8 @@ static void fw_resume_after_boot(void);
 static uint8_t image[96*1024];
 static void reset(void){memset(flash,0xff,sizeof(flash));memset(&device,0,sizeof(device));device.hardwareVersion=139;device.registredOnServer=1;
  saves=torn=sent=trial=manual=nlogs=0;stuck=0xffffffffu;boot_ver=0x32;}
-static int last_log(int num,const char*id){return nlogs&&logs[nlogs-1].num==num&&!strcmp(logs[nlogs-1].id,id);}
+/* Update events carry a reason code (Protocol2 E533): the text names the reason, NULL - code 0. */
+static int last_log(int num,const char*reason){return nlogs&&logs[nlogs-1].num==num&&logs[nlogs-1].reason==fw_reason_code(reason);}
 static cmdCode_e start(uint16_t number,uint32_t build,uint32_t size,uint32_t crc,uint16_t blocks,dataChanel_e cch){
  uint8_t p[16];memcpy(p,&number,2);memcpy(p+2,&build,4);memcpy(p+6,&size,4);memcpy(p+10,&crc,4);memcpy(p+14,&blocks,2);return fw_start(p,cch);}
 static uint8_t block(uint16_t k,uint16_t n,dataChanel_e cch){static uint8_t p[1030];uint32_t i;memcpy(p,&k,2);
@@ -69,21 +69,21 @@ static void start_tests(void){uint32_t size=66716,crc;uint16_t blocks=66;
  CHECK(device.FWinProgress&&device.status.readyToUpdate&&device.updateTimeout==600&&device.cchFWupdate==CH_SERVER);
  CHECK(device.FWblockIdx==0&&device.FWblockCount==blocks&&device.firmwarePercent==0&&saves==1&&flash[5000]==0xff);
  {bootFWparam_s h;memcpy(&h,flash,sizeof(h));CHECK(h.appIdent==0xffffffffu&&h.firmwareVersion==71&&h.buildDate==1789600000&&h.firmwareSize==size&&h.firmwareCRC==crc&&h.hardwareVersion==139);}
- CHECK(last_log(LOG_SYS_GOTOUPDATE,"71"));
+ CHECK(last_log(LOG_FW_START,NULL));
  /* The same file again on the same channel carries on; the block is asked for at once. */
  device.FWblockIdx=9;device.startWaitFWtime=1234;saves=0;
  CHECK(start(71,1789600000,size,crc,blocks,CH_SERVER)==CMD_SUCCESS&&device.FWblockIdx==9&&!device.startWaitFWtime&&!saves);
  /* Another file, or the same file over USB, during the download: 2 "BUSY", nothing touched. */
- CHECK(start(72,1789600000,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"BUSY")&&device.FWblockIdx==9);
+ CHECK(start(72,1789600000,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"BUSY")&&device.FWblockIdx==9);
  CHECK(start(71,1789600000,size,crc,blocks,CH_USB)==CMD_RUNERROR&&device.FWinProgress&&device.cchFWupdate==CH_SERVER);
- CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"BUSY"));
+ CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"BUSY"));
  /* Bad fields: 1 "PARAM". */
- CHECK(start(0,1,4,1,1,CH_SERVER)==CMD_PARAMERROR&&last_log(LOG_SYS_ERRUPDATE,"PARAM"));
+ CHECK(start(0,1,4,1,1,CH_SERVER)==CMD_PARAMERROR&&last_log(LOG_FW_FAIL,"PARAM"));
  /* Not now: 2 with the reason, nothing erased. */
- reset();flash[5000]=0;boot_ver=0x21;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"OLD BOOT"));
- boot_ver=0x32;manual=1;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"BOOT BUSY"));
- manual=0;trial=1;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"IN TRIAL"));
- trial=0;device.rebootToUpdate=1;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"BUSY"));
+ reset();flash[5000]=0;boot_ver=0x21;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"OLD BOOT"));
+ boot_ver=0x32;manual=1;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"BOOT BUSY"));
+ manual=0;trial=1;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"IN TRIAL"));
+ trial=0;device.rebootToUpdate=1;CHECK(start(71,1,size,crc,blocks,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"BUSY"));
  CHECK(flash[5000]==0&&!device.FWinProgress&&!device.status.readyToUpdate);
  /* USB start: NextConfig sends the blocks; no bit 11, no timeout, nothing saved. */
  reset();CHECK(start(71,1,size,crc,blocks,CH_USB)==CMD_SUCCESS&&!device.FWinProgress&&!device.status.readyToUpdate&&!device.updateTimeout&&!saves&&device.cchFWupdate==CH_USB);
@@ -92,14 +92,14 @@ static void start_tests(void){uint32_t size=66716,crc;uint16_t blocks=66;
 static void rollback_tests(void){uint32_t size=66716;bootFWparam_s h;
  make_image(size);
  /* No backup: 2 "NO BACKUP". A backup failing its CRC: 2 "BAD BACKUP". */
- reset();CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"NO BACKUP")&&!device.rebootToUpdate);
+ reset();CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"NO BACKUP")&&!device.rebootToUpdate);
  memset(&h,0xff,sizeof(h));h.appIdent=0x4E465744u;h.hardwareVersion=139;h.firmwareVersion=70;h.firmwareSize=size;h.firmwareCRC=stm_crc(image,size)^1u;h.buildDate=1789000000u;
  memcpy(flash+135168,&h,sizeof(h));memcpy(flash+135168+0x200,image,size);
- CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_SYS_ERRUPDATE,"BAD BACKUP")&&!device.rebootToUpdate);
+ CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"BAD BACKUP")&&!device.rebootToUpdate);
  /* A good backup is staged in the image area with its magic erased, bit 11 set, restart requested. */
  h.firmwareCRC^=1u;memcpy(flash+135168,&h,sizeof(h));flash[100]=0;
  CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_SUCCESS&&device.rebootToUpdate&&device.status.readyToUpdate&&device.cchFWupdate==CH_SERVER);
- CHECK(!memcmp(flash+4,flash+135168+4,size+0x200-4)&&!memcmp(flash,"\xff\xff\xff\xff",4)&&last_log(LOG_SYS_GOTOUPDATE,"ROLLBACK"));
+ CHECK(!memcmp(flash+4,flash+135168+4,size+0x200-4)&&!memcmp(flash,"\xff\xff\xff\xff",4)&&last_log(LOG_FW_ROLLBACK,NULL));
  puts("rollback: no backup, bad backup, staged copy with the magic erased");}
 
 static void download(uint32_t size,uint16_t blocks,uint32_t crc){reset();
@@ -135,7 +135,7 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  /* A byte that never programs: 254 twice, then 253 and "WRITE", the download is over. */
  stuck=0x200+3*1024+10;nlogs=0;
  CHECK(block(3,1026,CH_SERVER)==FW_BLOCK_BADWRITE&&block(3,1026,CH_SERVER)==FW_BLOCK_BADWRITE);
- CHECK(block(3,1026,CH_SERVER)==FW_BLOCK_END&&last_log(LOG_SYS_ERRUPDATE,"WRITE")&&!device.FWinProgress&&!device.status.readyToUpdate);
+ CHECK(block(3,1026,CH_SERVER)==FW_BLOCK_END&&last_log(LOG_FW_FAIL,"WRITE")&&!device.FWinProgress&&!device.status.readyToUpdate);
  CHECK(block(4,1026,CH_SERVER)==FW_BLOCK_END);
  /* Errors do not add up across good blocks. */
  download(size,blocks,crc);torn=1;CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_BADWRITE);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK);
@@ -143,10 +143,10 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  torn=1;CHECK(block(2,1026,CH_SERVER)==FW_BLOCK_BADWRITE);CHECK(block(2,1026,CH_SERVER)==FW_BLOCK_OK);
  /* A foreign board in block 0: 253 and event 6, nothing written. */
  download(size,blocks,crc);image[0x20]=0x0B;CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_END);image[0x20]=0x8B;
- CHECK(nlogs&&logs[nlogs-1].num==LOG_SYS_HWERRUPDATE&&!device.FWinProgress&&!device.status.readyToUpdate&&flash[0x200+0x20]==0xff);
+ CHECK(last_log(LOG_FW_FAIL,"HW")&&!device.FWinProgress&&!device.status.readyToUpdate&&flash[0x200+0x20]==0xff);
  /* A bad image CRC after the last block: 253 and "CRC", no install. */
  download(size,blocks,crc^1u);for(k=0;k+1<blocks;k++)CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
- CHECK(block(blocks-1,1026,CH_SERVER)==FW_BLOCK_END&&last_log(LOG_SYS_ERRUPDATE,"CRC")&&!device.rebootToUpdate&&!device.status.readyToUpdate);
+ CHECK(block(blocks-1,1026,CH_SERVER)==FW_BLOCK_END&&last_log(LOG_FW_FAIL,"CRC")&&!device.rebootToUpdate&&!device.status.readyToUpdate);
  /* USB: blocks from NextConfig, the same codes. */
  reset();CHECK(start(71,1,size,crc,blocks,CH_USB)==CMD_SUCCESS);for(k=0;k<blocks;k++)CHECK(block(k,1026,CH_USB)==FW_BLOCK_OK&&!device.updateTimeout);
  CHECK(device.rebootToUpdate&&!saves);
@@ -160,7 +160,7 @@ static void end_tests(void){
  download(66716,66,1);saves=0;sent=0;fw_end("TIMEOUT",7);
  CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&!device.updateTimeout&&!device.FWblockIdx&&!device.FWblockCount&&saves==1);
  CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_END);
- CHECK(sent==1&&sent_code==FW_BLOCK_END&&sent_cch==CH_SERVER&&last_log(LOG_SYS_ERRUPDATE,"TIMEOUT"));
+ CHECK(sent==1&&sent_code==FW_BLOCK_END&&sent_cch==CH_SERVER&&last_log(LOG_FW_TIMEOUT,"TIMEOUT"));
  download(66716,66,1);device.registredOnServer=0;sent=0;fw_end("TIMEOUT",7);CHECK(!sent&&!device.FWinProgress);
  /* Bit 11 is the update mode. */
  device.status.readyToUpdate=0;CHECK(!fw_update_quiet());device.status.readyToUpdate=1;CHECK(fw_update_quiet());
@@ -229,7 +229,7 @@ static void slow_server_tests(void){
  }
  CHECK(!device.FWinProgress&&!device.rebootToUpdate&&!device.status.readyToUpdate);
  /* fw_abort() обнуляет счётчик блоков, поэтому считаем принятые сами. */
- CHECK(sent_code==FW_BLOCK_END&&last_log(LOG_SYS_ERRUPDATE,"TIMEOUT"));
+ CHECK(sent_code==FW_BLOCK_END&&last_log(LOG_FW_TIMEOUT,"TIMEOUT"));
  printf("slow server: %u of 68 blocks in 600 s at 15 s each\n",k);CHECK(k==39);
  /* Тот же образ при быстрой отдаче укладывается в срок с большим запасом. */
  reset();audit_ms=1000;CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
