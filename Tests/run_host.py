@@ -205,6 +205,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'fw_log(strcmp(reason, "TRIAL FAIL") == 0 ? LOG_FW_ROLLBACK : LOG_FW_FAIL, reason);' in case(1),'bootloader result: 137 after a failed trial'
         assert '0x48570000+DOMOVOI_APP_HW' in source('CMSIS/STM32F10x/Source/startup_stm32f10x_md.s'),'board marker in the vector table'
         assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==2 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
+        # Release_140 - old MODEM board (IP_v3): the marker and the C code both see 140, PA0 stays an input
+        assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=140</state>')==2,'Release_140 defines the board for assembler and C'
+        assert '#if DOMOVOI_APP_HW == 140' in source('board.h') and '#if DOMOVOI_APP_HW == 140' in source('board.c'),'IP_v3 keeps PA0 (RS232 CTS) an input'
         unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))
     elif kind=='serverrx':
         user=source('User/user_fun.c')

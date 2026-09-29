@@ -3587,6 +3587,7 @@
           <state>USE_STDPERIPH_DRIVER</state>
           <state>BOOTLOADER</state>
           <state>BOOT_BOARD_MODEM</state>
+          <state>BOOT_HW_VERSION=140</state>
         </option>
         <option>
           <name>CCPreprocFile</name>

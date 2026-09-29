@@ -10,6 +10,13 @@
 /*************************************************************************/
 
 #define DEVICETYPE                       (uint8_t)0x8b
+
+// Номер платы в образе задаёт конфигурация проекта IAR (DOMOVOI_APP_HW):
+// 139 - плата v5, 140 - старая плата MODEM (схема ДОМОВОЙ IP_v3).
+// Доработка: Кряжев А., 2026
+#ifndef DOMOVOI_APP_HW
+#define DOMOVOI_APP_HW                   139
+#endif
 #define FWBLOCK_OFFSET                  (uint32_t)0x200 /* 512*/
 #define BOOTLOADERSIZE                  (uint32_t)0x8000 /* 32768 байт*/
 #define CPU_ENDMEMORYADDRESS            (uint32_t)0x0801ffff
@@ -46,9 +53,17 @@
 #define OUT1_OFF	GPIOB->BRR = GPIO_Pin_3 
 #define OUT1_IN         ((GPIOB->ODR & GPIO_Pin_3) != (uint32_t)Bit_RESET)
 
+#if DOMOVOI_APP_HW == 140
+// На IP_v3 второго реле нет: PA0 - выход CTS микросхемы RS232 (DD4),
+// включать его выходом нельзя. Доработка: Кряжев А., 2026
+#define OUT2_ON         ((void)0)
+#define OUT2_OFF        ((void)0)
+#define OUT2_IN         0
+#else
 #define OUT2_ON 	GPIOA->BSRR = GPIO_Pin_0  
 #define OUT2_OFF	GPIOA->BRR = GPIO_Pin_0
 #define OUT2_IN         ((GPIOA->ODR & GPIO_Pin_0) != (uint32_t)Bit_RESET)
+#endif
 
 #define BOOT_PIN        ((GPIOA->IDR & GPIO_Pin_13) == (uint32_t)Bit_RESET) /* ножка swdio */
 

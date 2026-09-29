@@ -113,7 +113,8 @@ int manual_platform_supported(void) {
 }
 /* Эта прошивка собирается только для платы v5 (HW 139). Загрузчик MINI (HW 11) управляет
  * другими выводами: кнопкой, подтяжкой USB и выбором SPI. */
-int manual_board_hw(uint8_t hw) {return hw==139u;}
+/* Сборка для старой платы MODEM (140) принимает только свой загрузчик. Доработка: Кряжев А., 2026 */
+int manual_board_hw(uint8_t hw) {return hw==(uint8_t)DOMOVOI_APP_HW;}
 int manual_stage_read(uint32_t off,void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
  mem_read(BOOT_CANDIDATE+off,data,n);return 1;
