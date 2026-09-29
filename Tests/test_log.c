@@ -14,6 +14,7 @@ static cellLog_s last;
 static unsigned added;
 static cellLog_s written[64];
 static bool log_addEvent(cellLog_s *cl) { last = *cl; if (added < 64) written[added] = *cl; added++; return true; }
+static bool id_endScan; /* use time ends of user_fun.c, recounted on new time */
 /* PRODUCTION */
 
 /* Event journal sheet of the protocol table, column A: the number the server reads in logType. */
@@ -43,8 +44,9 @@ static const struct { int value, sheet; const char *name; } table[] = {
   {LOG_CON_OUTONBYAVTO, 73, "output by plate"}, {LOG_CON_OUTONBYTEST, 74, "server command: admin test"},
   {LOG_CON_OUTONBYAPI, 75, "server command: API"}, {LOG_CON_OUTONBYVOICE, 76, "server command: voice assistant"},
   {LOG_CON_OUTONBYAPP, 77, "server command: mobile app"}, {LOG_CON_RECVIDONREADER, 78, "ID from reader"},
-  {LOG_CON_PHOTOFIX, 129, "photo"}, {LOG_CON_IDEXPIRED, 130, "ID use time expired"},
+  {LOG_CON_PHOTOFIX, 129, "photo"},
   {LOG_CON_PASSCOUNT, 131, "pass counter"},
+  {LOG_CON_IDTIMEEND, 138, "ID use time ended"}, {LOG_CON_IDTIMESTART, 139, "ID use time started"},
   {LOG_FW_START, 132, "FW download started"}, {LOG_FW_FAIL, 133, "FW download failed"},
   {LOG_FW_TIMEOUT, 134, "FW download time limit"}, {LOG_FW_INSTALL, 135, "FW downloaded, installing"},
   {LOG_FW_DONE, 136, "FW update done"}, {LOG_FW_ROLLBACK, 137, "FW rollback"},

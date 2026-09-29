@@ -113,9 +113,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert '#define REG_UNKNOWN_IMEI        4' in user and '#define REG_NOT_BOUND           5' in user and 'case REG_UNKNOWN_IMEI:' in case(1) and 'case REG_NOT_BOUND:' in case(1) and 'CMD_UNDEFIMEI' not in case(1),'registration answers'
         assert function(user,'user_parse_comand').count('CMD_RUNNING')==1 and 'CMD_RUNNING' not in case(2),'no code 5 for delayed reset'
         assert 'device.protocolVersion = DV.protocolVersion;' not in user,'protocol version is constant'
-        # Protokol2 row 284: an expired ID does not open and logs 130; a sync of the same card keeps the first pass.
-        assert 'if (id_expired(&cellId)){' in user and 'log_addControlEvent(LOG_CON_IDEXPIRED, id, 255);' in user,'use time expired'
-        assert 'if (keep) memcpy(old->reserve, first, 4);' in case(13) and 'memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0' in case(13),'use time kept on sync'
+        # Protokol2 row 284: an expired ID does not open, 130 is gone (138 tells the end); a sync of the same card
+        # keeps the first pass and the 138 mark; the end is checked every second and recounted on new server time.
+        assert 'if (id_expired(&cellId)){' in user and 'LOG_CON_IDEXPIRED' not in user,'use time expired'
+        assert 'id_watch_end(id_time_end(old));' in case(13) and 'user_checkIdTimeEnd();' in user and 'id_endScan = true;' in function(user,'log_setTime'),'use time end checked'
+        assert 'if (keep){ memcpy(old->reserve, first, 4); old->reserve[6] = done; }' in case(13) and 'memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0' in case(13),'use time kept on sync'
         assert 'log_addControlEvent(server_out_event, id, cnt);' in function(user,'user_activateOut'),'server event from its source'
         # Journal sheet 131: after every pass of an ID with limited passes; 129: photo number when the photo is stored.
         assert 'if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);' in function(user,'user_activateOut'),'pass counter event'
@@ -175,7 +177,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'user_reloadPassCounter' not in user and 'id_set_pass_day(old, id_today());' in cases(user)(13),'passes per day'
         code=re.search(r'(?m)^static uint16_t id_cells_end;',user).group(0)+'\n'
         code+=user[user.index('/* >>> время действия ID'):user.index('/* <<< проходы в сутки */')]
-        code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_activateOut'])
+        code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_checkIdTimeEnd','user_activateOut'])
         unit=(ROOT/'Tests/test_access.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='rules':
         user=source('User/user_fun.c')

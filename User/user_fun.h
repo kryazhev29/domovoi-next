@@ -135,6 +135,7 @@ uint16_t user_getTempIDRecordsCount(void);
 bool user_checkShedule(uint8_t shd);
 // обновить данные ID
 void user_updateID(cellID_s *c);
+void user_checkIdTimeEnd(void);
 
 // очистить буфер журнала
 void log_clearLogBuffer(void);

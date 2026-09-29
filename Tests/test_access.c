@@ -121,6 +121,32 @@ int main(void)
     device.datetime = 1789700119u; CHECK(!id_expired(&c));
     device.datetime = 1789700120u; CHECK(id_expired(&c));
     c.useTime = 0; CHECK(!id_expired(&c)); }
+  /* 139 on the first pass, 138 once at the end if it falls on the day of the first pass;
+     an end after 23:59:59 or on an earlier day is left to the server (29.09.2026). */
+  { cellID_s c; const uint32_t day = 1789700000u / ONE_DAY * ONE_DAY, t0 = day + 3600;
+    cellID_s *f = &((cellID_s*)flash)[6];
+    memset(flash, 0xff, sizeof(flash)); put(7, "7900000007", 255, 255);
+    f->useTime = 2; memset(f->reserve, 0, 10); user_getNumbersCount();
+    device.datetime = t0; id_endScan = false; id_nextEnd = 0;
+    clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007") && nlogs == 2 && log_num == LOG_CON_IDTIMESTART);
+    CHECK(id_nextEnd == t0 + 120);
+    clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007") && nlogs == 1 && log_num == LOG_CON_OUTONBYPHONE);
+    clear_outs(); device.datetime = t0 + 119; user_checkIdTimeEnd(); CHECK(nlogs == 0);
+    clear_outs(); device.datetime = t0 + 120; user_checkIdTimeEnd(); CHECK(nlogs == 1 && log_num == LOG_CON_IDTIMEEND && f->reserve[6] == ID_TIME_DONE && id_nextEnd == 0);
+    clear_outs(); id_endScan = true; device.datetime = t0 + 121; user_checkIdTimeEnd(); CHECK(nlogs == 0);
+    /* restart the same day before the end was reported: the scan finds it */
+    f->reserve[6] = 0; clear_outs(); id_endScan = true; user_checkIdTimeEnd(); CHECK(nlogs == 1 && log_num == LOG_CON_IDTIMEEND);
+    /* restart on a later day: nothing, nothing written */
+    f->reserve[6] = 0; clear_outs(); id_endScan = true; device.datetime = t0 + ONE_DAY; user_checkIdTimeEnd();
+    CHECK(nlogs == 0 && f->reserve[6] == 0 && id_nextEnd == 0);
+    /* the first pass at 23:59: the end is tomorrow, no 138, the ID still stops */
+    memset(f->reserve, 0, 10); device.datetime = day + ONE_DAY - 60; id_endScan = false; id_nextEnd = 0;
+    clear_outs(); CHECK(user_activateOut(true, false, CT_PHONE, "7900000007") && log_num == LOG_CON_IDTIMESTART && id_nextEnd == 0);
+    clear_outs(); id_endScan = true; device.datetime = day + ONE_DAY + 60; user_checkIdTimeEnd(); CHECK(nlogs == 0);
+    CHECK(user_findID("7900000007", &c) && id_expired(&c));
+    /* no server time: no scan */
+    clear_outs(); id_endScan = true; device.datetime = 1000; user_checkIdTimeEnd(); CHECK(nlogs == 0 && id_endScan);
+    device.datetime = 0; }
   /* Passes per day: the first pass of a new day restores the limit, the day of the last pass is kept
      in bytes 4-5 of the reserve. An unknown day (no server time, or the record from the server)
      takes the counter as it is, a refused pass still marks the day (28.09.2026). */

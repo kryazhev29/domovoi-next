@@ -894,6 +894,7 @@ void user_loop(void)
     device.worktime++; // время работы от момента включения, в секундах
     device.datetime++; // внутренние часы
     log_checkPending(); // события, ждущие времени от сервера
+    user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
     // вычислим день недели, час и минуту
     device.day = user_getweakday(device.datetime);
     device.hour = div(div(device.datetime, 86400).rem, 3600).quot;
@@ -2390,8 +2391,15 @@ void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
 /* >>> время действия ID
  * Протокол2, строка 284: через useTime минут после первого прохода ID помечается на удаление -
  * больше не открывает. Время первого прохода контроллер хранит в первых 4 байтах резерва записи
- * ID (сервер шлёт там нули) и отсчитывает только по времени сервера (18.09.2026). */
+ * ID (сервер шлёт там нули) и отсчитывает только по времени сервера (18.09.2026).
+ * Первый проход пишет событие 139. Если время закончилось в те же сутки, в момент окончания
+ * пишется 138, один раз: отметка в байте 6 резерва. Закончилось позже 23:59:59 - события нет,
+ * ID удаляет сервер (Алексей, 29.09.2026). Ближайшее окончание держится в ОЗУ, база
+ * перечитывается только к нему, при старте и при новом времени от сервера. */
 #define ID_TIME_VALID 1600000000u // раньше этого времени часы ещё не получены от сервера
+#define ID_TIME_DONE  0x38u       // резерв[6]: событие 138 записано
+static uint32_t id_nextEnd;       // ближайшее окончание в сутки первого прохода, 0 - нет
+static bool id_endScan = true;    // перечитать базу: старт, новое время от сервера
 static uint32_t id_first_pass(cellID_s *c){
   uint32_t t;
   memcpy(&t, c->reserve, 4);
@@ -2403,6 +2411,16 @@ static void id_set_first_pass(cellID_s *c, uint32_t t){
 static bool id_expired(cellID_s *c){
   uint32_t first = id_first_pass(c);
   return c->useTime != 0 && first != 0 && device.datetime >= first + (uint32_t)c->useTime * 60u;
+}
+// окончание времени действия, если оно в сутки первого прохода и 138 ещё не записано; иначе 0
+static uint32_t id_time_end(cellID_s *c){
+  uint32_t first = id_first_pass(c), end;
+  if (c->useTime == 0 || first == 0 || c->reserve[6] == ID_TIME_DONE) return 0;
+  end = first + (uint32_t)c->useTime * 60u;
+  return (end / ONE_DAY == first / ONE_DAY) ? end : 0;
+}
+static void id_watch_end(uint32_t end){
+  if (end != 0 && (id_nextEnd == 0 || end < id_nextEnd)) id_nextEnd = end;
 }
 /* <<< время действия ID */
 
@@ -3145,12 +3163,14 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                сбрасывает - сервер рассылает карточку после каждого прохода (счётчик), и
                время действия иначе начиналось бы заново. */
             cellID_s *old = (cellID_s*)(membfr + cellNum);
-            uint8_t first[4];
+            uint8_t first[4], done;
             bool keep = (old->index != 0xffff) && (memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0);
             memcpy(first, old->reserve, 4);
+            done = old->reserve[6];
             memcpy(membfr + cellNum, &ptr[(i*sizeof(cellID_s)) + 10], sizeof(cellID_s));
-            if (keep) memcpy(old->reserve, first, 4);
+            if (keep){ memcpy(old->reserve, first, 4); old->reserve[6] = done; }
             id_set_pass_day(old, id_today()); // остаток с сервера - на текущие сутки
+            id_watch_end(id_time_end(old));   // сервер мог изменить время действия
           }
           cnt++;
         }
@@ -3901,12 +3921,11 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 #endif         
         return;
       }
-      // время действия истекло (строка 284): не открываем, в журнал событие 130
+      // время действия истекло (строка 284): не открываем; об окончании уже сообщило событие 138
       if (id_expired(&cellId)){
 #ifdef DEBUG_USER
     user_debug(">>U Check ID: Use time expired\r\n");
 #endif
-        log_addControlEvent(LOG_CON_IDEXPIRED, id, 255);
         return;
       }
             
@@ -4072,6 +4091,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 
   // проверим счетчик проходов
   uint8_t cnt = 255;
+  bool started = false;
   cellID_s cellId;
   /* Проходы считаются только по заданному ID. Команда 8 без ID (короткий пакет) открывает
      по настройкам реле: пустой ID совпадал с ячейкой базы, где ID из нулей, и по её счётчику
@@ -4095,7 +4115,8 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
     // первый проход ID со временем действия - начало отсчёта
     if (cellId.useTime != 0 && id_first_pass(&cellId) == 0 && device.datetime >= ID_TIME_VALID){
       id_set_first_pass(&cellId, device.datetime);
-      save = true;
+      id_watch_end(id_time_end(&cellId));
+      started = save = true;
     }
     if (save) user_updateID(&cellId);
   }
@@ -4124,6 +4145,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
   }
   // проходы ограничены: сервер раздаёт остаток остальным контроллерам объекта
   if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);
+  if (started) log_addControlEvent(LOG_CON_IDTIMESTART, id, 255);
 
   for (out = 0; out < 2; out++){
     if (!run[out]) continue;
@@ -4253,6 +4275,40 @@ uint16_t user_getNumbersCount(void){
   }
 
   return cnt;
+}
+
+/* Окончание времени действия ID (Протокол2, строка 284): событие 138, если время вышло в сутки
+ * первого прохода. Окончание прошлых суток (контроллер был выключен) не сообщается - такой ID
+ * уже удаляет сервер. */
+void user_checkIdTimeEnd(void){
+
+  uint32_t adr, end;
+  uint32_t endAdr = mem[MB_ID].start + (uint32_t)id_cells_end * sizeof(cellID_s);
+  uint8_t tbuffer[1024];
+  cellID_s *c;
+
+  if (device.datetime < ID_TIME_VALID) return;
+  if (!id_endScan && (id_nextEnd == 0 || device.datetime < id_nextEnd)) return;
+  id_endScan = false;
+  id_nextEnd = 0;
+  for (adr = mem[MB_ID].start; adr < endAdr; adr += 1024){
+    mem_read(adr, tbuffer, 1024);
+    for (uint16_t a = 0; a < 1024 && adr + a < endAdr; a += sizeof(cellID_s)){
+      c = (cellID_s*)&tbuffer[a];
+      if (c->index == 0xffff) continue;
+      end = id_time_end(c);
+      if (end == 0) continue;
+      if (device.datetime < end){
+        id_watch_end(end);
+        continue;
+      }
+      if (end / ONE_DAY != device.datetime / ONE_DAY) continue;
+      c->reserve[6] = ID_TIME_DONE;
+      user_updateID(c);
+      log_addControlEvent(LOG_CON_IDTIMEEND, c->ID, 255);
+    }
+    wdt_reload();
+  }
 }
 
 // получаем кол-во ID во временном буфере и тут же обновляем адрес записи
@@ -4493,6 +4549,7 @@ void log_flushPending(void){
 void log_setTime(uint32_t now){
   uint8_t i;
   device.datetime = now;
+  id_endScan = true; // окончания времени действия ID считаются от этих часов
   for (i = 0; i < log_pendingCount; i++){
     log_pending[i].datetime = now - (device.worktime - log_pendingAt[i]);
     log_pending[i].index = log_pending[i].datetime;
