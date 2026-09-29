@@ -20,7 +20,7 @@ void board_init (void)
 
   // Выходы Push-Pull
   // USB_PULLUP, OUT2
-#if DOMOVOI_APP_HW == 140
+#ifdef BOARD_IP_V3
   // IP_v3: PA0 - выход микросхемы RS232, остаётся входом. Доработка: Кряжев А., 2026
   GPIO_InitStruct.GPIO_Pin = GPIO_Pin_8;
 #else

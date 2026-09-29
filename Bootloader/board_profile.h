@@ -2,7 +2,7 @@
 #ifndef BOOT_BOARD_PROFILE_H
 #define BOOT_BOARD_PROFILE_H
 /* Ќазначение выводов по присланным исходникам v5 и RELEASE_ON_MINI/MODEM_PCB. —тарые номера
- * железа сохранены: MINI=11, v5=139, MODEM=140 (с 29.09.2026 свой номер,  р€жев ј.). Ёти номера различают не все ревизии плат. */
+ * железа сохранены: MINI=11, MODEM/v5=139. Ёти номера различают не все ревизии плат. */
 #ifdef BOOT_BOARD_MINI
 #define BOOT_CS_PORT GPIOA
 #define BOOT_CS_PIN GPIO_Pin_4

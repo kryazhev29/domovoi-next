@@ -1,6 +1,7 @@
 Debug/
 Release/
 Release_140/
+Release_IPv3/
 **/build/
 *.dep
 *.pbi

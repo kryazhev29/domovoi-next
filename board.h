@@ -12,7 +12,8 @@
 #define DEVICETYPE                       (uint8_t)0x8b
 
 // Номер платы в образе задаёт конфигурация проекта IAR (DOMOVOI_APP_HW):
-// 139 - плата v5, 140 - старая плата MODEM (схема ДОМОВОЙ IP_v3).
+// 139 - плата v5 и старая плата MODEM; сборка для старой MODEM (схема ДОМОВОЙ IP_v3)
+// задаёт BOARD_IP_V3.
 // Доработка: Кряжев А., 2026
 #ifndef DOMOVOI_APP_HW
 #define DOMOVOI_APP_HW                   139
@@ -53,7 +54,7 @@
 #define OUT1_OFF	GPIOB->BRR = GPIO_Pin_3 
 #define OUT1_IN         ((GPIOB->ODR & GPIO_Pin_3) != (uint32_t)Bit_RESET)
 
-#if DOMOVOI_APP_HW == 140
+#ifdef BOARD_IP_V3
 // На IP_v3 второго реле нет: PA0 - выход CTS микросхемы RS232 (DD4),
 // включать его выходом нельзя. Доработка: Кряжев А., 2026
 #define OUT2_ON         ((void)0)

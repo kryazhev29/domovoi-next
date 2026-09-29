@@ -15,8 +15,7 @@ for o in cfg.findall('.//option'):
   includes += ['-I'+str(Path((s.text or '').replace('$PROJ_DIR$',str(B)))) for s in o.findall('state')]
 flags=['-mcpu=cortex-m3','-mthumb','-Os','-g','-std=c99','-ffunction-sections','-fdata-sections','-Wall','-Wextra','-Wno-unused-parameter','-DSTM32F10X_MD','-DUSE_STDPERIPH_DRIVER','-DBOOTLOADER']
 if profile=='mini':flags+=['-DBOOT_BOARD_MINI','-DBOOT_HW_VERSION=11']
-# old MODEM board (IP_v3) has its own number 140: the server and NextConfig tell it from v5 (139)
-if profile=='modem':flags+=['-DBOOT_BOARD_MODEM','-DBOOT_HW_VERSION=140']
+if profile=='modem':flags+=['-DBOOT_BOARD_MODEM']
 objects=[]
 for node in root.findall('file/name'):
  source=Path(node.text.replace('$PROJ_DIR$',str(B)))
