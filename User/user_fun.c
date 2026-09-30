@@ -436,6 +436,7 @@ static uint32_t server_rx_last = 0;
  * Доработка: Кряжев А., 2026 */
 static uint8_t server_rx_defer = 0;
 static uint16_t server_rx_ready = 0; // длина готового кадра в начале буфера, 0 - нет
+static uint8_t server_rx_busy = 0;   // идёт разбор кадра из начала буфера: новые байты только копятся
 void server_rx_process(void);
 
 static void server_rx_reset(void)
@@ -454,7 +455,7 @@ static void server_rx_consume(uint16_t n)
 static void server_rx_scan(void)
 {
   uint16_t body, total, crc;
-  while (server_rx_count && !server_rx_ready){
+  while (server_rx_count && !server_rx_ready && !server_rx_busy){
     if (memcmp(server_rx_buffer, "SLDN", server_rx_count < 4 ? server_rx_count : 4)){
       server_rx_consume(1);
       continue;
@@ -503,10 +504,13 @@ void server_rx_process(void)
 {
   uint16_t total;
   server_rx_defer = 0;
+  if (server_rx_busy) return; // вызов изнутри разбора: кадры выполнит внешний цикл
   while (server_rx_ready){
     total = server_rx_ready;
     server_rx_ready = 0;
+    server_rx_busy = 1;
     user_parse_comand(server_rx_buffer + 4, CH_SERVER);
+    server_rx_busy = 0;
     // Разбор мог закрыть соединение и сбросить буфер.
     if (server_rx_count < total) break;
     server_rx_consume(total);
