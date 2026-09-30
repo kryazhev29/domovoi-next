@@ -71,6 +71,7 @@ class CameraApp:
         self.output = tk.StringVar(value=str(output or default_output()))
         self.status = tk.StringVar(value='Выберите COM-порт адаптера и нажмите «Проверить связь» или «Снимок».')
         self.counter = tk.StringVar(value='Снимков: 0')
+        self.source_note = tk.StringVar(value='Устройство не выбрано')
         self.count = 0
         root.title('Камера COM — ДОМОВОЙ NEXT / C328')
         root.geometry('1120x800')
@@ -112,6 +113,9 @@ class CameraApp:
         ttk.Label(buttons, textvariable=self.counter).pack(side='right', padx=15)
         info = ttk.Frame(root)
         info.grid(row=2, column=0, sticky='ew', padx=12, pady=6)
+        self.source_label = ttk.Label(info, textvariable=self.source_note,
+                                      font=('Segoe UI', 11, 'bold'), wraplength=1050)
+        self.source_label.pack(anchor='w', pady=(0, 4))
         self.status_label = ttk.Label(info, textvariable=self.status, wraplength=1050)
         self.status_label.pack(anchor='w')
         self.progress = ttk.Progressbar(info, maximum=100)
@@ -140,8 +144,26 @@ class CameraApp:
         self.editable = [self.port_box, self.refresh_button, self.baud_box,
                          self.interval_box, self.output_box, self.folder_button]
         self.refresh_ports()
+        self.port.trace_add('write', self.source_changed)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.after_id = root.after(40, self.process_events)
+
+    def source_changed(self, *_):
+        demo = self.port.get() == DEMO
+        device = self.port.get().strip().upper()
+        self.source_note.set('ДЕМО — тестовое изображение из эмулятора, без подключения камеры'
+                             if demo else f'Камера через {device}' if device else 'Устройство не выбрано')
+        self.source_label.configure(foreground='#a34d00' if demo else '#155da0')
+        self.root.title('Камера COM — ДОМОВОЙ NEXT / C328' + (' [ДЕМО]' if demo else ''))
+        self.count = 0
+        self.counter.set('Тестовых снимков: 0' if demo else 'Снимков: 0')
+        self.last_file = None
+        self.preview_image = None
+        self.preview.configure(image='', text='Тестовый JPEG появится после нажатия «Снимок».'
+                               if demo else 'Снимок с выбранной камеры пока не получен.')
+        self.filename.configure(text='')
+        self.progress['value'] = 0
+        self.status.set('Выбран деморежим.' if demo else 'Нажмите «Снимок», чтобы получить фотографию с камеры.')
 
     def refresh_ports(self):
         try:
@@ -221,6 +243,8 @@ class CameraApp:
             while True:
                 if mode == 'sync':
                     client.synchronize()
+                    emit('stage', 'ДЕМО: эмулятор отвечает. «Снимок» покажет тестовое изображение.'
+                         if name == DEMO else 'Связь с C328 установлена. Для фотографии нажмите «Снимок».')
                     break
                 self.events.put(('progress', (0, 1)))
                 data = client.capture()
@@ -229,9 +253,11 @@ class CameraApp:
                 path = save_jpeg(data, output, 'DEMO' if name == DEMO else name.upper())
                 emit('photo', path)
                 if mode != 'cycle':
-                    emit('stage', f'Готово: {len(data)} байт. COM-порт освобождён.')
+                    emit('stage', f'ДЕМО: сохранён тестовый JPEG, {len(data)} байт.' if name == DEMO
+                         else f'Снимок с {name.upper()} сохранён: {len(data)} байт. COM-порт освобождён.')
                     break
-                emit('stage', f'Снимок сохранён. Следующий опрос через {interval:g} с…')
+                emit('stage', ('ДЕМО: тестовый JPEG сохранён. ' if name == DEMO else 'Снимок сохранён. ')
+                     + f'Следующий опрос через {interval:g} с…')
                 if self.stop_event.wait(interval):
                     raise Cancelled('Остановлено пользователем')
         except Cancelled as error:
@@ -266,7 +292,7 @@ class CameraApp:
     def show_photo(self, path):
         self.last_file = path
         self.count += 1
-        self.counter.set(f'Снимков: {self.count}')
+        self.counter.set(('Тестовых снимков: ' if self.port.get() == DEMO else 'Снимков: ') + str(self.count))
         self.filename.configure(text=str(path))
         if Image is None:
             self.preview.configure(text='JPEG сохранён. Для просмотра откройте папку снимков.\n'

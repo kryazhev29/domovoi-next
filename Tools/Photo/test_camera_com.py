@@ -180,6 +180,7 @@ class WindowTests(unittest.TestCase):
             self.app.worker.join(3)
             self.assertFalse(self.app.worker.is_alive())
         self.root.after_cancel(self.app.after_id)
+        self.root.update_idletasks()
         self.root.destroy()
         self.temp.cleanup()
 
@@ -205,6 +206,23 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(str(self.app.stop_button['state']), 'disabled')
         self.assertTrue((Path(self.temp.name) / 'camera_com.log').exists())
         self.assertFalse(list(Path(self.temp.name).glob('*.part')))
+        self.assertIn('ДЕМО', self.app.status.get())
+        self.assertIn('тестовое', self.app.source_note.get())
+        self.assertEqual(self.app.counter.get(), 'Тестовых снимков: 1')
+        self.app.port.set('COM7')
+        self.assertIsNone(self.app.last_file)
+        self.assertIsNone(self.app.preview_image)
+        self.assertEqual(self.app.count, 0)
+        self.assertNotIn('ДЕМО', self.root.title())
+
+    def test_sync_explains_that_capture_requires_picture_button(self):
+        self.app.port.set(DEMO)
+        self.app.start('sync')
+        self.pump_until(self.finished)
+        self.assertIn('ДЕМО', self.app.status.get())
+        self.assertIn('Снимок', self.app.status.get())
+        self.assertEqual(self.app.count, 0)
+        self.assertIsNone(self.app.last_file)
 
     def test_cycle_stop_releases_port_and_controls(self):
         clock = Clock()
