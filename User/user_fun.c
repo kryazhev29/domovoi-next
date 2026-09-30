@@ -430,10 +430,18 @@ void user_errorconnection (int8_t handle){
 static uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
 static uint16_t server_rx_count = 0;
 static uint32_t server_rx_last = 0;
+/* ќтложенный разбор (01.10.2026): пока gsm_check_data держит в heap копию UART (до 2056 байт),
+ * собранный кадр только помечаетс€ готовым, а выполн€етс€ в server_rx_process после free.
+ * »наче команда 13 не получала malloc(4096) под сектор уже с 30 ID (Tests/test_iar_cmd13_heap.py).
+ * ƒоработка:  р€жев ј., 2026 */
+static uint8_t server_rx_defer = 0;
+static uint16_t server_rx_ready = 0; // длина готового кадра в начале буфера, 0 - нет
+void server_rx_process(void);
 
 static void server_rx_reset(void)
 {
   server_rx_count = 0;
+  server_rx_ready = 0;
 }
 
 static void server_rx_consume(uint16_t n)
@@ -442,10 +450,35 @@ static void server_rx_consume(uint16_t n)
   memmove(server_rx_buffer, server_rx_buffer + n, server_rx_count);
 }
 
+// Ќайти в начале буфера целый кадр с верным CRC и пометить готовым; мусор перед ним отбросить.
+static void server_rx_scan(void)
+{
+  uint16_t body, total, crc;
+  while (server_rx_count && !server_rx_ready){
+    if (memcmp(server_rx_buffer, "SLDN", server_rx_count < 4 ? server_rx_count : 4)){
+      server_rx_consume(1);
+      continue;
+    }
+    if (server_rx_count < 6) return;
+    body = (uint16_t)server_rx_buffer[4] | ((uint16_t)server_rx_buffer[5] << 8);
+    if (body < 3 || body > SERVER_RX_CAPACITY - 8){
+      server_rx_consume(1);
+      continue;
+    }
+    total = body + 8;
+    if (server_rx_count < total) return;
+    crc = (uint16_t)server_rx_buffer[total - 2] | ((uint16_t)server_rx_buffer[total - 1] << 8);
+    if (crc != crc16_calc(server_rx_buffer + 4, body + 2)){
+      server_rx_consume(1);
+      continue;
+    }
+    server_rx_ready = total;
+  }
+}
+
 // данные с сервера
 void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz)
 {
-  uint16_t body, total, crc;
   uint32_t now = timers_getMillis();
   if (handle != device.connectionhandle) return;
   if (server_rx_count && (uint32_t)(now - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
@@ -453,28 +486,31 @@ void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz)
   if (siz) server_rx_last = now;
 
   while (siz--){
-    server_rx_buffer[server_rx_count++] = *data++;
-    while (server_rx_count){
-      if (memcmp(server_rx_buffer, "SLDN", server_rx_count < 4 ? server_rx_count : 4)){
-        server_rx_consume(1);
-        continue;
-      }
-      if (server_rx_count < 6) break;
-      body = (uint16_t)server_rx_buffer[4] | ((uint16_t)server_rx_buffer[5] << 8);
-      if (body < 3 || body > SERVER_RX_CAPACITY - 8){
-        server_rx_consume(1);
-        continue;
-      }
-      total = body + 8;
-      if (server_rx_count < total) break;
-      crc = (uint16_t)server_rx_buffer[total - 2] | ((uint16_t)server_rx_buffer[total - 1] << 8);
-      if (crc != crc16_calc(server_rx_buffer + 4, body + 2)){
-        server_rx_consume(1);
-        continue;
-      }
-      user_parse_comand(server_rx_buffer + 4, CH_SERVER);
-      server_rx_reset();
+    // Ѕуфер полон только готовым кадром и хвостом за ним: выполнить сейчас, данные не тер€ть.
+    if (server_rx_count == SERVER_RX_CAPACITY && server_rx_ready){
+      uint8_t defer = server_rx_defer;
+      server_rx_process();
+      server_rx_defer = defer;
     }
+    server_rx_buffer[server_rx_count++] = *data++;
+    server_rx_scan();
+    if (server_rx_ready && !server_rx_defer) server_rx_process();
+  }
+}
+
+// ¬ыполнить готовые кадры по пор€дку и сн€ть отложенный режим.
+void server_rx_process(void)
+{
+  uint16_t total;
+  server_rx_defer = 0;
+  while (server_rx_ready){
+    total = server_rx_ready;
+    server_rx_ready = 0;
+    user_parse_comand(server_rx_buffer + 4, CH_SERVER);
+    // –азбор мог закрыть соединение и сбросить буфер.
+    if (server_rx_count < total) break;
+    server_rx_consume(total);
+    server_rx_scan(); // следующий кадр мог прийти в том же куске
   }
 }
 
@@ -1333,7 +1369,9 @@ void port_check_data(void)
 void gsm_check_data (void)
 {
   // —начала URC, отложенные на врем€ AT-команды: они пришли раньше того, что в буфере
+  server_rx_defer = 1; // команды из отложенных URC - после их free
   gsm_takeurc();
+  server_rx_process();
 
   // есть данные
   if (uart_getstate(GSM_PORT)){
@@ -1352,9 +1390,11 @@ void gsm_check_data (void)
       buf[count] = 0;
       
       // парсим
+      server_rx_defer = 1; // команды сервера - после free копии, heap свободен под их буферы
       gsm_read(buf, count);
       
       free(buf);
+      server_rx_process();
     } else{
       uart_clear(GSM_PORT);
     }
@@ -3182,11 +3222,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           mem_write(sector, membfr, MEMSECTORSIZE);
         }        
         
+        // сектор записан: heap освобождаетс€ до ответа (AT-отправка может отложить URC в heap)
+        free(membfr);
         device.numbersCount = user_getNumbersCount();
         user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
                            user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size), cch, uniqId);
-
-        free(membfr);
       }
       break;
       

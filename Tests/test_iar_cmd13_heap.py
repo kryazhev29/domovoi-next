@@ -1,13 +1,14 @@
 # Доработка: Кряжев А., 2026
 """Команда 13 (синхронизация ID) и heap: реальный basic allocator IAR в Unicorn, без платы.
 
-Порядок выделений как на плате: gsm_check_data держит calloc(count + 8) с копией UART, пока
-разбирается кадр; команда 13 внутри разбора просит malloc(MEMSECTORSIZE = 4096) под сектор.
-Кадр с N ID по 32 байта: тело N*32 + 8, кадр тело + 8; в UART перед кадром заголовок модема
-(+QIURC: "recv",0,<len> и перевод строки), берётся с запасом 32 байта.
-Тест требует, чтобы сектор выделялся для любого кадра, который принимает server_rx_buffer
-(тело до 2040 байт = 63 ID). На master 89ac32c ожидается отказ."""
-import os, struct, sys
+gsm_check_data копирует UART в calloc(count + 8). Команда 13 просит malloc(MEMSECTORSIZE = 4096)
+под сектор, а её ответ уходит AT-командой, во время которой URC откладываются в heap (до 2056).
+Порядок берётся из исходника: выполняется ли команда после free копии (server_rx_process после
+free(buf)) и освобождается ли сектор до ответа. Кадр с N ID по 32 байта: тело N*32 + 8, кадр
+тело + 8, перед ним заголовок модема (+QIURC: "recv",0,<len>) - с запасом 32 байта.
+Требование: сектор и отложенный URC получают память для любого кадра, который принимает
+server_rx_buffer (тело до 2040 байт = 63 ID). На master 89ac32c - отказ с 30 ID."""
+import os, re, sys
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 deps=os.environ.get('DOMOVOI_TEST_DEPS') or str(root/'Release/photo_test_deps')
@@ -17,6 +18,13 @@ sys.path.insert(0,deps)
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS
 from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_XPSR, UC_ARM_REG_PC, UC_ARM_REG_R0
+
+user=(root/'User/user_fun.c').read_bytes().decode('cp1251')
+check=user[user.index('void gsm_check_data'):]; check=check[:check.index('\n}')]
+copy_freed_first=re.search(r'free\(buf\);\s*server_rx_process\(\);',check) is not None and 'server_rx_defer = 1;' in check
+case13=user[user.index('\n    case 13:'):user.index('\n    case 14:')]
+sector_freed_first=case13.index('free(membfr);')<case13.index('user_send_timeshtamp(')
+
 with (root/'Release/Exe/DomovoiNext.out').open('rb') as f:
     sym={s.name:s['st_value'] for s in ELFFile(f).get_section_by_name('.symtab').iter_symbols()}
 heap=sym['HEAP$$Limit']-sym['HEAP$$Base']
@@ -32,15 +40,25 @@ def call(name,arg=0):
     return u.reg_read(UC_ARM_REG_R0)
 call('__iar_data_init3')
 MODEM_HEADER=32
-worst=None
+fail=None
 for ids in range(1,64):
     frame=ids*32+16
+    live=[]
     copy=call('__basic_malloc',frame+MODEM_HEADER+8);assert copy,ids
+    if copy_freed_first:call('__basic_free',copy)
+    else:live.append(copy)
     sector=call('__basic_malloc',4096)
-    if sector:call('__basic_free',sector)
-    call('__basic_free',copy)
-    if not sector and worst is None:worst=ids
-print(f'IAR heap {heap} байт: команда 13 получает сектор 4096 до {(worst or 64)-1} ID в кадре'
-      + (f', с {worst} ID (кадр {worst*32+16} байт) - отказ RUNERROR' if worst else ''))
-assert worst is None,f'команда 13 с {worst}+ ID не получает память под сектор (heap {heap})'
-print('cmd13 heap: сектор выделяется для любого кадра до 63 ID: OK')
+    if not sector:fail=(ids,'сектор 4096')
+    elif sector_freed_first:call('__basic_free',sector)
+    else:live.append(sector)
+    if not fail:
+        urc=call('__basic_malloc',2056)  # ответ уходит AT-командой, URC откладывается в heap
+        if not urc:fail=(ids,'отложенный URC во время ответа')
+        else:live.append(urc)
+    for p in live:call('__basic_free',p)
+    if fail:break
+order=('команда после free копии' if copy_freed_first else 'команда при живой копии UART')+\
+      (', сектор освобождён до ответа' if sector_freed_first else ', ответ при живом секторе')
+print(f'IAR heap {heap} байт; {order}')
+assert fail is None,f'команда 13 с {fail[0]}+ ID: не хватает heap на {fail[1]}'
+print('cmd13 heap: сектор и отложенный URC получают память для любого кадра до 63 ID: OK')
