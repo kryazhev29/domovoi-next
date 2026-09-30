@@ -10,9 +10,30 @@
 
 unsigned int loop_max_ms = 0, loop_stalls = 0;
 
+/* Замер стека (01.10.2026): при старте свободная часть CSTACK заполняется шаблоном; команда 111
+ * отдаёт, сколько байт шаблона снизу ни разу не тронуто - минимальный запас стека за работу,
+ * вместе с прерываниями. ОЗУ не занимает. Доработка: Кряжев А., 2026 */
+#define STACK_PAINT 0x5A5AA5A5u
+#pragma section = "CSTACK"
+void stack_paint(void)
+{
+  uint32_t *p = (uint32_t*)__section_begin("CSTACK");
+  uint32_t *end = (uint32_t*)(__get_MSP() - 64u);
+  while (p < end) *p++ = STACK_PAINT;
+}
+uint32_t stack_free_bytes(void)
+{
+  const uint32_t *b = (const uint32_t*)__section_begin("CSTACK");
+  const uint32_t *e = (const uint32_t*)__section_end("CSTACK");
+  const uint32_t *p = b;
+  while (p < e && *p == STACK_PAINT) p++;
+  return (uint32_t)(p - b) * 4u;
+}
+
 // основная программа
 void main()
 {
+  stack_paint();
   // инициализация входов
   board_init();
 

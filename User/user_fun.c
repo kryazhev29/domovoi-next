@@ -49,6 +49,7 @@ static void server_rx_reset(void);
 /* Диагностика стенда, команда 111, только по USB, только чтение. */
 #define USB_DIAG_COMMAND 111u
 extern unsigned int loop_max_ms, loop_stalls;
+uint32_t stack_free_bytes(void); // main.c: нетронутый снизу шаблон стека, байт
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
 static void user_send_usbDiag(uint8_t uniqId);
 /* Порядок обновления по листу "Протокол2": статус 1 вне очереди (E95), режим обновления - бит
@@ -3166,6 +3167,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
         if (membfr == NULL){
+          diag_heap_fail++;
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }        
@@ -4801,15 +4803,16 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
  *  33..41 на момент последнего восстановления, 42..50 сейчас: EP1R, EP3R, счётчик TX EP1, ISTR, CNTR, FNR,
  *  USB_Tx_State, выставлено пакетов IN, забрано пакетов IN,
  *  51 ошибки шины USB (прерывания ERR) сейчас, 52 ошибки шины на момент последнего восстановления,
- *  53 DADDR и 54 EP0R на момент последнего восстановления, 55 DADDR и 56 EP0R сейчас.
+ *  53 DADDR и 54 EP0R на момент последнего восстановления, 55 DADDR и 56 EP0R сейчас,
+ *  57 минимальный запас стека за работу, байт (версия 5, 01.10.2026).
  */
 static void user_send_usbDiag(uint8_t uniqId)
 {
-  uint32_t v[57];
+  uint32_t v[58];
   uint8_t send_buffer[8 + 3 + sizeof(v)];
   uint16_t len = 3 + sizeof(v), crc;
 
-  v[0] = 4;
+  v[0] = 5;
   v[1] = device.worktime;
   v[2] = timers_getMillis();
   usb_diag_fill(&v[3]);
@@ -4823,6 +4826,7 @@ static void user_send_usbDiag(uint8_t uniqId)
   usb_diag_fill_regs(&v[33]);
   usb_diag_fill_errors(&v[51]);
   usb_diag_fill_addr(&v[53]);
+  v[57] = stack_free_bytes();
 
   send_buffer[0] = 'S';
   send_buffer[1] = 'L';
