@@ -266,9 +266,10 @@ void uart_timer1ms (void)
   for (uint8_t i=0; i<UARTS; i++) // Цикл проверки всех задержек
    {
    if (uart[i].twait) // Задержка перед проверкой буфера приема
-     if (--uart[i].twait == 0) 
+     if (--uart[i].twait == 0){
        uart[i].state = 1;   // Буфер готов
        uart[i].receiving = 0;
+     }
    }
 }
 

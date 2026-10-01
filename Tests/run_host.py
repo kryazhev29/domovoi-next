@@ -8,7 +8,7 @@ kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -221,6 +221,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code+='\n'.join(function(user,n) for n in ('user_last10digitsnumber','user_sendsms','user_smsreceived'))
         types=typedefs(source('structures.h'),'logSystem_e','logControl_e','codeType_e')
         unit=(ROOT/'Tests/test_sms.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+    elif kind=='uarttimer':
+        uart=source('Modules/uart_stm32f10x.c')
+        types=typedefs(uart,'uart_t')+'\n'+re.search(r'^#define UARTS[^\n]*',uart,re.M).group(0)+'\n'
+        code='\n'.join(function(uart.replace('inline bool uart_addbyte','bool uart_addbyte'),n) for n in ('uart_addbyte','uart_getstate','uart_isReceiving','uart_timer1ms'))
+        unit=(ROOT/'Tests/test_uart_timer.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idtext':
         user=source('User/user_fun.c')
         code=typedefs(source('structures.h'),'codeType_e')+'\n'+'\n'.join(function(user,n) for n in ('WG_readedID','RF433_readedID','RFID_readedID'))
