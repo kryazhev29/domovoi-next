@@ -1024,8 +1024,8 @@ void user_loop(void)
     user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
     // вычислим день недели, час и минуту
     device.day = user_getweakday(device.datetime);
-    device.hour = div(div(device.datetime, 86400).rem, 3600).quot;
-    device.minute = div(div(device.datetime, 3600).rem, 60).quot;
+    device.hour = device.datetime % 86400u / 3600u;
+    device.minute = device.datetime % 3600u / 60u;
     // уровень сигнала
     device.csq = usergsm_getcsq();
     device.connected = (connection_state(device.connectionhandle)==CE_CONNECTED)?1:0;
@@ -3882,8 +3882,8 @@ char* user_last10digitsnumber (char* num)
 uint8_t user_getweakday (uint32_t t)
 {
   // какой сейчас день по счету
-  uint32_t d = div(t,86400).quot;
-  uint8_t wd = div(d,7).rem; // день недели, 0 - Чт
+  uint32_t d = t / 86400u;
+  uint8_t wd = d % 7u; // день недели, 0 - Чт
 
   // преобразуем
   wd += 3;
@@ -4426,7 +4426,7 @@ bool user_dayIsHoliday(void){
   // перебираем ячейки
   for (uint16_t a = 0; a < 1024; a += sizeof(cellHoliday_s)){
     c = (cellHoliday_s*)&tbuffer[a];
-    if (div(c->datetime, 86400).quot == div(device.datetime, 86400).quot)
+    if (c->datetime / 86400u == device.datetime / 86400u)
       return true;
   }
   
