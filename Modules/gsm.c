@@ -324,6 +324,24 @@ void gsm_init(void)
 }
 
 // Обработка данных c модуля gsm -----------------------------------------------
+// Длина тела допустима только вместе с разделителем и всеми принятыми байтами.
+static bool gsm_datalength(char *first, char *end, char separator, uint16_t *len, char **body)
+{
+  uint32_t n = 0;
+  char *p = first;
+  if (p >= end || *p < '0' || *p > '9') return false;
+  while (p < end && *p >= '0' && *p <= '9'){
+    n = n * 10u + (uint8_t)(*p++ - '0');
+    if (n > 65535u) return false;
+  }
+  if (separator == '\n' && p < end && *p == '\r') p++;
+  if (p >= end || *p++ != separator) return false;
+  if (n > (uint32_t)(end - p)) return false;
+  *len = (uint16_t)n;
+  *body = p;
+  return true;
+}
+
 void gsm_read(char* ptr, Int16U size)
 {
   if (ptr == NULL) return;
@@ -540,13 +558,9 @@ void gsm_read(char* ptr, Int16U size)
       if (GSM.ready){
         uint16_t k;
         
-        if (*(ps+3) == ',')
-          k = atoi(ps+4);
-        else
-          k = atoi(ps+3);
-        
-        var = skipchar(':', ps, 1);
-        if ((var != ps) && ((var - ps) <= 7)){
+        char *first = ps + 3;
+        if (first < ptr + size && *first == ',') first++;
+        if (gsm_datalength(first, ptr + size, ':', &k, &var)){
           gsm_dataread (DATA, var, NULL, k, GSM.dataconnectionindex);
         }
       }
@@ -649,9 +663,8 @@ void gsm_read(char* ptr, Int16U size)
         
         var = skipchar(',', ps, 2);
         if (var != ps){
-          s = atoi(var);
-          var = skipchar(0x0a, var, 1);
-          gsm_dataread (DATA, var, NULL, s, GSM.dataconnectionindex);          
+          if (gsm_datalength(var, ptr + size, '\n', &s, &var))
+            gsm_dataread (DATA, var, NULL, s, GSM.dataconnectionindex);          
         }
       }
 
