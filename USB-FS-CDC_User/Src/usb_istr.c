@@ -57,7 +57,7 @@ __IO uint32_t wCNTR=0;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 /* function pointers to non-control endpoints service routines */
-void (*pEpInt_IN[7])(void) =
+void (*const pEpInt_IN[7])(void) =
   {
     EP1_IN_Callback,
     EP2_IN_Callback,
@@ -68,7 +68,7 @@ void (*pEpInt_IN[7])(void) =
     EP7_IN_Callback,
   };
 
-void (*pEpInt_OUT[7])(void) =
+void (*const pEpInt_OUT[7])(void) =
   {
     EP1_OUT_Callback,
     EP2_OUT_Callback,

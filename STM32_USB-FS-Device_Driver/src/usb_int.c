@@ -36,8 +36,8 @@ __IO uint16_t SaveRState;
 __IO uint16_t SaveTState;
 
 /* Extern variables ----------------------------------------------------------*/
-extern void (*pEpInt_IN[7])(void);    /*  Handles IN  interrupts   */
-extern void (*pEpInt_OUT[7])(void);   /*  Handles OUT interrupts   */
+extern void (*const pEpInt_IN[7])(void);    /*  Handles IN  interrupts   */
+extern void (*const pEpInt_OUT[7])(void);   /*  Handles OUT interrupts   */
 
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
