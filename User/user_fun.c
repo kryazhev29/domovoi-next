@@ -2882,6 +2882,21 @@ static bool sync_cells_valid(const uint8_t *ptr, uint16_t len, memBlock_e mb, ui
   return true;
 }
 
+static bool command_args_valid(const uint8_t *ptr, uint16_t len)
+{
+  // Проверяем обязательные аргументы до любых действий команды.
+  switch (ptr[4]){
+    case 1:
+      if (len < 4) return false;
+      return ptr[5] != CMD_SUCCESS || len >= 8;
+    case 2: case 3: case 18: case 105: case 108:
+      return len >= 4;
+    case 6: return len >= 6;
+    case 23: case 102: return len >= 7;
+    default: return true;
+  }
+}
+
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
   uint16_t len, crc, i;
@@ -2891,6 +2906,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
   len = ptr[1]; // длина
   len = (len<<8) | ptr[0];
+  if (len < 3) return; // В неполном заголовке нет команды и uniqId.
   crc = ptr[len + 3];  // crc
   crc = (crc<<8) | ptr[len + 2];
   i = crc16_calc(&ptr[0], len + 2);
@@ -2902,6 +2918,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   if (crc != i) // ошибка контрольной суммы
   {
     user_send_answer_comand(ptr[4], CMD_CRCERROR, cch, uniqId);
+    return;
+  }
+
+  if (!command_args_valid(ptr, len)){
+    user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
     return;
   }
 

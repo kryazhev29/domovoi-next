@@ -218,6 +218,19 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             assert 'server_rx_reset();' in function(user,name),name
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='cmdlengths':
+        user=source('User/user_fun.c');parse=function(user,'user_parse_comand')
+        types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s','status_s','triggers_s','device_s','dataChanel_e','cmdCode_e','logSystem_e','logUpdate_e')
+        helper=function(user,'command_args_valid')+'\n' if 'static bool command_args_valid(' in user else ''
+        labels=list(re.finditer(r'^    (?:case [^:]+:|default:)',parse,re.M))
+        wanted=(1,2,3,6,18,23,102,105,108); selected=[]
+        for i,m in enumerate(labels[:-1]):
+            if m[0].strip().split()[1].rstrip(':').isdigit() and int(m[0].strip().split()[1].rstrip(':')) in wanted:
+                selected.append(parse[m.start():labels[i+1].start()])
+        assert len(selected)==len(wanted)
+        defines='\n'.join(x for x in user.splitlines() if x.startswith(('#define REG_UNKNOWN_IMEI','#define REG_NOT_BOUND')))
+        code=defines+'\n'+helper+function(user,'usb_cmd_without_pin')+'\n'+parse[:parse.index('  switch (ptr[4])')]+'  switch(ptr[4]){'+''.join(selected)+'default: abort(); }}'
+        unit=(ROOT/'Tests/test_command_lengths.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
     elif kind=='cfgstrings':
         user=source('User/user_fun.c');case=cases(user)
         types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s','status_s','triggers_s','device_s','memBlock_e','dataChanel_e','cmdCode_e','shtamp_e')
@@ -277,7 +290,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
         code=user[user.index('void user_parse_comand'):]
-        code=code[:code.index('  /* ПИН (команда 102)')]+'  (void)tmp32;\n}\n'
+        code=(function(user,'command_args_valid')+'\n' if 'static bool command_args_valid(' in user else '')+code[:code.index('  /* ПИН (команда 102)')]+'  (void)tmp32;\n}\n'
         unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='recovery':
         code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')

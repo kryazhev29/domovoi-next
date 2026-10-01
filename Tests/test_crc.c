@@ -1,8 +1,11 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 typedef unsigned dataChanel_e;
 #define CMD_CRCERROR 7
+#define CMD_SUCCESS 0
+#define CMD_PARAMERROR 1
 #define wdt_reload() ((void)0)
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 static unsigned calls;
