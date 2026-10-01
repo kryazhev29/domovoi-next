@@ -20,6 +20,8 @@ static uint8_t data[64];
 static unsigned datalen;
 static uint32_t irqmask,clock_ms;
 static bool alloc_edge,copy_edge,pending_edge;
+static bool noise_receive;
+static unsigned noise_ticks;
 bool uart_addbyte(Int8U n,Int8U ch);
 void gsm_read(char*,Int16U);
 uint32_t __get_PRIMASK(void){return irqmask;}
@@ -28,7 +30,7 @@ void __set_PRIMASK(uint32_t m){irqmask=m;if(!m && pending_edge){pending_edge=fal
 static void *race_calloc(size_t n,size_t s){if(alloc_edge){alloc_edge=false;CHECK(uart_addbyte(0,'+'));}return calloc(n,s);}
 static void *race_memcpy(void *to,const void *from,size_t n){if(copy_edge){copy_edge=false;if(irqmask)pending_edge=true;else CHECK(uart_addbyte(0,'I'));}return memcpy(to,from,n);}
 static uint32_t timers_getMillis(void){CHECK(clock_ms<10000);return clock_ms++;}
-static void wdt_reload(void){}
+static void wdt_reload(void){if(noise_receive){CHECK(++noise_ticks<50);CHECK(uart_addbyte(0,'x'));}}
 static void delay_ms(unsigned n){(void)n;}
 static void uart_sendstr(uint8_t n,char *s){(void)n;(void)s;}
 static void server_rx_process(void){server_rx_defer=0;server_processes++;}
@@ -46,6 +48,7 @@ static void ready(void){uart[0].twait=0;uart[0].receiving=0;uart[0].state=1;}
 int main(void){
   (void)gsm_stashurc;
   memset(uart,0,sizeof(uart));uart[0].rxbuffer=rx;uart[0].bfsize=sizeof(rx);uart[0].timetowait=10;GSM.ready=1;GSM.moduleType=M_UG95;
+  push("+IPD,2:AB");ready();noise_receive=true;gsm_check_data();noise_receive=false;CHECK(noise_ticks==0 && datalen==2);gsm_rxreset();uart_clear(0);datalen=0;server_processes=0;
   push("+IPD,2:AB");ready();alloc_edge=true;copy_edge=true;
   gsm_check_data();CHECK(irqmask==0);CHECK(datalen==2 && memcmp(data,"AB",2)==0);
   CHECK(uart[0].received==2 && rx[0]=='+' && rx[1]=='I');

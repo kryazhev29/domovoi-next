@@ -1408,9 +1408,7 @@ void gsm_check_data (void)
   // есть данные
   if (uart_getstate(GSM_PORT)){
     // ждем завершения приема
-    while (uart_isReceiving(GSM_PORT)){
-      wdt_reload();
-    }
+    // Готовность проверена; новый RX остаётся в хвосте атомарного снимка.
     
     uint16_t count = uart_received(GSM_PORT);
     char *buf = calloc(count + 8, 1);

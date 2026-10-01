@@ -334,15 +334,10 @@ bool uart_waitresp(Int8U num, Int16U t_ms, char* pattern)
   uart[num].state = 0;
 
   uint16_t startrec = uart[num].received;
-  uint16_t received = uart[num].received;  
   uint32_t start = timers_getMillis();
  
   while ((timers_getMillis() - start) < t_ms){
     // принят байт
-    if (received != uart[num].received){
-      received = uart[num].received;
-      start = timers_getMillis();
-    }
     // приняли
     if (uart[num].state){  
       if (pattern == NULL){
@@ -484,7 +479,6 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, In
 {
   if (num >= UARTS) return false;
 
-  uint16_t received = 0;
   uint32_t start;
   
   // чистим
@@ -503,10 +497,6 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, In
 
   while ((timers_getMillis() - start) < t_ms){
     // принят байт
-    if (received != uart[num].received){
-      received = uart[num].received;
-      start = timers_getMillis();
-    }
     // приняли
     if (uart[num].state){
       // копируем в приемный буфер

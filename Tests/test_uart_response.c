@@ -12,6 +12,7 @@ static uart_t uart[UARTS];
 static uint8_t storage[2052];
 static uint32_t clock_ms;
 static bool present;
+static bool noise;
 static uint32_t irqmask;
 uint32_t __get_PRIMASK(void){return irqmask;}
 void __disable_irq(void){irqmask=1;}
@@ -19,6 +20,7 @@ void __set_PRIMASK(uint32_t m){irqmask=m;}
 static uint32_t timers_getMillis(void) {
   uint32_t now=clock_ms++;
   CHECK(clock_ms<1000);
+  if(noise && now){uart[0].received++;uart[0].state=0;uart[0].receiving=1;return now;}
   if(now==1){uart[0].received=2048;uart[0].state=1;uart[0].receiving=0;if(present){storage[2046]='O';storage[2047]='K';}}
   return now;
 }
@@ -31,6 +33,8 @@ static void reset(bool good) {
   uart[0].rxbuffer=storage;uart[0].bfsize=2048;present=good;clock_ms=0;
 }
 int main(void){
+  reset(false);noise=true;CHECK(!uart_waitresp(0,10,"OK"));CHECK(clock_ms<20);
+  reset(false);CHECK(!uart_sendStrAndWaitResp(0,"AT\r",NULL,0,10,"OK"));CHECK(clock_ms<20);noise=false;
   reset(false);CHECK(!uart_waitresp(0,10,"OK"));
   reset(false);char rec[129];memset(rec,0x55,sizeof(rec));CHECK(!uart_sendStrAndWaitResp(0,"AT\r",rec,128,10,"OK"));CHECK(rec[127]==0 && rec[128]==0x55);
   reset(true);CHECK(uart_waitresp(0,10,"OK"));
