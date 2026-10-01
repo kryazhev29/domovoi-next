@@ -5,9 +5,9 @@
 #include "flash_w25.h"
 
 // Чтение данных с памяти -----------------------------------------------------
-void w25_read_data (Int32U address, pInt8U dst, Int16U len)
+bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
 {
-  w25_busy();
+  if (w25_busy() & 1u) return false;
 
   w25_chip_ON();
   w25_delay_ON();
@@ -20,10 +20,11 @@ void w25_read_data (Int32U address, pInt8U dst, Int16U len)
 
   w25_chip_OFF();
   w25_delay_OFF();
+  return true;
 }
 
 // Запись данных в память -----------------------------------------------------
-void w25_write_data (Int32U address, pInt8U src, Int16U len)
+bool w25_write_data (Int32U address, pInt8U src, Int16U len)
 {
   uint32_t k;
   uint16_t s;
@@ -36,7 +37,7 @@ void w25_write_data (Int32U address, pInt8U src, Int16U len)
     if (len > k) s = k; // записываемые данные больше остатка?
     else s = len;
     
-    w25_page_program (address, src, s);
+    if (!w25_page_program(address, src, s)) return false;
     address += s;
     src += s;
     len -= s;    
@@ -48,19 +49,21 @@ void w25_write_data (Int32U address, pInt8U src, Int16U len)
     else s = len;
     
     wdt_reload();
-    w25_page_program (address, src, s);   
+    if (!w25_page_program(address, src, s)) return false;
     address += s;
     src += s;
     len -= s;   
   }
+  return true;
 }
 
 // Стереть сектор -------------------------------------------------------------
-void w25_erase_sector (Int32U address)
+bool w25_erase_sector (Int32U address)
 {
-  w25_busy();
+  if (w25_busy() & 1u) return false;
 
   w25_WREN();
+  if (!(w25_read_status() & 2u)) return false;
 
   w25_chip_ON();
   w25_delay_ON();
@@ -73,8 +76,9 @@ void w25_erase_sector (Int32U address)
   w25_chip_OFF();
   w25_delay_OFF();
 
-  w25_clear_status();
+  bool ready = !(w25_busy() & 1u);
   w25_WRDI();
+  return ready && w25_verify(address & ~4095u, NULL, 4096);
 }
 
 // Чтение Id памяти -----------------------------------------------------------
@@ -82,7 +86,7 @@ Int16U w25_read_devID (void)
 {
   Int16U result;
 
-  w25_busy();
+  if (w25_busy() & 1u) return 0xFFFF;
 
   w25_chip_ON();
   w25_delay_ON();
@@ -213,11 +217,12 @@ static void w25_WRDI()
 }
 
 // Запись страницы памяти не более 256 байт за один прогон --------------------
-static void w25_page_program (Int32U address, pInt8U src, Int16U len)
+static bool w25_page_program (Int32U address, pInt8U src, Int16U len)
 {
-  w25_busy();
+  if (w25_busy() & 1u) return false;
 
   w25_WREN();
+  if (!(w25_read_status() & 2u)) return false;
   
   w25_chip_ON();
   w25_delay_ON();
@@ -231,6 +236,23 @@ static void w25_page_program (Int32U address, pInt8U src, Int16U len)
   w25_chip_OFF();
   w25_delay_OFF();
   
-  w25_clear_status();
+  bool ready = !(w25_busy() & 1u);
   w25_WRDI();
+  return ready && w25_verify(address, src, len);
+}
+// Проверяем результат без буфера сектора в ОЗУ.
+static bool w25_verify(Int32U address, const uint8_t *src, Int16U len)
+{
+  uint8_t b[64];
+  while (len) {
+    uint16_t n = len > sizeof(b) ? sizeof(b) : len;
+    wdt_reload();
+    if (!w25_read_data(address, b, n)) return false;
+    for (uint16_t i = 0; i < n; i++)
+      if (b[i] != (src != NULL ? src[i] : 0xFF)) return false;
+    address += n;
+    if (src != NULL) src += n;
+    len -= n;
+  }
+  return true;
 }

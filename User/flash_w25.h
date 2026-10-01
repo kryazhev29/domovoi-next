@@ -16,11 +16,11 @@
 #define FLASH_W25_PAGE_SIZE     256
 
 // Чтение данных с памяти
-void w25_read_data (Int32U address, pInt8U dst, Int16U len);
+bool w25_read_data (Int32U address, pInt8U dst, Int16U len);
 // Запись данных в память
-void w25_write_data (Int32U address, pInt8U src, Int16U len);
+bool w25_write_data (Int32U address, pInt8U src, Int16U len);
 // Стереть сектор
-void w25_erase_sector (Int32U address);
+bool w25_erase_sector (Int32U address);
 // Чтение Id памяти
 Int16U w25_read_devID (void);
 // Чтение статуса
@@ -41,6 +41,8 @@ static void w25_WREN();
 // запретить запись
 static void w25_WRDI();
 // Запись страницы памяти
-static void w25_page_program (Int32U address, pInt8U src, Int16U len);
+static bool w25_page_program (Int32U address, pInt8U src, Int16U len);
+
+static bool w25_verify(Int32U address, const uint8_t *src, Int16U len);
 
 #endif

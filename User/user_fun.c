@@ -844,9 +844,9 @@ void user_init(void)
 }
 
 // очистить блок памяти
-void user_clearMemBlock(memBlock_e mb){
+bool user_clearMemBlock(memBlock_e mb){
   
-  if (mem[mb].size == 0) return;
+  if (mem[mb].size == 0) return true;
 
 #ifdef DEBUG_USER
   user_debug(">>U Clear mem block ...\r\n"); 
@@ -857,9 +857,10 @@ void user_clearMemBlock(memBlock_e mb){
 
   // по секторно стираем
   for (adr = mem[mb].start; adr < endAdr; adr += 4096){
-    mem_erase_sector(adr);
+    if (!mem_erase_sector(adr)) return false;
     wdt_reload();
   }
+  return true;
 }
 
 // циклический обработчик
@@ -2648,7 +2649,7 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
   bootFWparam_s fwParam;
   uint32_t block;
 
-  mem_read(mem[MB_BACKUP].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
+  if (!mem_read(mem[MB_BACKUP].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s))) return CMD_RUNERROR;
   if ((fwParam.buildDate == 0xffffffff) || (fwParam.firmwareSize == 0xffffffff) ||
       (fwParam.firmwareCRC == 0xffffffff) || (fwParam.firmwareVersion == 0xffff)){
     fw_log(LOG_FW_FAIL, "NO BACKUP");
@@ -2659,11 +2660,11 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
     fw_log(LOG_FW_FAIL, "BAD BACKUP");
     return CMD_RUNERROR;
   }
-  user_clearMemBlock(MB_FIRMWARE);
+  if (!user_clearMemBlock(MB_FIRMWARE)) return CMD_RUNERROR;
   for (block = 0; block < (fwParam.firmwareSize + FWBLOCK_OFFSET); block += 128){
-    mem_read(mem[MB_BACKUP].start + block, bf, 128);
+    if (!mem_read(mem[MB_BACKUP].start + block, bf, 128)) return CMD_RUNERROR;
     if (block == 0) memset(bf, 0xff, 4); /* метку пишет app_boot_request */
-    mem_write(mem[MB_FIRMWARE].start + block, bf, 128);
+    if (!mem_write(mem[MB_FIRMWARE].start + block, bf, 128)) return CMD_RUNERROR;
     wdt_reload();
   }
   fw_log(LOG_FW_ROLLBACK, NULL); // откат по команде сервера: причина 0
@@ -2704,14 +2705,14 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   }
   if (number == 1) return fw_rollback(cch);
 
-  user_clearMemBlock(MB_FIRMWARE);
+  if (!user_clearMemBlock(MB_FIRMWARE)) return CMD_RUNERROR;
   memset(&fwParam, 0xff, sizeof(fwParam));
   fwParam.hardwareVersion = device.hardwareVersion;
   fwParam.firmwareVersion = number;
   fwParam.firmwareSize = size;
   fwParam.firmwareCRC = crc;
   fwParam.buildDate = build;
-  mem_write(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
+  if (!mem_write(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s))) return CMD_RUNERROR;
   wdt_reload();
 
   device.FWblockCount = blocks;
@@ -2782,9 +2783,9 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   /* Команда 19 стёрла область образа: пишем на место. Повторная запись тех же байт ничего не
      меняет и дописывает оборванный блок. */
   adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u;
-  mem_write(adr, (uint8_t*)&p[2], 1024);
+  bool written = mem_write(adr, (uint8_t*)&p[2], 1024);
   wdt_reload();
-  if (!fw_block_written(adr, &p[2])){
+  if (!written || !fw_block_written(adr, &p[2])){
     if (++fw_write_errors < FW_WRITE_TRIES) return FW_BLOCK_BADWRITE;
     fw_abort("WRITE");
     return FW_BLOCK_END;
@@ -3213,6 +3214,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         uint32_t sector = -1;
         uint32_t newSector = -1;
         uint8_t cnt = 0;
+        bool saved = true;
         
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd sync IDs (cmd 13)\r\n"); 
@@ -3228,7 +3230,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         
         // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        device.datetimeID = tmp32;
+
         
         // пишем в память
         for (uint16_t i = 0; i<idCnt; i++){
@@ -3243,11 +3245,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              mem_erase_sector(sector);
-              mem_write(sector, membfr, MEMSECTORSIZE);
+              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+                saved = false;
+                break;
+              }
             }
             cnt = 0;
-            mem_read(newSector, membfr, MEMSECTORSIZE);
+            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
             sector = newSector;
           }
           // копируем ячейку
@@ -3270,14 +3274,20 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
         
         // ранее сектор был считан, сохраняем
-        if (cnt != 0){
+        if (saved && cnt != 0){
           wdt_reload();
-          mem_erase_sector(sector);
-          mem_write(sector, membfr, MEMSECTORSIZE);
+          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+            saved = false;
+          }
         }        
         
         // сектор записан: heap освобождается до ответа (AT-отправка может отложить URC в heap)
         free(membfr);
+        if (!saved) {
+          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          break;
+        }
+        device.datetimeID = tmp32;
         device.numbersCount = user_getNumbersCount();
         user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
                            user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size), cch, uniqId);
@@ -3295,6 +3305,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         uint32_t sector = -1;
         uint32_t newSector = -1;
         uint8_t cnt = 0;
+        bool saved = true;
         
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd sync shedule (cmd 14)\r\n"); 
@@ -3309,7 +3320,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         
         // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        device.datetimeShedule = tmp32;
+
         
         // пишем в память
         for (uint16_t i = 0; i<idCnt; i++){
@@ -3324,11 +3335,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              mem_erase_sector(sector);
-              mem_write(sector, membfr, MEMSECTORSIZE);
+              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+                saved = false;
+                break;
+              }
             }
             cnt = 0;
-            mem_read(newSector, membfr, MEMSECTORSIZE);
+            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
             sector = newSector;
           }
           // копируем ячейку
@@ -3338,16 +3351,23 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
         
         // ранее сектор был считан, сохраняем
-        if (cnt != 0){
+        if (saved && cnt != 0){
           wdt_reload();
-          mem_erase_sector(sector);
-          mem_write(sector, membfr, MEMSECTORSIZE);
+          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+            saved = false;
+          }
         }        
 
-        user_send_timeshtamp(SHTAMP_SHEDULE, device.datetimeShedule, 
-                           user_calcCRC16InFlash(mem[MB_SHEDULE].start, mem[MB_SHEDULE].size), cch, uniqId); 
       
         free(membfr);
+        if (!saved) {
+          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          break;
+        }
+        device.datetimeShedule = tmp32;
+        user_send_timeshtamp(SHTAMP_SHEDULE, device.datetimeShedule,
+                           user_calcCRC16InFlash(mem[MB_SHEDULE].start, mem[MB_SHEDULE].size), cch, uniqId);
+
       }      
       break;
       
@@ -3362,6 +3382,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         uint32_t sector = -1;
         uint32_t newSector = -1;
         uint8_t cnt = 0;
+        bool saved = true;
         
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd sync group (cmd 15)\r\n"); 
@@ -3376,7 +3397,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         
         // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        device.datetimeGroup = tmp32;
+
  
         // пишем в память
         for (uint16_t i = 0; i<idCnt; i++){
@@ -3391,11 +3412,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              mem_erase_sector(sector);
-              mem_write(sector, membfr, MEMSECTORSIZE);
+              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+                saved = false;
+                break;
+              }
             }
             cnt = 0;
-            mem_read(newSector, membfr, MEMSECTORSIZE);
+            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
             sector = newSector;
           }
           // копируем ячейку
@@ -3405,16 +3428,23 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
         
         // ранее сектор был считан, сохраняем
-        if (cnt != 0){
+        if (saved && cnt != 0){
           wdt_reload();
-          mem_erase_sector(sector);
-          mem_write(sector, membfr, MEMSECTORSIZE);
+          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+            saved = false;
+          }
         } 
         
-        user_send_timeshtamp(SHTAMP_GROUP, device.datetimeGroup, 
-                           user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size), cch, uniqId); 
       
         free(membfr);
+        if (!saved) {
+          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          break;
+        }
+        device.datetimeGroup = tmp32;
+        user_send_timeshtamp(SHTAMP_GROUP, device.datetimeGroup,
+                           user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size), cch, uniqId);
+
       }
       break;
       
@@ -3429,6 +3459,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         uint32_t sector = -1;
         uint32_t newSector = -1;
         uint8_t cnt = 0;
+        bool saved = true;
         
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd sync holiday (cmd 16)\r\n"); 
@@ -3443,7 +3474,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         
         // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        device.datetimeHoliday = tmp32;
+
         
         // пишем в память
         for (uint16_t i = 0; i<idCnt; i++){
@@ -3458,11 +3489,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              mem_erase_sector(sector);
-              mem_write(sector, membfr, MEMSECTORSIZE);
+              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+                saved = false;
+                break;
+              }
             }
             cnt = 0;
-            mem_read(newSector, membfr, MEMSECTORSIZE);
+            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
             sector = newSector;
           }
           // копируем ячейку
@@ -3472,16 +3505,23 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
         
         // ранее сектор был считан, сохраняем
-        if (cnt != 0){
+        if (saved && cnt != 0){
           wdt_reload();
-          mem_erase_sector(sector);
-          mem_write(sector, membfr, MEMSECTORSIZE);
+          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+            saved = false;
+          }
         }
         
-        user_send_timeshtamp(SHTAMP_HOLIDAY, device.datetimeHoliday, 
-                           user_calcCRC16InFlash(mem[MB_HOLIDAY].start, mem[MB_HOLIDAY].size), cch, uniqId); 
       
         free(membfr);
+        if (!saved) {
+          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          break;
+        }
+        device.datetimeHoliday = tmp32;
+        user_send_timeshtamp(SHTAMP_HOLIDAY, device.datetimeHoliday,
+                           user_calcCRC16InFlash(mem[MB_HOLIDAY].start, mem[MB_HOLIDAY].size), cch, uniqId);
+
       }
       break;
           
@@ -3593,7 +3633,10 @@ if (cch != CH_USB && len >= 5){
       
     case 103: // очистить память идентификаторов
       if (cch == CH_USB){
-        user_clearMemBlock(MB_ID);
+        if (!user_clearMemBlock(MB_ID)) {
+          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          break;
+        }
         device.numbersCount = user_getNumbersCount();
         user_send_anyData(103, NULL, 0, cch, uniqId);
       } 

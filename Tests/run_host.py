@@ -168,7 +168,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         # ID base end (Д-11): recounted at start, after a sync and after clearing.
         assert 'device.numbersCount = user_getNumbersCount();' in case(13) and 'device.numbersCount++' not in user,'count after sync'
         c103=user[user.index('    case 103:'):user.index('    case 105:')]
-        assert c103.index('user_clearMemBlock(MB_ID);')<c103.index('device.numbersCount = user_getNumbersCount();'),'count after clearing'
+        assert c103.index('user_clearMemBlock(MB_ID)')<c103.index('device.numbersCount = user_getNumbersCount();'),'count after clearing'
         # Settings (Д-13): an empty server 2 is accepted.
         c12=case(12)
         assert 'if ((p[8] == 0) || (p[137] == 0)){' in c12 and 'p[40]' not in c12,'server 2 may be empty'
@@ -274,6 +274,18 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_logRecords'))
     elif kind=='crcblocks':
         unit=(ROOT/'Tests/test_crc_blocks.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_crcMemoryID'))
+    elif kind=='flashcmds':
+        user=source('User/user_fun.c')
+        start=user.index('    case 103:')
+        end=user.index('    case 104:',start) if '    case 104:' in user[start:] else user.index('    case 105:',start)
+        code=function(user,'user_clearMemBlock')+'\nstatic void command(uint8_t *ptr,dataChanel_e cch,uint8_t uniqId){switch(ptr[4]){'+user[start:end]+'default:abort();}}'
+        unit=(ROOT/'Tests/test_flash_commands.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellMem_s','memBlock_e','dataChanel_e','cmdCode_e')).replace('/* PRODUCTION */',code)
+    elif kind=='w25':
+        driver=source('User/flash_w25.c')
+        result='bool' if 'bool w25_write_data' in driver else 'void'
+        protos='static uint8_t w25_busy(void); static inline void w25_delay_ON(void); static inline void w25_delay_OFF(void); static void w25_WREN(void); static void w25_WRDI(void); static '+result+' w25_page_program(Int32U,pInt8U,Int16U);\n'
+        code=protos+re.sub(r'^#include[^\n]*','',driver,flags=re.M)
+        unit='#define HAVE_RESULT '+str(int(result=='bool'))+'\n'+(ROOT/'Tests/test_w25.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='sync':
         user=source('User/user_fun.c');case=cases(user)
         helper=function(user,'sync_cells_valid') if 'static bool sync_cells_valid(' in user else ''

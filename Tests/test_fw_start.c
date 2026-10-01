@@ -14,15 +14,16 @@ typedef enum {MB_FIRMWARE=0, MB_BACKUP=1} memBlock_e;
 /* The application's map (user_fun.c): image area, then the backup slot. */
 static struct {uint32_t start,size;} mem[2]={{0,131072},{135168,131072}};
 static uint8_t flash[135168+131072];
-static unsigned saves,wdt,torn,sent,sent_code,sent_cch,trial,manual;
+static unsigned saves,wdt,torn,sent,sent_code,sent_cch,trial,manual,fail_flash;
 static uint32_t stuck=0xffffffffu;
 static uint8_t bf[128];
-static void mem_read(uint32_t a,uint8_t*p,uint16_t n){CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);}
+static bool mem_read(uint32_t a,uint8_t*p,uint16_t n){CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);return true;}
 /* NOR programming clears bits only. A torn program leaves the second half
  * erased; a stuck address never programs. */
-static void mem_write(uint32_t a,uint8_t*p,uint16_t n){uint32_t i;CHECK(a+n<=sizeof(flash));
- for(i=0;i<n;i++){if(torn&&i>=n/2u)break;if(a+i==stuck)continue;flash[a+i]&=p[i];}if(torn)torn--;}
-static void user_clearMemBlock(memBlock_e mb){memset(flash+mem[mb].start,0xff,mem[mb].size);}
+static bool mem_write(uint32_t a,uint8_t*p,uint16_t n){uint32_t i;CHECK(a+n<=sizeof(flash));
+ if(fail_flash==2)return false;
+ for(i=0;i<n;i++){if(torn&&i>=n/2u)break;if(a+i==stuck)continue;flash[a+i]&=p[i];}if(torn)torn--;return true;}
+static bool user_clearMemBlock(memBlock_e mb){if(fail_flash==1)return false;memset(flash+mem[mb].start,0xff,mem[mb].size);return true;}
 static uint32_t crc_word(uint32_t c,uint32_t v){unsigned i;c^=v;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0);return c;}
 static uint32_t stm_crc(const uint8_t*p,uint32_t n){uint32_t c=0xffffffffu,w,i;for(i=0;i<n;i+=4){memcpy(&w,p+i,4);c=crc_word(c,w);}return c;}
 static bool user_checkFirmware(uint32_t adr,uint32_t size,uint32_t crc){return adr+size<=sizeof(flash)&&stm_crc(flash+adr,size)==crc;}
@@ -42,7 +43,7 @@ static void fw_resume_after_boot(void);
 
 static uint8_t image[96*1024];
 static void reset(void){memset(flash,0xff,sizeof(flash));memset(&device,0,sizeof(device));device.hardwareVersion=139;device.registredOnServer=1;
- saves=torn=sent=trial=manual=nlogs=0;stuck=0xffffffffu;boot_ver=0x32;}
+ saves=torn=sent=trial=manual=nlogs=fail_flash=0;stuck=0xffffffffu;boot_ver=0x32;}
 /* Update events carry a reason code (Protocol2 E534): the text names the reason, NULL - code 0. */
 static int last_log(int num,const char*reason){return nlogs&&logs[nlogs-1].num==num&&logs[nlogs-1].reason==fw_reason_code(reason);}
 static cmdCode_e start(uint16_t number,uint32_t build,uint32_t size,uint32_t crc,uint16_t blocks,dataChanel_e cch){
@@ -258,5 +259,7 @@ static void slow_server_tests(void){
  puts("audit: one 600 s limit for the whole download - a 15 s/block server does not fit, a fast one does");
 }
 
-int main(void){slow_server_tests();start_tests();rollback_tests();block_tests();end_tests();resume_tests();
+int main(void){unsigned failure;for(failure=1;failure<=2;failure++){reset();fail_flash=failure;
+ CHECK(start(71,1789600000,1024,1,1,CH_SERVER)==CMD_RUNERROR);CHECK(!device.FWinProgress&&!device.rebootToUpdate&&!saves);}
+ slow_server_tests();start_tests();rollback_tests();block_tests();end_tests();resume_tests();
  puts("PASS firmware update of sheet Protokol2: commands 19, 20 and 4, rollback, end of a download, resume after a reset");return 0;}

@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,11 +19,11 @@ static struct {uint32_t start;} mem[1]={{LEGACY}};
 static jmp_buf poweroff;
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 static uint16_t crc16_calc(uint8_t *p,uint16_t n){uint16_t c=0xffff;unsigned j;while(n--){c^=*p++;for(j=0;j<8;j++)c=(c>>1)^((c&1)?0xa001:0);}return c;}
-void w25_read_data(uint32_t a,uint8_t*p,uint16_t n){CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);}
+bool w25_read_data(uint32_t a,uint8_t*p,uint16_t n){CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);return true;}
 static unsigned limit(unsigned n){oplength[operations]=n;return cut==operations+1 && partial<n ? partial:n;}
 static void checkpoint(void){operations++;if(cut==operations)longjmp(poweroff,1);}
-void w25_erase_sector(uint32_t a){a &= ~4095u;CHECK(a+4096<=sizeof(flash));memset(flash+a,255,limit(4096));checkpoint();}
-void w25_write_data(uint32_t a,uint8_t*p,uint16_t n){while(n){unsigned i,k=256-(a&255),m;if(k>n)k=n;m=limit(k);CHECK(a+k<=sizeof(flash));for(i=0;i<m;i++){flash[a+i]&=p[i];}a+=k;p+=k;n-=k;checkpoint();}}
+bool w25_erase_sector(uint32_t a){a &= ~4095u;CHECK(a+4096<=sizeof(flash));memset(flash+a,255,limit(4096));checkpoint();return true;}
+bool w25_write_data(uint32_t a,uint8_t*p,uint16_t n){while(n){unsigned i,k=256-(a&255),m;if(k>n)k=n;m=limit(k);CHECK(a+k<=sizeof(flash));for(i=0;i<m;i++){flash[a+i]&=p[i];}a+=k;p+=k;n-=k;checkpoint();}return true;}
 static unsigned heap_used,heap_peak,heap_failures,legacy_defaulted;
 static void *heap_block;
 static void *host_malloc(size_t n){size_t *p;if(heap_used+n>0x1400){heap_failures++;return NULL;}CHECK(heap_block==NULL);p=malloc(n+sizeof(*p));CHECK(p!=NULL);heap_block=p;*p=n;heap_used+=(unsigned)n;if(heap_used>heap_peak)heap_peak=heap_used;return p+1;}
@@ -50,7 +51,7 @@ static void integrity(void){
  uint32_t h[4];unsigned errors;
  seed();readback();update();flash[MEM_CONFIG_SLOT1+100]^=1;readback();CHECK(!memcmp(got,olddata,4096));
  seed();readback();update();flash[MEM_CONFIG_SLOT1+4096+4]^=1;readback();CHECK(!memcmp(got,olddata,4096));
- seed();readback();h[0]=CFG_MAGIC;h[1]=0xffffffffu;h[2]=cfg_image_crc(MEM_CONFIG_SLOT0,h[1]);h[3]=~h[2];memcpy(flash+MEM_CONFIG_SLOT0+4096,h,16);update();readback();CHECK(!memcmp(got,newdata,4096));
+ seed();readback();h[0]=CFG_MAGIC;h[1]=0xffffffffu;CHECK(cfg_image_crc(MEM_CONFIG_SLOT0,h[1],&h[2]));h[3]=~h[2];memcpy(flash+MEM_CONFIG_SLOT0+4096,h,16);update();readback();CHECK(!memcmp(got,newdata,4096));
  errors=mem_config_errors;CHECK(errors==0);
  puts("corrupt data/generation rejected, generation wrap selected: passed");
 #endif

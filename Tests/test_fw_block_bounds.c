@@ -21,8 +21,8 @@ static void wdt_reload(void) {}
 static bool fw_image_foreign(const uint8_t *p,uint8_t hw) { CHECK(p!=NULL && hw==139);return foreign!=0; }
 static void fw_abort(const char *why) { (void)why;aborts++;device.startWaitFWtime=0; }
 static void fw_log(logUpdate_e event,const char *why) { CHECK(event==LOG_FW_FAIL && !strcmp(why,"HW"));logs++; }
-static void mem_write(uint32_t address,uint8_t *p,uint16_t n)
-{ CHECK(n==1024 && p==input+2 && address==FWBLOCK_OFFSET+(uint32_t)device.FWblockIdx*1024);writes++; }
+static bool mem_write(uint32_t address,uint8_t *p,uint16_t n)
+{ CHECK(n==1024 && p==input+2 && address==FWBLOCK_OFFSET+(uint32_t)device.FWblockIdx*1024);writes++; return true; }
 static bool fw_block_written(uint32_t address,const uint8_t *p) { (void)address;CHECK(p==input+2);return written!=0; }
 static void mem_read(uint32_t address,uint8_t *p,uint16_t n) { CHECK(address==0 && n==sizeof(bootFWparam_s));memset(p,0,n);reads++; }
 static bool user_checkFirmware(uint32_t address,uint32_t n,uint32_t crc) { CHECK(address==FWBLOCK_OFFSET && !n && !crc);return true; }

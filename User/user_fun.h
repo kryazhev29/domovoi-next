@@ -41,7 +41,7 @@ void user_parseUSSD(char* ptr);
 // инициализация
 void user_init (void);
 // очистить блок памяти
-void user_clearMemBlock(memBlock_e mb);
+bool user_clearMemBlock(memBlock_e mb);
 // циклический обработчик
 void user_loop(void);
 // инициализация переменных
