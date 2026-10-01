@@ -281,6 +281,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         types=typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
         code='\n'.join(function(strings,n) for n in ('chkdigitchar','chkdigitstr','skipchar','user_strcpy'))+'\n'
         if 'static bool gsm_datalength(' in gsm:code+=function(gsm,'gsm_datalength')+'\n'
+        if 'static bool gsm_regstate(' in gsm:code+=function(gsm,'gsm_regstate')+'\n'
         code+=function(gsm,'gsm_read')
         unit=(ROOT/'Tests/test_gsm_parser.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='gsmreg':

@@ -324,6 +324,22 @@ void gsm_init(void)
 }
 
 // ќбработка данных c модул€ gsm -----------------------------------------------
+// ќба варианта регистрации: <stat> и <n>,<stat>; короткие строки не €вл€ютс€ ответом.
+static bool gsm_regstate(char *p, char *end, uint8_t *state)
+{
+  while (p < end && *p == ' ') p++;
+  if (p >= end || *p < '0' || *p > '9') return false;
+  uint8_t n = (uint8_t)(*p++ - '0');
+  if (p < end && *p == ','){
+    p++;
+    while (p < end && *p == ' ') p++;
+    if (p >= end || *p < '0' || *p > '9') return false;
+    n = (uint8_t)(*p - '0');
+  }
+  *state = n;
+  return true;
+}
+
 // ƒлина тела допустима только вместе с разделителем и всеми прин€тыми байтами.
 static bool gsm_datalength(char *first, char *end, char separator, uint16_t *len, char **body)
 {
@@ -383,29 +399,15 @@ void gsm_read(char* ptr, Int16U size)
   }
   
   // +CREG: 1,1
-  if ((ps = strstr(ptr, "+CREG:")) != NULL){           
-    if (*(ps+8) == ','){
-      if (chkdigitchar(*(ps+9)))
-        GSM.creg = atoi(ps+9);
-    }
-    else{
-      if (chkdigitchar(*(ps+7)))
-        GSM.creg = atoi(ps+7);
-    }
-    gsm_dataread (CREG, ps+7, NULL, GSM.creg, 0);         
+  if ((ps = strstr(ptr, "+CREG:")) != NULL){
+    if (gsm_regstate(ps + 6, ptr + size, &GSM.creg))
+      gsm_dataread (CREG, ps + 6, NULL, GSM.creg, 0);
   }
 
   // +CGREG: 1,0
-  if ((ps = strstr(ptr, "+CGREG:")) != NULL){        
-    if (*(ps+9) == ','){
-      if (chkdigitchar(*(ps+10)))
-        GSM.cgreg = atoi(ps+10);
-    }
-    else {
-      if (chkdigitchar(*(ps+8)))
-        GSM.cgreg = atoi(ps+8);
-    }
-    gsm_dataread (CGREG, ps+8, NULL, GSM.cgreg, 0);              
+  if ((ps = strstr(ptr, "+CGREG:")) != NULL){
+    if (gsm_regstate(ps + 7, ptr + size, &GSM.cgreg))
+      gsm_dataread (CGREG, ps + 7, NULL, GSM.cgreg, 0);
   } 
   
   // +CCLK: "18/04/06,12:39:29+24"
@@ -714,7 +716,7 @@ void gsm_read(char* ptr, Int16U size)
   if (GSM.moduleType != M_SLM336){  
     if ((ps = strstr(ptr, "CLOSED")) != NULL){             
       if (GSM.ready){
-        if (GSM.muxmode && chkdigitchar(*(ps-3))){ // множество подключений, 0, CLOSED
+        if (GSM.muxmode && (ps - ptr >= 3) && chkdigitchar(*(ps-3))){ // множество подключений, 0, CLOSED
           GSM.dataconnectionindex = atoi(ps-3);
         }
         gsm_dataread (CLOSECONNECT, NULL, NULL, 0, GSM.dataconnectionindex);
@@ -770,11 +772,11 @@ void gsm_read(char* ptr, Int16U size)
     if ((ps = strstr(ptr, "CONNECT")) != NULL){
       // множество подключений, тогда до CONNECT был индекс, типа 0, CONNECT OK
       if (GSM.muxmode && GSM.ready){
-        if (chkdigitstr(ps-3, 1) && (*(ps-2) == ',')){
+        if ((ps - ptr >= 3) && chkdigitstr(ps-3, 1) && (*(ps-2) == ',')){
           GSM.dataconnectionindex = atoi(ps-3);
-          if (strncmp("OK", ps+8, 2) == 0)
+          if ((ptr + size - ps >= 10) && (strncmp("OK", ps+8, 2) == 0))
             gsm_dataread (CONNECTED, NULL, NULL, 0, GSM.dataconnectionindex);
-          if (strncmp("FAIL", ps+8, 4) == 0)
+          if ((ptr + size - ps >= 12) && (strncmp("FAIL", ps+8, 4) == 0))
             gsm_dataread (FAILCONNECT, NULL, NULL, 0, GSM.dataconnectionindex);
         }
       }            
