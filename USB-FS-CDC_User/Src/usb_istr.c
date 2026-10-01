@@ -234,7 +234,7 @@ void USB_Istr(void)
           }
         }
 #else
-        while((_GetISTR()&ISTR_RESET) == 0);
+        if (!USB_WaitReset()) { esof_counter = 0; return; }
 #endif
 
         /* clear RESET flag in ISTR */

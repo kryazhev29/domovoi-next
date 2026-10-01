@@ -57,6 +57,7 @@ typedef enum _DEVICE_STATE
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions ------------------------------------------------------- */
+uint8_t USB_WaitReset(void);
 void Suspend(void);
 void Resume_Init(void);
 void Resume(RESUME_STATE eResumeSetVal);

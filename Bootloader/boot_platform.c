@@ -14,6 +14,8 @@
 static volatile uint32_t ticks;
 static int spi_fault;
 static uint16_t flash_kib;
+static volatile uint8_t usb_recovery_pending;
+static uint32_t usb_recovery_started;
 int boot_platform_supported(void) { return flash_kib==BOOT_REQUIRED_FLASH_KIB; }
 uint32_t boot_millis(void) { return ticks; }
 void SysTick_Handler(void) { ++ticks; }
@@ -179,6 +181,18 @@ int boot_button(void) {
  uint32_t start=ticks;
  while(ticks-start<50u) { if(BOOT_BUTTON_PORT->IDR&BOOT_BUTTON_PIN)return 0;boot_service(); }
  return 1;
+}
+
+void boot_usb_request_recovery(void) { usb_recovery_pending = 1; }
+void boot_usb_poll(void) {
+ uint32_t mask = __get_PRIMASK();
+ __disable_irq();
+ if (usb_recovery_pending == 1) {
+  USB_PULLUP_OFF; PowerOff(); usb_recovery_started = ticks; usb_recovery_pending = 2;
+ } else if (usb_recovery_pending == 2 && ticks - usb_recovery_started >= 20u) {
+  usb_recovery_pending = 0; USB_Init(); USB_PULLUP_ON;
+ }
+ __set_PRIMASK(mask);
 }
 void boot_usb_init(void) { Set_System();Set_USBClock();USB_Interrupts_Config();USB_Init();USB_PULLUP_ON; }
 #ifdef __ICCARM__

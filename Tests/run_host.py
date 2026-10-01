@@ -438,6 +438,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         user=function(source('User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
         unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)
+    elif kind=='usbresetwait':
+        pwr=source('USB-FS-CDC_User/Src/usb_pwr.c');code=''
+        if 'uint8_t USB_WaitReset(' in pwr:code+=function(pwr,'USB_WaitReset')+'\n'
+        code+=function(pwr,'Suspend')
+        unit=(ROOT/'Tests/test_usb_reset_wait.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='usbsetupbounds':
         usb=source('STM32_USB-FS-Device_Driver/src/usb_core.c')
         block=usb[usb.index('      Related_Endpoint = (pInformation->USBwIndex0 & 0x0f);'):usb.index('\r\n  /*GET CONFIGURATION*/')]

@@ -6,6 +6,8 @@ void boot_platform_init(void);
 int boot_platform_supported(void);
 int boot_button(void);
 void boot_usb_init(void);
+void boot_usb_request_recovery(void);
+void boot_usb_poll(void);
 void boot_start_app(void);
 uint32_t boot_millis(void);
 #endif

@@ -31,6 +31,25 @@
 #include "usb_conf.h"
 #include "usb_pwr.h"
 #include "hw_config.h"
+#ifdef BOOTLOADER
+extern void boot_usb_request_recovery(void);
+#else
+extern void usb_request_recovery(void);
+#endif
+// ожидание RESET ограничено и не оставляет главный цикл запертым в IRQ
+uint8_t USB_WaitReset(void)
+{
+  uint32_t budget = 32000u;
+  while ((_GetISTR() & ISTR_RESET) == 0 && budget != 0) --budget;
+  if (budget != 0) return 1;
+#ifdef BOOTLOADER
+  boot_usb_request_recovery();
+#else
+  usb_request_recovery();
+#endif
+  return 0;
+}
+
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -144,7 +163,7 @@ void Suspend(void)
 	_SetCNTR(wCNTR);
 	
 	/*poll for RESET flag in ISTR*/
-	while((_GetISTR()&ISTR_RESET) == 0);
+	if (!USB_WaitReset()) return;
 	
 	/* clear RESET flag in ISTR */
 	_SetISTR((uint16_t)CLR_RESET);

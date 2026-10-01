@@ -109,7 +109,7 @@ void main(void) {
  if(!held)boot_start_app();
  boot_usb_init();
  for(;;) {
-  boot_service();poll();
+  boot_service();boot_usb_poll();poll();
   if(launch) {
    uint32_t start=boot_millis();while(boot_millis()-start<100u)boot_service();
    launch=0;result=boot_run();
