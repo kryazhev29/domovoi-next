@@ -138,6 +138,7 @@ void Enter_LowPowerMode(void)
 void Leave_LowPowerMode(void)
 {
   DEVICE_INFO *pInfo = &Device_Info;
+  uint32_t vectorBase = SCB->VTOR;
 
   /* Set the device state to the correct state */
   if (pInfo->Current_Configuration != 0)
@@ -151,6 +152,8 @@ void Leave_LowPowerMode(void)
   }
   /*Enable SystemCoreClock*/
   SystemInit();
+  // Восстановление тактирования не должно менять таблицу векторов.
+  SCB->VTOR = vectorBase;
 }
 
 /*******************************************************************************
