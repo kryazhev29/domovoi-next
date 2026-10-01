@@ -217,7 +217,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         for name in ['user_connected','user_disconnected']:
             assert 'server_rx_reset();' in function(user,name),name
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
-        unit=(ROOT/'Tests/test_server_rx.c').read_text().replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_server_rx.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='fwblockbounds':
         user=source('User/user_fun.c');case=cases(user)
         defines='\n'.join(x for x in user.splitlines() if x.startswith('#define FW_'))+'\n#define FWBLOCK_OFFSET 0x200u\n'

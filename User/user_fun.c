@@ -483,7 +483,7 @@ void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz)
 {
   uint32_t now = timers_getMillis();
   if (handle != device.connectionhandle) return;
-  if (server_rx_count && (uint32_t)(now - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
+  if (!server_rx_busy && server_rx_count && (uint32_t)(now - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
     server_rx_reset();
   if (siz) server_rx_last = now;
 
