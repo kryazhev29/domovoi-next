@@ -438,6 +438,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         user=function(source('User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
         unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)
+    elif kind=='tempidmeta':
+        unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_addIdToTempBuffer'))
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         header=source('USB-FS-CDC_User/Inc/hw_config.h')

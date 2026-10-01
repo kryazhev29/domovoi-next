@@ -3973,7 +3973,7 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
     mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s));
     // €чейка пуста€, она должна быть стерта
     if (cellId.index == 0xffff){
-      cellId.index = 0;
+      memset(&cellId, 0, sizeof(cellId)); // нова€ запись без чужих флагов и резерва
       memcpy(cellId.ID, id, 10);
       cellId.group = 0;
       cellId.blockTime = 0;
