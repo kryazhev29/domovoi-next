@@ -810,7 +810,7 @@ void user_setconnections(void)
   if ((config.useServer1 == 0) && (config.useServer2 == 0)) return;
   
   
-  ConnectParam_t cp;
+  ConnectParam_t cp = {0}; // включая необязательные обработчики
 
   if (device.useServer2){
     // резервный сервер
@@ -1191,7 +1191,7 @@ void user_initvariables (void)
   device.protocolVersion = PROTOCOL_VERSION;
   
   // загружаем параметры gsm
-  GsmParam_t param;
+  GsmParam_t param = {0}; // включая необязательные обработчики
 
   param.enable = 1;
   param.autoswitch_sim = 0;
