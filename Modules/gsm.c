@@ -273,16 +273,16 @@ char* gsm_runcmd(char *str, char *resp)
 #ifdef DEBUG_GSM
   gsm_debug(">>> GSM: Cmd "); 
   gsm_debug(str);
-  gsm_sendStrAndWaitResp(str, gsm_strbuf, resp, GSMRESPTIMEOUT);
+  bool ok = gsm_sendStrAndWaitResp(str, gsm_strbuf, resp, GSMRESPTIMEOUT);
   gsm_debug("<<< GSM: Answer ");
   gsm_debug(gsm_strbuf);
   gsm_debug("-----\r\n");
   
-  return gsm_strbuf;  
+  return ok ? gsm_strbuf : NULL;  
 #else
-  gsm_sendStrAndWaitResp(str, NULL, resp, GSMRESPTIMEOUT);
+  bool ok = gsm_sendStrAndWaitResp(str, gsm_strbuf, resp, GSMRESPTIMEOUT);
   
-  return NULL;
+  return ok ? gsm_strbuf : NULL;
 #endif
 }
 
