@@ -1140,6 +1140,25 @@ void user_initvariables (void)
 }
 
 // Чтение конфигурации с памяти
+static void config_terminate_strings(void)
+{
+  bool changed = false;
+  // CRC проверена до вызова; завершаем только строки без нуля внутри поля.
+#define CONFIG_TERM(field) \
+  if (memchr(config.field, 0, sizeof(config.field)) == NULL){ \
+    config.field[sizeof(config.field) - 1] = 0; changed = true; \
+  }
+  CONFIG_TERM(server1);
+  CONFIG_TERM(server2);
+  CONFIG_TERM(NTPserver);
+  CONFIG_TERM(netOperator);
+  CONFIG_TERM(countryCode);
+  CONFIG_TERM(simPhone);
+  CONFIG_TERM(ussdBalance);
+#undef CONFIG_TERM
+  if (changed) config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
+}
+
 void user_readconfig(void)
 {
   uint8_t read_count = 20;
@@ -1163,6 +1182,7 @@ void user_readconfig(void)
     user_setdefault(); // грузим блок по умолчанию
     user_saveindex();
   }
+  else config_terminate_strings();
 }
 
 // запись конфигурации в память
@@ -1271,6 +1291,7 @@ void user_readsavedinformation (void)
     // Блок DEVICE
     mem_read (mem[MB_CONFIG].start + sizeof(config), (pInt8U)&DV, sizeof(DV));
     if (DV.crc == crc16_calc((pInt8U)&DV, sizeof(DV)-2)){ // контрольная сумма совпала
+      DV.IMEIGSM[sizeof(DV.IMEIGSM) - 1] = 0; // Завершаем после проверки CRC.
       strcpy(device.IMEIGSM, DV.IMEIGSM); // восстанавливаем IMEI GSM
 
       device.protocolVersion = PROTOCOL_VERSION; // всегда версия из таблицы (строка 426), не сохранённая
@@ -3149,6 +3170,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
         else{
           rs485_set_config(&ptr[5]);
+          config_terminate_strings();
           // Сначала сохранить, затем отвечать таймштампом и CRC сохранённых настроек.
           device.datetimeConfig = config.datetime;
           device.status.defaultConfig = 0;

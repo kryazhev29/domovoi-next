@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,9 +10,8 @@ typedef unsigned dataChanel_e;
 #define CMD_RUNERROR 2
 #define SHTAMP_CONFIG 3
 #define MB_CONFIG 0
-#pragma pack(push,1)
-static struct {uint32_t datetime;char prefix[133];char countryCode[8];char tail[367];} config;
-#pragma pack(pop)
+/* CONFIG TYPES */
+static config_s config;
 static struct {uint32_t datetimeConfig;struct {int defaultConfig;} status;} device;
 static struct {uint32_t start,size;} mem[1]={{4096,512}};
 static unsigned answer,sms,saved,stamp,fail_alloc;

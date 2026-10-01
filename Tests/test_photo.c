@@ -1,6 +1,7 @@
 // Доработка: Кряжев А., 2026
 // Эмулятор C328 и NOR; исполняется производственный код.
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
