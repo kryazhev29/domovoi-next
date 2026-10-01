@@ -282,8 +282,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code='\n'.join(function(strings,n) for n in ('chkdigitchar','chkdigitstr','skipchar','user_strcpy'))+'\n'
         if 'static bool gsm_datalength(' in gsm:code+=function(gsm,'gsm_datalength')+'\n'
         if 'static bool gsm_regstate(' in gsm:code+=function(gsm,'gsm_regstate')+'\n'
-        code+=function(gsm,'gsm_read')
+        if '/* >>> Поток RX:' in gsm:
+            code+='#define TEST_STREAM 1\nstatic void gsm_rxreset(void);\nstatic void gsm_rxfailed(void);\nstatic bool gsm_rxpending(void);\nvoid gsm_read(char*,Int16U);\n'
+            code+=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'
+            code+=function(gsm,'gsm_readtext')+'\n'+gsm[gsm.index('/* >>> Поток RX:'):gsm.index('/* <<< Поток RX */')]
+        else:code+=function(gsm,'gsm_read')
         unit=(ROOT/'Tests/test_gsm_parser.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+        if '/* >>> Поток RX:' in gsm:unit='#define TEST_STREAM 1\n'+unit
     elif kind=='gsmreg':
         gsm=source('Modules/gsm.c')
         code='\n'.join(x for x in gsm.splitlines() if x.startswith('#define GSM_REG_'))+'\n'
@@ -299,6 +304,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert run.index('gsm_stashurc();')<run.index('gsm_sendStrAndWaitResp'),'stash before the command'
         assert 'gsm_takeurc();' in function(source('User/user_fun.c'),'gsm_check_data'),'main loop parses the stash'
         code=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'+run
+        if 'gsm_rxfailed();' in code:code='#include <stdbool.h>\nstatic void gsm_rxfailed(void) {}\nstatic bool gsm_rxpending(void) {return false;}\n'+code
         unit=(ROOT/'Tests/test_gsm_urc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='crc':
         user=source('User/user_fun.c')

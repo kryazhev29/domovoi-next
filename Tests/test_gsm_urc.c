@@ -144,9 +144,9 @@ int main(void)
   gsm_runcmd("AT+CSQ\r", "OK");
   gsm_takeurc();
   CHECK(reads == 1);
-  CHECK(seenlen == (uint16_t)((framelen - 2) + (frame2len - 2)));
+  CHECK(seenlen == (uint16_t)((framelen - 2) + frame2len));
   CHECK(memcmp(seen, frame + 2, (size_t)(framelen - 2)) == 0);
-  CHECK(memcmp(seen + (framelen - 2), frame2 + 2, (size_t)(frame2len - 2)) == 0);
+  CHECK(memcmp(seen + (framelen - 2), frame2, (size_t)frame2len) == 0);
 
   /* A frame far longer than gsm_strbuf survives whole, the answer copy stays inside its buffer. */
   reset();

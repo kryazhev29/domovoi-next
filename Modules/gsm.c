@@ -28,10 +28,15 @@ GsmStr GSM;
 
 
 // »нициализаци€ переменных ----------------------------------------------------
+static void gsm_rxreset(void);
+static void gsm_rxfailed(void);
+static bool gsm_rxpending(void);
+
 void gsm_initvar (uint8_t multiConnection, uint8_t textMode)
 {
   moduleType_e mt = GSM.moduleType;
   
+  gsm_rxreset();
   memset((uint8_t*)&GSM, 0, sizeof(GSM));
   
   if (multiConnection != 0){
@@ -158,6 +163,7 @@ bool gsm_power (Int8U pwr)
 
 static char *gsm_urcbuf = NULL; // отложенные URC, ждут цикл main
 static uint16_t gsm_urclen = 0;
+static bool gsm_urclost = false;
 
 // ѕоиск подстроки в двоичных данных: нули внутри кадра не останавливают поиск
 static char* gsm_memfind (char *ptr, uint16_t size, const char *pattern)
@@ -187,6 +193,16 @@ static char* gsm_findurc (char *ptr, uint16_t size)
     if ((p != NULL) && ((first == NULL) || (p < first)))
       first = p;
   }
+  if (first == NULL){
+    // UART мог закончитьс€ посередине первого заголовка.
+    char *q = ptr;
+    while (q < ptr + size && (*q == '\r' || *q == '\n')) q++;
+    uint16_t left = (uint16_t)(ptr + size - q);
+    for (i = 0; i < (uint8_t)(sizeof(marks) / sizeof(marks[0])); i++){
+      uint16_t n = (uint16_t)strlen(marks[i]);
+      if (left && left < n && memcmp(q, marks[i], left) == 0) return q;
+    }
+  }
   return first;
 }
 
@@ -199,18 +215,21 @@ static void gsm_stashurc (void)
   if (count == 0) return;
 
   raw = (char*)uart_getptr(GSM_PORT);
-  urc = gsm_findurc(raw, count);
+  urc = (gsm_urclen != 0 || gsm_rxpending()) ? raw : gsm_findurc(raw, count);
 
-  if (urc == NULL) return; // обычный ответ на команду, откладывать нечего
+  if (urc == NULL){
+    if (gsm_urclen == 0 && !gsm_rxpending()) return; // обычный ответ без продолжени€ URC
+    urc = raw; // продолжение отложенного заголовка или тела
+  }
 
   count -= (uint16_t)(urc - raw);
 
   // ќбрезанный кадр хуже потер€нного: длина в заголовке перестанет сходитьс€ с данными
-  if (count > (uint16_t)(GSM_URC_MAX - gsm_urclen)) return;
+  if (count > (uint16_t)(GSM_URC_MAX - gsm_urclen)) {gsm_urclost = true; return;}
 
   // ќдин накопитель фиксированного размера: нет пика старый + новый при росте.
   if (gsm_urcbuf == NULL) gsm_urcbuf = calloc(GSM_URC_MAX + 8u, 1);
-  if (gsm_urcbuf == NULL) return;
+  if (gsm_urcbuf == NULL) {gsm_urclost = true; return;}
   memcpy(gsm_urcbuf + gsm_urclen, urc, count);
   gsm_urclen += count;
 }
@@ -222,6 +241,14 @@ void gsm_takeurc (void)
   uint16_t len = gsm_urclen;
   char *compact;
 
+  if (gsm_urclost){
+    gsm_urclost = false;
+    gsm_urcbuf = NULL;
+    gsm_urclen = 0;
+    free(buf);
+    gsm_rxfailed(); // отказ €вно закрывает соединение, не смешивает неполные кадры
+    return;
+  }
   if (buf == NULL) return;
   // ѕеред разбором отдаЄм неиспользованный хвост heap другим командам.
   compact = realloc(buf, (uint32_t)len + 8u);
@@ -345,6 +372,7 @@ static bool gsm_datalength(char *first, char *end, char separator, uint16_t *len
 {
   uint32_t n = 0;
   char *p = first;
+  while (p < end && *p == ' ') p++;
   if (p >= end || *p < '0' || *p > '9') return false;
   while (p < end && *p >= '0' && *p <= '9'){
     n = n * 10u + (uint8_t)(*p++ - '0');
@@ -352,13 +380,12 @@ static bool gsm_datalength(char *first, char *end, char separator, uint16_t *len
   }
   if (separator == '\n' && p < end && *p == '\r') p++;
   if (p >= end || *p++ != separator) return false;
-  if (n > (uint32_t)(end - p)) return false;
   *len = (uint16_t)n;
   *body = p;
   return true;
 }
 
-void gsm_read(char* ptr, Int16U size)
+static void gsm_readtext(char* ptr, Int16U size)
 {
   if (ptr == NULL) return;
   if (size == 0) return;
@@ -376,16 +403,13 @@ void gsm_read(char* ptr, Int16U size)
 
   // <CR><LF>IMEI<CR><LF>
   if (GSM.getimei){
-    while((var = skipchar(0x0a, ptr, 1)) != ptr){
-      if (chkdigitstr(var, 15)){
-        strncpy(gsm_strbuf, var, 15); // копируем IMEI
-        gsm_strbuf[15] = 0;
-        GSM.getimei = 0;
-        gsm_dataread(IMEI, gsm_strbuf, NULL, 0, 0);
-        break;
-      } else{
-        ptr++;
-      }
+    var = ptr;
+    while (var < ptr + size && (*var == '\r' || *var == '\n' || *var == ' ')) var++;
+    if ((ptr + size - var >= 15) && chkdigitstr(var, 15)){
+      strncpy(gsm_strbuf, var, 15);
+      gsm_strbuf[15] = 0;
+      GSM.getimei = 0;
+      gsm_dataread(IMEI, gsm_strbuf, NULL, 0, 0);
     }
   }
   
@@ -429,7 +453,8 @@ void gsm_read(char* ptr, Int16U size)
       do{
         var = skipchar(0x0a, var, 1);
       } while(*var == 0x0d);
-      gsm_dataread (SMS, gsm_strbuf, var, 0, 0); /*текст смс после перевода каретки и до следующего перевода каретки*/      
+      gsm_dataread (SMS, gsm_strbuf, var, 0, 0);
+      return; /*текст смс после перевода каретки и до следующего перевода каретки*/      
     }
     
     // +CMGS
@@ -457,7 +482,8 @@ void gsm_read(char* ptr, Int16U size)
       user_strcpy (gsm_strbuf, var, '"', 16);
       var = skipchar(0x0a, var, 1);
       //777 определ€ть pdu или text
-      gsm_dataread (SMS, gsm_strbuf, var, 0, 0); /*текст смс после перевода каретки и до следующего перевода каретки*/          
+      gsm_dataread (SMS, gsm_strbuf, var, 0, 0);
+      return; /*текст смс после перевода каретки и до следующего перевода каретки*/          
     }
   }
 
@@ -556,17 +582,7 @@ void gsm_read(char* ptr, Int16U size)
 
     // +IPD,5:abcde // SIM900
     // +IPD125:abcde // M95
-    if ((ps = strstr(ptr, "IPD")) != NULL){
-      if (GSM.ready){
-        uint16_t k;
-        
-        char *first = ps + 3;
-        if (first < ptr + size && *first == ',') first++;
-        if (gsm_datalength(first, ptr + size, ':', &k, &var)){
-          gsm_dataread (DATA, var, NULL, k, GSM.dataconnectionindex);
-        }
-      }
-    }
+
   
     // PDP: DEACT
     if ((ps = strstr(ptr, "PDP: DEACT")) != NULL){             
@@ -660,15 +676,7 @@ void gsm_read(char* ptr, Int16U size)
       }
       
       // +QIURC: "recv",<connectID>,<currentrecvlength><CR><LF><data>
-      if (strncmp("recv", gsm_strbuf, 4) == 0){
-        uint16_t s;
-        
-        var = skipchar(',', ps, 2);
-        if (var != ps){
-          if (gsm_datalength(var, ptr + size, '\n', &s, &var))
-            gsm_dataread (DATA, var, NULL, s, GSM.dataconnectionindex);          
-        }
-      }
+
 
       // +QIURC: "pdpdeact",<contextID>
       if (strncmp("pdpdeact", gsm_strbuf, 8) == 0){
@@ -849,6 +857,122 @@ void gsm_read(char* ptr, Int16U size)
 }
 
 // »нициализаци€ GPRS ----------------------------------------------------------
+/* >>> ѕоток RX: заголовки и строки отделены от двоичного тела. */
+static char *gsm_linebuf = NULL;
+static uint16_t gsm_linelen = 0;
+static uint16_t gsm_linecap = 0;
+static uint16_t gsm_remaining = 0;
+static uint8_t gsm_smsline = 0;
+static bool gsm_rxpending(void) {return gsm_linelen != 0 || gsm_remaining != 0;}
+
+static void gsm_rxreset(void)
+{
+  free(gsm_linebuf);
+  gsm_linebuf = NULL;
+  gsm_linelen = gsm_linecap = gsm_remaining = 0;
+  gsm_smsline = 0;
+}
+
+// ѕотер€нное тело нельз€ склеивать со следующим ответом: св€зь восстанавливаетс€ штатно.
+static void gsm_rxfailed(void)
+{
+  gsm_rxreset();
+  gsm_dataread(CLOSECONNECT, NULL, NULL, 0, GSM.dataconnectionindex);
+}
+
+static bool gsm_linebyte(char ch)
+{
+  if (gsm_linelen == gsm_linecap){
+    uint16_t cap = gsm_linecap ? (uint16_t)(gsm_linecap * 2u) : 64u;
+    if (cap > GSM_URC_MAX) return false;
+    char *p = realloc(gsm_linebuf, (uint32_t)cap + 16u);
+    if (p == NULL) return false;
+    gsm_linebuf = p;
+    gsm_linecap = cap;
+  }
+  gsm_linebuf[gsm_linelen++] = ch;
+  memset(gsm_linebuf + gsm_linelen, 0, 16u);
+  return true;
+}
+
+// «десь завершаетс€ только заголовок; тело учитываетс€ отдельно по фактически прин€тым байтам.
+static bool gsm_frameheader(void)
+{
+  char *p;
+  char *body;
+  uint16_t n;
+  if (strncmp(gsm_linebuf, "+IPD", 4) == 0){
+    p = gsm_linebuf + 4;
+    if (*p == ',') p++;
+    if (!gsm_datalength(p, gsm_linebuf + gsm_linelen, ':', &n, &body)) return false;
+  } else{
+    p = strchr(gsm_linebuf, ',');
+    if (p == NULL) return false;
+    p++;
+    while (*p == ' ') p++;
+    if (*p < '0' || *p > '9') return false;
+    uint16_t cid = 0;
+    while (*p >= '0' && *p <= '9'){
+      cid = (uint16_t)(cid * 10u + (uint8_t)(*p++ - '0'));
+      if (cid > 255u) return false;
+    }
+    while (*p == ' ') p++;
+    if (*p++ != ',') return false;
+    if (!gsm_datalength(p, gsm_linebuf + gsm_linelen, '\n', &n, &body)) return false;
+    if (GSM.muxmode) GSM.dataconnectionindex = (uint8_t)cid;
+  }
+  gsm_remaining = n;
+  free(gsm_linebuf);
+  gsm_linebuf = NULL;
+  gsm_linelen = gsm_linecap = 0;
+  return true;
+}
+
+void gsm_read(char* ptr, Int16U size)
+{
+  if (ptr == NULL || size == 0 || GSM.operation == PO_OFF) return;
+  while (size){
+    if (gsm_remaining){
+      uint16_t n = size < gsm_remaining ? size : gsm_remaining;
+      // —осто€ние передаЄтс€ до вызова: обработчик может отправить новую AT-команду.
+      gsm_remaining -= n;
+      gsm_dataread(DATA, ptr, NULL, n, GSM.dataconnectionindex);
+      ptr += n;
+      size -= n;
+      continue;
+    }
+    char ch = *ptr++;
+    size--;
+    if (gsm_linelen == 0 && (ch == '\r' || ch == '\n')) continue;
+    if (!gsm_linebyte(ch)){
+      gsm_rxfailed();
+      return;
+    }
+    if (ch == ':' && strncmp(gsm_linebuf, "+IPD", 4) == 0){
+      if (!gsm_frameheader()) {gsm_rxfailed(); return;}
+      continue;
+    }
+    if (ch != '\n') continue;
+    char *urc = strncmp(gsm_linebuf, "+QIURC:", 7) == 0 ? strchr(gsm_linebuf, '"') : NULL;
+    if (urc != NULL && strncmp(urc, "\"recv\"", 6) == 0){
+      if (!gsm_frameheader()) {gsm_rxfailed(); return;}
+      continue;
+    }
+    if (!gsm_smsline && (strncmp(gsm_linebuf, "+CMT:", 5) == 0 || strncmp(gsm_linebuf, "+CMGR:", 6) == 0)){
+      gsm_smsline = 1; // —ћ—: строка заголовка и следующа€ строка текста идут вместе.
+      continue;
+    }
+    char *line = gsm_linebuf;
+    uint16_t len = gsm_linelen;
+    gsm_linebuf = NULL;
+    gsm_linelen = gsm_linecap = 0;
+    gsm_smsline = 0;
+    gsm_readtext(line, len);
+    free(line);
+  }
+}
+/* <<< ѕоток RX */
+
 void gsm_initgprs(char *apn, char *login, char *pass)
 {
   if ((GSM.moduleType == M_UG95) || (GSM.moduleType == M_SLM336)) 
