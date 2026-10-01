@@ -232,7 +232,7 @@ void usergsm_event(gsmevent_e ev)
 
 // получен идентификатор по wiegand
 void WG_readedID(uint32_t id){
-  char tb[10];
+  char tb[11];
   
   sprintf(tb, "00%08X", id);
 #ifdef DEBUG_USER
@@ -253,7 +253,7 @@ void WG_readedID(uint32_t id){
 
 // получен идентификатор по rf433
 void RF433_readedID(uint32_t id){
-  char tb[10];
+  char tb[11];
   //777
   sprintf(tb, "00%08X", id);
 #ifdef DEBUG_USER
@@ -274,7 +274,7 @@ void RF433_readedID(uint32_t id){
 
 // получен идентификатор по RFID
 void RFID_readedID(uint32_t id, uint8_t address){
-  char tb[10];
+  char tb[11];
   //777
   sprintf(tb, "00%08X", id);
 #ifdef DEBUG_USER
