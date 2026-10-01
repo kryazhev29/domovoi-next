@@ -284,6 +284,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c');case=cases(user)
         code=function(source('User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_commands.c').read_text().replace('/* CONFIG TYPES */',typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')).replace('/* PRODUCTION */',code)
+    elif kind=='wiegandirq':
+        wg=source('User/wiegand.c')
+        code='\n'.join(x for x in wg.splitlines() if re.match(r'^(?:volatile )?(?:uint32_t|uint8_t|bool) wg',x))+'\n'
+        code+='\n'.join(function(wg,n) for n in ('EXTI2_IRQHandler','EXTI3_IRQHandler','WG_process'))
+        unit=(ROOT/'Tests/test_wiegand_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='timersirq':
         timers=source('Modules/timers.c').replace('inline void timers_handle','void timers_handle')
         code='\n'.join(x for x in timers.splitlines() if x.startswith(('unsigned int milliSeconds','unsigned int timer[','volatile unsigned int milliSeconds','volatile unsigned int timer[','#define timer_cnt')))+'\n'

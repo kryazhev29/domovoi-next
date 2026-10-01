@@ -1,9 +1,9 @@
 
 #include "wiegand.h"
 
-uint32_t wgData = 0;
-uint32_t wgTime = 0;
-uint8_t wgBitCount = 0;
+volatile uint32_t wgData = 0;
+volatile uint32_t wgTime = 0;
+volatile uint8_t wgBitCount = 0;
 bool wgDataAvalible = false;
 uint32_t wgID = 0;
 
@@ -17,7 +17,7 @@ void EXTI2_IRQHandler(void){
     wgDataAvalible = true;
     wgID = (wgData>>1) & 0x03FFFFFF;
   }*/
-  wgBitCount++;
+  if (wgBitCount < 255) wgBitCount++; // Шум не должен снова стать кадром из 26 бит.
   wgTime = timers_getMillis();
   EXTI->PR = EXTI_Line2;
 }
@@ -29,7 +29,7 @@ void EXTI3_IRQHandler(void){
     wgDataAvalible = true;
     wgID = (wgData>>1) & 0x03FFFFFF;
   }*/
-  wgBitCount++;
+  if (wgBitCount < 255) wgBitCount++; // Шум не должен снова стать кадром из 26 бит.
   wgTime = timers_getMillis();
   EXTI->PR = EXTI_Line3;
 }
@@ -67,19 +67,28 @@ void WG_init(void){
 // обработчик
 void WG_process(void){
   if (wgDataAvalible){
-    WG_readedID(wgID);
-    wgDataAvalible = false;
-  }  
-  
-  if ((timers_getMillis() - wgTime) > 250){
-    wgTime = timers_getMillis();
-    if (wgBitCount == 26){
-      wgDataAvalible = true;
-      wgID = (wgData>>1) & 0x03FFFFFF;
-    } else
-      wgDataAvalible = false;
+    uint32_t id = wgID;
+    wgDataAvalible = false; // снимаем владение до вызова обработчика
+    WG_readedID(id);
+  }
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  uint32_t now = timers_getMillis();
+  bool complete = ((now - wgTime) > 250);
+  uint32_t data = 0;
+  uint8_t count = 0;
+  if (complete){
+    data = wgData;
+    count = wgBitCount;
+    wgTime = now;
     wgData = 0;
     wgBitCount = 0;
+  }
+  __set_PRIMASK(mask); // следующий фронт уже принадлежит следующему кадру
+  if (complete){
+    wgDataAvalible = (count == 26);
+    if (wgDataAvalible)
+      wgID = (data>>1) & 0x03FFFFFF; // прежнее формирование ID; паритет требует решения Q6
   }
 }
 

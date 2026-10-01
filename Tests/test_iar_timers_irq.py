@@ -3,9 +3,10 @@ from iar_irq_support import Machine,UC_ARM_REG_PRIMASK,UC_HOOK_MEM_WRITE
 m=Machine()
 m.stubs[m.addr('timers_user_handle')]=lambda:m.ret()
 base=m.addr('timer');millis=m.addr('milliSeconds')
+timer_bytes=m.map_size('timer')
 setting=False
 def write_hook(u,access,address,size,value,_):
-    if setting and base<=address<base+40 and not m.in_irq:
+    if setting and base<=address<base+timer_bytes and not m.in_irq:
         assert u.reg_read(UC_ARM_REG_PRIMASK)==1,'timer set store executes with IRQ unmasked'
 m.u.hook_add(UC_HOOK_MEM_WRITE,write_hook)
 def set_timer(*args,**kwargs):

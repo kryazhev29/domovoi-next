@@ -1,5 +1,5 @@
 """Свежий ELF IAR; IRQ вызывается на границе инструкции с учётом PRIMASK."""
-import pathlib, struct, sys
+import pathlib, struct, sys, re
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 for deps in (ROOT/'Release/photo_test_deps',ROOT.parents[1]/'СофтЭксперт/Для новой системы/Domovoi Next_IAR95/Domovoi Next_IAR95/Release/photo_test_deps'):
     if deps.exists():sys.path.insert(0,str(deps))
@@ -11,12 +11,14 @@ from unicorn.arm_const import *
 class Machine:
     def __init__(self):
         self.symbols={}
+        self.symboltypes={}
         self.members={}
         self.volatile={}
         with (ROOT/'Release/Exe/DomovoiNext.out').open('rb') as f:
             elf=ELFFile(f)
             for s in elf.get_section_by_name('.symtab').iter_symbols():
                 self.symbols[s.name]=s['st_value']
+                self.symboltypes[s.name]=s['st_info']['type']
             for cu in elf.get_dwarf_info().iter_CUs():
                 for die in cu.iter_DIEs():
                     a=die.attributes.get('DW_AT_name')
@@ -37,11 +39,25 @@ class Machine:
         self.u.mem_map(0x08000000,0x20000);self.u.mem_write(0x08008200,(ROOT/'Release/Exe/DomovoiNext.bin').read_bytes())
         self.u.mem_map(0x20000000,0x5000);self.u.mem_map(0x21000000,0x1000)
         self.u.mem_map(0x40000000,0x30000);self.u.mem_map(0xE000E000,0x1000)
-        self.top=self.addr('CSTACK$$Limit');self.bottom=self.addr('CSTACK$$Base')
+        self.maptext=(ROOT/'Release/List/DomovoiNext.map').read_text(errors='replace')
+        self.top=self.map_addr('CSTACK$$Limit');self.bottom=self.map_addr('CSTACK$$Base')
+        self.heap_bytes=self.map_addr('HEAP$$Limit')-self.map_addr('HEAP$$Base')
         self.stop=0x0801fff0;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={}
         self.u.reg_write(UC_ARM_REG_XPSR,0x01000000)
         self.u.hook_add(UC_HOOK_CODE,self.hook)
-    def addr(self,n):return self.symbols.get(n,self.symbols.get('_A_'+n)) & ~1
+    def addr(self,n):
+        key=n if n in self.symbols else '_A_'+n
+        address=self.symbols[key]
+        return address & ~1 if self.symboltypes[key]=='STT_FUNC' else address
+    def map_addr(self,n):
+        found=re.search(r'^'+re.escape(n)+r"\s+(0x[0-9a-f']+)",self.maptext,re.M|re.I)
+        assert found,n
+        value=int(found[1].replace("'",''),16);assert value==self.addr(n),(n,'map/ELF mismatch')
+        return value
+    def map_size(self,n):
+        found=re.search(r'^(?:_A_)?'+re.escape(n)+r"\s+0x[0-9a-f']+\s+(0x[0-9a-f]+)\s+Data",self.maptext,re.M|re.I)
+        assert found,n
+        return int(found[1],16)
     def ret(self,value=0):
         self.u.reg_write(UC_ARM_REG_R0,value);self.u.reg_write(UC_ARM_REG_PC,self.u.reg_read(UC_ARM_REG_LR))
     def hook(self,u,a,n,_):
