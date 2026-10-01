@@ -4787,7 +4787,6 @@ static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count){
 #define LOG_PENDING_MAX 16
 #define LOG_TIME_WAIT   600
 static cellLog_s log_pending[LOG_PENDING_MAX];
-static uint32_t log_pendingAt[LOG_PENDING_MAX]; // device.worktime в момент события
 static uint8_t log_pendingCount;
 static uint8_t log_timeKnown;
 
@@ -4797,7 +4796,6 @@ void log_flushPending(void){
     if (!log_addEvent(&log_pending[0])) return;
     log_pendingCount--;
     memmove(log_pending, log_pending + 1, log_pendingCount * sizeof(log_pending[0]));
-    memmove(log_pendingAt, log_pendingAt + 1, log_pendingCount * sizeof(log_pendingAt[0]));
   }
 }
 
@@ -4806,7 +4804,7 @@ void log_setTime(uint32_t now){
   id_endScan = true;
   if (!log_timeKnown) {
     for (uint8_t i = 0; i < log_pendingCount; i++){
-      log_pending[i].datetime = now - (device.worktime - log_pendingAt[i]);
+      log_pending[i].datetime = now - (device.worktime - log_pending[i].datetime);
       log_pending[i].index = log_pending[i].datetime;
     }
   }
@@ -4825,8 +4823,10 @@ static bool log_put(cellLog_s *cell){
   }
   if (log_pendingCount == LOG_PENDING_MAX) log_flushPending();
   if (log_pendingCount == LOG_PENDING_MAX) return false;
-  log_pendingAt[log_pendingCount] = device.worktime;
-  log_pending[log_pendingCount++] = *cell;
+  log_pending[log_pendingCount] = *cell;
+  // до времени сервера datetime хранит uptime, затем переводится один раз
+  if (!log_timeKnown) log_pending[log_pendingCount].datetime = device.worktime;
+  log_pendingCount++;
   return true;
 }
 /* <<< отложенные события журнала */

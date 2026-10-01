@@ -26,4 +26,13 @@ elif kind=='mem':
 elif kind=='log':
     m=Machine();assert 'log_pendingAt' not in m.symbols,'duplicate log uptime array still allocated'
     assert m.map_size('log_pending')==512
+    import struct
+    from iar_layout import fields
+    m.init();offset=fields('device_s')['worktime'];dev=m.addr('device')
+    m.stubs[m.addr('log_addEvent')]=lambda:m.ret(0)
+    m.u.mem_write(dev+offset,struct.pack('<I',10));m.call('log_addSystemEvent',33)
+    m.u.mem_write(dev+offset,struct.pack('<I',20));m.call('log_setTime',1000)
+    assert struct.unpack('<I',m.u.mem_read(m.addr('log_pending')+4,4))[0]==990
+    m.call('log_setTime',2000)
+    assert struct.unpack('<I',m.u.mem_read(m.addr('log_pending')+4,4))[0]==990
     print('RAM log: duplicate uptime array removed, pending map 512 bytes PASS')
