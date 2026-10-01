@@ -53,13 +53,13 @@ LINE_CODING linecoding =
 /*  Structures initializations */
 /* -------------------------------------------------------------------------- */
 
-DEVICE Device_Table =
+const DEVICE Device_Table =
   {
     EP_NUM,
     1
   };
 
-DEVICE_PROP Device_Property =
+const DEVICE_PROP Device_Property =
   {
     Virtual_Com_Port_init,
     Virtual_Com_Port_Reset,
@@ -75,7 +75,7 @@ DEVICE_PROP Device_Property =
     0x40 /*MAX PACKET SIZE*/
   };
 
-USER_STANDARD_REQUESTS User_Standard_Requests =
+const USER_STANDARD_REQUESTS User_Standard_Requests =
   {
     Virtual_Com_Port_GetConfiguration,
     Virtual_Com_Port_SetConfiguration,
@@ -88,19 +88,19 @@ USER_STANDARD_REQUESTS User_Standard_Requests =
     Virtual_Com_Port_SetDeviceAddress
   };
 
-ONE_DESCRIPTOR Device_Descriptor =
+const ONE_DESCRIPTOR Device_Descriptor =
   {
     (uint8_t*)Virtual_Com_Port_DeviceDescriptor,
     VIRTUAL_COM_PORT_SIZ_DEVICE_DESC
   };
 
-ONE_DESCRIPTOR Config_Descriptor =
+const ONE_DESCRIPTOR Config_Descriptor =
   {
     (uint8_t*)Virtual_Com_Port_ConfigDescriptor,
     VIRTUAL_COM_PORT_SIZ_CONFIG_DESC
   };
 
-ONE_DESCRIPTOR String_Descriptor[4] =
+const ONE_DESCRIPTOR String_Descriptor[4] =
   {
     {(uint8_t*)Virtual_Com_Port_StringLangID, VIRTUAL_COM_PORT_SIZ_STRING_LANGID},
     {(uint8_t*)Virtual_Com_Port_StringVendor, VIRTUAL_COM_PORT_SIZ_STRING_VENDOR},

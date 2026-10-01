@@ -265,7 +265,7 @@ RESULT Standard_ClearFeature(void)
   }
   else if (Type_Rec == (STANDARD_REQUEST | ENDPOINT_RECIPIENT))
   {/*EndPoint Clear Feature*/
-    DEVICE* pDev;
+    const DEVICE * pDev;
     uint32_t Related_Endpoint;
     uint32_t wIndex0;
     uint32_t rEP;
@@ -427,7 +427,7 @@ RESULT Standard_SetDeviceFeature(void)
 *                  wOffset The buffer pointed by this address contains at least
 *                  Length bytes.
 *******************************************************************************/
-uint8_t *Standard_GetDescriptorData(uint16_t Length, ONE_DESCRIPTOR *pDesc)
+uint8_t *Standard_GetDescriptorData(uint16_t Length, const ONE_DESCRIPTOR *pDesc)
 {
   uint32_t  wOffset;
 
