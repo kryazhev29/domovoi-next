@@ -494,6 +494,9 @@ void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz)
       server_rx_process();
       server_rx_defer = defer;
     }
+    /* При вложенном приёме текущий кадр ещё занят обработчиком: освобождать или
+     * перезаписывать его нельзя. Невместившийся хвост сервер повторит. */
+    if (server_rx_count >= SERVER_RX_CAPACITY) return;
     server_rx_buffer[server_rx_count++] = *data++;
     server_rx_scan();
     if (server_rx_ready && !server_rx_defer) server_rx_process();
