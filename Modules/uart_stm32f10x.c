@@ -277,6 +277,20 @@ void uart_timer1ms (void)
 // timeout - время, через которое выходим, в мс
 // uart - порт по которому ждем
 // pattern - то что ищем
+// Поиск ограничен снимком количества принятых байтов, завершающий NUL не требуется.
+static bool uart_matchresponse(Int8U num, uint16_t first, const char *pattern)
+{
+  uint16_t count = uart[num].received;
+  uint32_t n = strlen(pattern);
+  if (count > uart[num].bfsize) count = uart[num].bfsize;
+  if (first > count || n > (uint16_t)(count - first)) return false;
+  if (n == 0) return true;
+  for (uint16_t i = first; i <= (uint16_t)(count - n); i++){
+    if (memcmp(uart[num].rxbuffer + i, pattern, n) == 0) return true;
+  }
+  return false;
+}
+
 bool uart_waitresp(Int8U num, Int16U t_ms, char* pattern)
 {
   if (num >= UARTS) return false;
@@ -299,7 +313,7 @@ bool uart_waitresp(Int8U num, Int16U t_ms, char* pattern)
       if (pattern == NULL){
         return true;
       } else{
-        if (strstr((char*)&uart[num].rxbuffer[startrec], pattern) != NULL)
+        if (uart_matchresponse(num, startrec, pattern))
           return true;
         else
           return false;
@@ -470,7 +484,7 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, In
       if (pattern == NULL){
         return true;
       } else{
-        if (strstr((char*)&uart[num].rxbuffer[0], pattern) != NULL)
+        if (uart_matchresponse(num, 0, pattern))
           return true;
         else
           return false;

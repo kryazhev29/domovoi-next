@@ -276,6 +276,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c');case=cases(user)
         code=function(source('User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_commands.c').read_text().replace('/* CONFIG TYPES */',typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')).replace('/* PRODUCTION */',code)
+    elif kind=='uartresponse':
+        uart=source('Modules/uart_stm32f10x.c')
+        types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'
+        code=''
+        if 'static bool uart_matchresponse(' in uart:code+=function(uart,'uart_matchresponse')+'\n'
+        code+='\n'.join(function(uart,n) for n in ('uart_clear','uart_waitresp','uart_sendStrAndWaitResp'))
+        unit=(ROOT/'Tests/test_uart_response.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='gsmparser':
         gsm=source('Modules/gsm.c');strings=source('User/user_str_fun.c')
         types=typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
