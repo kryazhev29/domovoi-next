@@ -357,7 +357,7 @@ uint8_t *Virtual_Com_Port_GetConfigDescriptor(uint16_t Length)
 uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t Length)
 {
   uint8_t wValue0 = pInformation->USBwValue0;
-  if (wValue0 > 4)
+  if (wValue0 >= sizeof(String_Descriptor) / sizeof(String_Descriptor[0]))
   {
     return NULL;
   }

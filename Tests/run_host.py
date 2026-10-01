@@ -8,7 +8,7 @@ kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -215,6 +215,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             assert 'server_rx_reset();' in function(user,name),name
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='usbdesc':
+        unit=(ROOT/'Tests/test_usb_descriptor.c').read_text().replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_GetStringDescriptor'))
     elif kind=='logupload':
         unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_logRecords'))
     elif kind=='crcblocks':
