@@ -281,8 +281,11 @@ void ADC1_2_IRQHandler(void)
 #pragma call_graph_root="interrupt"
 void PVD_IRQHandler(void)
 {
-  // сразу в перезагрузку
-  NVIC_SystemReset();
+  // сброс только при подтверждённом падении питания
+  if (EXTI_GetITStatus(EXTI_Line16) != RESET) {
+    EXTI_ClearITPendingBit(EXTI_Line16);
+    if (PWR_GetFlagStatus(PWR_FLAG_PVDO) != RESET) NVIC_SystemReset();
+  }
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
