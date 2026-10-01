@@ -31,6 +31,7 @@
 // таблица адресов областей памяти контроллера
 #pragma data_alignment=4
 cellMem_s mem[16];
+static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count);
 
 // конфигурация
 #pragma data_alignment=4
@@ -2238,6 +2239,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
  
   // читаем кол-во записей в памяти
   device.logsCount = log_getRecordsCount();
+  if (device.logsCount == 0xFFFFu) return; // чтение не завершилось, журнал не пустой
 
   /* Пустой ответ по таблице (пакет 10): осталось записей 0 (2 байта) и записей
      в пакете 0 (1 байт). Двухбайтовый ответ с остатком не 0 сервер принимал, но
@@ -2252,10 +2254,10 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
     return;
   }
   
-  uint32_t readAdr = mem[MB_LOG].start + ((uint32_t)readIdx * sizeof(cellLog_s));
+
   
   // подтверждение приема - выгрузили все: сначала ответ, потом стирание
-  if (readAdr >= device.newAddressLog){
+  if (readIdx >= device.logsCount){
     user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
     if (cch == CH_USB) log_setReadIndex(cch, 0); // следующее чтение по USB - снова с начала
     else log_clearLogBuffer();
@@ -2290,7 +2292,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
     send_buffer[10] = _2B(cntId2);
     send_buffer[11] = cntId; // записей в текущем пакете
     // читаем из памяти
-    mem_read (readAdr, &send_buffer[12], cntId * sizeof(cellLog_s));
+    if (!log_readRecords(readIdx, &send_buffer[12], cntId)) { free(send_buffer); return; }
     
     
     crc = crc16_calc(&send_buffer[4], len + 2);
@@ -4570,72 +4572,117 @@ void log_clearLogBuffer(void){
   device.newAddressLog = mem[MB_LOG].start;
 }
 
+// Полностью стёртая ячейка; незавершённую запись повторно не используем.
+static bool log_blank(const cellLog_s *cell){
+  const uint8_t *p = (const uint8_t*)cell;
+  for (uint16_t i = 0; i < sizeof(*cell); i++) if (p[i] != 0xFF) return false;
+  return true;
+}
+
 /* >>> номер записи журнала
  * Номер - время события, но два события в одну секунду получали одинаковый «уникальный»
  * номер. Теперь он всегда больше предыдущего: по последней записи во флешке (переживает
  * перезапуск) и по последнему выданному (переживает стирание журнала) (18.09.2026). */
+// Старые записи с нулевым резервом читаются без миграции.
+static bool log_valid(const cellLog_s *cell){
+  uint32_t mark;
+  uint16_t crc, inverse;
+  if (cell->index == 0xFFFFFFFFu) return false;
+  memcpy(&mark, cell->reserve + 4, 4);
+  if (mark == 0) {
+    for (uint8_t i = 0; i < sizeof(cell->reserve); i++) if (cell->reserve[i] != 0) return false;
+    return true;
+  }
+  if (mark != 0x32474F4Cu) return false;
+  memcpy(&crc, cell->reserve, 2);
+  memcpy(&inverse, cell->reserve + 2, 2);
+  return inverse == (uint16_t)~crc &&
+    crc == crc16_calc((uint8_t*)cell, sizeof(*cell) - sizeof(cell->reserve));
+}
+
 static uint32_t log_lastIndex;
 static void log_uniqueIndex(cellLog_s *cl, uint32_t adr){
   cellLog_s prev;
   uint32_t last = log_lastIndex;
   if (adr >= mem[MB_LOG].start + sizeof(cellLog_s)){
-    mem_read(adr - sizeof(cellLog_s), (uint8_t*)&prev, sizeof(prev));
-    if (prev.index != 0xffffffff && prev.index > last) last = prev.index;
+    if (mem_read(adr - sizeof(cellLog_s), (uint8_t*)&prev, sizeof(prev)) &&
+        log_valid(&prev) && prev.index > last) last = prev.index;
   }
   if (last != 0 && cl->index <= last) cl->index = last + 1;
-  log_lastIndex = cl->index;
 }
 /* <<< номер записи журнала */
 
 // добавить событие в буфер
 bool log_addEvent(cellLog_s *cl){
-  uint32_t adr;
   uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
   cellLog_s cell;
   uint32_t startAddress = device.newAddressLog;
-  
   if (startAddress < mem[MB_LOG].start) startAddress = mem[MB_LOG].start;
-  // по странично 
-  for (adr = startAddress; adr < endAdr; adr += sizeof(cellLog_s)){
-    mem_read(adr, (uint8_t*)&cell, sizeof(cellLog_s));
-    // ячейка пустая, она должна быть стерта
-    if (cell.index == 0xffffffff){
+  for (uint32_t adr = startAddress; adr + sizeof(cell) <= endAdr; adr += sizeof(cell)){
+    wdt_reload();
+    if (!mem_read(adr, (uint8_t*)&cell, sizeof(cell))) return false;
+    if (log_blank(&cell)){
       log_uniqueIndex(cl, adr);
-      mem_write(adr, (uint8_t*)cl, sizeof(cellLog_s));
-      device.newAddressLog = adr + sizeof(cellLog_s);
+      cell = *cl;
+      uint16_t crc = crc16_calc((uint8_t*)&cell, sizeof(cell) - sizeof(cell.reserve));
+      uint16_t inverse = (uint16_t)~crc;
+      uint32_t mark = 0x32474F4Cu;
+      memcpy(cell.reserve, &crc, 2);
+      memcpy(cell.reserve + 2, &inverse, 2);
+      memset(cell.reserve + 4, 0xFF, 4);
+      // Сначала данные и CRC, затем отдельная запись признака завершения.
+      if (!mem_write(adr, (uint8_t*)&cell, sizeof(cell) - 4) ||
+          !mem_write(adr + sizeof(cell) - 4, (uint8_t*)&mark, 4)) return false;
+      if (!mem_read(adr, (uint8_t*)&cell, sizeof(cell)) || !log_valid(&cell)) return false;
+      log_lastIndex = cl->index;
+      device.newAddressLog = adr + sizeof(cell);
       device.status.readyLogData = 1;
       return true;
     }
   }
-  
   return false;
 }
 
 // получаем кол-во записей в журнале
 uint16_t log_getRecordsCount(void){
-  
-  uint32_t adr;
   uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
   uint8_t tbuffer[1024];
-  cellLog_s *c;
   uint16_t cnt = 0;
-  
-  // по странично читаем
-  for (adr = mem[MB_LOG].start; adr < endAdr; adr += 1024){
-    mem_read(adr, tbuffer, 1024);
-    // перебираем ячейки
-    for (uint16_t a = 0; a < 1024; a += sizeof(cellLog_s)){
-      c = (cellLog_s*)&tbuffer[a];
-      // пустая ячейка
-      if (c->index == 0xffffffff){
+  for (uint32_t adr = mem[MB_LOG].start; adr < endAdr; adr += sizeof(tbuffer)){
+    uint16_t n = endAdr - adr > sizeof(tbuffer) ? sizeof(tbuffer) : endAdr - adr;
+    wdt_reload();
+    if (!mem_read(adr, tbuffer, n)) return 0xFFFFu;
+    for (uint16_t a = 0; a + sizeof(cellLog_s) <= n; a += sizeof(cellLog_s)){
+      cellLog_s *cell = (cellLog_s*)&tbuffer[a];
+      if (log_blank(cell)){
         device.newAddressLog = adr + a;
         return cnt;
       }
-      
-      cnt++;
+      if (log_valid(cell)){
+        cnt++;
+        if (cell->index > log_lastIndex) log_lastIndex = cell->index;
+      }
     }
   }
   return cnt;
+}
+
+// Номер выгружаемой записи логический: оборванные ячейки пропускаются.
+static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count){
+  cellLog_s cell;
+  uint16_t index = 0, copied = 0;
+  uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
+  for (uint32_t adr = mem[MB_LOG].start; adr + sizeof(cell) <= endAdr && copied < count; adr += sizeof(cell)){
+    wdt_reload();
+    if (!mem_read(adr, (uint8_t*)&cell, sizeof(cell))) return false;
+    if (log_blank(&cell)) break;
+    if (!log_valid(&cell)) continue;
+    if (index++ < first) continue;
+    memset(cell.reserve, 0, sizeof(cell.reserve)); // внутренние CRC/признак в кадр не входят
+    memcpy(data + copied * sizeof(cell), &cell, sizeof(cell));
+    copied++;
+  }
+  return copied == count;
 }
 
 /* >>> отложенные события журнала
@@ -4653,36 +4700,38 @@ static uint8_t log_timeKnown;
 
 // записать отложенные события как есть
 void log_flushPending(void){
-  uint8_t i;
-  for (i = 0; i < log_pendingCount; i++) log_addEvent(&log_pending[i]);
-  log_pendingCount = 0;
-}
-
-// время пришло от сервера: отложенные события получают настоящее время
-void log_setTime(uint32_t now){
-  uint8_t i;
-  device.datetime = now;
-  id_endScan = true; // окончания времени действия ID считаются от этих часов
-  for (i = 0; i < log_pendingCount; i++){
-    log_pending[i].datetime = now - (device.worktime - log_pendingAt[i]);
-    log_pending[i].index = log_pending[i].datetime;
-    log_addEvent(&log_pending[i]);
+  while (log_pendingCount) {
+    if (!log_addEvent(&log_pending[0])) return;
+    log_pendingCount--;
+    memmove(log_pending, log_pending + 1, log_pendingCount * sizeof(log_pending[0]));
+    memmove(log_pendingAt, log_pendingAt + 1, log_pendingCount * sizeof(log_pendingAt[0]));
   }
-  log_pendingCount = 0;
-  log_timeKnown = 1;
 }
 
-// раз в секунду: если время так и не пришло, события дольше LOG_TIME_WAIT не держим
+void log_setTime(uint32_t now){
+  device.datetime = now;
+  id_endScan = true;
+  if (!log_timeKnown) {
+    for (uint8_t i = 0; i < log_pendingCount; i++){
+      log_pending[i].datetime = now - (device.worktime - log_pendingAt[i]);
+      log_pending[i].index = log_pending[i].datetime;
+    }
+  }
+  log_timeKnown = 1;
+  log_flushPending();
+}
+
 void log_checkPending(void){
-  if (!log_timeKnown && log_pendingCount && device.worktime >= LOG_TIME_WAIT) log_flushPending();
+  if (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)) log_flushPending();
 }
 
 static bool log_put(cellLog_s *cell){
   if (log_timeKnown || device.worktime >= LOG_TIME_WAIT){
     log_flushPending();
-    return log_addEvent(cell);
+    if (!log_pendingCount && log_addEvent(cell)) return true;
   }
   if (log_pendingCount == LOG_PENDING_MAX) log_flushPending();
+  if (log_pendingCount == LOG_PENDING_MAX) return false;
   log_pendingAt[log_pendingCount] = device.worktime;
   log_pending[log_pendingCount++] = *cell;
   return true;

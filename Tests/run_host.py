@@ -150,8 +150,17 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
         # Command 8: a requested output that did not switch answers 2, not success.
         assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
-        code=pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
+        code=function(source('User/crc.c'),'crc16_calc')+'\n'+pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','logUpdate_e','cellLog_s')).replace('/* PRODUCTION */',code)
+    elif kind=='logcommit':
+        user=source('User/user_fun.c')
+        names=['log_blank','log_valid','log_uniqueIndex','log_addEvent','log_getRecordsCount','log_readRecords']
+        code='static uint32_t log_lastIndex;\n'+function(source('User/crc.c'),'crc16_calc')+'\n'
+        code+='\n'.join(function(user,n) for n in names if re.search(r'(?m)^(?:static )?(?:bool|void|uint16_t) '+n+r'\(',user))
+        unit=(ROOT/'Tests/test_log_commit.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s')).replace('/* PRODUCTION */',code)
+        if 'static bool log_readRecords(' not in user:
+            unit=unit.replace('/* PRODUCTION */',code)
+            unit=unit.replace('static void reset(void)', 'static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){return mem_read(4096+first*32,p,count*32);}\nstatic void reset(void)')
     elif kind=='access':
         user=source('User/user_fun.c');st=source('structures.h')
         case=cases(user)

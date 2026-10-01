@@ -9,11 +9,11 @@ static struct { uint32_t datetime, worktime; uint8_t hardwareVersion; uint16_t f
 enum { MB_LOG };
 static struct { uint32_t start, size; } mem[1] = {{4096, 4096}};
 static uint8_t logflash[4096];
-static void mem_read(uint32_t a, uint8_t *p, uint32_t n) { memcpy(p, logflash + a - mem[MB_LOG].start, n); }
+static bool mem_read(uint32_t a, uint8_t *p, uint32_t n) { memcpy(p, logflash + a - mem[MB_LOG].start, n); return true; }
 static cellLog_s last;
-static unsigned added;
+static unsigned added,fail_write;
 static cellLog_s written[64];
-static bool log_addEvent(cellLog_s *cl) { last = *cl; if (added < 64) written[added] = *cl; added++; return true; }
+static bool log_addEvent(cellLog_s *cl) { if(fail_write==1||(fail_write==2&&added>=1))return false;last = *cl; if (added < 64) written[added] = *cl; added++; return true; }
 static bool id_endScan; /* use time ends of user_fun.c, recounted on new time */
 /* PRODUCTION */
 
@@ -107,14 +107,27 @@ int main(void)
   { cellLog_s c; uint32_t at = mem[MB_LOG].start;
     memset(logflash, 0xff, sizeof(logflash)); log_lastIndex = 0;
     memset(&c, 0, sizeof(c)); c.index = 1000; log_uniqueIndex(&c, at); CHECK(c.index == 1000);
-    memcpy(logflash, &c, sizeof(c)); at += sizeof(c);
+    memcpy(logflash, &c, sizeof(c)); log_lastIndex=c.index; at += sizeof(c);
     c.index = 1000; log_uniqueIndex(&c, at); CHECK(c.index == 1001);
-    memcpy(logflash + 32, &c, sizeof(c)); at += sizeof(c);
-    log_lastIndex = 0; c.index = 999; log_uniqueIndex(&c, at); CHECK(c.index == 1002);
+    memcpy(logflash + 32, &c, sizeof(c)); log_lastIndex=c.index; at += sizeof(c);
+    log_lastIndex = 0; c.index = 999; log_uniqueIndex(&c, at); CHECK(c.index == 1002);log_lastIndex=c.index;
     memset(logflash, 0xff, sizeof(logflash));
     c.index = 1002; log_uniqueIndex(&c, mem[MB_LOG].start); CHECK(c.index == 1003);
     c.index = 5000; log_uniqueIndex(&c, mem[MB_LOG].start); CHECK(c.index == 5000); }
 
+  log_timeKnown=0;log_pendingCount=0;added=0;device.worktime=10;device.datetime=10;
+  CHECK(log_addSystemEvent(LOG_SYS_NOTGSMREG));fail_write=1;log_setTime(1000);
+  CHECK(log_pendingCount==1&&!added);CHECK(log_pending[0].datetime==1000);
+  log_setTime(2000);CHECK(log_pending[0].datetime==1000&&log_pendingCount==1);
+  fail_write=0;log_flushPending();CHECK(!log_pendingCount&&added==1&&last.datetime==1000);
+  log_timeKnown=0;log_pendingCount=0;added=0;device.worktime=10;
+  CHECK(log_addSystemEvent(LOG_SYS_NOTGSMREG));device.worktime=11;CHECK(log_addSystemEvent(LOG_SYS_NOTGPRSREG));
+  fail_write=2;log_setTime(1000);CHECK(added==1&&log_pendingCount==1&&log_pending[0].datetime==1000);
+  fail_write=0;log_flushPending();CHECK(added==2&&!log_pendingCount&&written[0].datetime==999&&written[1].datetime==1000);
+  log_timeKnown=0;log_pendingCount=0;device.worktime=10;fail_write=1;
+  for(i=0;i<LOG_PENDING_MAX;i++)CHECK(log_addSystemEvent(LOG_SYS_NOTGSMREG));
+  CHECK(!log_addSystemEvent(LOG_SYS_NOTGPRSREG)&&log_pendingCount==LOG_PENDING_MAX);
+  fail_write=0;
   puts("PASS journal: 54 event numbers match the sheet, logType is the event number, events wait for the server time, record numbers grow");
   return 0;
 }

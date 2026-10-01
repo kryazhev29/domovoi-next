@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,7 @@ static uint16_t log_getRecordsCount(void){return (uint16_t)records;}
 static void log_clearLogBuffer(void){clears++;}
 static void user_send_anyData(unsigned cmd,uint8_t *p,uint16_t n,dataChanel_e ch,unsigned id){CHECK(cmd==10&&n==3&&p[0]==0&&(ch==CH_USB||ch==CH_SERVER)&&id==42);sent++;}
 static void mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a==mem[MB_LOG].start&&n==records*32);memset(p,0x5A,n);}
+static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){CHECK(first==0&&count==records);mem_read(mem[MB_LOG].start,p,count*32);return true;}
 static uint16_t crc16_calc(const uint8_t *p,uint16_t n){(void)p;CHECK(n==records*32+8);return 0x1234;}
 static void usb_send(uint8_t *p,uint16_t n){CHECK(n==records*32+14&&p[8]==10&&p[11]==records);sent++;}
 static void connection_send(int8_t h,uint8_t *p,uint16_t n){CHECK(h==2);usb_send(p,n);}
