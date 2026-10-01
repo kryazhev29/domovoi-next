@@ -2774,11 +2774,11 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   bootFWparam_s fwParam;
 
   if (boot_manual_busy() || cch != (dataChanel_e)device.cchFWupdate) return FW_BLOCK_END;
+  if (n != 1026u) return device.FWblockIdx >= device.FWblockCount ? FW_BLOCK_END : FW_BLOCK_BADFRAME;
   memcpy((uint8_t*)&block, p, 2);
-  if (n == 1026u && block < device.FWblockIdx) return FW_BLOCK_OK;
+  if (block < device.FWblockIdx) return FW_BLOCK_OK;
   if (device.FWblockIdx >= device.FWblockCount) return FW_BLOCK_END;
-  device.startWaitFWtime = 0;
-  if (n != 1026u || block != device.FWblockIdx) return FW_BLOCK_BADFRAME;
+  if (block != device.FWblockIdx) return FW_BLOCK_BADFRAME;
   if (block == 0 && fw_image_foreign(&p[2], device.hardwareVersion)){
     fw_abort(NULL);
     fw_log(LOG_FW_FAIL, "HW");
@@ -2795,6 +2795,7 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
     return FW_BLOCK_END;
   }
   fw_write_errors = 0;
+  device.startWaitFWtime = 0; // ќжидание завершено только после проверенной записи блока.
   device.FWblockIdx++;
   device.firmwarePercent = (uint8_t)((uint32_t)device.FWblockIdx * 100u / device.FWblockCount);
   if (device.FWblockIdx < device.FWblockCount) return FW_BLOCK_OK;
@@ -3518,7 +3519,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
     case 20: // Ѕлок прошивки, ответ командой 4
 #ifdef DEBUG_USER
-if (cch != CH_USB){
+if (cch != CH_USB && len >= 5){
   sprintf(tempStrBuffer, ">>U Recv FW block %u (cmd 20)\r\n", (unsigned)(ptr[5] | (ptr[6] << 8)));
   user_debug(tempStrBuffer);
 }

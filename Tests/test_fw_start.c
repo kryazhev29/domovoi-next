@@ -120,9 +120,9 @@ static void block_tests(void){uint32_t size=66716,crc;uint16_t blocks=66,k;
  /* The table's padding to 1024 works the same way. */
  make_image(67584);download(67584,66,stm_crc(image,67584));for(k=0;k<66;k++)CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);CHECK(device.rebootToUpdate);
  make_image(size);
- /* Wrong length or a block ahead: 255, asked for again at once; a late copy: 0, nothing written. */
+ /* Неверная длина или будущий блок: 255, таймер ожидания сохранён; поздний повтор: 0, без записи. */
  download(size,blocks,crc);CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK&&block(1,1026,CH_SERVER)==FW_BLOCK_OK);
- device.startWaitFWtime=5;device.updateTimeout=5;CHECK(block(2,1025,CH_SERVER)==FW_BLOCK_BADFRAME&&!device.startWaitFWtime&&device.FWblockIdx==2);
+ device.startWaitFWtime=5;device.updateTimeout=5;CHECK(block(2,1025,CH_SERVER)==FW_BLOCK_BADFRAME&&device.startWaitFWtime==5&&device.FWblockIdx==2);
  /* Neither a rejected block nor a late copy extends the limit. */
  CHECK(device.updateTimeout==5);CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_OK&&device.updateTimeout==5);
  CHECK(block(3,1026,CH_SERVER)==FW_BLOCK_BADFRAME&&device.FWblockIdx==2&&flash[0x200+3*1024]==0xff);
