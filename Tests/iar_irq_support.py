@@ -24,7 +24,7 @@ class Machine:
             for cu in elf.get_dwarf_info().iter_CUs():
                 for die in cu.iter_DIEs():
                     a=die.attributes.get('DW_AT_name')
-                    if a and a.value in (b'milliSeconds',b'timer') and die.tag=='DW_TAG_variable' and 'DW_AT_type' in die.attributes:
+                    if a and a.value in (b'milliSeconds',b'timer',b'USART_Rx_ptr_in',b'USART_Rx_ptr_out',b'USART_Rx_length',b'USB_Tx_State') and die.tag=='DW_TAG_variable' and 'DW_AT_type' in die.attributes:
                         item=die.get_DIE_from_attribute('DW_AT_type');qualified=False
                         for _ in range(6):
                             if item.tag=='DW_TAG_volatile_type':qualified=True;break

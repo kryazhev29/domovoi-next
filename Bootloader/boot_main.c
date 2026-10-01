@@ -4,7 +4,7 @@
 #include <string.h>
 #define __disable_irq() ((void)0)
 #define __enable_irq() ((void)0)
-void USART_To_USB_Send_Data(uint8_t *data,uint16_t size);
+uint8_t USART_To_USB_Send_Data(uint8_t *data,uint16_t size);
 #else
 #include "includes.h"
 #endif

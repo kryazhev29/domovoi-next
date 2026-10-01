@@ -52,11 +52,11 @@
 USART_InitTypeDef USART_InitStructure;
 EXTI_InitTypeDef EXTI_InitStructure;
 uint8_t  USART_Rx_Buffer [USART_RX_DATA_SIZE];
-uint32_t USART_Rx_ptr_in = 0;
-uint32_t USART_Rx_ptr_out = 0;
-uint32_t USART_Rx_length  = 0;
+volatile uint32_t USART_Rx_ptr_in = 0;
+volatile uint32_t USART_Rx_ptr_out = 0;
+volatile uint32_t USART_Rx_length  = 0;
 
-uint8_t  USB_Tx_State = 0;
+volatile uint8_t  USB_Tx_State = 0;
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len);
 /* Внешние переменные -------------------------------------------------------- */
 
@@ -326,56 +326,29 @@ void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes)
 * Input          : None.
 * Return         : none.
 *******************************************************************************/
+void USB_Tx_Reset(void)
+{
+ uint32_t mask = __get_PRIMASK(); __disable_irq();
+ USART_Rx_ptr_in = 0; USART_Rx_ptr_out = 0; USART_Rx_length = 0; USB_Tx_State = 0;
+ __set_PRIMASK(mask);
+}
+
 void Handle_USBAsynchXfer (void)
 {
-
-  uint16_t USB_Tx_ptr;
-  uint16_t USB_Tx_length;
-
-  if(USB_Tx_State != 1)
-  {
-    if (USART_Rx_ptr_out == USART_RX_DATA_SIZE)
-    {
-      USART_Rx_ptr_out = 0;
-    }
-
-    if(USART_Rx_ptr_out == USART_Rx_ptr_in)
-    {
-      USB_Tx_State = 0;
-      return;
-    }
-
-    if(USART_Rx_ptr_out > USART_Rx_ptr_in) /* rollback */
-    {
-      USART_Rx_length = USART_RX_DATA_SIZE - USART_Rx_ptr_out;
-    }
-    else
-    {
-      USART_Rx_length = USART_Rx_ptr_in - USART_Rx_ptr_out;
-    }
-
-    if (USART_Rx_length > VIRTUAL_COM_PORT_DATA_SIZE)
-    {
-      USB_Tx_ptr = USART_Rx_ptr_out;
-      USB_Tx_length = VIRTUAL_COM_PORT_DATA_SIZE;
-
-      USART_Rx_ptr_out += VIRTUAL_COM_PORT_DATA_SIZE;
-      USART_Rx_length -= VIRTUAL_COM_PORT_DATA_SIZE;
-    }
-    else
-    {
-      USB_Tx_ptr = USART_Rx_ptr_out;
-      USB_Tx_length = USART_Rx_length;
-
-      USART_Rx_ptr_out += USART_Rx_length;
-      USART_Rx_length = 0;
-    }
-    USB_Tx_State = 1;
-    UserToPMABufferCopy(&USART_Rx_Buffer[USB_Tx_ptr], ENDP1_TXADDR, USB_Tx_length);
-    SetEPTxCount(ENDP1, USB_Tx_length);
-    SetEPTxValid(ENDP1);
-  }
-
+ uint32_t mask = __get_PRIMASK(); __disable_irq();
+ if (USB_Tx_State != 1) {
+  uint32_t out = USART_Rx_ptr_out, in = USART_Rx_ptr_in;
+  if (out == USART_RX_DATA_SIZE) out = 0;
+  USART_Rx_ptr_out = out;
+  if (out != in) {
+   uint32_t length = out > in ? USART_RX_DATA_SIZE - out : in - out;
+   uint16_t n = length > VIRTUAL_COM_PORT_DATA_SIZE ? VIRTUAL_COM_PORT_DATA_SIZE : (uint16_t)length;
+   USART_Rx_ptr_out = out + n; USART_Rx_length = length - n; USB_Tx_State = 1;
+   UserToPMABufferCopy(&USART_Rx_Buffer[out], ENDP1_TXADDR, n);
+   SetEPTxCount(ENDP1, n); SetEPTxValid(ENDP1);
+  } else USB_Tx_State = 0;
+ }
+ __set_PRIMASK(mask);
 }
 /*******************************************************************************
 * Function Name  : UART_To_USB_Send_Data.
@@ -383,7 +356,7 @@ void Handle_USBAsynchXfer (void)
 * Input          : None.
 * Return         : none.
 *******************************************************************************/
-void USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
+uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
 {
 #ifdef FULL_CDC_MODULE
   if (linecoding.datatype == 7)
@@ -402,36 +375,29 @@ void USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
   {
     USART_Rx_ptr_in = 0;
   }
+  return 1;
 #else
-  uint32_t freespace, timeout = 320000; // ~10 ms
-
-  while(Nb_bytes)
-   {
-   // сколько свободного места
-   if(USART_Rx_ptr_out > USART_Rx_ptr_in)
-      freespace = USART_Rx_ptr_out - USART_Rx_ptr_in - 1;
-   else
-      freespace = USART_RX_DATA_SIZE - USART_Rx_ptr_in + USART_Rx_ptr_out - 1;
-
-   while (Nb_bytes && freespace)
-    {
-    USART_Rx_Buffer[USART_Rx_ptr_in] = *data_buffer++;
-    USART_Rx_ptr_in++;
-    if(USART_Rx_ptr_in == USART_RX_DATA_SIZE) USART_Rx_ptr_in = 0;
-    Nb_bytes--;
-    freespace--;
+  // публикуем весь кадр одним снимком, без частичной записи при отказе
+  if (Nb_bytes == 0) return 1;
+  if (!data_buffer || Nb_bytes >= USART_RX_DATA_SIZE) return 0;
+  uint32_t budget = 32000u;
+  while (budget != 0) {
+    uint32_t mask = __get_PRIMASK(); __disable_irq();
+    if (bDeviceState != CONFIGURED) { __set_PRIMASK(mask); return 0; }
+    uint32_t in = USART_Rx_ptr_in, out = USART_Rx_ptr_out;
+    uint32_t space = out > in ? out - in - 1u : USART_RX_DATA_SIZE - in + out - 1u;
+    if (space >= Nb_bytes) {
+      for (uint16_t i = 0; i < Nb_bytes; ++i) {
+        USART_Rx_Buffer[in++] = data_buffer[i];
+        if (in == USART_RX_DATA_SIZE) in = 0;
+      }
+      __DMB(); USART_Rx_ptr_in = in; __set_PRIMASK(mask); return 1;
     }
-
-   if (Nb_bytes == 0) break;
-
-   if (freespace == 0) // есть данные на передачу, нет свободного места, ждем...
-    {
-    timeout = 320000;
-    while (USB_Tx_State && timeout--);
-    if (timeout == 0) break;
-    }
-   }
-
+    // очередь без активного IN тоже должна получать продвижение
+    if (USB_Tx_State == 0) Handle_USBAsynchXfer();
+    __set_PRIMASK(mask); --budget;
+  }
+  return 0;
 #endif
 }
 

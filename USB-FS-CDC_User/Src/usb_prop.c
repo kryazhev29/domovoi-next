@@ -156,6 +156,8 @@ void Virtual_Com_Port_Reset(void)
   usb_bus_resets++;
   USB_Tx_Reset();
   usb_clear_buffer();
+#else
+  USB_Tx_Reset();
 #endif
   /* Set Virtual_Com_Port DEVICE as not configured */
   pInformation->Current_Configuration = 0;

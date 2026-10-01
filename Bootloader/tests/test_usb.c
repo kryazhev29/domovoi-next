@@ -8,7 +8,7 @@ static int supported=1;
 int boot_platform_supported(void){return supported;}
 static uint8_t response[18];
 uint32_t boot_millis(void){return 0;}
-void USART_To_USB_Send_Data(uint8_t *p,uint16_t n){assert(n==18);memcpy(response,p,n);responses++;}
+uint8_t USART_To_USB_Send_Data(uint8_t *p,uint16_t n){assert(n==18);memcpy(response,p,n);responses++;return 1;}
 static unsigned request(uint8_t *out,uint8_t cmd,const void *p,unsigned n){
  uint16_t c;memcpy(out,"SLGT",4);out[4]=(uint8_t)(n+2);out[5]=(uint8_t)((n+2)>>8);out[6]=0xaa;out[7]=cmd;
  if(n)memcpy(out+8,p,n);c=crc16(out+6,n+2);out[8+n]=(uint8_t)c;out[9+n]=(uint8_t)(c>>8);return n+10;

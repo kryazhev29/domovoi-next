@@ -62,7 +62,7 @@ void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
 #ifndef BOOTLOADER
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
 #else
-void USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
+uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
 #endif
 void USB_Tx_Reset(void);
 uint16_t USB_Send_Debug(uint8_t *data, uint16_t count);
