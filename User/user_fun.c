@@ -537,7 +537,9 @@ void user_smsreceived (char* num, char* data)
   }*/
   
 #ifdef DEBUG_USER
-  sprintf(tempStrBuffer, ">>U SMS recv: %s\r\n", data);
+  // Оставляем место для префикса, перевода строки и завершающего нуля.
+  sprintf(tempStrBuffer, ">>U SMS recv: %.*s\r\n",
+          (int)(sizeof(tempStrBuffer) - sizeof(">>U SMS recv: \r\n")), data);
   user_debug(tempStrBuffer); 
 #endif 
   
