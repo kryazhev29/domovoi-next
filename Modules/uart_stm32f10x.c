@@ -126,7 +126,8 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
 
    case 1:
      USART_DeInit(USART2);
-     RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2 | RCC_APB2Periph_GPIOA, ENABLE);
+     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+      RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
      // Rx pin
      GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
      GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
@@ -146,7 +147,8 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
 
    case 2:
      USART_DeInit(USART3);
-     RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3 | RCC_APB2Periph_GPIOB, ENABLE);
+     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+      RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
      // Rx pin
      GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
      GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
