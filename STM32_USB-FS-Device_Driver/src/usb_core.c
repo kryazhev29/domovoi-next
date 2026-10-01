@@ -216,6 +216,8 @@ uint8_t *Standard_GetStatus(uint16_t Length)
     uint8_t wIndex0 = pInformation->USBwIndex0;
 
     Related_Endpoint = (wIndex0 & 0x0f);
+    if (pInformation->USBwIndex1 != 0 || (wIndex0 & 0x70) != 0 ||
+        Related_Endpoint >= 8u || Related_Endpoint >= Device_Table.Total_Endpoint) return NULL;
     if (ValBit(wIndex0, 7))
     {
       /* IN endpoint */
@@ -278,6 +280,9 @@ RESULT Standard_ClearFeature(void)
     wIndex0 = pInformation->USBwIndex0;
     rEP = wIndex0 & ~0x80;
     Related_Endpoint = ENDP0 + rEP;
+    // номер проверяем до обращения к регистрам USB
+    if (pInformation->USBwIndex1 != 0 || rEP >= 8u ||
+        rEP >= Device_Table.Total_Endpoint) return USB_UNSUPPORT;
 
     if (ValBit(pInformation->USBwIndex0, 7))
     {
@@ -349,6 +354,9 @@ RESULT Standard_SetEndPointFeature(void)
   wIndex0 = pInformation->USBwIndex0;
   rEP = wIndex0 & ~0x80;
   Related_Endpoint = ENDP0 + rEP;
+  // номер проверяем до обращения к регистрам USB
+  if (pInformation->USBwIndex1 != 0 || rEP >= 8u ||
+      rEP >= Device_Table.Total_Endpoint) return USB_UNSUPPORT;
 
   if (ValBit(pInformation->USBwIndex0, 7))
   {
@@ -743,7 +751,12 @@ void Data_Setup0(void)
       Related_Endpoint = (pInformation->USBwIndex0 & 0x0f);
       Reserved = pInformation->USBwIndex0 & 0x70;
 
-      if (ValBit(pInformation->USBwIndex0, 7))
+      // недопустимый SETUP не должен читать даже неиспользуемый endpoint
+      if (Related_Endpoint >= 8u || Related_Endpoint >= Device_Table.Total_Endpoint || Reserved != 0)
+      {
+        Status = 0;
+      }
+      else if (ValBit(pInformation->USBwIndex0, 7))
       {
         /*Get Status of endpoint & stall the request if the related_ENdpoint
         is Disabled*/

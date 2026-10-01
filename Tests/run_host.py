@@ -8,7 +8,7 @@ kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|int|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|int|RESULT|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -438,6 +438,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         user=function(source('User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
         unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)
+    elif kind=='usbsetupbounds':
+        usb=source('STM32_USB-FS-Device_Driver/src/usb_core.c')
+        block=usb[usb.index('      Related_Endpoint = (pInformation->USBwIndex0 & 0x0f);'):usb.index('\r\n  /*GET CONFIGURATION*/')]
+        block=block[:block.rfind('    }')]
+        code='\n'.join(function(usb,n) for n in ('Standard_GetStatus','Standard_ClearFeature','Standard_SetEndPointFeature'))
+        code+='\nstatic uint8_t *(*audit_getstatus(void))(uint16_t){\nuint32_t Related_Endpoint,Reserved,Status;\nuint8_t *(*CopyRoutine)(uint16_t)=NULL;\nif(pInformation->USBwIndex1)return NULL;\n'+block+'\nreturn CopyRoutine;\n}'
+        unit=(ROOT/'Tests/test_usb_setup_bounds.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='utcday':
         user=source('User/user_fun.c')
         clock=user[user.index('    device.day = user_getweakday'):user.index('    device.csq = usergsm_getcsq')]
