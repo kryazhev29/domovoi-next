@@ -152,20 +152,9 @@ bool gsm_power (Int8U pwr)
 }
 
 // URC, пришедшие в ответ на команду -------------------------------------------
-/* >>> URC из ответа на команду */
-/* Модем шлёт URC (данные от сервера, SMS, разрыв связи) в любой момент, в том числе пока идёт
- * обмен AT-командой. uart_sendStrAndWaitResp отдаёт такой URC как ответ на команду, а uart_clear
- * в начале следующей команды стирает его из буфера: цикл main до него не доходит и кадр пропадает.
- * Поэтому перед отправкой команды URC откладывается сюда, а цикл main забирает его через
- * gsm_takeurc. Разбирать URC на месте нельзя: gsm_read зовёт gsm_dataread, а тот из обработчика
- * приложения может снова вызвать gsm_runcmd и затереть gsm_strbuf. */
+/* >>> URC: сохраняем в UART до main, ответ AT читается только после точки старта. */
 #define GSM_URC_MAX                     (uint16_t)2048 // предел отложенного, дальше кадр теряется
 
-static char *gsm_urcbuf = NULL; // отложенные URC, ждут цикл main
-static uint16_t gsm_urclen = 0;
-static bool gsm_urclost = false;
-
-// Поиск подстроки в двоичных данных: нули внутри кадра не останавливают поиск
 static char* gsm_memfind (char *ptr, uint16_t size, const char *pattern)
 {
   uint16_t l = (uint16_t)strlen(pattern);
@@ -207,59 +196,15 @@ static char* gsm_findurc (char *ptr, uint16_t size)
 }
 
 // Отложить URC из буфера приёма, пока его не стёрла очередная команда
-static void gsm_stashurc (void)
+// URC остаётся в UART до main; удаляется только прежний ответ перед первым URC.
+static void gsm_keepurc(void)
 {
-  uint16_t count = uart_received(GSM_PORT);
-  if (count == 0) return;
-  char *raw = (char*)uart_getptr(GSM_PORT);
-  char *urc = (gsm_urclen != 0 || gsm_rxpending()) ? raw : gsm_findurc(raw, count);
-  if (urc == NULL){
-    uart_takerx(GSM_PORT, NULL, count); // только прежний ответ, не новый хвост
-    return;
-  }
-  uint16_t offset = (uint16_t)(urc - raw);
-  if (count > (uint16_t)(GSM_URC_MAX - gsm_urclen)){
-    gsm_urclost = true;
-    uart_takerx(GSM_PORT, NULL, count);
-    return;
-  }
-  if (gsm_urcbuf == NULL) gsm_urcbuf = calloc(GSM_URC_MAX + 8u, 1);
-  if (gsm_urcbuf == NULL){
-    gsm_urclost = true;
-    uart_takerx(GSM_PORT, NULL, count);
-    return;
-  }
-  count = uart_takerx(GSM_PORT, (uint8_t*)gsm_urcbuf + gsm_urclen, count);
-  if (offset > count) offset = count;
-  memmove(gsm_urcbuf + gsm_urclen, gsm_urcbuf + gsm_urclen + offset, count - offset);
-  gsm_urclen += (uint16_t)(count - offset);
-}
-
-// Разобрать отложенные URC, вызывается из цикла main
-void gsm_takeurc (void)
-{
-  char *buf = gsm_urcbuf;
-  uint16_t len = gsm_urclen;
-  char *compact;
-
-  if (gsm_urclost){
-    gsm_urclost = false;
-    gsm_urcbuf = NULL;
-    gsm_urclen = 0;
-    free(buf);
-    gsm_rxfailed(); // отказ явно закрывает соединение, не смешивает неполные кадры
-    return;
-  }
-  if (buf == NULL) return;
-  // Перед разбором отдаём неиспользованный хвост heap другим командам.
-  compact = realloc(buf, (uint32_t)len + 8u);
-  if (compact != NULL) buf = compact;
-
-  gsm_urcbuf = NULL; // снимаем заранее: gsm_read может отложить следующий
-  gsm_urclen = 0;
-
-  gsm_read(buf, len);
-  free(buf);
+  uint8_t *raw;
+  uint16_t count = uart_rxview(GSM_PORT, &raw);
+  if (count == 0 || gsm_rxpending()) return;
+  char *urc = gsm_findurc((char*)raw, count);
+  uint16_t skip = urc == NULL ? count : (uint16_t)(urc - (char*)raw);
+  uart_takerx(GSM_PORT, NULL, skip);
 }
 /* <<< URC из ответа на команду */
 
@@ -268,7 +213,7 @@ char* gsm_runcmd(char *str, char *resp)
 {
   /* То, что уже лежит в буфере: uart_sendStrAndWaitResp начинает с uart_clear, и любой URC
    * пропал бы до того, как его увидит цикл main. */
-  gsm_stashurc();
+  gsm_keepurc();
 
 #ifdef DEBUG_GSM
   gsm_debug(">>> GSM: Cmd "); 
@@ -1001,11 +946,13 @@ void gsm_read_uart(void)
   uint16_t left = uart_rxview(GSM_PORT, &ptr);
   if (GSM.operation == PO_OFF) { uart_takerx(GSM_PORT, NULL, left); return; }
   while (left){
+    if (uart_rxoverflow(GSM_PORT)) { uart_clear(GSM_PORT); gsm_rxfailed(); return; }
     uint16_t n = uart_rxview(GSM_PORT, &ptr);
     if (n == 0) break;
     if (n > left) n = left; // новые байты ISR остаются следующему проходу main
     left -= gsm_readstep((char*)ptr, n, true);
   }
+  if (uart_rxoverflow(GSM_PORT)) { uart_clear(GSM_PORT); gsm_rxfailed(); }
 }
 
 /* <<< Поток RX */
@@ -1332,6 +1279,7 @@ void gsm_enablenetworktime (void)
 // Чтение СМС из памяти
 void gsm_readsms(uint8_t idx)
 {
+  gsm_keepurc();
   strcpy (gsm_strbuf, "AT+CMGL=\"REC UNREAD\"\r");
 #ifdef DEBUG_GSM
   gsm_debug(">>> GSM: Cmd ");
@@ -1377,6 +1325,7 @@ void gsm_getNetworkType(void)
 
 // состояние активации gprs CGATT
 uint8_t gsm_getCGATT(void){
+  gsm_keepurc();
   bool res = gsm_sendStrAndWaitResp("AT+CGATT?", gsm_strbuf, "OK", GSMRESPTIMEOUT);
   
 #ifdef DEBUG_GSM

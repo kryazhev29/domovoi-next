@@ -19,9 +19,9 @@ static bool check_bounds=true;
 #define GSM_PORT 0
 static uint8_t rx[2048];
 static uint16_t rxlen;
-static uint16_t uart_received(uint8_t n){(void)n;return rxlen;}
-static uint8_t *uart_getptr(uint8_t n){(void)n;return rx;}
 static uint16_t uart_rxview(uint8_t n,uint8_t **p){(void)n;*p=rx;return rxlen;}
+static uint8_t uart_rxoverflow(uint8_t n){(void)n;return 0;}
+static void uart_clear(uint8_t n){(void)n;rxlen=0;}
 uint16_t uart_takerx(uint8_t port,uint8_t *to,uint16_t cap){(void)port;uint16_t n=rxlen<cap?rxlen:cap;if(to)memcpy(to,rx,n);memmove(rx,rx+n,rxlen-n);rxlen-=n;return n;}
 static void gsm_dataread(gsmresp_e op,char *p,char *q,uint32_t n,int32_t id) {
   (void)q;lastid=id;events[op]++;
@@ -35,10 +35,8 @@ static void gsm_disconnect(uint8_t n) {(void)n;}
 static char *gsm_runcmd(char *s,char *r) {(void)s;(void)r;return gsm_strbuf;}
 static bool fail_alloc;
 static unsigned live_allocs;
-static void *parser_calloc(size_t n,size_t s){if(fail_alloc){fail_alloc=false;return NULL;}void *p=calloc(n,s);if(p)live_allocs++;return p;}
 static void *parser_realloc(void *p,size_t n){if(fail_alloc){fail_alloc=false;return NULL;}void *q=realloc(p,n);if(q && !p)live_allocs++;return q;}
 static void parser_free(void *p){if(p){CHECK(live_allocs>0);live_allocs--;}free(p);}
-#define calloc parser_calloc
 #define realloc parser_realloc
 #define free parser_free
 /* PRODUCTION */
@@ -50,7 +48,7 @@ static void feed(const char *s,unsigned n) {
 }
 static void reset(void) {
 #ifdef TEST_STREAM
-  gsm_rxreset();gsm_urclost=false;parser_free(gsm_urcbuf);gsm_urcbuf=NULL;gsm_urclen=0;CHECK(live_allocs==0);
+  gsm_rxreset();rxlen=0;CHECK(live_allocs==0);
 #endif
   memset(&GSM,0,sizeof(GSM));GSM.ready=1;GSM.moduleType=M_UG95;memset(events,0,sizeof(events));datalen=0;
 }
@@ -96,13 +94,13 @@ static void binary_stream(void) {
   for(unsigned cut=1;cut<n;cut++){reset();feed(packet,cut);feed(packet+cut,n-cut);CHECK(datalen==sizeof(body)+3 && memcmp(data,body,sizeof(body))==0);CHECK(events[ATERROR]+events[RING]+events[CLOSECONNECT]==0 && events[ATOK]==1);}
   reset();for(unsigned i=0;i<n;i++)feed(packet+i,1);CHECK(datalen==sizeof(body)+3 && events[ATOK]==1);
 #ifdef TEST_STREAM
-  reset();memcpy(rx,packet,n);rxlen=(uint16_t)n;gsm_stashurc();check_bounds=false;gsm_takeurc();check_bounds=true;CHECK(datalen==sizeof(body)+3 && events[ATOK]==1);
-  reset();memset(rx,'x',sizeof(rx));memcpy(rx,"+IPD",4);rxlen=2048;gsm_stashurc();rxlen=2048;gsm_stashurc();CHECK(gsm_urclost);gsm_takeurc();CHECK(events[CLOSECONNECT]==1 && gsm_urclen==0 && gsm_urcbuf==NULL);
-  reset();memcpy(rx,packet,n);rxlen=(uint16_t)n;fail_alloc=true;gsm_stashurc();CHECK(gsm_urclost);gsm_takeurc();CHECK(events[CLOSECONNECT]==1 && live_allocs==0);
+  reset();memcpy(rx,packet,n);rxlen=(uint16_t)n;gsm_keepurc();CHECK(rxlen==n);check_bounds=false;gsm_read_uart();check_bounds=true;CHECK(datalen==sizeof(body)+3 && events[ATOK]==1);
+  reset();memset(rx,'x',sizeof(rx));memcpy(rx,"+IPD",4);rxlen=2048;gsm_keepurc();CHECK(rxlen==2048 && live_allocs==0);
+  reset();memcpy(rx,packet,n);rxlen=(uint16_t)n;fail_alloc=true;gsm_keepurc();gsm_read_uart();CHECK(events[CLOSECONNECT]==1 && live_allocs==0);
   reset();fail_alloc=true;feed("RING\r\n",6);CHECK(events[CLOSECONNECT]==1 && live_allocs==0);
   reset();char noise[2049];memset(noise,'x',sizeof(noise));feed(noise,sizeof(noise));CHECK(events[CLOSECONNECT]==1 && live_allocs==0);
   reset();const char *sms="+CMT: \"12345678901\"\r\nERROR RING CLOSED OK\r\n";feed(sms,(unsigned)strlen(sms));CHECK(events[SMS]==1 && events[ATERROR]+events[RING]+events[CLOSECONNECT]+events[ATOK]==0);
-  for(unsigned cut=1;cut<n;cut++){reset();memcpy(rx,packet,cut);rxlen=(uint16_t)cut;gsm_stashurc();memcpy(rx,packet+cut,n-cut);rxlen=(uint16_t)(n-cut);gsm_stashurc();check_bounds=false;gsm_takeurc();check_bounds=true;CHECK(datalen==sizeof(body)+3 && events[ATOK]==1);}
+  for(unsigned cut=1;cut<n;cut++){reset();memcpy(rx,packet,cut);rxlen=(uint16_t)cut;gsm_keepurc();memcpy(rx+rxlen,packet+cut,n-cut);rxlen+=(uint16_t)(n-cut);gsm_keepurc();check_bounds=false;gsm_read_uart();check_bounds=true;CHECK(datalen==sizeof(body)+3 && events[ATOK]==1);}
   reset();feed("+IPD,65535:",11);char chunk[2048];memset(chunk,'x',sizeof(chunk));for(unsigned i=0;i<31;i++)feed(chunk,sizeof(chunk));feed(chunk,2047);CHECK(datalen==65535 && gsm_remaining==0);
   reset();GSM.getimei=1;feed("\r\n123456789012345\r\n",19);CHECK(events[IMEI]==1 && GSM.getimei==0 && strcmp(gsm_strbuf,"123456789012345")==0);
   reset();

@@ -1483,14 +1483,11 @@ void port_check_data(void)
 // проверка входящих данных от модуля
 void gsm_check_data (void)
 {
-  server_rx_defer = 1;
-  gsm_takeurc();
-  server_rx_process();
   if (uart_getstate(GSM_PORT)){
     server_rx_defer = 1;
     gsm_read_uart();
-    server_rx_process();
   }
+  server_rx_process();
 }
 
 // расчет контрольной суммы структуры данных во flash

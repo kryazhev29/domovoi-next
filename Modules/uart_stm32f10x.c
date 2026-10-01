@@ -19,6 +19,7 @@ typedef struct{
   uint8_t state;
   uint8_t receiving;
   uint8_t txfailed; // ошибка передачи, используетс€ прежнее выравнивание
+  uint8_t rxoverflow; // потер€н байт ISR: неполный поток не продолжаем
 }uart_t;
 
 #pragma data_alignment=4
@@ -100,6 +101,7 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
   uart[Uart].twait = 0;
   uart[Uart].state = 0;
   uart[Uart].receiving = 0;
+  uart[Uart].rxoverflow = 0;
   uart[Uart].txfailed = 0;
   __set_PRIMASK(mask);
   
@@ -222,6 +224,8 @@ void uart_send(Int8U num, pInt8U buf, Int16U size)
 *************************************************************************/
 // —нимок и передача префикса main выполн€ютс€ атомарно; новый хвост принадлежит ISR.
 // —нимок префикса: ISR только дописывает хвост, main освобождает после разбора.
+uint8_t uart_rxoverflow(Int8U num) { return num < UARTS && uart[num].rxoverflow; }
+
 uint16_t uart_rxview(Int8U num, uint8_t **buffer)
 {
   if (num >= UARTS || buffer == NULL) return 0;
@@ -273,6 +277,7 @@ void uart_clear (Int8U num)
   uart[num].twait = 0;
   uart[num].state = 0;
   uart[num].receiving = 0;
+  uart[num].rxoverflow = 0;
   __set_PRIMASK(mask);
 }
 
@@ -411,6 +416,7 @@ inline bool uart_addbyte (Int8U num, Int8U data)
     uart[num].state = 0;
     return true;
   }
+  uart[num].rxoverflow = 1;
   return false;
 }
 
@@ -488,6 +494,7 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, In
   if (num >= UARTS) return false;
 
   uint32_t start;
+  uint16_t first = uart_received(num); // прежние URC не €вл€ютс€ ответом этой команды
   
   // чистим
   // ѕредыдущий снимок уже сн€т gsm_stashurc; новый хвост UART сохран€етс€.
@@ -505,27 +512,29 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, In
   start = timers_getMillis();
 
   while ((timers_getMillis() - start) < t_ms){
+    if (uart[num].rxoverflow) return false;
     // прин€т байт
     // прин€ли
-    if (uart[num].state){
+    if (uart[num].state && uart[num].received > first){
       // копируем в приемный буфер
       if (rec != NULL){
         // ќтвет бывает длиннее приЄмника: в кадр попадает URC с данными от сервера
-        Int16U len = uart[num].received;
+        Int16U total = uart[num].received;
+        Int16U len = total >= first ? (uint16_t)(total - first) : 0;
 
         if (recsize == 0)
           len = 0;
         else if (len > (Int16U)(recsize - 1))
           len = (Int16U)(recsize - 1);
 
-        memcpy(rec, &uart[num].rxbuffer[0], len);
+        memcpy(rec, &uart[num].rxbuffer[first], len);
         rec[len] = 0;
       }
       
       if (pattern == NULL){
         return true;
       } else{
-        if (uart_matchresponse(num, 0, pattern))
+        if (uart_matchresponse(num, first, pattern))
           return true;
         else
           return false;

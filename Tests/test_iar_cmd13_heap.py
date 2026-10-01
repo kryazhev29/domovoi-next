@@ -22,6 +22,7 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_XPSR, UC_
 user=(root/'User/user_fun.c').read_bytes().decode('cp1251')
 check=user[user.index('void gsm_check_data'):]; check=check[:check.index('\n}')]
 has_copy='calloc(' in check
+has_stash='gsm_urcbuf' in (root/'Modules/gsm.c').read_bytes().decode('cp1251')
 copy_freed_first=not has_copy or (re.search(r'free\(buf\);\s*server_rx_process\(\);',check) is not None and 'server_rx_defer = 1;' in check)
 case13=user[user.index('\n    case 13:'):user.index('\n    case 14:')]
 sector_freed_first=case13.index('free(membfr);')<case13.index('user_send_timeshtamp(')
@@ -53,7 +54,7 @@ for ids in range(1,64):
     if not sector:fail=(ids,'сектор 4096')
     elif sector_freed_first:call('__basic_free',sector)
     else:live.append(sector)
-    if not fail:
+    if not fail and has_stash:
         urc=call('__basic_malloc',2056)  # ответ уходит AT-командой, URC откладывается в heap
         if not urc:fail=(ids,'отложенный URC во время ответа')
         else:live.append(urc)

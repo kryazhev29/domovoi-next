@@ -381,6 +381,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         names=['uart_addbyte','uart_clear','uart_received','uart_getptr','uart_getstate','uart_isReceiving','uart_matchresponse','uart_sendStrAndWaitResp']
         if 'uint16_t uart_takerx(' in uart:names.insert(1,'uart_takerx')
         if 'uint16_t uart_rxview(' in uart:names.insert(1,'uart_rxview')
+        if 'uint8_t uart_rxoverflow(' in uart:names.insert(1,'uart_rxoverflow')
         code='\n'.join(function(uart,n) for n in names)+'\n'+gsm_parser_code(source('Modules/gsm.c'))+'\n'+function(source('User/user_fun.c'),'gsm_check_data')
         # IRQ после чтения готовности, до проверки receiving в главном цикле.
         code=code.replace('return uart[num].state;', "Int8U state = uart[num].state; if (noise_receive && state) uart_addbyte(num,'x'); return state;")
@@ -391,7 +392,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'
         code=''
         if 'static bool uart_matchresponse(' in uart:code+=function(uart,'uart_matchresponse')+'\n'
-        code+='\n'.join(function(uart,n) for n in ('uart_clear','uart_waitresp','uart_sendStrAndWaitResp'))
+        code+='\n'.join(function(uart,n) for n in ('uart_received','uart_clear','uart_waitresp','uart_sendStrAndWaitResp'))
         unit=(ROOT/'Tests/test_uart_response.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='gsmparser':
         gsm=source('Modules/gsm.c');strings=source('User/user_str_fun.c')
@@ -413,16 +414,21 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_gsm_reg.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='gsmurc':
         gsm=source('Modules/gsm.c');uart=source('Modules/uart_stm32f10x.c')
+        if 'static void gsm_keepurc(' in gsm:
+            types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'+typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
+            code='\n'.join(function(uart,n) for n in ('uart_received','uart_rxview','uart_rxoverflow','uart_clear','uart_takerx','uart_matchresponse','uart_sendStrAndWaitResp'))+'\n'+gsm_parser_code(gsm)+'\n'+function(gsm,'gsm_runcmd')
+            unit=(ROOT/'Tests/test_gsm_uart_responses.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+        else:
         # The answer copy is bounded: a URC carrying server data is far longer than gsm_strbuf.
-        assert 'strcpy(rec,' not in uart and 'memcpy(rec, &uart[num].rxbuffer[0], len);' in uart,'bounded answer copy'
-        assert 'uart_sendStrAndWaitResp(GSM_PORT, a, b, sizeof(gsm_strbuf), d, c)' in gsm,'answer buffer size'
+            assert 'strcpy(rec,' not in uart and 'memcpy(rec, &uart[num].rxbuffer[0], len);' in uart,'bounded answer copy'
+            assert 'uart_sendStrAndWaitResp(GSM_PORT, a, b, sizeof(gsm_strbuf), d, c)' in gsm,'answer buffer size'
         # Wiring: the stash is taken before the command clears the port and parsed by the main loop.
-        run=function(gsm,'gsm_runcmd')
-        assert run.index('gsm_stashurc();')<run.index('gsm_sendStrAndWaitResp'),'stash before the command'
-        assert 'gsm_takeurc();' in function(source('User/user_fun.c'),'gsm_check_data'),'main loop parses the stash'
-        code=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'+run
-        if 'gsm_rxfailed();' in code:code='#include <stdbool.h>\nstatic void gsm_rxfailed(void) {}\nstatic bool gsm_rxpending(void) {return false;}\n'+code
-        unit=(ROOT/'Tests/test_gsm_urc.c').read_text().replace('/* PRODUCTION */',code)
+            run=function(gsm,'gsm_runcmd')
+            assert run.index('gsm_stashurc();')<run.index('gsm_sendStrAndWaitResp'),'stash before the command'
+            assert 'gsm_takeurc();' in function(source('User/user_fun.c'),'gsm_check_data'),'main loop parses the stash'
+            code=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'+run
+            if 'gsm_rxfailed();' in code:code='#include <stdbool.h>\nstatic void gsm_rxfailed(void) {}\nstatic bool gsm_rxpending(void) {return false;}\n'+code
+            unit=(ROOT/'Tests/test_gsm_urc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
