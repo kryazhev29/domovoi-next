@@ -2273,7 +2273,6 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
     // читаем из памяти
     mem_read (readAdr, &send_buffer[12], cntId * sizeof(cellLog_s));
     
-    memcpy(bf, send_buffer, 128);
     
     crc = crc16_calc(&send_buffer[4], len + 2);
     
