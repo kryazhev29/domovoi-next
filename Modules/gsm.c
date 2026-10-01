@@ -929,49 +929,85 @@ static bool gsm_frameheader(void)
   return true;
 }
 
-void gsm_read(char* ptr, Int16U size)
+// Один участок до внешнего обработчика. Префикс UART освобождается до AT из обработчика.
+static uint16_t gsm_readstep(char *ptr, uint16_t size, bool owned)
 {
-  if (ptr == NULL || size == 0 || GSM.operation == PO_OFF) return;
-  while (size){
+  uint16_t left = size;
+  while (left){
     if (gsm_remaining){
-      uint16_t n = size < gsm_remaining ? size : gsm_remaining;
-      // Состояние передаётся до вызова: обработчик может отправить новую AT-команду.
+      uint16_t n = left < gsm_remaining ? left : gsm_remaining;
       gsm_remaining -= n;
+      // DATA только собирает кадр сервера; выполнение команды отложено до выхода.
       gsm_dataread(DATA, ptr, NULL, n, GSM.dataconnectionindex);
-      ptr += n;
-      size -= n;
-      continue;
+      uint16_t used = (uint16_t)(size - left + n);
+      if (owned) uart_takerx(GSM_PORT, NULL, used);
+      return used;
     }
     char ch = *ptr++;
-    size--;
+    left--;
     if (gsm_linelen == 0 && (ch == '\r' || ch == '\n')) continue;
     if (!gsm_linebyte(ch)){
+      if (owned) uart_takerx(GSM_PORT, NULL, size);
       gsm_rxfailed();
-      return;
+      return size;
     }
     if (ch == ':' && strncmp(gsm_linebuf, "+IPD", 4) == 0){
-      if (!gsm_frameheader()) {gsm_rxfailed(); return;}
+      if (!gsm_frameheader()) {
+        if (owned) uart_takerx(GSM_PORT, NULL, size);
+        gsm_rxfailed(); return size;
+      }
       continue;
     }
     if (ch != '\n') continue;
     char *urc = strncmp(gsm_linebuf, "+QIURC:", 7) == 0 ? strchr(gsm_linebuf, '"') : NULL;
     if (urc != NULL && strncmp(urc, "\"recv\"", 6) == 0){
-      if (!gsm_frameheader()) {gsm_rxfailed(); return;}
+      if (!gsm_frameheader()) {
+        if (owned) uart_takerx(GSM_PORT, NULL, size);
+        gsm_rxfailed(); return size;
+      }
       continue;
     }
     if (!gsm_smsline && (strncmp(gsm_linebuf, "+CMT:", 5) == 0 || strncmp(gsm_linebuf, "+CMGR:", 6) == 0)){
-      gsm_smsline = 1; // СМС: строка заголовка и следующая строка текста идут вместе.
+      gsm_smsline = 1;
       continue;
     }
     char *line = gsm_linebuf;
-    uint16_t len = gsm_linelen;
+    uint16_t len = gsm_linelen, used = (uint16_t)(size - left);
     gsm_linebuf = NULL;
     gsm_linelen = gsm_linecap = 0;
     gsm_smsline = 0;
+    if (owned) uart_takerx(GSM_PORT, NULL, used);
     gsm_readtext(line, len);
     free(line);
+    return used;
+  }
+  if (owned) uart_takerx(GSM_PORT, NULL, size);
+  return size;
+}
+
+void gsm_read(char *ptr, Int16U size)
+{
+  if (ptr == NULL || GSM.operation == PO_OFF) return;
+  while (size){
+    uint16_t n = gsm_readstep(ptr, size, false);
+    ptr += n;
+    size -= n;
   }
 }
+
+void gsm_read_uart(void)
+{
+  uint8_t *ptr;
+  uint16_t left = uart_rxview(GSM_PORT, &ptr);
+  if (GSM.operation == PO_OFF) { uart_takerx(GSM_PORT, NULL, left); return; }
+  while (left){
+    uint16_t n = uart_rxview(GSM_PORT, &ptr);
+    if (n == 0) break;
+    if (n > left) n = left; // новые байты ISR остаются следующему проходу main
+    left -= gsm_readstep((char*)ptr, n, true);
+  }
+}
+
 /* <<< Поток RX */
 
 void gsm_initgprs(char *apn, char *login, char *pass)

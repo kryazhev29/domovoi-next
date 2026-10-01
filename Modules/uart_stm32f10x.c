@@ -221,6 +221,18 @@ void uart_send(Int8U num, pInt8U buf, Int16U size)
 * num - номер буфера
 *************************************************************************/
 // —нимок и передача префикса main выполн€ютс€ атомарно; новый хвост принадлежит ISR.
+// —нимок префикса: ISR только дописывает хвост, main освобождает после разбора.
+uint16_t uart_rxview(Int8U num, uint8_t **buffer)
+{
+  if (num >= UARTS || buffer == NULL) return 0;
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  *buffer = uart[num].rxbuffer;
+  uint16_t count = *buffer == NULL ? 0 : uart[num].received;
+  __set_PRIMASK(mask);
+  return count;
+}
+
 uint16_t uart_takerx(Int8U num, uint8_t *dst, uint16_t capacity)
 {
   if (num >= UARTS || capacity == 0) return 0;

@@ -115,6 +115,7 @@ void gsm_init(void);
 
 // Обработка данных c модуля gsm
 void gsm_read(char* ptr, Int16U size);
+void gsm_read_uart(void);
 
 // Разбор URC, отложенных на время AT-команды
 void gsm_takeurc (void);

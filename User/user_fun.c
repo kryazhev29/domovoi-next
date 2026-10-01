@@ -508,10 +508,8 @@ void user_errorconnection (int8_t handle){
 static uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
 static uint16_t server_rx_count = 0;
 static uint32_t server_rx_last = 0;
-/* Отложенный разбор (01.10.2026): пока gsm_check_data держит в heap копию UART (до 2056 байт),
- * собранный кадр только помечается готовым, а выполняется в server_rx_process после free.
- * Иначе команда 13 не получала malloc(4096) под сектор уже с 30 ID (Tests/test_iar_cmd13_heap.py).
- * Доработка: Кряжев А., 2026 */
+/* Кадр выполняется после возврата префикса UART: ответ AT не изменяет читаемые байты.
+ * Резервы heap/стека не меняются; разбор DATA только собирает server_rx_buffer. */
 static uint8_t server_rx_defer = 0;
 static uint16_t server_rx_ready = 0; // длина готового кадра в начале буфера, 0 - нет
 static uint8_t server_rx_busy = 0;   // идёт разбор кадра из начала буфера: новые байты только копятся
@@ -1485,31 +1483,13 @@ void port_check_data(void)
 // проверка входящих данных от модуля
 void gsm_check_data (void)
 {
-  // Сначала URC, отложенные на время AT-команды: они пришли раньше того, что в буфере
-  server_rx_defer = 1; // команды из отложенных URC - после их free
+  server_rx_defer = 1;
   gsm_takeurc();
   server_rx_process();
-
-  // есть данные
   if (uart_getstate(GSM_PORT)){
-    // ждем завершения приема
-    // Готовность проверена; новый RX остаётся в хвосте атомарного снимка.
-    
-    uint16_t count = uart_received(GSM_PORT);
-    char *buf = calloc(count + 8, 1);
-    
-    if (buf != NULL){
-      // копируем во временный
-      count = uart_takerx(GSM_PORT, (uint8_t*)buf, count);
-      buf[count] = 0;
-      
-      // парсим
-      server_rx_defer = 1; // команды сервера - после free копии, heap свободен под их буферы
-      gsm_read(buf, count);
-      
-      free(buf);
-      server_rx_process();
-    } // При отказе heap UART остаётся владельцем данных до следующей попытки.
+    server_rx_defer = 1;
+    gsm_read_uart();
+    server_rx_process();
   }
 }
 

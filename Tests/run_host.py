@@ -380,6 +380,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'+typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
         names=['uart_addbyte','uart_clear','uart_received','uart_getptr','uart_getstate','uart_isReceiving','uart_matchresponse','uart_sendStrAndWaitResp']
         if 'uint16_t uart_takerx(' in uart:names.insert(1,'uart_takerx')
+        if 'uint16_t uart_rxview(' in uart:names.insert(1,'uart_rxview')
         code='\n'.join(function(uart,n) for n in names)+'\n'+gsm_parser_code(source('Modules/gsm.c'))+'\n'+function(source('User/user_fun.c'),'gsm_check_data')
         # IRQ после чтения готовности, до проверки receiving в главном цикле.
         code=code.replace('return uart[num].state;', "Int8U state = uart[num].state; if (noise_receive && state) uart_addbyte(num,'x'); return state;")

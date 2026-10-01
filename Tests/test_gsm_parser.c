@@ -21,6 +21,7 @@ static uint8_t rx[2048];
 static uint16_t rxlen;
 static uint16_t uart_received(uint8_t n){(void)n;return rxlen;}
 static uint8_t *uart_getptr(uint8_t n){(void)n;return rx;}
+static uint16_t uart_rxview(uint8_t n,uint8_t **p){(void)n;*p=rx;return rxlen;}
 uint16_t uart_takerx(uint8_t port,uint8_t *to,uint16_t cap){(void)port;uint16_t n=rxlen<cap?rxlen:cap;if(to)memcpy(to,rx,n);memmove(rx,rx+n,rxlen-n);rxlen-=n;return n;}
 static void gsm_dataread(gsmresp_e op,char *p,char *q,uint32_t n,int32_t id) {
   (void)q;lastid=id;events[op]++;

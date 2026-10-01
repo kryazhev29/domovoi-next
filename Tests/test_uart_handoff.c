@@ -28,20 +28,23 @@ uint32_t __get_PRIMASK(void){return irqmask;}
 void __disable_irq(void){irqmask=1;}
 void __set_PRIMASK(uint32_t m){irqmask=m;if(!m && pending_edge){pending_edge=false;CHECK(uart_addbyte(0,'I'));}}
 static void *race_calloc(size_t n,size_t s){if(alloc_edge){alloc_edge=false;CHECK(uart_addbyte(0,'+'));}return calloc(n,s);}
+static void *race_realloc(void *p,size_t n){if(alloc_edge){alloc_edge=false;CHECK(uart_addbyte(0,'+'));}return realloc(p,n);}
 static void *race_memcpy(void *to,const void *from,size_t n){if(copy_edge){copy_edge=false;if(irqmask)pending_edge=true;else CHECK(uart_addbyte(0,'I'));}return memcpy(to,from,n);}
 static uint32_t timers_getMillis(void){CHECK(clock_ms<10000);return clock_ms++;}
 static void wdt_reload(void){if(noise_receive){CHECK(++noise_ticks<50);CHECK(uart_addbyte(0,'x'));}}
 static void delay_ms(unsigned n){(void)n;}
 static void uart_sendstr(uint8_t n,char *s){(void)n;(void)s;}
 static void server_rx_process(void){server_rx_defer=0;server_processes++;}
-static void gsm_dataread(gsmresp_e op,char *p,char *q,uint32_t n,int32_t cid){(void)q;(void)cid;if(op==DATA){CHECK(datalen+n<=sizeof(data));memcpy(data+datalen,p,n);datalen+=n;}}
+static void gsm_dataread(gsmresp_e op,char *p,char *q,uint32_t n,int32_t cid){(void)q;(void)cid;if(op==DATA){CHECK(datalen+n<=sizeof(data));race_memcpy(data+datalen,p,n);datalen+=n;}}
 static void gsm_readsms(uint8_t n){(void)n;}
 static void gsm_disconnect(uint8_t n){(void)n;}
 static char *gsm_runcmd(char *s,char *r){(void)s;(void)r;return gsm_strbuf;}
 #define calloc race_calloc
+#define realloc race_realloc
 #define memcpy race_memcpy
 /* PRODUCTION */
 #undef calloc
+#undef realloc
 #undef memcpy
 static void push(const char *s){while(*s)CHECK(uart_addbyte(0,(uint8_t)*s++));}
 static void ready(void){uart[0].twait=0;uart[0].receiving=0;uart[0].state=1;}
