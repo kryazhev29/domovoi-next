@@ -41,6 +41,82 @@ config_s config;
 #pragma data_alignment=4
 device_s device;
 
+/* >>> подтверждение выгрузки */
+static uint16_t log_usbReadIndex, temp_usbReadIndex;
+static uint16_t log_unacked[2], temp_unacked[2];
+
+static uint16_t upload_index(uint8_t cmd, dataChanel_e cch){
+  if (cmd == 10) return cch == CH_USB ? log_usbReadIndex : device.readLogIDIndex;
+  return cch == CH_USB ? temp_usbReadIndex : device.readTempIDIndex;
+}
+static void upload_setIndex(uint8_t cmd, dataChanel_e cch, uint16_t value){
+  if (cmd == 10) {
+    if (cch == CH_USB) log_usbReadIndex = value; else device.readLogIDIndex = value;
+  } else {
+    if (cch == CH_USB) temp_usbReadIndex = value; else device.readTempIDIndex = value;
+  }
+}
+// Только подтверждённые позиции, в ранее неиспользуемом резерве device.
+static void upload_store(void){
+  uint32_t mark = 0x314C5055u;
+  memcpy(device.reserv, &mark, 4);
+  memcpy(device.reserv + 4, &log_usbReadIndex, 2);
+  memcpy(device.reserv + 6, &temp_usbReadIndex, 2);
+}
+static void upload_restore(const device_s *saved){
+  uint32_t mark;
+  memcpy(&mark, saved->reserv, 4);
+  if (mark != 0x314C5055u) return; // старые версии подтверждения не сохраняли
+  device.readLogIDIndex = saved->readLogIDIndex;
+  device.readTempIDIndex = saved->readTempIDIndex;
+  memcpy(&log_usbReadIndex, saved->reserv + 4, 2);
+  memcpy(&temp_usbReadIndex, saved->reserv + 6, 2);
+  upload_store();
+}
+static void upload_reset(uint8_t cmd){
+  upload_setIndex(cmd, CH_USB, 0);
+  upload_setIndex(cmd, CH_SERVER, 0);
+  uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
+  pending[0] = pending[1] = 0;
+  upload_store();
+}
+static bool upload_ack(uint8_t cmd, dataChanel_e cch){
+  uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
+  uint8_t channel = cch == CH_USB ? 0 : 1;
+  if (!pending[channel]) return true;
+  uint16_t old = upload_index(cmd, cch);
+  upload_setIndex(cmd, cch, pending[channel]);
+  upload_store();
+  if (!user_writeConfigAndDevice()) {
+    upload_setIndex(cmd, cch, old);
+    upload_store();
+    return false;
+  }
+  pending[channel] = 0;
+  return true;
+}
+static bool upload_finish(uint8_t cmd){
+  uint16_t server = upload_index(cmd, CH_SERVER), usb = upload_index(cmd, CH_USB);
+  bool active = cmd == 10 ? device.status.readyLogData || device.logsCount != 0 :
+                           device.status.readyID || device.tempIDsCount != 0;
+  if (server || usb || active) {
+    // Нулевая позиция должна стать долговечной ДО стирания.
+    // Сброс посреди стирания допускает повтор, но не пропуск новых записей.
+    upload_reset(cmd);
+    if (!user_writeConfigAndDevice()) {
+      upload_setIndex(cmd, CH_SERVER, server);
+      upload_setIndex(cmd, CH_USB, usb);
+      upload_store();
+      return false;
+    }
+    if (active && !(cmd == 10 ? log_clearLogBuffer() : user_clearTempIdBuffer())) return false;
+  }
+  if (cmd == 10) device.status.readyLogData = 0; else device.status.readyID = 0;
+  return true;
+}
+/* <<< подтверждение выгрузки */
+
+
 // буфер под прием данных от gsm
 #pragma data_alignment=4
 uint8_t gsm_buffer[GSMBUFSIZE];
@@ -1260,6 +1336,9 @@ void user_factoryReset (void){
 #endif  
   
   // закрываем соединение с сервером
+  upload_reset(10);
+  upload_reset(9);
+  if (!user_writeConfigAndDevice()) return; // не стираем с сохранённым старым курсором
   connection_deleteAll();
   
   // чистим память абонентов 
@@ -1333,6 +1412,7 @@ void user_readsavedinformation (void)
       device.updateTimeout = DV.updateTimeout;
       
       device.moduleType = DV.moduleType;
+      upload_restore(&DV);
        
       break;
     }
@@ -2228,14 +2308,11 @@ void user_send_configToConfigurator(dataChanel_e cch){
 
 /* USB читает журнал со своей позиции и не стирает его - стирает только выгрузка сервером.
    Раньше позиция была общей, и чтение по USB забирало события у сервера (18.09.2026). */
-static uint16_t log_usbReadIndex;
-static void log_setReadIndex(dataChanel_e cch, uint16_t v){
-  if (cch == CH_USB) log_usbReadIndex = v; else device.readLogIDIndex = v;
-}
-
-// Пакет 10 - выгрузка журнала событий
 void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
-  uint16_t readIdx = (cch == CH_USB) ? log_usbReadIndex : device.readLogIDIndex;
+  if (cch != CH_USB && cch != CH_SERVER) return;
+  if (!upload_ack(10, cch)) return;
+  uint16_t readIdx = upload_index(10, cch);
+
  
   // читаем кол-во записей в памяти
   device.logsCount = log_getRecordsCount();
@@ -2246,22 +2323,10 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
      не закрывал выгрузку журнала и переставал отвечать на статус (18.09.2026). */
   uint8_t empty[3] = {0, 0, 0};
 
-  // записей нет
-  if (device.logsCount == 0){
+  if (device.logsCount == 0 || readIdx >= device.logsCount){
+    if (!upload_finish(10)) return;
     user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
-    if (cch != CH_USB) device.status.readyLogData = 0;
-    log_setReadIndex(cch, 0);
-    return;
-  }
-  
-
-  
-  // подтверждение приема - выгрузили все: сначала ответ, потом стирание
-  if (readIdx >= device.logsCount){
-    user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
-    if (cch == CH_USB) log_setReadIndex(cch, 0); // следующее чтение по USB - снова с начала
-    else log_clearLogBuffer();
-    return;
+    return; // пустой ответ данных не несёт; его доставки не ждём
   }
 
   uint16_t crc;  
@@ -2300,13 +2365,14 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
     send_buffer[len + 6] = crc&0xff; // crc
     send_buffer[len + 7] = (crc>>8)&0xff;
     
+    bool sent = false;
     switch (cch){
     case CH_USB:
-      usb_send(send_buffer, len + 8);
+      sent = usb_send(send_buffer, len + 8) != 0;
       break;
       
     case CH_SERVER:
-      connection_send(device.connectionhandle, send_buffer, len + 8);
+      sent = connection_send(device.connectionhandle, send_buffer, len + 8) == CE_OK;
       break;
       
     case CH_SMS:
@@ -2314,7 +2380,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
       break;
     }    
     
-    log_setReadIndex(cch, readIdx + cntId);
+    log_unacked[cch == CH_USB ? 0 : 1] = sent ? readIdx + cntId : 0;
     if (cch != CH_USB) device.status.readyLogData = 1;
     
     free(send_buffer);
@@ -2323,37 +2389,30 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
 
 // Пакет 9 - выгрузка ID из временного буфера
 void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
+  if (cch != CH_USB && cch != CH_SERVER) return;
+  if (!upload_ack(9, cch)) return;
+  uint16_t readIdx = upload_index(9, cch);
  
   // читаем кол-во записей в памяти
   device.tempIDsCount = user_getTempIDRecordsCount();
+  if (device.tempIDsCount == 0xFFFFu) return;
 
-  // записей нет
-  if (device.tempIDsCount == 0){
-    uint16_t tmp16 = device.tempIDsCount;
-    user_send_anyData(9, (uint8_t*)&tmp16, 2, cch, uniqId);
-    device.status.readyID = 0;
-    device.readTempIDIndex = 0;
+  if (device.tempIDsCount == 0 || readIdx >= device.tempIDsCount){
+    if (!upload_finish(9)) return;
+    uint16_t empty = 0;
+    user_send_anyData(9, (uint8_t*)&empty, 2, cch, uniqId);
     return;
   }
-  
-  uint32_t readAdr = mem[MB_TEMPID].start + ((uint32_t)device.readTempIDIndex * sizeof(cellID_s));
-  
-  // подтверждение приема - выгрузили все
-  if (readAdr >= device.newAddressTempID){
-    uint16_t tmp16 = device.tempIDsCount;
-    user_clearTempIdBuffer();
-    user_send_anyData(9, (uint8_t*)&tmp16, 2, cch, uniqId);
-    return;
-  }
+  uint32_t readAdr = mem[MB_TEMPID].start + (uint32_t)readIdx * sizeof(cellID_s);
 
   uint16_t crc;  
-  uint16_t cntId = device.tempIDsCount - device.readTempIDIndex;
+  uint16_t cntId = device.tempIDsCount - readIdx;
 
   if (cntId > 100) cntId = 100;
   // выделим память 1 кБ под ID (100 * 10)
   uint8_t *send_buffer = malloc((cntId * 10) + 16);
   uint16_t len = (cntId * 10) + 6;
-  uint16_t cntId2 = device.tempIDsCount - device.readTempIDIndex - cntId;
+  uint16_t cntId2 = device.tempIDsCount - readIdx - cntId;
   
   if (send_buffer != NULL){
     
@@ -2375,7 +2434,7 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
     send_buffer[11] = cntId; // записей в текущем пакете
     // читаем из памяти
     for (uint16_t i = 0; i < cntId; i++){
-      mem_read (readAdr + 2, &send_buffer[12 + (i*10)], 10);
+      if (!mem_read(readAdr + 2, &send_buffer[12 + (i*10)], 10)) { free(send_buffer); return; }
       readAdr += sizeof(cellID_s);
     }
 
@@ -2384,13 +2443,14 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
     send_buffer[len + 6] = crc&0xff; // crc
     send_buffer[len + 7] = (crc>>8)&0xff;
     
+    bool sent = false;
     switch (cch){
     case CH_USB:
-      usb_send(send_buffer, len + 8);
+      sent = usb_send(send_buffer, len + 8) != 0;
       break;
       
     case CH_SERVER:
-      connection_send(device.connectionhandle, send_buffer, len + 8);
+      sent = connection_send(device.connectionhandle, send_buffer, len + 8) == CE_OK;
       break;
       
     case CH_SMS:
@@ -2398,7 +2458,7 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
       break;
     }    
     
-    device.readTempIDIndex += cntId;
+    temp_unacked[cch == CH_USB ? 0 : 1] = sent ? readIdx + cntId : 0;
     device.status.readyID = 1;
     
     free(send_buffer);
@@ -4350,21 +4410,22 @@ bool user_dayIsHoliday(void){
 }
 
 // очистить буфер временных ID
-void user_clearTempIdBuffer(void){
+bool user_clearTempIdBuffer(void){
 
   uint32_t adr;
   uint32_t endAdr = mem[MB_TEMPID].start + mem[MB_TEMPID].size;
   
   // по секторно стираем
   for (adr = mem[MB_TEMPID].start; adr < endAdr; adr += 4096){
-    mem_erase_sector(adr);
+    if (!mem_erase_sector(adr)) return false;
     wdt_reload();
   }
   
   device.status.readyID = 0;
   device.tempIDsCount = 0;
-  device.readTempIDIndex = 0;
+  upload_reset(9);
   device.newAddressTempID = mem[MB_TEMPID].start;
+  return true;
 }
 
 // сколько номеров в памяти
@@ -4442,7 +4503,7 @@ uint16_t user_getTempIDRecordsCount(void){
   
   // по странично читаем
   for (adr = mem[MB_TEMPID].start; adr < endAdr; adr += 1024){
-    mem_read(adr, tbuffer, 1024);
+    if (!mem_read(adr, tbuffer, 1024)) return 0xFFFFu;
     // перебираем ячейки
     for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
@@ -4550,7 +4611,7 @@ bool user_updateID(cellID_s *c){
 // ********************** Работа с log **************************
 
 // очистить буфер журнала
-void log_clearLogBuffer(void){
+bool log_clearLogBuffer(void){
 
   uint32_t adr;
   uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
@@ -4562,15 +4623,16 @@ void log_clearLogBuffer(void){
     endAdr = device.newAddressLog;
   // по секторно стираем
   for (adr = mem[MB_LOG].start & ~(uint32_t)4095; adr < endAdr; adr += 4096){
-    mem_erase_sector(adr);
+    if (!mem_erase_sector(adr)) return false;
     wdt_reload();
   }
   
   device.readLogIDIndex = 0;
-  log_usbReadIndex = 0;
+  upload_reset(10);
   device.logsCount = 0;
   device.status.readyLogData = 0;
   device.newAddressLog = mem[MB_LOG].start;
+  return true;
 }
 
 // Полностью стёртая ячейка; незавершённую запись повторно не используем.

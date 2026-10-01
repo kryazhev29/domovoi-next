@@ -126,7 +126,7 @@ bool user_getShedule(uint16_t num, cellShedule_s *shedule);
 // проверить праздничный день
 bool user_dayIsHoliday(void);
 // очистить буфер временных ID
-void user_clearTempIdBuffer(void);
+bool user_clearTempIdBuffer(void);
 // сколько номеров в памяти
 uint16_t user_getNumbersCount(void);
 // получаем кол-во ID во временном буфере и тут же обновляем адрес записи
@@ -138,7 +138,7 @@ bool user_updateID(cellID_s *c);
 void user_checkIdTimeEnd(void);
 
 // очистить буфер журнала
-void log_clearLogBuffer(void);
+bool log_clearLogBuffer(void);
 // добавить событие в буфер
 bool log_addEvent(cellLog_s *cl);
 void log_flushPending(void);

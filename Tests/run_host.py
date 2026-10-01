@@ -135,15 +135,16 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'log_addPhotoEvent(photo->stamp);' in source('User/photo.c'),'photo event'
         # Journal upload: the empty answer is 3 bytes (0 left, 0 in packet), sent before the erase; used sectors only.
         up=function(user,'user_send_logRecords')
-        assert up.count('user_send_anyData(10, empty, sizeof(empty), cch, uniqId);')==2 and 'uint8_t empty[3] = {0, 0, 0};' in up and 'tmp16' not in up,'empty journal answer'
-        assert up.index('user_send_anyData(10, empty')<up.index('log_clearLogBuffer();'),'answer before the erase'
+        assert up.count('user_send_anyData(10, empty, sizeof(empty), cch, uniqId);')==1 and 'uint8_t empty[3] = {0, 0, 0};' in up and 'tmp16' not in up,'empty journal answer'
+        assert up.index('upload_finish(10)')<up.index('user_send_anyData(10, empty'),'Q5: all records confirmed before erase/empty answer'
         clr=function(user,'log_clearLogBuffer')
         assert 'endAdr = device.newAddressLog;' in clr and 'mem[MB_LOG].start & ~(uint32_t)4095' in clr,'used sectors only'
         pend=user[user.index('/* >>> отложенные события журнала'):user.index('/* <<< отложенные события журнала */')]
         pend+=user[user.index('/* >>> номер записи журнала'):user.index('/* <<< номер записи журнала */')]
-        # USB reads the journal from its own position and never erases it; only the server upload erases.
-        assert 'uint16_t readIdx = (cch == CH_USB) ? log_usbReadIndex : device.readLogIDIndex;' in up and up.count('device.readLogIDIndex')==1,'USB journal position'
-        assert 'if (cch == CH_USB) log_setReadIndex(cch, 0);' in up and 'else log_clearLogBuffer();' in up and 'log_usbReadIndex = 0;' in clr,'USB does not erase'
+        # Q5, согласовано владельцем: одинаковое подтверждение и стирание по USB/серверу.
+        assert 'cch == CH_USB ? log_usbReadIndex : device.readLogIDIndex' in function(user,'upload_index'),'separate USB journal position'
+        assert 'if (!upload_ack(10, cch)) return;' in up and 'sent ? readIdx + cntId : 0' in up,'Q5: next request confirms, transport failure retains cursor'
+        assert 'cmd == 10 ? log_clearLogBuffer() : user_clearTempIdBuffer()' in function(user,'upload_finish'),'Q5: both channels erase only after final ACK'
         # USB commands other than ident, status, PIN and USB diagnostics need the PIN.
         pc=function(user,'user_parse_comand')
         assert pc.index('CMD_CRCERROR')<pc.index('if (cch == CH_USB && !device.userAutorized && !usb_cmd_without_pin(ptr[4])){')<pc.index('switch (ptr[4])'),'PIN gate'
@@ -262,7 +263,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='cfgstrings':
         user=source('User/user_fun.c');case=cases(user)
         types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s','status_s','triggers_s','device_s','memBlock_e','dataChanel_e','cmdCode_e','shtamp_e')
-        code=config_helpers(user)+'\n'.join(function(user,n) for n in ('user_readconfig','user_readsavedinformation'))
+        restore=''
+        if 'static void upload_restore(' in user:
+            restore='static uint16_t log_usbReadIndex,temp_usbReadIndex;\n'+function(user,'upload_store')+'\n'+function(user,'upload_restore')+'\n'
+        code=restore+config_helpers(user)+'\n'.join(function(user,n) for n in ('user_readconfig','user_readsavedinformation'))
         code+='\nvoid command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_config_strings.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
     elif kind=='sms':
@@ -286,6 +290,15 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_usb_descriptor.c').read_text().replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_GetStringDescriptor'))
     elif kind=='logupload':
         unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_logRecords'))
+    elif kind=='uploadretry':
+        user=source('User/user_fun.c')
+        code=function(source('User/crc.c'),'crc16_calc')+'\n'
+        if '/* >>> подтверждение выгрузки */' in user:
+            code+=user[user.index('/* >>> подтверждение выгрузки */'):user.index('/* <<< подтверждение выгрузки */')]+'\n'
+        else:
+            code+='static uint16_t log_usbReadIndex,temp_usbReadIndex,log_unacked[2],temp_unacked[2]; static void upload_reset(uint8_t cmd){(void)cmd;} static uint16_t upload_index(uint8_t cmd,dataChanel_e ch){return cmd==10?(ch==CH_USB?log_usbReadIndex:device.readLogIDIndex):device.readTempIDIndex;} static void upload_restore(const device_s *v){(void)v;} static void log_setReadIndex(dataChanel_e ch,uint16_t n){if(ch==CH_USB)log_usbReadIndex=n;else device.readLogIDIndex=n;}\n'
+        code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_readRecords','user_send_anyData','user_send_logRecords','user_send_tempIDs','user_factoryReset'])
+        unit=(ROOT/'Tests/test_upload_retry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s','dataChanel_e')).replace('/* PRODUCTION */',code)
     elif kind=='crcblocks':
         unit=(ROOT/'Tests/test_crc_blocks.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_crcMemoryID'))
     elif kind=='flashcmds':
