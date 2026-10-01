@@ -161,6 +161,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         if 'static bool log_readRecords(' not in user:
             unit=unit.replace('/* PRODUCTION */',code)
             unit=unit.replace('static void reset(void)', 'static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){return mem_read(4096+first*32,p,count*32);}\nstatic void reset(void)')
+    elif kind=='countends':
+        user=source('User/user_fun.c')
+        code='static uint32_t log_lastIndex;\n'+function(source('User/crc.c'),'crc16_calc')+'\n'
+        code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_getRecordsCount','user_getTempIDRecordsCount'])
+        unit=(ROOT/'Tests/test_count_ends.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s')).replace('/* PRODUCTION */',code)
     elif kind=='access':
         user=source('User/user_fun.c');st=source('structures.h')
         case=cases(user)

@@ -4456,6 +4456,7 @@ uint16_t user_getTempIDRecordsCount(void){
     }
   }
   
+  device.newAddressTempID = endAdr;
   return cnt;
 }
 
@@ -4664,6 +4665,7 @@ uint16_t log_getRecordsCount(void){
       }
     }
   }
+  device.newAddressLog = endAdr;
   return cnt;
 }
 
