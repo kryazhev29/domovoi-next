@@ -590,8 +590,9 @@ void user_smsreceived (char* num, char* data)
       if (strcmp(v, "add") == 0){
         if (validFormat){
           strncpy(&tempStrBuffer[96], arg, 10);
-          user_addIdToTempBuffer(arg, CT_OTHER);
-          log_addControlEvent(LOG_CON_IDADDBYSMS, arg, 0);
+          tempStrBuffer[106] = 0; // ID завершён; короткий аргумент дополнен нулями.
+          user_addIdToTempBuffer(&tempStrBuffer[96], CT_OTHER);
+          log_addControlEvent(LOG_CON_IDADDBYSMS, &tempStrBuffer[96], 0);
           strcat(v, ": ");
           strcat(v, &tempStrBuffer[96]);
           strcat(v, " - Ok");

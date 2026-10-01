@@ -22,6 +22,8 @@ static struct {
 static bool quiet;
 static unsigned sent, received_events, sent_events, added, controls, resets, outputs, forwarded;
 static unsigned last_output;
+static char expected_added_id[11] = "0123456789";
+static uintptr_t input_begin, input_end;
 static char sent_number[128], sent_message[128], recv_id[128], send_id[128], forwarded_text[128];
 static bool fw_update_quiet(void) { return quiet; }
 static void user_debug(char *p)
@@ -42,9 +44,13 @@ static bool log_addSystemEventID(logSystem_e event, char *id)
     return true;
 }
 static void user_addIdToTempBuffer(char *id, codeType_e type)
-{ CHECK(type == CT_OTHER && !strcmp(id, "0123456789")); added++; }
+{
+    uintptr_t address = (uintptr_t)id;
+    if (address >= input_begin && address < input_end) CHECK(input_end - address >= 10);
+    CHECK(type == CT_OTHER && !memcmp(id, expected_added_id, 10)); added++;
+}
 static bool log_addControlEvent(logControl_e event, char *id, uint8_t cnt)
-{ CHECK(event == LOG_CON_IDADDBYSMS && !strcmp(id, "0123456789") && cnt == 0); controls++; return true; }
+{ CHECK(event == LOG_CON_IDADDBYSMS && !memcmp(id, expected_added_id, 10) && cnt == 0); controls++; return true; }
 static void user_factoryReset(void) { resets++; }
 static void out_load(uint8_t out, uint8_t mode, uint16_t activ, uint16_t pause, uint8_t period)
 { CHECK(mode == OUT_ON && activ == 0 && pause == 0 && period == 0); last_output = out; outputs++; }
@@ -61,9 +67,22 @@ static int checked_sprintf(char *dest, size_t capacity, const char *format, ...)
     va_end(args);
     return result;
 }
+static size_t bounded_length(const char *p, size_t capacity)
+{ size_t n = 0; while (n < capacity && p[n]) n++; return n; }
+static char *checked_strcat(char *dest, size_t capacity, const char *source, size_t source_capacity)
+{
+    size_t source_len = bounded_length(source, source_capacity);
+    CHECK(source_len < source_capacity);
+    size_t used = bounded_length(dest, capacity);
+    CHECK(used < capacity && source_len < capacity - used);
+    memcpy(dest + used, source, source_len + 1);
+    return dest;
+}
 #define sprintf(p, ...) checked_sprintf(p, __builtin_object_size(p, 1), __VA_ARGS__)
+#define strcat(p, s) checked_strcat(p, __builtin_object_size(p, 1), s, __builtin_object_size(s, 1))
 /* PRODUCTION */
 #undef sprintf
+#undef strcat
 static void init(void)
 {
     memset(tempStrBuffer, 0, sizeof(tempStrBuffer)); memset(&config, 0, sizeof(config));
@@ -74,6 +93,7 @@ static void init(void)
     device.firmwareVersion = 71; config.rele[0].onCmdServer = config.rele[1].onCmdServer = true;
     sent = received_events = sent_events = added = controls = resets = outputs = forwarded = 0;
     quiet = false; last_output = 255;
+    strcpy(expected_added_id, "0123456789"); input_begin = input_end = 0;
 }
 static void run_case(const char *command, const char *reply, unsigned mode)
 {
@@ -117,9 +137,36 @@ static void test_debug(void)
     }
     puts("smsdebug: 0..2048-byte SMS, 111-byte boundary, guards, CRLF and PIN behavior passed");
 }
+static void test_add_bounds(bool short_only)
+{
+    for (unsigned k = 0; k <= 10; k++) {
+        unsigned length = k == 0 ? 10 : k - 1;
+        if (short_only && length == 10) continue;
+        init(); memset(expected_added_id, 0, sizeof(expected_added_id));
+        memcpy(expected_added_id, "0123456789", length);
+        size_t prefix = strlen("#add 1234,");
+        char *message = malloc(prefix + length + 1); CHECK(message != NULL);
+        memcpy(message, "#add 1234,", prefix); memcpy(message + prefix, expected_added_id, length + 1);
+        input_begin = (uintptr_t)message; input_end = input_begin + prefix + length + 1;
+        memset(&tempStrBuffer[106], 'Q', sizeof(tempStrBuffer) - 106);
+        char number[] = "+79031234567", expected[64];
+        snprintf(expected, sizeof(expected), "add: %s - Ok", expected_added_id);
+        user_smsreceived(number, message);
+        CHECK(added == 1 && controls == 1 && sent == 1);
+        CHECK(!strcmp(sent_message, expected) && !strcmp(sent_number, number));
+        CHECK(!strcmp(send_id, "9031234567"));
+        for (unsigned j = 0; j < sizeof(scratch.after); j++) CHECK(scratch.after[j] == 0xa7);
+        free(message); input_begin = input_end = 0;
+    }
+    puts("smsadd: 10-byte ID terminates; short arguments are copied and zero-padded within bounds passed");
+}
 int main(int argc, char **argv)
 {
-    if (argc > 1) { CHECK(!strcmp(argv[1], "debug")); test_debug(); return 0; }
+    if (argc > 1) {
+        if (!strcmp(argv[1], "debug")) test_debug();
+        else { CHECK(!strcmp(argv[1], "addbounds") || !strcmp(argv[1], "addshort")); test_add_bounds(!strcmp(argv[1], "addshort")); }
+        return 0;
+    }
     run_case("#add 1234,0123456789", "add: Error \"Update in progress\"", 1); CHECK(!added && !controls);
     run_case("#reset 1234,", "reset: Error \"Update in progress\"", 1); CHECK(!device.timeToReset);
     run_case("#setout 1234,1", "setout: Error \"Update in progress\"", 1); CHECK(!outputs);
@@ -140,5 +187,6 @@ int main(int argc, char **argv)
     run_case("plain text", NULL, 0);
     puts("sms: all reply sites preserve recipient, reply text and journal number passed");
     test_debug();
+    test_add_bounds(false);
     return 0;
 }
