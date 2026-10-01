@@ -1141,6 +1141,16 @@ void user_initvariables (void)
 }
 
 // Чтение конфигурации с памяти
+static void config_exchange(uint8_t *data)
+{
+  uint8_t *p = (uint8_t*)&config;
+  for (uint16_t i = 0; i < sizeof(config); i++) {
+    uint8_t b = p[i];
+    p[i] = data[i];
+    data[i] = b;
+  }
+}
+
 static void config_terminate_strings(void)
 {
   bool changed = false;
@@ -1362,35 +1372,24 @@ void user_saveindex (void)
 } 
 
 // запись конфигурации и параметров device в память
-void user_writeConfigAndDevice(void)
+bool user_writeConfigAndDevice(void)
 {
   uint8_t *ptr = malloc(MEMSECTORSIZE);
-  if (ptr == NULL) diag_heap_fail++;
-
-  if (ptr != NULL){
-#ifdef DEBUG_USER
-  user_debug(">>U Write config and device ...\r\n"); 
-#endif    
-    
-    wdt_reload();
-    
-    mem_read (mem[MB_CONFIG].start, ptr, MEMSECTORSIZE);
-    
-    config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);    
+  if (ptr == NULL) { diag_heap_fail++; return false; }
+  wdt_reload();
+  bool ok = mem_read(mem[MB_CONFIG].start, ptr, MEMSECTORSIZE);
+  if (ok) {
+    config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);
     memcpy(ptr, (pInt8U)&config, sizeof(config));
-  
     device.crc = crc16_calc((pInt8U)&device, sizeof(device)-2);
     memcpy(&ptr[sizeof(config)], (pInt8U)&device, sizeof(device));
-
-    mem_write (mem[MB_CONFIG].start, ptr, MEMSECTORSIZE);
-
-    wdt_reload();
-
-    free(ptr);    
+    ok = mem_write(mem[MB_CONFIG].start, ptr, MEMSECTORSIZE);
   }
+  wdt_reload();
+  free(ptr);
+  return ok;
 }
 
-// проверка порта 485
 void port_check_data(void)
 {
   photo_poll();
@@ -3180,19 +3179,30 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #endif 
       if ((len - 3) == sizeof(config)){
         uint8_t* p = &ptr[5];
-        
+
         /* Сервер 1 и код страны обязательны; сервер 2 может быть пустым, его использование
            задаёт useServer2. */
         if ((p[8] == 0) || (p[137] == 0)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         }
         else{
-          rs485_set_config(&ptr[5]);
+          uint32_t oldtime = device.datetimeConfig;
+          uint16_t oldcrc = device.crc;
+          uint8_t olddefault = device.status.defaultConfig;
+          config_exchange(&ptr[5]);
           config_terminate_strings();
-          // Сначала сохранить, затем отвечать таймштампом и CRC сохранённых настроек.
           device.datetimeConfig = config.datetime;
           device.status.defaultConfig = 0;
-          user_writeConfigAndDevice();
+          bool saved = user_writeConfigAndDevice();
+          config_exchange(&ptr[5]); // старые настройки - в ОЗУ, новые - в кадре
+          if (!saved) {
+            device.datetimeConfig = oldtime;
+            device.crc = oldcrc;
+            device.status.defaultConfig = olddefault;
+            user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+            break;
+          }
+          rs485_set_config(&ptr[5]);
           user_send_timeshtamp(SHTAMP_CONFIG, config.datetime,
                                user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size), cch, uniqId);
         }
@@ -4223,7 +4233,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
       id_watch_end(id_time_end(&cellId));
       started = save = true;
     }
-    if (save) user_updateID(&cellId);
+    if (save && !user_updateID(&cellId)) return false;
   }
 
   switch (tp){
@@ -4412,8 +4422,8 @@ void user_checkIdTimeEnd(void){
       }
       if (end / ONE_DAY != device.datetime / ONE_DAY) continue;
       c->reserve[6] = ID_TIME_DONE;
-      user_updateID(c);
-      log_addControlEvent(LOG_CON_IDTIMEEND, c->ID, 255);
+      if (user_updateID(c)) log_addControlEvent(LOG_CON_IDTIMEEND, c->ID, 255);
+      else id_endScan = true; // повторим событие после успешного сохранения
     }
     wdt_reload();
   }
@@ -4518,25 +4528,20 @@ bool user_checkShedule(uint8_t shd){
 }
 
 // обновить данные ID
-void user_updateID(cellID_s *c){
-  uint32_t adr;
+bool user_updateID(cellID_s *c){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint16_t index;
-  
-  // читаем index ячеек
-  for (adr = mem[MB_ID].start; adr < endAdr; adr += sizeof(cellID_s)){
-    mem_read(adr, (uint8_t*)&index, 2);
+  for (uint32_t adr = mem[MB_ID].start; adr + sizeof(cellID_s) <= endAdr; adr += sizeof(cellID_s)){
+    if (!mem_read(adr, (uint8_t*)&index, 2)) return false;
     if (index == c->index){
       uint8_t *ptr = malloc(MEMSECTORSIZE);
-      
-      if (ptr != NULL){
-        // перезаписываем ячейку новыми данными
-        mem_rewrite (adr, (uint8_t*)c, sizeof(cellID_s), ptr);
-        free(ptr);
-      }
-      break;
+      if (ptr == NULL) { diag_heap_fail++; return false; }
+      bool ok = mem_rewrite(adr, (uint8_t*)c, sizeof(cellID_s), ptr);
+      free(ptr);
+      return ok;
     }
   }
+  return false;
 }
 
 // ********************** Работа с log **************************

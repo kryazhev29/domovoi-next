@@ -61,7 +61,7 @@ void user_savereset (void);
 // Сохранение указателей чтения/записи в памяти
 void user_saveindex (void);
 // запись конфигурации и параметров device в память
-void user_writeConfigAndDevice(void);
+bool user_writeConfigAndDevice(void);
 // проверка порта 485
 void port_check_data(void);
 // проверка входящих данных от модуля
@@ -134,7 +134,7 @@ uint16_t user_getTempIDRecordsCount(void);
 // проверить расписание
 bool user_checkShedule(uint8_t shd);
 // обновить данные ID
-void user_updateID(cellID_s *c);
+bool user_updateID(cellID_s *c);
 void user_checkIdTimeEnd(void);
 
 // очистить буфер журнала

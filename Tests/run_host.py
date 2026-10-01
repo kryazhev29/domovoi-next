@@ -28,7 +28,7 @@ def cases(user):
     parse=user[user.index('void user_parse_comand'):]
     return lambda n:parse[parse.index('\r\n    case %d:'%n):parse.index('\r\n    case %d:'%(n+1))]
 def config_helpers(user):
-    return function(user,'config_terminate_strings')+'\n' if 'static void config_terminate_strings(' in user else ''
+    return ''.join(function(user,n)+'\n' for n in ('config_exchange','config_terminate_strings') if 'static void '+n+'(' in user)
 def gsm_parser_code(gsm):
     strings=source('User/user_str_fun.c')
     code='\n'.join(function(strings,n) for n in ('chkdigitchar','chkdigitstr','skipchar','user_strcpy'))+'\n'
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         if kind=='rs485cfg':
             types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')
             unit=re.sub(r'typedef struct \{ uint8_t rs485Mode, reserv\[4\]; periphery_s rs485Periphery\[8\]; \} config_s;',types,unit)
-            unit=unit.replace('uint8_t readyToUpdate, readyPhoto;', 'uint8_t readyToUpdate, readyPhoto, defaultConfig;').replace('uint32_t datetime, newAddressPhoto;', 'uint32_t datetime, datetimeConfig, newAddressPhoto;')
+            unit=unit.replace('uint8_t readyToUpdate, readyPhoto;', 'uint8_t readyToUpdate, readyPhoto, defaultConfig;').replace('uint32_t datetime, newAddressPhoto;', 'uint32_t datetime, datetimeConfig, newAddressPhoto; uint16_t crc;')
             extra=config_helpers(user)+source('Tests/test_rs485cfg.c').replace('/* COMMAND12 */',case(12))
             unit=unit.replace('int main(int argc,char **argv) {',extra+'\nint main(int argc,char **argv) {\n test_rs485cfg();')
     elif kind=='fwstart':
@@ -292,6 +292,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=helper+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
         types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
         unit=(ROOT/'Tests/test_sync.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+    elif kind=='persistence':
+        user=source('User/user_fun.c')
+        code='\n'.join(function(user,n) for n in ['user_writeConfigAndDevice','user_updateID'])
+        unit='#define HAVE_RESULT '+str(int('bool user_writeConfigAndDevice' in user))+'\n'+(ROOT/'Tests/test_persistence.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */',code)
     elif kind=='commands':
         user=source('User/user_fun.c');case=cases(user)
         code=function(source('User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'

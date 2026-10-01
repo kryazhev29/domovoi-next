@@ -3,7 +3,7 @@
 #define SHTAMP_CONFIG 4
 #define MB_CONFIG 1
 static unsigned saved_config, config_ack;
-static void user_writeConfigAndDevice(void){saved_config++;}
+static bool user_writeConfigAndDevice(void){saved_config++;return true;}
 static uint16_t user_calcCRC16InFlash(uint32_t a,uint32_t n){(void)a;(void)n;return 0;}
 static void user_send_timeshtamp(int k,uint32_t t,uint16_t crc,dataChanel_e ch,uint8_t id){(void)k;(void)t;(void)crc;(void)ch;(void)id;config_ack++;}
 static void receive_config(dataChanel_e cch, uint8_t code) {

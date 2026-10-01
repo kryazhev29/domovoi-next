@@ -13,19 +13,20 @@ static struct {releMode_s rele[2];} config;
 #define ONE_DAY (3600*24)
 static struct {uint8_t hour, minute; uint32_t datetime;} device;
 static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
-static unsigned wdt, loads[2], load_mode[2], nlogs, npass, busy[2];
+static unsigned wdt, loads[2], load_mode[2], nlogs, npass, busy[2],fail_save;
 static int log_num, log_cnt, pass_cnt;
 static void wdt_reload(void) { wdt++; }
 static void mem_read(uint32_t a, uint8_t *p, uint16_t n) { CHECK(a + n <= sizeof(flash)); memcpy(p, flash + a, n); }
 static uint8_t out_getmodestate(uint8_t out) { return (uint8_t)busy[out]; }
 static void out_load(uint8_t out, int mode, uint8_t t, uint8_t p, uint8_t c) { (void)t; (void)p; (void)c; loads[out]++; load_mode[out] = (unsigned)mode; }
 static bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt) { (void)id; if (num == LOG_CON_PASSCOUNT) { npass++; pass_cnt = cnt; return true; } nlogs++; log_num = num; log_cnt = cnt; return true; }
-static void user_updateID(cellID_s *c)
+static bool user_updateID(cellID_s *c)
 {
   uint32_t a;
+  if(fail_save)return false;
   for (a = 0; a < sizeof(flash); a += sizeof(cellID_s))
-    if (((cellID_s*)(flash + a))->index == c->index) { memcpy(flash + a, c, sizeof(*c)); return; }
-  CHECK(0);
+    if (((cellID_s*)(flash + a))->index == c->index) { memcpy(flash + a, c, sizeof(*c)); return true; }
+  CHECK(0);return false;
 }
 /* PRODUCTION */
 
@@ -167,6 +168,9 @@ int main(void)
   clear_outs(); CHECK(user_activateOut(false, true, CT_SERVER, "7900000007") && load_mode[1] == OUT_ON);
   clear_outs(); CHECK(user_activateOut(false, true, CT_PHONE, "7900000007") && load_mode[1] == OUT_INV);
 
+  put(7,"7900000007",5,2);user_getNumbersCount();clear_outs();fail_save=1;
+  CHECK(!user_activateOut(true,true,CT_PHONE,"7900000007"));CHECK(!loads[0]&&!loads[1]&&!nlogs&&!npass&&left_of(7)==2);
+  fail_save=0;CHECK(user_activateOut(true,true,CT_PHONE,"7900000007")&&left_of(7)==1);
   puts("PASS access: schedule window by minutes, ID base with holes, requested relays only, one counter step and one record per pass");
   return 0;
 }

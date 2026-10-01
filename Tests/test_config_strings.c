@@ -26,7 +26,7 @@ static void user_setdefault(void)
 static void user_saveindex(void) { saves++; }
 static void fw_resume_after_boot(void) { resumes++; }
 static void rs485_set_config(const uint8_t *p) { memcpy(&config,p,sizeof(config)); }
-static void user_writeConfigAndDevice(void) { saves++; }
+static bool user_writeConfigAndDevice(void) { saves++; return true; }
 static uint16_t user_calcCRC16InFlash(uint32_t a,uint32_t n) { CHECK(a==4096 && n==1024); return config.crc; }
 static void user_send_timeshtamp(shtamp_e kind,uint32_t time,uint16_t crc,dataChanel_e ch,uint8_t id)
 { CHECK(kind==SHTAMP_CONFIG && time==config.datetime && crc==config.crc && ch==CH_SERVER && id==42); stamps++; }
