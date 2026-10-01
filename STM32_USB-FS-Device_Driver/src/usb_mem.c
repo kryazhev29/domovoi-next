@@ -47,19 +47,13 @@
 *******************************************************************************/
 void UserToPMABufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNBytes)
 {
-  uint32_t n = (wNBytes + 1) >> 1;   /* n = (wNBytes + 1) / 2 */
-  uint32_t i, temp1, temp2;
-  uint16_t *pdwVal;
-  pdwVal = (uint16_t *)(wPMABufAddr * 2 + PMAAddr);
-  for (i = n; i != 0; i--)
-  {
-    temp1 = (uint16_t) * pbUsrBuf;
-    pbUsrBuf++;
-    temp2 = temp1 | (uint16_t) * pbUsrBuf << 8;
-    *pdwVal++ = temp2;
-    pdwVal++;
-    pbUsrBuf++;
+  uint16_t *pma = (uint16_t *)(wPMABufAddr * 2 + PMAAddr);
+  // нечётный хвост не читает следующий байт пользовательского буфера
+  while (wNBytes >= 2) {
+    *pma = (uint16_t)pbUsrBuf[0] | ((uint16_t)pbUsrBuf[1] << 8);
+    pma += 2; pbUsrBuf += 2; wNBytes -= 2;
   }
+  if (wNBytes) *pma = *pbUsrBuf;
 }
 
 /*******************************************************************************
@@ -73,15 +67,14 @@ void UserToPMABufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNByt
 *******************************************************************************/
 void PMAToUserBufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNBytes)
 {
-  uint32_t n = (wNBytes + 1) >> 1;/* /2*/
-  uint32_t i;
-  uint32_t *pdwVal;
-  pdwVal = (uint32_t *)(wPMABufAddr * 2 + PMAAddr);
-  for (i = n; i != 0; i--)
-  {
-    *(uint16_t*)pbUsrBuf++ = *pdwVal++;
-    pbUsrBuf++;
+  uint32_t *pma = (uint32_t *)(wPMABufAddr * 2 + PMAAddr);
+  // записываем только запрошенные байты, в том числе при нечётной длине
+  while (wNBytes >= 2) {
+    uint16_t word = (uint16_t)*pma++;
+    *pbUsrBuf++ = (uint8_t)word;
+    *pbUsrBuf++ = (uint8_t)(word >> 8); wNBytes -= 2;
   }
+  if (wNBytes) *pbUsrBuf = (uint8_t)*pma;
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
