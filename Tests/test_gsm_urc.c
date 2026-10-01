@@ -20,6 +20,10 @@ static char gsm_strbuf[128];
 
 static uint16_t uart_received(Int8U num) { (void)num; return rxlen; }
 static uint8_t *uart_getptr(Int8U num) { (void)num; return rx; }
+static uint16_t uart_takerx(Int8U num,uint8_t *to,uint16_t cap) {
+  (void)num;uint16_t n=rxlen<cap?rxlen:cap;
+  if(to)memcpy(to,rx,n);memmove(rx,rx+n,rxlen-n);rxlen-=n;return n;
+}
 static void uart_clear(Int8U num) { (void)num; rxlen = 0; }
 
 /* One scripted modem answer per AT command, in order. */

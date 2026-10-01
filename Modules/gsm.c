@@ -210,28 +210,29 @@ static char* gsm_findurc (char *ptr, uint16_t size)
 static void gsm_stashurc (void)
 {
   uint16_t count = uart_received(GSM_PORT);
-  char *raw;
-  char *urc;
   if (count == 0) return;
-
-  raw = (char*)uart_getptr(GSM_PORT);
-  urc = (gsm_urclen != 0 || gsm_rxpending()) ? raw : gsm_findurc(raw, count);
-
+  char *raw = (char*)uart_getptr(GSM_PORT);
+  char *urc = (gsm_urclen != 0 || gsm_rxpending()) ? raw : gsm_findurc(raw, count);
   if (urc == NULL){
-    if (gsm_urclen == 0 && !gsm_rxpending()) return; // обычный ответ без продолжения URC
-    urc = raw; // продолжение отложенного заголовка или тела
+    uart_takerx(GSM_PORT, NULL, count); // только прежний ответ, не новый хвост
+    return;
   }
-
-  count -= (uint16_t)(urc - raw);
-
-  // Обрезанный кадр хуже потерянного: длина в заголовке перестанет сходиться с данными
-  if (count > (uint16_t)(GSM_URC_MAX - gsm_urclen)) {gsm_urclost = true; return;}
-
-  // Один накопитель фиксированного размера: нет пика старый + новый при росте.
+  uint16_t offset = (uint16_t)(urc - raw);
+  if (count > (uint16_t)(GSM_URC_MAX - gsm_urclen)){
+    gsm_urclost = true;
+    uart_takerx(GSM_PORT, NULL, count);
+    return;
+  }
   if (gsm_urcbuf == NULL) gsm_urcbuf = calloc(GSM_URC_MAX + 8u, 1);
-  if (gsm_urcbuf == NULL) {gsm_urclost = true; return;}
-  memcpy(gsm_urcbuf + gsm_urclen, urc, count);
-  gsm_urclen += count;
+  if (gsm_urcbuf == NULL){
+    gsm_urclost = true;
+    uart_takerx(GSM_PORT, NULL, count);
+    return;
+  }
+  count = uart_takerx(GSM_PORT, (uint8_t*)gsm_urcbuf + gsm_urclen, count);
+  if (offset > count) offset = count;
+  memmove(gsm_urcbuf + gsm_urclen, gsm_urcbuf + gsm_urclen + offset, count - offset);
+  gsm_urclen += (uint16_t)(count - offset);
 }
 
 // Разобрать отложенные URC, вызывается из цикла main

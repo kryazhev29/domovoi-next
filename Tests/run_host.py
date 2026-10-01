@@ -8,7 +8,7 @@ kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|unsigned short|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -29,6 +29,14 @@ def cases(user):
     return lambda n:parse[parse.index('\r\n    case %d:'%n):parse.index('\r\n    case %d:'%(n+1))]
 def config_helpers(user):
     return function(user,'config_terminate_strings')+'\n' if 'static void config_terminate_strings(' in user else ''
+def gsm_parser_code(gsm):
+    strings=source('User/user_str_fun.c')
+    code='\n'.join(function(strings,n) for n in ('chkdigitchar','chkdigitstr','skipchar','user_strcpy'))+'\n'
+    code+=function(gsm,'gsm_regstate')+'\n'+function(gsm,'gsm_datalength')+'\n'
+    code+='static void gsm_rxreset(void);\nstatic void gsm_rxfailed(void);\nstatic bool gsm_rxpending(void);\nvoid gsm_read(char*,Int16U);\n'
+    code+=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'
+    code+=function(gsm,'gsm_readtext')+'\n'+gsm[gsm.index('/* >>> Поток RX:'):gsm.index('/* <<< Поток RX */')]
+    return code
 
 with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     d=pathlib.Path(d)
@@ -276,6 +284,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c');case=cases(user)
         code=function(source('User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_commands.c').read_text().replace('/* CONFIG TYPES */',typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')).replace('/* PRODUCTION */',code)
+    elif kind=='uarthandoff':
+        uart=source('Modules/uart_stm32f10x.c').replace('inline bool uart_addbyte','bool uart_addbyte')
+        types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'+typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
+        names=['uart_addbyte','uart_clear','uart_received','uart_getptr','uart_getstate','uart_isReceiving','uart_matchresponse','uart_sendStrAndWaitResp']
+        if 'uint16_t uart_takerx(' in uart:names.insert(1,'uart_takerx')
+        code='\n'.join(function(uart,n) for n in names)+'\n'+gsm_parser_code(source('Modules/gsm.c'))+'\n'+function(source('User/user_fun.c'),'gsm_check_data')
+        if 'uint16_t uart_takerx(' in uart:code='#define HAVE_TAKE 1\n'+code
+        unit=(ROOT/'Tests/test_uart_handoff.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='uartresponse':
         uart=source('Modules/uart_stm32f10x.c')
         types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'

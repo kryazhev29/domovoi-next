@@ -21,7 +21,7 @@ typedef struct{
 }uart_t;
 
 #pragma data_alignment=4
-static uart_t uart[UARTS];
+static volatile uart_t uart[UARTS];
 
 /*************************************************************************
  * Функция обработки прерывания по UART1
@@ -90,6 +90,8 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
   // Alternate function clock
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
   uart[Uart].rxbuffer = rxbuffer;
   uart[Uart].bfsize = bfsize;
   uart[Uart].timetowait = 2;
@@ -97,6 +99,7 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
   uart[Uart].twait = 0;
   uart[Uart].state = 0;
   uart[Uart].receiving = 0;
+  __set_PRIMASK(mask);
   
 
   switch (Uart)
@@ -221,16 +224,48 @@ void uart_send (Int8U uart, pInt8U buf, Int16U size)
 * Функция очистки буфера приема 
 * num - номер буфера
 *************************************************************************/
+// Снимок и передача префикса main выполняются атомарно; новый хвост принадлежит ISR.
+uint16_t uart_takerx(Int8U num, uint8_t *dst, uint16_t capacity)
+{
+  if (num >= UARTS || capacity == 0) return 0;
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  uint8_t *buffer = uart[num].rxbuffer;
+  uint16_t received = uart[num].received;
+  uint16_t count = received;
+  if (count > capacity) count = capacity;
+  if (buffer == NULL) count = 0;
+  if (count){
+    uint16_t left = (uint16_t)(received - count);
+    if (dst != NULL) memcpy(dst, buffer, count);
+    memmove(buffer, buffer + count, left);
+    memset(buffer + left, 0, count);
+    uart[num].received = left;
+    if (left == 0){
+      uart[num].twait = 0;
+      uart[num].state = 0;
+      uart[num].receiving = 0;
+    }
+  }
+  __set_PRIMASK(mask);
+  return count;
+}
+
 void uart_clear (Int8U num)
 {
   if (num >= UARTS) return;
   if (uart[num].rxbuffer == NULL) return;
 
-  for (uint16_t i=0; i<uart[num].received; i++) 
-    uart[num].rxbuffer[i] = 0;
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  uint8_t *buffer = uart[num].rxbuffer;
+  uint16_t count = uart[num].received;
+  memset(buffer, 0, count);
   uart[num].received = 0;
+  uart[num].twait = 0;
   uart[num].state = 0;
   uart[num].receiving = 0;
+  __set_PRIMASK(mask);
 }
 
 // Возвращает кол-во принятых байт в буфере
@@ -360,17 +395,19 @@ void uart_off (Int8U port)
 // добавляет байт в буфер
 inline bool uart_addbyte (Int8U num, Int8U data)
 {
-  if (uart[num].rxbuffer == NULL) return false;
-
-  if (uart[num].received < uart[num].bfsize) // Считываем байт и записываем по указателю
-   {
-   uart[num].rxbuffer[uart[num].received] = data;  
-   uart[num].received++;
-   uart[num].twait = uart[num].timetowait;
-   uart[num].receiving = 1;
-   return true;
-   }
-
+  uint8_t *buffer = uart[num].rxbuffer;
+  if (buffer == NULL) return false;
+  uint16_t count = uart[num].received;
+  uint16_t capacity = uart[num].bfsize;
+  if (count < capacity){
+    buffer[count] = data;
+    uart[num].received = (uint16_t)(count + 1u);
+    uint16_t wait = uart[num].timetowait;
+    uart[num].twait = wait;
+    uart[num].receiving = 1;
+    uart[num].state = 0;
+    return true;
+  }
   return false;
 }
 
@@ -428,10 +465,15 @@ void uart_setrxbuffer (uint8_t u, uint8_t* rxbuffer, uint16_t bfsize)
 {
   if (u >= UARTS) return;
 
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
   uart[u].rxbuffer = rxbuffer;
   uart[u].bfsize = bfsize;
   uart[u].received = 0;
+  uart[u].twait = 0;
   uart[u].state = 0;
+  uart[u].receiving = 0;
+  __set_PRIMASK(mask);
 }
 
 // Отправляем строку и ждем ответ
@@ -446,7 +488,7 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, In
   uint32_t start;
   
   // чистим
-  uart_clear(num);
+  // Предыдущий снимок уже снят gsm_stashurc; новый хвост UART сохраняется.
 
   // отправляем
   uart_sendstr(num, str);

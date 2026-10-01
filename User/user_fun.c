@@ -1417,8 +1417,7 @@ void gsm_check_data (void)
     
     if (buf != NULL){
       // копируем во временный
-      memcpy(buf, uart_getptr(GSM_PORT), count);
-      uart_clear(GSM_PORT);
+      count = uart_takerx(GSM_PORT, (uint8_t*)buf, count);
       buf[count] = 0;
       
       // парсим
@@ -1427,9 +1426,7 @@ void gsm_check_data (void)
       
       free(buf);
       server_rx_process();
-    } else{
-      uart_clear(GSM_PORT);
-    }
+    } // При отказе heap UART остаётся владельцем данных до следующей попытки.
   }
 }
 

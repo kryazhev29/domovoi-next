@@ -21,6 +21,7 @@ static uint8_t rx[2048];
 static uint16_t rxlen;
 static uint16_t uart_received(uint8_t n){(void)n;return rxlen;}
 static uint8_t *uart_getptr(uint8_t n){(void)n;return rx;}
+uint16_t uart_takerx(uint8_t port,uint8_t *to,uint16_t cap){(void)port;uint16_t n=rxlen<cap?rxlen:cap;if(to)memcpy(to,rx,n);memmove(rx,rx+n,rxlen-n);rxlen-=n;return n;}
 static void gsm_dataread(gsmresp_e op,char *p,char *q,uint32_t n,int32_t id) {
   (void)q;lastid=id;events[op]++;
 #ifndef TEST_STREAM
@@ -95,7 +96,7 @@ static void binary_stream(void) {
   reset();for(unsigned i=0;i<n;i++)feed(packet+i,1);CHECK(datalen==sizeof(body)+3 && events[ATOK]==1);
 #ifdef TEST_STREAM
   reset();memcpy(rx,packet,n);rxlen=(uint16_t)n;gsm_stashurc();check_bounds=false;gsm_takeurc();check_bounds=true;CHECK(datalen==sizeof(body)+3 && events[ATOK]==1);
-  reset();memset(rx,'x',sizeof(rx));memcpy(rx,"+IPD",4);rxlen=2048;gsm_stashurc();gsm_stashurc();CHECK(gsm_urclost);gsm_takeurc();CHECK(events[CLOSECONNECT]==1 && gsm_urclen==0 && gsm_urcbuf==NULL);
+  reset();memset(rx,'x',sizeof(rx));memcpy(rx,"+IPD",4);rxlen=2048;gsm_stashurc();rxlen=2048;gsm_stashurc();CHECK(gsm_urclost);gsm_takeurc();CHECK(events[CLOSECONNECT]==1 && gsm_urclen==0 && gsm_urcbuf==NULL);
   reset();memcpy(rx,packet,n);rxlen=(uint16_t)n;fail_alloc=true;gsm_stashurc();CHECK(gsm_urclost);gsm_takeurc();CHECK(events[CLOSECONNECT]==1 && live_allocs==0);
   reset();fail_alloc=true;feed("RING\r\n",6);CHECK(events[CLOSECONNECT]==1 && live_allocs==0);
   reset();char noise[2049];memset(noise,'x',sizeof(noise));feed(noise,sizeof(noise));CHECK(events[CLOSECONNECT]==1 && live_allocs==0);

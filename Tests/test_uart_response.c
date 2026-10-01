@@ -12,6 +12,10 @@ static uart_t uart[UARTS];
 static uint8_t storage[2052];
 static uint32_t clock_ms;
 static bool present;
+static uint32_t irqmask;
+uint32_t __get_PRIMASK(void){return irqmask;}
+void __disable_irq(void){irqmask=1;}
+void __set_PRIMASK(uint32_t m){irqmask=m;}
 static uint32_t timers_getMillis(void) {
   uint32_t now=clock_ms++;
   CHECK(clock_ms<1000);

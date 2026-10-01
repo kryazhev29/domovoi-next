@@ -62,6 +62,9 @@ void uart_send (Int8U uart, pInt8U buf, Int16U size);
 *************************************************************************/
 void uart_clear (Int8U num);
 
+// Атомарно снять префикс; dst == NULL отбрасывает только этот снимок.
+uint16_t uart_takerx(Int8U num, uint8_t *dst, uint16_t capacity);
+
 // Возвращает кол-во принятых байт в буфере
 Int16U uart_received (Int8U num);
 
