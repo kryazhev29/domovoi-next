@@ -2542,12 +2542,15 @@ static void id_set_first_pass(cellID_s *c, uint32_t t){
 }
 static bool id_expired(cellID_s *c){
   uint32_t first = id_first_pass(c);
-  return c->useTime != 0 && first != 0 && device.datetime >= first + (uint32_t)c->useTime * 60u;
+  return c->useTime != 0 && first != 0 && device.datetime >= first &&
+    device.datetime - first >= (uint32_t)c->useTime * 60u;
 }
 // окончание времени действия, если оно в сутки первого прохода и 138 ещё не записано; иначе 0
 static uint32_t id_time_end(cellID_s *c){
   uint32_t first = id_first_pass(c), end;
   if (c->useTime == 0 || first == 0 || c->reserve[6] == ID_TIME_DONE) return 0;
+  // за пределами представимого Unix-времени нет раннего окончания
+  if (first > 0xffffffffu - (uint32_t)c->useTime * 60u) return 0;
   end = first + (uint32_t)c->useTime * 60u;
   return (end / ONE_DAY == first / ONE_DAY) ? end : 0;
 }
