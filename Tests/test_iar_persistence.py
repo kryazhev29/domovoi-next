@@ -8,10 +8,12 @@ def load():
     m.u.mem_write(p,(b'\x07\x00' if n==2 else bytes(n)));m.ret(1)
 def save():
     global writes
+    if failure==2:m.ret(0);return
     writes+=1;m.ret(int(failure!=3))
 m.stubs[m.addr('mem_read')]=load
 m.stubs[m.addr('mem_write')]=save
-m.stubs[m.addr('mem_rewrite')]=save
+for n in ('mem_rewrite','mem_patch','mem_patch2'):
+    if n in m.symbols:m.stubs[m.addr(n)]=save
 m.stubs[m.addr('wdt_reload')]=lambda:m.ret()
 mem=m.addr('mem')
 m.write(mem+6*8,0x1CD400);m.write(mem+6*8+4,4096)
@@ -32,6 +34,6 @@ for failure in (0,2,3):
         if failure==2:assert writes==0
         assert largest()==cold,(function,'heap leak')
 failure=0;held=m.call('__basic_malloc',cold);assert held
-assert not m.call('user_writeConfigAndDevice') and not m.call('user_updateID',cell)
+assert m.call('user_writeConfigAndDevice') and m.call('user_updateID',cell)
 m.call('__basic_free',held);assert largest()==cold
-print(f'IAR persistence PASS: HEAP {m.heap_bytes} from map, real allocator, OOM/read/write errors, no leaks; executed stack {maximum} bytes with memory callbacks stubbed')
+print(f'IAR persistence PASS: HEAP {m.heap_bytes} from map, exhausted heap tolerated, read/write errors, no leaks; executed stack {maximum} bytes with memory callbacks stubbed')

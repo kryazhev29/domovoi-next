@@ -64,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         print('Flash map: config banks and scratch sectors outside all rounded mem[] and boot areas',flush=True)
         code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
-        defines='\n'.join(x for x in header.splitlines() if x.startswith('#define MEM'))
+        defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch')))
         test=(ROOT/'Tests/test_storage.c').read_text()
         legacy=subprocess.check_output(['git','show','203c55b:User/user_fun.c'],cwd=ROOT).decode('cp1251')
         legacy_code='\n'.join(function(legacy,n) for n in ['user_writeConfigAndDevice','user_readconfig'])
@@ -76,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind in ('sectorjournal','bootjournal'):
         code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
-        defines='\n'.join(x for x in header.splitlines() if x.startswith('#define MEM'))
+        defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch')))
         shared=''
         if '#include "sector_journal.h"' in source('User/memory.c'):
             shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n'
@@ -164,8 +164,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         # Protokol2 row 284: an expired ID does not open, 130 is gone (138 tells the end); a sync of the same card
         # keeps the first pass and the 138 mark; the end is checked every second and recounted on new server time.
         assert 'if (id_expired(&cellId)){' in user and 'LOG_CON_IDEXPIRED' not in user,'use time expired'
-        assert 'id_watch_end(id_time_end(old));' in case(13) and 'user_checkIdTimeEnd();' in user and 'id_endScan = true;' in function(user,'log_setTime'),'use time end checked'
-        assert 'if (keep){ memcpy(old->reserve, first, 4); old->reserve[6] = done; }' in case(13) and 'memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0' in case(13),'use time kept on sync'
+        sync_body=function(user,'sync_page') if 'static uint8_t sync_page(' in user else case(13)
+        assert 'id_watch_end(id_time_end(old));' in sync_body and 'user_checkIdTimeEnd();' in user and 'id_endScan = true;' in function(user,'log_setTime'),'use time end checked'
+        assert 'memcpy(old->reserve, first, 4); old->reserve[6] = done;' in sync_body and 'memcmp(old->ID,' in sync_body,'use time kept on sync'
         assert 'log_addControlEvent(server_out_event, id, cnt);' in function(user,'user_activateOut'),'server event from its source'
         # Journal sheet 131: after every pass of an ID with limited passes; 129: photo number when the photo is stored.
         assert 'if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);' in function(user,'user_activateOut'),'pass counter event'
@@ -237,7 +238,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'if (device.moduleType != gsm_getModuleType()){' in function(user,'usergsm_event'),'module type on change'
         types=typedefs(st,'logControl_e','codeType_e','releMode_s','cellShedule_s','cellID_s')
         # Passes per day: the counter restores on the first pass of a new day; a record from the server is today's.
-        assert 'user_reloadPassCounter' not in user and 'id_set_pass_day(old, id_today());' in cases(user)(13),'passes per day'
+        sync_body=function(user,'sync_page') if 'static uint8_t sync_page(' in user else cases(user)(13)
+        assert 'user_reloadPassCounter' not in user and 'id_set_pass_day(old, id_today());' in sync_body,'passes per day'
         code=re.search(r'(?m)^static uint16_t id_cells_end;',user).group(0)+'\n'
         code+=user[user.index('/* >>> время действия ID'):user.index('/* <<< проходы в сутки */')]
         code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_checkIdTimeEnd','user_activateOut'])
@@ -353,6 +355,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='sync':
         user=source('User/user_fun.c');case=cases(user)
         helper=function(user,'sync_cells_valid') if 'static bool sync_cells_valid(' in user else ''
+        if '/* >>> Сборка таблиц страницами:' in user:helper+='\n'+user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]
         code=helper+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
         types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
         unit=(ROOT/'Tests/test_sync.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)

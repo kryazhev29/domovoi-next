@@ -90,6 +90,6 @@ assert f.call('user_updateID',0x21000000);peak=m.top-m.minimum
 expected=bytes(cell)+bytes(base[32:]);f.check(expected)
 assert largest(m)==cold,'user_updateID leaked heap'
 held=m.call('__basic_malloc',cold);assert held
-f.operations=0;assert not f.call('user_updateID',0x21000000) and not f.operations
+f.operations=0;assert f.call('user_updateID',0x21000000) and not f.operations
 m.call('__basic_free',held);assert largest(m)==cold
-print(f'IAR app: real user_updateID/4096 allocation/OOM/free PASS; tested stack {peak} bytes; heap reserve {m.heap_bytes} bytes')
+print(f'IAR app: real user_updateID succeeds with exhausted heap, no leaks PASS; tested stack {peak} bytes; heap reserve {m.heap_bytes} bytes')

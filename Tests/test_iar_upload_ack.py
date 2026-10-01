@@ -1,5 +1,5 @@
 """B28/Q5: IAR, настоящие helper/save/CRC/allocator и восстановление device."""
-from iar_irq_support import Machine,ROOT,ELFFile,DWARFExprParser,UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2
+from iar_irq_support import Machine,ROOT,ELFFile,DWARFExprParser,UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3,UC_ARM_REG_SP
 m=Machine()
 with (ROOT/'Release/Exe/DomovoiNext.out').open('rb') as f:
     dwarf=ELFFile(f).get_dwarf_info();offset={}
@@ -21,6 +21,11 @@ def load():
 def save():
     a=m.u.reg_read(UC_ARM_REG_R0);p=m.u.reg_read(UC_ARM_REG_R1);n=m.u.reg_read(UC_ARM_REG_R2)
     flash[a:a+n]=m.u.mem_read(p,n);m.ret(1)
+def save_parts():
+    if failure==2:m.ret(0);return
+    a=m.u.reg_read(UC_ARM_REG_R0);p=m.u.reg_read(UC_ARM_REG_R1);n=m.u.reg_read(UC_ARM_REG_R2);q=m.u.reg_read(UC_ARM_REG_R3)
+    k=int.from_bytes(m.u.mem_read(m.u.reg_read(UC_ARM_REG_SP),4),'little');assert k==size
+    flash[a:a+n]=m.u.mem_read(p,n);flash[a+n:a+n+k]=m.u.mem_read(q,k);m.ret(1)
 def erase():
     global erases
     saved=flash[base+cfgsize:base+cfgsize+size]
@@ -29,6 +34,7 @@ def erase():
     assert saved[offset[field]:offset[field]+2]==b'\0\0' and saved[usb:usb+2]==b'\0\0','erase before durable cursor reset'
     a=m.u.reg_read(UC_ARM_REG_R0)&~4095;flash[a:a+4096]=b'\xff'*4096;erases+=1;m.ret(1)
 m.stubs[m.addr('mem_read')]=load;m.stubs[m.addr('mem_write')]=save;m.stubs[m.addr('mem_erase_sector')]=erase
+m.stubs[m.addr('mem_patch2')]=save_parts
 m.stubs[m.addr('wdt_reload')]=lambda:m.ret()
 m.stubs[m.addr('fw_resume_after_boot')]=lambda:m.ret()
 def setup(cmd,ch):
@@ -60,10 +66,10 @@ for cmd in (9,10):
         m.write(pending,64,2)
         m.init();mem=m.addr('mem');m.write(mem+6*8,base);m.write(mem+6*8+4,4096)
         m.call('user_readsavedinformation');assert m.call('upload_index',cmd,ch)==32 and not m.read(pending,2)
-        # Отказ heap/чтения не фиксирует подтверждение и не стирает область.
+        # Пустой heap больше не мешает ACK; отказ чтения по-прежнему сохраняет pending.
         pending=setup(cmd,ch);held=m.call('__basic_malloc',largest());assert held
-        assert not m.call('upload_ack',cmd,ch) and m.call('upload_index',cmd,ch)==0 and m.read(pending,2)==32 and not erases
-        m.call('__basic_free',held);failure=2
+        assert m.call('upload_ack',cmd,ch) and m.call('upload_index',cmd,ch)==32 and not m.read(pending,2) and not erases
+        m.call('__basic_free',held);pending=setup(cmd,ch);failure=2
         assert not m.call('upload_ack',cmd,ch) and m.call('upload_index',cmd,ch)==0 and m.read(pending,2)==32
         failure=0;assert m.call('upload_ack',cmd,ch)
         assert m.call('upload_finish',cmd);assert erases==1 and m.call('upload_index',cmd,ch)==0

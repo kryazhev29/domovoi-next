@@ -1278,21 +1278,10 @@ void user_readconfig(void)
 // запись конфигурации в пам€ть
 void user_writeconfig(void)
 {
-  uint8_t *ptr = malloc(MEMSECTORSIZE);
-  if (ptr == NULL) diag_heap_fail++;
-
-  if (ptr != NULL){
-#ifdef DEBUG_USER
-  user_debug(">>U Write config ...\r\n"); 
-#endif    
-    
-    wdt_reload();
-    config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);
-    mem_rewrite(mem[MB_CONFIG].start, (pInt8U)&config, sizeof(config), ptr); 
-    wdt_reload();
-    
-    free(ptr);    
-  }
+  wdt_reload();
+  config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);
+  (void)mem_patch(mem[MB_CONFIG].start, (const uint8_t*)&config, sizeof(config));
+  wdt_reload();
 }
 
 // «агрузить настройки по умолчанию
@@ -1457,19 +1446,12 @@ void user_saveindex (void)
 // запись конфигурации и параметров device в пам€ть
 bool user_writeConfigAndDevice(void)
 {
-  uint8_t *ptr = malloc(MEMSECTORSIZE);
-  if (ptr == NULL) { diag_heap_fail++; return false; }
   wdt_reload();
-  bool ok = mem_read(mem[MB_CONFIG].start, ptr, MEMSECTORSIZE);
-  if (ok) {
-    config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);
-    memcpy(ptr, (pInt8U)&config, sizeof(config));
-    device.crc = crc16_calc((pInt8U)&device, sizeof(device)-2);
-    memcpy(&ptr[sizeof(config)], (pInt8U)&device, sizeof(device));
-    ok = mem_write(mem[MB_CONFIG].start, ptr, MEMSECTORSIZE);
-  }
+  config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);
+  device.crc = crc16_calc((pInt8U)&device, sizeof(device)-2);
+  bool ok = mem_patch2(mem[MB_CONFIG].start, (const uint8_t*)&config, sizeof(config),
+                      (const uint8_t*)&device, sizeof(device));
   wdt_reload();
-  free(ptr);
   return ok;
 }
 
@@ -2941,6 +2923,62 @@ static bool command_args_valid(const uint8_t *ptr, uint16_t len)
   }
 }
 
+/* >>> —борка таблиц страницами: исходный сектор читаетс€ до commit журнала. */
+typedef struct {
+  const uint8_t *records;
+  uint32_t sector, start;
+  uint16_t count, size;
+  uint8_t ids;
+} sync_pages_s;
+
+static uint8_t sync_page(const void *context, uint16_t off, uint8_t *page)
+{
+  const sync_pages_s *s = context;
+  if (!mem_read(s->sector + off, page, 256)) return 0;
+  for (uint16_t i = 0; i < s->count; i++) {
+    const uint8_t *record = s->records + (uint32_t)i * s->size;
+    uint16_t index = record[0];
+    if (s->ids) memcpy(&index, record, 2);
+    uint32_t address = s->start + (uint32_t)(index - 1u) * s->size;
+    if (address < s->sector + off || address >= s->sector + off + 256u) continue;
+    uint16_t local = (uint16_t)(address - s->sector - off);
+    if (s->size > 256u - local) return 0;
+    if (s->ids) {
+      cellID_s *old = (cellID_s*)(page + local);
+      uint8_t first[4], done = old->reserve[6];
+      bool keep = old->index != 0xffff && memcmp(old->ID, record + 2, 10) == 0;
+      memcpy(first, old->reserve, 4);
+      memcpy(old, record, s->size);
+      if (keep) { memcpy(old->reserve, first, 4); old->reserve[6] = done; }
+      id_set_pass_day(old, id_today());
+      id_watch_end(id_time_end(old));
+    } else memcpy(page + local, record, s->size);
+  }
+  return 1;
+}
+
+static bool sync_write_cells(const uint8_t *records, uint16_t count, memBlock_e mb, uint16_t size)
+{
+  while (count) {
+    uint16_t index = records[0], n = 1;
+    if (mb == MB_ID) memcpy(&index, records, 2);
+    uint32_t sector = (mem[mb].start + (uint32_t)(index - 1u) * size) & ~4095u;
+    while (n < count) {
+      const uint8_t *next = records + (uint32_t)n * size;
+      index = next[0];
+      if (mb == MB_ID) memcpy(&index, next, 2);
+      if (((mem[mb].start + (uint32_t)(index - 1u) * size) & ~4095u) != sector) break;
+      n++;
+    }
+    sync_pages_s image = {records, sector, mem[mb].start, n, size, mb == MB_ID};
+    if (!mem_replace_pages(sector, sync_page, &image)) return false;
+    records += (uint32_t)n * size;
+    count -= n;
+  }
+  return true;
+}
+/* <<< —борка таблиц страницами */
+
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
   uint16_t len, crc, i;
@@ -3271,81 +3309,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-        uint16_t idCnt = ptr[9];
-        uint16_t cellNum;
-        uint32_t sector = -1;
-        uint32_t newSector = -1;
-        uint8_t cnt = 0;
-        bool saved = true;
-        
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd sync IDs (cmd 13)\r\n"); 
-#endif 
-  
-         uint8_t *membfr = malloc(MEMSECTORSIZE);
-        
-        if (membfr == NULL){
-          diag_heap_fail++;
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }        
-        
-        // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-
-        
-        // пишем в пам€ть
-        for (uint16_t i = 0; i<idCnt; i++){
-          // номер €чейки
-          cellNum = *(uint16_t*)&ptr[(i*sizeof(cellID_s)) + 10];
-          
-          cellNum -= 1;
-          // адрес сектора
-          newSector = div(mem[MB_ID].start + (cellNum*sizeof(cellID_s)), 4096).quot * 4096;
-          // сектор помен€лс€, читаем
-          if (newSector != sector){
-            // ранее сектор был считан, сохран€ем
-            if (cnt != 0){
-              wdt_reload();
-              if (!mem_replace_sector(sector, membfr)) {
-                saved = false;
-                break;
-              }
-            }
-            cnt = 0;
-            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
-            sector = newSector;
-          }
-          // копируем €чейку
-          cellNum = mem[MB_ID].start + (cellNum*sizeof(cellID_s)) - newSector;
-          {
-            /* ¬рем€ первого прохода ведЄт контроллер: синхронизаци€ той же карточки его не
-               сбрасывает - сервер рассылает карточку после каждого прохода (счЄтчик), и
-               врем€ действи€ иначе начиналось бы заново. */
-            cellID_s *old = (cellID_s*)(membfr + cellNum);
-            uint8_t first[4], done;
-            bool keep = (old->index != 0xffff) && (memcmp(old->ID, &ptr[(i*sizeof(cellID_s)) + 12], 10) == 0);
-            memcpy(first, old->reserve, 4);
-            done = old->reserve[6];
-            memcpy(membfr + cellNum, &ptr[(i*sizeof(cellID_s)) + 10], sizeof(cellID_s));
-            if (keep){ memcpy(old->reserve, first, 4); old->reserve[6] = done; }
-            id_set_pass_day(old, id_today()); // остаток с сервера - на текущие сутки
-            id_watch_end(id_time_end(old));   // сервер мог изменить врем€ действи€
-          }
-          cnt++;
-        }
-        
-        // ранее сектор был считан, сохран€ем
-        if (saved && cnt != 0){
-          wdt_reload();
-          if (!mem_replace_sector(sector, membfr)) {
-            saved = false;
-          }
-        }        
-        
-        // сектор записан: heap освобождаетс€ до ответа (AT-отправка может отложить URC в heap)
-        free(membfr);
-        if (!saved) {
+        if (!sync_write_cells(&ptr[10], ptr[9], MB_ID, sizeof(cellID_s))) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }
@@ -3366,67 +3331,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-        uint8_t idCnt = ptr[9];
-        uint16_t cellNum;
-        uint32_t sector = -1;
-        uint32_t newSector = -1;
-        uint8_t cnt = 0;
-        bool saved = true;
-        
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd sync shedule (cmd 14)\r\n"); 
-#endif     
-    
-        uint8_t *membfr = malloc(MEMSECTORSIZE);
-        
-        if (membfr == NULL){
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }
-        
-        // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-
-        
-        // пишем в пам€ть
-        for (uint16_t i = 0; i<idCnt; i++){
-          // номер €чейки
-          cellNum = ptr[(i*sizeof(cellShedule_s)) + 10];
-          
-          cellNum -= 1;
-          // адрес сектора
-          newSector = div(mem[MB_SHEDULE].start + (cellNum*sizeof(cellShedule_s)), 4096).quot * 4096;
-          // сектор помен€лс€, читаем
-          if (newSector != sector){
-            // ранее сектор был считан, сохран€ем
-            if (cnt != 0){
-              wdt_reload();
-              if (!mem_replace_sector(sector, membfr)) {
-                saved = false;
-                break;
-              }
-            }
-            cnt = 0;
-            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
-            sector = newSector;
-          }
-          // копируем €чейку
-          cellNum = mem[MB_SHEDULE].start + (cellNum*sizeof(cellShedule_s)) - newSector;
-          memcpy(membfr + cellNum, &ptr[(i*sizeof(cellShedule_s)) + 10], sizeof(cellShedule_s));
-          cnt++;
-        }
-        
-        // ранее сектор был считан, сохран€ем
-        if (saved && cnt != 0){
-          wdt_reload();
-          if (!mem_replace_sector(sector, membfr)) {
-            saved = false;
-          }
-        }        
-
-      
-        free(membfr);
-        if (!saved) {
+        if (!sync_write_cells(&ptr[10], ptr[9], MB_SHEDULE, sizeof(cellShedule_s))) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }
@@ -3447,67 +3353,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-        uint8_t idCnt = ptr[9];
-        uint16_t cellNum;
-        uint32_t sector = -1;
-        uint32_t newSector = -1;
-        uint8_t cnt = 0;
-        bool saved = true;
-        
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd sync group (cmd 15)\r\n"); 
-#endif         
-        
-        uint8_t *membfr = malloc(MEMSECTORSIZE);
-        
-        if (membfr == NULL){
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }
-        
-        // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-
- 
-        // пишем в пам€ть
-        for (uint16_t i = 0; i<idCnt; i++){
-          // номер €чейки
-          cellNum = ptr[(i*sizeof(cellGroup_s)) + 10];
-          
-          cellNum -= 1;
-          // адрес сектора
-          newSector = div(mem[MB_GROUP].start + (cellNum*sizeof(cellGroup_s)), 4096).quot * 4096;
-          // сектор помен€лс€, читаем
-          if (newSector != sector){
-            // ранее сектор был считан, сохран€ем
-            if (cnt != 0){
-              wdt_reload();
-              if (!mem_replace_sector(sector, membfr)) {
-                saved = false;
-                break;
-              }
-            }
-            cnt = 0;
-            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
-            sector = newSector;
-          }
-          // копируем €чейку
-          cellNum = mem[MB_GROUP].start + (cellNum*sizeof(cellGroup_s)) - newSector;
-          memcpy(membfr + cellNum, &ptr[(i*sizeof(cellGroup_s)) + 10], sizeof(cellGroup_s));
-          cnt++;
-        }
-        
-        // ранее сектор был считан, сохран€ем
-        if (saved && cnt != 0){
-          wdt_reload();
-          if (!mem_replace_sector(sector, membfr)) {
-            saved = false;
-          }
-        } 
-        
-      
-        free(membfr);
-        if (!saved) {
+        if (!sync_write_cells(&ptr[10], ptr[9], MB_GROUP, sizeof(cellGroup_s))) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }
@@ -3528,67 +3375,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-        uint8_t idCnt = ptr[9];
-        uint16_t cellNum;
-        uint32_t sector = -1;
-        uint32_t newSector = -1;
-        uint8_t cnt = 0;
-        bool saved = true;
-        
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd sync holiday (cmd 16)\r\n"); 
-#endif         
-        
-        uint8_t *membfr = malloc(MEMSECTORSIZE);
-        
-        if (membfr == NULL){
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }
-        
-        // дататайм
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-
-        
-        // пишем в пам€ть
-        for (uint16_t i = 0; i<idCnt; i++){
-          // номер €чейки
-          cellNum = ptr[(i*sizeof(cellHoliday_s)) + 10];
-          
-          cellNum -= 1;
-          // адрес сектора
-          newSector = div(mem[MB_HOLIDAY].start + (cellNum*sizeof(cellHoliday_s)), 4096).quot * 4096;
-          // сектор помен€лс€, читаем
-          if (newSector != sector){
-            // ранее сектор был считан, сохран€ем
-            if (cnt != 0){
-              wdt_reload();
-              if (!mem_replace_sector(sector, membfr)) {
-                saved = false;
-                break;
-              }
-            }
-            cnt = 0;
-            if (!mem_read(newSector, membfr, MEMSECTORSIZE)) { saved = false; break; }
-            sector = newSector;
-          }
-          // копируем €чейку
-          cellNum = mem[MB_HOLIDAY].start + (cellNum*sizeof(cellHoliday_s)) - newSector;
-          memcpy(membfr + cellNum, &ptr[(i*sizeof(cellHoliday_s)) + 10], sizeof(cellHoliday_s));
-          cnt++;
-        }
-        
-        // ранее сектор был считан, сохран€ем
-        if (saved && cnt != 0){
-          wdt_reload();
-          if (!mem_replace_sector(sector, membfr)) {
-            saved = false;
-          }
-        }
-        
-      
-        free(membfr);
-        if (!saved) {
+        if (!sync_write_cells(&ptr[10], ptr[9], MB_HOLIDAY, sizeof(cellHoliday_s))) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }
@@ -4604,11 +4392,7 @@ bool user_updateID(cellID_s *c){
   for (uint32_t adr = mem[MB_ID].start; adr + sizeof(cellID_s) <= endAdr; adr += sizeof(cellID_s)){
     if (!mem_read(adr, (uint8_t*)&index, 2)) return false;
     if (index == c->index){
-      uint8_t *ptr = malloc(MEMSECTORSIZE);
-      if (ptr == NULL) { diag_heap_fail++; return false; }
-      bool ok = mem_rewrite(adr, (uint8_t*)c, sizeof(cellID_s), ptr);
-      free(ptr);
-      return ok;
+      return mem_patch(adr, (const uint8_t*)c, sizeof(cellID_s));
     }
   }
   return false;

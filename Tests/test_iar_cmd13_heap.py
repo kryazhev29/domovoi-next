@@ -20,6 +20,10 @@ from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS
 from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_XPSR, UC_ARM_REG_PC, UC_ARM_REG_R0
 
 user=(root/'User/user_fun.c').read_bytes().decode('cp1251')
+if 'static bool sync_write_cells(' in user:
+    import runpy
+    runpy.run_path(str(root/'Tests/test_iar_sync_pages.py'))
+    sys.exit(0)
 check=user[user.index('void gsm_check_data'):]; check=check[:check.index('\n}')]
 has_copy='calloc(' in check
 has_stash='gsm_urcbuf' in (root/'Modules/gsm.c').read_bytes().decode('cp1251')

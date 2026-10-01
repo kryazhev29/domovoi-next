@@ -13,11 +13,17 @@ def received():
     m.ret()
 m.stubs[m.addr('gsm_dataread')]=received
 m.call('gsm_initvar',0,1)
+uart=m.addr('uart')+2*m.map_size('uart')//3
+m.u.mem_write(uart+m.members['rxbuffer'],input_start.to_bytes(4,'little'))
+m.u.mem_write(uart+m.members['bfsize'],m.map_size('gsm_buffer').to_bytes(2,'little'))
 max_stack=0
 def feed(packet):
     global input_end,max_stack
     input_end=input_start+len(packet);m.u.mem_write(input_start,packet)
-    m.call('gsm_read',input_start,len(packet))
+    if 'gsm_read' in m.symbols:m.call('gsm_read',input_start,len(packet))
+    else:
+        m.u.mem_write(uart+m.members['received'],len(packet).to_bytes(2,'little'))
+        m.call('gsm_read_uart')
     max_stack=max(max_stack,m.top-m.minimum)
 def largest():
     lo,hi=0,m.heap_bytes
@@ -27,7 +33,7 @@ def largest():
         else:hi=mid-1
     return lo
 cold=largest()
-# Размеры моделируемых UART/stash запросов соответствуют существующему контракту +8.
+# Давление на heap двумя блоками прежнего размера UART/stash; в прошивке их уже нет.
 copies=[m.call('__basic_malloc',2056),m.call('__basic_malloc',2056)]
 assert all(copies)
 body=b'A\0ERROR RING CLOSED OK';packet=b'+QIURC: "recv",0,'+str(len(body)).encode()+b'\r\n'+body+b'+IPD,3:xyz\r\nOK\r\n'

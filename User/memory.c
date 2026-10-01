@@ -36,6 +36,38 @@ bool mem_replace_sector(uint32_t adr, const uint8_t *image)
 }
 
 
+bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context)
+{
+  if (!sj_destination(adr) || reader == NULL) return false;
+  mem_check_power();
+  mem_storage_ready = sj_replace_pages(adr, reader, context);
+  return mem_storage_ready;
+}
+
+// Две смежные правки: config/device не требуют общей копии сектора.
+typedef struct {
+  uint32_t source, offset;
+  const uint8_t *first, *second;
+  uint16_t nfirst, nsecond;
+} mem_image_s;
+
+static void mem_overlay(uint8_t *page, uint16_t off, uint32_t start, const uint8_t *data, uint16_t size)
+{
+  uint32_t from = off > start ? off : start;
+  uint32_t end = (uint32_t)off + SJ_PAGE;
+  if (end > start + size) end = start + size;
+  if (from < end) memcpy(page + from - off, data + from - start, end - from);
+}
+
+static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
+{
+  const mem_image_s *image = context;
+  if (!w25_read_data(image->source + off, page, SJ_PAGE)) return 0;
+  mem_overlay(page, off, image->offset, image->first, image->nfirst);
+  mem_overlay(page, off, image->offset + image->nfirst, image->second, image->nsecond);
+  return 1;
+}
+
 /* Два слота по 8 КиБ: 4 КиБ логического образа и отдельный сектор фиксации. 0x1F5000..0x1F8FFF
  * - после TEMPID (конец 0x1F43FF), ниже PHOTO. Перед публикацией слота образ зеркалируется в
  * 0x1CD400, чтобы более старая прошивка могла откатиться. Выбор не кэшируется: после сброса или
@@ -85,13 +117,16 @@ static uint32_t cfg_select(uint32_t *generation)
   if (va) { *generation = a; return MEM_CONFIG_SLOT0; }
   *generation = 0; return MEM_CONFIG_LEGACY;
 }
-static uint8_t cfg_equal(uint32_t address, const uint8_t *p)
+static uint8_t cfg_pages_equal(uint32_t address, const mem_image_s *image)
 {
-  uint8_t b[64];
-  uint16_t off;
-  for (off = 0; off < MEMSECTORSIZE; off += sizeof(b)) {
-    if (!w25_read_data(address + off, b, sizeof(b))) return 0;
-    if (memcmp(b, p + off, sizeof(b))) return 0;
+  uint8_t page[SJ_PAGE], check[32];
+  for (uint16_t off = 0; off < MEMSECTORSIZE; off += SJ_PAGE) {
+    wdt_reload();
+    if (!mem_image_page(image, off, page)) return 0;
+    for (uint16_t i = 0; i < SJ_PAGE; i += sizeof(check)) {
+      if (!w25_read_data(address + off + i, check, sizeof(check)) ||
+          memcmp(page + i, check, sizeof(check))) return 0;
+    }
   }
   return 1;
 }
@@ -121,31 +156,33 @@ static uint8_t cfg_legacy_crc(uint16_t offset)
   return crc == expected;
 }
 /* Источник - ОЗУ или образ во флеш-памяти. Прежний активный слот никогда не стирается. */
-static uint8_t cfg_publish(uint8_t *p, uint32_t source, uint32_t active, uint32_t generation)
+static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint32_t generation)
 {
   uint32_t h[4], check;
   uint32_t target = active == MEM_CONFIG_SLOT0 ? MEM_CONFIG_SLOT1 : MEM_CONFIG_SLOT0;
-  uint16_t off;
-  uint8_t b[256];
+  uint8_t page[SJ_PAGE];
   if (!w25_erase_sector(target + MEMSECTORSIZE)) return 0;
   if (!w25_read_data(target + MEMSECTORSIZE, (uint8_t*)h, sizeof(h))) return 0;
-  if (h[0] != 0xFFFFFFFFu || h[1] != 0xFFFFFFFFu ||
-      h[2] != 0xFFFFFFFFu || h[3] != 0xFFFFFFFFu) return 0;
+  if (h[0] != 0xFFFFFFFFu || h[1] != 0xFFFFFFFFu || h[2] != 0xFFFFFFFFu || h[3] != 0xFFFFFFFFu) return 0;
   if (!w25_erase_sector(target)) return 0;
-  for (off = 0; off < MEMSECTORSIZE; off += sizeof(b)) {
-    if (p != NULL) memcpy(b, p + off, sizeof(b));
-    else if (!w25_read_data(source + off, b, sizeof(b))) return 0;
-    if (!w25_write_data(target + off, b, sizeof(b))) return 0;
+  h[0] = CFG_MAGIC; h[1] = generation + 1u;
+  uint32_t crc = cfg_crc(0xFFFFFFFFu, (uint8_t*)&h[1], 4);
+  for (uint16_t off = 0; off < MEMSECTORSIZE; off += SJ_PAGE) {
+    wdt_reload();
+    if (!mem_image_page(image, off, page)) return 0;
+    crc = cfg_crc(crc, page, sizeof(page));
+    if (!w25_write_data(target + off, page, sizeof(page))) return 0;
   }
-  if (p != NULL) { if (!cfg_equal(target, p)) return 0; }
-  else if (!cfg_equal_flash(target, source)) return 0;
-  h[0] = CFG_MAGIC;
-  h[1] = generation + 1u;
-  if (p != NULL) h[2] = cfg_crc(cfg_crc(0xFFFFFFFFu, (uint8_t*)&h[1], 4), p, MEMSECTORSIZE);
-  else if (!cfg_image_crc(source, h[1], &h[2])) return 0;
-  h[3] = ~h[2];
+  if (!cfg_pages_equal(target, image)) return 0;
+  h[2] = crc; h[3] = ~h[2];
   if (!w25_write_data(target + MEMSECTORSIZE, (uint8_t*)h, sizeof(h))) return 0;
   return cfg_valid(target, &check) && check == h[1];
+}
+
+static uint8_t cfg_publish(uint8_t *p, uint32_t source, uint32_t active, uint32_t generation)
+{
+  mem_image_s image = {source, 0, p, NULL, p == NULL ? 0 : MEMSECTORSIZE, 0};
+  return cfg_publish_pages(&image, active, generation);
 }
 /* При старте побеждают целые данные старого места: это может быть обновление старой прошивкой
  * или законченное зеркало, публикация слота которого прервалась. Резервные байты не трактуются:
@@ -178,36 +215,47 @@ static uint8_t cfg_blank_sector(uint32_t address)
   }
   return 1;
 }
-static uint8_t cfg_mirror(uint8_t *p)
+static uint8_t cfg_mirror(const mem_image_s *image)
 {
-  uint8_t b[64];
-  uint16_t off;
-  if (cfg_equal(MEM_CONFIG_LEGACY, p)) return 1;
-  /* Настройки делаются недействительными до работы со вторым сектором и резервом. */
-  if (!w25_erase_sector(0x1CD000u)) return 0;
-  if (!cfg_blank_sector(0x1CD000u)) return 0;
-  if (!w25_erase_sector(0x1CE000u)) return 0;
-  if (!cfg_blank_sector(0x1CE000u)) return 0;
-  if (!w25_write_data(MEM_CONFIG_LEGACY + 1024, p + 1024, 3072)) return 0;
-  if (!w25_write_data(MEM_CONFIG_LEGACY + 512, p + 512, 512)) return 0;
-  /* Действительные настройки никогда не публикуются поверх незаконченных device и резерва. */
-  for (off = 512; off < MEMSECTORSIZE; off += sizeof(b)) {
-    if (!w25_read_data(MEM_CONFIG_LEGACY + off, b, sizeof(b))) return 0;
-    if (memcmp(b, p + off, sizeof(b))) return 0;
+  uint8_t page[SJ_PAGE], check[32];
+  if (cfg_pages_equal(MEM_CONFIG_LEGACY, image)) return 1;
+  if (!w25_erase_sector(0x1CD000u) || !cfg_blank_sector(0x1CD000u) ||
+      !w25_erase_sector(0x1CE000u) || !cfg_blank_sector(0x1CE000u)) return 0;
+  // Хвост, device, затем config с его CRC: порядок для загрузчика 0x32 сохранён.
+  for (uint16_t off = 1024; off < MEMSECTORSIZE; off += SJ_PAGE) {
+    wdt_reload();
+    if (!mem_image_page(image, off, page) || !w25_write_data(MEM_CONFIG_LEGACY + off, page, sizeof(page))) return 0;
   }
-  if (!w25_write_data(MEM_CONFIG_LEGACY, p, 512)) return 0;
-  return cfg_equal(MEM_CONFIG_LEGACY, p);
+  for (uint16_t off = 512; off < 1024; off += SJ_PAGE) {
+    if (!mem_image_page(image, off, page) || !w25_write_data(MEM_CONFIG_LEGACY + off, page, sizeof(page))) return 0;
+  }
+  for (uint16_t off = 512; off < MEMSECTORSIZE; off += SJ_PAGE) {
+    if (!mem_image_page(image, off, page)) return 0;
+    for (uint16_t i = 0; i < SJ_PAGE; i += sizeof(check)) {
+      if (!w25_read_data(MEM_CONFIG_LEGACY + off + i, check, sizeof(check)) || memcmp(page + i, check, sizeof(check))) return 0;
+    }
+  }
+  for (uint16_t off = 0; off < 512; off += SJ_PAGE) {
+    if (!mem_image_page(image, off, page) || !w25_write_data(MEM_CONFIG_LEGACY + off, page, sizeof(page))) return 0;
+  }
+  return cfg_pages_equal(MEM_CONFIG_LEGACY, image);
 }
-static bool cfg_commit(uint8_t *p)
+static bool cfg_commit_parts(uint16_t offset, const uint8_t *first, uint16_t nfirst, const uint8_t *second, uint16_t nsecond)
 {
   uint32_t generation, active;
-  /* Сначала защитить образ, который есть только в старом месте, даже если первая операция -
-   * запись. */
   if (!cfg_prepare()) return false;
   active = cfg_select(&generation);
-  if (!cfg_mirror(p)) { mem_config_errors++; return false; }
-  if (active != MEM_CONFIG_LEGACY && cfg_equal(active, p)) return true;
-  if (!cfg_publish(p, 0, active, generation)) { mem_config_errors++; return false; }
+  mem_image_s image = {active, offset, first, second, nfirst, nsecond};
+  if (active == MEM_CONFIG_LEGACY) {
+    // При первом сохранении источник ещё в legacy: сначала переносим его в банк.
+    if (!cfg_publish_pages(&image, active, generation)) { mem_config_errors++; return false; }
+    image.source = MEM_CONFIG_SLOT0;
+    if (!cfg_mirror(&image)) { mem_config_errors++; return false; }
+    return true;
+  }
+  if (!cfg_mirror(&image)) { mem_config_errors++; return false; }
+  if (cfg_pages_equal(active, &image)) return true;
+  if (!cfg_publish_pages(&image, active, generation)) { mem_config_errors++; return false; }
   return true;
 }
 static uint8_t cfg_range(uint32_t adr, uint16_t size)
@@ -236,25 +284,28 @@ bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 // данные пишутся в предварительно стертый сектор
 bool mem_write (Int32U adr, pInt8U buff, Int16U size)
 {
-  mem_check_power();  
-  if (cfg_range(adr, size)) {
-    if (adr == MEM_CONFIG_LEGACY && size == MEMSECTORSIZE) return cfg_commit(buff);
-    else {
-      uint8_t *image = malloc(MEMSECTORSIZE);
-      if (image == NULL) { mem_config_errors++; return false; }
-      bool ok = cfg_read(MEM_CONFIG_LEGACY, image, MEMSECTORSIZE);
-      if (ok) {
-        memcpy(image + adr - MEM_CONFIG_LEGACY, buff, size);
-        ok = cfg_commit(image);
-      }
-      free(image);
-      return ok;
-    }
-  }
+  mem_check_power();
+  if (cfg_range(adr, size)) return mem_patch(adr, buff, size);
   return !mem_reserved(adr, size) && mem_guard(adr, size) && w25_write_data(adr, buff, size);
 }
 
-// Стереть сектор
+bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *second, Int16U nsecond)
+{
+  uint32_t size = (uint32_t)nfirst + nsecond;
+  if ((nfirst && first == NULL) || (nsecond && second == NULL) || size > MEMSECTORSIZE) return false;
+  mem_check_power();
+  if (cfg_range(adr, (uint16_t)size)) return cfg_commit_parts((uint16_t)(adr - MEM_CONFIG_LEGACY), first, nfirst, second, nsecond);
+  uint32_t sector = adr & ~4095u;
+  if (size > MEMSECTORSIZE - (adr - sector) || !sj_destination(sector) || !mem_tables_ready()) return false;
+  mem_image_s image = {sector, adr - sector, first, second, nfirst, nsecond};
+  return mem_replace_pages(sector, mem_image_page, &image);
+}
+
+bool mem_patch(Int32U adr, const uint8_t *data, Int16U size)
+{
+  return mem_patch2(adr, data, size, NULL, 0);
+}
+
 bool mem_erase_sector (Int32U adr)
 {
   mem_check_power();
@@ -263,32 +314,10 @@ bool mem_erase_sector (Int32U adr)
 }
 
 // Запись данных в память с предварительным чтением сектора
-bool mem_rewrite (Int32U adr, uint8_t* buff, Int16U size, uint8_t* mem_buffer4kB)
+bool mem_rewrite(Int32U adr, uint8_t *buff, Int16U size, uint8_t *mem_buffer4kB)
 {
-  Int32U sector;
-
-  if (mem_buffer4kB == NULL) return false;
-  if (buff == NULL) return false;
-
-  mem_check_power();
-
-  if (cfg_range(adr, size)) {
-    if (!cfg_read(MEM_CONFIG_LEGACY, mem_buffer4kB, MEMSECTORSIZE)) return false;
-    memcpy(mem_buffer4kB + adr - MEM_CONFIG_LEGACY, buff, size);
-    return cfg_commit(mem_buffer4kB);
-  }
-  sector = div(adr, MEMSECTORSIZE).quot * MEMSECTORSIZE;
-  
-  if ((adr - sector + size) > MEMSECTORSIZE) return false;
-
-  if (!sj_destination(sector) || !mem_tables_ready() ||
-      !w25_read_data(sector, mem_buffer4kB, MEMSECTORSIZE)) return false;
-  
-  if (!memcmp(&mem_buffer4kB[adr - sector], buff, size)) return true;
-  
-  memcpy(&mem_buffer4kB[adr - sector], buff, size);
-  
-  return mem_replace_sector(sector, mem_buffer4kB);
+  (void)mem_buffer4kB; // совместимый вход для старых тестов, рабочий код сектор не выделяет
+  return mem_patch(adr, buff, size);
 }
 
 // стереть диапазон памяти

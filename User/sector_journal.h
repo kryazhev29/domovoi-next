@@ -13,6 +13,8 @@
 uint8_t sj_destination(uint32_t address);
 uint8_t sj_span(uint32_t address, uint16_t size);
 uint8_t sj_recover(void);
+typedef uint8_t (*sj_page_reader)(const void *context, uint16_t offset, uint8_t *page);
+uint8_t sj_replace_pages(uint32_t address, sj_page_reader reader, const void *context);
 uint8_t sj_replace(uint32_t address, const uint8_t *image);
 uint8_t sj_io_read(uint32_t address, uint8_t *data, uint16_t size);
 uint8_t sj_io_write(uint32_t address, const uint8_t *data, uint16_t size);

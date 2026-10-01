@@ -17,6 +17,10 @@ extern volatile uint32_t mem_config_errors;
 bool mem_recover(void);
 bool mem_tables_ready(void);
 bool mem_replace_sector(uint32_t adr, const uint8_t *image);
+typedef uint8_t (*mem_page_reader)(const void *context, uint16_t offset, uint8_t *page);
+bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context);
+bool mem_patch(Int32U adr, const uint8_t *data, Int16U size);
+bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *second, Int16U nsecond);
 
 // Чтение данных с памяти
 bool mem_read (Int32U adr, pInt8U buff, Int16U size);
