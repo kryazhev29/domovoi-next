@@ -12,6 +12,7 @@ class Machine:
     def __init__(self):
         self.symbols={}
         self.members={}
+        self.volatile={}
         with (ROOT/'Release/Exe/DomovoiNext.out').open('rb') as f:
             elf=ELFFile(f)
             for s in elf.get_section_by_name('.symtab').iter_symbols():
@@ -19,6 +20,13 @@ class Machine:
             for cu in elf.get_dwarf_info().iter_CUs():
                 for die in cu.iter_DIEs():
                     a=die.attributes.get('DW_AT_name')
+                    if a and a.value in (b'milliSeconds',b'timer') and die.tag=='DW_TAG_variable' and 'DW_AT_type' in die.attributes:
+                        item=die.get_DIE_from_attribute('DW_AT_type');qualified=False
+                        for _ in range(6):
+                            if item.tag=='DW_TAG_volatile_type':qualified=True;break
+                            if 'DW_AT_type' not in item.attributes:break
+                            item=item.get_DIE_from_attribute('DW_AT_type')
+                        self.volatile[a.value.decode()]=qualified
                     if not a or a.value!=b'uart_t' or die.tag!='DW_TAG_typedef':continue
                     for member in die.get_DIE_from_attribute('DW_AT_type').iter_children():
                         if 'DW_AT_name' not in member.attributes:continue
@@ -61,7 +69,7 @@ class Machine:
         self.u.reg_write(UC_ARM_REG_SP,self.top);self.u.reg_write(UC_ARM_REG_LR,self.stop|1)
         for r,v in zip((UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3),args):self.u.reg_write(r,v)
         pc=self.addr(name)
-        for _ in range(3):
+        for _ in range(128):
             self.paused=False;self.u.emu_start(pc|1,self.stop,count=budget)
             if not self.paused:break
             pc=self.u.reg_read(UC_ARM_REG_PC);self.invoke_irq()
