@@ -13,7 +13,7 @@ extern device_s device;
 /* Неподтверждённая проба просит откат через столько секунд. */
 #define TRIAL_SECONDS 1800u
 static uint8_t trial;
-static uint16_t trial_seconds;
+// Таймер 6 отведён пробе; его 32-битный счётчик уже существует в timers.c
 static uint32_t crc_word(uint32_t c,uint32_t v) {
  unsigned i;c^=v;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0);return c;
 }
@@ -43,6 +43,7 @@ int app_boot_request(void) {
  mem_read(BOOT_CANDIDATE,(uint8_t*)&check,4);return check==magic;
 }
 void app_boot_metadata(void) {
+ timers_set(6,0);
  const BootHeader *h=(const BootHeader*)BOOT_APP_BASE;uint32_t result;
  device.bootVersion=BOOT_VER;
  /* Старые загрузчики не определяют плату надёжно. */
@@ -79,8 +80,7 @@ void app_trial_rollback(void) {
 }
 int app_trial_expired(void) {
  if(!trial)return 0;
- if(trial_seconds<TRIAL_SECONDS)trial_seconds++;
- return trial_seconds>=TRIAL_SECONDS;
+ return timers_get(6)>=TRIAL_SECONDS*1000u;
 }
 /* Вызывается после того, как ошибка обновления отправлена на сервер. Без отметки ошибка уходила
  * бы после каждого перезапуска. FF->00 не требует стирания; следующий запрос обновления стирает

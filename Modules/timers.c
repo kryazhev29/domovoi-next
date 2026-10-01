@@ -61,6 +61,18 @@ void timers_pause(const unsigned int msec){
 }
 
 // счетчик миллисекунд -------------------------------
+// забираем целые периоды без потери остатка и тика между чтением и записью
+unsigned int timers_take(unsigned char t, unsigned int period)
+{
+  if (t >= timer_cnt || period == 0) return 0;
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  unsigned int count = timer[t] / period;
+  timer[t] %= period;
+  __set_PRIMASK(mask);
+  return count;
+}
+
 unsigned int timers_getMillis(void){
   return timers_snapshot(&milliSeconds);
 }

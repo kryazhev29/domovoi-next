@@ -1000,9 +1000,11 @@ void user_loop(void)
   }
 
   // каждую 1 сек
-  if (timers_get(3) >= 1000)
+  // воспроизводим накопленные секунды; новые тики остаются на следующий проход
+  uint32_t elapsedSeconds = timers_take(3, 1000);
+  while (elapsedSeconds != 0)
   {
-    timers_set(3,0);
+    --elapsedSeconds;
     wdt_reload();
     
     out_process(); // обработка алгоритма работы выхода
