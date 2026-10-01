@@ -30,7 +30,7 @@
 
 // таблица адресов областей памяти контроллера
 #pragma data_alignment=4
-cellMem_s mem[16];
+cellMem_s mem[10];
 static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count);
 
 // конфигурация

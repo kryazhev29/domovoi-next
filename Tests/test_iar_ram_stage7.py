@@ -17,6 +17,11 @@ if kind=='tables':
         print('RAM tables', 'boot' if boot else 'app',sum(sizes.values()),'bytes moved to ROM; USB init/descriptors PASS')
 elif kind=='mem':
     m=Machine();m.init();assert m.map_size('mem')==80, ('mem table not reduced',m.map_size('mem'))
+    from pathlib import Path
+    import re
+    text=(Path(__file__).resolve().parents[1]/'structures.h').read_bytes().decode('cp1251')
+    values=[int(x) for x in re.findall(r'MB_[A-Z]+ = ([0-9]+)',text)]
+    assert values==list(range(10)), values
     print('RAM mem[10]: map 80 bytes PASS')
 elif kind=='log':
     m=Machine();assert 'log_pendingAt' not in m.symbols,'duplicate log uptime array still allocated'

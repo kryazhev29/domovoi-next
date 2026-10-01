@@ -10,7 +10,7 @@
 #define PORTBUFSIZE             (uint16_t)32
 #define GSMBUFSIZE              (uint16_t)2048
 
-extern cellMem_s mem[16];
+extern cellMem_s mem[10];
 void user_debug(char *text);
 
 // > вспомогательные -----------------------------------------------------------
