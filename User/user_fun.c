@@ -2838,6 +2838,24 @@ static logControl_e cmd8_event(uint8_t source)
 static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 
 // –азбор данных
+/* ¬се €чейки провер€ютс€ до выделени€ пам€ти, изменени€ таймштампа и записи Flash.
+ * ќшибка в хвосте пакета не должна сохран€ть его начало и отправл€ть второй ответ. */
+static bool sync_cells_valid(const uint8_t *ptr, uint16_t len, memBlock_e mb, uint16_t cell_size)
+{
+  uint16_t count, index;
+  if (len < 8) return false;
+  count = ptr[9];
+  if (count == 0 || (uint32_t)(len - 8) != (uint32_t)count * cell_size) return false;
+  for (uint16_t i = 0; i < count; i++){
+    const uint8_t *cell = ptr + 10 + (uint32_t)i * cell_size;
+    index = cell[0];
+    if (mb == MB_ID) index |= (uint16_t)cell[1] << 8;
+    if (index == 0 || index > mem[mb].size / cell_size) return false;
+    if (mb == MB_ID && cell[12] == 0) return false;
+  }
+  return true;
+}
+
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
   uint16_t len, crc, i;
@@ -3142,29 +3160,21 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     case 13: // отправить блок ID абонентов в контроллер
       {
         // определ€ем сектор, в который будем писать, читаем, стираем и пишем.
+        if (!sync_cells_valid(ptr, len, MB_ID, sizeof(cellID_s))){
+          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+          break;
+        }
         uint16_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
         uint32_t newSector = -1;
         uint8_t cnt = 0;
-        uint8_t group;
         
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd sync IDs (cmd 13)\r\n"); 
 #endif 
   
-         if(idCnt == 0){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }  
-  
-        if ((len - 8) != (idCnt * sizeof(cellID_s))){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;         
-        }
-          
-
-        uint8_t *membfr = malloc(MEMSECTORSIZE);
+         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
         if (membfr == NULL){
           diag_heap_fail++;
@@ -3180,12 +3190,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         for (uint16_t i = 0; i<idCnt; i++){
           // номер €чейки
           cellNum = *(uint16_t*)&ptr[(i*sizeof(cellID_s)) + 10];
-          group = *(uint16_t*)&ptr[(i*sizeof(cellID_s)) + 22];
-          
-          if ((cellNum == 0) || (group == 0)){
-            user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-            break;
-          }
           
           cellNum -= 1;
           // адрес сектора
@@ -3238,6 +3242,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       
     case 14: // синхро. расписаний
       {
+        if (!sync_cells_valid(ptr, len, MB_SHEDULE, sizeof(cellShedule_s))){
+          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+          break;
+        }
         uint8_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
@@ -3248,17 +3256,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   user_debug(">>U Recv cmd sync shedule (cmd 14)\r\n"); 
 #endif     
     
-        if(idCnt == 0){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }  
-  
-        if ((len - 8) != (idCnt * sizeof(cellShedule_s))){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;         
-        }
-        
-
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
         if (membfr == NULL){
@@ -3274,11 +3271,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         for (uint16_t i = 0; i<idCnt; i++){
           // номер €чейки
           cellNum = ptr[(i*sizeof(cellShedule_s)) + 10];
-          
-          if (cellNum == 0){
-            user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-            break;
-          }
           
           cellNum -= 1;
           // адрес сектора
@@ -3317,6 +3309,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       
     case 15: // синхро групп 
       {
+        if (!sync_cells_valid(ptr, len, MB_GROUP, sizeof(cellGroup_s))){
+          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+          break;
+        }
         uint8_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
@@ -3327,17 +3323,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   user_debug(">>U Recv cmd sync group (cmd 15)\r\n"); 
 #endif         
         
-        if(idCnt == 0){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }
-  
-        if ((len - 8) != (idCnt * sizeof(cellGroup_s))){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;         
-        }
-                
-
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
         if (membfr == NULL){
@@ -3353,11 +3338,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         for (uint16_t i = 0; i<idCnt; i++){
           // номер €чейки
           cellNum = ptr[(i*sizeof(cellGroup_s)) + 10];
-          
-          if (cellNum == 0){
-            user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-            break;
-          }
           
           cellNum -= 1;
           // адрес сектора
@@ -3396,6 +3376,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       
     case 16: // синхро. праздников
       {
+        if (!sync_cells_valid(ptr, len, MB_HOLIDAY, sizeof(cellHoliday_s))){
+          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+          break;
+        }
         uint8_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
@@ -3406,17 +3390,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   user_debug(">>U Recv cmd sync holiday (cmd 16)\r\n"); 
 #endif         
         
-        if(idCnt == 0){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }  
-        
-        if ((len - 8) != (idCnt * sizeof(cellHoliday_s))){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;         
-        }
-  
-
         uint8_t *membfr = malloc(MEMSECTORSIZE);
         
         if (membfr == NULL){
@@ -3432,11 +3405,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         for (uint16_t i = 0; i<idCnt; i++){
           // номер €чейки
           cellNum = ptr[(i*sizeof(cellHoliday_s)) + 10];
-          
-          if (cellNum == 0){
-            user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-            break;
-          }
           
           cellNum -= 1;
           // адрес сектора

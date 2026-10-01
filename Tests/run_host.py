@@ -215,6 +215,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             assert 'server_rx_reset();' in function(user,name),name
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='sync':
+        user=source('User/user_fun.c');case=cases(user)
+        helper=function(user,'sync_cells_valid') if 'static bool sync_cells_valid(' in user else ''
+        code=helper+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
+        types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
+        unit=(ROOT/'Tests/test_sync.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='commands':
         user=source('User/user_fun.c');case=cases(user)
         code='void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
