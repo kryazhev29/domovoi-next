@@ -215,6 +215,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             assert 'server_rx_reset();' in function(user,name),name
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='sms':
+        user=source('User/user_fun.c');strings=source('User/user_str_fun.c')
+        code='\n'.join(function(strings,n) for n in ('skipchar','user_strcpy'))+'\n'
+        code+='\n'.join(function(user,n) for n in ('user_last10digitsnumber','user_sendsms','user_smsreceived'))
+        types=typedefs(source('structures.h'),'logSystem_e','logControl_e','codeType_e')
+        unit=(ROOT/'Tests/test_sms.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idtext':
         user=source('User/user_fun.c')
         code=typedefs(source('structures.h'),'codeType_e')+'\n'+'\n'.join(function(user,n) for n in ('WG_readedID','RF433_readedID','RFID_readedID'))

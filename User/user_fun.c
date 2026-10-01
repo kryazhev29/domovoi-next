@@ -582,7 +582,7 @@ void user_smsreceived (char* num, char* data)
       if (fw_update_quiet() && (strcmp(v, "add") == 0 || strcmp(v, "reset") == 0 ||
                                 strcmp(v, "setout") == 0 || strcmp(v, "default") == 0)){
         strcat(v, ": Error \"Update in progress\"");
-        user_sendsms(num, v);
+        user_sendsms(v, num);
       } else
       // добавить ID
       if (strcmp(v, "add") == 0){
@@ -593,10 +593,10 @@ void user_smsreceived (char* num, char* data)
           strcat(v, ": ");
           strcat(v, &tempStrBuffer[96]);
           strcat(v, " - Ok");
-          user_sendsms(num, v);
+          user_sendsms(v, num);
         } else{
           strcat(v, ": Error \"Format not correct\""); 
-          user_sendsms(num, v);
+          user_sendsms(v, num);
         }
       } else
       
@@ -604,20 +604,20 @@ void user_smsreceived (char* num, char* data)
       if (strcmp(v, "imei") == 0){
         strcat(v, ": ");
         strcat(v, device.IMEIGSM);
-        user_sendsms(num, v);
+        user_sendsms(v, num);
       } else
         
       // запросить статус
       if (strcmp(v, "status") == 0){
         sprintf(v, "status:\r\n-signal: %d\r\n-net: %s\r\n-cloud: %d\r\n-fw: %d\r\n-trig: %s", 
                 device.csq, "", device.connected, device.firmwareVersion, "");
-        user_sendsms(num, v);
+        user_sendsms(v, num);
       } else
         
       // перезагрузить
       if (strcmp(v, "reset") == 0){
         strcat(v, ": Go to reset");
-        user_sendsms(num, v);
+        user_sendsms(v, num);
         device.timeToReset = 5;
       } else
         
@@ -641,10 +641,10 @@ void user_smsreceived (char* num, char* data)
               strcat(v, ": Error, Out 2 is blocked");             
             }
           }
-          user_sendsms(num, v);  
+          user_sendsms(v, num);
         } else{
           strcat(v, ": Error \"Format not correct\""); 
-          user_sendsms(num, v);
+          user_sendsms(v, num);
         }  
       } else
         
@@ -657,12 +657,12 @@ void user_smsreceived (char* num, char* data)
       if (strcmp(v, "default") == 0){
         user_factoryReset();
         strcat(v, ": Complete");
-        user_sendsms(num, v);
+        user_sendsms(v, num);
       }
       
     } else{
       strcat(v, ": Error \"Pin not valid\""); 
-      user_sendsms(num, v);
+      user_sendsms(v, num);
     }
   }
 
