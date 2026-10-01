@@ -8,7 +8,7 @@ kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
-    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
+    m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|int|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
     depth=1;i=m.end()
     while depth:
@@ -47,11 +47,22 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         for name,start,size in re.findall(r'mem\[(MB_\w+)\]\.start = (\d+);\s*mem\[\1\]\.size = (\d+);',mapping):
             start,size=int(start),int(size)
             if size:ranges.append((name,start&~4095,(start+size+4095)&~4095))
-        for lo,hi in [(0x1f5000,0x1f7000),(0x1f7000,0x1f9000)]:
-            assert lo>=0x41000 and hi<=0x200000
+        def constant(text,name):
+            value=re.search(r'^#define\s+'+name+r'\s+(0x[0-9A-Fa-f]+|[0-9]+)u?\s*$',text,re.M)
+            assert value,name
+            return int(value[1],0)
+        header=source('User/memory.h'); boot=source('Bootloader/boot_core.h')
+        occupied=[(constant(header,n),constant(header,n)+constant(header,'MEM_CONFIG_SLOT_SIZE')) for n in ('MEM_CONFIG_SLOT0','MEM_CONFIG_SLOT1')]
+        if '#include "sector_journal.h"' in source('User/memory.c'):
+            journal=source('User/sector_journal.h')
+            occupied += [(constant(journal,n),constant(journal,n)+constant(journal,'SJ_SECTOR')) for n in ('SJ_DATA','SJ_META')]
+        boot_end=constant(boot,'BOOT_BACKUP')+constant(boot,'BOOT_SLOT_SIZE')
+        for i,(lo,hi) in enumerate(occupied):
+            assert lo%4096==hi%4096==0 and lo>=boot_end and hi<=0x200000
             for name,a,b in ranges:assert hi<=a or lo>=b,(name,hex(a),hex(b))
-        print('Flash map: both slots outside all rounded mem[] ranges and 0x00000..0x40FFF',flush=True)
-        code=source('User/memory.c').replace('#include "memory.h"','')
+            for a,b in occupied[i+1:]:assert hi<=a or lo>=b
+        print('Flash map: config banks and scratch sectors outside all rounded mem[] and boot areas',flush=True)
+        code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
         defines='\n'.join(x for x in header.splitlines() if x.startswith('#define MEM'))
         test=(ROOT/'Tests/test_storage.c').read_text()
@@ -60,7 +71,33 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         for n in ['user_writeConfigAndDevice','user_readconfig','user_setdefault','user_saveindex','mem_read','mem_write','mem_erase_sector']:
             legacy_code=re.sub(r'\b'+n+r'\b','legacy_'+n,legacy_code)
         reset='#define TEST_STORAGE_BOOT() (cfg_legacy_checked = 0)\n' if 'cfg_legacy_checked' in code else '#define TEST_STORAGE_BOOT() ((void)0)\n'
-        unit=test.replace('/* PRODUCTION */',defines+'\n'+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
+        shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n' if '#include "sector_journal.h"' in source('User/memory.c') else ''
+        unit=test.replace('/* PRODUCTION */',defines+'\n'+shared+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
+    elif kind in ('sectorjournal','bootjournal'):
+        code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
+        header=source('User/memory.h')
+        defines='\n'.join(x for x in header.splitlines() if x.startswith('#define MEM'))
+        shared=''
+        if '#include "sector_journal.h"' in source('User/memory.c'):
+            shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n'
+            code=code.replace('#include "sector_journal.h"','')
+        boot_test=''
+        if kind=='bootjournal':
+            platform=source('Bootloader/boot_platform.c')
+            for name in ('sj_io_read','sj_io_write','sj_io_erase','sj_io_service'):
+                code=re.sub(r'\b'+name+r'(?=\()', 'app_'+name, code)
+            adapters='\n'.join(function(platform,n) for n in ('sj_io_read','sj_io_write','sj_io_erase','sj_io_service','boot_ext_erase','boot_ext_write'))
+            defines+='\n#define BOOT_BACKUP 0x21000u\n#define BOOT_SLOT_SIZE 0x20000u\n'
+            code+='\nstatic int storage_read(uint32_t a,void *p,uint32_t n) { return w25_read_data(a,p,(uint16_t)n); }\nstatic int storage_write(uint32_t a,const void *p,uint32_t n) { return w25_write_data(a,(uint8_t*)p,(uint16_t)n); }\nstatic int storage_erase(uint32_t a) { return w25_erase_sector(a); }\nstatic void boot_service(void) { services++; }\n'+adapters
+            boot_test='CHECK(!boot_ext_erase(SJ_DATA) && !boot_ext_write(SJ_DATA,after,32) && !sj_io_erase(0x20000u) && !sj_io_write(0x21000u,after,32) && !sj_io_read(0xffffffffu,image,2));'
+        expected=[]
+        mapping=source('User/user_fun.c')
+        for name,start,size in re.findall(r'mem\[(MB_\w+)\]\.start = (\d+);\s*mem\[\1\]\.size = (\d+);',mapping):
+            if name in ('MB_ID','MB_GROUP','MB_SHEDULE','MB_HOLIDAY','MB_TEMPID'):
+                start,size=int(start),int(size);expected.append('{'+str(start&~4095)+'u,'+str((start+size+4095)&~4095)+'u}')
+        layout='static const uint32_t expected[][2] = {'+','.join(expected)+'};'
+        unit=(ROOT/'Tests/test_sector_journal.c').read_text(encoding='utf8').replace('/* PRODUCTION */',defines+'\n'+shared+code).replace('/* EXPECTED DESTINATIONS */',layout).replace('/* BOOT_ADAPTER_TEST */',boot_test)
+
     elif kind in ('photo','rs485cfg'):
         user=source('User/user_fun.c'); case=cases(user)
         assert 'len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR' in case(7)
@@ -417,6 +454,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_tx.c').read_text().replace('/* PRODUCTION */',code)
     else:
         raise ValueError(kind)
+    if 'mem_tables_ready()' in unit and 'bool mem_tables_ready(void)' not in unit:
+        unit='#include <stdbool.h>\nstatic bool table_storage_ready=true;\nstatic bool mem_tables_ready(void) { return table_storage_ready; }\n'+unit
     (d/'test.c').write_text(unit.replace('\r\n','\n'))
     subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)

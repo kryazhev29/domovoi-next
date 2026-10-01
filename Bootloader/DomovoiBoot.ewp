@@ -2193,6 +2193,9 @@
     <name>$PROJ_DIR$\boot_core.c</name>
   </file>
   <file>
+    <name>$PROJ_DIR$\..\User\sector_journal.c</name>
+  </file>
+  <file>
     <name>$PROJ_DIR$\boot_platform.c</name>
   </file>
   <file>

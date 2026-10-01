@@ -901,6 +901,8 @@ void user_init(void)
   //user_setdefault();
   
   // Считываем конфигурацию
+  // Ошибка recovery блокирует таблицы; конфигурация и связь используют отдельные области.
+  (void)mem_recover();
   user_readconfig();
 
   // инициализация переменных
@@ -3281,6 +3283,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
+      if (!mem_tables_ready()) {
+        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+        break;
+      }
         uint16_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
@@ -3317,7 +3323,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+              if (!mem_replace_sector(sector, membfr)) {
                 saved = false;
                 break;
               }
@@ -3348,7 +3354,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         // ранее сектор был считан, сохраняем
         if (saved && cnt != 0){
           wdt_reload();
-          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+          if (!mem_replace_sector(sector, membfr)) {
             saved = false;
           }
         }        
@@ -3372,6 +3378,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
+      if (!mem_tables_ready()) {
+        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+        break;
+      }
         uint8_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
@@ -3407,7 +3417,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+              if (!mem_replace_sector(sector, membfr)) {
                 saved = false;
                 break;
               }
@@ -3425,7 +3435,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         // ранее сектор был считан, сохраняем
         if (saved && cnt != 0){
           wdt_reload();
-          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+          if (!mem_replace_sector(sector, membfr)) {
             saved = false;
           }
         }        
@@ -3449,6 +3459,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
+      if (!mem_tables_ready()) {
+        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+        break;
+      }
         uint8_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
@@ -3484,7 +3498,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+              if (!mem_replace_sector(sector, membfr)) {
                 saved = false;
                 break;
               }
@@ -3502,7 +3516,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         // ранее сектор был считан, сохраняем
         if (saved && cnt != 0){
           wdt_reload();
-          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+          if (!mem_replace_sector(sector, membfr)) {
             saved = false;
           }
         } 
@@ -3526,6 +3540,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
+      if (!mem_tables_ready()) {
+        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+        break;
+      }
         uint8_t idCnt = ptr[9];
         uint16_t cellNum;
         uint32_t sector = -1;
@@ -3561,7 +3579,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             // ранее сектор был считан, сохраняем
             if (cnt != 0){
               wdt_reload();
-              if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+              if (!mem_replace_sector(sector, membfr)) {
                 saved = false;
                 break;
               }
@@ -3579,7 +3597,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         // ранее сектор был считан, сохраняем
         if (saved && cnt != 0){
           wdt_reload();
-          if (!mem_erase_sector(sector) || !mem_write(sector, membfr, MEMSECTORSIZE)) {
+          if (!mem_replace_sector(sector, membfr)) {
             saved = false;
           }
         }
@@ -3988,6 +4006,7 @@ static bool shedule_time_ok(const cellShedule_s *s)
 // проверка ID по параметрам и управление выходом
 // через нее проходят все ID
 void user_checkIdAndControl(char *id, codeType_e tp){
+  if (!mem_tables_ready()) return;
 #ifdef DEBUG_USER
     switch (tp)
     {
@@ -4462,6 +4481,7 @@ uint16_t user_getNumbersCount(void){
  * первого прохода. Окончание прошлых суток (контроллер был выключен) не сообщается - такой ID
  * уже удаляет сервер. */
 void user_checkIdTimeEnd(void){
+  if (!mem_tables_ready()) return;
 
   uint32_t adr, end;
   uint32_t endAdr = mem[MB_ID].start + (uint32_t)id_cells_end * sizeof(cellID_s);
@@ -4523,6 +4543,7 @@ uint16_t user_getTempIDRecordsCount(void){
 
 // проверить расписание
 bool user_checkShedule(uint8_t shd){
+  if (!mem_tables_ready()) return false;
   cellShedule_s shedule;
             
   // расписание

@@ -14,6 +14,9 @@
 #define MEM_CONFIG_SLOT1      0x1F7000u
 #define MEM_CONFIG_SLOT_SIZE 8192u
 extern volatile uint32_t mem_config_errors;
+bool mem_recover(void);
+bool mem_tables_ready(void);
+bool mem_replace_sector(uint32_t adr, const uint8_t *image);
 
 // Чтение данных с памяти
 bool mem_read (Int32U adr, pInt8U buff, Int16U size);

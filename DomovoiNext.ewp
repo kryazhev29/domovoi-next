@@ -4508,6 +4508,9 @@
             <name>$PROJ_DIR$\User\memory.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\sector_journal.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\outs.c</name>
         </file>
         <file>

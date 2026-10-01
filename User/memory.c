@@ -3,6 +3,38 @@
 // Автор: Корякин Сергей
 
 #include "memory.h"
+#include "sector_journal.h"
+
+static bool mem_storage_ready = false;
+uint8_t sj_io_read(uint32_t adr, uint8_t *p, uint16_t n) { return sj_span(adr, n) && w25_read_data(adr, p, n); }
+uint8_t sj_io_write(uint32_t adr, const uint8_t *p, uint16_t n) { return sj_span(adr, n) && w25_write_data(adr, (uint8_t*)p, n); }
+uint8_t sj_io_erase(uint32_t adr) { return !(adr & 4095u) && sj_span(adr, 4096) && w25_erase_sector(adr); }
+void sj_io_service(void) { wdt_reload(); }
+bool mem_recover(void) { mem_check_power(); mem_storage_ready = sj_recover(); return mem_storage_ready; }
+bool mem_tables_ready(void) { return mem_storage_ready || mem_recover(); }
+static bool mem_guard(uint32_t adr, uint16_t n)
+{
+  uint32_t sector, last;
+  if (n > 0xFFFFFFFFu - adr) return false;
+  if (n == 0) return true;
+  last = (adr + n - 1u) & ~4095u;
+  for (sector = adr & ~4095u; ; sector += MEMSECTORSIZE) {
+    if (sj_destination(sector)) return mem_tables_ready();
+    if (sector == last) return true;
+  }
+}
+static bool mem_reserved(uint32_t adr, uint16_t n)
+{
+  return n && (n > 0xFFFFFFFFu - adr || (adr < SJ_META + SJ_SECTOR && adr + n > SJ_DATA));
+}
+bool mem_replace_sector(uint32_t adr, const uint8_t *image)
+{
+  if (!sj_destination(adr) || image == NULL) return false;
+  mem_check_power();
+  mem_storage_ready = sj_replace(adr, image);
+  return mem_storage_ready;
+}
+
 
 /* Два слота по 8 КиБ: 4 КиБ логического образа и отдельный сектор фиксации. 0x1F5000..0x1F8FFF
  * - после TEMPID (конец 0x1F43FF), ниже PHOTO. Перед публикацией слота образ зеркалируется в
@@ -197,7 +229,7 @@ bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 {
   mem_check_power();  
   if (cfg_range(adr, size)) return cfg_read(adr, buff, size);
-  return w25_read_data(adr, buff, size);
+  return mem_guard(adr, size) && w25_read_data(adr, buff, size);
 }
 
 // Запись данных в память
@@ -219,14 +251,15 @@ bool mem_write (Int32U adr, pInt8U buff, Int16U size)
       return ok;
     }
   }
-  return w25_write_data(adr, buff, size);
+  return !mem_reserved(adr, size) && mem_guard(adr, size) && w25_write_data(adr, buff, size);
 }
 
 // Стереть сектор
 bool mem_erase_sector (Int32U adr)
 {
   mem_check_power();
-  return w25_erase_sector(adr);
+  adr &= ~4095u;
+  return !mem_reserved(adr, MEMSECTORSIZE) && mem_guard(adr, MEMSECTORSIZE) && w25_erase_sector(adr);
 }
 
 // Запись данных в память с предварительным чтением сектора
@@ -248,14 +281,14 @@ bool mem_rewrite (Int32U adr, uint8_t* buff, Int16U size, uint8_t* mem_buffer4kB
   
   if ((adr - sector + size) > MEMSECTORSIZE) return false;
 
-  if (!w25_read_data(sector, mem_buffer4kB, MEMSECTORSIZE)) return false;
+  if (!sj_destination(sector) || !mem_tables_ready() ||
+      !w25_read_data(sector, mem_buffer4kB, MEMSECTORSIZE)) return false;
   
   if (!memcmp(&mem_buffer4kB[adr - sector], buff, size)) return true;
-  if (!w25_erase_sector(sector)) return false;
   
   memcpy(&mem_buffer4kB[adr - sector], buff, size);
   
-  return w25_write_data(sector, mem_buffer4kB, MEMSECTORSIZE);
+  return mem_replace_sector(sector, mem_buffer4kB);
 }
 
 // стереть диапазон памяти
@@ -267,7 +300,7 @@ bool mem_erase_mem (Int32U fadr, Int32U eadr)
   for (;fadr <= eadr; fadr += MEMSECTORSIZE)
   {
     wdt_reload();
-    if (!w25_erase_sector(fadr)) return false;
+    if (!mem_erase_sector(fadr)) return false;
   }
   return true;
 }

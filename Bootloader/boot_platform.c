@@ -2,6 +2,7 @@
 /* STM32F103CB / ƒомовой v5, по разводке присланной платы v5. */
 #include "includes.h"
 #include "boot_platform.h"
+#include "../User/sector_journal.h"
 #include "usb_istr.h"
 #ifdef __ICCARM__
 #include <intrinsics.h>
@@ -57,20 +58,22 @@ static int write_enable(void) {
  select_chip(1);spi_byte(5);status=spi_byte(0xff);select_chip(0);
  return !spi_fault&&(status&2u);
 }
-int boot_read(int external,uint32_t address,void *data,uint32_t size) {
+static int storage_read(uint32_t address,void *data,uint32_t size) {
  uint8_t *p=data;
+ spi_fault=0;if(!wait_flash()) return 0;
+ command(3,address);while(size--) *p++=spi_byte(0xff);select_chip(0);
+ return !spi_fault;
+}
+int boot_read(int external,uint32_t address,void *data,uint32_t size) {
  if(!external) {
   if(!boot_platform_supported())return 0;
   if(address<BOOT_APP_BASE||address>BOOT_FLASH_END||size>BOOT_FLASH_END-address) return 0;
   memcpy(data,(const void*)address,size);return 1;
  }
  if(address>BOOT_BACKUP+BOOT_SLOT_SIZE||size>BOOT_BACKUP+BOOT_SLOT_SIZE-address) return 0;
- spi_fault=0;if(!wait_flash()) return 0;
- command(3,address);while(size--) *p++=spi_byte(0xff);select_chip(0);
- return !spi_fault;
+ return storage_read(address,data,size);
 }
-int boot_ext_erase(uint32_t address) {
- if((address&4095u)||address>=BOOT_BACKUP+BOOT_SLOT_SIZE) return 0;
+static int storage_erase(uint32_t address) {
  spi_fault=0;if(!write_enable()) return 0;
  command(0x20,address);select_chip(0);
  if(!wait_flash()) return 0;
@@ -79,9 +82,8 @@ int boot_ext_erase(uint32_t address) {
  {unsigned i;int ok=1;for(i=0;i<4096;i++) if(spi_byte(0xff)!=0xff) ok=0;
  select_chip(0);return ok&&!spi_fault;}
 }
-int boot_ext_write(uint32_t address,const void *data,uint32_t size) {
+static int storage_write(uint32_t address,const void *data,uint32_t size) {
  const uint8_t *p=data;uint32_t n,i;
- if(address>BOOT_BACKUP+BOOT_SLOT_SIZE||size>BOOT_BACKUP+BOOT_SLOT_SIZE-address) return 0;
  spi_fault=0;
  while(size) {
   n=256-(address&255u);if(n>size)n=size;
@@ -95,6 +97,19 @@ int boot_ext_write(uint32_t address,const void *data,uint32_t size) {
  }
  return 1;
 }
+int boot_ext_erase(uint32_t address) {
+ if((address&4095u)||address>=BOOT_BACKUP+BOOT_SLOT_SIZE) return 0;
+ return storage_erase(address);
+}
+int boot_ext_write(uint32_t address,const void *data,uint32_t size) {
+ if(address>BOOT_BACKUP+BOOT_SLOT_SIZE||size>BOOT_BACKUP+BOOT_SLOT_SIZE-address) return 0;
+ return storage_write(address,data,size);
+}
+// “олько общий recovery получает доступ к зарезервированному журналу и таблицам.
+uint8_t sj_io_read(uint32_t a,uint8_t *p,uint16_t n) { return sj_span(a,n) && storage_read(a,p,n); }
+uint8_t sj_io_write(uint32_t a,const uint8_t *p,uint16_t n) { return sj_span(a,n) && storage_write(a,p,n); }
+uint8_t sj_io_erase(uint32_t a) { return !(a&4095u) && sj_span(a,4096) && storage_erase(a); }
+void sj_io_service(void) { boot_service(); }
 int boot_int_erase(uint32_t address) {
  FLASH_Status status;uint32_t mask=__get_PRIMASK();
  if(!boot_platform_supported())return 0;
@@ -177,6 +192,8 @@ __attribute__((naked)) static void jump(uint32_t sp,uint32_t pc) {
 #endif
 
 void boot_start_app(void) {
+ // ƒо запуска, включа€ откат на старую FW, таблицы должны быть восстановлены.
+ if(!sj_recover())return;
  BootHeader h;unsigned i;
  if(!boot_validate(0,BOOT_APP_BASE,&h))return;
  __disable_interrupt();USB_PULLUP_OFF;

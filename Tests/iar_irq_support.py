@@ -9,12 +9,14 @@ from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_
 from unicorn.arm_const import *
 
 class Machine:
-    def __init__(self):
+    def __init__(self, boot=False):
         self.symbols={}
         self.symboltypes={}
         self.members={}
         self.volatile={}
-        with (ROOT/'Release/Exe/DomovoiNext.out').open('rb') as f:
+        image=ROOT/('Bootloader/build/Release' if boot else 'Release')
+        stem='DomovoiBoot' if boot else 'DomovoiNext'
+        with (image/'Exe'/f'{stem}.out').open('rb') as f:
             elf=ELFFile(f)
             for s in elf.get_section_by_name('.symtab').iter_symbols():
                 self.symbols[s.name]=s['st_value']
@@ -36,12 +38,12 @@ class Machine:
                         if not isinstance(offset,int):offset=DWARFExprParser(cu.structs).parse_expr(offset)[0].args[0]
                         self.members[member.attributes['DW_AT_name'].value.decode()]=offset
         self.u=Uc(UC_ARCH_ARM,UC_MODE_THUMB|UC_MODE_MCLASS)
-        self.u.mem_map(0x08000000,0x20000);self.u.mem_write(0x08008200,(ROOT/'Release/Exe/DomovoiNext.bin').read_bytes())
+        self.u.mem_map(0x08000000,0x20000);self.u.mem_write(0x08000000 if boot else 0x08008200,(image/'Exe'/f'{stem}.bin').read_bytes())
         self.u.mem_map(0x20000000,0x5000);self.u.mem_map(0x21000000,0x1000)
         self.u.mem_map(0x40000000,0x30000);self.u.mem_map(0xE000E000,0x1000)
-        self.maptext=(ROOT/'Release/List/DomovoiNext.map').read_text(errors='replace')
+        self.maptext=(image/'List'/f'{stem}.map').read_text(errors='replace')
         self.top=self.map_addr('CSTACK$$Limit');self.bottom=self.map_addr('CSTACK$$Base')
-        self.heap_bytes=self.map_addr('HEAP$$Limit')-self.map_addr('HEAP$$Base')
+        self.heap_bytes=self.map_addr('HEAP$$Limit')-self.map_addr('HEAP$$Base') if 'HEAP$$Limit' in self.symbols else 0
         self.stop=0x0801fff0;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={}
         self.u.reg_write(UC_ARM_REG_XPSR,0x01000000)
         self.u.hook_add(UC_HOOK_CODE,self.hook)
