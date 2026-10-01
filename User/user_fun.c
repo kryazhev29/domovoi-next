@@ -1535,6 +1535,8 @@ uint16_t user_calcCRC16InFlash(uint32_t address, uint32_t siz){
 
 // Отправка данных в формате протокола
 void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId){
+  // весь кадр должен помещаться в 16-битную длину транспорта
+  if (size > 65524u || (size && data == NULL)) return;
   uint16_t crc;
   uint16_t len = size + 3; // timeout comand + uniqId + id + payload  
   uint8_t *send_buffer = malloc(len + 8);
