@@ -215,6 +215,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             assert 'server_rx_reset();' in function(user,name),name
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text().replace('/* PRODUCTION */',code)
+    elif kind=='crcblocks':
+        unit=(ROOT/'Tests/test_crc_blocks.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_crcMemoryID'))
     elif kind=='sync':
         user=source('User/user_fun.c');case=cases(user)
         helper=function(user,'sync_cells_valid') if 'static bool sync_cells_valid(' in user else ''

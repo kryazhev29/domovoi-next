@@ -1771,7 +1771,7 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   uint16_t crc;
   uint16_t len; // timeout comand + , uint8_t uniqId + id + payload
   uint16_t crcData;
-  uint8_t memAddress = mem[MB_ID].start;
+  uint32_t memAddress = mem[MB_ID].start;
   uint32_t sizeBlock;
   
   if (idx == 0){
