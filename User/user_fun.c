@@ -3821,7 +3821,8 @@ void user_indication (void)
 
 // опрос входов
 void user_readinputs (void){
-  adc_startInjectedConvertion();
+  // при отказе АЦП сохраняем последние состояния входов
+  if (!adc_startInjectedConvertion()) return;
   
   // дискретное состояние входов
   device.status.stateIn1 = (adc_getinjectedvalue_mV(IN1_CHANEL) > 3000)?1:0;

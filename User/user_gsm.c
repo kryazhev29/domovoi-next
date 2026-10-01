@@ -1053,7 +1053,11 @@ int8_t connection_send (int8_t h, uint8_t* data, uint16_t siz)
   ucon[h].sending = 1;
   
   // отправляем
-  gsm_senddata (data, siz, h);
+  if (!gsm_senddata(data, siz, h)) {
+    ucon[h].sended = 1; ucon[h].sending = 0; ucon[h].sendtimeout = 0;
+    ucon[h].qisackWait = 0;
+    return CE_BUSY;
+  }
   
   return CE_OK;
 }

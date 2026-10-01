@@ -170,6 +170,17 @@ __I uint8_t AHBPrescTable[16] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 6, 7, 8, 9}
   * @{
   */
 
+
+/* Если тактирование не готово, нельзя запускать приложение с неверной частотой. */
+static int clock_wait(volatile uint32_t *reg, uint32_t mask, uint32_t value)
+{
+  uint32_t budget = 100000u;
+  while ((*reg & mask) != value) {
+    if (--budget == 0) { NVIC_SystemReset(); return 0; }
+  }
+  return 1;
+}
+
 static void SetSysClock(void);
 
 #ifdef SYSCLK_FREQ_HSE
@@ -467,13 +478,11 @@ static void SetSysClockToHSE(void)
     RCC->CFGR |= (uint32_t)RCC_CFGR_SW_HSE;    
 
     /* Wait till HSE is used as system clock source */
-    while ((RCC->CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x04)
-    {
-    }
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, 0x04)) return;
   }
   else
-  { /* If HSE fails to start-up, the application will have wrong clock 
-         configuration. User can add here some code to deal with this error */
+  { /* Отказ HSE: не продолжаем запуск с неверной частотой. */
+    NVIC_SystemReset();
   }  
 }
 #elif defined SYSCLK_FREQ_24MHz
@@ -534,22 +543,18 @@ static void SetSysClockTo24(void)
     RCC->CR |= RCC_CR_PLLON;
 
     /* Wait till PLL is ready */
-    while((RCC->CR & RCC_CR_PLLRDY) == 0)
-    {
-    }
+    if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY)) return;
 
     /* Select PLL as system clock source */
     RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_SW));
     RCC->CFGR |= (uint32_t)RCC_CFGR_SW_PLL;    
 
     /* Wait till PLL is used as system clock source */
-    while ((RCC->CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x08)
-    {
-    }
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, 0x08)) return;
   }
   else
-  { /* If HSE fails to start-up, the application will have wrong clock 
-         configuration. User can add here some code to deal with this error */
+  { /* Отказ HSE: не продолжаем запуск с неверной частотой. */
+    NVIC_SystemReset();
   } 
 }
 #elif defined SYSCLK_FREQ_36MHz
@@ -610,22 +615,18 @@ static void SetSysClockTo36(void)
     RCC->CR |= RCC_CR_PLLON;
 
     /* Wait till PLL is ready */
-    while((RCC->CR & RCC_CR_PLLRDY) == 0)
-    {
-    }
+    if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY)) return;
 
     /* Select PLL as system clock source */
     RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_SW));
     RCC->CFGR |= (uint32_t)RCC_CFGR_SW_PLL;    
 
     /* Wait till PLL is used as system clock source */
-    while ((RCC->CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x08)
-    {
-    }
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, 0x08)) return;
   }
   else
-  { /* If HSE fails to start-up, the application will have wrong clock 
-         configuration. User can add here some code to deal with this error */
+  { /* Отказ HSE: не продолжаем запуск с неверной частотой. */
+    NVIC_SystemReset();
   } 
 }
 #elif defined SYSCLK_FREQ_48MHz
@@ -687,22 +688,18 @@ static void SetSysClockTo48(void)
     RCC->CR |= RCC_CR_PLLON;
 
     /* Wait till PLL is ready */
-    while((RCC->CR & RCC_CR_PLLRDY) == 0)
-    {
-    }
+    if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY)) return;
 
     /* Select PLL as system clock source */
     RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_SW));
     RCC->CFGR |= (uint32_t)RCC_CFGR_SW_PLL;    
 
     /* Wait till PLL is used as system clock source */
-    while ((RCC->CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x08)
-    {
-    }
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, 0x08)) return;
   }
   else
-  { /* If HSE fails to start-up, the application will have wrong clock 
-         configuration. User can add here some code to deal with this error */
+  { /* Отказ HSE: не продолжаем запуск с неверной частотой. */
+    NVIC_SystemReset();
   } 
 }
 
@@ -764,22 +761,18 @@ static void SetSysClockTo56(void)
     RCC->CR |= RCC_CR_PLLON;
 
     /* Wait till PLL is ready */
-    while((RCC->CR & RCC_CR_PLLRDY) == 0)
-    {
-    }
+    if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY)) return;
 
     /* Select PLL as system clock source */
     RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_SW));
     RCC->CFGR |= (uint32_t)RCC_CFGR_SW_PLL;    
 
     /* Wait till PLL is used as system clock source */
-    while ((RCC->CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x08)
-    {
-    }
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, 0x08)) return;
   }
   else
-  { /* If HSE fails to start-up, the application will have wrong clock 
-         configuration. User can add here some code to deal with this error */
+  { /* Отказ HSE: не продолжаем запуск с неверной частотой. */
+    NVIC_SystemReset();
   } 
 }
 
@@ -844,22 +837,18 @@ static void SetSysClockTo72(void)
     RCC->CR |= RCC_CR_PLLON;
 
     /* Wait till PLL is ready */
-    while((RCC->CR & RCC_CR_PLLRDY) == 0)
-    {
-    }
+    if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY)) return;
     
     /* Select PLL as system clock source */
     RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_SW));
     RCC->CFGR |= (uint32_t)RCC_CFGR_SW_PLL;    
 
     /* Wait till PLL is used as system clock source */
-    while ((RCC->CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x08)
-    {
-    }
+    if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, 0x08)) return;
   }
   else
-  { /* If HSE fails to start-up, the application will have wrong clock 
-         configuration. User can add here some code to deal with this error */
+  { /* Отказ HSE: не продолжаем запуск с неверной частотой. */
+    NVIC_SystemReset();
   }
 }
 
@@ -902,18 +891,14 @@ static void SetSysClockTo64HSI(void)
   RCC->CR |= RCC_CR_PLLON;
 
   /* Wait till PLL is ready */
-  while((RCC->CR & RCC_CR_PLLRDY) == 0)
-  {
-  }
+  if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY)) return;
     
   /* Select PLL as system clock source */
   RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_SW));
   RCC->CFGR |= (uint32_t)RCC_CFGR_SW_PLL;    
 
   /* Wait till PLL is used as system clock source */
-  while ((RCC->CFGR & (uint32_t)RCC_CFGR_SWS) != (uint32_t)0x08)
-  {
-  }
+  if (!clock_wait(&RCC->CFGR, RCC_CFGR_SWS, 0x08)) return;
 }
 #endif
 

@@ -10,6 +10,7 @@
 
 // инициализация АЦП
 void adc_init (void);
+uint8_t adc_ready(void);
 
 // узнать температуру контроллера
 // в градусах
@@ -18,7 +19,7 @@ int8_t adc_gettemp (void);
 // узнать значение входа в мВ
 uint16_t adc_getinjectedvalue_mV(uint8_t ind);
 
-void adc_startRegularConvertion (void);
-void adc_startInjectedConvertion (void);
+uint8_t adc_startRegularConvertion (void);
+uint8_t adc_startInjectedConvertion (void);
 
 #endif

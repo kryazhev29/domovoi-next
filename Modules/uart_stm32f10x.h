@@ -39,7 +39,8 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
 * uart - номер порта
 * ch - символ
 *************************************************************************/
-static void uart_sendbyte (Int8U uart, Int8U ch);
+static bool uart_sendbyte (Int8U uart, Int8U ch);
+uint8_t uart_tx_failed(uint8_t num);
 
 /************************************************************************
 * Функция отправки строки по UART

@@ -3,6 +3,17 @@
 ******************************************************************************/
 
 #include "spi_stm32f10x.h"
+uint8_t spi_ready(void) { return (SPI1->CR1 & SPI_CR1_SPE) != 0; }
+static uint8_t spi_wait_flag(uint16_t flag, uint8_t set)
+{
+  if (!spi_ready()) return 0;
+  uint32_t budget = 32000u;
+  while (((SPI1->SR & flag) != 0) != (set != 0)) {
+    if (--budget == 0) { SPI_Cmd(SPI1, DISABLE); return 0; }
+  }
+  return 1;
+}
+
 #include "includes.h"
 
 
@@ -49,7 +60,7 @@ void spi_init (void)
   SPI_Cmd(SPI1, ENABLE);
 
   // ждем передачи
-  while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET);
+  if (!spi_wait_flag(SPI_I2S_FLAG_TXE, 1)) return;
   SPI_I2S_ReceiveData(SPI1);
 }
 
@@ -75,63 +86,49 @@ void spi_initCS (void)
 }
 
 // чтение байта
-uint8_t spi_read_byte (void)
+uint8_t spi_read_byte(void)
 {
-  while((SPI1->SR & SPI_I2S_FLAG_TXE) == (uint16_t)RESET);  
+  if (!spi_wait_flag(SPI_I2S_FLAG_TXE, 1)) return 0xff;
   SPI1->DR = 0xff;
-  while((SPI1->SR & SPI_I2S_FLAG_RXNE) == (uint16_t)RESET);
-  while((SPI1->SR & SPI_I2S_FLAG_BSY) != (uint16_t)RESET); 
-   
+  if (!spi_wait_flag(SPI_I2S_FLAG_RXNE, 1) || !spi_wait_flag(SPI_I2S_FLAG_BSY, 0)) return 0xff;
   return (uint8_t)SPI1->DR;
 }
 
 // чтение байт с порта
-void spi_read (uint8_t* dst, uint32_t length)
+void spi_read(uint8_t* dst, uint32_t length)
 {
-  if (length == 0) return;
-
-  uint32_t i;
-
-  for (i=0; i < length; i++){
-    while((SPI1->SR & SPI_I2S_FLAG_TXE) == (uint16_t)RESET);  
+  for (uint32_t i = 0; i < length; ++i) {
+    if (!spi_wait_flag(SPI_I2S_FLAG_TXE, 1)) return;
     SPI1->DR = 0xff;
-    while((SPI1->SR & SPI_I2S_FLAG_RXNE) == (uint16_t)RESET);
+    if (!spi_wait_flag(SPI_I2S_FLAG_RXNE, 1)) return;
     *dst++ = (uint8_t)SPI1->DR;
   }
-  while((SPI1->SR & SPI_I2S_FLAG_BSY) != (uint16_t)RESET); 
+  (void)spi_wait_flag(SPI_I2S_FLAG_BSY, 0);
 }
 
 // Отправка байта по SPI
-uint8_t spi_send_byte (uint8_t data)
+uint8_t spi_send_byte(uint8_t data)
 {
-  while((SPI1->SR & SPI_I2S_FLAG_TXE) == (uint16_t)RESET);  
+  if (!spi_wait_flag(SPI_I2S_FLAG_TXE, 1)) return 0xff;
   SPI1->DR = data;
-  while((SPI1->SR & SPI_I2S_FLAG_RXNE) == (uint16_t)RESET);
-  while((SPI1->SR & SPI_I2S_FLAG_BSY) != (uint16_t)RESET); 
-
+  if (!spi_wait_flag(SPI_I2S_FLAG_RXNE, 1) || !spi_wait_flag(SPI_I2S_FLAG_BSY, 0)) return 0xff;
   return (uint8_t)SPI1->DR;
 }
 
 // Отправка n байт по SPI
-void spi_send (uint8_t* buf, uint32_t length)
+void spi_send(uint8_t* buf, uint32_t length)
 {
-  if (length == 0) return;
-
-  uint32_t i;
-  uint8_t dt;
-
-  for (i = 0; i < length; i++)
-  {
-    while((SPI1->SR & SPI_I2S_FLAG_TXE) == (uint16_t)RESET);  
+  for (uint32_t i = 0; i < length; ++i) {
+    if (!spi_wait_flag(SPI_I2S_FLAG_TXE, 1)) return;
     SPI1->DR = *buf++;
-    while((SPI1->SR & SPI_I2S_FLAG_RXNE) == (uint16_t)RESET);
-    dt = SPI1->DR;
+    if (!spi_wait_flag(SPI_I2S_FLAG_RXNE, 1)) return;
+    (void)SPI1->DR;
   }
-  while((SPI1->SR & SPI_I2S_FLAG_BSY) != (uint16_t)RESET);  
+  (void)spi_wait_flag(SPI_I2S_FLAG_BSY, 0);
 }
 
 // Ожидание завершения передачи по SPI
-void spi_wait_busy (void)
+void spi_wait_busy(void)
 {
-  while((SPI1->SR & SPI_I2S_FLAG_BSY) != (uint16_t)RESET);  
+  (void)spi_wait_flag(SPI_I2S_FLAG_BSY, 0);
 }

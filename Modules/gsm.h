@@ -129,7 +129,7 @@ void gsm_getimei(void);
 void gsm_getcsq(void);
 
 // Отправка данных по GPRS
-void gsm_senddata (pInt8U buf, Int16U len, Int8U c);
+bool gsm_senddata (pInt8U buf, Int16U len, Int8U c);
 
 // Подключить/отключить GPRS
 // 0 - отключить 1 - включить

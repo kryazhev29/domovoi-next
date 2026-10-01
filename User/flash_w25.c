@@ -20,7 +20,7 @@ bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
 
   w25_chip_OFF();
   w25_delay_OFF();
-  return true;
+  return spi_ready() != 0;
 }
 
 // Запись данных в память -----------------------------------------------------
@@ -168,6 +168,7 @@ static uint8_t w25_busy (void)
    {
    wdt_reload();
    data = spi_read_byte();
+   if (!spi_ready()) { data = 0xff; break; }
    }while ((data & 1) && (count--));
 
   w25_chip_OFF();

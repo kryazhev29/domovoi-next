@@ -24,6 +24,7 @@ static void cs_off(void){if(cmd==0x06&&!reject_wren&&!stuck)wel=2;if(cmd==0x04)w
 #define w25_chip_ON() cs_on()
 #define w25_chip_OFF() cs_off()
 static void wdt_reload(void){}
+uint8_t spi_ready(void){return 1;}
 static void spi_send_byte(uint8_t x){if(!cmd){cmd=x;return;}if((cmd==0x03||cmd==0x02||cmd==0x20)&&bytes++<3)address=(address<<8)|x;}
 static uint8_t spi_read_byte(void){if(cmd==0x05)return (uint8_t)(wel|(stuck?1:0));CHECK(cmd==0x03);CHECK(address<sizeof(flash));reads++;return flash[address++];}
 static void spi_read(uint8_t *p,uint16_t n){while(n--)*p++=spi_read_byte();}

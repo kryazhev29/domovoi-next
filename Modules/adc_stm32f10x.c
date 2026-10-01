@@ -4,6 +4,16 @@
 
 #include "adc_stm32f10x.h"
 #include "board.h"
+uint8_t adc_ready(void) { return (ADC1->CR2 & ADC_CR2_ADON) != 0; }
+static uint8_t adc_wait(uint8_t flag)
+{
+  uint32_t budget = 32000u;
+  while (ADC_GetFlagStatus(ADC1, flag) != SET) {
+    if (--budget == 0) { ADC_Cmd(ADC1, DISABLE); return 0; }
+  }
+  return 1;
+}
+
 
 #define TS_V25          (int32_t)1430 // mV
 #define TS_AVGSLOPE     (int32_t)43 // mV/0C * 10
@@ -70,12 +80,22 @@ void adc_init (void)
   // Enable ADC1 reset calibration register   
   ADC_ResetCalibration(ADC1);
   // Check the end of ADC1 reset calibration register
-  while(ADC_GetResetCalibrationStatus(ADC1));
+  {
+    uint32_t budget = 32000u;
+    while (ADC_GetResetCalibrationStatus(ADC1)) {
+      if (--budget == 0) { ADC_Cmd(ADC1, DISABLE); return; }
+    }
+  }
 
   // Start ADC1 calibration
   ADC_StartCalibration(ADC1);
   // Check the end of ADC1 calibration
-  while(ADC_GetCalibrationStatus(ADC1));
+  {
+    uint32_t budget = 32000u;
+    while (ADC_GetCalibrationStatus(ADC1)) {
+      if (--budget == 0) { ADC_Cmd(ADC1, DISABLE); return; }
+    }
+  }
 
   // включаем датчик температуры
   ADC_TempSensorVrefintCmd(ENABLE);
@@ -115,20 +135,18 @@ uint16_t adc_getinjectedvalue_mV (uint8_t ind)
   return (uint16_t)temp;
 }
 
-void adc_startRegularConvertion (void)
+uint8_t adc_startRegularConvertion(void)
 {
-  if (ADC_GetSoftwareStartInjectedConvCmdStatus(ADC1) == SET)
-    while (ADC_GetFlagStatus(ADC1, ADC_FLAG_JEOC) != SET);
-  
+  if (!adc_ready()) return 0;
+  if (ADC_GetSoftwareStartInjectedConvCmdStatus(ADC1) == SET && !adc_wait(ADC_FLAG_JEOC)) return 0;
   ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-  while (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) != SET);
+  return adc_wait(ADC_FLAG_EOC);
 }
 
-void adc_startInjectedConvertion (void)
+uint8_t adc_startInjectedConvertion(void)
 {
-  if (ADC_GetSoftwareStartConvStatus(ADC1) == SET)
-    while (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) != SET);
-  
+  if (!adc_ready()) return 0;
+  if (ADC_GetSoftwareStartConvStatus(ADC1) == SET && !adc_wait(ADC_FLAG_EOC)) return 0;
   ADC_SoftwareStartInjectedConvCmd(ADC1, ENABLE);
-  while (ADC_GetFlagStatus(ADC1, ADC_FLAG_JEOC) != SET);
+  return adc_wait(ADC_FLAG_JEOC);
 }

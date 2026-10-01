@@ -999,18 +999,19 @@ void gsm_getcsq(void)
 
 // Отправка данных по GPRS -----------------------------------------------------
 // buf - буфер, len - размер, c - соединение
-void gsm_senddata (pInt8U buf, Int16U len, Int8U c)
+bool gsm_senddata (pInt8U buf, Int16U len, Int8U c)
 {
   if (len > 1900)
-    return;
+    return false;
   
   if (GSM.muxmode)
     sprintf(gsm_strbuf, "AT+QISEND=%d,%d\r", c, len);
   else 
     sprintf(gsm_strbuf, "AT+QISEND=%d\r", len);
   
-  gsm_runcmd(gsm_strbuf, ">");
+  if (gsm_runcmd(gsm_strbuf, ">") == NULL) return false;
   gsm_send(buf, len);
+  if (uart_tx_failed(GSM_PORT)) return false;
   
 #ifdef DEBUG_GSM
   gsm_debug(">>>");
@@ -1018,7 +1019,7 @@ void gsm_senddata (pInt8U buf, Int16U len, Int8U c)
   gsm_debug("<<<\r\n");  
 #endif
   
-  gsm_runcmd("\r", "OK"); // ответ SEND OK
+  return gsm_runcmd("\r", "OK") != NULL; // ответ SEND OK
 }
 
 // Подключить/отключить GPRS ---------------------------------------------------

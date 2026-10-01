@@ -18,6 +18,7 @@ typedef struct{
   uint16_t twait;
   uint8_t state;
   uint8_t receiving;
+  uint8_t txfailed; // ошибка передачи, используется прежнее выравнивание
 }uart_t;
 
 #pragma data_alignment=4
@@ -99,6 +100,7 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
   uart[Uart].twait = 0;
   uart[Uart].state = 0;
   uart[Uart].receiving = 0;
+  uart[Uart].txfailed = 0;
   __set_PRIMASK(mask);
   
 
@@ -174,20 +176,15 @@ bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbu
 * uart - номер порта
 * ch - символ
 *************************************************************************/
-static void uart_sendbyte (Int8U uart, Int8U ch)
+static bool uart_sendbyte(Int8U num, Int8U ch)
 {
-  switch (uart)
-   {
-   case 0: while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
-           USART_SendData(USART1, ch);
-           break;
-   case 1: while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
-           USART_SendData(USART2, ch);
-           break;
-   case 2: while (USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET);
-           USART_SendData(USART3, ch);
-           break;
-   }
+  if (num >= UARTS) return false;
+  USART_TypeDef *port = num == 0 ? USART1 : (num == 1 ? USART2 : USART3);
+  uint32_t budget = 32000u;
+  while (USART_GetFlagStatus(port, USART_FLAG_TXE) == RESET) {
+    if (--budget == 0) { uart[num].txfailed = 1; return false; }
+  }
+  USART_SendData(port, ch); return true;
 }
 
 /************************************************************************
@@ -195,16 +192,14 @@ static void uart_sendbyte (Int8U uart, Int8U ch)
 * uart - номер порта
 * string - строка
 *************************************************************************/
-void uart_sendstr (Int8U uart, char* string)
-{
-  if (uart_checkenable(uart) == 0) return; 
-  if (string == NULL) return;
+uint8_t uart_tx_failed(uint8_t num) { return num >= UARTS || uart[num].txfailed; }
 
-  while ((*string) != 0)
-   {
-   uart_sendbyte (uart, *string);
-   string++;
-   }
+void uart_sendstr(Int8U num, char *string)
+{
+  if (num >= UARTS) return;
+  uart[num].txfailed = 0;
+  if (!uart_checkenable(num) || string == NULL) { uart[num].txfailed = 1; return; }
+  while (*string) { if (!uart_sendbyte(num, *string++)) return; }
 }
 
 /************************************************************************
@@ -213,13 +208,12 @@ void uart_sendstr (Int8U uart, char* string)
 * string - указатель на буфер
 * size - размер
 *************************************************************************/
-void uart_send (Int8U uart, pInt8U buf, Int16U size)
+void uart_send(Int8U num, pInt8U buf, Int16U size)
 {
-  if (uart_checkenable(uart) == 0) return;
-  if (buf == NULL) return;
-
-  for (Int16U i = 0; i < size; i++) 
-    uart_sendbyte (uart, buf[i]);
+  if (num >= UARTS) return;
+  uart[num].txfailed = 0;
+  if (!uart_checkenable(num) || (size && buf == NULL)) { uart[num].txfailed = 1; return; }
+  for (Int16U i = 0; i < size; ++i) if (!uart_sendbyte(num, buf[i])) return;
 }
 
 /************************************************************************
@@ -488,6 +482,7 @@ bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, In
 
   // отправляем
   uart_sendstr(num, str);
+  if (uart[num].txfailed) return false;
 
   if (rec != NULL)
     *rec = 0;  

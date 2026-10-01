@@ -19,6 +19,7 @@ void spi_initCS (void);
 // управление ножкой chip select
 extern inline void spi_ssenable (BitAction BitVal);
 
+uint8_t spi_ready(void);
 uint8_t spi_read_byte (void);
 
 // чтение байт с порта
