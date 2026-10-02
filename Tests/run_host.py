@@ -481,6 +481,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='commat':
         from comm_at_host import unit as comm_at_unit
         unit=comm_at_unit(ROOT)
+    elif kind=='commslm':
+        from comm_slm_host import unit as comm_slm_unit
+        unit=comm_slm_unit(ROOT)
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
