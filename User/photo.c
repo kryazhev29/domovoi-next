@@ -1,6 +1,9 @@
 // Доработка: Кряжев А., 2026
 // C328/OV528: последовательность команд из старого Modules/jpeg.c.
 #include "photo.h"
+#ifdef COMM_NEW_CORE
+#include "../Modules/comm_channel.h"
+#endif
 extern device_s device;
 extern config_s config;
 extern uint8_t port_buffer[PORTBUFSIZE];
@@ -589,7 +592,13 @@ static void photo_send(void)
   uint8_t *p, ok;
   photoParam_s h;
   count = photo_next(&address, &offset, &h);
+#ifdef COMM_NEW_CORE
+  uint16_t capacity;
+  p = photo->channel == CH_SERVER ? comm_tx_acquire(&capacity) : malloc(PHOTO_BLOCK + 22u);
+  if (p && photo->channel == CH_SERVER && PHOTO_BLOCK + 22u > capacity) { comm_tx_release(); return; }
+#else
   p = malloc(PHOTO_BLOCK + 22u);
+#endif
   if (!p) return;
   if (count) n = h.size - offset > PHOTO_BLOCK ? PHOTO_BLOCK : (uint16_t)(h.size - offset);
   len = n ? n + 14u : 4u;
@@ -603,8 +612,13 @@ static void photo_send(void)
   }
   crc = crc16_calc(p + 4, len + 2u);
   p[len+6] = (uint8_t)crc; p[len+7] = (uint8_t)(crc >> 8);
+#ifdef COMM_NEW_CORE
+  ok = photo->channel == CH_USB ? usb_send(p, len + 8u) : comm_tx_commit(len + 8u);
+  if (photo->channel == CH_USB) free(p); else comm_tx_release();
+#else
   ok = photo->channel == CH_USB ? usb_send(p, len + 8u) : connection_send(device.connectionhandle, p, len + 8u) == CE_OK;
   free(p);
+#endif
   if (!ok) return;
   if (n) {
     offset += n;
@@ -666,10 +680,22 @@ void photo_poll(void)
         if ((uint32_t)(now - photo_pending_since) >= 60000u) {
           photo->pending = 0;
           user_debug("Photo: upload stalled for 60 seconds\r\n");
-        } else if (photo->channel == CH_SERVER && connection_state(device.connectionhandle) != CE_CONNECTED)
+        } else if (photo->channel == CH_SERVER && (
+#ifdef COMM_NEW_CORE
+          !comm_channel_ready()
+#else
+          connection_state(device.connectionhandle) != CE_CONNECTED
+#endif
+          ))
           photo->pending = 0;
         else if ((photo_cleanup_active() || photo_recover()) &&
-                 (photo->channel != CH_SERVER || connection_datasended(device.connectionhandle)))
+                 (photo->channel != CH_SERVER || (
+#ifdef COMM_NEW_CORE
+          !comm_tx_busy()
+#else
+          connection_datasended(device.connectionhandle)
+#endif
+          )))
           photo_send();
       }
     }
