@@ -15,6 +15,16 @@ static void review_parser_fault(void)
     CHECK(comm_server_online() && rc_power_starts == 1);
   }
 }
+/* Незавершённый URC перед QICLOSE не должен блокировать всё восстановление. */
+static void review_idle_fragment(void)
+{
+  rc_online();
+  CHECK(state == IDLE);
+  comm_channel_reopen(0);
+  sim_feed("\r");
+  rc_run(30000);
+  CHECK(comm_server_online() && rc_power_starts == 1);
+}
 static void review_error_windows(void)
 {
   rc_online();
@@ -83,7 +93,7 @@ static void review_settings(void)
 int main(void)
 {
   (void)original_regressions;
-  review_parser_fault(); review_error_windows(); review_settings();
-  puts("comm_review: active parser/UART faults recover; time windows; manual APN; RAT; live endpoints PASS");
+  review_parser_fault(); review_idle_fragment(); review_error_windows(); review_settings();
+  puts("comm_review: active/idle parser and UART faults recover; time windows; manual APN; RAT; live endpoints PASS");
   return 0;
 }

@@ -352,12 +352,15 @@ void comm_at_poll(uint32_t now_ms)
       if (!remaining) grammar = BODY_CR;
     } else {
       used = 1;
+      if (state == IDLE && !line_count && !cr) started = now_ms;
       byte(*view);
     }
     if (state == FAULT) break;
     if (!comm_uart_consume(used) || comm_uart_errors()) { fault(COMM_AT_UART_ERROR); break; }
     budget = (uint16_t)(budget - used);
   }
+  /* Оборванный URC без активной команды иначе навсегда запрещает новый AT. */
+  if (state == IDLE && (line_count || cr) && expired(now_ms, recovery)) fault(COMM_AT_BAD_FRAME);
   if (state == DRAIN && grammar == LINES && !line_count && !cr) state = SYNC_SEND;
   if ((state == COMPLETE || state == SYNC_COMPLETE || state == SYNC_SEND)
       && comm_uart_tx_done() && !line_count && !cr && !comm_uart_peek(&view)) {

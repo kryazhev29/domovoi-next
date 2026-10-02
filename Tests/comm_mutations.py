@@ -25,6 +25,8 @@ def run():
     sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit(), channel=channel_unit())
     sources = {name: text.replace('\r\n', '\n') for name, text in sources.items()}
     cases = (
+        ('at', 'idle-fragment-never-times-out', 'if (state == IDLE && (line_count || cr) && expired(now_ms, recovery))', 'if (0)'),
+        ('at', 'idle-fragment-old-timestamp', 'if (state == IDLE && !line_count && !cr) started = now_ms;', ''),
         ('modem', 'busy-start-is-fatal', 'if (result == COMM_AT_BUSY) {', 'if (0) {'),
         ('modem', 'busy-start-unbounded', 'if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);', 'if (0) slm_fail(SLM_ERR_TIMEOUT);'),
         ('channel', 'data-echo-left-enabled', '"QISDE=0\\0"', '"QISDE=1\\0"'),

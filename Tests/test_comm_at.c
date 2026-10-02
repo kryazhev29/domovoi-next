@@ -2,7 +2,7 @@
    ¬се ответы ниже, кроме scenarios из журналов, Ч —»Ќ“≈“» ј. */
 static uint8_t received[1600];
 static unsigned binary_count, done_count, urc_count, line_events, no_answer;
-static unsigned binary_calls, rejected, sink_pause, sink_bad, inject_error;
+static unsigned binary_calls, rejected, sink_pause, sink_bad, inject_error, stream_errors;
 static uint16_t last_result, last_code;
 static uint32_t model_now;
 
@@ -13,6 +13,7 @@ static void on_event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t
   comm_at_poll(model_now); /* –екурсивный poll должен сразу выйти. */
   if (kind == COMM_AT_DONE) { done_count++; last_result = detail; last_code = count; }
   else if (kind == COMM_AT_NO_ANSWER) no_answer++;
+  else if (kind == COMM_AT_STREAM_ERROR) { stream_errors++; last_result = detail; }
   else if (kind == COMM_AT_URC) {
     CHECK(data && count && !detail);
     urc_count++;
@@ -40,7 +41,7 @@ static void reset_at(void)
   comm_uart_init(115200);
   comm_at_init(&callbacks, 300);
   binary_count = done_count = urc_count = line_events = no_answer = 0;
-  binary_calls = rejected = sink_pause = sink_bad = inject_error = 0;
+  binary_calls = rejected = sink_pause = sink_bad = inject_error = stream_errors = 0;
   last_result = last_code = UINT16_MAX;
   model_now = 0;
 }
@@ -246,6 +247,22 @@ static void budget_tests(void)
   poll(); CHECK(urc_count == COMM_AT_POLL_BYTES / 6u);
 }
 
+static void idle_fragment_tests(void)
+{
+  const char *fragments[] = {"\r", "+QIURC: \"recv\""};
+  for (unsigned i=0; i<2; ++i) {
+    reset_at(); model_now=500000; text(fragments[i]);
+    model_now=500299; poll(); CHECK(state==IDLE && !stream_errors);
+    model_now=500300; poll();
+    CHECK(state==FAULT && stream_errors==1 && last_result==COMM_AT_BAD_FRAME);
+  }
+  reset_at(); model_now=UINT32_MAX-99u; text("RIN");
+  model_now=199; poll(); CHECK(state==IDLE && !stream_errors);
+  text("G\r\n"); CHECK(urc_count==1);
+  model_now=201; poll(); CHECK(!stream_errors);
+  CHECK(start("AT",COMM_AT_TEXT,model_now)==COMM_AT_ACCEPTED); tc(); text("OK\r\n");
+  CHECK(done_count==1 && last_result==COMM_AT_OK);
+}
 static void timeout_tests(void)
 {
   reset_at(); comm_at_init(&(comm_at_handlers_t){on_event, on_binary}, 2000);
@@ -342,7 +359,7 @@ static void octet_tests(void)
 
 int main(void)
 {
-  octet_tests(); split_tests(); prompt_tests(); body_tests(); bounds_tests(); budget_tests(); timeout_tests(); late_marker_test(); capture_tests();
+  octet_tests(); split_tests(); prompt_tests(); body_tests(); bounds_tests(); budget_tests(); idle_fragment_tests(); timeout_tests(); late_marker_test(); capture_tests();
   puts("comm_at: split/concat/URC/echo/prompt/QIRD/late/wrap/owner/budget/captures PASS");
   return 0;
 }
