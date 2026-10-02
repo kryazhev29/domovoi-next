@@ -1,0 +1,637 @@
+{
+  "origin": "capture",
+  "source": "2026-10-01_плата1_SLM336_журнал_модема_без_SIM.txt",
+  "sha256": "3366678bd9edf9b03cf946093a6d492d2c8c07fe2e805c6285efa0c46c0cf465",
+  "normalization": "cp1251; CRCRLF журнала → CRLF; Cmd/Answer/Recv выделены; соседние копии Answer/Recv сняты",
+  "duplicates_removed": 46,
+  "omitted": [],
+  "events": [
+    {
+      "tx": "AT+GMM"
+    },
+    {
+      "rx": "AT+GMM\r\nSLM336E\r\n\r\nOK\r\n"
+    },
+    {
+      "rx": "\r\nAT READY\r\n"
+    },
+    {
+      "rx": "\r\n+SIM1 NOT INSERT\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "\r\n+SIM2 NOT INSERT\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=0"
+    },
+    {
+      "rx": "AT+QICLOSE=0\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=1"
+    },
+    {
+      "rx": "AT+QICLOSE=1\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=2"
+    },
+    {
+      "rx": "AT+QICLOSE=2\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=3"
+    },
+    {
+      "rx": "AT+QICLOSE=3\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QIDEACT=1"
+    },
+    {
+      "rx": "AT+QIDEACT=1\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGATT=0"
+    },
+    {
+      "rx": "AT+CGATT=0\r\n+CME ERROR: 50\r\n"
+    },
+    {
+      "tx": "AT+GMM"
+    },
+    {
+      "rx": "AT+GMM\r\nSLM336E\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,0\r\n\r\nOK\r\n\r\nAT READY\r\n"
+    },
+    {
+      "rx": "\r\n+SIM1 NOT INSERT\r\n"
+    },
+    {
+      "rx": "\r\n+SIM2 NOT INSERT\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,3\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=0"
+    },
+    {
+      "rx": "AT+QICLOSE=0\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=1"
+    },
+    {
+      "rx": "AT+QICLOSE=1\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=2"
+    },
+    {
+      "rx": "AT+QICLOSE=2\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=3"
+    },
+    {
+      "rx": "AT+QICLOSE=3\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QIDEACT=1"
+    },
+    {
+      "rx": "AT+QIDEACT=1\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGATT=0"
+    },
+    {
+      "rx": "AT+CGATT=0\r\n+CME ERROR: 50\r\n"
+    }
+  ]
+}

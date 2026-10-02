@@ -1,0 +1,331 @@
+{
+  "origin": "capture",
+  "source": "2026-10-01_плата3_M66_журнал_модема_отказ_сервера.txt",
+  "sha256": "c64767d9b52eba36ea7694651e172e800ed766dec9465208b46e826fae70a885",
+  "normalization": "cp1251; CRCRLF журнала → CRLF; Cmd/Answer/Recv выделены; соседние копии Answer/Recv сняты",
+  "duplicates_removed": 14,
+  "omitted": [
+    "Обрезанное тело direct push +RECEIVE 16: IPD16/SLDN — отладочное представление, не UART-байты",
+    "Отладочная запись отправки двоичного кадра без байтов"
+  ],
+  "events": [
+    {
+      "tx": "AT+GMM"
+    },
+    {
+      "rx": "AT+GMM\r\nQuectel_M66\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "\r\nCall Ready\r\nAT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "rx": "\r\n+QNITZ: \"26/10/01,12:16:56+28,0\"\r\n\r\n+CTZV: \"+28\"\r\n"
+    },
+    {
+      "rx": "\r\nSMS Ready\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "AT+CREG?\r\n+CREG: 0,1\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CLIP=1"
+    },
+    {
+      "rx": "AT+CLIP=1\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "AT+CGREG?\r\n+CGREG: 0,2\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "ATE0"
+    },
+    {
+      "rx": "ATE0\r\nOK\r\n"
+    },
+    {
+      "tx": "ATV1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+IPR=115200"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CFUN=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+IFC=0,0"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CLIP=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CMGF=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CSCS=\"GSM\""
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CNMI=2,2,2,1,0"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QMOSTAT=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QIHEAD=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QEXTUNSOL=\"SQ\",1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QIMUX=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QSPN?"
+    },
+    {
+      "rx": "\r\n+QSPN: \"MegaFon\",0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+GMR"
+    },
+    {
+      "rx": "\r\nRevision: M66FBR03A09\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+GSN"
+    },
+    {
+      "rx": "\r\n864180068438709\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QICSGP=1,\"internet\",\"gdata\",\"gdata\""
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CSQ"
+    },
+    {
+      "rx": "\r\n+CSQ: 27,0\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGATT=1"
+    },
+    {
+      "rx": "\r\n+CME ERROR: 100\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "\r\n+CREG: 1,1\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "\r\n+CGREG: 1,2\r\n\r\nOK\r\n"
+    },
+    {
+      "rx": "\r\n+CGREG: 1\r\n"
+    },
+    {
+      "tx": "AT+QIDNSIP=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QIHEAD=1"
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+QIOPEN=0,\"TCP\",\"gate.gsmgate.ru\",\"15010\""
+    },
+    {
+      "rx": "\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CREG?"
+    },
+    {
+      "rx": "\r\n+CREG: 1,1\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CGREG?"
+    },
+    {
+      "rx": "\r\n+CGREG: 1,1\r\n\r\nOK\r\n"
+    },
+    {
+      "tx": "AT+CSQ"
+    },
+    {
+      "rx": "\r\n+CSQ: 27,0\r\n\r\nOK\r\n"
+    },
+    {
+      "rx": "\r\n0, CONNECT OK\r\n"
+    },
+    {
+      "tx": "AT+QISEND=0,48"
+    },
+    {
+      "rx": "> "
+    },
+    {
+      "rx": "\r\nSEND OK\r\n"
+    },
+    {
+      "rx": "\r\n+RECEIVE: 0, 16\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=0"
+    },
+    {
+      "rx": "\r\n0, CLOSE OK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=1"
+    },
+    {
+      "rx": "\r\n1, CLOSE OK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=2"
+    },
+    {
+      "rx": "\r\n2, CLOSE OK\r\n"
+    },
+    {
+      "tx": "AT+QICLOSE=3"
+    },
+    {
+      "rx": "\r\n3, CLOSE OK\r\n"
+    }
+  ]
+}

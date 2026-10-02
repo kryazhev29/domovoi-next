@@ -478,6 +478,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         profile=sys.argv[3] if len(sys.argv)>3 else 'v5'
         defines={'v5':'', 'ipv3':'#define BOARD_IP_V3 1\n', 'mini':'#define DOMOVOI_APP_HW 140\n', 'mini-ipv3':'#define DOMOVOI_APP_HW 140\n#define BOARD_IP_V3 1\n'}
         unit=defines[profile]+unit
+    elif kind=='commat':
+        from comm_at_host import unit as comm_at_unit
+        unit=comm_at_unit(ROOT)
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
