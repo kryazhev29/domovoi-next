@@ -4,6 +4,7 @@
         PUBLIC  crc16_calc
         PUBLIC  crc16_calcInit
         PUBLIC  crc8_calc
+        PUBLIC  crc32_update
 
         SECTION .text:CODE:NOROOT(2)
         THUMB
@@ -63,4 +64,31 @@ c8_done:
         DATA
 t8:     DC8     0x00,0x9D,0x23,0xBE,0x46,0xDB,0x65,0xF8
         DC8     0x8C,0x11,0xAF,0x32,0xCA,0x57,0xE9,0x74
+
+; uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint16_t size) - CRC-32 0xEDB88320,
+; без начального и конечного XOR. Эталон - crc32_update в sector_journal.c
+        SECTION .text:CODE:NOROOT(2)
+        THUMB
+crc32_update:
+        UXTH    r2, r2
+        ADR     r3, t32
+        CBZ     r2, c32_done
+c32_loop:
+        LDRB    r12, [r1], #1
+        EOR     r0, r0, r12
+        AND     r12, r0, #15
+        LDR     r12, [r3, r12, LSL #2]
+        EOR     r0, r12, r0, LSR #4
+        AND     r12, r0, #15
+        LDR     r12, [r3, r12, LSL #2]
+        EOR     r0, r12, r0, LSR #4
+        SUBS    r2, r2, #1
+        BNE     c32_loop
+c32_done:
+        BX      lr
+
+        DATA
+        ALIGNROM 2
+t32:    DC32    0x00000000,0x1DB71064,0x3B6E20C8,0x26D930AC,0x76DC4190,0x6B6B51F4,0x4DB26158,0x5005713C
+        DC32    0xEDB88320,0xF00F9344,0xD6D6A3E8,0xCB61B38C,0x9B64C2B0,0x86D3D2D4,0xA00AE278,0xBDBDF21C
         END

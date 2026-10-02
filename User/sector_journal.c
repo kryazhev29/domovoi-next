@@ -15,7 +15,10 @@ uint8_t sj_span(uint32_t address, uint16_t size)
   return size != 0 && size <= SJ_SECTOR - (address - sector) &&
          (sector == SJ_DATA || sector == SJ_META || sj_destination(sector));
 }
-static uint32_t sj_crc(uint32_t crc, const uint8_t *p, uint16_t size)
+/* CRC-32 (отражЄнный, 0xEDB88320) без начального и конечного XOR Ч общий дл€ журнала и конфигурации.
+   ¬ гибриде (ASM_CRC) берЄтс€ из User/asm/crc_asm.s, эта верси€ Ч эталон (Tests/asm/test_asm_crc.py). */
+#ifndef ASM_CRC
+uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint16_t size)
 {
   uint8_t bit;
   while (size--) {
@@ -24,6 +27,7 @@ static uint32_t sj_crc(uint32_t crc, const uint8_t *p, uint16_t size)
   }
   return crc;
 }
+#endif
 static uint8_t sj_flash_crc(uint32_t address, uint32_t *crc)
 {
   uint8_t page[SJ_PAGE];
@@ -32,7 +36,7 @@ static uint8_t sj_flash_crc(uint32_t address, uint32_t *crc)
   for (off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
     sj_io_service();
     if (!sj_io_read(address + off, page, sizeof(page))) return 0;
-    c = sj_crc(c, page, sizeof(page));
+    c = crc32_update(c, page, sizeof(page));
   }
   *crc = ~c;
   return 1;
@@ -88,7 +92,7 @@ static uint8_t sj_header(const uint32_t *h)
 {
   return h[0] == SJ_MAGIC && h[1] == SJ_VERSION && sj_destination(h[2]) &&
          h[3] == SJ_SECTOR && h[5] == ~h[4] &&
-         h[6] == ~sj_crc(0xFFFFFFFFu, (const uint8_t*)h, 24) && h[7] == SJ_COMMIT;
+         h[6] == ~crc32_update(0xFFFFFFFFu, (const uint8_t*)h, 24) && h[7] == SJ_COMMIT;
 }
 uint8_t sj_recover(void)
 {
@@ -129,12 +133,12 @@ uint8_t sj_replace_pages(uint32_t address, sj_page_reader reader, const void *co
   for (off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
     sj_io_service();
     if (!reader(context, off, page)) return 0;
-    expected = sj_crc(expected, page, sizeof(page));
+    expected = crc32_update(expected, page, sizeof(page));
     if (!sj_io_write(SJ_DATA + off, page, sizeof(page))) return 0;
   }
   h[0] = SJ_MAGIC; h[1] = SJ_VERSION; h[2] = address; h[3] = SJ_SECTOR;
   h[4] = ~expected; h[5] = ~h[4];
-  h[6] = ~sj_crc(0xFFFFFFFFu, (const uint8_t*)h, 24); h[7] = SJ_COMMIT;
+  h[6] = ~crc32_update(0xFFFFFFFFu, (const uint8_t*)h, 24); h[7] = SJ_COMMIT;
   if (!sj_flash_crc(SJ_DATA, &crc) || crc != h[4] ||
       !sj_pages_equal(SJ_DATA, reader, context, &equal) || !equal) return 0;
   if (!sj_io_write(SJ_META, (const uint8_t*)h, 28) ||

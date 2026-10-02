@@ -20,4 +20,5 @@ uint8_t sj_io_read(uint32_t address, uint8_t *data, uint16_t size);
 uint8_t sj_io_write(uint32_t address, const uint8_t *data, uint16_t size);
 uint8_t sj_io_erase(uint32_t address);
 void sj_io_service(void);
+uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint16_t size);
 #endif

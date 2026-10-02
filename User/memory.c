@@ -76,23 +76,14 @@ static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
 volatile uint32_t mem_config_errors = 0;
 static uint8_t cfg_legacy_checked = 0;
 #define CFG_MAGIC 0x32474643u
-static uint32_t cfg_crc(uint32_t c, const uint8_t *p, uint16_t n)
-{
-  uint8_t bit;
-  while (n--) {
-    c ^= *p++;
-    for (bit = 0; bit < 8; bit++) c = (c >> 1) ^ ((c & 1u) ? 0xEDB88320u : 0u);
-  }
-  return c;
-}
 static bool cfg_image_crc(uint32_t address, uint32_t generation, uint32_t *result)
 {
   uint8_t b[64];
   uint16_t off;
-  uint32_t c = cfg_crc(0xFFFFFFFFu, (uint8_t*)&generation, 4);
+  uint32_t c = crc32_update(0xFFFFFFFFu, (uint8_t*)&generation, 4);
   for (off = 0; off < MEMSECTORSIZE; off += sizeof(b)) {
     if (!w25_read_data(address + off, b, sizeof(b))) return 0;
-    c = cfg_crc(c, b, sizeof(b));
+    c = crc32_update(c, b, sizeof(b));
   }
   *result = c;
   return true;
@@ -166,11 +157,11 @@ static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint
   if (h[0] != 0xFFFFFFFFu || h[1] != 0xFFFFFFFFu || h[2] != 0xFFFFFFFFu || h[3] != 0xFFFFFFFFu) return 0;
   if (!w25_erase_sector(target)) return 0;
   h[0] = CFG_MAGIC; h[1] = generation + 1u;
-  uint32_t crc = cfg_crc(0xFFFFFFFFu, (uint8_t*)&h[1], 4);
+  uint32_t crc = crc32_update(0xFFFFFFFFu, (uint8_t*)&h[1], 4);
   for (uint16_t off = 0; off < MEMSECTORSIZE; off += SJ_PAGE) {
     wdt_reload();
     if (!mem_image_page(image, off, page)) return 0;
-    crc = cfg_crc(crc, page, sizeof(page));
+    crc = crc32_update(crc, page, sizeof(page));
     if (!w25_write_data(target + off, page, sizeof(page))) return 0;
   }
   if (!cfg_pages_equal(target, image)) return 0;
