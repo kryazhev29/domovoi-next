@@ -80,7 +80,6 @@ static void __DMB(void) {
     else interrupt_byte(pending_byte,USART_SR_RXNE|USART_SR_TXE|USART_SR_TC);
   }
 }
-static void GPIO_StructInit(GPIO_InitTypeDef *p) { memset(p,0,sizeof(*p)); }
 static void GPIO_Init(uint32_t port,GPIO_InitTypeDef *p) { CHECK(port==GPIOB); if (p->GPIO_Mode==GPIO_Mode_IPU) input_pins|=p->GPIO_Pin; else { if (p->GPIO_Mode==GPIO_Mode_Out_PP) gpio_pins|=p->GPIO_Pin; else { CHECK(p->GPIO_Mode==GPIO_Mode_AF_PP); output_pins|=p->GPIO_Pin; } } }
 static void USART_StructInit(USART_InitTypeDef *p) { memset(p,0,sizeof(*p)); }
 static void USART_DeInit(USART_TypeDef *p) { memset(p,0,sizeof(*p)); }

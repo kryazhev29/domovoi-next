@@ -226,9 +226,11 @@ static void read_tests(void)
   while (slm_status.step != SLM_TCP) sim_tick();
   sim_feed("+QIURC: \"recv\",0\r\n"); sim_until(15000);
   CHECK(modem_slm336_ready() && sim_qird == 0); /* Данные до TCP/вместимости не теряются. */
+  uint16_t tcp_time = slm_diag.steps[SLM_TCP];
   sim_read_size = 64; modem_slm336_rx_capacity(sim_read_size);
   for (unsigned i = 0; i < 100; ++i) sim_tick();
   CHECK(sim_qird == 4 && sim_done_reads == 4 && sim_body_count == 7 && !sim_read_reason);
+  CHECK(slm_diag.steps[SLM_TCP] == tcp_time);
   CHECK(!memcmp(sim_body, "OK\r\nXYZ", 7) && !comm_at_busy());
   sim_feed("+QIURC: \"recv\",1\r\n");
   for (unsigned i = 0; i < 10; ++i) sim_tick(); CHECK(sim_qird == 4);

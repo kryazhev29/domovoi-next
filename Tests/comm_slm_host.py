@@ -7,9 +7,9 @@ import subprocess
 import tempfile
 from comm_at_host import ROOT, ZIG
 
-MODULES = ('User/comm_timeouts.c', 'Modules/comm_power_v5.c', 'Modules/modem_slm336.c')
+MODULES = ('User/comm_timeouts.c', 'Modules/comm_power_v5.c', 'Modules/comm_modem.c', 'Modules/modem_slm336.c')
 HEADERS = ('Modules/comm_uart.h', 'Modules/comm_at.h', 'User/comm_timeouts.h',
-           'Modules/comm_power_v5.h', 'Modules/modem_slm336.h')
+           'Modules/comm_power_v5.h', 'Modules/modem_slm336.h', 'Modules/comm_modem.h')
 
 
 def unit(root=ROOT):

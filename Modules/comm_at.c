@@ -16,29 +16,31 @@ static void event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t de
   if (handlers.event) handlers.event(kind, data, count, detail);
 }
 
-static bool equal(const uint8_t *data, uint16_t count, const char *text)
+bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text)
 {
   size_t n = strlen(text);
   return count == n && !memcmp(data, text, n);
 }
 
-static bool prefix(const uint8_t *data, uint16_t count, const char *text)
+bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text)
 {
   size_t n = strlen(text);
   return count >= n && !memcmp(data, text, n);
 }
 
 /* Число без знака, переполнения и неявной обрезки; индекс только в строке. */
-static bool number(const uint8_t *data, uint16_t count, uint16_t *pos,
-                   uint16_t limit, uint16_t *value)
+bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
+                   uint32_t limit, uint32_t *value)
 {
   uint32_t n = 0;
   uint16_t begin = *pos;
   while (*pos < count && data[*pos] >= '0' && data[*pos] <= '9') {
-    n = n * 10u + data[(*pos)++] - '0';
+    uint8_t digit = data[(*pos)++] - '0';
+    if (n > UINT32_MAX / 10u || (n == UINT32_MAX / 10u && digit > UINT32_MAX % 10u)) return false;
+    n = n * 10u + digit;
     if (n > limit) return false;
   }
-  *value = (uint16_t)n;
+  *value = n;
   return *pos != begin;
 }
 
@@ -49,7 +51,7 @@ static bool take(const uint8_t *data, uint16_t count, uint16_t *pos, uint8_t c)
   return true;
 }
 
-static uint16_t spaces(const uint8_t *data, uint16_t count, uint16_t pos)
+uint16_t comm_at_spaces(const uint8_t *data, uint16_t count, uint16_t pos)
 {
   while (pos < count && data[pos] == ' ') ++pos;
   return pos;
@@ -64,7 +66,7 @@ static void parser_reset(void)
 
 static void fault(uint8_t reason)
 {
-  uint8_t kind = (state == RUN || state == COMPLETE) ? COMM_AT_DONE
+  uint8_t kind = (state >= RUN && state <= COMPLETE) ? COMM_AT_DONE
                  : state == IDLE ? COMM_AT_STREAM_ERROR : COMM_AT_NO_ANSWER;
   /* После потери границ ни оставшееся тело, ни его OK не разбираются. */
   state = FAULT;
@@ -79,21 +81,18 @@ static bool expired(uint32_t now, uint32_t duration)
 /* Длина запроса QIRD — из собственной проверенной команды, не из URC. */
 static bool qird_request(uint8_t format)
 {
-  uint16_t pos = 8, value;
-  uint16_t count = (uint16_t)(command_count - 1u);
-  if (!prefix(command, count, "AT+QIRD=")) return false;
-  if (!number(command, count, &pos, format == COMM_AT_SLM_QIRD ? 7u : 1u, &value)
-      || !take(command, count, &pos, ',')) return false;
+  uint32_t values[4];
+  const char *pattern = format == COMM_AT_SLM_QIRD ? "AT+QIRD=\002,\002"
+    : "AT+QIRD=\002,\002,\002,\002";
+  if (!comm_at_parse(command,(uint16_t)(command_count - 1u),pattern,values)) return false;
+  uint8_t index = 1;
   if (format == COMM_AT_M66_QIRD) {
-    if (!number(command, count, &pos, 2, &value) || !value
-        || !take(command, count, &pos, ',')
-        || !number(command, count, &pos, 5, &value)
-        || !take(command, count, &pos, ',')) return false;
-  }
-  return number(command, count, &pos, 1500, &read_limit) && read_limit
-         && pos == count;
+    if (values[0] > 1 || !values[1] || values[1] > 2 || values[2] > 5) return false;
+    index = 3;
+  } else if (values[0] > 7) return false;
+  if (!values[index] || values[index] > 1500) return false;
+  read_limit = (uint16_t)values[index]; return true;
 }
-
 void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
 {
   if (in_poll) return;
@@ -111,20 +110,31 @@ bool comm_at_busy(void)
   return state != IDLE || in_poll;
 }
 
-uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
+static bool available(void)
 {
   const uint8_t *view;
+  return !comm_at_busy() && !line_count && !cr && !comm_uart_peek(&view);
+}
+static void run(uint8_t next_mode, uint32_t duration, uint32_t now_ms)
+{
+  parser_reset(); modem_code = 0;
+  mode = next_mode; started = now_ms; timeout = duration; state = RUN;
+}
+uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
+{
   uint16_t i;
   uint8_t trailing_space = prompt_space;
-  if (comm_at_busy() || line_count || cr || comm_uart_peek(&view)) return COMM_AT_BUSY;
+  if (!available()) return COMM_AT_BUSY;
   if (!request || !request->command || request->count < 2u
       || request->count >= sizeof(command) || request->mode > COMM_AT_M66_QIRD
       || !request->timeout_ms || request->timeout_ms > INT32_MAX
       || !recovery || recovery > INT32_MAX) return COMM_AT_INVALID;
   if (request->command[0] != 'A' || request->command[1] != 'T') return COMM_AT_INVALID;
-  for (i = 0; i < request->count; ++i)
-    if (request->command[i] < ' ' || request->command[i] > '~') return COMM_AT_INVALID;
-  memcpy(command, request->command, request->count);
+  for (i = 0; i < request->count; ++i) {
+    uint8_t value = request->command[i];
+    if (value < ' ' || value > '~') return COMM_AT_INVALID;
+    command[i] = value;
+  }
   command[request->count] = '\r';
   command_count = (uint16_t)(request->count + 1u);
   mode = request->mode;
@@ -132,12 +142,8 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
   if ((mode == COMM_AT_SLM_QIRD || mode == COMM_AT_M66_QIRD)
       && (!handlers.binary || !qird_request(mode))) return COMM_AT_INVALID;
   if (!comm_uart_tx(command, command_count)) return COMM_AT_BUSY;
-  parser_reset();
+  run(mode, request->timeout_ms, now_ms);
   prompt_space = trailing_space;
-  modem_code = 0;
-  started = now_ms;
-  timeout = request->timeout_ms;
-  state = RUN;
   return COMM_AT_ACCEPTED;
 }
 
@@ -153,84 +159,74 @@ static bool solicited(void)
 
 static bool urc(void)
 {
-  /* Остальные неизвестные +строки тоже события, а не подтверждение AT. */
-  return (line_count && line[0] == '+' && !solicited())
-      || equal(line, line_count, "RING") || equal(line, line_count, "NO CARRIER")
-      || equal(line, line_count, "Call Ready") || equal(line, line_count, "SMS Ready")
-      || equal(line, line_count, "AT READY") || equal(line, line_count, "RDY")
-      || equal(line, line_count, "SEND OK") || equal(line, line_count, "SEND FAIL")
-      || (state != RUN && state != DRAIN);
+  static const char * const names[] = {"RING", "NO CARRIER", "Call Ready", "SMS Ready",
+    "AT READY", "RDY", "SEND OK", "SEND FAIL"};
+  if ((line_count && line[0] == '+' && !solicited()) || (state != RUN && state != DRAIN)) return true;
+  for (uint8_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
+    if (comm_at_equal(line,line_count,names[i])) return true;
+  return false;
 }
 
-/* IPv4:port,TCP|UDP,length — M66 AT V2.1, §11.31 (стр. 175–176). */
-static bool m66_length(uint16_t pos, uint16_t *length)
+/* M66 AT V2.1: IPv4:port,TCP|UDP,length; поля строго без пробелов. */
+static bool m66_length(uint16_t pos, uint32_t *length)
 {
-  uint16_t i, value;
-  for (i = 0; i < 4u; ++i) {
-    if (!number(line, line_count, &pos, 255, &value)) return false;
-    if (!take(line, line_count, &pos, i == 3u ? ':' : '.')) return false;
-  }
-  if (!number(line, line_count, &pos, UINT16_MAX, &value) || !value
-      || !take(line, line_count, &pos, ',')) return false;
-  if (line_count - pos < 4u || (memcmp(line + pos, "TCP,", 4)
-      && memcmp(line + pos, "UDP,", 4))) return false;
-  pos = (uint16_t)(pos + 4u);
-  return number(line, line_count, &pos, read_limit, length) && pos == line_count;
+  uint32_t values[6];
+  const uint8_t *p = line + pos; uint16_t n = (uint16_t)(line_count - pos);
+  if (!comm_at_parse(p,n,"\003.\003.\003.\003:\004,TCP,\002",values)
+      && !comm_at_parse(p,n,"\003.\003.\003.\003:\004,UDP,\002",values)) return false;
+  *length = values[5];
+  return values[4] && values[5] <= read_limit;
 }
-
 static void binary_header(void)
 {
-  uint16_t pos = grammar == M66_HEADER ? 0u : spaces(line, line_count, 6);
-  uint16_t n;
+  uint16_t pos = grammar == M66_HEADER ? 0u : comm_at_spaces(line, line_count, 6);
+  uint32_t n;
   if (header) { fault(COMM_AT_BAD_FRAME); return; }
   if (mode == COMM_AT_M66_QIRD && pos == line_count) {
     grammar = M66_HEADER;
     return;
   }
   if (mode == COMM_AT_SLM_QIRD) {
-    if (!number(line, line_count, &pos, read_limit, &n) || pos != line_count) {
+    if (!comm_at_number(line, line_count, &pos, read_limit, &n) || pos != line_count) {
       fault(COMM_AT_BAD_LENGTH); return;
     }
   } else if (!m66_length(pos, &n)) { fault(COMM_AT_BAD_LENGTH); return; }
   header = 1;
-  remaining = n;
+  remaining = (uint16_t)n;
   grammar = n ? BODY : LINES;
 }
 
 uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint32_t timeout_ms, uint32_t now_ms)
 {
-  const uint8_t *view;
-  if (comm_at_busy() || line_count || cr || comm_uart_peek(&view)) return COMM_AT_BUSY;
+  if (!available()) return COMM_AT_BUSY;
   if (!data || !count || !timeout_ms || timeout_ms > INT32_MAX || result != COMM_AT_GOT_PROMPT)
     return COMM_AT_INVALID;
   if (!comm_uart_tx(data, count)) return COMM_AT_BUSY;
-  parser_reset(); prompt_space = 1;
-  mode = COMM_AT_SEND; command_count = 0; modem_code = 0;
-  started = now_ms; timeout = timeout_ms; state = RUN;
+  run(COMM_AT_SEND, timeout_ms, now_ms); prompt_space = 1; command_count = 0;
   return COMM_AT_ACCEPTED;
 }
 
 static bool final(uint8_t *code)
 {
-  uint16_t pos, value;
+  uint16_t pos; uint32_t value;
   if (state == RUN && mode == COMM_AT_SEND) {
-    if (equal(line, line_count, "SEND OK")) { *code = COMM_AT_OK; return true; }
-    if (equal(line, line_count, "SEND FAIL")) { *code = COMM_AT_ERROR; return true; }
-    if (equal(line, line_count, "OK")) return false;
+    if (comm_at_equal(line, line_count, "SEND OK")) { *code = COMM_AT_OK; return true; }
+    if (comm_at_equal(line, line_count, "SEND FAIL")) { *code = COMM_AT_ERROR; return true; }
+    if (comm_at_equal(line, line_count, "OK")) return false;
   }
-  if (equal(line, line_count, "OK")) { *code = COMM_AT_OK; return true; }
-  if (equal(line, line_count, "ERROR")) { *code = COMM_AT_ERROR; return true; }
-  if (!prefix(line, line_count, "+CME ERROR:")) return false;
-  pos = spaces(line, line_count, sizeof("+CME ERROR:") - 1u);
-  if (pos < line_count && ((line[pos] >= 'A' && line[pos] <= 'Z')
-      || (line[pos] >= 'a' && line[pos] <= 'z'))) {
+  if (comm_at_equal(line, line_count, "OK")) { *code = COMM_AT_OK; return true; }
+  if (comm_at_equal(line, line_count, "ERROR")) { *code = COMM_AT_ERROR; return true; }
+  if (!comm_at_prefix(line, line_count, "+CME ERROR:")) return false;
+  pos = comm_at_spaces(line, line_count, sizeof("+CME ERROR:") - 1u);
+  uint8_t letter = pos < line_count ? line[pos] | 32u : 0;
+  if (letter >= 'a' && letter <= 'z') {
     modem_code = UINT16_MAX; /* CMEE=2: текст вместо числового кода. */
     *code = COMM_AT_CME;
     return true;
   }
-  if (!number(line, line_count, &pos, UINT16_MAX, &value) || pos != line_count)
+  if (!comm_at_number(line, line_count, &pos, UINT16_MAX, &value) || pos != line_count)
     return false;
-  modem_code = value;
+  modem_code = (uint16_t)value;
   *code = COMM_AT_CME;
   return true;
 }
@@ -241,7 +237,7 @@ static void complete_line(void)
   if (!line_count) return;
   if ((state == RUN || state == SYNC_WAIT) && line_count + 1u == command_count
       && !memcmp(line, command, line_count)) return; /* Эхо до ATE0. */
-  if (prefix(line, line_count, "+QIRD:")
+  if (comm_at_prefix(line, line_count, "+QIRD:")
       && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
           || (mode != COMM_AT_SLM_QIRD && mode != COMM_AT_M66_QIRD))) {
     fault(COMM_AT_BAD_FRAME); return; /* Неожиданное тело не становится текстом. */
@@ -259,15 +255,15 @@ static void complete_line(void)
     } else if (state == DRAIN) state = SYNC_SEND;
     return;
   }
-  if ((state == RUN || state == DRAIN || state == SYNC_SEND || state == SYNC_WAIT)
+  if ((state == RUN || (state >= DRAIN && state <= SYNC_WAIT))
       && (mode == COMM_AT_SLM_QIRD || mode == COMM_AT_M66_QIRD)) {
-    if (prefix(line, line_count, "+QIRD:") || grammar == M66_HEADER) {
+    if (comm_at_prefix(line, line_count, "+QIRD:") || grammar == M66_HEADER) {
       if (grammar != M66_HEADER || !urc()) { binary_header(); return; }
     }
   }
-  if (state == SYNC_WAIT && prefix(line, line_count, "+CMEE:")) {
-    uint16_t pos = spaces(line, line_count, sizeof("+CMEE:") - 1u), value;
-    sync_seen = number(line, line_count, &pos, 2, &value) && pos == line_count;
+  if (state == SYNC_WAIT && comm_at_prefix(line, line_count, "+CMEE:")) {
+    uint16_t pos = comm_at_spaces(line, line_count, sizeof("+CMEE:") - 1u); uint32_t value;
+    sync_seen = comm_at_number(line, line_count, &pos, 2, &value) && pos == line_count;
   }
   if (urc()) event(COMM_AT_URC, line, line_count, 0);
   else if (state == RUN) event(COMM_AT_LINE, line, line_count, 0);
@@ -308,14 +304,14 @@ void comm_at_poll(uint32_t now_ms)
   if (in_poll || state == FAULT) return;
   in_poll = 1;
   if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); goto end; }
-  if ((state == RUN || state == COMPLETE) && expired(now_ms, timeout)) {
+  if ((state >= RUN && state <= COMPLETE) && expired(now_ms, timeout)) {
     /* Отмена сохраняет грамматику и остаток тела: поиск OK внутри запрещён. */
     state = grammar != LINES || line_count || cr ? DRAIN : SYNC_SEND;
     sync_seen = 0;
     started = now_ms;
     event(COMM_AT_DONE, NULL, 0, COMM_AT_TIMEOUT);
   }
-  if ((state == DRAIN || state == SYNC_SEND || state == SYNC_WAIT || state == SYNC_COMPLETE)
+  if ((state >= DRAIN && state <= SYNC_COMPLETE)
       && expired(now_ms, recovery)) {
     state = FAULT;
     event(COMM_AT_NO_ANSWER, NULL, 0, COMM_AT_TIMEOUT);
@@ -340,21 +336,58 @@ void comm_at_poll(uint32_t now_ms)
     if (!comm_uart_consume(used) || comm_uart_errors()) { fault(COMM_AT_UART_ERROR); break; }
     budget = (uint16_t)(budget - used);
   }
-  if (state == COMPLETE && comm_uart_tx_done() && !line_count && !cr
-      && !comm_uart_peek(&view)) {
-    state = IDLE;
-    event(COMM_AT_DONE, NULL, modem_code, result);
-  }
-  if (state == SYNC_COMPLETE && comm_uart_tx_done() && !line_count && !cr
-      && !comm_uart_peek(&view)) state = IDLE;
   if (state == DRAIN && grammar == LINES && !line_count && !cr) state = SYNC_SEND;
-  if (state == SYNC_SEND && comm_uart_tx_done() && !line_count && !cr
-      && !comm_uart_peek(&view)) {
-    /* Статический буфер AT можно менять только после TC старой передачи. */
-    memcpy(command, "AT+CMEE?\r", sizeof("AT+CMEE?\r") - 1u);
-    command_count = sizeof("AT+CMEE?\r") - 1u;
-    if (comm_uart_tx(command, command_count)) { parser_reset(); state = SYNC_WAIT; }
+  if ((state == COMPLETE || state == SYNC_COMPLETE || state == SYNC_SEND)
+      && comm_uart_tx_done() && !line_count && !cr && !comm_uart_peek(&view)) {
+    if (state != SYNC_SEND) {
+      uint8_t done = state == COMPLETE;
+      state = IDLE;
+      if (done) event(COMM_AT_DONE, NULL, modem_code, result);
+    } else {
+      /* Буфер меняется только после физического TC старой передачи. */
+      memcpy(command, "AT+CMEE?\r", sizeof("AT+CMEE?\r") - 1u);
+      command_count = sizeof("AT+CMEE?\r") - 1u;
+      if (comm_uart_tx(command, command_count)) { parser_reset(); state = SYNC_WAIT; }
+    }
   }
 end:
   in_poll = 0;
+}
+
+/* Возвращает capacity при переполнении; следующие куски ничего не пишут. */
+uint16_t comm_at_copy(char *out, uint16_t capacity, uint16_t pos, const char *text)
+{
+  while (pos < capacity && *text) out[pos++] = *text++;
+  if (pos < capacity) out[pos] = 0;
+  return pos;
+}
+uint16_t comm_at_decimal(char *out, uint16_t capacity, uint16_t pos, uint16_t value)
+{
+  uint16_t divisor = 10000u;
+  while (divisor > value && divisor > 1u) divisor /= 10u;
+  do {
+    if (pos >= capacity) return capacity;
+    out[pos++] = (char)('0' + value / divisor);
+    value %= divisor; divisor /= 10u;
+  } while (divisor);
+  if (pos < capacity) out[pos] = 0;
+  return pos;
+}
+
+/* Шаблон во флеш, выход — только числа текущего вызова.
+   Число элементов out равно числу числовых меток доверенного шаблона. */
+bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uint32_t *out)
+{
+  uint16_t pos = 0;
+  while (*pattern) {
+    uint8_t token = (uint8_t)*pattern++;
+    if (token == '*') return true;
+    if (token == '|') return pos == count || data[pos] == ',';
+    if (token <= 5) {
+      if (token == 1 || token == 5) pos = comm_at_spaces(data, count, pos);
+      uint32_t limit = token == 3 ? 255u : token >= 4 ? UINT16_MAX : UINT32_MAX;
+      if (!comm_at_number(data, count, &pos, limit, out++)) return false;
+    } else if (!take(data, count, &pos, token)) return false;
+  }
+  return pos == count;
 }

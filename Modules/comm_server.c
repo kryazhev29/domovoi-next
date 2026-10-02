@@ -13,26 +13,25 @@ enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
 static void server_channel_event(uint8_t kind, uint8_t value)
 {
   if (kind == COMM_CH_OPENED) {
-    sv.state = SV_REG; sv.registrations = sv.misses = sv.flags.status_wait = sv.flags.status_due = sv.flags.check_pending = 0;
-    if (sv.handlers.session) sv.handlers.session(true);
+    sv.state = SV_REG; sv.registrations = sv.misses = 0;
   } else if (kind == COMM_CH_CLOSED || kind == COMM_CH_FAULT) {
-    sv.state = SV_OFF; sv.flags.status_due = sv.flags.status_wait = sv.flags.stable = sv.flags.check_pending = 0;
-    if (sv.handlers.session) sv.handlers.session(false);
-  } else if (kind == COMM_CH_PROBE_DONE) {
-    if (sv.state != SV_PING && sv.state != SV_DNS) return;
-    sv.flags.check_pending = 0;
-    if (value) { sv.state = SV_SILENT; sv.silent_since = sv.now; }
-    else if (sv.state == SV_PING) sv.state = SV_DNS;
-    else comm_channel_reopen(0);
+    sv.state = SV_OFF; sv.flags.stable = 0;
+  } else {
+    if (kind == COMM_CH_PROBE_DONE && (sv.state == SV_PING || sv.state == SV_DNS)) {
+      sv.flags.check_pending = 0;
+      if (value) { sv.state = SV_SILENT; sv.silent_since = sv.now; }
+      else if (sv.state == SV_PING) sv.state = SV_DNS;
+      else comm_channel_reopen(0);
+    }
+    return;
   }
+  sv.flags.status_wait = sv.flags.status_due = sv.flags.check_pending = 0;
+  if (sv.handlers.session) sv.handlers.session(kind == COMM_CH_OPENED);
 }
 void comm_server_init(const comm_server_handlers_t *handlers)
 {
-  memset(&sv.handlers, 0, sizeof(sv.handlers));
+  memset(&sv, 0, sizeof(sv));
   if (handlers) sv.handlers = *handlers;
-  sv.state = SV_OFF;
-  sv.now = sv.registration_since = sv.status_since = sv.stable_since = sv.silent_since = 0;
-  sv.registrations = sv.misses = sv.flags.status_wait = sv.status_id = sv.last_status_id = sv.flags.status_due = sv.flags.traffic_event = sv.silent_step = sv.flags.stable = sv.flags.check_pending = 0;
   comm_channel_init(server_channel_event);
 }
 bool comm_server_online(void) { return sv.state >= SV_ONLINE; }

@@ -68,12 +68,12 @@ def mutations():
     code=unit().replace('\r\n','\n')
     faults=(
         ('registration-limit','sv.registrations < 2','sv.registrations < 3'),
-        ('ping-zero-replies','&& c > 0 && c <= b','&& c <= b'),
+        ('ping-zero-replies','&& v[1] > 0 && v[1] <= v[0]','&& v[1] <= v[0]'),
         ('unacked-deadline','now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED]','now_ms - ch.tx_since > comm_timeouts[COMM_T_STABLE]'),
         ('close-before-open','ch.state = CH_CLOSE; ch.reopen_pause','ch.state = CH_PAUSE; ch.reopen_pause'),
         ('second-command','if (comm_tx_busy()) return;','if (false) return;'),
         ('tcp-ack','if (ch.answer == 1) { ch.tx_state = TX_FREE;','if (ch.answer != 0) { ch.tx_state = TX_FREE;'),
-        ('dns-header-only','a == 0 && b > 0 ? 2 : 3','a == 0 && b > 0 ? 1 : 3'),
+        ('dns-header-only','v[0] == 0 && v[1] > 0 ? 2 : 3','v[0] == 0 && v[1] > 0 ? 1 : 3'),
         ('event-repeat','!sv.flags.traffic_event && sv.handlers.no_traffic','sv.handlers.no_traffic'),
     )
     with tempfile.TemporaryDirectory(dir=out) as tmp:

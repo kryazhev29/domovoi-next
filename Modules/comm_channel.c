@@ -4,7 +4,6 @@
 #include "comm_uart.h"
 #include "comm_timeouts.h"
 #include <string.h>
-#include <stdio.h>
 static uint8_t frame[1040];
 static struct {
   void (*event)(uint8_t, uint8_t);
@@ -20,91 +19,59 @@ enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_ACK }
 enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS };
 static void channel_emit(uint8_t kind, uint8_t value)
 { if (ch.event) ch.event(kind, value); }
-static bool channel_prefix(const uint8_t *p, uint16_t n, const char *s)
-{ size_t len = strlen(s); return n >= len && !memcmp(p, s, len); }
-static bool channel_num(const uint8_t *p, uint16_t n, uint16_t *pos, uint32_t *out)
+/* IPv4: четыре проверенных октета, с кавычками или без. */
+#ifdef __IAR_SYSTEMS_ICC__
+#pragma inline=forced
+#endif
+static bool channel_ip(const uint8_t *p, uint16_t n, const char *quoted, const char *plain, uint32_t *values)
 {
-  uint32_t v = 0; while (*pos < n && p[*pos] == ' ') ++*pos;
-  uint16_t begin = *pos;
-  while (*pos < n && p[*pos] >= '0' && p[*pos] <= '9') {
-    uint8_t d = p[(*pos)++] - '0';
-    if (v > (UINT32_MAX - d) / 10u) return false;
-    v = v * 10u + d;
-  }
-  *out = v; return *pos != begin;
-}
-/* IPv4 целиком; неудачная проба не двигает позицию числового итога. */
-static bool channel_ip(const uint8_t *p, uint16_t n, uint16_t *pos)
-{
-  uint32_t v; uint16_t at = *pos;
-  bool quoted = at < n && p[at] == '"';
-  if (quoted) ++at;
-  for (unsigned i = 0; i < 4; ++i) {
-    if (!channel_num(p, n, &at, &v) || v > 255u) return false;
-    if (i != 3 && (at >= n || p[at++] != '.')) return false;
-  }
-  if (quoted && (at >= n || p[at++] != '"')) return false;
-  *pos = at; return true;
+  if (!comm_at_parse(p,n,quoted,values) && !comm_at_parse(p,n,plain,values)) return false;
+  for (uint8_t i = 0; i < 4; ++i) if (values[i] > 255u) return false;
+  return true;
 }
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
-  uint16_t pos; uint32_t a, b, c;
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
     ch.state = CH_FAULT; channel_emit(COMM_CH_FAULT, (uint8_t)detail); return;
   }
   if (kind == COMM_AT_DONE) { ch.done = 1; ch.result = (uint8_t)detail; return; }
   if (!p) return;
-  if (channel_prefix(p, n, "+QIURC: \"closed\",")) {
-    pos = sizeof("+QIURC: \"closed\",") - 1u;
-    if (channel_num(p, n, &pos, &a) && pos == n && a == 0) {
-      ch.flags.peer_closed = 1; comm_channel_reopen(0);
-    }
-    return;
+  uint32_t v[8];
+  if (comm_at_parse(p,n,"+QIURC: \"closed\",\001",v) && v[0] == 0) {
+    ch.flags.peer_closed = 1; comm_channel_reopen(0); return;
   }
-  if (ch.operation == OP_VERIFY && channel_prefix(p, n, "+QISTATE:")) ch.answer = 1;
-  if (ch.operation == OP_OPEN && channel_prefix(p, n, "+QIOPEN:")) {
-    pos = sizeof("+QIOPEN:") - 1u;
-    if (channel_num(p, n, &pos, &a) && pos < n && p[pos++] == ','
-        && channel_num(p, n, &pos, &b) && pos == n && a == 0) {
-      ch.flags.open_seen = 1; ch.flags.open_ok = b == 0;
+  if (ch.operation == OP_VERIFY && comm_at_prefix(p,n,"+QISTATE:")) ch.answer = 1;
+  if (ch.operation == OP_OPEN) {
+    if (comm_at_parse(p,n,"+QIOPEN:\001,\001",v) && v[0] == 0) {
+      ch.flags.open_seen = 1; ch.flags.open_ok = v[1] == 0;
     }
-  } else if (ch.operation == OP_ACK && channel_prefix(p, n, "+QISEND:")) {
-    pos = sizeof("+QISEND:") - 1u;
-    if (channel_num(p, n, &pos, &a) && pos < n && p[pos++] == ','
-        && channel_num(p, n, &pos, &b) && pos < n && p[pos++] == ','
-        && channel_num(p, n, &pos, &c) && pos == n && b <= a && c == a - b)
-      ch.answer = c == 0 ? 1 : 2;
-  } else if (ch.probe_generation == ch.generation && ch.probe_active == COMM_CH_PING && channel_prefix(p, n, "+QPING:")) {
-    pos = sizeof("+QPING:") - 1u;
-    if (!channel_num(p, n, &pos, &a) || pos >= n || p[pos++] != ',') return;
-    if (a == 0 && channel_ip(p, n, &pos)) {
-      /* Фактический ответ: IP, bytes, time, ttl. */
-      for (unsigned i = 0; i < 3; ++i)
-        if (pos >= n || p[pos++] != ',' || !channel_num(p, n, &pos, &b)) return;
-      if (pos == n) ch.probe_answer = 1;
-    } else if (a == 0 && channel_num(p, n, &pos, &b) && pos < n && p[pos++] == ','
-               && channel_num(p, n, &pos, &c) && c > 0 && c <= b) {
-      /* Итог: sent, rcvd, lost, min, max, avg. */
-      for (unsigned i = 0; i < 4; ++i)
-        if (pos >= n || p[pos++] != ',' || !channel_num(p, n, &pos, &a)) return;
-      if (pos == n) ch.probe_answer = 1;
+  } else if (ch.operation == OP_ACK) {
+    if (comm_at_parse(p,n,"+QISEND:\001,\001,\001",v) && v[1] <= v[0] && v[2] == v[0] - v[1])
+      ch.answer = v[2] == 0 ? 1 : 2;
+  } else if (ch.probe_generation == ch.generation) {
+    if (ch.probe_active == COMM_CH_PING) {
+      if (!comm_at_prefix(p,n,"+QPING:")) return;
+      /* Фактический ответ: код, IPv4, bytes, time, ttl. */
+      uint16_t pos = sizeof("+QPING:") - 1u;
+      uint32_t code;
+      if (!comm_at_scan(p,n,&pos,UINT32_MAX,&code) || code || pos >= n || p[pos++] != ',') return;
+      p += pos; n = (uint16_t)(n - pos);
+      if (channel_ip(p,n,"\"\001.\001.\001.\001\",\001,\001,\001",
+                        "\001.\001.\001.\001,\001,\001,\001",v)) ch.probe_answer = 1;
+      else if (comm_at_parse(p,n,"\001,\001,\001,\001,\001,\001",v) && v[1] > 0 && v[1] <= v[0]) ch.probe_answer = 1;
+    } else if (ch.probe_active == COMM_CH_DNS && comm_at_prefix(p,n,"+QIURC: \"dnsgip\",")) {
+      uint16_t pos = sizeof("+QIURC: \"dnsgip\",") - 1u;
+      p += pos; n = (uint16_t)(n - pos);
+      if (channel_ip(p,n,"\"\001.\001.\001.\001\"","\001.\001.\001.\001",v)
+          && ch.probe_answer == 2) ch.probe_answer = 1;
+      else if (comm_at_parse(p,n,"\001,\001,\001",v)) ch.probe_answer = v[0] == 0 && v[1] > 0 ? 2 : 3;
     }
-  } else if (ch.probe_generation == ch.generation && ch.probe_active == COMM_CH_DNS && channel_prefix(p, n, "+QIURC: \"dnsgip\",")) {
-    pos = sizeof("+QIURC: \"dnsgip\",") - 1u;
-    if (channel_ip(p, n, &pos) && pos == n && ch.probe_answer == 2) ch.probe_answer = 1;
-    else if (channel_num(p, n, &pos, &a) && pos < n && p[pos++] == ','
-        && channel_num(p, n, &pos, &b) && pos < n && p[pos++] == ','
-        && channel_num(p, n, &pos, &c) && pos == n) ch.probe_answer = a == 0 && b > 0 ? 2 : 3;
   }
 }
 void comm_channel_init(void (*event)(uint8_t, uint8_t))
 {
-  ch.event = event; ch.state = CH_INITIAL; ch.tx_state = TX_FREE;
-  ch.operation = ch.done = ch.answer = ch.probe = ch.flags.open_seen = ch.flags.urgent = ch.flags.dns_fence = 0;
-  ch.address = ch.address_failures = ch.connections = ch.retry_step = ch.generation = ch.probe_generation = 0;
-  ch.now = ch.tx_since = ch.operation_since = ch.ack_next = ch.reopen_pause = ch.dns_since = ch.probe_since = 0;
-  ch.probe_active = ch.probe_answer = ch.flags.registered_session = ch.flags.peer_closed = 0;
-  ch.frame_count = 0; modem_slm336_transport(channel_at_event);
+  memset(&ch, 0, sizeof(ch));
+  ch.event = event; modem_slm336_transport(channel_at_event);
 }
 bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
 bool comm_tx_busy(void) { return ch.tx_state != TX_FREE; }
@@ -254,8 +221,9 @@ void comm_channel_poll(uint32_t now_ms)
   }
   if (ch.state != CH_OPEN || ch.operation) return;
   if (ch.tx_state == TX_QUEUED) {
-    char cmd[32]; int n = snprintf(cmd, sizeof(cmd), "AT+QISEND=0,%u", ch.frame_count);
-    if (n > 0 && (size_t)n < sizeof(cmd) && channel_command(cmd, COMM_AT_PROMPT, COMM_T_SEND_PROMPT, OP_PROMPT)) ch.tx_state = TX_PROMPT;
+    char cmd[32]; uint16_t n = comm_at_copy(cmd, sizeof(cmd), 0, "AT+QISEND=0,");
+    n = comm_at_decimal(cmd, sizeof(cmd), n, ch.frame_count);
+    if (n < sizeof(cmd) && channel_command(cmd, COMM_AT_PROMPT, COMM_T_SEND_PROMPT, OP_PROMPT)) ch.tx_state = TX_PROMPT;
   } else if (ch.tx_state == TX_PAYLOAD) {
     uint8_t r = modem_slm336_payload(frame, ch.frame_count, now_ms);
     if (r == COMM_AT_ACCEPTED) { ch.operation = OP_SEND; ch.done = ch.answer = 0; ch.tx_state = TX_SENDING; }

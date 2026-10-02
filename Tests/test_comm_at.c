@@ -291,6 +291,16 @@ static void timeout_tests(void)
   CHECK(state == DRAIN && done_count == 1); model_now = 400; poll(); CHECK(no_answer == 1 && state == FAULT);
 }
 
+/* Поддельная метка CMEE внутри позднего тела не завершает синхронизацию. */
+static void late_marker_test(void)
+{
+  reset_at(); CHECK(start("AT+QIRD=0,32", COMM_AT_SLM_QIRD, 0) == COMM_AT_ACCEPTED); tc();
+  model_now = 100; poll(); CHECK(state == SYNC_WAIT); tc();
+  text("+QIRD: 14\r\n+CMEE: 2\r\nOK\r\n\r\nOK\r\n");
+  CHECK(state == SYNC_WAIT && comm_at_busy() && !sync_seen && !binary_count && done_count == 1);
+  text("+CMEE: 2\r\nOK\r\n"); CHECK(!comm_at_busy() && !binary_count && done_count == 1);
+}
+
 static void capture_tests(void)
 {
   for (unsigned scenario = 0; scenario < sizeof(scenarios) / sizeof(scenarios[0]); ++scenario) {
@@ -301,7 +311,7 @@ static void capture_tests(void)
         const sim_step_t *step = &scenarios[scenario][j];
         if (step->tx) {
           comm_at_request_t request = {step->data, step->count,
-              prefix(step->data, step->count, "AT+QISEND=") ? COMM_AT_PROMPT : COMM_AT_TEXT, 100};
+              comm_at_prefix(step->data, step->count, "AT+QISEND=") ? COMM_AT_PROMPT : COMM_AT_TEXT, 100};
           unsigned before = writes;
           uint8_t accepted = comm_at_start(&request, model_now);
           CHECK(accepted != COMM_AT_INVALID);
@@ -321,7 +331,7 @@ static void capture_tests(void)
 
 int main(void)
 {
-  split_tests(); prompt_tests(); body_tests(); bounds_tests(); budget_tests(); timeout_tests(); capture_tests();
+  split_tests(); prompt_tests(); body_tests(); bounds_tests(); budget_tests(); timeout_tests(); late_marker_test(); capture_tests();
   puts("comm_at: split/concat/URC/echo/prompt/QIRD/late/wrap/owner/budget/captures PASS");
   return 0;
 }

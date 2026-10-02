@@ -51,19 +51,34 @@ typedef struct {
    Копируются только функции-геттеры, heap не используется. */
 bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms);
 /* Канал получает строки своей операции и URC; вызов AT из callback запрещён. */
-void modem_slm336_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t));
-uint8_t modem_slm336_command(const comm_at_request_t *request, uint32_t now_ms);
-uint8_t modem_slm336_payload(const uint8_t *data, uint16_t count, uint32_t now_ms);
-uint8_t modem_slm336_tcp_open(uint8_t address, uint32_t now_ms);
-bool modem_slm336_reserve(void);
-void modem_slm336_socket(bool open);
-void modem_slm336_hold(bool hold);
-bool modem_slm336_busy(void);
-void modem_slm336_poll(uint32_t now_ms);
-bool modem_slm336_ready(void);
+void comm_modem_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t));
+uint8_t comm_modem_command(const comm_at_request_t *request, uint32_t now_ms);
+uint8_t comm_modem_payload(const uint8_t *data, uint16_t count, uint32_t now_ms);
+uint8_t comm_modem_tcp_open(uint8_t address, uint32_t now_ms);
+bool comm_modem_reserve(void);
+void comm_modem_socket(bool open);
+void comm_modem_hold(bool hold);
+bool comm_modem_busy(void);
+void comm_modem_poll(uint32_t now_ms);
+bool comm_modem_ready(void);
 /* Вместимость будущего потребителя, 1..256; ноль откладывает новые QIRD. */
-void modem_slm336_rx_capacity(uint16_t count);
-const slm_diag_t *modem_slm336_diag(void);
-const slm_status_t *modem_slm336_status(void);
-void modem_slm336_off(void);
+void comm_modem_rx_capacity(uint16_t count);
+const slm_diag_t *comm_modem_diag(void);
+const slm_status_t *comm_modem_status(void);
+void comm_modem_off(void);
+/* Совместимость принятых слоёв; реализация общая, дополнительных функций нет. */
+#define modem_slm336_transport comm_modem_transport
+#define modem_slm336_command comm_modem_command
+#define modem_slm336_payload comm_modem_payload
+#define modem_slm336_tcp_open comm_modem_tcp_open
+#define modem_slm336_reserve comm_modem_reserve
+#define modem_slm336_socket comm_modem_socket
+#define modem_slm336_hold comm_modem_hold
+#define modem_slm336_busy comm_modem_busy
+#define modem_slm336_poll comm_modem_poll
+#define modem_slm336_ready comm_modem_ready
+#define modem_slm336_rx_capacity comm_modem_rx_capacity
+#define modem_slm336_diag comm_modem_diag
+#define modem_slm336_status comm_modem_status
+#define modem_slm336_off comm_modem_off
 #endif

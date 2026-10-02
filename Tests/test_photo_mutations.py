@@ -12,7 +12,7 @@ mutations=[
  ('out_of_range','offset > h.size','offset > 65534u'),
  ('repeat_request','photo_first_pending(&address, &offset);','photo_first_pending(&address, &offset); offset = 0;'),
  ('two_photos','address += PHOTO_RECORD_HEAD + h.size; offset = 0;','address += 2u * (PHOTO_RECORD_HEAD + h.size); offset = 0;'),
- ('busy_modem','photo->channel != CH_SERVER || connection_datasended(device.connectionhandle)','1 || connection_datasended(device.connectionhandle)'),
+ ('busy_modem','photo->channel != CH_SERVER || (','1 || ('),
  ('disconnect','if (photo && photo->channel == CH_SERVER) photo->pending = 0;','if (photo && photo->channel == CH_SERVER) photo->pending = 1;'),
  ('malloc_state','p = malloc(PHOTO_BLOCK + 22u);','photo->offset = 0; p = malloc(PHOTO_BLOCK + 22u);'),
  ('heap_limit','#define PHOTO_BLOCK 512u','#define PHOTO_BLOCK 1024u'),

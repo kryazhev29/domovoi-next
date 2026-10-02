@@ -23,15 +23,15 @@ enum { TX_IDLE, TX_SEND, TX_WAIT_TC };
 static void rts_update(void)
 {
 #if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
-  uint16_t used = (uint16_t)((rx_write + sizeof(rx) - rx_read) % sizeof(rx));
+  uint16_t write = rx_write, read = rx_read;
+  uint16_t used = (uint16_t)((write - read) & (sizeof(rx) - 1u));
   if (sizeof(rx) - 1u - used < 128u) { RTSG_HIGH; }
   else if (used < 128u) { RTSG_LOW; }
 #endif
 }
 
-static void error_add(uint16_t flag, volatile uint16_t *count)
+static void error_add(volatile uint16_t *count)
 {
-  counters.errors |= flag;
   if (*count != UINT16_MAX) ++*count;
 }
 
@@ -41,15 +41,16 @@ static void error_add(uint16_t flag, volatile uint16_t *count)
 void USART3_IRQHandler(void)
 {
   uint32_t status = USART3->SR;
+  uint16_t errors = 0;
   /* SR, затем DR: единственна€ правильна€ очистка ORE/FE/NE/RXNE. */
   if (status & (USART_SR_RXNE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
     uint8_t byte = (uint8_t)USART_ReceiveData(USART3);
-    if (status & USART_SR_ORE) error_add(COMM_UART_ORE, &counters.ore);
-    if (status & USART_SR_FE) error_add(COMM_UART_FE, &counters.fe);
-    if (status & USART_SR_NE) error_add(COMM_UART_NE, &counters.ne);
+    if (status & USART_SR_ORE) { errors |= COMM_UART_ORE; error_add(&counters.ore); }
+    if (status & USART_SR_FE) { errors |= COMM_UART_FE; error_add(&counters.fe); }
+    if (status & USART_SR_NE) { errors |= COMM_UART_NE; error_add(&counters.ne); }
     if ((status & USART_SR_RXNE) && !(status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE))) {
-      uint16_t next = (uint16_t)((rx_write + 1u) % sizeof(rx));
-      if (rx_write >= sizeof(rx) || next == rx_read) error_add(COMM_UART_OVERFLOW, &counters.overflow);
+      uint16_t next = (uint16_t)((rx_write + 1u) & (sizeof(rx) - 1u));
+      if (rx_write >= sizeof(rx) || next == rx_read) { errors |= COMM_UART_OVERFLOW; error_add(&counters.overflow); }
       else {
         rx[rx_write] = byte;
         __DMB();
@@ -58,10 +59,13 @@ void USART3_IRQHandler(void)
       }
     }
   }
+  if (errors) counters.errors |= errors;
   if ((USART3->CR1 & USART_CR1_TXEIE) && (status & USART_SR_TXE)) {
-    if (tx_state == TX_SEND && tx_pos < tx_count && tx_pos < COMM_UART_TX_MAX) {
-      USART_SendData(USART3, tx_data[tx_pos++]);
-      if (tx_pos == tx_count) {
+    uint16_t pos = tx_pos, count = tx_count;
+    if (tx_state == TX_SEND && pos < count) {
+      USART_SendData(USART3, tx_data[pos]);
+      tx_pos = ++pos;
+      if (pos == count) {
         USART3->CR1 = (USART3->CR1 & ~USART_CR1_TXEIE) | USART_CR1_TCIE;
         tx_state = TX_WAIT_TC;
       }
@@ -107,9 +111,11 @@ void comm_uart_init(uint32_t baud)
   USART_DeInit(USART3);
   comm_uart_abort();
   counters.errors = counters.overflow = counters.ore = counters.fe = counters.ne = 0;
-  GPIO_StructInit(&gpio);
   gpio.GPIO_Speed = GPIO_Speed_50MHz;
   gpio.GPIO_Pin = GPIO_Pin_11;
+#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
+  gpio.GPIO_Pin |= GPIO_Pin_13;
+#endif
   gpio.GPIO_Mode = GPIO_Mode_IPU;
   GPIO_Init(GPIOB, &gpio);
   gpio.GPIO_Pin = GPIO_Pin_10;
@@ -120,9 +126,6 @@ void comm_uart_init(uint32_t baud)
   uart.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
 #if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
   /* v5: PB14 Ч программный RTS, PB13 Ч аппаратный CTS. */
-  gpio.GPIO_Pin = GPIO_Pin_13;
-  gpio.GPIO_Mode = GPIO_Mode_IPU;
-  GPIO_Init(GPIOB, &gpio);
   gpio.GPIO_Pin = GPIO_Pin_14;
   gpio.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOB, &gpio);
@@ -147,21 +150,24 @@ uint16_t comm_uart_peek(const uint8_t **data)
   if (data == NULL) return 0;
   uint16_t write = rx_write;
   __DMB();
-  uint16_t count = (uint16_t)((write + sizeof(rx) - rx_read) % sizeof(rx));
-  uint16_t contiguous = (uint16_t)(sizeof(rx) - rx_read);
-  rx_view = count < contiguous ? count : contiguous;
-  *data = rx_view ? &rx[rx_read] : NULL;
-  return rx_view;
+  uint16_t read = rx_read;
+  uint16_t count = (uint16_t)((write - read) & (sizeof(rx) - 1u));
+  uint16_t contiguous = (uint16_t)(sizeof(rx) - read);
+  if (count > contiguous) count = contiguous;
+  rx_view = count;
+  *data = count ? &rx[read] : NULL;
+  return count;
 }
 
 bool comm_uart_consume(uint16_t count)
 {
-  if (count > rx_view) return false;
+  uint16_t view = rx_view;
+  if (count > view) return false;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
   __DMB();
-  rx_read = (uint16_t)((rx_read + count) % sizeof(rx));
-  rx_view -= count;
+  rx_read = (uint16_t)((rx_read + count) & (sizeof(rx) - 1u));
+  rx_view = (uint16_t)(view - count);
   rts_update();
   __set_PRIMASK(mask);
   return true;

@@ -4,6 +4,22 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* ќбщий разбор ограниченной строки; пробелы убираютс€ только €вно. */
+bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text);
+bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text);
+uint16_t comm_at_spaces(const uint8_t *data, uint16_t count, uint16_t pos);
+bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
+                    uint32_t limit, uint32_t *value);
+/* ƒоверенный шаблон: 1 uint32 с пробелами, 2 uint32, 3 октет,
+   4 uint16, 5 uint16 с пробелами, * произвольный хвост; out по числу меток. */
+bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uint32_t *out);
+/* ќбща€ сборка команды; count==capacity означает переполнение. */
+uint16_t comm_at_copy(char *out, uint16_t capacity, uint16_t pos, const char *text);
+uint16_t comm_at_decimal(char *out, uint16_t capacity, uint16_t pos, uint16_t value);
+/* ќтветы модема разрешают пробел перед числом; команда QIRD Ч нет. */
+#define comm_at_scan(p,n,pos,limit,out) \
+  (*(pos) = comm_at_spaces(p,n,*(pos)), comm_at_number(p,n,pos,limit,out))
+
 #define COMM_AT_POLL_BYTES 128u
 enum { COMM_AT_TEXT, COMM_AT_PROMPT, COMM_AT_SLM_QIRD, COMM_AT_M66_QIRD, COMM_AT_SEND };
 enum { COMM_AT_LINE, COMM_AT_URC, COMM_AT_DONE, COMM_AT_NO_ANSWER, COMM_AT_STREAM_ERROR };

@@ -4,12 +4,15 @@ import argparse
 
 ROOT=Path(__file__).resolve().parents[1]
 C_FILES=(
+    'Modules/comm_uart.c','Modules/comm_uart.h','Modules/comm_power_v5.c','Modules/comm_power_v5.h',
+    'Modules/comm_modem.c','Modules/comm_modem.h','Tests/test_comm_uart.c','Tests/test_comm_at.c',
     'Modules/comm_at.c','Modules/comm_at.h','Modules/modem_slm336.c','Modules/modem_slm336.h',
     'Modules/comm_channel.c','Modules/comm_channel.h','Modules/comm_server.c','Modules/comm_server.h',
     'User/comm_timeouts.c','User/comm_timeouts.h','User/user_comm.c','User/user_comm.h',
     'User/user_fun.c','User/photo.c','Tests/test_comm_server.c','Tests/comm_photo_slot.c','Tests/comm_upload_slot.c',
 )
-PY_FILES=('Tests/run_host.py','Tests/comm_server_host.py','Tests/check_comm_sources.py')
+PY_FILES=('Tests/run_host.py','Tests/comm_server_host.py','Tests/comm_slm_host.py',
+          'Tests/comm_budget.py','Tests/comm_mutations.py','Tests/test_photo_mutations.py','Tests/check_comm_sources.py')
 
 def check(fix=False):
     for name in (*C_FILES,*PY_FILES):
@@ -22,9 +25,10 @@ def check(fix=False):
         assert b'\n' not in data.replace(b'\r\n',b''), name
         text=data.decode('cp1251' if name in C_FILES else 'utf-8')
         assert 'Доработка: Кряжев А., 2026' in text[:350], name
-    for name in ('Modules/comm_channel.c','Modules/comm_server.c','User/user_comm.c'):
+    for name in ('Modules/comm_uart.c','Modules/comm_at.c','Modules/comm_modem.c','Modules/modem_slm336.c',
+                 'Modules/comm_channel.c','Modules/comm_server.c','User/user_comm.c'):
         text=(ROOT/name).read_bytes().decode('cp1251')
-        assert not any(word in text for word in ('malloc(', 'calloc(', 'realloc(')), name
+        assert not any(word in text for word in ('malloc(', 'calloc(', 'realloc(', 'snprintf(')), name
     print('comm sources: cp1251 C, UTF-8 Python, CRLF, author headers, new modules without heap PASS')
 
 if __name__=='__main__':
