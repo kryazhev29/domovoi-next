@@ -248,43 +248,44 @@ static void budget_tests(void)
 
 static void timeout_tests(void)
 {
-  reset_at(); CHECK(start("AT+CSQ", COMM_AT_TEXT, UINT32_MAX - 49u) == COMM_AT_ACCEPTED); tc();
+  reset_at(); comm_at_init(&(comm_at_handlers_t){on_event, on_binary}, 2000);
+  CHECK(start("AT+CSQ", COMM_AT_TEXT, UINT32_MAX - 49u) == COMM_AT_ACCEPTED); tc();
   model_now = 49; poll(); CHECK(!done_count);
-  model_now = 50; poll(); CHECK(done_count == 1 && last_result == COMM_AT_TIMEOUT && comm_at_busy());
-  CHECK(start("AT+CREG?", COMM_AT_TEXT, model_now) == COMM_AT_BUSY);
-  text("+CSQ: 7,0\r\nRING\r\nOK\r\nOK\r\n");
-  CHECK(state == SYNC_WAIT && tx_data == command && command_count == 3 && !memcmp(command, "AT\r", 3));
-  CHECK(done_count == 1 && comm_at_busy()); tc();
-  text("AT\r\nOK\r\n"); CHECK(!comm_at_busy() && done_count == 1);
+  model_now = 50; poll();
+  CHECK(done_count == 1 && last_result == COMM_AT_TIMEOUT && comm_at_busy());
+  /* Старый финал потерян: запрос синхронизации уже передаётся. */
+  CHECK(state == SYNC_WAIT && command_count == 9 && !memcmp(command, "AT+CMEE?\r", 9));
+  CHECK(start("AT+CREG?", COMM_AT_TEXT, model_now) == COMM_AT_BUSY); tc();
+  text("OK\r\nERROR\r\nRING\r\n"); CHECK(comm_at_busy() && done_count == 1);
+  text("+CMEE: 2\r\nOK\r\n"); CHECK(!comm_at_busy());
+  /* Поздний старый OK после синхронизации в покое не создаёт результата. */
+  text("OK\r\n"); CHECK(!comm_at_busy() && done_count == 1);
   CHECK(start("AT+CREG?", COMM_AT_TEXT, model_now) == COMM_AT_ACCEPTED); tc();
   text("+CREG: 0,1\r\nOK\r\n"); CHECK(done_count == 2 && last_result == COMM_AT_OK);
-  reset_at(); CHECK(start("AT", COMM_AT_TEXT, 0) == COMM_AT_ACCEPTED); tc();
-  model_now = 100; poll(); model_now = 399; poll(); CHECK(!no_answer && comm_at_busy());
-  model_now = 400; poll(); CHECK(no_answer == 1 && comm_at_busy()); poll(); CHECK(no_answer == 1);
-  reset_at(); CHECK(start("AT", COMM_AT_TEXT, 0) == COMM_AT_ACCEPTED); tc();
-  model_now = 100; poll(); text("ERROR\r\n"); tc(); model_now = 400; poll(); CHECK(no_answer == 1);
+  reset_at(); comm_at_init(&(comm_at_handlers_t){on_event, on_binary}, 2000);
+  CHECK(start("AT", COMM_AT_TEXT, 0) == COMM_AT_ACCEPTED); tc();
+  model_now = 100; poll(); tc(); text("+CMEE: 22\r\nOK\r\n");
+  model_now = 2099; poll(); CHECK(!no_answer && comm_at_busy());
+  model_now = 2100; poll(); CHECK(no_answer == 1 && comm_at_busy()); poll(); CHECK(no_answer == 1);
   reset_at(); CHECK(start("AT+CSQ", COMM_AT_TEXT, 0) == COMM_AT_ACCEPTED); tc();
   model_now = 100; poll();
-  text("OK\r\n"); CHECK(state == SYNC_WAIT); /* Старый финал не завершает AT синхронизации. */
-  text("OK\r\n"); CHECK(state == SYNC_COMPLETE && comm_at_busy());
-  CHECK(start("AT", COMM_AT_TEXT, 100) == COMM_AT_BUSY); tc(); poll(); CHECK(!comm_at_busy());
+  text("OK\r\n+CMEE: 2\r\nOK\r\n"); CHECK(state == SYNC_COMPLETE && comm_at_busy());
+  tc(); poll(); CHECK(!comm_at_busy());
+  for (unsigned format = COMM_AT_SLM_QIRD; format <= COMM_AT_M66_QIRD; ++format) {
+    reset_at();
+    CHECK(start(format == COMM_AT_SLM_QIRD ? "AT+QIRD=0,32" : "AT+QIRD=0,1,0,32", format, 0) == COMM_AT_ACCEPTED); tc();
+    text(format == COMM_AT_SLM_QIRD ? "+QIRD: 10\r\nxy" : "+QIRD: \r\n1.2.3.4:80,TCP,10\r\nxy");
+    model_now = 100; poll(); CHECK(state == DRAIN && binary_count == 2);
+    text("OK\r\nRING"); /* Восемь оставшихся байт тела. Финала нет. */
+    CHECK(state == DRAIN && binary_count == 2);
+    text("\r\n"); CHECK(state == SYNC_WAIT && done_count == 1); tc();
+    text("OK\r\n+CMEE: 2\r\nOK\r\n"); CHECK(!comm_at_busy() && binary_count == 2);
+  }
+  /* Заголовок старого QIRD может запоздать до уже отправленного CMEE?. */
   reset_at(); CHECK(start("AT+QIRD=0,32", COMM_AT_SLM_QIRD, 0) == COMM_AT_ACCEPTED); tc();
-  model_now = 100; poll(); CHECK(done_count == 1 && state == DRAIN);
-  text("+QIRD: 10\r\nOK\r\nRING\r\n"); /* Все десять байт — позднее тело. */
-  CHECK(state == DRAIN && !binary_count && urc_count == 0 && writes == strlen("AT+QIRD=0,32\r"));
-  text("\r\nOK\r\n"); CHECK(state == SYNC_WAIT && done_count == 1 && !binary_calls); tc();
-  text("OK\r\n"); CHECK(!comm_at_busy());
-  reset_at(); CHECK(start("AT+QIRD=0,1,0,32", COMM_AT_M66_QIRD, 0) == COMM_AT_ACCEPTED); tc();
-  model_now = 100; poll(); text("+QIRD: \r\n1.2.3.4:80,TCP,4\r\nOK\r\n\r\nOK\r\n");
-  CHECK(state == SYNC_WAIT && done_count == 1 && !binary_calls); tc(); text("OK\r\n"); CHECK(!comm_at_busy());
-  reset_at(); CHECK(start("AT+QIRD=0,32", COMM_AT_SLM_QIRD, 0) == COMM_AT_ACCEPTED); tc();
-  model_now = 100; poll(); text("+QIRD: 99\r\nOK\r\n");
-  CHECK(done_count == 1 && no_answer == 1 && state == FAULT);
-  reset_at(); CHECK(start("AT+QIRD=0,32", COMM_AT_SLM_QIRD, 0) == COMM_AT_ACCEPTED); tc();
-  text("+QIRD: 10\r\nxy"); model_now = 100; poll();
-  CHECK(state == DRAIN && done_count == 1 && binary_count == 2);
-  text("OK\r\nRING\r\nOK\r\n"); /* Восемь байт тела, затем корректный хвост и финал. */
-  CHECK(state == SYNC_WAIT && done_count == 1 && binary_count == 2); tc(); text("OK\r\n"); CHECK(!comm_at_busy());
+  model_now = 100; poll(); tc();
+  text("+QIRD: 4\r\nOK\r\n\r\nOK\r\n+CMEE: 2\r\nOK\r\n");
+  CHECK(!comm_at_busy() && done_count == 1 && !binary_calls);
   reset_at(); CHECK(start("AT+QIRD=0,32", COMM_AT_SLM_QIRD, 0) == COMM_AT_ACCEPTED); tc();
   text("+QIRD: 10\r\nxy"); model_now = 100; poll(); text("OK\r\n");
   CHECK(state == DRAIN && done_count == 1); model_now = 400; poll(); CHECK(no_answer == 1 && state == FAULT);

@@ -7,7 +7,7 @@ static uint8_t command[128], line[192];
 static comm_at_handlers_t handlers;
 static uint32_t started, timeout, recovery;
 static uint16_t command_count, line_count, remaining, read_limit, modem_code;
-static uint8_t state, mode, grammar, result, in_poll, cr, prompt_space, header;
+static uint8_t state, mode, grammar, result, in_poll, cr, prompt_space, header, sync_seen;
 enum { IDLE, RUN, COMPLETE, DRAIN, SYNC_SEND, SYNC_WAIT, SYNC_COMPLETE, FAULT };
 enum { LINES, M66_HEADER, BODY, BODY_CR, BODY_LF };
 
@@ -102,6 +102,7 @@ void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
   state = IDLE;
   command_count = read_limit = modem_code = 0;
   recovery = recovery_ms;
+  sync_seen = 0;
   parser_reset();
 }
 
@@ -223,7 +224,8 @@ static void complete_line(void)
   if ((state == RUN || state == SYNC_WAIT) && line_count + 1u == command_count
       && !memcmp(line, command, line_count)) return; /* Эхо до ATE0. */
   if (prefix(line, line_count, "+QIRD:")
-      && ((state != RUN && state != DRAIN) || mode < COMM_AT_SLM_QIRD)) {
+      && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
+          || mode < COMM_AT_SLM_QIRD)) {
     fault(COMM_AT_BAD_FRAME); return; /* Неожиданное тело не становится текстом. */
   }
   if (final(&code)) {
@@ -234,15 +236,20 @@ static void complete_line(void)
         event(COMM_AT_LINE, line, line_count, 0);
       result = code;
       state = COMPLETE;
-    } else if (state == SYNC_WAIT && code == COMM_AT_OK) {
+    } else if (state == SYNC_WAIT && sync_seen && code == COMM_AT_OK) {
       state = SYNC_COMPLETE;
     } else if (state == DRAIN) state = SYNC_SEND;
     return;
   }
-  if ((state == RUN || state == DRAIN) && (mode == COMM_AT_SLM_QIRD || mode == COMM_AT_M66_QIRD)) {
+  if ((state == RUN || state == DRAIN || state == SYNC_SEND || state == SYNC_WAIT)
+      && (mode == COMM_AT_SLM_QIRD || mode == COMM_AT_M66_QIRD)) {
     if (prefix(line, line_count, "+QIRD:") || grammar == M66_HEADER) {
       if (grammar != M66_HEADER || !urc()) { binary_header(); return; }
     }
+  }
+  if (state == SYNC_WAIT && prefix(line, line_count, "+CMEE:")) {
+    uint16_t pos = spaces(line, line_count, sizeof("+CMEE:") - 1u), value;
+    sync_seen = number(line, line_count, &pos, 2, &value) && pos == line_count;
   }
   if (urc()) event(COMM_AT_URC, line, line_count, 0);
   else if (state == RUN) event(COMM_AT_LINE, line, line_count, 0);
@@ -285,7 +292,8 @@ void comm_at_poll(uint32_t now_ms)
   if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); goto end; }
   if ((state == RUN || state == COMPLETE) && expired(now_ms, timeout)) {
     /* Отмена сохраняет грамматику и остаток тела: поиск OK внутри запрещён. */
-    state = state == COMPLETE ? SYNC_SEND : DRAIN;
+    state = grammar != LINES || line_count || cr ? DRAIN : SYNC_SEND;
+    sync_seen = 0;
     started = now_ms;
     event(COMM_AT_DONE, NULL, 0, COMM_AT_TIMEOUT);
   }
@@ -300,7 +308,7 @@ void comm_at_poll(uint32_t now_ms)
     if (grammar == BODY) {
       if (count > remaining) count = remaining;
       /* Позднее тело уже отменённой операции вычитывается без выдачи наверх. */
-      used = state == DRAIN ? count : handlers.binary(view, count);
+      used = state != RUN ? count : handlers.binary(view, count);
       if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); break; }
       if (used > count) { fault(COMM_AT_SINK_ERROR); break; }
       if (!used) break;
@@ -321,11 +329,12 @@ void comm_at_poll(uint32_t now_ms)
   }
   if (state == SYNC_COMPLETE && comm_uart_tx_done() && !line_count && !cr
       && !comm_uart_peek(&view)) state = IDLE;
+  if (state == DRAIN && grammar == LINES && !line_count && !cr) state = SYNC_SEND;
   if (state == SYNC_SEND && comm_uart_tx_done() && !line_count && !cr
       && !comm_uart_peek(&view)) {
     /* Статический буфер AT можно менять только после TC старой передачи. */
-    memcpy(command, "AT\r", 3);
-    command_count = 3;
+    memcpy(command, "AT+CMEE?\r", sizeof("AT+CMEE?\r") - 1u);
+    command_count = sizeof("AT+CMEE?\r") - 1u;
     if (comm_uart_tx(command, command_count)) { parser_reset(); state = SYNC_WAIT; }
   }
 end:

@@ -31,8 +31,8 @@ typedef struct {
 
 /* init только после отмены UART/нового питания; указатели на данные не хранит.
    Сроки передаёт единая таблица comm_timeouts будущего драйвера; <2^31 мс.
-   recovery_ms — общий срок старый финал -> AT -> OK. Пока старого финала нет,
-   AT не посылается: при ATE0 его OK неотличим от позднего старого OK.
+   recovery_ms — общий срок дочитывания тела и AT+CMEE? -> +CMEE: -> OK.
+   Старые финалы до +CMEE: игнорируются, потерянный финал не задерживает запрос.
    Потеря границ блокирует движок; init не заменяет отмену UART/сеанса. */
 void comm_at_init(const comm_at_handlers_t *handlers, uint32_t recovery_ms);
 uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms);
