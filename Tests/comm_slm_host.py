@@ -35,7 +35,7 @@ def memory(obj):
 
 
 def arm(out):
-    rows = []
+    rows = []; stage_ram = 0
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         tmp = Path(tmp)
         for name in HEADERS + MODULES + ('Modules/comm_at.c',):
@@ -52,9 +52,11 @@ def arm(out):
                             '-fstack-usage', '-I' + str(tmp), '-c', str(tmp / (stem + '.c')),
                             '-o', str(obj)], check=True)
             ram, flash = memory(obj)
+            if name in MODULES: stage_ram += ram
             rows.append(f'{stem}: RAM={ram} Flash={flash} heap=0')
     (out / 'memory.txt').write_text('\n'.join(rows) + '\n', encoding='utf-8')
     print('\n'.join(rows))
+    assert stage_ram <= 250, ('stage 3 RAM', stage_ram, 250)
 
 
 if __name__ == '__main__':
