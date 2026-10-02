@@ -124,13 +124,14 @@ void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms)
   rc.ring = comm_modem_diag()->failure_next;
 }
 
-/* Сначала TCP заново, потом модем со снятием питания: с AT мобильный интернет
-   не обновить, пока контекст активен (QIACT ответит ошибкой), а шаг QIDEACT
-   сдвинул бы номера шагов диагностики команды 111. */
+/* TCP заново -> модем заново с AT (шаг QIDEACT сбрасывает мобильный интернет) ->
+   снятие питания сразу, дальше по паузам. */
 void comm_recover_no_internet(void)
 {
-  if (rc.net_step == 0u) { comm_channel_reopen(0); rc.net_step = 1; }
+  if (rc.net_step == 0u) comm_channel_reopen(0);
+  else if (rc.net_step == 1u) rc_schedule(false, 0);
   else rc_power_ladder(rc_now_then_ladder());
+  if (rc.net_step < 2u) rc.net_step++;
 }
 
 void comm_recover_poll(uint32_t now_ms)

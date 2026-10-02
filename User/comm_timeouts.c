@@ -18,6 +18,7 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   60000, /* COMM_T_NETWORK */
   1000, /* COMM_T_NETWORK_POLL */
   150000, /* COMM_T_QIACT */
+  40000, /* COMM_T_QIDEACT: Quectel до 40 с */
   150000, /* COMM_T_QIOPEN */
   1000, /* COMM_T_QIRD */
   5000, /* COMM_T_SERVER_REPLY */

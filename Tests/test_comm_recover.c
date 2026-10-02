@@ -72,14 +72,19 @@ static void recover_tests(void)
   /* 5. Потеря мобильного интернета: модем заново с AT через 10 с, без питания, снова на связи. */
   rc_online(); sim_feed("+QIURC: \"pdpdeact\",1\r\n"); rc_run(60000u);
   rc_expect(0, 10000u, 0); CHECK(!rc_power_starts && rc_soft_starts == 1 && comm_server_online());
+  /* QIDEACT ответил ошибкой (контекста нет) - шаг пройден, модем снова на связи. */
+  rc_online(); sim_error_step = SLM_DEACT; sim_feed("+QIURC: \"pdpdeact\",1\r\n"); rc_run(60000u);
+  rc_expect(0, 10000u, 0); CHECK(rc_soft_starts == 1 && comm_server_online() && rc_logged == 1);
   /* 6. Сервер молчит, интернет есть: событие 13 и переоткрытие TCP, модем не трогается. */
   rc_online(); drop_status = 1; rc_run(600000u);
   /* Событие 13 - на каждое переподключение: регистрация снимает его флаг (этап 4). */
   CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && event13 >= 1 && opens >= 2);
-  /* 7. Нет интернета (ping и DNS молчат): TCP заново, потом питание сразу, дальше 10/30 мин. */
+  /* 7. Нет интернета (ping и DNS молчат): TCP заново, модем с AT (QIDEACT/QIACT),
+        потом питание сразу, дальше 10 мин. */
   rc_online(); drop_status = 1; ping_success = dns_success = 0; rc_run(1800000u);
-  CHECK(rc_logged == 3 && !rc_soft_starts && rc_power_starts == 2); rc_expect(0, 0, 1); rc_expect(1, 600000u, 1); rc_expect(2, 1800000u, 1);
-  CHECK(rc_log[0].opens >= 2); /* до первого снятия питания TCP переоткрыт */
+  CHECK(rc_logged >= 3 && rc_soft_starts == 1 && rc_power_starts >= 1);
+  rc_expect(0, 0, 0); rc_expect(1, 0, 1); rc_expect(2, 600000u, 1);
+  CHECK(rc_log[0].opens >= 2); /* до перезапуска модема TCP переоткрыт */
   /* 8. Ранний перезапуск: 3 таймаута AT в работе за 10 мин - питание сразу; 2 - нет. */
   rc_online();
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000);

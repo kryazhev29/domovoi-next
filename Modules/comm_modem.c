@@ -53,7 +53,8 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
   if (reason) {
     uint8_t slot = slm.diag.failure_next;
     if (slot >= sizeof(slm.diag.failure_step)) slot = 0;
-    slm.diag.failure_seconds[slot] = (slm.attempt.now - slm.attempt.attempt_started) / 1000u;
+    uint32_t seconds = (slm.attempt.now - slm.attempt.attempt_started) / 1000u;
+    slm.diag.failure_seconds[slot] = seconds > UINT16_MAX ? UINT16_MAX : (uint16_t)seconds;
     slm.diag.failure_step[slot] = slm.attempt.status.step;
     slm.diag.failure_reason[slot] = reason;
     slm.diag.last_code = code;
@@ -307,7 +308,8 @@ static void slm_completed(void)
   const comm_modem_step_t *entry = &slm.profile->steps[step - SLM_AT_READY];
   uint8_t action = entry->action & 15u;
   slm.attempt.done = 0;
-  if (slm.attempt.result != COMM_AT_OK) {
+  /* MODEM_ANY: ответ модема есть (OK, ERROR, CME) - шаг пройден; срок или сбой потока - нет. */
+  if (slm.attempt.result != COMM_AT_OK && !(action == MODEM_ANY && slm.attempt.result < COMM_AT_GOT_PROMPT)) {
     uint8_t reason = slm.attempt.result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT
                      : slm.attempt.result > COMM_AT_TIMEOUT ? SLM_ERR_STREAM : SLM_ERR_AT;
     if (action == MODEM_SIM && (slm.attempt.status.modem_code == 10 || slm.attempt.answer == 4)) reason = SLM_ERR_NO_SIM;

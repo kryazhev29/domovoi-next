@@ -20,7 +20,7 @@ typedef struct {
 /* hooks - постоянная (static const) структура, хранится указатель. */
 void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms);
 void comm_recover_poll(uint32_t now_ms);
-/* Сервер молчит, ping и DNS не прошли: TCP заново, потом модем со снятием питания. */
+/* Сервер молчит, ping и DNS не прошли: TCP заново, потом модем с AT, потом питание. */
 void comm_recover_no_internet(void);
 
 #endif

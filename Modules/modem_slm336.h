@@ -10,7 +10,7 @@ enum {
   SLM_AT_READY, SLM_MODEL, SLM_ECHO, SLM_CMEE, SLM_IFC, SLM_CLIP,
   SLM_CMER, SLM_CREG_URC, SLM_CGREG_URC, SLM_CEREG_URC, SLM_URC_PORT,
   SLM_URC_SET, SLM_SIM, SLM_RAT_QUERY, SLM_RAT_SET, SLM_NETWORK,
-  SLM_IMSI, SLM_APN, SLM_ACTIVATE, SLM_TCP, SLM_READ, SLM_STEP_COUNT
+  SLM_IMSI, SLM_APN, SLM_DEACT, SLM_ACTIVATE, SLM_TCP, SLM_READ, SLM_STEP_COUNT
 };
 enum { SLM_PHASE_POWER, SLM_PHASE_SETUP, SLM_PHASE_SIM, SLM_PHASE_NETWORK,
        SLM_PHASE_PDP, SLM_PHASE_TCP, SLM_PHASE_COUNT };
@@ -22,7 +22,7 @@ enum { SLM_ERR_NONE, SLM_ERR_TIMEOUT, SLM_ERR_AT, SLM_ERR_RESPONSE,
    Кольцо сбоев — единственная история; времена в секундах от старта попытки. */
 typedef struct {
   uint16_t steps[SLM_STEP_COUNT], phases[SLM_PHASE_COUNT];
-  uint32_t failure_seconds[10];
+  uint16_t failure_seconds[10]; /* насыщение при 65535 с */
   uint8_t failure_step[10], failure_reason[10];
   uint16_t last_code;
   uint8_t failure_next, failure_count;
