@@ -38,6 +38,9 @@ static char *checked_strcpy(char *dest, size_t capacity, const char *p, size_t s
     CHECK(n<source_capacity && n<capacity); memcpy(dest,p,n+1); return dest;
 }
 #define strcpy(p,s) checked_strcpy(p,__builtin_object_size(p,1),s,__builtin_object_size(s,1))
+enum { SLM_IDLE };
+static uint8_t comm_modem_state(void) { return 2; }
+static void user_comm_boot(void) { CHECK(0); }
 /* PRODUCTION */
 #undef strcpy
 static void init(void)

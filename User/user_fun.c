@@ -3136,6 +3136,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             break;
           }
           rs485_set_config(&ptr[5]);
+          /* После неудачного старта с неверными настройками оживляем связь. */
+          if (comm_modem_state() == SLM_IDLE) user_comm_boot();
           user_send_timeshtamp(SHTAMP_CONFIG, config.datetime,
                                user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size), cch, uniqId);
         }

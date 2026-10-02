@@ -1,4 +1,7 @@
 // Доработка: Кряжев А., 2026
+enum { SLM_IDLE };
+static uint8_t comm_modem_state(void) { return 2; }
+static void user_comm_boot(void) { assert(0); }
 #include <stddef.h>
 #define SHTAMP_CONFIG 4
 #define MB_CONFIG 1
