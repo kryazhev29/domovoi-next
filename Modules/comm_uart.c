@@ -8,15 +8,26 @@
 #error "comm_uart: select standalone USART3 owner, exclude uart_stm32f10x.c"
 #endif
 
-/* 511 полезных байт: один элемент различает полное и пустое кольцо.
-   TX 1040: самый большой кадр журнала 1038; второй буфер не нужен. */
-static uint8_t rx[512], tx[1040];
+/* 511 полезных байт: один элемент различает полное и пустое кольцо. */
+static uint8_t rx[512];
+static const uint8_t * volatile tx_data;
 static volatile uint16_t rx_write, rx_read;
 static uint16_t rx_view;
 static volatile uint16_t tx_count, tx_pos;
 static volatile uint8_t tx_state, tx_complete;
 static volatile comm_uart_stats_t counters;
-enum { TX_IDLE, TX_BUILD, TX_SEND, TX_WAIT_TC };
+enum { TX_IDLE, TX_SEND, TX_WAIT_TC };
+
+/* ¬ызываетс€ в IRQ или при запрещЄнных IRQ, чтобы не разрешить приЄм
+   по устаревшему заполнению. LOW Ч приЄм, HIGH Ч остановка модема. */
+static void rts_update(void)
+{
+#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
+  uint16_t used = (uint16_t)((rx_write + sizeof(rx) - rx_read) % sizeof(rx));
+  if (sizeof(rx) - 1u - used < 128u) { RTSG_HIGH; }
+  else if (used < 128u) { RTSG_LOW; }
+#endif
+}
 
 static void error_add(uint16_t flag, volatile uint16_t *count)
 {
@@ -43,12 +54,13 @@ void USART3_IRQHandler(void)
         rx[rx_write] = byte;
         __DMB();
         rx_write = next;
+        rts_update();
       }
     }
   }
   if ((USART3->CR1 & USART_CR1_TXEIE) && (status & USART_SR_TXE)) {
-    if (tx_state == TX_SEND && tx_pos < tx_count && tx_pos < sizeof(tx)) {
-      USART_SendData(USART3, tx[tx_pos++]);
+    if (tx_state == TX_SEND && tx_pos < tx_count && tx_pos < COMM_UART_TX_MAX) {
+      USART_SendData(USART3, tx_data[tx_pos++]);
       if (tx_pos == tx_count) {
         USART3->CR1 = (USART3->CR1 & ~USART_CR1_TXEIE) | USART_CR1_TCIE;
         tx_state = TX_WAIT_TC;
@@ -58,6 +70,7 @@ void USART3_IRQHandler(void)
   } else if ((USART3->CR1 & USART_CR1_TCIE) && (status & USART_SR_TC)) {
     USART3->CR1 &= ~USART_CR1_TCIE;
     if (tx_state == TX_WAIT_TC) {
+      tx_data = NULL;
       tx_state = TX_IDLE;
       tx_complete = 1;
     }
@@ -72,7 +85,9 @@ void comm_uart_abort(void)
   tx_state = TX_IDLE;
   tx_complete = 0;
   tx_count = tx_pos = 0;
+  tx_data = NULL;
   rx_write = rx_read = rx_view = 0;
+  rts_update();
   /* —н€тие старого RX; ошибки до abort остаютс€ в диагностике. */
   (void)USART3->SR;
   (void)USART_ReceiveData(USART3);
@@ -104,14 +119,14 @@ void comm_uart_init(uint32_t baud)
   uart.USART_BaudRate = baud;
   uart.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
 #if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
-  /* v5: PB14 RTS (AF), PB13 CTS; IP_v3/MINI без этих линий. */
+  /* v5: PB14 Ч программный RTS, PB13 Ч аппаратный CTS. */
   gpio.GPIO_Pin = GPIO_Pin_13;
   gpio.GPIO_Mode = GPIO_Mode_IPU;
   GPIO_Init(GPIOB, &gpio);
   gpio.GPIO_Pin = GPIO_Pin_14;
-  gpio.GPIO_Mode = GPIO_Mode_AF_PP;
+  gpio.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOB, &gpio);
-  uart.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS_CTS;
+  uart.USART_HardwareFlowControl = USART_HardwareFlowControl_CTS;
 #else
   uart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
 #endif
@@ -142,29 +157,22 @@ uint16_t comm_uart_peek(const uint8_t **data)
 bool comm_uart_consume(uint16_t count)
 {
   if (count > rx_view) return false;
-  /* IRQ пишет только rx_write, main только rx_read: RMW не нужен. */
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
   __DMB();
   rx_read = (uint16_t)((rx_read + count) % sizeof(rx));
   rx_view -= count;
+  rts_update();
+  __set_PRIMASK(mask);
   return true;
 }
 
-uint8_t *comm_uart_tx_acquire(uint16_t *capacity)
+bool comm_uart_tx(const uint8_t *data, uint16_t count)
 {
-  if (capacity == NULL) return NULL;
-  *capacity = 0;
-  if (tx_state != TX_IDLE) return NULL;
-  tx_state = TX_BUILD;
-  tx_complete = 0;
-  *capacity = sizeof(tx);
-  return tx;
-}
-
-bool comm_uart_tx_commit(uint16_t count)
-{
-  if (tx_state != TX_BUILD || count > sizeof(tx)) return false;
+  if (data == NULL || count > COMM_UART_TX_MAX || tx_state != TX_IDLE) return false;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
+  tx_data = count ? data : NULL;
   tx_count = count;
   __DMB(); /* IRQ здесь отложен: остальные пол€ ещЄ не опубликованы. */
   tx_pos = 0;
@@ -175,11 +183,6 @@ bool comm_uart_tx_commit(uint16_t count)
   if (count) USART3->CR1 |= USART_CR1_TXEIE;
   __set_PRIMASK(mask);
   return true;
-}
-
-void comm_uart_tx_release(void)
-{
-  if (tx_state == TX_BUILD) tx_state = TX_IDLE;
 }
 
 bool comm_uart_tx_done(void)

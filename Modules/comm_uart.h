@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Предел кадра канала: 1038 байт журнала, округлено до 1040. */
+#define COMM_UART_TX_MAX 1040u
 #define COMM_UART_OVERFLOW 1u
 #define COMM_UART_ORE 2u
 #define COMM_UART_FE 4u
@@ -20,17 +22,18 @@ void comm_uart_init(uint32_t baud);
 /* Участок принадлежит UART, действует до consume/abort/init. */
 uint16_t comm_uart_peek(const uint8_t **data);
 bool comm_uart_consume(uint16_t count);
-/* Единственный слот UART: заполнять прямо здесь, без чужих указателей.
-   Указатель действует до commit/release/abort/init. После commit не писать. */
-uint8_t *comm_uart_tx_acquire(uint16_t *capacity);
-bool comm_uart_tx_commit(uint16_t count);
-void comm_uart_tx_release(void);
+/* Буфер принадлежит вызывающему модулю и статический; живёт до
+   tx_done/abort/init, менять его нельзя. Стек и heap не передавать.
+   Без копии: строка AT до 128 или кадр канала до COMM_UART_TX_MAX.
+   Занято/NULL/длина выше предела — false, текущий TX не меняется.
+   Ноль с ненулевым указателем — успех сразу, без DR и IRQ. */
+bool comm_uart_tx(const uint8_t *data, uint16_t count);
 /* Физический TC последнего принятого TX; abort не считается успехом. */
 bool comm_uart_tx_done(void);
 /* Накопительные насыщаемые счётчики, сброс только при init. */
 void comm_uart_stats(comm_uart_stats_t *stats);
 /* Прочитать и снять флаги потери потока; счётчики сохраняются. */
 uint16_t comm_uart_errors(void);
-/* Отменяет слот/очередь TX, очищает RX. Загруженный в DR байт не отозвать. */
+/* Отменяет TX, забывает указатель, очищает RX. Байт в DR не отозвать. */
 void comm_uart_abort(void);
 #endif
