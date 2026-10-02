@@ -39,6 +39,9 @@ void comm_server_init(const comm_server_handlers_t *handlers)
   comm_channel_init(server_channel_event);
 }
 bool comm_server_online(void) { return sv.state >= SV_ONLINE; }
+/* Диагностика (команда 112): состояние, пропуски статуса, попытки регистрации. */
+uint32_t comm_server_diag(void)
+{ return sv.state | (uint32_t)sv.misses << 8 | (uint32_t)sv.registrations << 16; }
 void comm_server_registered(uint8_t success)
 {
   if (sv.state != SV_REG_WAIT) return;

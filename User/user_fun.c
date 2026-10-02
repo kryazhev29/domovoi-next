@@ -7,6 +7,8 @@
 #include "../Modules/comm_server.h"
 #include "photo.h"
 #include "user_comm.h"
+#include "../Modules/comm_recover.h"
+#include "../Modules/comm_uart.h"
 #include "../Modules/comm_modem.h"
 #include "idindex.h"
 #include "usb_istr.h"
@@ -127,10 +129,13 @@ static void fw_resume_after_boot(void);
 static void server_rx_reset(void);
 /* Диагностика стенда, команда 111, только по USB, только чтение. */
 #define USB_DIAG_COMMAND 111u
+/* Диагностика связи, команда 112 (предложение для Протокол2), только по USB, только чтение. */
+#define USB_COMM_DIAG_COMMAND 112u
 extern unsigned int loop_max_ms, loop_stalls;
 uint32_t stack_free_bytes(void); // main.c: нетронутый снизу шаблон стека, байт
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
 static void user_send_usbDiag(uint8_t uniqId);
+static void user_send_commDiag(uint8_t uniqId);
 /* Порядок обновления по листу "Протокол2": статус 1 вне очереди (E95), режим обновления - бит
  * 11 (E440), команда 19 (E122), блоки 13 и 20 (E96, E123), команда 4 (E476, E477). Объявлено до
  * команды 19. */
@@ -2368,7 +2373,7 @@ static bool id_new_day(cellID_s *c){
 /* USB без верного ПИНа: только опознание, статус, проверка ПИНа и диагностика USB. */
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
-  return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;
+  return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND || cmd == USB_COMM_DIAG_COMMAND;
 }
 
 /* Статус 1 вне очереди (таблица E92, A57, A58): входы, выходы и триггеры (биты 0-7) и
@@ -3402,6 +3407,9 @@ if (cch != CH_USB && len >= 5){
     case USB_DIAG_COMMAND:
       if (cch == CH_USB)
         user_send_usbDiag(uniqId);
+      break;
+    case USB_COMM_DIAG_COMMAND:
+      if (cch == CH_USB) user_send_commDiag(uniqId);
       break;
 
     case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */
@@ -4697,6 +4705,42 @@ static void user_send_usbDiag(uint8_t uniqId)
   crc = crc16_calc(&send_buffer[4], len + 2);
   send_buffer[len + 6] = crc & 0xff;
   send_buffer[len + 7] = (crc >> 8) & 0xff;
+  usb_send(send_buffer, len + 8);
+}
+
+/* Команда 112, версия 1: uint32 младшим байтом вперёд.
+ *  0 версия, 1 мс,
+ *  2 модем: состояние | шаг<<8 | фаза<<16 | причина<<24, 3 код модема | сбой AT<<16, 4 пройденные шаги (биты),
+ *  5 канал (comm_channel_diag), 6 сервер (comm_server_diag), 7 восстановление (comm_recover_diag), 8 остаток паузы мс,
+ *  9..13 UART: ошибки, переполнения, ORE, FE, NE,
+ *  14 сбоев всего | следующий<<8 | последний код<<16,
+ *  15..24 кольцо сбоев: шаг | причина<<8 | секунды<<16,
+ *  25.. длительности шагов последней попытки, 10 мс (SLM_STEP_COUNT значений). */
+static void user_send_commDiag(uint8_t uniqId)
+{
+  uint32_t v[25 + SLM_STEP_COUNT];
+  uint8_t send_buffer[8 + 3 + sizeof(v)];
+  uint16_t len = 3 + sizeof(v), crc;
+  const slm_status_t *s = modem_slm336_status();
+  const slm_diag_t *d = modem_slm336_diag();
+  comm_uart_stats_t u;
+  uint32_t now = timers_getMillis();
+  comm_uart_stats(&u);
+  v[0] = 1; v[1] = now;
+  v[2] = s->state | (uint32_t)s->step << 8 | (uint32_t)s->phase << 16 | (uint32_t)s->reason << 24;
+  v[3] = s->modem_code | (uint32_t)s->at_fault << 16; v[4] = s->completed_steps;
+  v[5] = comm_channel_diag(); v[6] = comm_server_diag(); v[7] = comm_recover_diag(now, &v[8]);
+  v[9] = u.errors; v[10] = u.overflow; v[11] = u.ore; v[12] = u.fe; v[13] = u.ne;
+  v[14] = d->failure_count | (uint32_t)d->failure_next << 8 | (uint32_t)d->last_code << 16;
+  for (uint8_t i = 0; i < 10u; i++)
+    v[15 + i] = d->failure_step[i] | (uint32_t)d->failure_reason[i] << 8 | (uint32_t)d->failure_seconds[i] << 16;
+  for (uint8_t i = 0; i < SLM_STEP_COUNT; i++) v[25 + i] = d->steps[i];
+  send_buffer[0] = 'S'; send_buffer[1] = 'L'; send_buffer[2] = 'D'; send_buffer[3] = 'N';
+  send_buffer[4] = _1B(len); send_buffer[5] = _2B(len);
+  send_buffer[6] = 0; send_buffer[7] = uniqId; send_buffer[8] = USB_COMM_DIAG_COMMAND;
+  memcpy(&send_buffer[9], (uint8_t*)v, sizeof(v));
+  crc = crc16_calc(&send_buffer[4], len + 2);
+  send_buffer[len + 6] = crc & 0xff; send_buffer[len + 7] = (crc >> 8) & 0xff;
   usb_send(send_buffer, len + 8);
 }
 

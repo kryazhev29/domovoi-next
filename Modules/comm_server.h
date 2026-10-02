@@ -12,6 +12,7 @@ typedef struct {
 } comm_server_handlers_t;
 /* Ни ping, ни DNS не прошли: вместо переоткрытия TCP зовётся handler. */
 void comm_server_no_internet(void (*handler)(void));
+uint32_t comm_server_diag(void);
 void comm_server_init(const comm_server_handlers_t *handlers);
 void comm_server_poll(uint32_t now_ms);
 void comm_server_registered(uint8_t success);
