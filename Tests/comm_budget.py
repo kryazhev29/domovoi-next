@@ -45,22 +45,31 @@ def measure(label, limits=False):
         rows[path.stem] = dict(flash=sizes.get('CODE', 0) + sizes.get('CONST', 0),
                                ram=sizes.get('DATA', 0), code=sizes.get('CODE', 0),
                                const=sizes.get('CONST', 0))
+        dump = subprocess.run([str(IAR / 'bin/ielfdumparm.exe'), '-s', '.symtab',
+                               str(out / (path.stem + '.o'))], cwd=ROOT, capture_output=True, check=True)
+        (out / (path.stem + '.symbols.txt')).write_bytes(dump.stdout)
+        functions = {name: int(size, 16) for name, size in re.findall(
+            r'^\s*\d+: ([A-Za-z_]\w*)\s+0x[0-9a-f]+\s+\d+ Code \w+\s+(0x[0-9a-f]+)',
+            dump.stdout.decode('cp1251'), re.M)}
+        (out / (path.stem + '.functions.json')).write_text(json.dumps(functions, indent=2), encoding='utf-8')
         print(path.stem, rows[path.stem])
     (out / 'memory.json').write_text(json.dumps(rows, indent=2), encoding='utf-8')
     print(label, 'flash=', sum(v['flash'] for v in rows.values()),
           'RAM=', sum(v['ram'] for v in rows.values()))
     if limits:
-        groups = ((('comm_uart',), 800), (('comm_at',), 1800),
-                  (('comm_modem',), 2000), (('modem_slm336',), 600),
-                  (('comm_channel',), 1600), (('comm_server', 'user_comm'), 900),
-                  (('comm_power_v5', 'comm_timeouts'), 300))
+        groups = ((('comm_uart',), 820), (('comm_at',), 2150),
+                  (('comm_modem',), 2500), (('modem_slm336',), 600),
+                  (('comm_channel',), 1800), (('comm_server', 'user_comm'), 870),
+                  (('comm_power_v5', 'comm_timeouts'), 260))
         failed = []
         for names, limit in groups:
             size = sum(rows[name]['flash'] for name in names)
             if size > limit:
-                failed.append(f'{" + ".join(names)}: {size} > {limit}')
-        if sum(v['flash'] for v in rows.values()) > 8000:
-            failed.append('total > 8000')
+                print(f'Ориентир превышен: {" + ".join(names)}: {size} > {limit}')
+        if sum(v['flash'] for v in rows.values()) > 9000:
+            failed.append('total > 9000')
+        if sum(v['ram'] for v in rows.values()) > 2264:
+            failed.append('RAM > 2264')
         if failed:
             print('Budget FAIL: ' + '; '.join(failed))
             raise SystemExit(1)

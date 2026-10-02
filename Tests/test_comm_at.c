@@ -329,9 +329,20 @@ static void capture_tests(void)
   }
 }
 
+/* ѕробелы перед октетами сохран€ютс€; граница каждого Ч 255. */
+static void octet_tests(void)
+{
+  uint32_t ip[4];
+  const char *text = " 1. 2. 3. 255";
+  CHECK(comm_at_parse((const uint8_t *)text, (uint16_t)strlen(text), "\006.\006.\006.\006", ip));
+  CHECK(ip[0] == 1 && ip[1] == 2 && ip[2] == 3 && ip[3] == 255);
+  text = "1.2.3.256";
+  CHECK(!comm_at_parse((const uint8_t *)text, (uint16_t)strlen(text), "\006.\006.\006.\006", ip));
+}
+
 int main(void)
 {
-  split_tests(); prompt_tests(); body_tests(); bounds_tests(); budget_tests(); timeout_tests(); late_marker_test(); capture_tests();
+  octet_tests(); split_tests(); prompt_tests(); body_tests(); bounds_tests(); budget_tests(); timeout_tests(); late_marker_test(); capture_tests();
   puts("comm_at: split/concat/URC/echo/prompt/QIRD/late/wrap/owner/budget/captures PASS");
   return 0;
 }

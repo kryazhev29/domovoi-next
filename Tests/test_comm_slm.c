@@ -64,8 +64,8 @@ static const slm_handlers_t sim_handlers = {sim_gpio, sim_binary, sim_read_done,
 static void sim_reset(void)
 {
   modem_slm336_off();
-  memset(&slm_diag, 0, sizeof(slm_diag));
-  memset(&slm_status, 0, sizeof(slm_status));
+  memset(&slm.diag, 0, sizeof(slm.diag));
+  memset(&slm.attempt.status, 0, sizeof(slm.attempt.status));
   memset(&test_config, 0, sizeof(test_config));
   memcpy(test_config.host, "test.local", sizeof("test.local"));
   test_config.port = 7777; test_config.modem_type = 2;
@@ -99,7 +99,7 @@ static void sim_tx(void)
   for (unsigned i = 0; i < tx_count; ++i) interrupt_byte(0, USART_SR_TXE);
   interrupt_byte(0, USART_SR_TC);
   ++sim_commands;
-  unsigned step = slm_status.step;
+  unsigned step = slm.attempt.status.step;
   if (!strcmp(sim_sent, "AT+CMEE?")) { sim_reply("OK\r\n+CMEE: 1\r\nOK\r\n", 30); return; }
   if ((int)step == sim_silence_step) return;
   if ((int)step == sim_error_step) { sim_reply("ERROR\r\n", 30); return; }
@@ -127,7 +127,7 @@ static void sim_tx(void)
     else { sim_reply("OK\r\n", 30); sim_open_pending = true; sim_open_due = sim_now + sim_open_delay; }
   } else if (!strncmp(sim_sent, "AT+QIRD=", 8)) {
     sim_qird++;
-    CHECK(sim_read_size && slm_capacity <= 256);
+    CHECK(sim_read_size && slm.attempt.capacity <= 256);
     if (sim_qird == 1) sim_reply("+QIRD: 4\r\nOK\r\n\r\n+QIURC: \"recv\",0\r\nOK\r\n", 20);
     else if (sim_qird == 2) sim_reply("+QIURC: \"recv\",0\r\n+QIRD: 3\r\nXYZ\r\nOK\r\n", 20);
     else if (sim_qird == 3 && sim_empty_urc) sim_reply("+QIRD: 0\r\n+QIURC: \"recv\",0\r\nOK\r\n", 20);
@@ -156,18 +156,18 @@ static void sim_tick(void)
 static void sim_until(uint32_t limit)
 {
   unsigned watchdog = 0;
-  while (slm_status.state == SLM_STARTING && watchdog++ < limit / 10u) sim_tick();
+  while (slm.attempt.status.state == SLM_STARTING && watchdog++ < limit / 10u) sim_tick();
   CHECK(watchdog < limit / 10u);
 }
 static void sim_start(void) { CHECK(modem_slm336_start(&sim_settings, &sim_handlers, sim_now)); }
 static void path_tests(void)
 {
   sim_reset(); sim_start(); sim_until(15000);
-  CHECK(modem_slm336_ready() && slm_status.reason == SLM_ERR_NONE && !sim_gmm);
+  CHECK(modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_NONE && !sim_gmm);
   CHECK(sim_now >= 8000 && sim_now <= 11000 && sim_ticks > 800);
-  CHECK(slm_status.completed_phases == 63 && !slm_diag.failure_count);
-  CHECK((slm_diag.steps[SLM_ACTIVATE] * 10u) == 700);
-  CHECK((slm_diag.steps[SLM_TCP] * 10u) == 500);
+  CHECK(slm.attempt.status.completed_phases == 63 && !slm.diag.failure_count);
+  CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 700);
+  CHECK((slm.diag.steps[SLM_TCP] * 10u) == 500);
   CHECK(power_events == 5 && power_trace[0].pin == 13 && !power_trace[0].high);
   CHECK(power_trace[1].pin == 14 && power_trace[1].high);
   CHECK(power_trace[2].pin == 13 && power_trace[2].time == 2100 && power_trace[2].high);
@@ -181,26 +181,36 @@ static void path_tests(void)
   sim_reset(); sim_port_change = sim_rat_change = sim_early_open = 1;
   memcpy(test_config.apn, "manual.apn", sizeof("manual.apn")); sim_start(); sim_until(15000);
   CHECK(modem_slm336_ready() && !strcmp(slm_apn(),"manual.apn"));
-  CHECK(slm_status.completed_steps & ((uint32_t)1u << SLM_URC_SET));
-  CHECK(slm_status.completed_steps & ((uint32_t)1u << SLM_RAT_SET));
+  CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_URC_SET));
+  CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_RAT_SET));
+  /* Выбор APN по IMSI для всех операторов и неизвестного профиля. */
+  static const struct { const char *imsi, *apn; } profiles[] = {
+    {"250010123456789\r\nOK\r\n", "internet.mts.ru"}, {"250020123456789\r\nOK\r\n", "internet"},
+    {"250990123456789\r\nOK\r\n", "internet.beeline.ru"}, {"250200123456789\r\nOK\r\n", "internet.tele2.ru"},
+    {"250110123456789\r\nOK\r\n", "internet.yota"}, {"310010123456789\r\nOK\r\n", ""}
+  };
+  for (uint8_t i = 0; i < sizeof(profiles) / sizeof(profiles[0]); ++i) {
+    sim_reset(); sim_imsi = profiles[i].imsi; sim_start(); sim_until(15000);
+    CHECK(modem_slm336_ready() && !strcmp(slm_apn(), profiles[i].apn));
+  }
   sim_reset(); sim_trickle = 1; sim_start(); sim_until(20000); CHECK(modem_slm336_ready());
 }
 static void error_tests(void)
 {
   sim_reset(); sim_no_sim = 1; sim_start(); sim_until(15000);
-  CHECK(!modem_slm336_ready() && slm_status.reason == SLM_ERR_NO_SIM && slm_status.step == SLM_SIM);
-  CHECK(slm_diag.failure_count == 1 && slm_diag.failure_step[0] == SLM_SIM);
-  sim_reset(); sim_pin = 1; sim_start(); sim_until(15000); CHECK(slm_status.reason == SLM_ERR_PIN);
+  CHECK(!modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_NO_SIM && slm.attempt.status.step == SLM_SIM);
+  CHECK(slm.diag.failure_count == 1 && slm.diag.failure_step[0] == SLM_SIM);
+  sim_reset(); sim_pin = 1; sim_start(); sim_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_PIN);
   sim_reset(); sim_error_step = SLM_ACTIVATE; sim_start(); sim_until(15000);
-  CHECK(slm_status.reason == SLM_ERR_PDP && slm_status.step == SLM_ACTIVATE);
+  CHECK(slm.attempt.status.reason == SLM_ERR_PDP && slm.attempt.status.step == SLM_ACTIVATE);
   sim_reset(); sim_open_delay = 149000; sim_start(); sim_until(170000);
-  CHECK(modem_slm336_ready() && (slm_diag.steps[SLM_TCP] * 10u) == 149000);
+  CHECK(modem_slm336_ready() && (slm.diag.steps[SLM_TCP] * 10u) == 149000);
   sim_reset(); sim_open_delay = 151000; sim_start(); sim_until(170000);
-  CHECK(slm_status.reason == SLM_ERR_TIMEOUT && slm_status.step == SLM_TCP);
+  CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_TCP);
   for (unsigned i = 0; i < 200; ++i) sim_tick();
-  CHECK(!modem_slm336_ready() && slm_status.state == SLM_FAILED);
-  sim_reset(); sim_open_error = 1; sim_start(); sim_until(15000); CHECK(slm_status.reason == SLM_ERR_TCP && slm_status.modem_code == 566);
-  sim_reset(); sim_network_wait = 1; sim_start(); sim_until(80000); CHECK(slm_status.reason == SLM_ERR_TIMEOUT && slm_status.step == SLM_NETWORK);
+  CHECK(!modem_slm336_ready() && slm.attempt.status.state == SLM_FAILED);
+  sim_reset(); sim_open_error = 1; sim_start(); sim_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_TCP && slm.attempt.status.modem_code == 566);
+  sim_reset(); sim_network_wait = 1; sim_start(); sim_until(80000); CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_NETWORK);
 }
 static void timeout_step_tests(void)
 {
@@ -208,29 +218,29 @@ static void timeout_step_tests(void)
     sim_reset();
     test_config.modem_type = 255; sim_port_change = sim_rat_change = 1;
     sim_silence_step = (int)step; sim_start(); sim_until(180000);
-    CHECK(slm_status.state == SLM_FAILED && slm_status.reason == SLM_ERR_TIMEOUT);
-    CHECK(slm_status.step == step && slm_diag.failure_step[0] == step);
-    CHECK((slm_diag.steps[step] * 10u) > 0);
+    CHECK(slm.attempt.status.state == SLM_FAILED && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
+    CHECK(slm.attempt.status.step == step && slm.diag.failure_step[0] == step);
+    CHECK((slm.diag.steps[step] * 10u) > 0);
   }
   /* Питание: скачки тиков, wrap и точные границы без сжатия пауз. */
   sim_reset(); sim_now = UINT32_MAX - 999u; sim_start();
-  sim_now += 1999u; modem_slm336_poll(sim_now); CHECK(slm_status.step == SLM_DISCHARGE);
-  ++sim_now; modem_slm336_poll(sim_now); CHECK(slm_status.step == SLM_POWER_LEAD);
-  sim_now += 100000u; modem_slm336_poll(sim_now); CHECK(slm_status.step == SLM_POWER_RAIL);
-  sim_now += 899u; modem_slm336_poll(sim_now); CHECK(slm_status.step == SLM_POWER_RAIL);
-  ++sim_now; modem_slm336_poll(sim_now); CHECK(slm_status.step == SLM_POWER_KEY);
+  sim_now += 1999u; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_DISCHARGE);
+  ++sim_now; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_LEAD);
+  sim_now += 100000u; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_RAIL);
+  sim_now += 899u; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_RAIL);
+  ++sim_now; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_KEY);
 }
 static void read_tests(void)
 {
   sim_reset(); sim_empty_urc = 1; sim_start();
-  while (slm_status.step != SLM_TCP) sim_tick();
+  while (slm.attempt.status.step != SLM_TCP) sim_tick();
   sim_feed("+QIURC: \"recv\",0\r\n"); sim_until(15000);
   CHECK(modem_slm336_ready() && sim_qird == 0); /* Данные до TCP/вместимости не теряются. */
-  uint16_t tcp_time = slm_diag.steps[SLM_TCP];
+  uint16_t tcp_time = slm.diag.steps[SLM_TCP];
   sim_read_size = 64; modem_slm336_rx_capacity(sim_read_size);
   for (unsigned i = 0; i < 100; ++i) sim_tick();
   CHECK(sim_qird == 4 && sim_done_reads == 4 && sim_body_count == 7 && !sim_read_reason);
-  CHECK(slm_diag.steps[SLM_TCP] == tcp_time);
+  CHECK(slm.diag.steps[SLM_TCP] == tcp_time);
   CHECK(!memcmp(sim_body, "OK\r\nXYZ", 7) && !comm_at_busy());
   sim_feed("+QIURC: \"recv\",1\r\n");
   for (unsigned i = 0; i < 10; ++i) sim_tick(); CHECK(sim_qird == 4);
@@ -239,27 +249,27 @@ static void read_tests(void)
   sim_reset(); sim_start(); sim_until(15000); sim_read_size = 64;
   modem_slm336_rx_capacity(64); sim_silence_step = SLM_READ; sim_feed("+QIURC: \"recv\",0\r\n");
   for (unsigned i = 0; i < 110; ++i) sim_tick();
-  CHECK(slm_status.reason == SLM_ERR_TIMEOUT && slm_status.step == SLM_READ && sim_read_reason == SLM_ERR_TIMEOUT);
+  CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_READ && sim_read_reason == SLM_ERR_TIMEOUT);
 }
 static void edge_tests(void)
 {
   sim_reset(); sim_imsi = "999011234567890\r\nOK\r\n"; sim_start(); sim_until(15000);
   CHECK(modem_slm336_ready() && !slm_apn()[0]);
   sim_reset(); sim_activation_delay = 149000; sim_start(); sim_until(180000);
-  CHECK(modem_slm336_ready() && (slm_diag.steps[SLM_ACTIVATE] * 10u) == 149000);
+  CHECK(modem_slm336_ready() && (slm.diag.steps[SLM_ACTIVATE] * 10u) == 149000);
   sim_reset(); memset(test_config.host,'h',sizeof(test_config.host)-1u);
   memset(test_config.apn,'a',sizeof(test_config.apn)-1u);
   memset(test_config.login,'l',sizeof(test_config.login)-1u);
   memset(test_config.password,'p',sizeof(test_config.password)-1u);
   sim_start();
-  while (slm_status.step != SLM_TCP && slm_status.state == SLM_STARTING) sim_tick();
-  CHECK(slm_status.step == SLM_TCP && slm_status.state == SLM_STARTING); /* Максимальный QICSGP помещается. */
+  while (slm.attempt.status.step != SLM_TCP && slm.attempt.status.state == SLM_STARTING) sim_tick();
+  CHECK(slm.attempt.status.step == SLM_TCP && slm.attempt.status.state == SLM_STARTING); /* Максимальный QICSGP помещается. */
   modem_slm336_off();
   sim_reset(); sim_start(); sim_until(15000);
   sim_feed("+QIURC: \"closed\",1\r\n"); sim_tick(); CHECK(modem_slm336_ready());
-  sim_feed("+QIURC: \"closed\",0\r\n"); sim_tick(); CHECK(slm_status.reason == SLM_ERR_TCP);
+  sim_feed("+QIURC: \"closed\",0\r\n"); sim_tick(); CHECK(slm.attempt.status.reason == SLM_ERR_TCP);
   sim_reset(); sim_start(); sim_until(15000);
-  sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(slm_status.reason == SLM_ERR_PDP);
+  sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(slm.attempt.status.reason == SLM_ERR_PDP);
   sim_reset(); sim_start(); sim_until(15000); sim_read_size = 64; modem_slm336_rx_capacity(64);
   sim_pause = 1; sim_feed("+QIURC: \"recv\",0\r\n");
   for (unsigned i = 0; i < 15; ++i) sim_tick();
@@ -272,30 +282,30 @@ static void edge_tests(void)
   sim_pending[0] = 0; sim_feed("+QIRD: 4\r\nxy"); sim_tick();
   CHECK(sim_body_count == 2 && !sim_done_reads);
   interrupt_byte('z', USART_SR_FE); sim_tick();
-  CHECK(slm_status.reason == SLM_ERR_STREAM && sim_done_reads == 1 && sim_read_reason == SLM_ERR_STREAM);
+  CHECK(slm.attempt.status.reason == SLM_ERR_STREAM && sim_done_reads == 1 && sim_read_reason == SLM_ERR_STREAM);
   CHECK(!modem_slm336_ready());
 }
 static void diagnostic_tests(void)
 {
   sim_reset(); sim_start(); sim_until(15000);
-  uint32_t tcp_ms = (slm_diag.steps[SLM_TCP] * 10u);
+  uint32_t tcp_ms = (slm.diag.steps[SLM_TCP] * 10u);
   for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK((slm_diag.steps[SLM_TCP] * 10u) == tcp_ms);
-  CHECK(sizeof(slm_diag) <= 128);
+  CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
+  CHECK(sizeof(slm.diag) <= 128);
   modem_slm336_off(); sim_no_sim = 1; sim_start(); sim_until(15000);
-  CHECK(slm_diag.steps[SLM_SIM] == 10 && slm_status.reason == SLM_ERR_NO_SIM);
-  CHECK(slm_diag.failure_count == 1 && slm_diag.failure_step[0] == SLM_SIM);
-  CHECK(slm_diag.steps[SLM_ACTIVATE] == 0 && slm_diag.phases[SLM_PHASE_TCP] == 0);
+  CHECK(slm.diag.steps[SLM_SIM] == 10 && slm.attempt.status.reason == SLM_ERR_NO_SIM);
+  CHECK(slm.diag.failure_count == 1 && slm.diag.failure_step[0] == SLM_SIM);
+  CHECK(slm.diag.steps[SLM_ACTIVATE] == 0 && slm.diag.phases[SLM_PHASE_TCP] == 0);
   /* Десять сбоев, оборачивание кольца и сохранение между попытками. */
   for (unsigned i = 0; i < 12; ++i) {
     modem_slm336_off(); power_events = 0; sim_start(); sim_until(sim_now + 15000u);
   }
-  CHECK(slm_diag.failure_count == 10 && slm_diag.failure_next == 3);
-  for (unsigned i = 0; i < sizeof(slm_diag.failure_step); ++i)
-    CHECK(slm_diag.failure_step[i] == SLM_SIM && slm_diag.failure_reason[i] == SLM_ERR_NO_SIM);
+  CHECK(slm.diag.failure_count == 10 && slm.diag.failure_next == 3);
+  for (unsigned i = 0; i < sizeof(slm.diag.failure_step); ++i)
+    CHECK(slm.diag.failure_step[i] == SLM_SIM && slm.diag.failure_reason[i] == SLM_ERR_NO_SIM);
   sim_reset(); sim_start(); sim_now = 1500; modem_slm336_poll(sim_now);
-  CHECK((slm_diag.steps[SLM_DISCHARGE] * 10u) == 1500 && (slm_diag.phases[SLM_PHASE_POWER] * 10u) == 1500);
-  slm_now = slm_step_started + 1000000u; CHECK(slm_elapsed(slm_step_started) == UINT16_MAX);
+  CHECK((slm.diag.steps[SLM_DISCHARGE] * 10u) == 1500 && (slm.diag.phases[SLM_PHASE_POWER] * 10u) == 1500);
+  slm.attempt.now = slm.attempt.step_started + 1000000u; CHECK(slm_elapsed(slm.attempt.step_started) == UINT16_MAX);
 }
 static void settings_tests(void)
 {
@@ -308,13 +318,13 @@ static void settings_tests(void)
   memcpy(test_config.apn, "changed.apn", sizeof("changed.apn"));
   sim_until(15000); CHECK(modem_slm336_ready() && !strcmp(slm_apn(), "changed.apn"));
   sim_reset(); sim_start(); CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
-  sim_reset(); slm_settings = sim_settings;
+  sim_reset(); slm.settings = sim_settings;
   for (unsigned i = 0; i < 5; ++i) {
     static const uint8_t mncs[] = {1,2,99,20,11};
     static const char *expected[] = {"internet.mts.ru","internet","internet.beeline.ru","internet.tele2.ru","internet.yota"};
-    slm_mnc = mncs[i]; CHECK(!strcmp(slm_apn(),expected[i]));
+    slm.attempt.mnc = mncs[i]; CHECK(!strcmp(slm_apn(),expected[i]));
   }
-  slm_mnc = 88; CHECK(!slm_apn()[0]);
+  slm.attempt.mnc = 88; CHECK(!slm_apn()[0]);
 }
 int main(void)
 {

@@ -26,7 +26,6 @@ static void channel_emit(uint8_t kind, uint8_t value)
 static bool channel_ip(const uint8_t *p, uint16_t n, const char *quoted, const char *plain, uint32_t *values)
 {
   if (!comm_at_parse(p,n,quoted,values) && !comm_at_parse(p,n,plain,values)) return false;
-  for (uint8_t i = 0; i < 4; ++i) if (values[i] > 255u) return false;
   return true;
 }
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
@@ -56,13 +55,13 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
       uint32_t code;
       if (!comm_at_scan(p,n,&pos,UINT32_MAX,&code) || code || pos >= n || p[pos++] != ',') return;
       p += pos; n = (uint16_t)(n - pos);
-      if (channel_ip(p,n,"\"\001.\001.\001.\001\",\001,\001,\001",
-                        "\001.\001.\001.\001,\001,\001,\001",v)) ch.probe_answer = 1;
+      if (channel_ip(p,n,"\"\006.\006.\006.\006\",\001,\001,\001",
+                        "\006.\006.\006.\006,\001,\001,\001",v)) ch.probe_answer = 1;
       else if (comm_at_parse(p,n,"\001,\001,\001,\001,\001,\001",v) && v[1] > 0 && v[1] <= v[0]) ch.probe_answer = 1;
     } else if (ch.probe_active == COMM_CH_DNS && comm_at_prefix(p,n,"+QIURC: \"dnsgip\",")) {
       uint16_t pos = sizeof("+QIURC: \"dnsgip\",") - 1u;
       p += pos; n = (uint16_t)(n - pos);
-      if (channel_ip(p,n,"\"\001.\001.\001.\001\"","\001.\001.\001.\001",v)
+      if (channel_ip(p,n,"\"\006.\006.\006.\006\"","\006.\006.\006.\006",v)
           && ch.probe_answer == 2) ch.probe_answer = 1;
       else if (comm_at_parse(p,n,"\001,\001,\001",v)) ch.probe_answer = v[0] == 0 && v[1] > 0 ? 2 : 3;
     }
@@ -117,10 +116,16 @@ bool comm_channel_probe(uint8_t kind)
 }
 static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uint8_t op)
 {
-  comm_at_request_t req = {(const uint8_t *)s, (uint16_t)strlen(s), mode, comm_timeouts[timeout_id]};
-  uint8_t r = modem_slm336_command(&req, ch.now);
+  comm_at_request_t req = {(const uint8_t *)s, s ? (uint16_t)strlen(s) : 0, mode, comm_timeouts[timeout_id]};
+  uint8_t r = op == OP_OPEN ? modem_slm336_tcp_open(ch.address, ch.now)
+    : op == OP_SEND ? modem_slm336_payload(frame, ch.frame_count, ch.now)
+    : modem_slm336_command(&req, ch.now);
   if (r == COMM_AT_BUSY) return false;
-  if (r != COMM_AT_ACCEPTED) { ch.state = CH_FAULT; channel_emit(COMM_CH_FAULT, r); return false; }
+  if (r != COMM_AT_ACCEPTED) {
+    if (op == OP_SEND) comm_channel_reopen(0);
+    else { ch.state = CH_FAULT; channel_emit(COMM_CH_FAULT, r); }
+    return false;
+  }
   ch.operation = op; ch.done = ch.answer = 0; ch.operation_since = ch.now; return true;
 }
 static void channel_completed(void)
@@ -212,12 +217,9 @@ void comm_channel_poll(uint32_t now_ms)
   }
   if (ch.state == CH_PAUSE) {
     if (now_ms - ch.operation_since < ch.reopen_pause) return;
-    uint8_t r = modem_slm336_tcp_open(ch.address, now_ms);
-    if (r == COMM_AT_BUSY) return;
-    if (r != COMM_AT_ACCEPTED) { ch.state = CH_FAULT; channel_emit(COMM_CH_FAULT, r); return; }
-    ch.flags.peer_closed = 0;
-    ch.state = CH_OPENING; ch.operation = OP_OPEN; ch.flags.open_seen = ch.done = ch.answer = 0;
-    ch.operation_since = now_ms; ++ch.connections; return;
+    if (!channel_command(NULL, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_OPEN)) return;
+    ch.flags.peer_closed = ch.flags.open_seen = 0;
+    ch.state = CH_OPENING; ++ch.connections; return;
   }
   if (ch.state != CH_OPEN || ch.operation) return;
   if (ch.tx_state == TX_QUEUED) {
@@ -225,23 +227,19 @@ void comm_channel_poll(uint32_t now_ms)
     n = comm_at_decimal(cmd, sizeof(cmd), n, ch.frame_count);
     if (n < sizeof(cmd) && channel_command(cmd, COMM_AT_PROMPT, COMM_T_SEND_PROMPT, OP_PROMPT)) ch.tx_state = TX_PROMPT;
   } else if (ch.tx_state == TX_PAYLOAD) {
-    uint8_t r = modem_slm336_payload(frame, ch.frame_count, now_ms);
-    if (r == COMM_AT_ACCEPTED) { ch.operation = OP_SEND; ch.done = ch.answer = 0; ch.tx_state = TX_SENDING; }
-    else if (r != COMM_AT_BUSY) comm_channel_reopen(0);
+    if (channel_command(NULL, COMM_AT_SEND, COMM_T_SEND_RESULT, OP_SEND)) ch.tx_state = TX_SENDING;
   } else if (ch.tx_state == TX_ACK && (int32_t)(now_ms - ch.ack_next) >= 0)
     channel_command("AT+QISEND=0,0", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_ACK);
-  else if (ch.tx_state == TX_FREE && ch.probe == COMM_CH_PING && !ch.probe_active) {
-    if (channel_command("AT+QPING=1,\"ya.ru\",3,2", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_PING)) {
-      ch.probe_active = COMM_CH_PING; ch.probe_answer = 0; ch.probe_since = now_ms; ch.probe_generation = ch.generation;
-    }
-  }
-  else if (ch.tx_state == TX_FREE && ch.probe == COMM_CH_DNS && !ch.probe_active) {
+  else if (ch.tx_state == TX_FREE && ch.probe && !ch.probe_active) {
+    bool dns = ch.probe == COMM_CH_DNS;
     /* URC DNS не содержит ID: новое поколение не запускаем в старом окне. */
-    if (ch.flags.dns_fence && now_ms - ch.dns_since < comm_timeouts[COMM_T_DNS_FENCE]) {
+    if (dns && ch.flags.dns_fence && now_ms - ch.dns_since < comm_timeouts[COMM_T_DNS_FENCE]) {
       ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, 0);
-    } else if (channel_command("AT+QIDNSGIP=1,\"ya.ru\"", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_DNS)) {
-      ch.flags.dns_fence = 1; ch.dns_since = now_ms;
-      ch.probe_active = COMM_CH_DNS; ch.probe_answer = 0; ch.probe_since = now_ms; ch.probe_generation = ch.generation;
+    } else if (channel_command(dns ? "AT+QIDNSGIP=1,\"ya.ru\"" : "AT+QPING=1,\"ya.ru\",3,2",
+                              COMM_AT_TEXT, COMM_T_AT_SIMPLE, dns ? OP_DNS : OP_PING)) {
+      if (dns) { ch.flags.dns_fence = 1; ch.dns_since = now_ms; }
+      ch.probe_active = ch.probe; ch.probe_answer = 0;
+      ch.probe_since = now_ms; ch.probe_generation = ch.generation;
     }
   }
 }

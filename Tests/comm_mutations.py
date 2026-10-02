@@ -29,7 +29,7 @@ def run():
         ('uart', 'consume-unmasked', '  __disable_irq();\n  __DMB();\n  rx_read', '  __DMB();\n  rx_read'),
         ('uart', 'abort-keeps-pointer', '  tx_data = NULL;\n  rx_write', '  rx_write'),
         ('uart', 'tx-not-atomic', '  __disable_irq();\n  tx_data', '  tx_data'),
-        ('at', 'final-prefix', 'comm_at_equal(line, line_count, "OK")', 'comm_at_prefix(line, line_count, "OK")'),
+        ('at', 'final-prefix', 'count == n && !memcmp(data, names, n)', 'count >= n && !memcmp(data, names, n)'),
         ('at', 'line-off-by-one', 'line_count >= sizeof(line)', 'line_count + 1u >= sizeof(line)'),
         ('at', 'late-qird-as-text', '(state == RUN || (state >= DRAIN && state <= SYNC_WAIT))\n      && (mode == COMM_AT_SLM_QIRD', 'state == RUN\n      && (mode == COMM_AT_SLM_QIRD'),
         ('at', 'late-body-to-sink', 'state != RUN ? count : handlers.binary(view, count)', 'handlers.binary(view, count)'),
@@ -38,11 +38,11 @@ def run():
         ('at', 'old-OK-sync', 'state == SYNC_WAIT && sync_seen && code == COMM_AT_OK', 'state == SYNC_WAIT && code == COMM_AT_OK'),
         ('modem', 'direct-push', ',0,0\\0"', ',0,1\\0"'),
         ('modem', 'QIACT-20s', '150000, /* COMM_T_QIACT */', '20000, /* COMM_T_QIACT */'),
-        ('modem', 'TCP-before-URC', 'if (slm_open_seen) {', 'if (slm_tcp_ack) {'),
-        ('modem', 'drop-QIRD-followup', 'slm_recv = slm_recv || slm_bytes;', 'slm_recv = 0;'),
+        ('modem', 'TCP-before-URC', 'if (slm.attempt.open_seen) {', 'if (slm.attempt.tcp_ack) {'),
+        ('modem', 'drop-QIRD-followup', 'slm.attempt.recv = slm.attempt.recv || slm.attempt.bytes;', 'slm.attempt.recv = 0;'),
         ('modem', 'ignore-manual-APN', 'if (slm_text(SLM_CFG_APN)[0]) return slm_text(SLM_CFG_APN);', 'if (slm_text(SLM_CFG_APN)[0]) return "";'),
-        ('modem', 'grow-final-TCP-time', '|| slm_status.state == SLM_STARTING || slm_status.step == SLM_READ)', '|| slm_status.state != SLM_IDLE)'),
-        ('modem', 'TCP-time-overwritten-by-read', '(next <= SLM_STEP_COUNT && (slm_status.state != SLM_OPEN || next != SLM_READ))', '(next <= SLM_STEP_COUNT)'),
+        ('modem', 'grow-final-TCP-time', 'slm.attempt.status.state == SLM_STARTING || slm.attempt.status.step == SLM_READ', 'slm.attempt.status.state != SLM_IDLE'),
+        ('modem', 'TCP-time-overwritten-by-read', '(next <= SLM_STEP_COUNT && (slm.attempt.status.state != SLM_OPEN || next != SLM_READ))', '(next <= SLM_STEP_COUNT)'),
     )
     for group, label, old, new in cases:
         text = sources[group]

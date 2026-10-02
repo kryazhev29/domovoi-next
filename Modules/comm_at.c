@@ -6,7 +6,8 @@
 static uint8_t command[128], line[192];
 static comm_at_handlers_t handlers;
 static uint32_t started, timeout, recovery;
-static uint16_t command_count, line_count, remaining, read_limit, modem_code;
+static uint16_t remaining, read_limit, modem_code;
+static uint8_t command_count, line_count;
 static uint8_t state, mode, grammar, result, in_poll, cr, prompt_space, header, sync_seen;
 enum { IDLE, RUN, COMPLETE, DRAIN, SYNC_SEND, SYNC_WAIT, SYNC_COMPLETE, FAULT };
 enum { LINES, M66_HEADER, BODY, BODY_CR, BODY_LF };
@@ -136,7 +137,7 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
     command[i] = value;
   }
   command[request->count] = '\r';
-  command_count = (uint16_t)(request->count + 1u);
+  command_count = (uint8_t)(request->count + 1u);
   mode = request->mode;
   read_limit = 0;
   if ((mode == COMM_AT_SLM_QIRD || mode == COMM_AT_M66_QIRD)
@@ -157,14 +158,21 @@ static bool solicited(void)
   return line_count > n && line[n] == ':' && !memcmp(line, command + 2, n);
 }
 
+/* Строки без массива указателей; результат 1..N, ноль — нет совпадения. */
+uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names)
+{
+  for (uint8_t i = 1; *names; ++i) {
+    size_t n = strlen(names);
+    if (count == n && !memcmp(data, names, n)) return i;
+    names += n + 1u;
+  }
+  return 0;
+}
 static bool urc(void)
 {
-  static const char * const names[] = {"RING", "NO CARRIER", "Call Ready", "SMS Ready",
-    "AT READY", "RDY", "SEND OK", "SEND FAIL"};
-  if ((line_count && line[0] == '+' && !solicited()) || (state != RUN && state != DRAIN)) return true;
-  for (uint8_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
-    if (comm_at_equal(line,line_count,names[i])) return true;
-  return false;
+  return (line_count && line[0] == '+' && !solicited()) || (state != RUN && state != DRAIN)
+    || comm_at_choice(line, line_count, "RING\0NO CARRIER\0Call Ready\0SMS Ready\0"
+                                      "AT READY\0RDY\0SEND OK\0SEND FAIL\0");
 }
 
 /* M66 AT V2.1: IPv4:port,TCP|UDP,length; поля строго без пробелов. */
@@ -209,13 +217,9 @@ uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint32_t timeout_ms
 static bool final(uint8_t *code)
 {
   uint16_t pos; uint32_t value;
-  if (state == RUN && mode == COMM_AT_SEND) {
-    if (comm_at_equal(line, line_count, "SEND OK")) { *code = COMM_AT_OK; return true; }
-    if (comm_at_equal(line, line_count, "SEND FAIL")) { *code = COMM_AT_ERROR; return true; }
-    if (comm_at_equal(line, line_count, "OK")) return false;
-  }
-  if (comm_at_equal(line, line_count, "OK")) { *code = COMM_AT_OK; return true; }
-  if (comm_at_equal(line, line_count, "ERROR")) { *code = COMM_AT_ERROR; return true; }
+  uint8_t matched = comm_at_choice(line, line_count, state == RUN && mode == COMM_AT_SEND
+    ? "SEND OK\0SEND FAIL\0ERROR\0" : "OK\0ERROR\0");
+  if (matched) { *code = matched == 1 ? COMM_AT_OK : COMM_AT_ERROR; return true; }
   if (!comm_at_prefix(line, line_count, "+CME ERROR:")) return false;
   pos = comm_at_spaces(line, line_count, sizeof("+CME ERROR:") - 1u);
   uint8_t letter = pos < line_count ? line[pos] | 32u : 0;
@@ -231,6 +235,9 @@ static bool final(uint8_t *code)
   return true;
 }
 
+#ifdef __IAR_SYSTEMS_ICC__
+#pragma inline=never
+#endif
 static void complete_line(void)
 {
   uint8_t code;
@@ -383,9 +390,9 @@ bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uin
     uint8_t token = (uint8_t)*pattern++;
     if (token == '*') return true;
     if (token == '|') return pos == count || data[pos] == ',';
-    if (token <= 5) {
-      if (token == 1 || token == 5) pos = comm_at_spaces(data, count, pos);
-      uint32_t limit = token == 3 ? 255u : token >= 4 ? UINT16_MAX : UINT32_MAX;
+    if (token <= 6) {
+      if (token == 1 || token >= 5) pos = comm_at_spaces(data, count, pos);
+      uint32_t limit = (token == 3 || token == 6) ? 255u : token >= 4 ? UINT16_MAX : UINT32_MAX;
       if (!comm_at_number(data, count, &pos, limit, out++)) return false;
     } else if (!take(data, count, &pos, token)) return false;
   }

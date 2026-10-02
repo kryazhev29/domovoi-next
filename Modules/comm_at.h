@@ -6,12 +6,13 @@
 
 /* Общий разбор ограниченной строки; пробелы убираются только явно. */
 bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text);
+uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names);
 bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text);
 uint16_t comm_at_spaces(const uint8_t *data, uint16_t count, uint16_t pos);
 bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
                     uint32_t limit, uint32_t *value);
 /* Доверенный шаблон: 1 uint32 с пробелами, 2 uint32, 3 октет,
-   4 uint16, 5 uint16 с пробелами, * произвольный хвост; out по числу меток. */
+   4 uint16, 5 uint16 с пробелами, 6 октет с пробелами, * произвольный хвост; out по числу меток. */
 bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uint32_t *out);
 /* Общая сборка команды; count==capacity означает переполнение. */
 uint16_t comm_at_copy(char *out, uint16_t capacity, uint16_t pos, const char *text);
