@@ -17,24 +17,28 @@ enum { SLM_IDLE, SLM_STARTING, SLM_OPEN, SLM_FAILED };
 enum { SLM_ERR_NONE, SLM_ERR_TIMEOUT, SLM_ERR_AT, SLM_ERR_RESPONSE,
        SLM_ERR_NO_SIM, SLM_ERR_PIN, SLM_ERR_PUK, SLM_ERR_NETWORK,
        SLM_ERR_PDP, SLM_ERR_TCP, SLM_ERR_STREAM, SLM_ERR_NO_ANSWER, SLM_ERR_TYPE };
+/* Длительности последней попытки: 10 мс, насыщение при 655,35 с.
+   Кольцо сбоев — единственная история; времена в секундах от старта попытки. */
 typedef struct {
-  uint32_t start_ms, duration_ms;
-  uint32_t success_start_ms, success_ms, failure_start_ms, failure_ms;
-} slm_timing_t;
-typedef struct {
-  slm_timing_t steps[SLM_STEP_COUNT], phases[SLM_PHASE_COUNT], at;
-  /* success/failure — история; completed — только текущий запуск. */
-  uint32_t success_steps, failure_steps, completed_steps;
-  uint8_t success_phases, failure_phases, completed_phases, at_fault;
-  uint8_t state, step, phase, last_success_step, last_failure_step, reason;
-  uint16_t modem_code;
+  uint16_t steps[SLM_STEP_COUNT], phases[SLM_PHASE_COUNT];
+  uint32_t failure_seconds[10];
+  uint8_t failure_step[10], failure_reason[10];
+  uint16_t last_code;
+  uint8_t failure_next, failure_count;
 } slm_diag_t;
 typedef struct {
-  char host[64], apn[31], login[31], password[31];
-  uint16_t port;
-  uint8_t modem_type; /* Совместимо: 2=SLM336; 0/255=пусто, 1/3 здесь не поддержаны. */
-  uint8_t network_type; /* Поле команды 12: 0..4, без подмены ручного выбора. */
-} slm_config_t;
+  uint32_t completed_steps;
+  uint16_t modem_code;
+  uint8_t state, step, phase, reason, completed_phases, at_fault;
+} slm_status_t;
+enum { SLM_CFG_HOST, SLM_CFG_APN, SLM_CFG_LOGIN, SLM_CFG_PASSWORD,
+       SLM_CFG_PORT, SLM_CFG_TYPE, SLM_CFG_NETWORK };
+typedef struct {
+  /* Вместимость возвращает владелец через sizeof своего поля.
+     Указатель действует только в текущем вызове, драйвер его не сохраняет. */
+  const char *(*text)(uint8_t field, uint16_t *capacity);
+  uint16_t (*number)(uint8_t field);
+} slm_settings_t;
 typedef struct {
   comm_power_gpio_t gpio;
   uint16_t (*binary)(const uint8_t *data, uint16_t count);
@@ -43,12 +47,13 @@ typedef struct {
   void (*type_found)(uint8_t type);
 } slm_handlers_t;
 /* Только для изолированного нового сеанса: отменяет UART и включает v5.
-   Конфигурация копируется в собственный контекст, heap не используется. */
-bool modem_slm336_start(const slm_config_t *config, const slm_handlers_t *handlers, uint32_t now_ms);
+   Копируются только функции-геттеры, heap не используется. */
+bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms);
 void modem_slm336_poll(uint32_t now_ms);
 bool modem_slm336_ready(void);
 /* Вместимость будущего потребителя, 1..256; ноль откладывает новые QIRD. */
 void modem_slm336_rx_capacity(uint16_t count);
 const slm_diag_t *modem_slm336_diag(void);
+const slm_status_t *modem_slm336_status(void);
 void modem_slm336_off(void);
 #endif
