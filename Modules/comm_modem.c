@@ -218,12 +218,12 @@ uint8_t comm_modem_state(void) { return slm.attempt.status.state; }
 const comm_modem_profile_t *comm_modem_profile(void) { return slm.profile; }
 const slm_settings_t *comm_modem_settings(void) { return &slm.settings; }
 bool comm_modem_reserve(void) { return slm.settings.number && slm.settings.number(SLM_CFG_RESERVE); }
-/* Шаблон настройки: 1 сеть, 2 APN, 3/4 учётные данные,
-   8 авторизация, 9 второй запрос регистрации сети. */
+/* Шаблон: 1 сеть, 2 APN, 3/4 учётные данные, 5 адрес сервера (host),
+   6/7 число (порт или длина QIRD), 8 авторизация, 9 второй запрос регистрации.
+   Одна сборка на модем и канал. */
 static const char *slm_apn(void);
-static uint16_t slm_build(char *cmd, uint16_t size, uint8_t step)
+uint16_t comm_modem_build(char *cmd, uint16_t size, const char *p, const char *host, uint16_t value)
 {
-  const char *p = slm.profile->commands + slm.profile->steps[step - SLM_AT_READY].command;
   uint16_t n = comm_at_copy(cmd, size, 0, *p && *p != 'E' ? "AT+" : "AT");
   while (*p && n < size) {
     uint8_t token = (uint8_t)*p++;
@@ -234,6 +234,8 @@ static uint16_t slm_build(char *cmd, uint16_t size, uint8_t step)
     case 2: text = slm_apn(); break;
     case 3: text = slm_text(SLM_CFG_LOGIN); break;
     case 4: text = slm_text(SLM_CFG_PASSWORD); break;
+    case 5: text = host; break;
+    case 6: case 7: number = value; break;
     case 8: number = slm_text(SLM_CFG_LOGIN)[0] || slm_text(SLM_CFG_PASSWORD)[0]; break;
     case 9: text = slm.profile->network[slm.attempt.query]; break;
     default: cmd[n++] = (char)token; continue;
@@ -246,7 +248,8 @@ static uint16_t slm_build(char *cmd, uint16_t size, uint8_t step)
 static uint8_t slm_issue(uint8_t step)
 {
   char cmd[128];
-  uint16_t n = slm_build(cmd, sizeof(cmd), step);
+  uint16_t n = comm_modem_build(cmd, sizeof(cmd),
+    slm.profile->commands + slm.profile->steps[step - SLM_AT_READY].command, NULL, 0);
   if (n >= sizeof(cmd)) return COMM_AT_INVALID;
   comm_at_request_t req = {(const uint8_t *)cmd, n, COMM_AT_TEXT,
     comm_timeouts[slm.profile->steps[step - SLM_AT_READY].timeout]};

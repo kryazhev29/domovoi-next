@@ -24,4 +24,6 @@ bool comm_modem_start(const comm_modem_profile_t *profile, const slm_settings_t 
                       const slm_handlers_t *handlers, uint32_t now_ms);
 const comm_modem_profile_t *comm_modem_profile(void);
 const slm_settings_t *comm_modem_settings(void);
+/* Команда по шаблону профиля; возвращает длину, >= size — не поместилась. */
+uint16_t comm_modem_build(char *cmd, uint16_t size, const char *tpl, const char *host, uint16_t value);
 #endif
