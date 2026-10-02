@@ -905,6 +905,9 @@ void user_init(void)
 
   // инициализаци€ переменных
   user_initvariables();
+  // —брос по питанию: одна запись; при отказе журнала сохран€ем метку.
+  if (BKP->DR1 == PVD_RESET_MARK && log_addSystemEvent(LOG_SYS_RESETONPOWER))
+    BKP->DR1 = 0;
   app_boot_metadata();
 
   // ¬иганд

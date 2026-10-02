@@ -284,7 +284,12 @@ void PVD_IRQHandler(void)
   // сброс только при подтверждённом падении питания
   if (EXTI_GetITStatus(EXTI_Line16) != RESET) {
     EXTI_ClearITPendingBit(EXTI_Line16);
-    if (PWR_GetFlagStatus(PWR_FLAG_PVDO) != RESET) NVIC_SystemReset();
+    if (PWR_GetFlagStatus(PWR_FLAG_PVDO) != RESET) {
+      // Причина переживает системный сброс; журнал заполняется после старта.
+      BKP->DR1 = PVD_RESET_MARK;
+      __DSB();
+      NVIC_SystemReset();
+    }
   }
 }
 

@@ -37,6 +37,7 @@ static const struct { int value, sheet; const char *name; } table[] = {
   {LOG_SYS_RESETONSHEDULE, 34, "reset by schedule"}, {LOG_SYS_RECVSMS, 35, "SMS in"},
   {LOG_SYS_SENDSMS, 36, "SMS out"}, {LOG_SYS_LOWBALANCE, 37, "low balance"},
   {LOG_SYS_LOWSIGNAL, 38, "low signal"},
+  {LOG_SYS_RESETONPOWER, 39, "power reset"},
   {LOG_CON_IDNOTINBASE, 65, "ID not in base"}, {LOG_CON_IDBLOCKED, 66, "ID blocked"},
   {LOG_CON_IDADDBYSMS, 67, "ID added by SMS"}, {LOG_CON_IDADDBYAUTOREG, 68, "ID added by autoregistration"},
   {LOG_CON_OUTONBYPHONE, 69, "output by phone"}, {LOG_CON_OUTONBYRFID, 70, "output by RFID 485"},

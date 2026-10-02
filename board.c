@@ -95,7 +95,7 @@ void board_init (void)
   
   // детектор напряжения питания процессора
   PWR_PVDLevelConfig(PWR_PVDLevel_2V5); // устанавливаем порог в 2,5 В
-  // разрешаем прерывание по спадающему фронту чтобы мгновенно перезагрузить
+  // разрешаем прерывание по нарастающему фронту PVDO
   // PVDO растёт при падении питания: запускаем согласованный сброс ниже 2,5 В
   EXTI_InitTypeDef EXTI_InitStructure;
   EXTI_InitStructure.EXTI_Line = EXTI_Line16;

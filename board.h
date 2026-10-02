@@ -22,6 +22,9 @@
 #define BOOTLOADERSIZE                  (uint32_t)0x8000 /* 32768 байт*/
 #define CPU_ENDMEMORYADDRESS            (uint32_t)0x0801ffff
 
+/* BKP_DR1 свободен в приложении и загрузчике; метка причины сброса по питанию. */
+#define PVD_RESET_MARK                  0x5056u
+
 #define APLICATION_BASE                 (uint32_t)(0x08000000 + BOOTLOADERSIZE)
 #define APLICATION_ADDRESS              (uint32_t)(APLICATION_BASE + FWBLOCK_OFFSET)
 

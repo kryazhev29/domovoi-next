@@ -60,7 +60,8 @@ typedef enum{
   LOG_SYS_RECVSMS,
   LOG_SYS_SENDSMS,
   LOG_SYS_LOWBALANCE,
-  LOG_SYS_LOWSIGNAL  
+  LOG_SYS_LOWSIGNAL,
+  LOG_SYS_RESETONPOWER = 39 // Перезагрузка по падению питания; аргументы нулевые
 }logSystem_e;
 
 // событиe доступа журнала
