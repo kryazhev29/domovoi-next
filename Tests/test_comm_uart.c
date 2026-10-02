@@ -120,14 +120,14 @@ static uint32_t __get_PRIMASK(void) { return primask; }
 static void __disable_irq(void) { primask=1; }
 static void __set_PRIMASK(uint32_t m) {
   primask=m;
-  if (!m && pending_sr) { uint32_t sr=pending_sr; pending_sr=0; interrupt_byte(pending_byte,sr); }
+  if (!m && pending_sr) { uint32_t sr=pending_sr; pending_sr=0; interrupt_byte(pending_byte,sr); comm_uart_tick(); }
 }
 static void __DMB(void) {
   dma_clear_flags(); barriers++;
   if (edge_at && barriers==edge_at) {
     edge_at=0; dma_byte(pending_byte,false);
     if (primask) pending_sr=USART_SR_IDLE|USART_SR_TXE|USART_SR_TC;
-    else interrupt_byte(pending_byte,USART_SR_IDLE|USART_SR_TXE|USART_SR_TC);
+    else { interrupt_byte(pending_byte,USART_SR_IDLE|USART_SR_TXE|USART_SR_TC); comm_uart_tick(); }
   }
 }
 static void GPIO_Init(uint32_t port,GPIO_InitTypeDef *p) { CHECK(port==GPIOB); if (p->GPIO_Mode==GPIO_Mode_IPU) input_pins|=p->GPIO_Pin; else { if (p->GPIO_Mode==GPIO_Mode_Out_PP) gpio_pins|=p->GPIO_Pin; else { CHECK(p->GPIO_Mode==GPIO_Mode_AF_PP); output_pins|=p->GPIO_Pin; } } }
@@ -148,7 +148,7 @@ static void reset(void) {
   memset(&dma,0,sizeof(dma)); memset(&dma_channel,0,sizeof(dma_channel)); dma_irqs=uart_irqs=0;
   input_pins=output_pins=gpio_pins=apb1=apb2=0; rts_stop=true; rts_writes=0; comm_uart_init(115200); reads=0;
   CHECK(primask==0 && apb1==RCC_APB1Periph_USART3 && apb2==(RCC_APB2Periph_AFIO|RCC_APB2Periph_GPIOB));
-  CHECK(!(regs.CR1&USART_CR1_RXNEIE) && (regs.CR1&USART_CR1_IDLEIE) && (regs.CR3&USART_CR3_EIE) && (regs.CR3&USART_CR3_DMAR));
+  CHECK(!(regs.CR1&(USART_CR1_RXNEIE|USART_CR1_IDLEIE)) && (regs.CR3&USART_CR3_EIE) && (regs.CR3&USART_CR3_DMAR));
   CHECK(dma_channel.CNDTR==512 && dma_channel.CCR==(DMA_CCR3_EN|DMA_CCR3_CIRC|DMA_CCR3_MINC|DMA_CCR3_HTIE|DMA_CCR3_TCIE|DMA_CCR3_TEIE));
   CHECK(dma_channel.CMAR==(uint32_t)(uintptr_t)rx && dma_channel.CPAR==(uint32_t)(uintptr_t)&regs.DR);
   CHECK(rcc.AHBENR&RCC_AHBENR_DMA1EN);
@@ -309,17 +309,17 @@ static void dma_tests(void) {
   }
   received=drain(received); CHECK(received==131072 && !uart_irqs && dma_irqs==512);
   comm_uart_stats(&stats); CHECK(!stats.errors && !stats.overflow);
-  /* Паузы: IDLE публикует неполную половину, RXNE IRQ отсутствует. */
+  /* IDLE и новый RXNE при другом IRQ не должны читать DR вместо DMA. */
   reset(); unsigned sent=0; received=0;
   for (unsigned block=1;block<=73;block++) {
     for (unsigned j=0;j<block;j++) dma_byte((uint8_t)sent++,true);
-    regs.SR=USART_SR_IDLE; regs.DR=0xa5; USART3_IRQHandler();
-    CHECK(!(regs.SR&USART_SR_IDLE)); received=drain(received);
+    regs.SR=USART_SR_IDLE|USART_SR_RXNE; regs.DR=0xa5; USART3_IRQHandler();
+    CHECK((regs.SR&USART_SR_RXNE) && regs.DR==0xa5); received=drain(received);
   }
-  CHECK(received==sent && reads==73); comm_uart_stats(&stats); CHECK(!stats.errors);
-  /* DMA пишет ещё один байт посреди публикации участка по IDLE. */
+  CHECK(received==sent && reads==0); comm_uart_stats(&stats); CHECK(!stats.errors);
+  /* DMA пишет ещё один байт посреди публикации участка по тику. */
   reset(); dma_byte('A',true); pending_byte='B'; edge_at=barriers+1;
-  regs.SR=USART_SR_IDLE; USART3_IRQHandler();
+  regs.SR=USART_SR_IDLE; SysTick_Handler();
   CHECK(comm_uart_peek(&p)==2 && p[0]=='A' && p[1]=='B');
   CHECK(comm_uart_consume(2) && comm_uart_peek(&p)==0);
   /* HT/TC публикуют RX без помощи peek и тика. */

@@ -92,9 +92,10 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     slm.transport_event(kind, p, n, detail);
   if (slm.attempt.status.state == SLM_READY) {
     if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
-      slm.attempt.status.at_fault = kind == COMM_AT_NO_ANSWER ? SLM_ERR_NO_ANSWER : SLM_ERR_STREAM;
-      if (!slm.transport_event) comm_modem_record(SLM_STEP_COUNT, slm.attempt.status.at_fault, 0);
-      slm.attempt.status.reason = slm.attempt.status.at_fault; slm.attempt.status.state = SLM_FAILED;
+      slm.attempt.status.at_fault = (uint8_t)detail;
+      uint8_t reason = kind == COMM_AT_NO_ANSWER ? SLM_ERR_NO_ANSWER : SLM_ERR_STREAM;
+      if (!slm.transport_event) comm_modem_record(SLM_STEP_COUNT, reason, 0);
+      slm.attempt.status.reason = reason; slm.attempt.status.state = SLM_FAILED;
       return;
     }
     uint32_t value;
@@ -102,10 +103,12 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     return;
   }
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
-    slm.attempt.status.at_fault = kind == COMM_AT_NO_ANSWER ? SLM_ERR_NO_ANSWER : SLM_ERR_STREAM;
-    slm_fail(slm.attempt.status.at_fault); return;
+    slm.attempt.status.at_fault = (uint8_t)detail;
+    slm_fail(kind == COMM_AT_NO_ANSWER ? SLM_ERR_NO_ANSWER : SLM_ERR_STREAM); return;
   }
   if (kind == COMM_AT_DONE) return;
+  /* После отказа поздние URC не индексируют таблицу шагом TCP/READ. */
+  if (slm.attempt.status.state != SLM_STARTING) return;
   uint32_t values[2];
   uint8_t step = slm.attempt.status.step;
   uint8_t action = step >= SLM_AT_READY ? slm.profile->steps[step - SLM_AT_READY].action & 15u : MODEM_OK;
@@ -115,12 +118,12 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     switch (action) {
     case MODEM_NETWORK:
       if (comm_at_parse(p,n,slm.profile->network_reply[slm.attempt.query],values) && values[0] <= 2 && values[1] <= 5) {
-        slm.attempt.answer = values[1] == 3 ? 2 : 1;
+        slm.attempt.answer = 1; /* Один домен может быть запрещён при регистрации в другом. */
         if (values[1] == 1 || values[1] == 5) slm.attempt.net_registered = 1;
       }
       break;
     case MODEM_RAT:
-      if (comm_at_parse(p,n,slm.profile->rat,values) && values[0] <= 5)
+      if (comm_at_parse(p,n,slm.profile->rat,values) && values[0] <= 8)
         slm.attempt.answer = values[0] == slm.settings.number(SLM_CFG_NETWORK) ? 1 : 2;
       break;
     case MODEM_PORT:
@@ -336,7 +339,6 @@ static void slm_completed(void)
   switch (action) {
   case MODEM_NETWORK:
     if (!slm.attempt.answer) { slm_fail(SLM_ERR_RESPONSE); return; }
-    if (slm.attempt.answer == 2) { slm_fail(SLM_ERR_NETWORK); return; }
     if (slm.attempt.query == 0) { slm.attempt.query = 1; return; }
     if (!slm.attempt.net_registered) {
       slm.attempt.query = 0; slm.attempt.next = slm.attempt.now + comm_timeouts[COMM_T_NETWORK_POLL]; return;
@@ -362,17 +364,21 @@ void comm_modem_poll(uint32_t now_ms)
 {
   if (slm.attempt.in_poll || slm.attempt.status.state == SLM_IDLE) return;
   slm.attempt.in_poll = 1; slm.attempt.now = now_ms;
-  comm_at_poll(now_ms); /* Даже после ошибки шага завершает ресинхронизацию. */
-  if (slm.attempt.status.state != SLM_STARTING) goto end;
-  comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
-  if (slm.attempt.status.step <= SLM_POWER_BOOT) {
+  /* При снятом/нарастающем питании UART может ловить FE и шум загрузки.
+     Это не ответ AT: начинаем чистый поток после выдержки POWER_BOOT. */
+  if (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step <= SLM_POWER_BOOT) {
+    comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
     comm_power_v5_poll(now_ms);
     uint8_t p = comm_power_v5_state();
     if (p != slm.attempt.status.step + 1u) {
+      if (p == COMM_PWR_READY) comm_uart_init(115200);
       comm_modem_record(p == COMM_PWR_READY ? SLM_AT_READY : (uint8_t)(p - 1u), 0, slm.attempt.status.modem_code);
     }
     goto end;
   }
+  comm_at_poll(now_ms); /* После ошибки шага завершаем ресинхронизацию. */
+  if (slm.attempt.status.state != SLM_STARTING) goto end;
+  comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
   if (slm.attempt.done) slm_completed();
   if (slm.attempt.status.state != SLM_STARTING) goto end;
   if (slm.attempt.status.step == SLM_AT_READY && now_ms - slm.attempt.step_started >= comm_timeouts[COMM_T_AT_READY]) {

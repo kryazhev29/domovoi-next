@@ -71,9 +71,10 @@ void USART3_IRQHandler(void)
 {
   uint32_t status = USART3->SR;
   uint16_t errors = 0;
-  /* RM0008 §27.3.13/§27.6.1: DMA забирает RXNE; SR, затем DR
-     снимают IDLE и ошибки линии. На каждый принятый байт IRQ нет. */
-  if (status & (USART_SR_IDLE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
+  /* В обычном RX регистр DR принадлежит только DMA. Чтение DR по IDLE
+     может украсть следующий байт между SR и DR; остаток публикуют tick/peek.
+     При ошибке границы уже потеряны: снимаем флаг и отменяем весь поток. */
+  if (status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
     (void)USART_ReceiveData(USART3);
     if (status & USART_SR_ORE) { errors |= COMM_UART_ORE; error_add(&uart_state.counters.ore); }
     if (status & USART_SR_FE) { errors |= COMM_UART_FE; error_add(&uart_state.counters.fe); }
@@ -163,7 +164,7 @@ void comm_uart_init(uint32_t baud)
   uart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
 #endif
   USART_Init(USART3, &uart);
-  USART3->CR1 |= USART_CR1_IDLEIE;
+  /* IDLE IRQ не нужен: DMA HT/TC, SysTick и peek публикуют весь RX. */
   USART3->CR3 |= USART_CR3_DMAR;
   USART_ITConfig(USART3, USART_IT_ERR, ENABLE);
   irq.NVIC_IRQChannel = USART3_IRQn;

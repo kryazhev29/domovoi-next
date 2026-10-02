@@ -116,15 +116,15 @@ static void sim_tx(void)
     if (sim_no_sim) sim_reply("+SIM1 NOT INSERT\r\n+SIM2 NOT INSERT\r\n+CME ERROR: 10\r\n", 100);
     else if (sim_pin) sim_reply("+CPIN: SIM PIN\r\nOK\r\n", 100);
     else sim_reply(sim_send_sim2 ? "+SIM2 NOT INSERT\r\n+CPIN: READY\r\nOK\r\n" : "+CPIN: READY\r\nOK\r\n", 100);
-  } else if (!strcmp(sim_sent, "AT+CREG?")) {
-    sim_reply(sim_network_wait ? "+CREG: 0,2\r\nOK\r\n" : "+CREG: 0,1\r\nOK\r\n", 80);
+  } else if (!strcmp(sim_sent, "AT+CGREG?")) {
+    sim_reply(sim_network_wait == 1 ? "+CGREG: 0,2\r\nOK\r\n" : (sim_network_wait == 2 || sim_network_wait == 4) ? "+CGREG: 0,3\r\nOK\r\n" : "+CGREG: 0,1\r\nOK\r\n", 80);
   } else if (!strcmp(sim_sent, "AT+CEREG?")) {
-    sim_reply(sim_network_wait ? "+CEREG: 0,2\r\nOK\r\n" : "+CEREG: 0,1\r\nOK\r\n", 80);
+    sim_reply(sim_network_wait == 1 ? "+CEREG: 0,2\r\nOK\r\n" : (sim_network_wait == 3 || sim_network_wait == 4) ? "+CEREG: 0,3\r\nOK\r\n" : "+CEREG: 0,1\r\nOK\r\n", 80);
   } else if (!strcmp(sim_sent, "AT+CIMI")) sim_reply(sim_imsi, 30);
   else if (!strcmp(sim_sent, "AT+QURCCFG=\"urcport\""))
     sim_reply(sim_port_change ? "+QURCCFG: \"urcport\",\"usbat\"\r\nOK\r\n" : "+QURCCFG: \"urcport\",\"uart1\"\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+QCFG=\"nwscanmode\""))
-    sim_reply(sim_rat_change ? "+QCFG: \"nwscanmode\",1\r\nOK\r\n" : "+QCFG: \"nwscanmode\",0\r\nOK\r\n", 30);
+    sim_reply(sim_rat_change == 8 ? "+QCFG: \"nwscanmode\",8\r\nOK\r\n" : sim_rat_change ? "+QCFG: \"nwscanmode\",1\r\nOK\r\n" : "+QCFG: \"nwscanmode\",0\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+QIACT=1")) sim_reply("OK\r\n", sim_activation_delay);
   else if (!strncmp(sim_sent, "AT+QIOPEN=", 10)) {
     char expected[128];
@@ -293,6 +293,17 @@ static void settings_tests(void)
 int main(void)
 {
   path_tests(); error_tests(); timeout_step_tests(); edge_tests(); diagnostic_tests(); settings_tests();
+  for (unsigned net = 2; net <= 3; ++net) {
+    sim_reset(); sim_network_wait = net; sim_start(); sim_until(15000); CHECK(modem_slm336_ready());
+  }
+  sim_reset(); sim_network_wait = 4; sim_start(); sim_until(80000); CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT);
+  sim_reset(); sim_rat_change = 8; sim_start(); sim_until(15000); CHECK(modem_slm336_ready());
+  /* Шум выключения/включения не должен стать ошибкой уже новой попытки. */
+  sim_reset(); sim_start();
+  interrupt_byte(0, USART_SR_FE);
+  for (unsigned i = 0; i < 520; ++i) interrupt_byte('Y', USART_SR_RXNE);
+  sim_until(15000);
+  CHECK(modem_slm336_ready() && !slm.diag.failure_count && !comm_uart_errors());
   puts("comm_slm: power/setup/SIM1/SIM2/network/APN/QIACT/timeouts/timing PASS");
   return 0;
 }

@@ -57,7 +57,7 @@ static const comm_modem_profile_t slm_profile = {
   commands, steps, "SLM336", "+QIURC: \"recv\",\005", "+QIURC: \"closed\",\005",
   "+QIURC: \"pdpdeact\",\005", "+QIOPEN:\005,\005", "+QURCCFG: \"urcport\",",
   "\"uart1\"", "+QCFG: \"nwscanmode\",\005",
-  {"CREG?", "CEREG?"}, {"+CREG:\005,\005|", "+CEREG:\005,\005|"}, 2, COMM_AT_SLM_QIRD, 206, 233
+  {"CGREG?", "CEREG?"}, {"+CGREG:\005,\005|", "+CEREG:\005,\005|"}, 2, COMM_AT_SLM_QIRD, 206, 233
 };
 bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
 {
