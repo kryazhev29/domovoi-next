@@ -63,7 +63,9 @@ static void sim_read_done(uint16_t n, uint8_t reason)
 }
 #endif
 static void sim_type(uint8_t type) { CHECK(type == 2); ++sim_found; }
-static const slm_handlers_t sim_handlers = {sim_gpio, sim_type};
+static unsigned sim_imei_count;
+static void sim_imei(const char *imei) { CHECK(!strcmp(imei, "864180068438709")); ++sim_imei_count; }
+static const slm_handlers_t sim_handlers = {sim_gpio, sim_type, sim_imei};
 
 static void sim_reset(void)
 {
@@ -108,6 +110,7 @@ static void sim_tx(void)
   if ((int)step == sim_silence_step) return;
   if ((int)step == sim_error_step) { sim_reply("ERROR\r\n", 30); return; }
   if (!strcmp(sim_sent, "AT")) sim_reply("OK\r\n", 30);
+  else if (!strcmp(sim_sent, "AT+GSN")) sim_reply("864180068438709\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+GMM")) { sim_gmm++; sim_reply("SLM336E\r\nOK\r\n", 30); }
   else if (!strcmp(sim_sent, "AT+CPIN?")) {
     if (sim_no_sim) sim_reply("+SIM1 NOT INSERT\r\n+SIM2 NOT INSERT\r\n+CME ERROR: 10\r\n", 100);

@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x); exit(1); } } while (0)
-#define COMM_UART_STANDALONE 1
 /* DMA продолжает работать при PRIMASK=1, как на STM32. */
 typedef struct { volatile uint32_t ISR, IFCR; } DMA_TypeDef;
 typedef struct { volatile uint32_t CCR, CNDTR, CPAR, CMAR; } DMA_Channel_TypeDef;

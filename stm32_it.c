@@ -30,9 +30,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "includes.h"
-#ifdef COMM_UART_STANDALONE
 #include "Modules/comm_uart.h"
-#endif
 
 /* Фиксированное ОЗУ без инициализации, выше рабочей области старого загрузчика в начале ОЗУ.
  * 12 слов LE: метка, исключение, EXC_RETURN, SP, PC, LR, xPSR,
@@ -219,9 +217,7 @@ void PendSV_Handler(void)
 #pragma call_graph_root="interrupt"
 void SysTick_Handler(void)
 {
-#ifdef COMM_UART_STANDALONE
   comm_uart_tick(); /* DMA/RTS проверяются каждые 1 мс. */
-#endif
   timers_handle();
 }
 

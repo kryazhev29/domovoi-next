@@ -1,6 +1,5 @@
 /* Доработка: Кряжев А., 2026. Слот для прежних ожиданий модели фото.
    fail_alloc этой модели означает отказ выдачи занятого слота серверу. */
-#define COMM_NEW_CORE 1
 static uint8_t photo_tx_slot[1040];
 static uint8_t *comm_tx_acquire(uint16_t *capacity)
 {

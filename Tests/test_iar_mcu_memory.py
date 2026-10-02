@@ -13,20 +13,6 @@ from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_XPSR, UC_
 with (root/'Release/Exe/DomovoiNext.out').open('rb') as f:
     elf=ELFFile(f)
     sym={s.name:(s['st_value'],s['st_size']) for s in elf.get_section_by_name('.symtab').iter_symbols()}
-    gsm_members={}
-    for cu in elf.get_dwarf_info().iter_CUs():
-        for die in cu.iter_DIEs():
-            name=die.attributes.get('DW_AT_name')
-            if name and name.value==b'GsmStr' and die.tag=='DW_TAG_typedef':
-                for member in die.get_DIE_from_attribute('DW_AT_type').iter_children():
-                    if 'DW_AT_name' in member.attributes and 'DW_AT_data_member_location' in member.attributes:
-                        offset=member.attributes['DW_AT_data_member_location'].value
-                        if not isinstance(offset,int):
-                            operations=DWARFExprParser(cu.structs).parse_expr(offset)
-                            assert len(operations)==1 and operations[0].op_name=='DW_OP_plus_uconst'
-                            offset=operations[0].args[0]
-                        gsm_members[member.attributes['DW_AT_name'].value.decode()]=offset
-    assert 'operation' in gsm_members and 'timer' in gsm_members
 def addr(n):return sym[n][0]
 map_path=root/'Release/List/DomovoiNext.map'
 map_text=map_path.read_text(errors='replace')
@@ -87,9 +73,10 @@ def largest():
         else:hi=mid-1
     return lo
 reset();cold=largest()
-uart=mapped_size('gsm_buffer');server=mapped_size('server_rx_buffer')
+server=mapped_size('server_rx_buffer')
 models=[]
-for title,requests in [('UART copy plus pending URC',[uart+8,uart+8]),('pending URC plus old sector',[uart+8,4096]),('pending URC plus page scratch',[uart+8,256]),('fragmented sector',[1000,1000,1000,1000])]:
+# Старый GSM удалён: модели его копии UART и URC убраны, остаётся фрагментация сектора.
+for title,requests in [('fragmented sector',[1000,1000,1000,1000])]:
     reset();pointers=[]
     for n in requests:
         p,_=call('__basic_malloc',n);pointers.append(p)
@@ -98,11 +85,8 @@ for title,requests in [('UART copy plus pending URC',[uart+8,uart+8]),('pending 
         for i in (0,2):call('__basic_free',pointers[i]);pointers[i]=0
     model={'scenario':title,'requests':requests,'allocated':allocated,'live_after_free':[bool(p) for p in pointers],'largest_free_request':largest()}
     models.append(model)
-assert models[0]['allocated']==[True,True]
-assert models[1]['allocated']==[True,False]
-assert models[2]['allocated']==[True,True]
-assert models[3]['allocated']==[True]*4 and models[3]['live_after_free']==[False,True,False,True]
-assert models[3]['largest_free_request']<4096
+assert models[0]['allocated']==[True]*4 and models[0]['live_after_free']==[False,True,False,True]
+assert models[0]['largest_free_request']<4096
 reset();stubs[addr('mem_read')&~1]=memory_read
 for name in ('wdt_reload','user_debug','usb_send','connection_send'):
     if name in sym:stubs[addr(name)&~1]=lambda:ret(1)
@@ -115,14 +99,7 @@ for n in (0,1,257,1024,16000):
         for _ in range(8):crc=(crc>>1)^((crc&1)*0xa001)
     assert value==crc
     stack.append({'function':'user_calcCRC16InFlash','length':n,'executed_stack':used,'max_read':max((z for _,z in readbacks),default=0)})
-value,used=call('gsm_dataread',25,0,0,0)
-stack.append({'function':'gsm_dataread(PREINIT)','executed_stack':used})
-stubs[addr('gsm_runcmd')&~1]=lambda:ret(1)
-u.mem_write(addr('GSM')+gsm_members['operation'],bytes([2]))
-u.mem_write(addr('GSM')+gsm_members['timer'],struct.pack('<H',5000))
-value,used=call('gsm_pwrProc',0)
-stack.append({'function':'gsm_pwrProc(PO_ON,5000)->gsm_dataread(PREINIT)','executed_stack':used})
-recurse=map_text[map_text.index('The following functions make up recursion nest'):map_text.index('The following functions perform unknown indirect calls')]
+recurse=map_text[map_text.index('The following functions make up recursion nest'):map_text.index('The following functions perform unknown indirect calls')] if 'recursion nest' in map_text else ''
 totals={kind:int(re.search(r"([0-9']+) bytes of readwrite "+kind+r' memory',map_text)[1].replace("'",'')) for kind in ('code','data')}
 result={'map_sha256':hashlib.sha256(map_path.read_bytes()).hexdigest(),'map_readwrite_bytes':totals,'heap_bytes':heap,'stack_bytes':top-bottom,'cold_largest_request':cold,'placement_gap_bytes':mapped_address('fault_record')-mapped_address('HEAP$$Limit'),'readonly_usb_tables':{n:{'address':hex(mapped_address(n)),'bytes':mapped_size(n)} for n in ('pEpInt_IN','pEpInt_OUT')},'mapped_symbols':{n:mapped_size(n) for n in ('gsm_buffer','server_rx_buffer','usb_buffer','USART_Rx_Buffer','log_pending','log_pendingAt','port_buffer','config','device','mem','tempStrBuffer','GSM','gsm_strbuf','uart','fault_record') if n in sym},'allocator_models':models,'executed_stack_paths':stack,'recursion_nest':recurse,'limitations':'Peripheral calls are stubbed. These paths and allocator models do not prove a worst-case stack bound or hardware timings.'}
 (root/'Release/audit-memory.json').write_text(json.dumps(result,indent=2,ensure_ascii=False),encoding='utf-8')

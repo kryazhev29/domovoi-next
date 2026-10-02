@@ -67,7 +67,6 @@ void main()
   user_init();
     
   // включаем питание gsm модуля
-  usergsm_power(ON);
 
   unsigned int loop_mark = timers_getMillis();
 

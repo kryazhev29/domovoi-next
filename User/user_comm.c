@@ -1,5 +1,4 @@
 /* Доработка: Кряжев А., 2026. Прежние SLDN/обработчики, новое владение транспортом. */
-#ifdef COMM_NEW_CORE
 #include "user_fun.h"
 #include "user_comm.h"
 #include <stddef.h>
@@ -24,17 +23,23 @@ static void user_comm_reset_session(void)
   comm_server_init(&handlers);
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
 }
-bool user_comm_start(const slm_settings_t *settings, comm_power_gpio_t gpio, void (*type_found)(uint8_t), uint32_t now_ms)
+bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
 {
   static const comm_recover_hooks_t hooks = {
     user_comm_reset_session, user_comm_local_time, user_comm_busy
   };
-  slm_handlers_t modem_handlers = {gpio, type_found};
-  if (!modem_slm336_start(settings, &modem_handlers, now_ms)) return false;
+  if (!modem_slm336_start(settings, handlers, now_ms)) return false;
   user_comm_reset_session();
   comm_server_no_internet(comm_recover_no_internet);
   comm_recover_init(&hooks, now_ms);
   return true;
+}
+/* Отправка SMS через новую связь - этап 6 (общий доступ к AT с каналом). До него
+   SMS не уходит, и событие отправки не пишется. */
+bool user_comm_sms(const char *number, const char *text)
+{
+  (void)number; (void)text;
+  return false;
 }
 void user_comm_poll(uint32_t now_ms)
 {
@@ -42,4 +47,3 @@ void user_comm_poll(uint32_t now_ms)
   comm_server_poll(now_ms);
   comm_recover_poll(now_ms);
 }
-#endif

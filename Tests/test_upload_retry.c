@@ -25,11 +25,10 @@ static bool user_writeConfigAndDevice(void){if(fail_save)return false;saves++;sa
 static bool log_clearLogBuffer(void){CHECK(!saved.readLogIDIndex&&!memcmp(saved.reserv+4,"\0\0",2));if(fail_clear)return false;clears++;memset(flash,255,16384);records=0;device.logsCount=0;device.status.readyLogData=0;upload_reset(10);return true;}
 static bool user_clearTempIdBuffer(void){CHECK(!saved.readTempIDIndex&&!memcmp(saved.reserv+6,"\0\0",2));if(fail_clear)return false;clears++;memset(flash+16384,255,16384);records=0;device.tempIDsCount=0;device.status.readyID=0;upload_reset(9);return true;}
 static void reboot(void);
-static void connection_deleteAll(void){}
 static bool user_clearMemBlock(unsigned mb){(void)mb;return true;}
 static void user_setdefault(void){(void)user_writeConfigAndDevice();}
 static void user_initvariables(void){reboot();}
-static void usergsm_restart(void){}
+static void user_comm_boot(void){}
 static bool mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a+n<=sizeof(flash));if(fail_read)return false;memcpy(p,flash+a,n);return true;}
 static bool send_frame(uint8_t *p,uint16_t n){CHECK(n<=sizeof(last_frame));attempts++;memcpy(last_frame,p,n);frame_size=n;return !fail_transport;}
 static uint8_t usb_send(uint8_t *p,uint16_t n){return send_frame(p,n);}

@@ -52,14 +52,6 @@ void USART2_IRQHandler(void)
 /*************************************************************************
  * Функция обработки прерывания по UART3
 *************************************************************************/
-#pragma call_graph_root="interrupt"
-void USART3_IRQHandler(void)
-{
-  if ((USART3->SR & USART_FLAG_RXNE) != (uint16_t)RESET){
-    USART3->SR = (uint16_t)~USART_FLAG_RXNE;
-    uart_addbyte(2, USART3->DR);
-  }
-}
 
 /*************************************************************************
  * Инициализация Uart

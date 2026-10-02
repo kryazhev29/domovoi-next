@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,8 @@ static int reset_in_parse;
 static uint32_t nested_advance;
 static const uint8_t *nested;static unsigned nested_len;static unsigned seen[8];
 static uint16_t server_rx_count;
+/* Ответ серверу ждёт свободного слота канала; в модели слот свободен. */
+static bool comm_tx_busy(void){return false;}
 void user_dataconnection(int8_t,uint8_t*,uint16_t);
 static void server_rx_reset(void);
 static uint8_t expected[2048];

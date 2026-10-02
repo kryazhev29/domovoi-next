@@ -8,7 +8,6 @@
 
 /* Обычный RX 485; на время съёмки photo.c подключает буфер из heap. */
 #define PORTBUFSIZE             (uint16_t)32
-#define GSMBUFSIZE              (uint16_t)2048
 
 extern cellMem_s mem[10];
 void user_debug(char *text);
@@ -25,8 +24,6 @@ uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, u
 // < ---------------------------------------------------------------------------
 
 // >>> переопределение функций --------------------------
-void user_connected (int8_t handle);
-void user_disconnected (int8_t handle, uint8_t arec);
 void user_errorconnection (int8_t handle);
 void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz);
 void user_smsreceived (char* num, char* data);

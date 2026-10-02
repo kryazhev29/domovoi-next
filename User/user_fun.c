@@ -3,11 +3,11 @@
 // Пользовательские функции
 
 #include "user_fun.h"
-#ifdef COMM_NEW_CORE
 #include "../Modules/comm_channel.h"
 #include "../Modules/comm_server.h"
-#endif
 #include "photo.h"
+#include "user_comm.h"
+#include "../Modules/comm_modem.h"
 #include "idindex.h"
 #include "usb_istr.h"
 #include "../Bootloader/app_update.h"
@@ -122,9 +122,6 @@ static bool upload_finish(uint8_t cmd){
 /* <<< подтверждение выгрузки */
 
 
-// буфер под прием данных от gsm
-#pragma data_alignment=4
-uint8_t gsm_buffer[GSMBUFSIZE];
 
 static void fw_resume_after_boot(void);
 static void server_rx_reset(void);
@@ -169,12 +166,6 @@ void gsm_user_debug (char* ptr)
     usb_sendstr(ptr);
 }
 
-void usergsm_debug(char* ptr)
-{
-  if (device.logBits & 2)
-    usb_sendstr(ptr);
-}
-
 void user_debug(char* ptr)
 {
   if (device.logBits & 4)
@@ -199,119 +190,6 @@ void usb_data_reading(uint8_t* ptr, uint16_t len)
 }
 
 // обработчик событий
-void usergsm_event(gsmevent_e ev)
-{
-  if (ev == E_PWRON) diag_gsm_pwron++;
-  if (ev == E_NOTANSWER) diag_gsm_notanswer++;
-#ifdef DEBUG_USER
-  sprintf(tempStrBuffer, ">>U Event %d\r\n", ev);
-  user_debug(tempStrBuffer); 
-#endif  
-  switch (ev)
-  {
-  case E_READY:
-    // задать тип используемой сети
-    switch(config.netType){
-    case 0: // Автоматически
-      gsm_setNetworkType(NT_AUTO);
-      break;
-      
-    case 1: // Только GPRS/EGDE
-      gsm_setNetworkType(NT_GSM);
-      break;
-      
-    case 2: // Автоматически 3G/4G
-      gsm_setNetworkType(NT_AUTO);
-      break;
-      
-    case 3: // Только 3G
-      gsm_setNetworkType(NT_UMTS);
-      break;
-      
-    case 4: // Только 4G
-       gsm_setNetworkType(NT_LTE);
-      break;      
-    }
-    // ntp
-    if (config.useNTP){
-      if (config.NTPserver[0] != 0)
-        gsm_setNTPserver(config.NTPserver, 123);
-    }
-    break;
-
-  case E_GSMREG:
-    {
-      char *tptr;
-      
-      device.creg = 1;
-      // при регистрации в сети, отправляем параметры точки доступа
-      //internet,gdata,gdata
-      if (config.netOperator[0] != 0){
-        user_strcpy(tempStrBuffer,config.netOperator,',',30);
-        tptr = skipchar(',',config.netOperator,1);
-        if (tptr != config.netOperator)
-          user_strcpy(&tempStrBuffer[32],tptr,',',30);
-        else
-          tempStrBuffer[32] = 0;
-        tptr = skipchar(',',config.netOperator,2);
-        if (tptr != config.netOperator)
-          user_strcpy(&tempStrBuffer[64],tptr,0,30);
-        else
-          tempStrBuffer[64] = 0;
-        gsm_initgprs(&tempStrBuffer[0], &tempStrBuffer[32], &tempStrBuffer[64]);  
-      }
-    }
-    break;
-
-  case E_NOGSM:
-    device.creg = 0;
-    device.cgreg = 0;
-    log_addSystemEvent(LOG_SYS_NOTGSMREG);
-    break;
-
-  case E_GPRSREG:
-    device.cgreg = 1;
-    user_setconnections(); // создаем подключение к серверу
-    break;
-
-  case E_NOGPRS:
-    device.cgreg = 0;
-    log_addSystemEvent(LOG_SYS_NOTGPRSREG);
-    break;
-    
-  case E_NOSIM:
-    break;
-
-  case E_NOTANSWER: // по какой-то причине модуль не ответил на команду
-    break;
-
-  case E_PWRON:
-  case E_PWROFF:
-    device.creg = 0;
-    device.cgreg = 0;
-    break;
-
-  case E_PINGTIMEOUT: // не получили ответ на ping
-    break;
-
-  case E_IMEI:
-    strcpy(device.IMEIGSM, usergsm_getimei());
-    break;
-    
-  case E_MODULETYPE:
-    /* Модем сообщает свой тип при каждом включении, а без сети перезапускается каждые
-       полминуты: сохраняется только изменение. */
-    if (device.moduleType != gsm_getModuleType()){
-      device.moduleType = gsm_getModuleType();
-      user_saveindex();
-    }
-    break;
-    
-  default:
-    break;
-  }
-}
-
 // получен идентификатор по wiegand
 void WG_readedID(uint32_t id){
   char tb[11];
@@ -457,44 +335,6 @@ uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, u
 }
 // <<< вспомогательные ---------------------------------------------------------
 
-// >>> переопределение функций --------------------------
-// подключились к серверу
-void user_connected (int8_t handle)
-{
-  server_rx_reset();
-#ifdef DEBUG_USER
-  user_debug(">>U Connected ...\r\n"); 
-#endif 
-  log_addSystemEvent(LOG_SYS_CONNECT1);
-  
-  // отправляем данные регистрации
-  user_send_registrationData(CH_SERVER);
-}
-
-// отключились от сервера
-void user_disconnected (int8_t handle, uint8_t arec)
-{
-  if (handle != device.connectionhandle) return; 
-  server_rx_reset();
-  photo_connection_lost();
-  
-#ifdef DEBUG_USER
-  user_debug(">>U Disconnected ...\r\n"); 
-#endif
-  
-  if (arec == 0)
-    device.connectionhandle = -1;
-  
-  device.registredOnServer = 0;
-  device.answerTimeout = 0;
-  
-  // считаем попытки и если что переключаемся на резервный
-  if (++device.reconnectCount == 10){
-    device.reconnectCount = 0;
-    device.useServer2 = !device.useServer2;
-  }
-}
-
 // ошибка подключения
 void user_errorconnection (int8_t handle){
 #ifdef DEBUG_USER
@@ -518,18 +358,14 @@ static uint32_t server_rx_last = 0;
 static uint8_t server_rx_defer = 0;
 static uint16_t server_rx_ready = 0; // длина готового кадра в начале буфера, 0 - нет
 static uint8_t server_rx_busy = 0;   // идёт разбор кадра из начала буфера: новые байты только копятся
-#ifdef COMM_NEW_CORE
 static uint8_t server_rx_provisional;
-#endif
 void server_rx_process(void);
 
 static void server_rx_reset(void)
 {
   server_rx_count = 0;
   server_rx_ready = 0;
-#ifdef COMM_NEW_CORE
   server_rx_provisional = 0;
-#endif
 }
 
 static void server_rx_consume(uint16_t n)
@@ -593,15 +429,11 @@ void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz)
 void server_rx_process(void)
 {
   uint16_t total;
-#ifdef COMM_NEW_CORE
   if (server_rx_provisional) return;
-#endif
   server_rx_defer = 0;
   if (server_rx_busy) return; // вызов изнутри разбора: кадры выполнит внешний цикл
   while (server_rx_ready){
-#ifdef COMM_NEW_CORE
     if (comm_tx_busy()) return;
-#endif
     total = server_rx_ready;
     server_rx_ready = 0;
     server_rx_busy = 1;
@@ -614,7 +446,6 @@ void server_rx_process(void)
   }
 }
 
-#ifdef COMM_NEW_CORE
 /* QIRD копирует прямо в прежний сборщик. До финала команды выполнение отложено. */
 uint16_t user_comm_rx_capacity(void)
 { return (uint16_t)(sizeof(server_rx_buffer) - server_rx_count); }
@@ -640,7 +471,6 @@ void user_comm_session(bool open)
   if (!open) photo_connection_lost();
   else log_addSystemEvent(LOG_SYS_CONNECT1);
 }
-#endif
 
 // принято СМС
 // формат команды [Символ – #][Команда][Пробел][ПИН код контроллера][Запятая][Аргументы команды]
@@ -800,8 +630,8 @@ void user_sendsms(char *mes, char *num){
 #ifdef DEBUG_USER
   user_debug(">>U Sending SMS ...\r\n"); 
 #endif
-  gsm_sendsms(num, mes);
-  log_addSystemEventID(LOG_SYS_SENDSMS, user_last10digitsnumber(num));
+  if (user_comm_sms(num, mes))
+    log_addSystemEventID(LOG_SYS_SENDSMS, user_last10digitsnumber(num));
 }
 
 // СМС отправлено
@@ -821,9 +651,6 @@ bool user_incomingcall (char* num, uint8_t typ)
 #endif
   
   if (typ == CT_PHONE){
-    gsm_answercall();
-    delay_ms(1000);
-    usergsm_endCall();
     
     // номер звонящего
     strcpy(device.callingnumber, num);    
@@ -847,54 +674,6 @@ void user_comanderror (int16_t er)
 }
 
 // организовать подключения
-void user_setconnections(void)
-{
-  if ((config.server1[0] == 0) && (config.server2[0] == 0)) return; // подключение к серверу не задействовано
-  if ((config.useServer1 == 0) && (config.useServer2 == 0)) return;
-  
-  
-  ConnectParam_t cp = {0}; // включая необязательные обработчики
-
-  if (device.useServer2){
-    // резервный сервер
-    cp.ip = config.server2;
-    cp.port = 0;
-#ifdef DEBUG_USER
-  user_debug(">>U Set connection to server 2 ...\r\n"); 
-#endif
-  } else{
-    if (config.useServer1){
-      // основной сервер
-      cp.ip = config.server1;
-      cp.port = 0;
-#ifdef DEBUG_USER
-    user_debug(">>U Set connection to server 1 ...\r\n"); 
-#endif
-    } else{
-      // резервный сервер
-      cp.ip = config.server2;
-      cp.port = 0;
-#ifdef DEBUG_USER
-    user_debug(">>U Set connection to server 2 ...\r\n"); 
-#endif
-    } 
-  }
-
-  cp.timeout = 5000; // время на подключение  
-  cp.maxConnectCount = 0; // попыток подключиться
-  cp.auto_reconnect = 1; // время активности ноль - соедиенение постоянное
-  cp.wait_sendData = 0;
-  cp.Connected = user_connected;
-  cp.Disconnected = user_disconnected;  
-  cp.DataReceived = user_dataconnection;
-  
-  device.connectionhandle = connection_create(&cp);
-  
-  // открываем подключение сразу
-  if (cp.auto_reconnect)
-    connection_open(device.connectionhandle);
-}
-
 // парсер USSD
 void user_parseUSSD(char* ptr)
 {
@@ -959,10 +738,6 @@ void user_init(void)
   if (config.wiegandType != 0)
     WG_init(); 
   
-  // порт gsm
-  uart_init(GSM_PORT, 115200, 0, gsm_buffer, GSMBUFSIZE); // порт gsm
-  uart_setRecTimeout(GSM_PORT, 10); // время заполнения/ожидания приемного буфера 10 мс
-  
   // внешний порт
   rs485_init(); // порт 485
   uart_setRecTimeout(PORT1_PORT, 10); // время заполнения/ожидания приемного буфера 10 мс  
@@ -1023,7 +798,6 @@ void user_loop(void)
     timers_set(2,0);
     wdt_reload();
 
-    usergsm_work(100);
     led_fun100ms(); // обработка индикации
     user_readinputs(); // входы
     // состояние выходов
@@ -1077,9 +851,7 @@ void user_loop(void)
     device.hour = device.datetime % 86400u / 3600u;
     device.minute = device.datetime % 3600u / 60u;
     // уровень сигнала
-    device.csq = usergsm_getcsq();
-    device.connected = (connection_state(device.connectionhandle)==CE_CONNECTED)?1:0;
-    device.netType = usergsm_getNetType();
+    device.connected = comm_channel_ready();
     
     // перезагрузка через заданный таймаут
     if (device.timeToReset){
@@ -1121,11 +893,7 @@ void user_loop(void)
   user_debug(">>U Not answer to reg pack\r\n"); 
 #endif
           device.registredOnServer = 0;
-#ifdef COMM_NEW_CORE
         comm_channel_reopen(0);
-#else
-        connection_reopen(device.connectionhandle);
-#endif
           break;
           
         case 2:
@@ -1134,11 +902,7 @@ void user_loop(void)
   user_debug(">>U Not answer to status\r\n"); 
 #endif            
             device.registredOnServer = 0;
-    #ifdef COMM_NEW_CORE
         comm_channel_reopen(0);
-#else
-        connection_reopen(device.connectionhandle);
-#endif
           }
           break;
         }
@@ -1198,9 +962,6 @@ void user_loop(void)
     timers_set(5,0);
 
     // использовать время NTP - синхронизировать
-    if (config.useNTP){
-      usergsm_getClock();
-    }
     
     // задано время на перезагрузку
     if (config.restartTime != 0){
@@ -1226,7 +987,6 @@ void user_loop(void)
           }
         }
         // проверяем
-        gsm_sendussd(config.ussdBalance);
       }
       
     }
@@ -1248,21 +1008,7 @@ void user_initvariables (void)
   user_readsavedinformation();
   device.protocolVersion = PROTOCOL_VERSION;
   
-  // загружаем параметры gsm
-  GsmParam_t param = {0}; // включая необязательные обработчики
-
-  param.enable = 1;
-  param.autoswitch_sim = 0;
-  param.autorestart = 1;
-  param.gprs_enable = 1;
-  param.soft_simswitch = 0;
-  param.textMode = 1;
-  param.SMSReceived = user_smsreceived;
-  param.SMSSended = user_smssended;
-  param.IncomingCall = user_incomingcall;
-  param.moduleType = (moduleType_e)device.moduleType;
-  
-  usergsm_init (&param);
+  user_comm_boot();
   
   // смотрим сколько в памяти номеров
   device.numbersCount = user_getNumbersCount();
@@ -1370,7 +1116,7 @@ void user_setdefault (void)
   config.rele[0].cnt = 1;
   
   device.loadDefaultConfig = 1;
-  device.moduleType = M_OTHER;
+  device.moduleType = MODEM_TYPE_AUTO;
   device.status.defaultConfig = 1;
   log_addSystemEvent(LOG_SYS_DEFCONF);
   
@@ -1388,7 +1134,6 @@ void user_factoryReset (void){
   upload_reset(10);
   upload_reset(9);
   if (!user_writeConfigAndDevice()) return; // не стираем с сохранённым старым курсором
-  connection_deleteAll();
   
   // чистим память абонентов 
   user_clearMemBlock(MB_ID);
@@ -1417,7 +1162,7 @@ void user_factoryReset (void){
   user_initvariables();
   
   // перезагружаем gsm
-  usergsm_restart();
+  user_comm_boot();
 }
 
 // чтение сохраненной информации
@@ -1481,12 +1226,7 @@ void user_savereset (void)
   USB_PULLUP_OFF; // выключаем подтягивающий резистор
 
   // выключаем gsm
-  usergsm_power(OFF);
-  while (gsm_getPowerState()){
-    wdt_reload();
-    delay_ms(10);    
-    gsm_pwrProc(10); // обработчик включения/выключения модуля
-  }
+  comm_modem_off();
   
   // перезагружаем
   NVIC_SystemReset();
@@ -1523,11 +1263,8 @@ void port_check_data(void)
 // проверка входящих данных от модуля
 void gsm_check_data (void)
 {
-  if (uart_getstate(GSM_PORT)){
-    server_rx_defer = 1;
-    gsm_read_uart();
-  }
-  server_rx_process();
+  /* Каждый проход главного цикла: порт, AT, модем, канал, сервер, восстановление. */
+  user_comm_poll(timers_getMillis());
 }
 
 // расчет контрольной суммы структуры данных во flash
@@ -1567,30 +1304,20 @@ static uint16_t id_crc16(uint32_t off, uint32_t n){
 
 // Отправка данных в формате протокола
 /* Назначение кадра серверу — единственный слот канала, без копии/heap. */
-#ifdef COMM_NEW_CORE
 static uint8_t *user_comm_acquire(uint16_t needed)
 {
   uint16_t capacity; uint8_t *p = comm_tx_acquire(&capacity);
   if (p && needed > capacity) { comm_tx_release(); return NULL; }
   return p;
 }
-#define user_comm_send(h, p, n) (comm_tx_commit(n) ? CE_OK : CE_BUSY)
 #define user_comm_free(p, cch) do { if ((cch) == CH_SERVER) comm_tx_release(); else free(p); } while (0)
-#else
-#define user_comm_send(h, p, n) connection_send(h, p, n)
-#define user_comm_free(p, cch) free(p)
-#endif
 
 void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId){
   // весь кадр должен помещаться в 16-битную длину транспорта
   if (size > 65524u || (size && data == NULL)) return;
   uint16_t crc;
   uint16_t len = size + 3; // timeout comand + uniqId + id + payload  
-#ifdef COMM_NEW_CORE
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : malloc(len + 8);
-#else
-  uint8_t *send_buffer = malloc(len + 8);
-#endif
   
   if (send_buffer != NULL){
 
@@ -1625,7 +1352,7 @@ void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cc
       break;
       
     case CH_SERVER:
-      user_comm_send(device.connectionhandle, send_buffer, len + 8);
+      comm_tx_commit(len + 8);
       break;
       
     case CH_SMS:
@@ -1642,13 +1369,9 @@ void user_send_registrationData(dataChanel_e cch){
   
   uint16_t crc;
   uint16_t len = 40; // timeout comand + uniqIDCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[48];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[48];
-#endif
   uint32_t tmp32;
   
 #ifdef DEBUG_USER
@@ -1697,7 +1420,7 @@ void user_send_registrationData(dataChanel_e cch){
   case CH_SERVER:
     device.answerID = 1;
     device.answerTimeout = TIMETOREGRESPONSE;
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -1711,13 +1434,9 @@ void user_send_statusPack(dataChanel_e cch){
     
   uint16_t crc;
   uint16_t len = 18; // timeout comand + uniqIDCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[26];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[26];
-#endif
   uint32_t tmp32;
   
 #ifdef DEBUG_USER
@@ -1762,11 +1481,9 @@ void user_send_statusPack(dataChanel_e cch){
       device.answerID = 2;
       device.answerTimeout = TIMETOSTATUSRESPONSE;
     }
-#ifdef COMM_NEW_CORE
     comm_server_status_sent(send_buffer[7]);
-#endif
     status_event_sent((uint16_t)(send_buffer[13] | (send_buffer[14] << 8)), timers_getMillis());
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -1780,13 +1497,9 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
     
   uint16_t crc;
   uint16_t len = 24; // timeout comand + uniqId + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[32];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[32];
-#endif
   uint32_t tmp32;
 
 #ifdef DEBUG_USER
@@ -1828,7 +1541,7 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -1841,13 +1554,9 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
 void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8_t uniqId){
   uint16_t crc;
   uint16_t len = 5; // timeout comand + uniqId + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[13];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[13];
-#endif
   
 #ifdef DEBUG_USER
   user_debug(">>U Send status update (cmd 4)\r\n"); 
@@ -1880,7 +1589,7 @@ void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -1894,13 +1603,9 @@ void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
   uint16_t crc;
   uint16_t len = 13; // timeout comand + uniqId + id + payload
   uint16_t crcData;
-#ifdef COMM_NEW_CORE
   uint8_t send_local[21];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[21];
-#endif
   
 #ifdef DEBUG_USER
   user_debug(">>U Send crc data (cmd 5)\r\n"); 
@@ -1944,7 +1649,7 @@ void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -1970,11 +1675,7 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
     len = 6;
   }
   
-#ifdef COMM_NEW_CORE
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : malloc(len + 8);
-#else
-  uint8_t *send_buffer = malloc(len + 8);
-#endif
   
   if (send_buffer != NULL){
     send_buffer[0] = 'S'; // идент
@@ -2026,7 +1727,7 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
       break;
       
     case CH_SERVER:
-      user_comm_send(device.connectionhandle, send_buffer, len + 8);
+      comm_tx_commit(len + 8);
       break;
       
     case CH_SMS:
@@ -2040,7 +1741,6 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
 // Пакет 7 -  трансляция SMS
 void user_send_smsToServer(char* sms){
   uint16_t crc;
-#ifdef COMM_NEW_CORE
   uint16_t capacity, size = 0;
   uint8_t *send_buffer = comm_tx_acquire(&capacity);
   if (!send_buffer) return;
@@ -2049,10 +1749,6 @@ void user_send_smsToServer(char* sms){
   while (size + 11u <= capacity && sms[size]) ++size;
   if (size + 11u > capacity) { comm_tx_release(); return; }
   uint16_t len = size + 3u;
-#else
-  uint16_t len = strlen(sms) + 3;
-  uint8_t *send_buffer = malloc(len + 8);
-#endif
 
   if (send_buffer != NULL){
     
@@ -2079,7 +1775,7 @@ void user_send_smsToServer(char* sms){
     send_buffer[len + 6] = crc&0xff; // crc
     send_buffer[len + 7] = (crc>>8)&0xff;
     
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     
     user_comm_free(send_buffer, CH_SERVER);
   }
@@ -2090,13 +1786,9 @@ void user_send_smsToServer(char* sms){
 void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState){
   uint16_t crc;
   uint16_t len = 14; // timeout comand + uniqIdCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[22];
   uint8_t *send_buffer = CH_SERVER == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[22];
-#endif
   
 #ifdef DEBUG_USER
   user_debug(">>U IDs data (cmd 8)\r\n"); 
@@ -2125,7 +1817,7 @@ void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState){
   send_buffer[len + 6] = crc&0xff; // crc
   send_buffer[len + 7] = (crc>>8)&0xff;
   
-  user_comm_send(device.connectionhandle, send_buffer, len + 8);
+  comm_tx_commit(len + 8);
 }
 
 // Пакет 11 - подтверждение приема команды от сервера
@@ -2133,13 +1825,9 @@ void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_
   
   uint16_t crc;
   uint16_t len = 11; // timeout comand + uniqIdCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[19];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[19];
-#endif
   uint32_t tmp32;
   
 #ifdef DEBUG_USER
@@ -2173,7 +1861,7 @@ void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -2187,13 +1875,9 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
   
   uint16_t crc;
   uint16_t len = 10; // timeout comand + uniqIdCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[18];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[18];
-#endif
   
 #ifdef DEBUG_USER
   user_debug(">>U Send timeshtamp (cmd 12)\r\n"); 
@@ -2223,7 +1907,7 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -2233,49 +1917,14 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
 }
 
 // Пакет 17 - запрос информации о привязки контроллера к объекту
-/*void user_send_getInfoObject(void){
-  uint16_t crc;
-  uint16_t len = 18; // timeout comand + uniqIdCnt + id + payload
-  uint8_t send_buffer[26];
-  
-#ifdef DEBUG_USER
-  user_debug(">>U Get info (cmd 17)\r\n"); 
-#endif    
-  
-  send_buffer[0] = 'S'; // идент
-  send_buffer[1] = 'L';
-  send_buffer[2] = 'D';
-  send_buffer[3] = 'N';
-  send_buffer[4] = _1B(len);  // длина
-  send_buffer[5] = _2B(len);
-  
-  // ------- меняемый блок ---------
-  send_buffer[6] = 255; // таймаут актуальности команды
-  send_buffer[7] = uniqIDCnt++; // uniqIdCnt
-  send_buffer[8] = 17; // id
-  memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
-  // ------- меняемый блок ---------
-  
-  crc = crc16_calc(&send_buffer[4], len + 2);
-  
-  send_buffer[len + 6] = crc&0xff; // crc
-  send_buffer[len + 7] = (crc>>8)&0xff;
-  
-  connection_send(device.connectionhandle, send_buffer, len + 8);
-}*/
-
 // Пакет 100 - идентификация
 void user_send_identPackToConfigurator(dataChanel_e cch){
     
   uint16_t crc;
   uint16_t len = 19; // timeout comand + uniqIdCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[27];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[27];
-#endif
   
   send_buffer[0] = 'S'; // идент
   send_buffer[1] = 'L';
@@ -2306,7 +1955,7 @@ void user_send_identPackToConfigurator(dataChanel_e cch){
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -2320,13 +1969,9 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
     
   uint16_t crc;
   uint16_t len = 34; // timeout comand + uniqIdCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t send_local[42 + sizeof(fault_record)];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[42 + sizeof(fault_record)];
-#endif
   uint32_t tmp32;
   
   send_buffer[0] = 'S'; // идент
@@ -2383,7 +2028,7 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -2397,11 +2042,7 @@ void user_send_configToConfigurator(dataChanel_e cch){
     
   uint16_t crc;
   uint16_t len = sizeof(config_s) + 3; // timeout comand + uniqIdCnt + id + payload
-#ifdef COMM_NEW_CORE
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : malloc(len + 8);
-#else
-  uint8_t *send_buffer = malloc(len + 8);
-#endif
   
   if (send_buffer != NULL){
     
@@ -2434,7 +2075,7 @@ void user_send_configToConfigurator(dataChanel_e cch){
       break;
       
     case CH_SERVER:
-      user_comm_send(device.connectionhandle, send_buffer, len + 8);
+      comm_tx_commit(len + 8);
       break;
       
     case CH_SMS:
@@ -2474,11 +2115,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
 
   if (cntId > 32) cntId = 32;
   // выделим память 1 кБ под записи журнала (32 * 32)
-#ifdef COMM_NEW_CORE
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire((cntId * sizeof(cellLog_s)) + 16) : malloc((cntId * sizeof(cellLog_s)) + 16);
-#else
-  uint8_t *send_buffer = malloc((cntId * sizeof(cellLog_s)) + 16);
-#endif
   uint16_t len = (cntId * sizeof(cellLog_s)) + 6;
   uint16_t cntId2 = device.logsCount - readIdx - cntId;
   
@@ -2516,7 +2153,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
       break;
       
     case CH_SERVER:
-      sent = user_comm_send(device.connectionhandle, send_buffer, len + 8) == CE_OK;
+      sent = comm_tx_commit(len + 8);
       break;
       
     case CH_SMS:
@@ -2554,11 +2191,7 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
 
   if (cntId > 100) cntId = 100;
   // выделим память 1 кБ под ID (100 * 10)
-#ifdef COMM_NEW_CORE
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire((cntId * 10) + 16) : malloc((cntId * 10) + 16);
-#else
-  uint8_t *send_buffer = malloc((cntId * 10) + 16);
-#endif
   uint16_t len = (cntId * 10) + 6;
   uint16_t cntId2 = device.tempIDsCount - readIdx - cntId;
   
@@ -2598,7 +2231,7 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
       break;
       
     case CH_SERVER:
-      sent = user_comm_send(device.connectionhandle, send_buffer, len + 8) == CE_OK;
+      sent = comm_tx_commit(len + 8);
       break;
       
     case CH_SMS:
@@ -2615,13 +2248,9 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
 
 // Пакет 13 - Запрос конкретного блока прошивки
 void user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
-#ifdef COMM_NEW_CORE
   uint8_t send_local[16];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-#else
-  uint8_t send_buffer[16];
-#endif
   uint16_t len = 5;
   uint16_t crc;
   
@@ -2655,7 +2284,7 @@ void user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
     break;
     
   case CH_SERVER:
-    user_comm_send(device.connectionhandle, send_buffer, len + 8);
+    comm_tx_commit(len + 8);
     break;
     
   case CH_SMS:
@@ -3241,9 +2870,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #endif        
       if (cch != CH_SERVER) break; // ответ на регистрацию бывает только от сервера
       device.answerTimeout = 0;
-#ifdef COMM_NEW_CORE
       comm_server_registered(ptr[5] == CMD_SUCCESS);
-#endif
       switch ((cmdCode_e)ptr[5]){
       case CMD_SUCCESS:
         memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
@@ -3274,11 +2901,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       case CMD_RUNERROR:
       case CMD_UNDEFRESULT:
         device.registredOnServer = 0;
-#ifdef COMM_NEW_CORE
         comm_channel_reopen(0);
-#else
-        connection_reopen(device.connectionhandle);
-#endif
         break;
         
       case REG_UNKNOWN_IMEI:
@@ -3288,11 +2911,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         if (!app_trial_active())
           user_factoryReset();
         device.registredOnServer = 0;
-#ifdef COMM_NEW_CORE
         comm_channel_reopen(0);
-#else
-        connection_reopen(device.connectionhandle);
-#endif
         break;
        
       default:
@@ -3704,9 +3323,7 @@ if (cch != CH_USB && len >= 5){
       /* Ответ на статус 1 заканчивает ожидание и счёт пропущенных ответов. ptr[5] - уникальный
          номер подтверждаемого сообщения, а не команда: он не должен заканчивать ожидание ответа
          на регистрацию. */
-#ifdef COMM_NEW_CORE
       if (cch == CH_SERVER) comm_server_status_ack(ptr[5]);
-#endif
       if (device.answerID == 2){
         device.answerTimeout = 0;
         device.lmCount = 0;
@@ -3817,19 +3434,10 @@ if (cch != CH_USB && len >= 5){
 // индикация
 void user_indication (void)
 {
-  // NET LED
-  if (gsm_getPowerState()) // питание подано
-  {
-    if (device.creg)
-    {
-      if (connection_state(device.connectionhandle) == CE_CONNECTED)
-        led_load(NET_LED, LED_ON);
-      else 
-        led_load(NET_LED, LED_FL1);
-    }
-    else led_load(NET_LED, LED_FL2);
-  }
-  else led_load(NET_LED, LED_OFF);
+  // NET LED: на сервере - горит, модем в сети - мигает, выходит на связь - мигает часто
+  if (comm_server_online()) led_load(NET_LED, LED_ON);
+  else if (modem_slm336_ready()) led_load(NET_LED, LED_FL1);
+  else led_load(NET_LED, LED_FL2);
 }
 
 // опрос входов
@@ -5083,10 +4691,61 @@ static void user_send_usbDiag(uint8_t uniqId)
   usb_send(send_buffer, len + 8);
 }
 
-#ifdef COMM_NEW_CORE
 /* Часы прошивки - местное время (как у суток ID); до установки - недостоверно. */
 uint32_t user_comm_local_time(void)
 { return device.datetime >= ID_TIME_VALID ? device.datetime : UINT32_MAX; }
 /* Ночной перезапуск модема не рвёт обновление прошивки. */
 bool user_comm_busy(void) { return device.FWinProgress != 0; }
-#endif
+
+/* Адрес сервера в настройках - "домен:порт" (как у старой связи). */
+static char comm_host[2][32];
+static uint16_t comm_port[2];
+static void comm_split(uint8_t n, const char *server)
+{
+  const char *colon = strrchr(server, ':');
+  size_t len = colon ? (size_t)(colon - server) : strlen(server);
+  if (len >= sizeof(comm_host[n])) len = sizeof(comm_host[n]) - 1u;
+  memcpy(comm_host[n], server, len); comm_host[n][len] = 0;
+  comm_port[n] = colon ? (uint16_t)atoi(colon + 1) : 0;
+}
+static const char *comm_text(uint8_t field, uint16_t *capacity)
+{
+  static const char empty[1] = "";
+  switch (field) {
+  case SLM_CFG_HOST: *capacity = sizeof(comm_host[0]); return comm_host[0];
+  case SLM_CFG_HOST2: *capacity = sizeof(comm_host[1]); return comm_host[1];
+  /* APN в настройках нет: таблица операторов по IMSI (решение Q5), логин/пароль пустые. */
+  case SLM_CFG_APN: case SLM_CFG_LOGIN: case SLM_CFG_PASSWORD: *capacity = sizeof(empty); return empty;
+  default: *capacity = 0; return NULL;
+  }
+}
+static uint16_t comm_number(uint8_t field)
+{
+  switch (field) {
+  case SLM_CFG_PORT: return comm_port[0];
+  case SLM_CFG_PORT2: return comm_port[1];
+  case SLM_CFG_NETWORK: return config.netType <= 4 ? config.netType : 0;
+  case SLM_CFG_RESERVE: return config.useServer2 && comm_host[1][0] && comm_port[1];
+  /* Ручной тип (команда 105) имеет приоритет; 0/255 - определить по AT+GMM. */
+  case SLM_CFG_TYPE: return device.moduleType;
+  default: return 0;
+  }
+}
+static const slm_settings_t comm_settings = {comm_text, comm_number};
+/* v5: PC13 - питание модема, PC14 - ключ включения; high - физический уровень. */
+static void comm_gpio(uint8_t pin, bool high)
+{
+  uint16_t bit = (uint16_t)(1u << pin);
+  if (high) GPIOC->BSRR = bit; else GPIOC->BRR = bit;
+}
+static void comm_type(uint8_t type) { device.moduleType = type; }
+static void comm_imei(const char *imei) { memcpy(device.IMEIGSM, imei, 16); }
+/* Старт и повторный старт (заводские настройки) новой связи. */
+void user_comm_boot(void)
+{
+  static const slm_handlers_t handlers = {comm_gpio, comm_type, comm_imei};
+  comm_split(0, config.useServer1 || !config.useServer2 ? config.server1 : config.server2);
+  comm_split(1, config.server2);
+  if (!user_comm_start(&comm_settings, &handlers, timers_getMillis()))
+    (void)comm_modem_restart(true, timers_getMillis());
+}

@@ -4,9 +4,6 @@
 #include "stm32f10x_usart.h"
 #include "misc.h"
 
-#ifndef COMM_UART_STANDALONE
-#error "comm_uart: select standalone USART3 owner, exclude uart_stm32f10x.c"
-#endif
 
 /* DMA пишет прямо в кольцо; 511 полезных байт сохраняют прежний предел. */
 static uint8_t rx[512];
@@ -44,7 +41,8 @@ void comm_uart_tick(void)
   if ((flags & DMA_ISR_TCIF3) && pos >= (uart_state.rx_write & (sizeof(rx) - 1u))) delta += sizeof(rx);
   uart_state.rx_write += delta;
   __DMB();
-  used = (uint16_t)(uart_state.rx_write - uart_state.rx_read);
+  uint16_t written = uart_state.rx_write, taken = uart_state.rx_read; /* порядок чтений volatile задан */
+  used = (uint16_t)(written - taken);
   if ((delta && used >= sizeof(rx)) || (flags & DMA_ISR_TEIF3)) {
     uart_state.rx_view = sizeof(rx); /* Защёлка потери потока до abort, без нового ОЗУ. */
     uart_state.counters.errors |= COMM_UART_OVERFLOW;
@@ -187,7 +185,8 @@ uint16_t comm_uart_peek(const uint8_t **data)
   comm_uart_tick();
   uint16_t read = uart_state.rx_read & (sizeof(rx) - 1u), count = 0;
   if (uart_state.rx_view != sizeof(rx)) {
-    count = (uint16_t)(uart_state.rx_write - uart_state.rx_read);
+    uint16_t written = uart_state.rx_write;
+    count = (uint16_t)(written - uart_state.rx_read);
     uint16_t contiguous = (uint16_t)(sizeof(rx) - read);
     if (count > contiguous) count = contiguous;
     uart_state.rx_view = count;

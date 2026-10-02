@@ -15,6 +15,7 @@ static struct {
   const comm_modem_profile_t *profile;
   slm_settings_t settings;
   void (*type_found)(uint8_t);
+  void (*imei_found)(const char *);
   comm_power_gpio_t gpio;
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
   slm_diag_t diag;
@@ -133,6 +134,16 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       if (answer) slm.attempt.answer = answer < 4 ? answer : 4;
       break;
     }
+    case MODEM_IMEI: {
+      /* AT+GSN: строка из 15 цифр - IMEI для регистрации на сервере. */
+      char imei[16];
+      if (n != 15) break;
+      for (uint16_t i = 0; i < n; ++i) { if (p[i] < '0' || p[i] > '9') return; imei[i] = (char)p[i]; }
+      imei[15] = 0;
+      slm.attempt.answer = 1;
+      if (slm.imei_found) slm.imei_found(imei);
+      break;
+    }
     case MODEM_IMSI:
       if (n != 15) break;
       for (uint16_t i = 0; i < n; ++i) if (p[i] < '0' || p[i] > '9') return;
@@ -194,6 +205,7 @@ bool comm_modem_start(const comm_modem_profile_t *selected, const slm_settings_t
   slm.settings = *settings;
   if (!slm_valid_settings()) return false;
   slm.type_found = handlers->type_found;
+  slm.imei_found = handlers->imei_found;
   slm.gpio = handlers->gpio;
   slm_begin(true, now_ms);
   return true;
@@ -328,7 +340,7 @@ static void slm_completed(void)
       slm.attempt.query = 0; slm.attempt.next = slm.attempt.now + comm_timeouts[COMM_T_NETWORK_POLL]; return;
     }
     break;
-  case MODEM_MODEL: case MODEM_IMSI: case MODEM_RAT: case MODEM_PORT:
+  case MODEM_MODEL: case MODEM_IMEI: case MODEM_IMSI: case MODEM_RAT: case MODEM_PORT:
     if (!slm.attempt.answer) { slm_fail(action == MODEM_MODEL ? SLM_ERR_TYPE : SLM_ERR_RESPONSE); return; }
     break;
   case MODEM_SIM:

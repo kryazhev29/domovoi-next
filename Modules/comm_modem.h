@@ -3,7 +3,7 @@
 #define COMM_MODEM_H
 #include "modem_slm336.h"
 enum { MODEM_OK, MODEM_MODEL, MODEM_SIM, MODEM_PORT, MODEM_RAT,
-       MODEM_NETWORK, MODEM_IMSI, MODEM_PDP, MODEM_READY, MODEM_ANY };
+       MODEM_NETWORK, MODEM_IMSI, MODEM_PDP, MODEM_READY, MODEM_ANY, MODEM_IMEI };
 /* ‘аза в старшей тетраде, правило ответа/ошибки Ч в младшей.
    READY повтор€ет AT, NETWORK опрашивает сеть, остальные ошибки завершают
    попытку; PDP/TCP/SIM уточн€ют причину. next/alternate Ч успешные переходы. */

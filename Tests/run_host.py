@@ -29,14 +29,6 @@ def cases(user):
     return lambda n:parse[parse.index('\r\n    case %d:'%n):parse.index('\r\n    case %d:'%(n+1))]
 def config_helpers(user):
     return ''.join(function(user,n)+'\n' for n in ('config_exchange','config_terminate_strings') if 'static void '+n+'(' in user)
-def gsm_parser_code(gsm):
-    strings=source('User/user_str_fun.c')
-    code='\n'.join(function(strings,n) for n in ('chkdigitchar','chkdigitstr','skipchar','user_strcpy'))+'\n'
-    code+=function(gsm,'gsm_regstate')+'\n'+function(gsm,'gsm_datalength')+'\n'
-    code+='static void gsm_rxreset(void);\nstatic void gsm_rxfailed(void);\nstatic bool gsm_rxpending(void);\nvoid gsm_read(char*,Int16U);\n'
-    code+=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'
-    code+=function(gsm,'gsm_readtext')+'\n'+gsm[gsm.index('/* >>> Поток RX:'):gsm.index('/* <<< Поток RX */')]
-    return code
 
 with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     d=pathlib.Path(d)
@@ -104,12 +96,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'if (len == 3 || len == 9)' in case(21)
         assert 'photo_request(cch, uniqId, NULL, 0)' in function(user,'user_send_Photos')
         assert 'photo_poll();' in function(user,'port_check_data')
-        assert 'photo_connection_lost();' in function(user,'user_disconnected')
+        assert 'photo_connection_lost();' in function(user,'user_comm_session')
         assert '(cmd == 7 || cmd == 21) ? 5 : 255' in function(user,'user_send_answer_comand')
         code=source('User/photo.c').replace('#include "photo.h"','')
         code=code.replace('#include "../Modules/comm_channel.h"','')
-        if len(sys.argv)>3 and sys.argv[3]=='newcore':
-            code=source('Tests/comm_photo_slot.c')+'\n'+code
+        code=source('Tests/comm_photo_slot.c')+'\n'+code
         code += '\n'+function(user,'user_send_Photos')+'\nstatic void command(uint8_t cmd,uint16_t len,uint8_t address,uint8_t uniqId){ uint8_t data[11]={0}; uint8_t *ptr=data; dataChanel_e cch=CH_SERVER; ptr[5]=address; switch(cmd){'+case(7)+case(21)+'default: break;}}'
         unit=source('Tests/test_photo.c').replace('/* PRODUCTION */',function(user,'user_getPhotoCount')+'\n'+code)
         if kind=='rs485cfg':
@@ -238,7 +229,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'device.lmCount = 0;' in c24 and 'switch (ptr[5])' not in c24,'answer 24'
         # Settings sector: device saves take the settings from RAM; the modem type is saved on a change only.
         assert 'user_writeConfigAndDevice();' in function(user,'user_saveindex') and 'mem_rewrite' not in function(user,'user_saveindex'),'saveindex from RAM'
-        assert 'if (device.moduleType != gsm_getModuleType()){' in function(user,'usergsm_event'),'module type on change'
+        assert 'device.moduleType = type;' in user,'module type from the modem'
         types=typedefs(st,'logControl_e','codeType_e','releMode_s','cellShedule_s','cellID_s')
         # Passes per day: the counter restores on the first pass of a new day; a record from the server is today's.
         sync_body=function(user,'sync_page') if 'static uint8_t sync_page(' in user else cases(user)(13)
@@ -279,9 +270,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))
     elif kind=='serverrx':
         user=source('User/user_fun.c')
-        for name in ['user_connected','user_disconnected']:
+        for name in ['user_comm_session','user_comm_rx_done']:
             assert 'server_rx_reset();' in function(user,name),name
-        code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
+        code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('/* QIRD копирует прямо в прежний сборщик')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='fwblockbounds':
         user=source('User/user_fun.c');case=cases(user)
@@ -409,60 +400,6 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         if 'static unsigned int timers_snapshot(' in timers:code+=function(timers,'timers_snapshot')+'\n'
         code+='\n'.join(function(timers,n) for n in ('timers_set','timers_get','timers_handle','timers_pause','timers_getMillis'))
         unit=(ROOT/'Tests/test_timers_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
-    elif kind=='uarthandoff':
-        uart=source('Modules/uart_stm32f10x.c').replace('inline bool uart_addbyte','bool uart_addbyte')
-        types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'+typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
-        names=['uart_addbyte','uart_clear','uart_received','uart_getptr','uart_getstate','uart_isReceiving','uart_matchresponse','uart_sendStrAndWaitResp']
-        if 'uint16_t uart_takerx(' in uart:names.insert(1,'uart_takerx')
-        if 'uint16_t uart_rxview(' in uart:names.insert(1,'uart_rxview')
-        if 'uint8_t uart_rxoverflow(' in uart:names.insert(1,'uart_rxoverflow')
-        code='\n'.join(function(uart,n) for n in names)+'\n'+gsm_parser_code(source('Modules/gsm.c'))+'\n'+function(source('User/user_fun.c'),'gsm_check_data')
-        # IRQ после чтения готовности, до проверки receiving в главном цикле.
-        code=code.replace('return uart[num].state;', "Int8U state = uart[num].state; if (noise_receive && state) uart_addbyte(num,'x'); return state;")
-        if 'uint16_t uart_takerx(' in uart:code='#define HAVE_TAKE 1\n'+code
-        unit=(ROOT/'Tests/test_uart_handoff.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
-    elif kind=='uartresponse':
-        uart=source('Modules/uart_stm32f10x.c')
-        types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'
-        code=''
-        if 'static bool uart_matchresponse(' in uart:code+=function(uart,'uart_matchresponse')+'\n'
-        code+='\n'.join(function(uart,n) for n in ('uart_received','uart_clear','uart_waitresp','uart_sendStrAndWaitResp'))
-        unit=(ROOT/'Tests/test_uart_response.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
-    elif kind=='gsmparser':
-        gsm=source('Modules/gsm.c');strings=source('User/user_str_fun.c')
-        types=typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
-        code='\n'.join(function(strings,n) for n in ('chkdigitchar','chkdigitstr','skipchar','user_strcpy'))+'\n'
-        if 'static bool gsm_datalength(' in gsm:code+=function(gsm,'gsm_datalength')+'\n'
-        if 'static bool gsm_regstate(' in gsm:code+=function(gsm,'gsm_regstate')+'\n'
-        if '/* >>> Поток RX:' in gsm:
-            code+='#define TEST_STREAM 1\nstatic void gsm_rxreset(void);\nstatic void gsm_rxfailed(void);\nstatic bool gsm_rxpending(void);\nvoid gsm_read(char*,Int16U);\n'
-            code+=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'
-            code+=function(gsm,'gsm_readtext')+'\n'+gsm[gsm.index('/* >>> Поток RX:'):gsm.index('/* <<< Поток RX */')]
-        else:code+=function(gsm,'gsm_read')
-        unit=(ROOT/'Tests/test_gsm_parser.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
-        if '/* >>> Поток RX:' in gsm:unit='#define TEST_STREAM 1\n'+unit
-    elif kind=='gsmreg':
-        gsm=source('Modules/gsm.c')
-        code='\n'.join(x for x in gsm.splitlines() if x.startswith('#define GSM_REG_'))+'\n'
-        code+=function(gsm,'gsm_getregstate')
-        unit=(ROOT/'Tests/test_gsm_reg.c').read_text().replace('/* PRODUCTION */',code)
-    elif kind=='gsmurc':
-        gsm=source('Modules/gsm.c');uart=source('Modules/uart_stm32f10x.c')
-        if 'static void gsm_keepurc(' in gsm:
-            types=re.search(r'typedef struct\{.*?\}uart_t;',uart,re.S).group(0)+'\n#define UARTS 3\n'+typedefs(source('Modules/gsm.h'),'gsmresp_e','moduleType_e','pwrOp_e','GsmStr')
-            code='\n'.join(function(uart,n) for n in ('uart_received','uart_rxview','uart_rxoverflow','uart_clear','uart_takerx','uart_matchresponse','uart_sendStrAndWaitResp'))+'\n'+gsm_parser_code(gsm)+'\n'+function(gsm,'gsm_runcmd')
-            unit=(ROOT/'Tests/test_gsm_uart_responses.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
-        else:
-        # The answer copy is bounded: a URC carrying server data is far longer than gsm_strbuf.
-            assert 'strcpy(rec,' not in uart and 'memcpy(rec, &uart[num].rxbuffer[0], len);' in uart,'bounded answer copy'
-            assert 'uart_sendStrAndWaitResp(GSM_PORT, a, b, sizeof(gsm_strbuf), d, c)' in gsm,'answer buffer size'
-        # Wiring: the stash is taken before the command clears the port and parsed by the main loop.
-            run=function(gsm,'gsm_runcmd')
-            assert run.index('gsm_stashurc();')<run.index('gsm_sendStrAndWaitResp'),'stash before the command'
-            assert 'gsm_takeurc();' in function(source('User/user_fun.c'),'gsm_check_data'),'main loop parses the stash'
-            code=gsm[gsm.index('/* >>> URC'):gsm.index('/* <<< URC')]+'\n'+run
-            if 'gsm_rxfailed();' in code:code='#include <stdbool.h>\nstatic void gsm_rxfailed(void) {}\nstatic bool gsm_rxpending(void) {return false;}\n'+code
-            unit=(ROOT/'Tests/test_gsm_urc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='crc':
         user=source('User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
@@ -493,7 +430,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_usb_setup_bounds.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='utcday':
         user=source('User/user_fun.c')
-        clock=user[user.index('    device.day = user_getweakday'):user.index('    device.csq = usergsm_getcsq')]
+        clock=user[user.index('    device.day = user_getweakday'):user.index('    device.connected = comm_channel_ready();')]
         code='\n'.join(function(user,n) for n in ('user_getweakday','user_dayIsHoliday'))+'\nstatic void audit_clock(void){\n'+clock+'\n}'
         unit=(ROOT/'Tests/test_utc_day.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellHoliday_s')).replace('/* PRODUCTION */',code)
     elif kind=='idexpiry':
@@ -548,13 +485,20 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#include <stdbool.h>\nstatic bool table_storage_ready=true;\nstatic bool mem_tables_ready(void) { return table_storage_ready; }\n'+unit
     if kind!='commserver':
         helpers=source('User/user_fun.c')
-        helpers=helpers[helpers.index('#ifdef COMM_NEW_CORE\r\nstatic uint8_t *user_comm_acquire'):helpers.index('void user_send_anyData(')]
-        if kind in ('logupload','uploadretry') and len(sys.argv)>3 and sys.argv[3]=='newcore':
-            slot='#define COMM_SLOT_FAILURE '+('fail_alloc' if kind=='uploadretry' else '0')+'\n'+source('Tests/comm_upload_slot.c')+'\n'+helpers
-            pos=unit.index('static int8_t connection_send(')
-            pos=unit.index('\n',pos)+1
-            unit=unit[:pos]+slot+unit[pos:]
-        unit=helpers+unit
+        helpers=helpers[helpers.index('/* Назначение кадра серверу'):helpers.index('void user_send_anyData(')]
+        # Отправка серверу - только слот канала: помощники и модель слота нужны, если тест их зовёт.
+        if not re.search(r'user_comm_(acquire|free)\(', unit): helpers=''
+        if re.search(r'comm_tx_(acquire|commit|release)\(', unit+helpers) and 'bool comm_tx_commit(' not in unit:
+            proto='#include <stdint.h>\n#include <stdbool.h>\n#include <stdlib.h>\nstatic uint8_t *comm_tx_acquire(uint16_t *capacity);\nstatic bool comm_tx_commit(uint16_t count);\nstatic void comm_tx_release(void);\n'
+            if 'static int8_t connection_send(' in unit:
+                slot='#define COMM_SLOT_FAILURE '+('fail_alloc' if kind=='uploadretry' else '0')+'\n'+source('Tests/comm_upload_slot.c')+'\n'
+                pos=unit.index('\n',unit.index('static int8_t connection_send('))+1
+                unit=unit[:pos]+slot+unit[pos:]
+            else:
+                unit+='\nstatic uint8_t sink_slot[1040];\nstatic uint8_t *comm_tx_acquire(uint16_t *capacity){*capacity=sizeof(sink_slot);return sink_slot;}\nstatic bool comm_tx_commit(uint16_t count){return count<=sizeof(sink_slot);}\nstatic void comm_tx_release(void){}\n'
+            unit=proto+helpers+unit
+        else:
+            unit=helpers+unit
     (d/'test.c').write_text(unit.replace('\r\n','\n'))
     subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)

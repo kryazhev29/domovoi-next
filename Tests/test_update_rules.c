@@ -23,6 +23,7 @@ static uint32_t now_ms;
 static uint32_t timers_getMillis(void) { return now_ms; }
 static uint16_t crc16_calc(uint8_t *p, uint16_t n) { (void)p; (void)n; return 0; }
 static int8_t connection_send(int8_t h, uint8_t *p, uint16_t n) { (void)h; (void)p; (void)n; sent_server++; return 0; }
+static void comm_server_status_sent(uint8_t id) { (void)id; }
 static void usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; sent_usb++; }
 /* PRODUCTION */
 static uint16_t bits(void) { uint16_t s; memcpy(&s, &device.status, 2); return s; }

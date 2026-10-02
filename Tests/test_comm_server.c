@@ -73,8 +73,12 @@ typedef unsigned dataChanel_e;
 static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
 static bool usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; return true; }
-static int8_t connection_send(int8_t h, uint8_t *p, uint16_t n)
-{ (void)h; CHECK(n<=sizeof(legacy_frame)); memcpy(legacy_frame,p,n); legacy_count=n; return CE_OK; }
+/* Эталон: те же сборщики кадров пишут в отдельный буфер, кадр канала сверяется с ним байт в байт. */
+static uint8_t legacy_buffer[1040];
+static uint8_t *legacy_acquire(uint16_t needed) { return needed <= sizeof(legacy_buffer) ? legacy_buffer : NULL; }
+static uint8_t *legacy_tx_acquire(uint16_t *capacity) { *capacity = sizeof(legacy_buffer); return legacy_buffer; }
+static bool legacy_commit(uint16_t n) { CHECK(n<=sizeof(legacy_frame)); memcpy(legacy_frame,legacy_buffer,n); legacy_count=n; return true; }
+#define legacy_free(p, cch) ((void)(p), (void)(cch))
 static void status_event_sent(uint16_t status, uint32_t now) { (void)status; (void)now; }
 /* PRODUCERS */
 static void registration_producer(void)
@@ -100,7 +104,7 @@ static bool no_traffic(void)
   ++event13; flash_model[0x70000]=13; return true;
 }
 static const comm_server_handlers_t test_server_handlers={registration_producer,status_producer,server_session,server_rx_process,no_traffic};
-static const slm_handlers_t transport_handlers={sim_gpio,sim_type};
+static const slm_handlers_t transport_handlers={sim_gpio,sim_type,sim_imei};
 
 static void transport_tx(void)
 {

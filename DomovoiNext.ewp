@@ -4388,9 +4388,6 @@
             <name>$PROJ_DIR$\Modules\adc_stm32f10x.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\Modules\gsm.c</name>
-        </file>
-        <file>
             <name>$PROJ_DIR$\Modules\spi_stm32f10x.c</name>
         </file>
         <file>
@@ -4404,6 +4401,30 @@
         </file>
         <file>
             <name>$PROJ_DIR$\Modules\wdt_stm32f10x.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_uart.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_at.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_power_v5.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_modem.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\modem_slm336.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_channel.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_server.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_recover.c</name>
         </file>
     </group>
     <group>
@@ -4499,6 +4520,12 @@
             <name>$PROJ_DIR$\User\idindex.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\comm_timeouts.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\user_comm.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\crc.c</name>
         </file>
         <file>
@@ -4518,9 +4545,6 @@
         </file>
         <file>
             <name>$PROJ_DIR$\User\user_fun.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\User\user_gsm.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\user_str_fun.c</name>

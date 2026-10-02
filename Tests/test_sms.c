@@ -32,10 +32,11 @@ static void user_debug(char *p)
         CHECK(strlen(p) < sizeof(debug_text)); strcpy(debug_text, p); recv_debug_lines++;
     }
 }
-static void gsm_sendsms(char *num, char *mes)
+static bool user_comm_sms(const char *num, const char *mes)
 {
     CHECK(strlen(num) < sizeof(sent_number)); CHECK(strlen(mes) < sizeof(sent_message));
     strcpy(sent_number, num); strcpy(sent_message, mes); sent++;
+    return true;
 }
 static bool log_addSystemEventID(logSystem_e event, char *id)
 {

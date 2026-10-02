@@ -54,10 +54,8 @@ typedef unsigned int          Boolean;  // Boolean
 typedef unsigned int        * pBoolean;
 typedef unsigned int          DWORD;
 typedef unsigned char         BYTE;
-typedef unsigned char         bool;
-
-#define false                 0
-#define true                  1
+/* bool/true/false - стандартные (C99): один тип во всём проекте и в модулях связи. */
+#include <stdbool.h>
 
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))

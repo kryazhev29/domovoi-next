@@ -31,7 +31,9 @@ static void app_boot_error_text(char *p) { strcpy(p,"TRIAL FAIL");effects++; }
 static void app_boot_error_reported(void) { boot_error=0;effects++; }
 static void fw_log(logUpdate_e event,const char *why) { (void)event;(void)why;effects++; }
 static void status_event_sent(uint16_t n,uint32_t now) { (void)n;CHECK(now==42);effects++; }
-static void connection_reopen(int8_t handle) { CHECK(handle==2);effects++; }
+/* Команда 1: исход регистрации передаётся серверной части новой связи. */
+static void comm_server_registered(uint8_t success) { (void)success;effects++; }
+static void comm_channel_reopen(uint32_t pause) { CHECK(pause==0);effects++; }
 static void user_factoryReset(void) { effects++; }
 static bool log_addSystemEvent(logSystem_e event) { CHECK(event==LOG_SYS_RESETONCMD);effects++;return true; }
 static void user_savereset(void) { effects++; }

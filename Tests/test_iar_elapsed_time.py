@@ -10,7 +10,7 @@ if mode in ('loop','both'):
         m=Machine();m.init();m.u.mem_map(0x42000000,0x600000)
         d=m.addr('device');timer=m.addr('timer')
         for name in ('out_process','user_indication','log_checkPending','user_checkIdTimeEnd','user_saveindex','usergsm_getcsq','connection_state','usergsm_getNetType'):
-            m.stubs[m.addr(name)]=lambda:m.ret(0)
+            if name in m.symbols: m.stubs[m.addr(name)]=lambda:m.ret(0)
         m.write(d+off['datetime'],1600000000);m.write(d+off['worktime'],100)
         m.write(d+off['updateTimeout'],600,2);m.write(timer+12,ms)
         m.call('user_loop',budget=3000000)

@@ -1,7 +1,7 @@
 /* Доработка: Кряжев А., 2026. Обратное давление в прежней модели выгрузки. */
-#undef user_comm_send
-#undef user_comm_free
-#define COMM_NEW_CORE 1
+#ifndef CE_OK
+#define CE_OK 0
+#endif
 #ifndef CE_BUSY
 #define CE_BUSY 5
 #endif

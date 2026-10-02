@@ -7,7 +7,7 @@
 #include "comm_at.h"
 enum {
   SLM_DISCHARGE, SLM_POWER_LEAD, SLM_POWER_RAIL, SLM_POWER_KEY, SLM_POWER_BOOT,
-  SLM_AT_READY, SLM_MODEL, SLM_ECHO, SLM_CMEE, SLM_IFC, SLM_CLIP,
+  SLM_AT_READY, SLM_MODEL, SLM_IMEI, SLM_ECHO, SLM_CMEE, SLM_IFC, SLM_CLIP,
   SLM_CMER, SLM_CREG_URC, SLM_CGREG_URC, SLM_CEREG_URC, SLM_URC_PORT,
   SLM_URC_SET, SLM_SIM, SLM_RAT_QUERY, SLM_RAT_SET, SLM_NETWORK,
   SLM_IMSI, SLM_APN, SLM_DEACT, SLM_ACTIVATE, SLM_TCP, SLM_READ, SLM_STEP_COUNT
@@ -32,6 +32,9 @@ typedef struct {
   uint16_t modem_code;
   uint8_t state, step, phase, reason, completed_phases, at_fault;
 } slm_status_t;
+/* Тип модема в настройках и статусе (Протокол2, команда 105): значения прежние. */
+enum { MODEM_TYPE_AUTO = 0, MODEM_TYPE_UG95 = 1, MODEM_TYPE_SLM336 = 2, MODEM_TYPE_M66 = 3,
+       MODEM_TYPE_UNDEF = 255 };
 enum { SLM_CFG_HOST, SLM_CFG_APN, SLM_CFG_LOGIN, SLM_CFG_PASSWORD,
        SLM_CFG_PORT, SLM_CFG_TYPE, SLM_CFG_NETWORK, SLM_CFG_HOST2, SLM_CFG_PORT2, SLM_CFG_RESERVE };
 typedef struct {
@@ -43,6 +46,7 @@ typedef struct {
 typedef struct {
   comm_power_gpio_t gpio;
   void (*type_found)(uint8_t type);
+  void (*imei_found)(const char *imei); /* 15 цифр и 0; указатель действует в вызове */
 } slm_handlers_t;
 /* Только для изолированного нового сеанса: отменяет UART и включает v5.
    Копируются только функции-геттеры, heap не используется. */
