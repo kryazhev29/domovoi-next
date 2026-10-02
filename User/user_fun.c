@@ -8,6 +8,7 @@
 #include "../Modules/comm_server.h"
 #endif
 #include "photo.h"
+#include "idindex.h"
 #include "usb_istr.h"
 #include "../Bootloader/app_update.h"
 #include "../Bootloader/boot_manual.h"
@@ -984,12 +985,14 @@ bool user_clearMemBlock(memBlock_e mb){
     if (!mem_erase_sector(adr)) return false;
     wdt_reload();
   }
+  if (mb == MB_ID) idindex_scanned(0, 0); /* база пуста - индекс пересобираетс€ в фоне */
   return true;
 }
 
 // циклический обработчик
 void user_loop(void)
 {
+  idindex_poll(mem[MB_ID].start); /* фонова€ пересборка индекса ID, короткий шаг */
   // каждые 10 мс
   if (timers_get(0) >= 10)
   {
@@ -3145,19 +3148,25 @@ static uint16_t id_cells_end;
 /* —колько ID пакета команды 13 займут пустые €чейки (повторы номера считаютс€ раз) и
  * наибольший номер. „итаетс€ по 2 байта на запись, а не вс€ база. UINT16_MAX - ошибка
  * чтени€, тогда считаем по всей базе. */
-static uint16_t sync_new_ids(const uint8_t *records, uint16_t count, uint16_t *last)
+static uint16_t sync_new_ids(const uint8_t *records, uint16_t count, uint16_t *last, uint32_t *delta)
 {
-  uint16_t added = 0, index, stored;
+  uint16_t added = 0, index;
   for (uint16_t i = 0; i < count; i++){
-    memcpy(&index, records + (uint32_t)i * sizeof(cellID_s), 2);
+    const uint8_t *r = records + (uint32_t)i * sizeof(cellID_s);
+    uint8_t old[12];
+    memcpy(&index, r, 2);
     if (index > *last) *last = index;
-    bool repeat = false;
-    for (uint16_t j = 0; j < i && !repeat; j++)
-      repeat = !memcmp(records + (uint32_t)j * sizeof(cellID_s), &index, 2);
-    if (repeat) continue;
-    if (!mem_read(mem[MB_ID].start + (uint32_t)(index - 1u) * sizeof(cellID_s), (uint8_t*)&stored, 2))
+    /* Ќомер в индекс до записи €чейки: лишний номер безвреден, пропавший - нет. */
+    (void)idindex_put(index, r + 2);
+    /* ѕрежнее содержимое: последн€€ ранн€€ запись пакета с тем же номером или флеш. */
+    int16_t j = (int16_t)i - 1;
+    while (j >= 0 && memcmp(records + (uint32_t)j * sizeof(cellID_s), &index, 2)) j--;
+    if (j >= 0) memcpy(old, records + (uint32_t)j * sizeof(cellID_s), 12);
+    else if (!mem_read(mem[MB_ID].start + (uint32_t)(index - 1u) * sizeof(cellID_s), old, 12))
       return UINT16_MAX;
-    if (stored == 0xffff) added++;
+    if (old[0] == 0xff && old[1] == 0xff) { if (j < 0) added++; }
+    else *delta ^= idindex_hash(index, old + 2);
+    *delta ^= idindex_hash(index, r + 2);
   }
   return added;
 }
@@ -3528,7 +3537,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
         {
         uint16_t last = id_cells_end;
-        uint16_t added = sync_new_ids(&ptr[10], ptr[9], &last);
+        uint32_t delta = 0;
+        uint16_t added = sync_new_ids(&ptr[10], ptr[9], &last, &delta);
         if (!sync_write_cells(&ptr[10], ptr[9], MB_ID, sizeof(cellID_s))) {
           device.numbersCount = user_getNumbersCount(); /* часть секторов могла записатьс€ */
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
@@ -3539,6 +3549,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         if (added == UINT16_MAX) device.numbersCount = user_getNumbersCount();
         else {
           device.numbersCount += added; id_cells_end = last;
+          idindex_commit(delta, last);
           if (id_used_bytes != UINT32_MAX && id_used_bytes < (uint32_t)last * sizeof(cellID_s))
             id_used_bytes = (uint32_t)last * sizeof(cellID_s);
         }
@@ -3901,6 +3912,18 @@ uint8_t user_getweakday (uint32_t t)
 bool user_findID(char *id, cellID_s *cell){
 
   uint32_t adr;
+  uint16_t idsum = 0;
+  for (uint8_t i = 0; i < 10; i++) idsum += (uint8_t)id[i];
+  if (idsum == 2550 || idsum == 0) return false; // пустой ID в базе не ищетс€
+  {
+    cellID_s found;
+    int8_t r = idindex_find(mem[MB_ID].start, (const uint8_t*)id, (uint8_t*)&found);
+    if (r >= 0) {
+      if (r) memcpy(cell, &found, sizeof(found));
+      return r == 1;
+    }
+  }
+  /* »ндекс не готов (пересборка) - перебор по базе. */
   uint32_t endAdr = mem[MB_ID].start + (uint32_t)id_cells_end * sizeof(cellID_s);
   uint8_t tbuffer[1024];
   cellID_s *c;
@@ -4458,6 +4481,7 @@ uint16_t user_getNumbersCount(void){
   uint8_t tbuffer[1024];
   cellID_s *c;
   uint16_t cnt = 0, cell = 0, used = 0;
+  uint32_t sum = 0;
 
   id_cells_end = 0;
   // по странично читаем
@@ -4475,10 +4499,12 @@ uint16_t user_getNumbersCount(void){
 
       cnt++;
       id_cells_end = cell;
+      sum ^= idindex_hash(cell, (const uint8_t*)c->ID);
     }
     wdt_reload();
   }
   id_used_bytes = (uint32_t)used * sizeof(cellID_s);
+  idindex_scanned(sum, id_cells_end);
 
   return cnt;
 }
