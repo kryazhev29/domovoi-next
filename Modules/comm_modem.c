@@ -84,6 +84,8 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
   if (kind == COMM_AT_DONE) {
     slm.attempt.done = 1; slm.attempt.result = (uint8_t)detail;
     slm.attempt.status.modem_code = n;
+    /* Ошибка грамматики/UART оставляет AT в FAULT: обычный TCP close уже невозможен. */
+    if (detail > COMM_AT_TIMEOUT) kind = COMM_AT_STREAM_ERROR;
   }
   if (slm.transport_event && (slm.attempt.status.state == SLM_READY || kind == COMM_AT_URC
       || kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR))
@@ -118,7 +120,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       }
       break;
     case MODEM_RAT:
-      if (comm_at_parse(p,n,slm.profile->rat,values) && values[0] <= 4)
+      if (comm_at_parse(p,n,slm.profile->rat,values) && values[0] <= 5)
         slm.attempt.answer = values[0] == slm.settings.number(SLM_CFG_NETWORK) ? 1 : 2;
       break;
     case MODEM_PORT:
@@ -166,7 +168,7 @@ static bool slm_valid_settings(void)
 {
   uint16_t type = slm.settings.number(SLM_CFG_TYPE);
   if (!slm.settings.number(SLM_CFG_PORT) || (type != slm.profile->type && type != 0 && type != 255)
-      || slm.settings.number(SLM_CFG_NETWORK) > 4) return false;
+      || slm.settings.number(SLM_CFG_NETWORK) > 5) return false;
   for (uint8_t field = SLM_CFG_HOST; field <= SLM_CFG_PASSWORD; ++field) {
     uint16_t capacity = 0;
     const char *p = slm.settings.text(field, &capacity);

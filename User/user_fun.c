@@ -4700,6 +4700,7 @@ bool user_comm_busy(void) { return device.FWinProgress != 0; }
 /* Адрес сервера в настройках - "домен:порт" (как у старой связи). */
 static char comm_host[2][32];
 static uint16_t comm_port[2];
+static char comm_credential[sizeof(config.netOperator)];
 static void comm_split(uint8_t n, const char *server)
 {
   const char *colon = strrchr(server, ':');
@@ -4708,24 +4709,40 @@ static void comm_split(uint8_t n, const char *server)
   memcpy(comm_host[n], server, len); comm_host[n][len] = 0;
   comm_port[n] = colon ? (uint16_t)atoi(colon + 1) : 0;
 }
+/* Читаем текущие настройки: команда 12 применяется без перезагрузки платы.
+   Указатель живёт до следующего запроса поля; сборщик AT копирует его сразу. */
+static void comm_endpoint(uint8_t n)
+{
+  comm_split(n, n || (!config.useServer1 && config.useServer2) ? config.server2 : config.server1);
+}
 static const char *comm_text(uint8_t field, uint16_t *capacity)
 {
   static const char empty[1] = "";
   switch (field) {
-  case SLM_CFG_HOST: *capacity = sizeof(comm_host[0]); return comm_host[0];
-  case SLM_CFG_HOST2: *capacity = sizeof(comm_host[1]); return comm_host[1];
-  /* APN в настройках нет: таблица операторов по IMSI (решение Q5), логин/пароль пустые. */
-  case SLM_CFG_APN: case SLM_CFG_LOGIN: case SLM_CFG_PASSWORD: *capacity = sizeof(empty); return empty;
+  case SLM_CFG_HOST: comm_endpoint(0); *capacity = sizeof(comm_host[0]); return comm_host[0];
+  case SLM_CFG_HOST2: comm_endpoint(1); *capacity = sizeof(comm_host[1]); return comm_host[1];
+  case SLM_CFG_APN: case SLM_CFG_LOGIN: case SLM_CFG_PASSWORD: {
+    const char *p = config.netOperator, *end = p + sizeof(config.netOperator);
+    uint8_t part = (uint8_t)(field - SLM_CFG_APN), n = 0;
+    while (part && p < end && *p) { if (*p++ == ',') --part; }
+    if (part) { *capacity = sizeof(empty); return empty; }
+    while (p < end && *p && *p != ',' && n + 1u < sizeof(comm_credential)) comm_credential[n++] = *p++;
+    comm_credential[n] = 0; *capacity = sizeof(comm_credential); return comm_credential;
+  }
   default: *capacity = 0; return NULL;
   }
 }
 static uint16_t comm_number(uint8_t field)
 {
   switch (field) {
-  case SLM_CFG_PORT: return comm_port[0];
-  case SLM_CFG_PORT2: return comm_port[1];
-  case SLM_CFG_NETWORK: return config.netType <= 4 ? config.netType : 0;
-  case SLM_CFG_RESERVE: return config.useServer2 && comm_host[1][0] && comm_port[1];
+  case SLM_CFG_PORT: comm_endpoint(0); return comm_port[0];
+  case SLM_CFG_PORT2: comm_endpoint(1); return comm_port[1];
+  case SLM_CFG_NETWORK: {
+    /* Команда 12: авто, GSM, авто 3G/4G, UMTS, LTE; значения QCFG другие. */
+    static const uint8_t rat[] = {0, 1, 0, 5, 3};
+    return config.netType < sizeof(rat) ? rat[config.netType] : 0;
+  }
+  case SLM_CFG_RESERVE: comm_endpoint(1); return config.useServer2 && comm_host[1][0] && comm_port[1];
   /* Ручной тип (команда 105) имеет приоритет; 0/255 - определить по AT+GMM. */
   case SLM_CFG_TYPE: return device.moduleType;
   default: return 0;

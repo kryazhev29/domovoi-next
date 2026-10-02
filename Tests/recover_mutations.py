@@ -14,7 +14,7 @@ CASES = (
     ('no-tcp-first', b'if (rc.net_step == 0u) comm_channel_reopen(0);', b'if (0) comm_channel_reopen(0);'),
     ('no-soft-step', b'else if (rc.net_step == 1u) rc_schedule(false, 0);', b'else if (rc.net_step == 1u) rc_schedule(true, 0);'),
     ('early-counts-startup', b'if (step < SLM_TCP) continue;', b'if (step > 200u) continue;'),
-    ('early-window', b'>= comm_timeouts[window] / 1000u', b'>= comm_timeouts[window] / 100u'),
+    ('early-window', b'>= comm_timeouts[window]', b'>= comm_timeouts[window] * 10u'),
     ('night-busy-ignored', b'  if (busy) return;\r\n', b''),
     ('night-twice', b'&& day != rc.night_day', b''),
     ('no-ladder-reset', b'rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;', b'rc.soft_fails = 0;'),

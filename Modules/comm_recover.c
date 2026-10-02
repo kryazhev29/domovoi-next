@@ -10,9 +10,10 @@ enum { RC_WATCH, RC_WAIT };
 static struct {
   const comm_recover_hooks_t *hooks;
   uint32_t now, wait_since, wait_ms, online_since, last_start;
-  uint16_t at_times[3], tcp_times[5];   /* секунды последних таймаутов AT и неудач TCP в работе */
+  uint32_t at_times[3], tcp_times[5];   /* millis последних таймаутов AT и неудач TCP в работе */
   uint16_t night_day;                   /* сутки последнего ночного перезапуска */
   uint8_t state, power, power_step, soft_step, soft_fails, net_step, online;
+  uint8_t at_count, tcp_count;
   uint8_t ring, at_i, tcp_i;            /* ring - следующая непрочитанная запись кольца сбоев */
 } rc;
 
@@ -45,15 +46,19 @@ static void rc_power_ladder(uint32_t pause)
   rc.soft_fails = 0;
 }
 
-/* Запоминает событие (секунды, 16 бит - окна до часа); true - их n за окно,
-   счёт с начала. 0 в слоте - пусто. */
-static bool rc_burst(uint16_t *t, uint8_t n, uint8_t *i, uint8_t window)
+/* Старые отметки удаляются каждый poll, в том числе до оборота millis.
+   Отдельное число отметок позволяет хранить событие в момент millis == 0. */
+static void rc_expire(uint32_t *t, uint8_t n, uint8_t i, uint8_t *count, uint8_t window)
 {
-  uint16_t s = (uint16_t)((rc.now / 1000u) | 1u);
-  t[*i] = s;
+  while (*count && rc.now - t[(i + n - *count) % n] >= comm_timeouts[window]) --*count;
+}
+static bool rc_burst(uint32_t *t, uint8_t n, uint8_t *i, uint8_t *count, uint8_t window)
+{
+  rc_expire(t, n, *i, count, window);
+  t[*i] = rc.now;
   *i = (uint8_t)((*i + 1u) % n);
-  if (!t[*i] || (uint16_t)(s - t[*i]) >= comm_timeouts[window] / 1000u) return false;
-  memset(t, 0, (uint32_t)n * sizeof(t[0]));
+  if (++*count < n) return false;
+  *count = 0;
   return true;
 }
 
@@ -67,9 +72,9 @@ static bool rc_early(void)
     rc.ring = (uint8_t)((rc.ring + 1u) % sizeof(d->failure_step));
     if (step < SLM_TCP) continue;
     if (reason == SLM_ERR_TIMEOUT || reason == SLM_ERR_NO_ANSWER)
-      early |= rc_burst(rc.at_times, 3, &rc.at_i, COMM_T_EARLY_AT);
+      early |= rc_burst(rc.at_times, 3, &rc.at_i, &rc.at_count, COMM_T_EARLY_AT);
     else if (reason == SLM_ERR_TCP)
-      early |= rc_burst(rc.tcp_times, 5, &rc.tcp_i, COMM_T_EARLY_TCP);
+      early |= rc_burst(rc.tcp_times, 5, &rc.tcp_i, &rc.tcp_count, COMM_T_EARLY_TCP);
   }
   return early;
 }
@@ -137,6 +142,8 @@ void comm_recover_no_internet(void)
 void comm_recover_poll(uint32_t now_ms)
 {
   rc.now = now_ms;
+  rc_expire(rc.at_times, 3, rc.at_i, &rc.at_count, COMM_T_EARLY_AT);
+  rc_expire(rc.tcp_times, 5, rc.tcp_i, &rc.tcp_count, COMM_T_EARLY_TCP);
   bool early = rc_early();
   if (comm_server_online()) {
     if (!rc.online) { rc.online = 1; rc.online_since = now_ms; }

@@ -276,7 +276,7 @@ static void settings_tests(void)
   sim_reset(); test_config.modem_type = 3; CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
   test_config.modem_type = 2; test_config.apn[0] = '"'; CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
   memset(test_config.apn,'A',sizeof(test_config.apn)); CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
-  sim_reset(); test_config.network_type = 5; CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
+  sim_reset(); test_config.network_type = 6; CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
   /* Геттеры читаются при составлении команды, копии настроек нет. */
   sim_reset(); sim_start();
   memcpy(test_config.apn, "changed.apn", sizeof("changed.apn"));

@@ -180,7 +180,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         # USB commands other than ident, status, PIN and USB diagnostics need the PIN.
         pc=function(user,'user_parse_comand')
         assert pc.index('CMD_CRCERROR')<pc.index('if (cch == CH_USB && !device.userAutorized && !usb_cmd_without_pin(ptr[4])){')<pc.index('switch (ptr[4])'),'PIN gate'
-        assert 'return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND;' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
+        allowed = 'return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND'
+        if '#define USB_COMM_DIAG_COMMAND ' in user: allowed += ' || cmd == USB_COMM_DIAG_COMMAND'
+        assert allowed + ';' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
         # Command 8: a requested output that did not switch answers 2, not success.
         assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
         code=function(source('User/crc.c'),'crc16_calc')+'\n'+pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
@@ -290,7 +292,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             if m[0].strip().split()[1].rstrip(':').isdigit() and int(m[0].strip().split()[1].rstrip(':')) in wanted:
                 selected.append(parse[m.start():labels[i+1].start()])
         assert len(selected)==len(wanted)
-        defines='\n'.join(x for x in user.splitlines() if x.startswith(('#define REG_UNKNOWN_IMEI','#define REG_NOT_BOUND')))
+        defines='\n'.join(x for x in user.splitlines() if x.startswith(('#define REG_UNKNOWN_IMEI','#define REG_NOT_BOUND','#define USB_COMM_DIAG_COMMAND')))
         code=defines+'\n'+helper+function(user,'usb_cmd_without_pin')+'\n'+parse[:parse.index('  switch (ptr[4])')]+'  switch(ptr[4]){'+''.join(selected)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_command_lengths.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
     elif kind=='cfgstrings':
