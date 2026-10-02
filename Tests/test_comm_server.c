@@ -283,6 +283,24 @@ static void server_tests(void)
   advance(500); CHECK(server_commands==before && !server_rx_count && closes>=1);
   puts("comm_server: registration/status/ping/DNS/close/backpressure/ACK/address/backoff PASS");
 }
+/* Ответ ping/DNS может прийти посреди подтверждения другой передачи. */
+static void probe_overlap_tests(void)
+{
+  for (unsigned probe=COMM_CH_PING; probe<=COMM_CH_DNS; ++probe) {
+    server_reset(); drop_status=1; ping_success=probe==COMM_CH_PING;
+    for (unsigned i=0;ch.probe_active!=probe && i<10000;++i) transport_tick(10);
+    CHECK(ch.probe_active==probe);
+    ping_reply_kind=0; dns_late=0; advance(50);
+    uint16_t capacity; uint8_t *p=comm_tx_acquire(&capacity);
+    CHECK(p && capacity>=12); memset(p,0,12); CHECK(comm_tx_commit(12));
+    for (unsigned i=0;ch.operation!=OP_ACK && i<100;++i) transport_tick(10);
+    CHECK(ch.operation==OP_ACK && ch.probe_active==probe);
+    sim_feed(probe==COMM_CH_PING ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n"
+      : "+QIURC: \"dnsgip\",0,1,60\r\n+QIURC: \"dnsgip\",\"1.2.3.4\"\r\n");
+    advance(100);
+    CHECK(sv.state==SV_SILENT && event13==1 && !ch.probe_active && !comm_tx_busy());
+  }
+}
 static void garbage_test(void)
 {
   server_reset();
@@ -317,4 +335,4 @@ static void garbage_test(void)
 }
 /* RECOVER */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); garbage_test(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); garbage_test(); recover_tests(); return 0; }

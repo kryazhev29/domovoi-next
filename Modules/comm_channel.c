@@ -73,7 +73,8 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
   } else if (ch.operation == OP_ACK) {
     if (comm_at_parse(p,n,"+QISEND:\001,\001,\001",v) && v[1] <= v[0] && v[2] == v[0] - v[1])
       ch.answer = v[2] == 0 ? 1 : 2;
-  } else {
+  }
+  {
     /* ѕовторное открытие гасит проверку, поэтому ответ старого сокета сюда не доходит. */
     if (ch.probe_active == COMM_CH_PING) {
       if (!comm_at_prefix(p,n,"+QPING:")) return;

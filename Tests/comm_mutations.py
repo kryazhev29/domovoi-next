@@ -25,6 +25,8 @@ def run():
     sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit(), channel=channel_unit())
     sources = {name: text.replace('\r\n', '\n') for name, text in sources.items()}
     cases = (
+        ('channel', 'ping-lost-during-ack', 'if (ch.probe_active == COMM_CH_PING) {', 'if (ch.operation != OP_ACK && ch.probe_active == COMM_CH_PING) {'),
+        ('channel', 'dns-lost-during-ack', 'else if (ch.probe_active == COMM_CH_DNS && comm_at_prefix', 'else if (ch.operation != OP_ACK && ch.probe_active == COMM_CH_DNS && comm_at_prefix'),
         ('at', 'idle-fragment-never-times-out', 'if (state == IDLE && (line_count || cr) && expired(now_ms, recovery))', 'if (0)'),
         ('at', 'idle-fragment-old-timestamp', 'if (state == IDLE && !line_count && !cr) started = now_ms;', ''),
         ('modem', 'busy-start-is-fatal', 'if (result == COMM_AT_BUSY) {', 'if (0) {'),
