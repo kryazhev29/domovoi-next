@@ -8,6 +8,7 @@
 #include "../Modules/comm_server.h"
 #endif
 #include "photo.h"
+#include "idindex.h"
 #include "usb_istr.h"
 #include "../Bootloader/app_update.h"
 #include "../Bootloader/boot_manual.h"
@@ -984,19 +985,18 @@ bool user_clearMemBlock(memBlock_e mb){
     if (!mem_erase_sector(adr)) return false;
     wdt_reload();
   }
+  if (mb == MB_ID) idindex_scanned(0, 0); /* база пуста - индекс пересобирается в фоне */
   return true;
 }
 
 // циклический обработчик
 void user_loop(void)
 {
-  // каждые 10 мс
-  if (timers_get(0) >= 10)
-  {
-    timers_set(0,0);
-    if (config.wiegandType != 0)
-      WG_process();
-  }
+  /* Карта - первой и на каждом проходе: конец кадра ловится сразу после паузы,
+     а не на следующем 10-мс такте. */
+  if (config.wiegandType != 0)
+    WG_process();
+  idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
 
   // каждые 50 мс
   if (timers_get(1) >= 50)
@@ -1044,6 +1044,10 @@ void user_loop(void)
     }
   }
 
+  /* Выходы - раз в 100 мс (outs.h): импульс и пауза с точностью 0,1 с. */
+  uint32_t outTicks = timers_take(0, 100);
+  while (outTicks != 0) { --outTicks; out_process(); }
+
   // каждую 1 сек
   // воспроизводим накопленные секунды; новые тики остаются на следующий проход
   uint32_t elapsedSeconds = timers_take(3, 1000);
@@ -1052,7 +1056,6 @@ void user_loop(void)
     --elapsedSeconds;
     wdt_reload();
     
-    out_process(); // обработка алгоритма работы выхода
     
     // есть подключение по USB но не настроено
     if (USB_DETECT)
@@ -1549,6 +1552,19 @@ uint16_t user_calcCRC16InFlash(uint32_t address, uint32_t siz){
   return crc;
 }
 
+/* Конец записанной части базы ID, байт от начала области; дальше флеш стёрта (0xFF).
+   UINT32_MAX - ещё не известно, тогда читается вся область. */
+static uint32_t id_used_bytes = UINT32_MAX;
+
+/* CRC-16 части базы ID [off, off+n): читается только записанная часть, стёртый хвост
+   досчитывается без чтения. Результат тот же, что при чтении всей области. */
+static uint16_t id_crc16(uint32_t off, uint32_t n){
+  uint32_t real = 0;
+  if (off < id_used_bytes) real = id_used_bytes - off < n ? id_used_bytes - off : n;
+  uint16_t crc = real ? user_calcCRC16InFlash(mem[MB_ID].start + off, real) : 0xFFFF;
+  return crc16_ffInit(n - real, crc);
+}
+
 // Отправка данных в формате протокола
 /* Назначение кадра серверу — единственный слот канала, без копии/heap. */
 #ifdef COMM_NEW_CORE
@@ -1902,7 +1918,7 @@ void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
   send_buffer[7] = uniqId; // uniqId
   send_buffer[8] = 5; // id
   
-  crcData = user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size);
+  crcData = id_crc16(0, mem[MB_ID].size);
   memcpy(&send_buffer[9], (uint8_t*)&crcData, 2); // crc id
   
   crcData = user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size);
@@ -1946,10 +1962,12 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   uint32_t memAddress = mem[MB_ID].start;
   uint32_t sizeBlock;
   
+  /* Протокол2 E363-E365, E562-E566: 0 - пакет 6 со 100 CRC; 1-100 - пакет 15:
+     номер блока и CRC16 блока N (ячейки (N-1)*500+1 ... N*500). */
   if (idx == 0){
     len = 203;
   } else{
-    len = 5;
+    len = 6;
   }
   
 #ifdef COMM_NEW_CORE
@@ -1980,7 +1998,7 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
 #endif        
       
       for (uint16_t i = 0; i < 100; i++){
-        crcData = user_calcCRC16InFlash(memAddress, sizeBlock);
+        crcData = id_crc16(memAddress - mem[MB_ID].start, sizeBlock);
         memcpy(&send_buffer[9 + (i*2)], (uint8_t*)&crcData, 2); // crc id
         memAddress += sizeBlock;
       }
@@ -1991,8 +2009,9 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   user_debug(">>U Send crc data (cmd 16)\r\n"); 
 #endif  
       
-      crcData = user_calcCRC16InFlash(memAddress + (sizeBlock*idx), sizeBlock);
-      memcpy(&send_buffer[9], (uint8_t*)&crcData, 2); // crc id
+      crcData = id_crc16(sizeBlock * (uint32_t)(idx - 1u), sizeBlock);
+      send_buffer[9] = idx; // номер блока
+      memcpy(&send_buffer[10], (uint8_t*)&crcData, 2); // crc блока
     }
     // ------- меняемый блок ---------
     
@@ -3127,6 +3146,34 @@ static uint8_t sync_page(const void *context, uint16_t off, uint8_t *page)
   return 1;
 }
 
+/* Номер последней записанной ячейки базы ID: граница поиска (user_findID). */
+static uint16_t id_cells_end;
+/* Сколько ID пакета команды 13 займут пустые ячейки (повторы номера считаются раз) и
+ * наибольший номер. Читается по 2 байта на запись, а не вся база. UINT16_MAX - ошибка
+ * чтения, тогда считаем по всей базе. */
+static uint16_t sync_new_ids(const uint8_t *records, uint16_t count, uint16_t *last, uint32_t *delta)
+{
+  uint16_t added = 0, index;
+  for (uint16_t i = 0; i < count; i++){
+    const uint8_t *r = records + (uint32_t)i * sizeof(cellID_s);
+    uint8_t old[12];
+    memcpy(&index, r, 2);
+    if (index > *last) *last = index;
+    /* Номер в индекс до записи ячейки: лишний номер безвреден, пропавший - нет. */
+    (void)idindex_put(index, r + 2);
+    /* Прежнее содержимое: последняя ранняя запись пакета с тем же номером или флеш. */
+    int16_t j = (int16_t)i - 1;
+    while (j >= 0 && memcmp(records + (uint32_t)j * sizeof(cellID_s), &index, 2)) j--;
+    if (j >= 0) memcpy(old, records + (uint32_t)j * sizeof(cellID_s), 12);
+    else if (!mem_read(mem[MB_ID].start + (uint32_t)(index - 1u) * sizeof(cellID_s), old, 12))
+      return UINT16_MAX;
+    if (old[0] == 0xff && old[1] == 0xff) { if (j < 0) added++; }
+    else *delta ^= idindex_hash(index, old + 2);
+    *delta ^= idindex_hash(index, r + 2);
+  }
+  return added;
+}
+
 static bool sync_write_cells(const uint8_t *records, uint16_t count, memBlock_e mb, uint16_t size)
 {
   while (count) {
@@ -3491,14 +3538,27 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         break;
       }
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
+        {
+        uint16_t last = id_cells_end;
+        uint32_t delta = 0;
+        uint16_t added = sync_new_ids(&ptr[10], ptr[9], &last, &delta);
         if (!sync_write_cells(&ptr[10], ptr[9], MB_ID, sizeof(cellID_s))) {
+          device.numbersCount = user_getNumbersCount(); /* часть секторов могла записаться */
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }
         device.datetimeID = tmp32;
-        device.numbersCount = user_getNumbersCount();
+        /* Команда 13 только заполняет ячейки: счёт и конец базы - на ходу, без чтения 1,6 МБ. */
+        if (added == UINT16_MAX) device.numbersCount = user_getNumbersCount();
+        else {
+          device.numbersCount += added; id_cells_end = last;
+          idindex_commit(delta, last);
+          if (id_used_bytes != UINT32_MAX && id_used_bytes < (uint32_t)last * sizeof(cellID_s))
+            id_used_bytes = (uint32_t)last * sizeof(cellID_s);
+        }
+        }
         user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
-                           user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size), cch, uniqId);
+                           id_crc16(0, mem[MB_ID].size), cch, uniqId);
       }
       break;
       
@@ -3579,6 +3639,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd crc ID (cmd 18)\r\n"); 
 #endif       
+      if (ptr[5] > 100) { // блоков 100: номер больше - чтение мимо базы
+        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+        break;
+      }
       user_send_crcMemoryID(ptr[5], cch, uniqId);
       break;      
       
@@ -3850,12 +3914,23 @@ uint8_t user_getweakday (uint32_t t)
 /* Команда 13 пишет ячейку на место её номера, поэтому в базе бывают пропуски. Поиск идёт до
  * последней записанной ячейки (считается при старте и после каждой синхронизации) и пропускает
  * пустые. */
-static uint16_t id_cells_end;
 
 // поиск ID в памяти, если есть то возвращаются параметры ячейки
 bool user_findID(char *id, cellID_s *cell){
 
   uint32_t adr;
+  uint16_t idsum = 0;
+  for (uint8_t i = 0; i < 10; i++) idsum += (uint8_t)id[i];
+  if (idsum == 2550 || idsum == 0) return false; // пустой ID в базе не ищется
+  {
+    cellID_s found;
+    int8_t r = idindex_find(mem[MB_ID].start, (const uint8_t*)id, (uint8_t*)&found);
+    if (r >= 0) {
+      if (r) memcpy(cell, &found, sizeof(found));
+      return r == 1;
+    }
+  }
+  /* Индекс не готов (пересборка) - перебор по базе. */
   uint32_t endAdr = mem[MB_ID].start + (uint32_t)id_cells_end * sizeof(cellID_s);
   uint8_t tbuffer[1024];
   cellID_s *c;
@@ -4274,6 +4349,21 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
     if (save && !user_updateID(&cellId)) return false;
   }
 
+  /* Реле - сразу после решения (счётчик проходов уже сохранён, B25), журнал - после:
+     запись событий не задерживает щелчок. */
+  for (out = 0; out < 2; out++){
+    if (!run[out]) continue;
+#ifdef DEBUG_USER
+    user_debug(out == 0 ? ">>U Act Out: Out 1\r\n" : ">>U Act Out: Out 2\r\n");
+#endif
+    // импульс
+    if (config.rele[out].mode == 0){
+      out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
+    } else{
+      // уровень: проход ID переключает выход, команда сервера 8 включает (строка 186)
+      out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
+    }
+  }
   switch (tp){
   case CT_PHONE:
     log_addControlEvent(LOG_CON_OUTONBYPHONE, id, cnt);
@@ -4302,20 +4392,6 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 #ifdef BOARD_IP_V3
   photo_auto(); // фотофиксация прохода, как в старой прошивке v1-v3
 #endif
-
-  for (out = 0; out < 2; out++){
-    if (!run[out]) continue;
-#ifdef DEBUG_USER
-    user_debug(out == 0 ? ">>U Act Out: Out 1\r\n" : ">>U Act Out: Out 2\r\n");
-#endif
-    // импульс
-    if (config.rele[out].mode == 0){
-      out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
-    } else{
-      // уровень: проход ID переключает выход, команда сервера 8 включает (строка 186)
-      out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
-    }
-  }
   return true;
 }
 
@@ -4412,7 +4488,8 @@ uint16_t user_getNumbersCount(void){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint8_t tbuffer[1024];
   cellID_s *c;
-  uint16_t cnt = 0, cell = 0;
+  uint16_t cnt = 0, cell = 0, used = 0;
+  uint32_t sum = 0;
 
   id_cells_end = 0;
   // по странично читаем
@@ -4422,14 +4499,20 @@ uint16_t user_getNumbersCount(void){
     for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
       cell++;
+      /* Последняя ячейка, где есть хоть один записанный байт: за ней флеш стёрта. */
+      for (uint8_t b = 0; b < sizeof(cellID_s); b++)
+        if (tbuffer[a + b] != 0xff) { used = cell; break; }
       // пустая ячейка
       if (c->index == 0xffff) continue;
 
       cnt++;
       id_cells_end = cell;
+      sum ^= idindex_hash(cell, (const uint8_t*)c->ID);
     }
     wdt_reload();
   }
+  id_used_bytes = (uint32_t)used * sizeof(cellID_s);
+  idindex_scanned(sum, id_cells_end);
 
   return cnt;
 }
@@ -4573,6 +4656,15 @@ bool user_checkShedule(uint8_t shd){
 bool user_updateID(cellID_s *c){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint16_t index;
+  /* Команда 13 кладёт ячейку на место её номера: сначала проверяем это место,
+     перебор - только если там другая ячейка. */
+  if (c->index != 0 && c->index != 0xffff){
+    uint32_t adr = mem[MB_ID].start + (uint32_t)(c->index - 1u) * sizeof(cellID_s);
+    if (adr + sizeof(cellID_s) <= endAdr){
+      if (!mem_read(adr, (uint8_t*)&index, 2)) return false;
+      if (index == c->index) return mem_patch(adr, (const uint8_t*)c, sizeof(cellID_s));
+    }
+  }
   for (uint32_t adr = mem[MB_ID].start; adr + sizeof(cellID_s) <= endAdr; adr += sizeof(cellID_s)){
     if (!mem_read(adr, (uint8_t*)&index, 2)) return false;
     if (index == c->index){

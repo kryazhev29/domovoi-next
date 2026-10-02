@@ -86,6 +86,38 @@ unsigned short crc16_calcInit(unsigned char* buf, unsigned short size, unsigned 
   return crc;
 }
 
+/* Столбцы m - линейное отображение 16 бит над GF(2); результат m*x. */
+static unsigned short gf2_apply(const unsigned short *m, unsigned short x)
+{
+  unsigned short r = 0;
+  for (unsigned char j = 0; x; j++, x >>= 1) if (x & 1u) r ^= m[j];
+  return r;
+}
+
+/* CRC-16 ModBus после count байт 0xFF без самих байт (стёртая флеш).
+   Шаг по одному байту 0xFF аффинный: r -> T*r ^ c, где T - шаг по байту 0,
+   c = T*0xFF. Степень отображения считается удвоением: log2(count) шагов
+   по 16x16 бит вместо count*8 сдвигов. */
+unsigned short crc16_ffInit(unsigned long count, unsigned short init)
+{
+  unsigned short a[16], m[16], t[16], av, v = 0;
+  unsigned char zero = 0, j;
+  for (j = 0; j < 16; j++) { a[j] = crc16_calcInit(&zero, 1, (unsigned short)(1u << j)); m[j] = (unsigned short)(1u << j); }
+  av = crc16_calcInit(&zero, 1, 0xFF);
+  while (count) {
+    if (count & 1u) {
+      for (j = 0; j < 16; j++) t[j] = gf2_apply(a, m[j]);
+      for (j = 0; j < 16; j++) m[j] = t[j];
+      v = gf2_apply(a, v) ^ av;
+    }
+    av = gf2_apply(a, av) ^ av;
+    for (j = 0; j < 16; j++) t[j] = gf2_apply(a, a[j]);
+    for (j = 0; j < 16; j++) a[j] = t[j];
+    count >>= 1;
+  }
+  return gf2_apply(m, init) ^ v;
+}
+
 // Вычисление контрольной суммы CRC Dallas
 // in - входной буфер
 // num - число байт

@@ -8,6 +8,9 @@ unsigned short crc16_calc(unsigned char* buf, unsigned short size);
 // Расчет CRC-16 ModBus с инициализацией начального значения
 unsigned short crc16_calcInit(unsigned char* buf, unsigned short size, unsigned short init);
 
+// CRC-16 ModBus после count байт 0xFF, начиная с init (без чтения байт)
+unsigned short crc16_ffInit(unsigned long count, unsigned short init);
+
 // Вычисление контрольной суммы CRC Dallas
 // in - входной буфер, num - число байт
 unsigned char crc8_calc (unsigned char* in, unsigned char num);

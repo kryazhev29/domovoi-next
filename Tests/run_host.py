@@ -341,8 +341,24 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             code+='static uint16_t log_usbReadIndex,temp_usbReadIndex,log_unacked[2],temp_unacked[2]; static void upload_reset(uint8_t cmd){(void)cmd;} static uint16_t upload_index(uint8_t cmd,dataChanel_e ch){return cmd==10?(ch==CH_USB?log_usbReadIndex:device.readLogIDIndex):device.readTempIDIndex;} static void upload_restore(const device_s *v){(void)v;} static void log_setReadIndex(dataChanel_e ch,uint16_t n){if(ch==CH_USB)log_usbReadIndex=n;else device.readLogIDIndex=n;}\n'
         code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_readRecords','user_send_anyData','user_send_logRecords','user_send_tempIDs','user_factoryReset'])
         unit=(ROOT/'Tests/test_upload_retry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s','dataChanel_e')).replace('/* PRODUCTION */',code)
+    elif kind=='idindex':
+        code=source('User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))
+        unit=(ROOT/'Tests/test_idindex.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+    elif kind=='outs':
+        import re as _re
+        outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
+        unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',outs)
+    elif kind=='crcff':
+        crc=source('User/crc.c')
+        user=source('User/user_fun.c')
+        code=chr(10).join(function(crc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])
+        code+=chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'user_calcCRC16InFlash')+chr(10)+function(user,'id_crc16')
+        unit=(ROOT/'Tests/test_crc_ff.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='crcblocks':
-        unit=(ROOT/'Tests/test_crc_blocks.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_crcMemoryID'))
+        user=source('User/user_fun.c');crc=source('User/crc.c')
+        code=chr(10).join(function(crc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])
+        code+=chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'id_crc16')+chr(10)+function(user,'user_send_crcMemoryID')
+        unit=(ROOT/'Tests/test_crc_blocks.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='flashcmds':
         user=source('User/user_fun.c')
         start=user.index('    case 103:')
@@ -359,9 +375,21 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c');case=cases(user)
         helper=function(user,'sync_cells_valid') if 'static bool sync_cells_valid(' in user else ''
         if '/* >>> Сборка таблиц страницами:' in user:helper+='\n'+user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]
+        crcsrc=source('User/crc.c')
+        if 'static uint16_t id_crc16(' in user:helper=chr(10).join(function(crcsrc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])+chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'id_crc16')+chr(10)+helper
         code=helper+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
         types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
         unit=(ROOT/'Tests/test_sync.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+    elif kind=='idsync':
+        user=source('User/user_fun.c');case=cases(user);crcsrc=source('User/crc.c')
+        code=source('User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))+chr(10)
+        code+=chr(10).join(function(crcsrc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])+chr(10)
+        code+='static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'user_calcCRC16InFlash')+chr(10)+function(user,'id_crc16')+chr(10)+function(user,'sync_cells_valid')+chr(10)
+        code+=user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]+chr(10)
+        code+=function(user,'user_findID')+chr(10)+function(user,'user_getNumbersCount')+chr(10)
+        code+='void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+case(13)+'default: abort(); }}'
+        types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
+        unit=(ROOT/'Tests/test_id_sync.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='persistence':
         user=source('User/user_fun.c')
         code='\n'.join(function(user,n) for n in ['user_writeConfigAndDevice','user_updateID'])
@@ -507,6 +535,15 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=source('Tests/test_tx.c').replace('/* PRODUCTION */',code)
     else:
         raise ValueError(kind)
+    if 'idindex_' in unit and 'int8_t idindex_find(' not in unit:
+        # Индекс ID проверяется своей группой idindex; здесь он «не готов» - старый путь перебором.
+        stub='__attribute__((unused)) static uint32_t idindex_hash(uint16_t i,const uint8_t *id){(void)i;(void)id;return 0;} __attribute__((unused)) static void idindex_scanned(uint32_t s,uint16_t e){(void)s;(void)e;} __attribute__((unused)) static int8_t idindex_find(uint32_t b,const uint8_t *id,uint8_t *c){(void)b;(void)id;(void)c;return -1;} __attribute__((unused)) static bool idindex_put(uint16_t i,const uint8_t *id){(void)i;(void)id;return true;} __attribute__((unused)) static void idindex_commit(uint32_t d,uint16_t e){(void)d;(void)e;} __attribute__((unused)) static void idindex_poll(uint32_t b){(void)b;}'
+        lines=unit.split(chr(10));last=max(i for i,l in enumerate(lines) if l.startswith('#include'))
+        lines.insert(last+1,'#include <stdbool.h>'+chr(10)+'#include <stdint.h>'+chr(10)+stub);unit=chr(10).join(lines)
+    if 'id_used_bytes' in unit and 'static uint32_t id_used_bytes' not in unit:
+        pos=unit.index('/* PRODUCTION */') if '/* PRODUCTION */' in unit else None
+        lines=unit.split(chr(10));last=max(i for i,l in enumerate(lines) if l.startswith('#include'))
+        lines.insert(last+1,'static uint32_t id_used_bytes = 0xFFFFFFFFu;');unit=chr(10).join(lines)
     if 'mem_tables_ready()' in unit and 'bool mem_tables_ready(void)' not in unit:
         unit='#include <stdbool.h>\nstatic bool table_storage_ready=true;\nstatic bool mem_tables_ready(void) { return table_storage_ready; }\n'+unit
     if kind!='commserver':

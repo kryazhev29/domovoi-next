@@ -4496,6 +4496,9 @@
             <name>$PROJ_DIR$\User\photo.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\idindex.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\crc.c</name>
         </file>
         <file>
