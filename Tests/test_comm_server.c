@@ -113,6 +113,8 @@ static void transport_tx(void)
     CHECK(tx_count <= sizeof(sent_frame)); sent_count=tx_count; memcpy(sent_frame,tx_data,tx_count);
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
+    /* SLM336 может возвращать бинарный пакет даже после ATE0. */
+    if (sim_data_echo) for (unsigned i=0;i<sent_count;++i) interrupt_byte(sent_frame[i],USART_SR_RXNE);
     if (!send_silence) sim_reply("SEND OK\r\n",20);
     else if (send_silence == 2) sim_reply("SEND FAIL\r\n",20);
     else if (send_silence == 3) sim_reply("OK\r\n",20);

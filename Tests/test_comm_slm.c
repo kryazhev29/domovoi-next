@@ -13,7 +13,7 @@ static unsigned sim_no_sim, sim_pin, sim_open_delay, sim_open_error, sim_rat_cha
 static unsigned sim_port_change, sim_network_wait, sim_early_open, sim_trickle;
 static unsigned sim_empty_urc, sim_pause, sim_send_sim2;
 static const char *sim_imsi;
-static unsigned sim_activation_delay;
+static unsigned sim_activation_delay, sim_data_echo;
 static uint32_t sim_open_due;
 static bool sim_open_pending;
 static unsigned power_events;
@@ -82,7 +82,7 @@ static void sim_reset(void)
   sim_silence_step = sim_error_step = -1;
   sim_no_sim = sim_pin = sim_open_error = sim_rat_change = sim_port_change = 0;
   sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = 0;
-  sim_send_sim2 = 1; sim_open_delay = 500; sim_activation_delay = 700;
+  sim_send_sim2 = 1; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1;
   sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
 }
 static void sim_feed(const char *s)
@@ -110,6 +110,7 @@ static void sim_tx(void)
   if ((int)step == sim_silence_step) return;
   if ((int)step == sim_error_step) { sim_reply("ERROR\r\n", 30); return; }
   if (!strcmp(sim_sent, "AT")) sim_reply("OK\r\n", 30);
+  else if (!strcmp(sim_sent, "AT+QISDE=0")) { sim_data_echo = 0; sim_reply("OK\r\n", 30); }
   else if (!strcmp(sim_sent, "AT+GSN")) sim_reply("864180068438709\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+GMM")) { sim_gmm++; sim_reply("SLM336E\r\nOK\r\n", 30); }
   else if (!strcmp(sim_sent, "AT+CPIN?")) {
@@ -215,7 +216,7 @@ static void error_tests(void)
 }
 static void timeout_step_tests(void)
 {
-  for (unsigned step = SLM_AT_READY; step <= SLM_ACTIVATE; ++step) {
+  for (unsigned step = SLM_AT_READY; step <= SLM_DATA_ECHO; ++step) {
     sim_reset();
     test_config.modem_type = 255; sim_port_change = sim_rat_change = 1;
     sim_silence_step = (int)step; sim_start(); sim_until(180000);
@@ -244,7 +245,7 @@ static void edge_tests(void)
   memset(test_config.password,'p',sizeof(test_config.password)-1u);
   sim_start();
   while (slm.attempt.status.state != SLM_READY && slm.attempt.status.state == SLM_STARTING) sim_tick();
-  CHECK(slm.attempt.status.step == SLM_ACTIVATE && slm.attempt.status.state == SLM_READY); /* Максимальный QICSGP помещается. */
+  CHECK(slm.attempt.status.step == SLM_DATA_ECHO && slm.attempt.status.state == SLM_READY); /* Максимальный QICSGP помещается. */
   modem_slm336_off();
   sim_reset(); sim_start(); sim_until(15000);
   sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(slm.attempt.status.reason == SLM_ERR_PDP);

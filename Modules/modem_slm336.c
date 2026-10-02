@@ -24,7 +24,8 @@ static const char commands[] =
   "QIACT=1\0"
   "QIOPEN=1,0,\"TCP\",\"\005\",\006,0,0\0"
   "QIRD=0,\007\0"
-  "GSN\0";
+  "GSN\0"
+  "QISDE=0\0";
 static const comm_modem_step_t steps[] = {
   {0, COMM_T_AT_SIMPLE, SLM_MODEL, SLM_IMEI, (SLM_PHASE_SETUP << 4) | MODEM_READY},
   {1, COMM_T_AT_SIMPLE, SLM_IMEI, SLM_IMEI, (SLM_PHASE_SETUP << 4) | MODEM_MODEL},
@@ -49,10 +50,12 @@ static const comm_modem_step_t steps[] = {
   /* Сначала QIDEACT: при перезапуске с AT контекст мог остаться активным, и QIACT
      ответил бы ошибкой (так советует Quectel). Неактивный контекст - тоже OK. */
   {188, COMM_T_QIDEACT, SLM_ACTIVATE, SLM_ACTIVATE, (SLM_PHASE_PDP << 4) | MODEM_ANY},
-  {198, COMM_T_QIACT, SLM_STEP_COUNT, SLM_STEP_COUNT, (SLM_PHASE_PDP << 4) | MODEM_PDP},
+  {198, COMM_T_QIACT, SLM_DATA_ECHO, SLM_DATA_ECHO, (SLM_PHASE_PDP << 4) | MODEM_PDP},
+  /* ATE0 отключает только эхо команд; бинарное эхо QISEND выключается отдельно. */
+  {246, COMM_T_AT_SIMPLE, SLM_STEP_COUNT, SLM_STEP_COUNT, (SLM_PHASE_PDP << 4) | MODEM_OK},
 };
 typedef char command_offsets_fit[(sizeof(commands) <= UINT8_MAX + 1u) ? 1 : -1];
-typedef char all_steps_present[(sizeof(steps) / sizeof(steps[0]) == SLM_ACTIVATE + 1u - SLM_AT_READY) ? 1 : -1];
+typedef char all_steps_present[(sizeof(steps) / sizeof(steps[0]) == SLM_DATA_ECHO + 1u - SLM_AT_READY) ? 1 : -1];
 static const comm_modem_profile_t slm_profile = {
   commands, steps, "SLM336", "+QIURC: \"recv\",\005", "+QIURC: \"closed\",\005",
   "+QIURC: \"pdpdeact\",\005", "+QIOPEN:\005,\005", "+QURCCFG: \"urcport\",",
