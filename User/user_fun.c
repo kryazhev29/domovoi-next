@@ -3127,6 +3127,28 @@ static uint8_t sync_page(const void *context, uint16_t off, uint8_t *page)
   return 1;
 }
 
+/* Ќомер последней записанной €чейки базы ID: граница поиска (user_findID). */
+static uint16_t id_cells_end;
+/* —колько ID пакета команды 13 займут пустые €чейки (повторы номера считаютс€ раз) и
+ * наибольший номер. „итаетс€ по 2 байта на запись, а не вс€ база. UINT16_MAX - ошибка
+ * чтени€, тогда считаем по всей базе. */
+static uint16_t sync_new_ids(const uint8_t *records, uint16_t count, uint16_t *last)
+{
+  uint16_t added = 0, index, stored;
+  for (uint16_t i = 0; i < count; i++){
+    memcpy(&index, records + (uint32_t)i * sizeof(cellID_s), 2);
+    if (index > *last) *last = index;
+    bool repeat = false;
+    for (uint16_t j = 0; j < i && !repeat; j++)
+      repeat = !memcmp(records + (uint32_t)j * sizeof(cellID_s), &index, 2);
+    if (repeat) continue;
+    if (!mem_read(mem[MB_ID].start + (uint32_t)(index - 1u) * sizeof(cellID_s), (uint8_t*)&stored, 2))
+      return UINT16_MAX;
+    if (stored == 0xffff) added++;
+  }
+  return added;
+}
+
 static bool sync_write_cells(const uint8_t *records, uint16_t count, memBlock_e mb, uint16_t size)
 {
   while (count) {
@@ -3491,12 +3513,19 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         break;
       }
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
+        {
+        uint16_t last = id_cells_end;
+        uint16_t added = sync_new_ids(&ptr[10], ptr[9], &last);
         if (!sync_write_cells(&ptr[10], ptr[9], MB_ID, sizeof(cellID_s))) {
+          device.numbersCount = user_getNumbersCount(); /* часть секторов могла записатьс€ */
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }
         device.datetimeID = tmp32;
-        device.numbersCount = user_getNumbersCount();
+        /*  оманда 13 только заполн€ет €чейки: счЄт и конец базы - на ходу, без чтени€ 1,6 ћЅ. */
+        if (added == UINT16_MAX) device.numbersCount = user_getNumbersCount();
+        else { device.numbersCount += added; id_cells_end = last; }
+        }
         user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
                            user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size), cch, uniqId);
       }
@@ -3850,7 +3879,6 @@ uint8_t user_getweakday (uint32_t t)
 /*  оманда 13 пишет €чейку на место еЄ номера, поэтому в базе бывают пропуски. ѕоиск идЄт до
  * последней записанной €чейки (считаетс€ при старте и после каждой синхронизации) и пропускает
  * пустые. */
-static uint16_t id_cells_end;
 
 // поиск ID в пам€ти, если есть то возвращаютс€ параметры €чейки
 bool user_findID(char *id, cellID_s *cell){
@@ -4573,6 +4601,15 @@ bool user_checkShedule(uint8_t shd){
 bool user_updateID(cellID_s *c){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint16_t index;
+  /*  оманда 13 кладЄт €чейку на место еЄ номера: сначала провер€ем это место,
+     перебор - только если там друга€ €чейка. */
+  if (c->index != 0 && c->index != 0xffff){
+    uint32_t adr = mem[MB_ID].start + (uint32_t)(c->index - 1u) * sizeof(cellID_s);
+    if (adr + sizeof(cellID_s) <= endAdr){
+      if (!mem_read(adr, (uint8_t*)&index, 2)) return false;
+      if (index == c->index) return mem_patch(adr, (const uint8_t*)c, sizeof(cellID_s));
+    }
+  }
   for (uint32_t adr = mem[MB_ID].start; adr + sizeof(cellID_s) <= endAdr; adr += sizeof(cellID_s)){
     if (!mem_read(adr, (uint8_t*)&index, 2)) return false;
     if (index == c->index){

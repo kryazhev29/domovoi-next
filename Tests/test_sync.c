@@ -20,7 +20,8 @@ static bool mem_erase_sector(uint32_t a){CHECK(a+4096<=sizeof(flash));erases++;i
 static void user_send_answer_comand(unsigned c,cmdCode_e code,dataChanel_e ch,unsigned id){CHECK(c>=13&&c<=16&&ch==CH_SERVER&&id==42);answers++;answer=code;}
 static void user_send_timeshtamp(shtamp_e s,uint32_t t,uint16_t crc,dataChanel_e ch,unsigned id){(void)s;CHECK(t==1234&&crc==0x1234&&ch==CH_SERVER&&id==42);stamps++;}
 static uint16_t user_calcCRC16InFlash(uint32_t a,uint32_t n){CHECK(a+n<=sizeof(flash));return 0x1234;}
-static uint16_t user_getNumbersCount(void){return 1;}
+static unsigned rescans;
+static uint16_t user_getNumbersCount(void){rescans++;return 1;}
 static uint16_t id_today(void){return 10;}
 static void id_set_pass_day(cellID_s *c,uint16_t day){memcpy(c->reserve+4,&day,2);}
 static uint32_t id_time_end(cellID_s *c){return c->blockTime;}
@@ -51,4 +52,12 @@ int main(int argc,char **argv){uint8_t p[2048];unsigned c,mode,first,last_cmd;CH
  }
  reset();packet(p,13,2,129,0);command(p,72,CH_SERVER,42);CHECK(answers==1&&answer==CMD_PARAMERROR&&!stamps&&!erases&&!writes);
  reset();packet(p,13,1,1,0);p[22]=0;p[23]=255;command(p,40,CH_SERVER,42);CHECK(answers==1&&answer==CMD_PARAMERROR&&!stamps&&!writes);
- puts("sync: invalid second cell, bounds, allocation failure and valid writes passed");return 0;}
+ /* Счёт ID после команды 13 на ходу: пустые ячейки прибавляются, повтор номера и уже
+    занятая ячейка - нет, вся база не перечитывается. */
+ reset();memset(flash,255,sizeof(flash));rescans=0;device.numbersCount=7;
+ packet(p,13,2,3,5);command(p,72,CH_SERVER,42);CHECK(!answers&&device.numbersCount==9&&!rescans&&id_cells_end==5);
+ packet(p,13,2,3,5);command(p,72,CH_SERVER,42);CHECK(device.numbersCount==9&&!rescans);
+ packet(p,13,2,4,4);command(p,72,CH_SERVER,42);CHECK(device.numbersCount==10&&!rescans&&id_cells_end==5);
+ packet(p,13,1,2,0);command(p,40,CH_SERVER,42);CHECK(device.numbersCount==11&&id_cells_end==5);
+ fail_write=1;packet(p,13,1,9,0);command(p,40,CH_SERVER,42);CHECK(rescans==1&&answer==CMD_RUNERROR);
+ puts("sync: invalid second cell, bounds, allocation failure and valid writes, ID count without rescan passed");return 0;}
