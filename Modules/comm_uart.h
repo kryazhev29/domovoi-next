@@ -19,7 +19,9 @@ typedef struct {
    Сборка порта: COMM_UART_STANDALONE; старый uart_stm32f10x.c исключён.
    В рабочем проекте этапа 1 порт не подключён. */
 void comm_uart_init(uint32_t baud);
-/* Участок принадлежит UART, действует до consume/abort/init. */
+/* Только системный тик 1 мс и IRQ порта: учёт DMA и программный RTS. */
+void comm_uart_tick(void);
+/* Участок принадлежит UART, действует до consume/abort/init или ошибки RX. */
 uint16_t comm_uart_peek(const uint8_t **data);
 bool comm_uart_consume(uint16_t count);
 /* Буфер принадлежит вызывающему модулю и статический; живёт до

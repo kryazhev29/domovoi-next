@@ -11,25 +11,30 @@ from comm_server_host import unit as channel_unit
 def uart_unit():
     source = lambda name: (ROOT / name).read_bytes().decode('cp1251')
     model = source('Tests/test_comm_uart.c')
-    return model.replace('/* HEADER */', source('Modules/comm_uart.h')).replace(
+    tick = 'void SysTick_Handler(void)' + source('stm32_it.c').split('void SysTick_Handler(void)', 1)[1].split('\n}', 1)[0] + '\n}'
+    return model.replace('/* TICK */', tick).replace('/* HEADER */', source('Modules/comm_uart.h')).replace(
         '/* PRODUCTION */', '\n'.join(line for line in source('Modules/comm_uart.c').splitlines()
                                       if not line.startswith('#include')))
 
 
 def run():
-    out = ROOT / 'Release/comm-stage4_5/mutations'
+    out = ROOT / 'Release/comm-stage4_6/final'
     out.mkdir(parents=True, exist_ok=True)
     os.environ['ZIG_GLOBAL_CACHE_DIR'] = str(out / 'zig-global')
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out / 'zig-local')
     sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit(), channel=channel_unit())
     sources = {name: text.replace('\r\n', '\n') for name, text in sources.items()}
     cases = (
-        ('uart', 'rts-stop-boundary', '- 1u - used < 128u', '- 1u - used <= 128u'),
+        ('uart', 'rts-stop-boundary', 'used > sizeof(rx) - 1u - 128u', 'used >= sizeof(rx) - 1u - 128u'),
         ('uart', 'rts-resume-boundary', 'else if (used < 128u)', 'else if (used <= 128u)'),
-        ('uart', 'rts-not-updated-in-irq', '        rts_update();', ''),
-        ('uart', 'consume-unmasked', '  __disable_irq();\n  __DMB();\n  rx_read', '  __DMB();\n  rx_read'),
-        ('uart', 'abort-keeps-pointer', '  tx_data = NULL;\n  rx_write', '  rx_write'),
-        ('uart', 'tx-not-atomic', '  __disable_irq();\n  tx_data', '  tx_data'),
+        ('uart', 'rts-not-updated-in-irq', 'void DMA1_Channel3_IRQHandler(void)\n{\n  comm_uart_tick();\n}', 'void DMA1_Channel3_IRQHandler(void)\n{\n}'),
+        ('uart', 'no-periodic-tick', '  comm_uart_tick(); /* DMA/RTS', '  /* DMA/RTS'),
+        ('uart', 'wrong-CNDTR-index', 'sizeof(rx) - DMA1_Channel3->CNDTR', 'DMA1_Channel3->CNDTR'),
+        ('uart', 'overrun-undetected', '(delta && used >= sizeof(rx))', '0'),
+        ('uart', 'whole-lap-undetected', 'delta += sizeof(rx);', 'delta += 0;'),
+        ('uart', 'consume-unmasked', '  __disable_irq();\n  comm_uart_tick();\n  uint16_t view', '  comm_uart_tick();\n  uint16_t view'),
+        ('uart', 'abort-keeps-pointer', '  uart_state.tx_ptr = NULL;\n  uart_state.rx_write', '  uart_state.rx_write'),
+        ('uart', 'tx-not-atomic', '  __disable_irq();\n  uart_state.tx_ptr', '  uart_state.tx_ptr'),
         ('at', 'final-prefix', 'count == n && !memcmp(data, names, n)', 'count >= n && !memcmp(data, names, n)'),
         ('at', 'line-off-by-one', 'line_count >= sizeof(line)', 'line_count + 1u >= sizeof(line)'),
         ('at', 'late-qird-as-text', '(state == RUN || (state >= DRAIN && state <= SYNC_WAIT))\n      && (mode == COMM_AT_SLM_QIRD', 'state == RUN\n      && (mode == COMM_AT_SLM_QIRD'),

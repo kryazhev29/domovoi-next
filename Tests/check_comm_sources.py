@@ -4,7 +4,7 @@ import argparse
 
 ROOT=Path(__file__).resolve().parents[1]
 C_FILES=(
-    'Modules/comm_uart.c','Modules/comm_uart.h','Modules/comm_power_v5.c','Modules/comm_power_v5.h',
+    'stm32_it.c','Modules/comm_uart.c','Modules/comm_uart.h','Modules/comm_power_v5.c','Modules/comm_power_v5.h',
     'Modules/comm_modem.c','Modules/comm_modem.h','Tests/test_comm_uart.c','Tests/test_comm_at.c',
     'Modules/comm_at.c','Modules/comm_at.h','Modules/modem_slm336.c','Modules/modem_slm336.h',
     'Modules/comm_channel.c','Modules/comm_channel.h','Modules/comm_server.c','Modules/comm_server.h',
@@ -12,7 +12,7 @@ C_FILES=(
     'User/user_fun.c','User/photo.c','Tests/test_comm_server.c','Tests/test_comm_channel.c','Tests/comm_photo_slot.c','Tests/comm_upload_slot.c',
 )
 PY_FILES=('Tests/run_host.py','Tests/comm_server_host.py','Tests/comm_slm_host.py',
-          'Tests/comm_budget.py','Tests/comm_mutations.py','Tests/test_photo_mutations.py','Tests/check_comm_sources.py')
+          'Tests/build_comm_uart.py','Tests/comm_uart_budget.py','Tests/comm_budget.py','Tests/comm_mutations.py','Tests/test_photo_mutations.py','Tests/check_comm_sources.py')
 
 def check(fix=False):
     for name in (*C_FILES,*PY_FILES):

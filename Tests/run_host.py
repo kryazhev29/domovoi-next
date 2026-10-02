@@ -478,6 +478,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=source('Modules/comm_uart.c')
         code='\n'.join(x for x in code.splitlines() if not x.startswith('#include'))
         unit=source('Tests/test_comm_uart.c').replace('/* HEADER */',header).replace('/* PRODUCTION */',code)
+        unit=unit.replace('/* TICK */',function(source('stm32_it.c'),'SysTick_Handler'))
         profile=sys.argv[3] if len(sys.argv)>3 else 'v5'
         defines={'v5':'', 'ipv3':'#define BOARD_IP_V3 1\n', 'mini':'#define DOMOVOI_APP_HW 140\n', 'mini-ipv3':'#define DOMOVOI_APP_HW 140\n#define BOARD_IP_V3 1\n'}
         unit=defines[profile]+unit

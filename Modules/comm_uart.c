@@ -8,33 +8,64 @@
 #error "comm_uart: select standalone USART3 owner, exclude uart_stm32f10x.c"
 #endif
 
-/* 511 полезных байт: один элемент различает полное и пустое кольцо. */
+/* DMA пишет прямо в кольцо; 511 полезных байт сохраняют прежний предел. */
 static uint8_t rx[512];
-static const uint8_t * volatile tx_data;
-static volatile uint16_t rx_write, rx_read;
-static uint16_t rx_view;
-static volatile uint16_t tx_count, tx_pos;
-static volatile uint8_t tx_state, tx_complete;
-static volatile comm_uart_stats_t counters;
+/* Общая структура убирает межобъектные зазоры и сохраняет бюджет ОЗУ. */
+static volatile struct {
+  const uint8_t *tx_ptr;
+  uint16_t rx_write, rx_read, rx_view, tx_length, tx_index;
+  uint8_t tx_phase, tx_done;
+  comm_uart_stats_t counters;
+} uart_state;
 enum { TX_IDLE, TX_SEND, TX_WAIT_TC };
-
-/* Вызывается в IRQ или при запрещённых IRQ, чтобы не разрешить приём
-   по устаревшему заполнению. LOW — приём, HIGH — остановка модема. */
-static void rts_update(void)
-{
-#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
-  uint16_t write = rx_write, read = rx_read;
-  uint16_t used = (uint16_t)((write - read) & (sizeof(rx) - 1u));
-  if (sizeof(rx) - 1u - used < 128u) { RTSG_HIGH; }
-  else if (used < 128u) { RTSG_LOW; }
-#endif
-}
 
 static void error_add(volatile uint16_t *count)
 {
   if (*count != UINT16_MAX) ++*count;
 }
 
+/* RM0008 §13.3.3/§13.4: CNDTR и TC дают число записанных байт,
+   а не только совпадение индексов. Обслуживать не реже половины круга
+   (22,2 мс при 115200); SysTick — 1 мс. IRQ не вложены в учёт RX.
+   Повтор снимка исключает переход HT/TC между ISR и CNDTR.
+   Сбрасываем только увиденные флаги, остальные каналы не затронуты. */
+void comm_uart_tick(void)
+{
+  if (!(RCC->AHBENR & RCC_AHBENR_DMA1EN)) return; /* SysTick может начаться до init. */
+  uint32_t mask = __get_PRIMASK(), flags;
+  uint16_t pos, delta, used;
+  __disable_irq();
+  do {
+    flags = DMA1->ISR & (DMA_ISR_HTIF3 | DMA_ISR_TCIF3 | DMA_ISR_TEIF3);
+    pos = (uint16_t)(sizeof(rx) - DMA1_Channel3->CNDTR) & (sizeof(rx) - 1u);
+  } while (flags != (DMA1->ISR & (DMA_ISR_HTIF3 | DMA_ISR_TCIF3 | DMA_ISR_TEIF3)));
+  DMA1->IFCR = flags;
+  delta = (uint16_t)((pos - uart_state.rx_write) & (sizeof(rx) - 1u));
+  if ((flags & DMA_ISR_TCIF3) && pos >= (uart_state.rx_write & (sizeof(rx) - 1u))) delta += sizeof(rx);
+  uart_state.rx_write += delta;
+  __DMB();
+  used = (uint16_t)(uart_state.rx_write - uart_state.rx_read);
+  if ((delta && used >= sizeof(rx)) || (flags & DMA_ISR_TEIF3)) {
+    uart_state.rx_view = sizeof(rx); /* Защёлка потери потока до abort, без нового ОЗУ. */
+    uart_state.counters.errors |= COMM_UART_OVERFLOW;
+    error_add(&uart_state.counters.overflow);
+  }
+#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
+  if (uart_state.rx_view == sizeof(rx)) used = sizeof(rx);
+  /* PB14: HIGH — стоп при свободно < 128, LOW — пуск при занято < 128. */
+  if (used > sizeof(rx) - 1u - 128u) { RTSG_HIGH; }
+  else if (used < 128u) { RTSG_LOW; }
+#endif
+  __set_PRIMASK(mask);
+}
+
+#ifdef __IAR_SYSTEMS_ICC__
+#pragma call_graph_root="interrupt"
+#endif
+void DMA1_Channel3_IRQHandler(void)
+{
+  comm_uart_tick();
+}
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma call_graph_root="interrupt"
 #endif
@@ -42,41 +73,34 @@ void USART3_IRQHandler(void)
 {
   uint32_t status = USART3->SR;
   uint16_t errors = 0;
-  /* SR, затем DR: единственная правильная очистка ORE/FE/NE/RXNE. */
-  if (status & (USART_SR_RXNE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
-    uint8_t byte = (uint8_t)USART_ReceiveData(USART3);
-    if (status & USART_SR_ORE) { errors |= COMM_UART_ORE; error_add(&counters.ore); }
-    if (status & USART_SR_FE) { errors |= COMM_UART_FE; error_add(&counters.fe); }
-    if (status & USART_SR_NE) { errors |= COMM_UART_NE; error_add(&counters.ne); }
-    if ((status & USART_SR_RXNE) && !(status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE))) {
-      uint16_t next = (uint16_t)((rx_write + 1u) & (sizeof(rx) - 1u));
-      if (rx_write >= sizeof(rx) || next == rx_read) { errors |= COMM_UART_OVERFLOW; error_add(&counters.overflow); }
-      else {
-        rx[rx_write] = byte;
-        __DMB();
-        rx_write = next;
-        rts_update();
-      }
-    }
+  /* RM0008 §27.3.13/§27.6.1: DMA забирает RXNE; SR, затем DR
+     снимают IDLE и ошибки линии. На каждый принятый байт IRQ нет. */
+  if (status & (USART_SR_IDLE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
+    (void)USART_ReceiveData(USART3);
+    if (status & USART_SR_ORE) { errors |= COMM_UART_ORE; error_add(&uart_state.counters.ore); }
+    if (status & USART_SR_FE) { errors |= COMM_UART_FE; error_add(&uart_state.counters.fe); }
+    if (status & USART_SR_NE) { errors |= COMM_UART_NE; error_add(&uart_state.counters.ne); }
+    if (errors) uart_state.rx_view = sizeof(rx); /* DMA мог уже записать ошибочный байт. */
+    comm_uart_tick();
   }
-  if (errors) counters.errors |= errors;
+  if (errors) uart_state.counters.errors |= errors;
   if ((USART3->CR1 & USART_CR1_TXEIE) && (status & USART_SR_TXE)) {
-    uint16_t pos = tx_pos, count = tx_count;
-    if (tx_state == TX_SEND && pos < count) {
-      USART_SendData(USART3, tx_data[pos]);
-      tx_pos = ++pos;
+    uint16_t pos = uart_state.tx_index, count = uart_state.tx_length;
+    if (uart_state.tx_phase == TX_SEND && pos < count) {
+      USART_SendData(USART3, uart_state.tx_ptr[pos]);
+      uart_state.tx_index = ++pos;
       if (pos == count) {
         USART3->CR1 = (USART3->CR1 & ~USART_CR1_TXEIE) | USART_CR1_TCIE;
-        tx_state = TX_WAIT_TC;
+        uart_state.tx_phase = TX_WAIT_TC;
       }
     }
     /* TC из снимка до записи DR относится к прежнему байту. */
   } else if ((USART3->CR1 & USART_CR1_TCIE) && (status & USART_SR_TC)) {
     USART3->CR1 &= ~USART_CR1_TCIE;
-    if (tx_state == TX_WAIT_TC) {
-      tx_data = NULL;
-      tx_state = TX_IDLE;
-      tx_complete = 1;
+    if (uart_state.tx_phase == TX_WAIT_TC) {
+      uart_state.tx_ptr = NULL;
+      uart_state.tx_phase = TX_IDLE;
+      uart_state.tx_done = 1;
     }
   }
 }
@@ -85,17 +109,20 @@ void comm_uart_abort(void)
 {
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
+  DMA1_Channel3->CCR = 0; /* RM0008 §13.4.3: CNDTR меняется только при EN=0. */
   USART3->CR1 &= ~(USART_CR1_TXEIE | USART_CR1_TCIE);
-  tx_state = TX_IDLE;
-  tx_complete = 0;
-  tx_count = tx_pos = 0;
-  tx_data = NULL;
-  rx_write = rx_read = rx_view = 0;
-  rts_update();
+  uart_state.tx_phase = TX_IDLE;
+  uart_state.tx_done = 0;
+  uart_state.tx_length = uart_state.tx_index = 0;
+  uart_state.tx_ptr = NULL;
+  uart_state.rx_write = uart_state.rx_read = uart_state.rx_view = 0;
+  DMA1->IFCR = DMA_IFCR_CGIF3;
+  DMA1_Channel3->CNDTR = sizeof(rx);
   /* Снятие старого RX; ошибки до abort остаются в диагностике. */
   (void)USART3->SR;
   (void)USART_ReceiveData(USART3);
-  __DMB();
+  DMA1_Channel3->CCR = DMA_CCR3_MINC | DMA_CCR3_CIRC | DMA_CCR3_HTIE | DMA_CCR3_TCIE | DMA_CCR3_TEIE | DMA_CCR3_EN;
+  comm_uart_tick();
   __set_PRIMASK(mask);
 }
 
@@ -108,9 +135,13 @@ void comm_uart_init(uint32_t baud)
   __disable_irq();
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOB, ENABLE);
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+  RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+  DMA1_Channel3->CCR = 0;
+  DMA1_Channel3->CPAR = (uint32_t)(uintptr_t)&USART3->DR;
+  DMA1_Channel3->CMAR = (uint32_t)(uintptr_t)rx;
   USART_DeInit(USART3);
   comm_uart_abort();
-  counters.errors = counters.overflow = counters.ore = counters.fe = counters.ne = 0;
+  uart_state.counters.errors = uart_state.counters.overflow = uart_state.counters.ore = uart_state.counters.fe = uart_state.counters.ne = 0;
   gpio.GPIO_Speed = GPIO_Speed_50MHz;
   gpio.GPIO_Pin = GPIO_Pin_11;
 #if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
@@ -134,12 +165,15 @@ void comm_uart_init(uint32_t baud)
   uart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
 #endif
   USART_Init(USART3, &uart);
-  USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+  USART3->CR1 |= USART_CR1_IDLEIE;
+  USART3->CR3 |= USART_CR3_DMAR;
   USART_ITConfig(USART3, USART_IT_ERR, ENABLE);
   irq.NVIC_IRQChannel = USART3_IRQn;
   irq.NVIC_IRQChannelPreemptionPriority = 1;
   irq.NVIC_IRQChannelSubPriority = 7;
   irq.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&irq);
+  irq.NVIC_IRQChannel = DMA1_Channel3_IRQn;
   NVIC_Init(&irq);
   USART_Cmd(USART3, ENABLE);
   __set_PRIMASK(mask);
@@ -148,42 +182,46 @@ void comm_uart_init(uint32_t baud)
 uint16_t comm_uart_peek(const uint8_t **data)
 {
   if (data == NULL) return 0;
-  uint16_t write = rx_write;
-  __DMB();
-  uint16_t read = rx_read;
-  uint16_t count = (uint16_t)((write - read) & (sizeof(rx) - 1u));
-  uint16_t contiguous = (uint16_t)(sizeof(rx) - read);
-  if (count > contiguous) count = contiguous;
-  rx_view = count;
-  *data = count ? &rx[read] : NULL;
-  return count;
-}
-
-bool comm_uart_consume(uint16_t count)
-{
-  uint16_t view = rx_view;
-  if (count > view) return false;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
+  comm_uart_tick();
+  uint16_t read = uart_state.rx_read & (sizeof(rx) - 1u), count = 0;
+  if (uart_state.rx_view != sizeof(rx)) {
+    count = (uint16_t)(uart_state.rx_write - uart_state.rx_read);
+    uint16_t contiguous = (uint16_t)(sizeof(rx) - read);
+    if (count > contiguous) count = contiguous;
+    uart_state.rx_view = count;
+  }
+  *data = count ? &rx[read] : NULL;
+  __set_PRIMASK(mask);
+  return count;
+}
+bool comm_uart_consume(uint16_t count)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  comm_uart_tick();
+  uint16_t view = uart_state.rx_view;
+  if (view == sizeof(rx) || count > view) { __set_PRIMASK(mask); return false; }
   __DMB();
-  rx_read = (uint16_t)((rx_read + count) & (sizeof(rx) - 1u));
-  rx_view = (uint16_t)(view - count);
-  rts_update();
+  uart_state.rx_read += count;
+  uart_state.rx_view = (uint16_t)(view - count);
+  comm_uart_tick();
   __set_PRIMASK(mask);
   return true;
 }
 
 bool comm_uart_tx(const uint8_t *data, uint16_t count)
 {
-  if (data == NULL || count > COMM_UART_TX_MAX || tx_state != TX_IDLE) return false;
+  if (data == NULL || count > COMM_UART_TX_MAX || uart_state.tx_phase != TX_IDLE) return false;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
-  tx_data = count ? data : NULL;
-  tx_count = count;
+  uart_state.tx_ptr = count ? data : NULL;
+  uart_state.tx_length = count;
   __DMB(); /* IRQ здесь отложен: остальные поля ещё не опубликованы. */
-  tx_pos = 0;
-  tx_complete = count == 0;
-  tx_state = count ? TX_SEND : TX_IDLE;
+  uart_state.tx_index = 0;
+  uart_state.tx_done = count == 0;
+  uart_state.tx_phase = count ? TX_SEND : TX_IDLE;
   USART_ClearFlag(USART3, USART_FLAG_TC);
   __DMB();
   if (count) USART3->CR1 |= USART_CR1_TXEIE;
@@ -193,15 +231,15 @@ bool comm_uart_tx(const uint8_t *data, uint16_t count)
 
 bool comm_uart_tx_done(void)
 {
-  return tx_complete != 0;
+  return uart_state.tx_done != 0;
 }
 
 uint16_t comm_uart_errors(void)
 {
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
-  uint16_t errors = counters.errors;
-  counters.errors = 0;
+  uint16_t errors = uart_state.counters.errors;
+  uart_state.counters.errors = 0;
   __set_PRIMASK(mask);
   return errors;
 }
@@ -211,6 +249,6 @@ void comm_uart_stats(comm_uart_stats_t *stats)
   if (stats == NULL) return;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
-  *stats = counters;
+  *stats = uart_state.counters;
   __set_PRIMASK(mask);
 }
