@@ -24,7 +24,7 @@ static void fw_log(logUpdate_e event,const char *why) { CHECK(event==LOG_FW_FAIL
 static bool mem_write(uint32_t address,uint8_t *p,uint16_t n)
 { CHECK(n==1024 && p==input+2 && address==FWBLOCK_OFFSET+(uint32_t)device.FWblockIdx*1024);writes++; return true; }
 static bool fw_block_written(uint32_t address,const uint8_t *p) { (void)address;CHECK(p==input+2);return written!=0; }
-static void mem_read(uint32_t address,uint8_t *p,uint16_t n) { CHECK(address==0 && n==sizeof(bootFWparam_s));memset(p,0,n);reads++; }
+static bool mem_read(uint32_t address,uint8_t *p,uint16_t n) { CHECK(address==0 && n==sizeof(bootFWparam_s));memset(p,0,n);reads++; return true; }
 static bool user_checkFirmware(uint32_t address,uint32_t n,uint32_t crc) { CHECK(address==FWBLOCK_OFFSET && !n && !crc);return true; }
 static uint8_t fw_blocks_done(bool ok) { CHECK(ok);return FW_BLOCK_OK; }
 static uint8_t fw_write_errors;

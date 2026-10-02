@@ -99,8 +99,35 @@ for n in (0,1,257,1024,16000):
         for _ in range(8):crc=(crc>>1)^((crc&1)*0xa001)
     assert value==crc
     stack.append({'function':'user_calcCRC16InFlash','length':n,'executed_stack':used,'max_read':max((z for _,z in readbacks),default=0)})
+# Проверяем машинный код проверки прошивки, включая отказ чтения после
+# одинакового предыдущего блока: старое содержимое bf не подтверждает образ.
+fw_base=512
+fw_read_fail=None
+def firmware_read():
+    a,p,n=[u.reg_read(r) for r in (UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2)]
+    readbacks.append((a,n))
+    if a==fw_read_fail:ret(0)
+    else:u.mem_write(p,b'\xa5'*n);ret(1)
+def firmware_crc(size):
+    value=0xffffffff
+    for _ in range(size//4):
+        value^=0xa5a5a5a5
+        for _ in range(32):value=((value<<1)^((value>>31)*0x04c11db7))&0xffffffff
+    return value
+stubs[addr('mem_read')&~1]=firmware_read
+fw_checks=[]
+for fw_read_fail in (None,fw_base,fw_base+128):
+    readbacks.clear();value,used=call('user_checkFirmware',fw_base,256,firmware_crc(256))
+    assert value==int(fw_read_fail is None),(fw_read_fail,value)
+    assert readbacks==[(fw_base,128)]+([] if fw_read_fail==fw_base else [(fw_base+128,128)])
+    fw_checks.append({'read_failure_at':fw_read_fail,'accepted':bool(value),'executed_stack':used})
+fw_read_fail=None
+for size,crc in ((0,0xffffffff),(130,firmware_crc(128)),(256,firmware_crc(256)^1)):
+    readbacks.clear();value,_=call('user_checkFirmware',fw_base,size,crc)
+    assert value==0
+    if size in (0,130):assert not readbacks
 recurse=map_text[map_text.index('The following functions make up recursion nest'):map_text.index('The following functions perform unknown indirect calls')] if 'recursion nest' in map_text else ''
 totals={kind:int(re.search(r"([0-9']+) bytes of readwrite "+kind+r' memory',map_text)[1].replace("'",'')) for kind in ('code','data')}
-result={'map_sha256':hashlib.sha256(map_path.read_bytes()).hexdigest(),'map_readwrite_bytes':totals,'heap_bytes':heap,'stack_bytes':top-bottom,'cold_largest_request':cold,'placement_gap_bytes':mapped_address('fault_record')-mapped_address('HEAP$$Limit'),'readonly_usb_tables':{n:{'address':hex(mapped_address(n)),'bytes':mapped_size(n)} for n in ('pEpInt_IN','pEpInt_OUT')},'mapped_symbols':{n:mapped_size(n) for n in ('gsm_buffer','server_rx_buffer','usb_buffer','USART_Rx_Buffer','log_pending','log_pendingAt','port_buffer','config','device','mem','tempStrBuffer','GSM','gsm_strbuf','uart','fault_record') if n in sym},'allocator_models':models,'executed_stack_paths':stack,'recursion_nest':recurse,'limitations':'Peripheral calls are stubbed. These paths and allocator models do not prove a worst-case stack bound or hardware timings.'}
+result={'map_sha256':hashlib.sha256(map_path.read_bytes()).hexdigest(),'map_readwrite_bytes':totals,'heap_bytes':heap,'stack_bytes':top-bottom,'cold_largest_request':cold,'placement_gap_bytes':mapped_address('fault_record')-mapped_address('HEAP$$Limit'),'readonly_usb_tables':{n:{'address':hex(mapped_address(n)),'bytes':mapped_size(n)} for n in ('pEpInt_IN','pEpInt_OUT')},'mapped_symbols':{n:mapped_size(n) for n in ('gsm_buffer','server_rx_buffer','usb_buffer','USART_Rx_Buffer','log_pending','log_pendingAt','port_buffer','config','device','mem','tempStrBuffer','GSM','gsm_strbuf','uart','fault_record') if n in sym},'allocator_models':models,'executed_stack_paths':stack,'firmware_read_faults':fw_checks,'recursion_nest':recurse,'limitations':'Peripheral calls are stubbed. These paths and allocator models do not prove a worst-case stack bound or hardware timings.'}
 (root/'Release/audit-memory.json').write_text(json.dumps(result,indent=2,ensure_ascii=False),encoding='utf-8')
-print(json.dumps({k:result[k] for k in ('heap_bytes','stack_bytes','cold_largest_request','placement_gap_bytes','allocator_models','executed_stack_paths')},ensure_ascii=False,indent=2))
+print(json.dumps({k:result[k] for k in ('heap_bytes','stack_bytes','cold_largest_request','placement_gap_bytes','allocator_models','executed_stack_paths','firmware_read_faults')},ensure_ascii=False,indent=2))

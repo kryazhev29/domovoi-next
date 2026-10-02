@@ -140,7 +140,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         poll=poll[:poll.rfind('  }')]
         tick=loop[loop.index('    if (device.updateTimeout){'):loop.index('    if (app_trial_expired()){')]
         audit='static void audit_poll(void){\n'+poll+'\n}\nstatic void audit_tick(void){\n'+tick+'\n}\n'
-        unit=(ROOT/'Tests/test_fw_start.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers).replace('/* AUDIT LOOP */',audit)
+        unit=(ROOT/'Tests/test_fw_start.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers).replace('/* AUDIT LOOP */',audit).replace('/* FIRMWARE CRC */', function(user,'CRC32')+'\n'+function(user,'user_checkFirmware'))
     elif kind=='log':
         user=source('User/user_fun.c');st=source('structures.h')
         case=cases(user)

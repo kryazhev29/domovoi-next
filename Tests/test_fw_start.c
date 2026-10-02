@@ -16,8 +16,12 @@ static struct {uint32_t start,size;} mem[2]={{0,131072},{135168,131072}};
 static uint8_t flash[135168+131072];
 static unsigned saves,wdt,torn,sent,sent_code,sent_cch,trial,manual,fail_flash;
 static uint32_t stuck=0xffffffffu;
-static uint8_t bf[128];
-static bool mem_read(uint32_t a,uint8_t*p,uint16_t n){CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);return true;}
+static uint32_t bf_words[32];
+#define bf ((uint8_t *)bf_words)
+#define bf32 bf_words
+static uint32_t read_fail_at=UINT32_MAX;
+static unsigned read_fail_copy;
+static bool mem_read(uint32_t a,uint8_t*p,uint16_t n){CHECK(a+n<=sizeof(flash));if(a==read_fail_at){if(read_fail_copy)memcpy(p,flash+a,n);return false;}memcpy(p,flash+a,n);return true;}
 /* NOR programming clears bits only. A torn program leaves the second half
  * erased; a stuck address never programs. */
 static bool mem_write(uint32_t a,uint8_t*p,uint16_t n){uint32_t i;CHECK(a+n<=sizeof(flash));
@@ -26,7 +30,7 @@ static bool mem_write(uint32_t a,uint8_t*p,uint16_t n){uint32_t i;CHECK(a+n<=siz
 static bool user_clearMemBlock(memBlock_e mb){if(fail_flash==1)return false;memset(flash+mem[mb].start,0xff,mem[mb].size);return true;}
 static uint32_t crc_word(uint32_t c,uint32_t v){unsigned i;c^=v;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0);return c;}
 static uint32_t stm_crc(const uint8_t*p,uint32_t n){uint32_t c=0xffffffffu,w,i;for(i=0;i<n;i+=4){memcpy(&w,p+i,4);c=crc_word(c,w);}return c;}
-static bool user_checkFirmware(uint32_t adr,uint32_t size,uint32_t crc){return adr+size<=sizeof(flash)&&stm_crc(flash+adr,size)==crc;}
+/* FIRMWARE CRC */
 static uint16_t saved_timeout;
 static void user_saveindex(void);
 static void wdt_reload(void){wdt++;}
@@ -43,7 +47,7 @@ static void fw_resume_after_boot(void);
 
 static uint8_t image[96*1024];
 static void reset(void){memset(flash,0xff,sizeof(flash));memset(&device,0,sizeof(device));device.hardwareVersion=139;device.registredOnServer=1;
- saves=torn=sent=trial=manual=nlogs=fail_flash=0;stuck=0xffffffffu;boot_ver=0x32;}
+ saves=torn=sent=trial=manual=nlogs=fail_flash=0;stuck=0xffffffffu;boot_ver=0x32;read_fail_at=UINT32_MAX;read_fail_copy=0;}
 /* Update events carry a reason code (Protocol2 E534): the text names the reason, NULL - code 0. */
 static int last_log(int num,const char*reason){return nlogs&&logs[nlogs-1].num==num&&logs[nlogs-1].reason==fw_reason_code(reason);}
 static cmdCode_e start(uint16_t number,uint32_t build,uint32_t size,uint32_t crc,uint16_t blocks,dataChanel_e cch){
@@ -209,6 +213,38 @@ static void resume_tests(void){uint32_t seed=12345u,i;uint16_t blocks=37,k,idx;u
  printf("resume: %u power cuts over %u blocks restore the image byte for byte\n",cuts,blocks);}
 
 /* Доработка: Кряжев А., 2026. Проверка реального цикла при медленном сервере. */
+static void read_error_tests(void){
+ uint32_t crc;unsigned k;
+ /* A failed read leaves the preceding CRC chunk in the buffer. Repeated
+    image chunks must not turn that stale data into successful verification. */
+ reset();memset(flash+FWBLOCK_OFFSET,0xA5,256);crc=stm_crc(flash+FWBLOCK_OFFSET,256);
+ read_fail_at=FWBLOCK_OFFSET+128;
+ CHECK(!user_checkFirmware(FWBLOCK_OFFSET,256,crc));
+ read_fail_at=UINT32_MAX;CHECK(user_checkFirmware(FWBLOCK_OFFSET,256,crc));
+ CHECK(!user_checkFirmware(FWBLOCK_OFFSET,0,UINT32_MAX));
+ CHECK(!user_checkFirmware(FWBLOCK_OFFSET,130,stm_crc(flash+FWBLOCK_OFFSET,128)));
+ /* SPI may transfer the expected bytes but report a peripheral failure. */
+ make_image(2048);crc=stm_crc(image,2048);download(2048,2,crc);
+ read_fail_at=FWBLOCK_OFFSET;read_fail_copy=1;
+ CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_BADWRITE&&device.FWblockIdx==0);
+ read_fail_at=UINT32_MAX;CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK);
+ read_fail_at=0;
+ CHECK(block(1,1026,CH_SERVER)==FW_BLOCK_END&&!device.rebootToUpdate&&!device.FWinProgress);
+ CHECK(last_log(LOG_FW_FAIL,"READ"));
+ download(2048,2,crc);read_fail_at=0;read_fail_copy=1;
+ CHECK(start(71,1789600000,2048,crc,2,CH_SERVER)==CMD_RUNERROR&&device.FWinProgress);
+ stage(2,71);read_fail_at=0;read_fail_copy=1;fw_resume_after_boot();
+ CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&saves==1);
+ /* The first, second, and last erased chunk must all stop
+    the resume scan instead of skipping over uncertain data. */
+ for(k=0;k<3;++k){
+  stage(2,71);read_fail_copy=1;
+  read_fail_at=FWBLOCK_OFFSET+1024+(k==2?960u:(uint32_t)k*64u);
+  fw_resume_after_boot();CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&saves==1);
+ }
+ puts("firmware read faults: CRC, read-back, final header, repeated start and resume fail closed");
+}
+
 static uint32_t audit_ms;
 static unsigned audit_requests;
 static uint8_t uniqIDCnt;
@@ -261,5 +297,5 @@ static void slow_server_tests(void){
 
 int main(void){unsigned failure;for(failure=1;failure<=2;failure++){reset();fail_flash=failure;
  CHECK(start(71,1789600000,1024,1,1,CH_SERVER)==CMD_RUNERROR);CHECK(!device.FWinProgress&&!device.rebootToUpdate&&!saves);}
- slow_server_tests();start_tests();rollback_tests();block_tests();end_tests();resume_tests();
+ read_error_tests();slow_server_tests();start_tests();rollback_tests();block_tests();end_tests();resume_tests();
  puts("PASS firmware update of sheet Protokol2: commands 19, 20 and 4, rollback, end of a download, resume after a reset");return 0;}

@@ -2484,7 +2484,7 @@ static uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, 
 {
   bootFWparam_s h;
   if (!device.FWinProgress || device.cchFWupdate != cch || blocks != device.FWblockCount) return 0;
-  mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h));
+  if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h))) return 0;
   return h.firmwareVersion == number && h.buildDate == build &&
          h.firmwareSize == size && h.firmwareCRC == crc;
 }
@@ -2586,7 +2586,7 @@ static uint8_t fw_block_written(uint32_t adr, const uint8_t *data)
   uint8_t b[64];
   uint16_t off;
   for (off = 0; off < 1024u; off += sizeof(b)){
-    mem_read(adr + off, b, sizeof(b));
+    if (!mem_read(adr + off, b, sizeof(b))) return 0;
     if (memcmp(b, data + off, sizeof(b)) != 0) return 0;
   }
   return 1;
@@ -2642,7 +2642,10 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   device.FWblockIdx++;
   device.firmwarePercent = (uint8_t)((uint32_t)device.FWblockIdx * 100u / device.FWblockCount);
   if (device.FWblockIdx < device.FWblockCount) return FW_BLOCK_OK;
-  mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s));
+  if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s))) {
+    fw_abort("READ");
+    return FW_BLOCK_END;
+  }
   return fw_blocks_done(user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC));
 }
 
@@ -2656,7 +2659,7 @@ static uint16_t fw_resume_block(void)
   while (block != 0) {
     --block;
     for (off = 0; off < 1024u; off += sizeof(b)) {
-      mem_read(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u + off, b, sizeof(b));
+      if (!mem_read(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u + off, b, sizeof(b))) return UINT16_MAX;
       for (i = 0; i < sizeof(b); i++)
         if (b[i] != 0xFF) return block;
     }
@@ -2677,18 +2680,19 @@ static void fw_resume_after_boot(void)
     device.FWblockIdx = device.FWblockCount = 0;
     return;
   }
-  mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h));
-  if (BOOT_VER < 0x30 || h.appIdent != 0xFFFFFFFFu || h.firmwareVersion < 2 ||
+  if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h)) || BOOT_VER < 0x30 || h.appIdent != 0xFFFFFFFFu || h.firmwareVersion < 2 ||
       fw_start_rejected(h.firmwareVersion, h.buildDate, h.firmwareSize, h.firmwareCRC, device.FWblockCount)) {
     device.FWinProgress = 0;
+    device.status.readyToUpdate = 0;
     device.updateTimeout = 0;
     device.FWblockIdx = device.FWblockCount = 0;
     user_saveindex();
     return;
   }
-  device.FWblockIdx = fw_resume_block();
-  device.startWaitFWtime = 0;
   device.cchFWupdate = CH_SERVER;
+  device.FWblockIdx = fw_resume_block();
+  if (device.FWblockIdx == UINT16_MAX) { fw_abort("READ"); return; }
+  device.startWaitFWtime = 0;
   if (device.updateTimeout == 0 || device.updateTimeout > FW_TIMEOUT_S) device.updateTimeout = FW_TIMEOUT_S;
   device.status.readyToUpdate = 1;
   device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
@@ -4592,6 +4596,8 @@ uint16_t user_getPhotoCount(void)
 // ************************ Прошивка ***********************
 bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
 
+  if (!size || (size & 3u)) return false;
+
   uint32_t crcvalue = 0xffffffff;
   uint32_t readed;
   uint32_t i;
@@ -4613,7 +4619,7 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
   
   while (size > 0){
     readed = (size > 128) ? 128 : size; // сколько считывать байт
-    mem_read (adr, bf, readed);
+    if (!mem_read (adr, bf, readed)) return false;
     
     for (i = 0; i < (readed/4); i++)
       crcvalue = CRC32(crcvalue, bf32[i]);
