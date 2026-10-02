@@ -470,6 +470,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_id_expiry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
     elif kind=='tempidmeta':
         unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_addIdToTempBuffer'))
+    elif kind=='commuart':
+        header=source('Modules/comm_uart.h')
+        code=source('Modules/comm_uart.c')
+        code='\n'.join(x for x in code.splitlines() if not x.startswith('#include'))
+        unit=source('Tests/test_comm_uart.c').replace('/* HEADER */',header).replace('/* PRODUCTION */',code)
+        profile=sys.argv[3] if len(sys.argv)>3 else 'v5'
+        defines={'v5':'', 'ipv3':'#define BOARD_IP_V3 1\n', 'mini':'#define DOMOVOI_APP_HW 140\n', 'mini-ipv3':'#define DOMOVOI_APP_HW 140\n#define BOARD_IP_V3 1\n'}
+        unit=defines[profile]+unit
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
