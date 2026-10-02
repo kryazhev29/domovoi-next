@@ -44,6 +44,9 @@ static const unsigned short crc16tab[256] =
  };
 #endif
 
+/* Сборки ASM и гибрид (ASM_CRC): эти функции берутся из User/asm/crc_asm.s,
+   версия на C ниже остаётся эталоном (Tests/asm/test_asm_crc.py). */
+#ifndef ASM_CRC
 // Расчет CRC-16 ModBus
 unsigned short crc16_calc(unsigned char* buf, unsigned short size)
 {
@@ -111,3 +114,4 @@ unsigned char crc8_calc (unsigned char* in, unsigned char num)
     }
   return crc_d; 
 }
+#endif /* ASM_CRC */
