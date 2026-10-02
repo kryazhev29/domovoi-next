@@ -3,8 +3,8 @@ from pathlib import Path
 import argparse, os, subprocess, tempfile
 from comm_slm_host import unit as slm_unit, memory, ROOT, ZIG, HEADERS, MODULES
 
-NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c')
-NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h')
+NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c')
+NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h')
 
 def source(name):
     return (ROOT / name).read_bytes().decode('cp1251')
@@ -34,7 +34,7 @@ def unit():
     legacy = '\n'.join(function(user, n).replace(n, 'legacy_' + n) for n in producers)
     current = '\n'.join(function(user, n) for n in producers)
     producer_code = '#undef COMM_NEW_CORE\n' + helpers + legacy + '\n#undef user_comm_send\n#undef user_comm_free\n#define COMM_NEW_CORE 1\n' + helpers + current
-    return old + '\n#define COMM_NEW_CORE 1\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('User/crc.c'), 'crc16_calc')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code)
+    return old + '\n#define COMM_NEW_CORE 1\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('User/crc.c'), 'crc16_calc')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c'))
 
 def arm(out):
     names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'User/user_comm.c')
@@ -45,7 +45,7 @@ def arm(out):
             (tmp / Path(name).name).write_text(source(name).replace('\r\n','\n').replace('../Modules/',''), encoding='utf-8')
         (tmp/'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void*,const void*,size_t);\nvoid *memset(void*,int,size_t);\nint memcmp(const void*,const void*,size_t);\nsize_t strlen(const char*);\n', encoding='ascii')
         (tmp/'stdio.h').write_text('#include <stddef.h>\nint snprintf(char*,size_t,const char*,...);\n', encoding='ascii')
-        (tmp/'user_fun.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#define CH_SERVER 1\ntypedef uint8_t logSystem_e;\nvoid user_send_registrationData(unsigned);\nvoid user_send_statusPack(unsigned);\nbool log_addSystemEvent(logSystem_e);\n',encoding='ascii')
+        (tmp/'user_fun.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#define CH_SERVER 1\ntypedef uint8_t logSystem_e;\nvoid user_send_registrationData(unsigned);\nvoid user_send_statusPack(unsigned);\nbool log_addSystemEvent(logSystem_e);\nuint32_t user_comm_local_time(void);\nbool user_comm_busy(void);\n',encoding='ascii')
         for name in (*MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.c'):
             stem = Path(name).stem; obj = out/(stem+'.o')
             subprocess.run([ZIG,'cc','-target','thumb-freestanding-eabi','-mcpu=cortex_m3','-mthumb','-Oz','-std=c99','-Wall','-Wextra','-Werror','-DCOMM_NEW_CORE','-fstack-usage','-I'+str(tmp),'-c',str(tmp/(stem+'.c')),'-o',str(obj)],check=True)

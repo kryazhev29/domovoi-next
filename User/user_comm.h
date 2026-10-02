@@ -9,5 +9,9 @@ uint16_t user_comm_rx_capacity(void);
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count);
 void user_comm_rx_done(uint16_t count, uint8_t reason);
 void user_comm_session(bool open);
+/* Для восстановления связи (user_fun.c): местное время, с (UINT32_MAX - часы не
+   установлены) и занятость обменом, который нельзя рвать перезапуском модема. */
+uint32_t user_comm_local_time(void);
+bool user_comm_busy(void);
 #endif
 #endif

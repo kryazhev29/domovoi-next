@@ -22,6 +22,8 @@ typedef struct {
    Порядок шагов, фазы, следующий/альтернативный шаг задаёт профиль. */
 bool comm_modem_start(const comm_modem_profile_t *profile, const slm_settings_t *settings,
                       const slm_handlers_t *handlers, uint32_t now_ms);
+/* Перезапуск по сохранённым настройкам: power - со снятием питания, иначе с AT. */
+bool comm_modem_restart(bool power, uint32_t now_ms);
 const comm_modem_profile_t *comm_modem_profile(void);
 const slm_settings_t *comm_modem_settings(void);
 /* Команда по шаблону профиля; возвращает длину, >= size — не поместилась. */

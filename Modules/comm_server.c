@@ -10,6 +10,9 @@ static struct {
   struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1; } flags;
 } sv;
 enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
+/* Вне sv: переживает comm_server_init при перезапуске модема. */
+static void (*sv_no_internet)(void);
+void comm_server_no_internet(void (*handler)(void)) { sv_no_internet = handler; }
 static void server_channel_event(uint8_t kind, uint8_t value)
 {
   if (kind == COMM_CH_OPENED) {
@@ -21,6 +24,7 @@ static void server_channel_event(uint8_t kind, uint8_t value)
       sv.flags.check_pending = 0;
       if (value) { sv.state = SV_SILENT; sv.silent_since = sv.now; }
       else if (sv.state == SV_PING) sv.state = SV_DNS;
+      else if (sv_no_internet) sv_no_internet(); /* ping и DNS не прошли: решает восстановление */
       else comm_channel_reopen(0);
     }
     return;

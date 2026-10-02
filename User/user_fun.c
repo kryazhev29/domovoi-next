@@ -5082,3 +5082,11 @@ static void user_send_usbDiag(uint8_t uniqId)
   send_buffer[len + 7] = (crc >> 8) & 0xff;
   usb_send(send_buffer, len + 8);
 }
+
+#ifdef COMM_NEW_CORE
+/* „асы прошивки - местное врем€ (как у суток ID); до установки - недостоверно. */
+uint32_t user_comm_local_time(void)
+{ return device.datetime >= ID_TIME_VALID ? device.datetime : UINT32_MAX; }
+/* Ќочной перезапуск модема не рвЄт обновление прошивки. */
+bool user_comm_busy(void) { return device.FWinProgress != 0; }
+#endif

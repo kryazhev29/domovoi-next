@@ -15,6 +15,7 @@ static struct {
   const comm_modem_profile_t *profile;
   slm_settings_t settings;
   void (*type_found)(uint8_t);
+  comm_power_gpio_t gpio;
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
   slm_diag_t diag;
 } slm;
@@ -161,9 +162,30 @@ static bool slm_valid_settings(void)
   }
   return true;
 }
-bool comm_modem_start(const comm_modem_profile_t *selected, const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
+/* Новая попытка: обнуляется всё, кроме кольца последних десяти сбоев. */
+static void slm_begin(bool power, uint32_t now_ms)
 {
   static const comm_at_handlers_t at_handlers = {slm_event, NULL};
+  memset(slm.diag.steps, 0, sizeof(slm.diag.steps));
+  memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
+  memset(&slm.attempt, 0, sizeof(slm.attempt));
+  slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
+  slm.attempt.status.state = SLM_STARTING; slm.attempt.recording = 1;
+  comm_uart_abort();
+  comm_uart_init(115200);
+  comm_at_init(&at_handlers, comm_timeouts[COMM_T_AT_RESYNC]);
+  if (power) {
+    slm.attempt.status.phase = SLM_PHASE_POWER;
+    comm_power_v5_start(slm.gpio, now_ms);
+    slm.attempt.status.step = SLM_DISCHARGE;
+  } else {
+    slm.attempt.status.phase = SLM_PHASE_SETUP;
+    slm.attempt.status.step = SLM_AT_READY;
+  }
+  slm.attempt.step_started = slm.attempt.next = now_ms;
+}
+bool comm_modem_start(const comm_modem_profile_t *selected, const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
+{
   if (slm.attempt.in_poll || !selected || !settings || !settings->text || !settings->number
       || !handlers || !handlers->gpio
       || slm.attempt.status.state == SLM_STARTING || slm.attempt.status.state == SLM_READY) return false;
@@ -171,18 +193,19 @@ bool comm_modem_start(const comm_modem_profile_t *selected, const slm_settings_t
   slm.settings = *settings;
   if (!slm_valid_settings()) return false;
   slm.type_found = handlers->type_found;
-  /* Между попытками сохраняется только кольцо последних десяти сбоев. */
-  memset(slm.diag.steps, 0, sizeof(slm.diag.steps));
-  memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
-  memset(&slm.attempt, 0, sizeof(slm.attempt));
-  slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
-  slm.attempt.status.state = SLM_STARTING; slm.attempt.recording = 1;
-  slm.attempt.status.phase = SLM_PHASE_POWER;
-  comm_uart_abort();
-  comm_uart_init(115200);
-  comm_at_init(&at_handlers, comm_timeouts[COMM_T_AT_RESYNC]);
-  comm_power_v5_start(handlers->gpio, now_ms);
-  slm.attempt.status.step = SLM_DISCHARGE; slm.attempt.step_started = slm.attempt.next = now_ms;
+  slm.gpio = handlers->gpio;
+  slm_begin(true, now_ms);
+  return true;
+}
+/* Перезапуск по сохранённым профилю и настройкам (восстановление связи).
+   power - со снятием питания; без него - с AT при включённом модеме, а если
+   питание уже снято, то всё равно с полного включения. */
+bool comm_modem_restart(bool power, uint32_t now_ms)
+{
+  if (slm.attempt.in_poll || !slm.profile || !slm.gpio) return false;
+  if (comm_power_v5_state() != COMM_PWR_READY) power = true;
+  if (power) comm_power_v5_off();
+  slm_begin(power, now_ms);
   return true;
 }
 void comm_modem_off(void)

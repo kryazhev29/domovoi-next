@@ -309,5 +309,6 @@ static void garbage_test(void)
   CHECK(!memcmp(flash_model,flash_before,sizeof(flash_model)));
   printf("comm_server garbage: 24 model hours, %u payloads, %u ring overflows, %u long lines, entire NOR unchanged PASS\n",fragments,overflows,long_lines);
 }
+/* RECOVER */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); garbage_test(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); garbage_test(); recover_tests(); return 0; }

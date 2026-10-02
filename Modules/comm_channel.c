@@ -106,6 +106,7 @@ void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),
 void comm_channel_rx_capacity(uint16_t count)
 { ch.capacity = count > 256u ? 256u : count; }
 bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
+bool comm_channel_fault(void) { return ch.state == CH_FAULT; }
 bool comm_tx_busy(void) { return ch.tx_state != TX_FREE; }
 void comm_channel_priority(bool pending) { ch.flags.urgent = (uint8_t)pending; }
 uint8_t *comm_tx_acquire(uint16_t *capacity)
