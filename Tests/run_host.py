@@ -439,7 +439,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c')
         unit=(ROOT/'Tests/test_id_expiry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
     elif kind=='tempidmeta':
-        unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_addIdToTempBuffer'))
+        unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_findTempID')+'\n'+function(source('User/user_fun.c'),'user_addIdToTempBuffer'))
     elif kind=='commuart':
         header=source('Modules/comm_uart.h')
         code=source('Modules/comm_uart.c')

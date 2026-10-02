@@ -16,7 +16,8 @@ static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 static unsigned wdt, loads[2], load_mode[2], nlogs, npass, busy[2],fail_save;
 static int log_num, log_cnt, pass_cnt;
 static void wdt_reload(void) { wdt++; }
-static void mem_read(uint32_t a, uint8_t *p, uint16_t n) { CHECK(a + n <= sizeof(flash)); memcpy(p, flash + a, n); }
+static unsigned fail_read;
+static bool mem_read(uint32_t a, uint8_t *p, uint16_t n) { CHECK(a + n <= sizeof(flash)); memcpy(p, flash + a, n); return !fail_read; }
 static uint8_t out_getmodestate(uint8_t out) { return (uint8_t)busy[out]; }
 static void out_load(uint8_t out, int mode, uint8_t t, uint8_t p, uint8_t c) { (void)t; (void)p; (void)c; loads[out]++; load_mode[out] = (unsigned)mode; }
 static bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt) { (void)id; if (num == LOG_CON_PASSCOUNT) { npass++; pass_cnt = cnt; return true; } nlogs++; log_num = num; log_cnt = cnt; return true; }
@@ -66,6 +67,8 @@ int main(void)
   CHECK(user_getNumbersCount() == 4 && id_cells_end == 9);
   CHECK(user_findID("7900000007", &found) && found.index == 7);   /* the old code stopped at cell 3 */
   CHECK(user_findID("7900000001", &found) && found.index == 1);
+  fail_read=1;memset(&found,0x5A,sizeof(found));
+  CHECK(!user_findID("7900000001", &found) && found.index==0x5A5A);fail_read=0;
   CHECK(!user_findID("7900000009", &found));
   { char ff[10]; memset(ff, 0xff, 10); CHECK(!user_findID(ff, &found)); }
   memset(flash, 0xff, sizeof(flash)); CHECK(user_getNumbersCount() == 0 && !user_findID("7900000001", &found));

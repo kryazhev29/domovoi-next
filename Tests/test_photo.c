@@ -49,11 +49,13 @@ static uint8_t pixel(uint32_t i) {
 }
 static uint32_t timers_getMillis(void) { return now; }
 static void wdt_reload(void) { watchdog++; }
-static void mem_read(uint32_t a,uint8_t *p,uint16_t n) { assert(a+n <= sizeof(flash)); memcpy(p,flash+a,n); }
-static void mem_write(uint32_t a,uint8_t *p,uint16_t n) {
- assert(a+n <= sizeof(flash)); if (fail_write) return; programs++; while(n--) {flash[a++] &= *p++; if(byte_cuts) power_cut();} if(!byte_cuts) power_cut();
+static uint32_t failed_header_read=UINT32_MAX;
+static unsigned fail_erase;
+static bool mem_read(uint32_t a,uint8_t *p,uint16_t n) { assert(a+n <= sizeof(flash)); memcpy(p,flash+a,n); return a!=failed_header_read; }
+static bool mem_write(uint32_t a,uint8_t *p,uint16_t n) {
+ assert(a+n <= sizeof(flash)); if (fail_write) return false; programs++; while(n--) {flash[a++] &= *p++; if(byte_cuts) power_cut();} if(!byte_cuts) power_cut(); return true;
 }
-static void mem_erase_sector(uint32_t a) { assert(a%4096 == 0); assert(a+4096 <= sizeof(flash)); memset(flash+a,255,4096); erases++; power_cut(); }
+static bool mem_erase_sector(uint32_t a) { assert(a%4096 == 0); assert(a+4096 <= sizeof(flash)); if(fail_erase)return false;memset(flash+a,255,4096); erases++; power_cut(); return true; }
 static int uart_init(uint8_t u,uint32_t rate,uint8_t stop,uint8_t *p,uint16_t n) {(void)u;assert((rate==115200 || rate==57600 || rate==38400 || rate==19200 || rate==9600) && !stop);baudrate=rate;rx=p;rxcap=n;rxcount=0;return 1;}
 static int uart_getstate(uint8_t u) {(void)u;return rxcount!=0 && now>=rxready;}
 static int uart_isReceiving(uint8_t u) {(void)u;return 0;}
@@ -155,12 +157,63 @@ static void check_wire(uint16_t off,uint16_t n,uint8_t count) {
 static void check_saved(int i,uint16_t off,uint16_t n,uint8_t count,uint32_t number) {
  assert(i<sends);wirelen=history_len[i];memcpy(wire,history[i],wirelen);uint32_t old=device.datetime;device.datetime=number;check_wire(off,n,count);device.datetime=old;
 }
+static void storage_fault_tests(void) {
+ uint32_t bad[3], address, offset, crc, end;int before_programs,before_erases,before_sends;
+ clean();capture();check_image(0);end=photo_storage_end();
+ bad[0]=0;bad[1]=end+MEMSECTORSIZE;bad[2]=end+MEMSECTORSIZE+32u;
+ for(unsigned k=0;k<3;k++) {
+  before_programs=programs;before_erases=erases;failed_header_read=bad[k];
+  assert(photo_request(CH_SERVER,1,NULL,0)==CMD_RUNERROR);
+  assert(photo_start(17)==CMD_RUNERROR);
+  assert(!photo_clear_confirmed());
+  for(int i=0;i<3;i++)step();
+  assert(programs==before_programs && erases==before_erases);
+  failed_header_read=UINT32_MAX;assert(user_getPhotoCount()==1);check_image(0);
+ }
+ assert(photo_request(CH_SERVER,1,NULL,0)==CMD_SUCCESS);
+ before_sends=sends;address=photo->readAddress;offset=photo->offset;
+ failed_header_read=0;photo_send();assert(sends==before_sends && photo->pending);
+ assert(photo_first_pending(&address,&offset)==2 && photo_ack_request(0,128)==CMD_RUNERROR);
+ failed_header_read=PHOTO_RECORD_HEAD;photo_send();
+ assert(sends==before_sends && photo->readAddress==address && photo->offset==offset && !comm_tx_busy());
+ failed_header_read=UINT32_MAX;drain();
+ /* Failed verification cannot bless even bytes that happen to match. */
+ failed_header_read=0;assert(!photo_write(0,flash,4));failed_header_read=UINT32_MAX;
+ fail_write=1;assert(!photo_write(0,flash,4));fail_write=0;
+ assert(photo_ack_write(0,(uint16_t)image_size,(uint16_t)image_size));
+ failed_header_read=PHOTO_RECORD_HEAD-1u;before_erases=erases;
+ assert(photo_confirmed_offset(0,(uint16_t)image_size)==0 && user_getPhotoCount()==1);
+ step();assert(erases==before_erases);failed_header_read=UINT32_MAX;
+ assert(!user_getPhotoCount() && photo_clear_confirmed());
+ before_erases=erases;before_programs=programs;
+ failed_header_read=end+MEMSECTORSIZE+32u;photo_cleanup_step();
+ assert(erases==before_erases && programs==before_programs);
+ failed_header_read+=12u;photo_cleanup_step();assert(erases==before_erases && programs==before_programs);
+ failed_header_read=UINT32_MAX;fail_erase=1;photo_cleanup_step();
+ assert(erases==before_erases && programs==before_programs);fail_erase=0;
+ /* Recovery must validate its backup and erase before advancing phases. */
+ clean();end=photo_storage_end();memset(flash+end,0xA5,64);
+ assert(photo_backup_crc(end,64,&crc));
+ { uint32_t h[4]={0,64,crc,0x50484F54u};memcpy(flash+end+MEMSECTORSIZE,h,sizeof(h)); }
+ before_erases=erases;failed_header_read=end;assert(!photo_restore_step() && !photo_restore_phase && erases==before_erases);
+ failed_header_read=UINT32_MAX;fail_erase=1;assert(!photo_restore_step() && !photo_restore_phase && erases==before_erases);
+ fail_erase=0;assert(photo_restore_step() && photo_restore_phase==1);
+ failed_header_read=end;assert(!photo_restore_step() && !photo_copy_off);failed_header_read=UINT32_MAX;
+ clean();assert(photo_start(17)==CMD_SUCCESS);photo->stage=P_DATA;photo->size=100;
+ before_erases=erases;fail_erase=1;assert(!photo_data_ready() && !photo_erased_to && erases==before_erases && !photo->stage);
+ fail_erase=0;clean();
+ puts("photo: read/write/erase faults preserve stored images, reject missing metadata and retain upload position");
+}
+
 int main(int argc,char **argv) {
+ storage_fault_tests();
  if(argc>2 && !strcmp(argv[1],"bridge")) {
    clean();FILE *f=fopen(argv[2],"rb");assert(f);fseek(f,0,SEEK_END);image_size=(uint32_t)ftell(f);rewind(f);
    bridge_jpeg=malloc(image_size);assert(bridge_jpeg);assert(fread(bridge_jpeg,1,image_size,f)==image_size);fclose(f);
    capture();check_image(0);printf("BRIDGE_OK bytes=%u ms=%u\n",image_size,now);reset_ram();free(bridge_jpeg);return 0;
  }
+ clean();failed_header_read=0;assert(!user_getPhotoCount() && device.newAddressPhoto==UINT32_MAX);
+ failed_header_read=UINT32_MAX;assert(!user_getPhotoCount() && !device.newAddressPhoto);
  clean();uint8_t empty_args[6];uint32_t arbitrary=0xA5A5A5A5u;
  memcpy(empty_args,&arbitrary,4);empty_args[4]=0xFF;empty_args[5]=0xFF;
  user_send_answer_comand(21,photo_request(CH_SERVER,90,empty_args,6),CH_SERVER,90);

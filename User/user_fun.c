@@ -3551,7 +3551,7 @@ bool user_findID(char *id, cellID_s *cell){
 
   // по странично читаем
   for (adr = mem[MB_ID].start; adr < endAdr; adr += 1024){
-    mem_read(adr, tbuffer, 1024);
+    if (!mem_read(adr, tbuffer, 1024)) return false;
     // перебираем €чейки
     for (uint16_t a = 0; a < 1024 && adr + a < endAdr; a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
@@ -3585,7 +3585,7 @@ bool user_findTempID(char *id){
   
   // проверим, что такого ID нет в буфере
   for (adr = mem[MB_TEMPID].start; adr < startAddress; adr += sizeof(cellID_s)){
-    mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s));
+    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return false;
     // такой ID есть
     if (memcmp(cellId.ID, id, 10) == 0){
       return true;
@@ -3607,7 +3607,7 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
   
   // проверим, что такого ID нет в буфере
   for (adr = mem[MB_TEMPID].start; adr < startAddress; adr += sizeof(cellID_s)){
-    mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s));
+    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
     // такой ID есть
     if (memcmp(cellId.ID, id, 10) == 0){
       return;
@@ -3616,7 +3616,7 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
   
   // по странично 
   for (adr = startAddress; adr < endAdr; adr += sizeof(cellID_s)){
-    mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s));
+    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
     // €чейка пуста€, она должна быть стерта
     if (cellId.index == 0xffff){
       memset(&cellId, 0, sizeof(cellId)); // нова€ запись без чужих флагов и резерва
@@ -3631,7 +3631,7 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
         case CT_WIEGAND: cellId.isWiegand = 1; break;
         default: break;
       }
-      mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s));
+      if (!mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
       device.newAddressTempID = adr + sizeof(cellID_s);
       device.status.readyID = 1;
       return;
@@ -4572,13 +4572,14 @@ uint16_t user_getPhotoCount(void)
   uint32_t end = photo_storage_end();
   uint16_t count = 0;
   photoParam_s h;
-  if (photo_cleanup_active()) {
-    device.newAddressPhoto = adr; device.countPhoto = 0; device.status.readyPhoto = 0;
+  uint8_t cleanup = photo_cleanup_active();
+  if (cleanup) {
+    device.newAddressPhoto = cleanup == 1 ? adr : UINT32_MAX; device.countPhoto = 0; device.status.readyPhoto = 0;
     return 0;
   }
-  if (!photo_recover()) { device.newAddressPhoto = end; device.countPhoto = 0; device.status.readyPhoto = 0; return 0; }
+  if (!photo_recover()) { device.newAddressPhoto = UINT32_MAX; device.countPhoto = 0; device.status.readyPhoto = 0; return 0; }
   while (adr + sizeof(h) <= end) {
-    mem_read(adr, (uint8_t*)&h, sizeof(h));
+    if (!mem_read(adr, (uint8_t*)&h, sizeof(h))) { adr = UINT32_MAX; count = 0; break; }
     if (h.datetime == 0xFFFFFFFFu) break;
     if (!h.size || h.size > 65535u || end - adr < PHOTO_RECORD_HEAD ||
         h.size > end - adr - PHOTO_RECORD_HEAD) {
