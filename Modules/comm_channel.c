@@ -13,7 +13,7 @@ static struct {
   uint16_t frame_count, capacity, bytes, open_code;
   uint8_t state, tx_state, operation, answer;
   uint8_t address, address_failures, connections, retry_step, probe;
-  uint8_t probe_active, probe_answer, generation, probe_generation;
+  uint8_t probe_active, probe_answer;
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
 } ch;
 enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT };
@@ -73,7 +73,8 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
   } else if (ch.operation == OP_ACK) {
     if (comm_at_parse(p,n,"+QISEND:\001,\001,\001",v) && v[1] <= v[0] && v[2] == v[0] - v[1])
       ch.answer = v[2] == 0 ? 1 : 2;
-  } else if (ch.probe_generation == ch.generation) {
+  } else {
+    /* Повторное открытие гасит проверку, поэтому ответ старого сокета сюда не доходит. */
     if (ch.probe_active == COMM_CH_PING) {
       if (!comm_at_prefix(p,n,"+QPING:")) return;
       /* Фактический ответ: код, IPv4, bytes, time, ttl. */
@@ -126,7 +127,6 @@ void comm_channel_reopen(uint32_t pause_ms)
   if (ch.state == CH_CLOSE || ch.state == CH_CLOSING || ch.state == CH_VERIFY || ch.state == CH_PAUSE || ch.state == CH_FAULT) return;
   if (ch.state == CH_INITIAL) ch.connections = 1;
   bool had_socket = ch.state == CH_OPEN;
-  ++ch.generation;
   ch.state = CH_CLOSE; ch.reopen_pause = pause_ms; ch.probe = ch.probe_active = ch.probe_answer = 0;
   if (!ch.flags.registered_session && ++ch.address_failures >= 3) {
     ch.address_failures = 0;
@@ -161,15 +161,8 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
       value = settings->number(ch.address ? SLM_CFG_PORT2 : SLM_CFG_PORT);
       if (!host || !capacity || !value || !comm_at_field(host, capacity, true)) return false;
     } else mode = profile->read_mode;
-    uint16_t n = comm_at_copy(cmd, sizeof(cmd), 0, "AT+");
-    while (*p && n < sizeof(cmd)) {
-      uint8_t token = (uint8_t)*p++;
-      if (token == 5) n = comm_at_copy(cmd, sizeof(cmd), n, host);
-      else if (token == 6 || token == 7) n = comm_at_decimal(cmd, sizeof(cmd), n, value);
-      else cmd[n++] = (char)token;
-    }
-    if (n >= sizeof(cmd)) return false;
-    cmd[n] = 0; s = cmd;
+    if (comm_modem_build(cmd, sizeof(cmd), p, host, value) >= sizeof(cmd)) return false;
+    s = cmd;
   }
   comm_at_request_t req = {(const uint8_t *)s, s ? (uint16_t)strlen(s) : 0, mode, comm_timeouts[timeout_id]};
   uint8_t r = op == OP_SEND ? comm_modem_payload(frame, ch.frame_count, ch.now)
@@ -308,7 +301,7 @@ void comm_channel_poll(uint32_t now_ms)
                               COMM_AT_TEXT, COMM_T_AT_SIMPLE, dns ? OP_DNS : OP_PING)) {
       if (dns) { ch.flags.dns_fence = 1; ch.dns_since = now_ms; }
       ch.probe_active = ch.probe; ch.probe_answer = 0;
-      ch.probe_since = now_ms; ch.probe_generation = ch.generation;
+      ch.probe_since = now_ms;
     }
   }
   else if (ch.tx_state == TX_FREE && !ch.flags.urgent && ch.flags.recv && ch.capacity && ch.binary)
