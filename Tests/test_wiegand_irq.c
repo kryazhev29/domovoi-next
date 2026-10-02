@@ -24,5 +24,11 @@ int main(void){
   reset();bits(26);uint32_t expected=(wgData>>1)&0x03FFFFFF;clock_ms=400;WG_process();CHECK(seen==0 && wgDataAvalible && wgBitCount==0);WG_process();CHECK(seen==1 && lastid==expected && !wgDataAvalible);
   bits(26);clock_ms=700;irqmask=1;WG_process();CHECK(irqmask==1 && wgDataAvalible);irqmask=0;WG_process();CHECK(seen==2);
   reset();clock_ms=0xffffff00;bits(26);clock_ms=0x10;WG_process();WG_process();CHECK(seen==1);
-  puts("wiegandirq: noise saturation, original ID mask/delivery, saved PRIMASK and wrap PASS");return 0;
+  /* SIA: интервал между битами до 20 мс не рвёт кадр, тишина больше 25 мс завершает его;
+     опрос на каждом проходе цикла, кадр отдаётся следующим вызовом. */
+  reset();for(unsigned i=0;i<26;i++){clock_ms+=20;if(i&1)EXTI3_IRQHandler();else EXTI2_IRQHandler();WG_process();CHECK(!wgDataAvalible&&!seen);}
+  clock_ms+=25;WG_process();WG_process();CHECK(!seen);
+  clock_ms+=1;WG_process();CHECK(wgDataAvalible);WG_process();CHECK(seen==1&&!wgDataAvalible);
+  reset();bits(26);clock_ms=100+26;WG_process();WG_process();CHECK(seen==1); /* 26 мс после последнего бита - уже карта */
+  puts("wiegandirq: noise saturation, original ID mask/delivery, saved PRIMASK, wrap, 20 ms bit gap kept, 26 ms silence ends frame PASS");return 0;
 }

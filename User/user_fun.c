@@ -992,14 +992,11 @@ bool user_clearMemBlock(memBlock_e mb){
 // циклический обработчик
 void user_loop(void)
 {
+  /* Карта - первой и на каждом проходе: конец кадра ловится сразу после паузы,
+     а не на следующем 10-мс такте. */
+  if (config.wiegandType != 0)
+    WG_process();
   idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
-  // каждые 10 мс
-  if (timers_get(0) >= 10)
-  {
-    timers_set(0,0);
-    if (config.wiegandType != 0)
-      WG_process();
-  }
 
   // каждые 50 мс
   if (timers_get(1) >= 50)

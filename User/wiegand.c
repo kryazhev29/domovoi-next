@@ -74,7 +74,9 @@ void WG_process(void){
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
   uint32_t now = timers_getMillis();
-  bool complete = ((now - wgTime) > 250);
+  /* SIA: интервал между импульсами не больше 20 мс, поэтому тишина 25 мс -
+     конец кадра (было 250 мс: четверть секунды ожидания у двери). */
+  bool complete = ((now - wgTime) > 25u);
   uint32_t data = 0;
   uint8_t count = 0;
   if (complete){
