@@ -1962,10 +1962,12 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   uint32_t memAddress = mem[MB_ID].start;
   uint32_t sizeBlock;
   
+  /* Протокол2 E363-E365, E562-E566: 0 - пакет 6 со 100 CRC; 1-100 - пакет 15:
+     номер блока и CRC16 блока N (ячейки (N-1)*500+1 ... N*500). */
   if (idx == 0){
     len = 203;
   } else{
-    len = 5;
+    len = 6;
   }
   
 #ifdef COMM_NEW_CORE
@@ -2007,8 +2009,9 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   user_debug(">>U Send crc data (cmd 16)\r\n"); 
 #endif  
       
-      crcData = id_crc16(sizeBlock*idx, sizeBlock);
-      memcpy(&send_buffer[9], (uint8_t*)&crcData, 2); // crc id
+      crcData = id_crc16(sizeBlock * (uint32_t)(idx - 1u), sizeBlock);
+      send_buffer[9] = idx; // номер блока
+      memcpy(&send_buffer[10], (uint8_t*)&crcData, 2); // crc блока
     }
     // ------- меняемый блок ---------
     
@@ -3636,6 +3639,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #ifdef DEBUG_USER
   user_debug(">>U Recv cmd crc ID (cmd 18)\r\n"); 
 #endif       
+      if (ptr[5] > 100) { // блоков 100: номер больше - чтение мимо базы
+        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+        break;
+      }
       user_send_crcMemoryID(ptr[5], cch, uniqId);
       break;      
       
