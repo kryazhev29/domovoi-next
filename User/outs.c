@@ -128,11 +128,15 @@ void out_load (Int8U out, Int8U mode, Int16U activ, Int16U pause, Int8U period)
     break;
     
   case OUT_IMP: // импульс 
-    out_timeactiv[out] = activ; 
-    out_timepause[out] = pause; 
+    /* Протокол2 (E254/E255): время в секундах 1-255; out_process идёт раз в 100 мс,
+       поэтому внутри десятые доли. Реле включается сразу, а не на следующем такте:
+       проход не ждёт до секунды. */
+    out_timeactiv[out] = (Int16U)(activ * 10u); 
+    out_timepause[out] = (Int16U)(pause * 10u); 
     out_period[out] = period;
-    out_time[out] = activ; 
+    out_time[out] = (Int16U)(activ * 10u); 
     out_activpause |= (1<<out); 
+    if (period && activ) out_set (out, 1);
     break;
     
   default: break;

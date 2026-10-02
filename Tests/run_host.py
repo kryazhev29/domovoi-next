@@ -344,6 +344,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='idindex':
         code=source('User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))
         unit=(ROOT/'Tests/test_idindex.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+    elif kind=='outs':
+        import re as _re
+        outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
+        unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',outs)
     elif kind=='crcff':
         crc=source('User/crc.c')
         user=source('User/user_fun.c')

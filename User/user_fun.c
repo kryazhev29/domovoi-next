@@ -1044,6 +1044,10 @@ void user_loop(void)
     }
   }
 
+  /* Выходы - раз в 100 мс (outs.h): импульс и пауза с точностью 0,1 с. */
+  uint32_t outTicks = timers_take(0, 100);
+  while (outTicks != 0) { --outTicks; out_process(); }
+
   // каждую 1 сек
   // воспроизводим накопленные секунды; новые тики остаются на следующий проход
   uint32_t elapsedSeconds = timers_take(3, 1000);
@@ -1052,7 +1056,6 @@ void user_loop(void)
     --elapsedSeconds;
     wdt_reload();
     
-    out_process(); // обработка алгоритма работы выхода
     
     // есть подключение по USB но не настроено
     if (USB_DETECT)
@@ -4339,6 +4342,21 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
     if (save && !user_updateID(&cellId)) return false;
   }
 
+  /* Реле - сразу после решения (счётчик проходов уже сохранён, B25), журнал - после:
+     запись событий не задерживает щелчок. */
+  for (out = 0; out < 2; out++){
+    if (!run[out]) continue;
+#ifdef DEBUG_USER
+    user_debug(out == 0 ? ">>U Act Out: Out 1\r\n" : ">>U Act Out: Out 2\r\n");
+#endif
+    // импульс
+    if (config.rele[out].mode == 0){
+      out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
+    } else{
+      // уровень: проход ID переключает выход, команда сервера 8 включает (строка 186)
+      out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
+    }
+  }
   switch (tp){
   case CT_PHONE:
     log_addControlEvent(LOG_CON_OUTONBYPHONE, id, cnt);
@@ -4367,20 +4385,6 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 #ifdef BOARD_IP_V3
   photo_auto(); // фотофиксация прохода, как в старой прошивке v1-v3
 #endif
-
-  for (out = 0; out < 2; out++){
-    if (!run[out]) continue;
-#ifdef DEBUG_USER
-    user_debug(out == 0 ? ">>U Act Out: Out 1\r\n" : ">>U Act Out: Out 2\r\n");
-#endif
-    // импульс
-    if (config.rele[out].mode == 0){
-      out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
-    } else{
-      // уровень: проход ID переключает выход, команда сервера 8 включает (строка 186)
-      out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
-    }
-  }
   return true;
 }
 
