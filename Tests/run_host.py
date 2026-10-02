@@ -107,6 +107,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'photo_connection_lost();' in function(user,'user_disconnected')
         assert '(cmd == 7 || cmd == 21) ? 5 : 255' in function(user,'user_send_answer_comand')
         code=source('User/photo.c').replace('#include "photo.h"','')
+        code=code.replace('#include "../Modules/comm_channel.h"','')
+        if len(sys.argv)>3 and sys.argv[3]=='newcore':
+            code=source('Tests/comm_photo_slot.c')+'\n'+code
         code += '\n'+function(user,'user_send_Photos')+'\nstatic void command(uint8_t cmd,uint16_t len,uint8_t address,uint8_t uniqId){ uint8_t data[11]={0}; uint8_t *ptr=data; dataChanel_e cch=CH_SERVER; ptr[5]=address; switch(cmd){'+case(7)+case(21)+'default: break;}}'
         unit=source('Tests/test_photo.c').replace('/* PRODUCTION */',function(user,'user_getPhotoCount')+'\n'+code)
         if kind=='rs485cfg':
@@ -484,6 +487,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='commslm':
         from comm_slm_host import unit as comm_slm_unit
         unit=comm_slm_unit(ROOT)
+    elif kind=='commserver':
+        from comm_server_host import unit as server_unit
+        unit=server_unit()
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
@@ -497,11 +503,20 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code+=function(source('USB-FS-CDC_User/Src/usb_endp.c'),'EP1_IN_Callback')+'\n'
         code+=function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_Reset')+'\n'
         code+=function(source('USB-FS-CDC_User/Src/usb_istr.c'),'USB_Istr')+'\n'
-        unit=(ROOT/'Tests/test_tx.c').read_text().replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_tx.c').replace('/* PRODUCTION */',code)
     else:
         raise ValueError(kind)
     if 'mem_tables_ready()' in unit and 'bool mem_tables_ready(void)' not in unit:
         unit='#include <stdbool.h>\nstatic bool table_storage_ready=true;\nstatic bool mem_tables_ready(void) { return table_storage_ready; }\n'+unit
+    if kind!='commserver':
+        helpers=source('User/user_fun.c')
+        helpers=helpers[helpers.index('#ifdef COMM_NEW_CORE\r\nstatic uint8_t *user_comm_acquire'):helpers.index('void user_send_anyData(')]
+        if kind in ('logupload','uploadretry') and len(sys.argv)>3 and sys.argv[3]=='newcore':
+            slot='#define COMM_SLOT_FAILURE '+('fail_alloc' if kind=='uploadretry' else '0')+'\n'+source('Tests/comm_upload_slot.c')+'\n'+helpers
+            pos=unit.index('static int8_t connection_send(')
+            pos=unit.index('\n',pos)+1
+            unit=unit[:pos]+slot+unit[pos:]
+        unit=helpers+unit
     (d/'test.c').write_text(unit.replace('\r\n','\n'))
     subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)
