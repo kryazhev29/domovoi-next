@@ -16,6 +16,8 @@ static uint16_t slm_capacity, slm_bytes, slm_open_code;
 static uint8_t slm_wait, slm_done, slm_result, slm_answer, slm_query;
 static uint8_t slm_recv, slm_read_urc, slm_open_seen, slm_tcp_ack, slm_in_poll;
 static uint8_t slm_net_registered, slm_mnc;
+static uint8_t slm_external, slm_hold;
+static void (*slm_transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
 
 static bool slm_is(const uint8_t *p, uint16_t n, const char *s)
 {
@@ -102,6 +104,11 @@ static uint16_t slm_binary(const uint8_t *p, uint16_t n)
 static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
   uint16_t pos, a, b;
+  if (slm_transport_event && (slm_external || kind == COMM_AT_URC
+      || kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR))
+    slm_transport_event(kind, p, n, detail);
+  if (slm_external && kind == COMM_AT_DONE) { slm_external = 0; return; }
+  if (slm_external && kind == COMM_AT_LINE) return;
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
     slm_status.at_fault = kind == COMM_AT_NO_ANSWER ? SLM_ERR_NO_ANSWER : SLM_ERR_STREAM;
     slm_fail(slm_status.at_fault); return;
@@ -220,7 +227,7 @@ bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *ha
   memset(&slm_status, 0, sizeof(slm_status));
   slm_status.state = SLM_STARTING;
   slm_status.phase = SLM_PHASE_POWER;
-  slm_capacity = slm_bytes = 0;
+  slm_capacity = slm_bytes = 0; slm_external = slm_hold = 0;
   slm_recv = slm_read_urc = slm_query = slm_open_seen = slm_tcp_ack = slm_net_registered = slm_mnc = 0;
   comm_uart_abort();
   comm_uart_init(115200);
@@ -233,6 +240,44 @@ void modem_slm336_off(void)
 {
   if (slm_in_poll) return;
   comm_uart_abort(); comm_power_v5_off(); slm_status.state = SLM_IDLE;
+}
+void modem_slm336_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t))
+{ slm_transport_event = event; }
+bool modem_slm336_busy(void) { return slm_wait || slm_external || comm_at_busy(); }
+void modem_slm336_hold(bool hold) { slm_hold = (uint8_t)hold; }
+void modem_slm336_socket(bool open)
+{
+  slm_status.state = open ? SLM_OPEN : SLM_FAILED;
+  slm_status.step = SLM_TCP; slm_status.reason = open ? SLM_ERR_NONE : SLM_ERR_TCP;
+  slm_recv = slm_read_urc = slm_wait = slm_done = 0;
+}
+uint8_t modem_slm336_command(const comm_at_request_t *request, uint32_t now_ms)
+{
+  if (modem_slm336_busy() || (slm_status.state != SLM_OPEN && slm_status.state != SLM_FAILED))
+    return COMM_AT_BUSY;
+  if (slm_status.at_fault) return COMM_AT_INVALID;
+  uint8_t r = comm_at_start(request, now_ms);
+  if (r == COMM_AT_ACCEPTED) slm_external = 1;
+  return r;
+}
+uint8_t modem_slm336_payload(const uint8_t *data, uint16_t count, uint32_t now_ms)
+{
+  if (modem_slm336_busy()) return COMM_AT_BUSY;
+  uint8_t r = comm_at_payload(data, count, comm_timeouts[COMM_T_SEND_RESULT], now_ms);
+  if (r == COMM_AT_ACCEPTED) slm_external = 1;
+  return r;
+}
+bool modem_slm336_reserve(void) { return slm_settings.number && slm_settings.number(SLM_CFG_RESERVE); }
+uint8_t modem_slm336_tcp_open(uint8_t address, uint32_t now_ms)
+{
+  char cmd[128]; uint16_t capacity = 0;
+  const char *host = slm_settings.text(address ? SLM_CFG_HOST2 : SLM_CFG_HOST, &capacity);
+  uint16_t port = slm_settings.number(address ? SLM_CFG_PORT2 : SLM_CFG_PORT);
+  if (!host || !capacity || !port || !slm_field(host, capacity, true)) return COMM_AT_INVALID;
+  int n = snprintf(cmd, sizeof(cmd), "AT+QIOPEN=1,0,\"TCP\",\"%s\",%u,0,0", host, port);
+  if (n <= 0 || (size_t)n >= sizeof(cmd)) return COMM_AT_INVALID;
+  comm_at_request_t req = {(const uint8_t *)cmd, (uint16_t)n, COMM_AT_TEXT, comm_timeouts[COMM_T_AT_SIMPLE]};
+  return modem_slm336_command(&req, now_ms);
 }
 bool modem_slm336_ready(void) { return slm_status.state == SLM_OPEN; }
 const slm_diag_t *modem_slm336_diag(void) { return &slm_diag; }
@@ -392,7 +437,7 @@ void modem_slm336_poll(uint32_t now_ms)
   }
   if (slm_status.state == SLM_OPEN) {
     if (slm_status.step != SLM_READ) {
-      if (!slm_recv || !slm_capacity || !slm_handlers.binary) goto end;
+      if (slm_hold || !slm_recv || !slm_capacity || !slm_handlers.binary) goto end;
       slm_step(SLM_READ);
     }
   }

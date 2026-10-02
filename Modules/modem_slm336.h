@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "comm_power_v5.h"
+#include "comm_at.h"
 enum {
   SLM_DISCHARGE, SLM_POWER_LEAD, SLM_POWER_RAIL, SLM_POWER_KEY, SLM_POWER_BOOT,
   SLM_AT_READY, SLM_MODEL, SLM_ECHO, SLM_CMEE, SLM_IFC, SLM_CLIP,
@@ -32,7 +33,7 @@ typedef struct {
   uint8_t state, step, phase, reason, completed_phases, at_fault;
 } slm_status_t;
 enum { SLM_CFG_HOST, SLM_CFG_APN, SLM_CFG_LOGIN, SLM_CFG_PASSWORD,
-       SLM_CFG_PORT, SLM_CFG_TYPE, SLM_CFG_NETWORK };
+       SLM_CFG_PORT, SLM_CFG_TYPE, SLM_CFG_NETWORK, SLM_CFG_HOST2, SLM_CFG_PORT2, SLM_CFG_RESERVE };
 typedef struct {
   /* Вместимость возвращает владелец через sizeof своего поля.
      Указатель действует только в текущем вызове, драйвер его не сохраняет. */
@@ -49,6 +50,15 @@ typedef struct {
 /* Только для изолированного нового сеанса: отменяет UART и включает v5.
    Копируются только функции-геттеры, heap не используется. */
 bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms);
+/* Канал получает строки своей операции и URC; вызов AT из callback запрещён. */
+void modem_slm336_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t));
+uint8_t modem_slm336_command(const comm_at_request_t *request, uint32_t now_ms);
+uint8_t modem_slm336_payload(const uint8_t *data, uint16_t count, uint32_t now_ms);
+uint8_t modem_slm336_tcp_open(uint8_t address, uint32_t now_ms);
+bool modem_slm336_reserve(void);
+void modem_slm336_socket(bool open);
+void modem_slm336_hold(bool hold);
+bool modem_slm336_busy(void);
 void modem_slm336_poll(uint32_t now_ms);
 bool modem_slm336_ready(void);
 /* Вместимость будущего потребителя, 1..256; ноль откладывает новые QIRD. */

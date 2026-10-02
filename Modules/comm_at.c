@@ -197,9 +197,27 @@ static void binary_header(void)
   grammar = n ? BODY : LINES;
 }
 
+uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint32_t timeout_ms, uint32_t now_ms)
+{
+  const uint8_t *view;
+  if (comm_at_busy() || line_count || cr || comm_uart_peek(&view)) return COMM_AT_BUSY;
+  if (!data || !count || !timeout_ms || timeout_ms > INT32_MAX || result != COMM_AT_GOT_PROMPT)
+    return COMM_AT_INVALID;
+  if (!comm_uart_tx(data, count)) return COMM_AT_BUSY;
+  parser_reset(); prompt_space = 1;
+  mode = COMM_AT_SEND; command_count = 0; modem_code = 0;
+  started = now_ms; timeout = timeout_ms; state = RUN;
+  return COMM_AT_ACCEPTED;
+}
+
 static bool final(uint8_t *code)
 {
   uint16_t pos, value;
+  if (state == RUN && mode == COMM_AT_SEND) {
+    if (equal(line, line_count, "SEND OK")) { *code = COMM_AT_OK; return true; }
+    if (equal(line, line_count, "SEND FAIL")) { *code = COMM_AT_ERROR; return true; }
+    if (equal(line, line_count, "OK")) return false;
+  }
   if (equal(line, line_count, "OK")) { *code = COMM_AT_OK; return true; }
   if (equal(line, line_count, "ERROR")) { *code = COMM_AT_ERROR; return true; }
   if (!prefix(line, line_count, "+CME ERROR:")) return false;
@@ -225,7 +243,7 @@ static void complete_line(void)
       && !memcmp(line, command, line_count)) return; /* Ёхо до ATE0. */
   if (prefix(line, line_count, "+QIRD:")
       && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
-          || mode < COMM_AT_SLM_QIRD)) {
+          || (mode != COMM_AT_SLM_QIRD && mode != COMM_AT_M66_QIRD))) {
     fault(COMM_AT_BAD_FRAME); return; /* Ќеожиданное тело не становитс€ текстом. */
   }
   if (final(&code)) {

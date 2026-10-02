@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 #define COMM_AT_POLL_BYTES 128u
-enum { COMM_AT_TEXT, COMM_AT_PROMPT, COMM_AT_SLM_QIRD, COMM_AT_M66_QIRD };
+enum { COMM_AT_TEXT, COMM_AT_PROMPT, COMM_AT_SLM_QIRD, COMM_AT_M66_QIRD, COMM_AT_SEND };
 enum { COMM_AT_LINE, COMM_AT_URC, COMM_AT_DONE, COMM_AT_NO_ANSWER, COMM_AT_STREAM_ERROR };
 enum { COMM_AT_OK, COMM_AT_ERROR, COMM_AT_CME, COMM_AT_GOT_PROMPT,
        COMM_AT_TIMEOUT, COMM_AT_LINE_OVERFLOW, COMM_AT_UART_ERROR,
@@ -36,6 +36,9 @@ typedef struct {
    Потеря границ блокирует движок; init не заменяет отмену UART/сеанса. */
 void comm_at_init(const comm_at_handlers_t *handlers, uint32_t recovery_ms);
 uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms);
+/* После приглашения: только статический слот канала, до DONE/abort.
+   SEND OK подтверждает приём модемом; TCP ACK проверяет канал отдельно. */
+uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint32_t timeout_ms, uint32_t now_ms);
 void comm_at_poll(uint32_t now_ms);
 /* После ошибки границ/потери тела остаётся занят до init нового сеанса. */
 bool comm_at_busy(void);
