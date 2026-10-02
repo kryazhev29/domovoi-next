@@ -315,16 +315,18 @@ static const char *slm_apn(void)
 static void slm_send(void)
 {
   if (!slm_valid_settings()) { slm_fail(SLM_ERR_RESPONSE); return; }
-  if (slm_issue(slm.attempt.status.step) != COMM_AT_ACCEPTED) {
-    slm_fail(SLM_ERR_RESPONSE); return;
-  }
+  uint8_t result = slm_issue(slm.attempt.status.step);
+  /* ѕосле poll мог прийти хвост ответа/URC: BUSY означает повтор, не поломку. */
+  if (result == COMM_AT_BUSY) {
+    if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);
+  } else if (result != COMM_AT_ACCEPTED) slm_fail(SLM_ERR_RESPONSE);
 }
 static void slm_completed(void)
 {
   uint8_t step = slm.attempt.status.step;
   const comm_modem_step_t *entry = &slm.profile->steps[step - SLM_AT_READY];
   uint8_t action = entry->action & 15u;
-  slm.attempt.done = 0;
+  slm.attempt.done = 0; slm.attempt.next = slm.attempt.now;
   /* MODEM_ANY: ответ модема есть (OK, ERROR, CME) - шаг пройден; срок или сбой потока - нет. */
   if (slm.attempt.result != COMM_AT_OK && !(action == MODEM_ANY && slm.attempt.result < COMM_AT_GOT_PROMPT)) {
     uint8_t reason = slm.attempt.result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT

@@ -25,6 +25,8 @@ def run():
     sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit(), channel=channel_unit())
     sources = {name: text.replace('\r\n', '\n') for name, text in sources.items()}
     cases = (
+        ('modem', 'busy-start-is-fatal', 'if (result == COMM_AT_BUSY) {', 'if (0) {'),
+        ('modem', 'busy-start-unbounded', 'if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);', 'if (0) slm_fail(SLM_ERR_TIMEOUT);'),
         ('channel', 'data-echo-left-enabled', '"QISDE=0\\0"', '"QISDE=1\\0"'),
         ('uart', 'idle-steals-rx-byte', 'status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)', 'status & (USART_SR_IDLE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)'),
         ('modem', 'power-noise-not-cleared', 'if (p == COMM_PWR_READY) comm_uart_init(115200);', 'if (0) comm_uart_init(115200);'),

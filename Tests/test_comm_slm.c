@@ -13,7 +13,7 @@ static unsigned sim_no_sim, sim_pin, sim_open_delay, sim_open_error, sim_rat_cha
 static unsigned sim_port_change, sim_network_wait, sim_early_open, sim_trickle;
 static unsigned sim_empty_urc, sim_pause, sim_send_sim2;
 static const char *sim_imsi;
-static unsigned sim_activation_delay, sim_data_echo;
+static unsigned sim_activation_delay, sim_data_echo, sim_send_race;
 static uint32_t sim_open_due;
 static bool sim_open_pending;
 static unsigned power_events;
@@ -35,6 +35,11 @@ static const char *sim_text(uint8_t field, uint16_t *capacity)
 }
 static uint16_t sim_number(uint8_t field)
 {
+  if (field == SLM_CFG_PORT && sim_send_race && slm.attempt.status.step == SLM_RAT_QUERY) {
+    unsigned race = sim_send_race; sim_send_race = 0;
+    interrupt_byte('\r', USART_SR_RXNE);
+    if (race == 1) interrupt_byte('\n', USART_SR_RXNE);
+  }
   return field == SLM_CFG_PORT ? test_config.port : field == SLM_CFG_TYPE
     ? test_config.modem_type : field == SLM_CFG_NETWORK ? test_config.network_type : 0;
 }
@@ -82,7 +87,7 @@ static void sim_reset(void)
   sim_silence_step = sim_error_step = -1;
   sim_no_sim = sim_pin = sim_open_error = sim_rat_change = sim_port_change = 0;
   sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = 0;
-  sim_send_sim2 = 1; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1;
+  sim_send_sim2 = 1; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
   sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
 }
 static void sim_feed(const char *s)
@@ -203,6 +208,12 @@ static void path_tests(void)
     CHECK(modem_slm336_ready() && !strcmp(slm_apn(), profiles[i].apn));
   }
   sim_reset(); sim_trickle = 1; sim_start(); sim_until(20000); CHECK(modem_slm336_ready());
+  /* DMA принял хвост CRLF между проверкой busy и постановкой команды. */
+  sim_reset(); sim_start(); sim_send_race = 1; sim_until(15000);
+  CHECK(modem_slm336_ready() && !sim_send_race && !slm.diag.failure_count);
+  /* Незавершённая строка не должна удерживать запуск бесконечно. */
+  sim_reset(); sim_start(); sim_send_race = 2; sim_until(15000);
+  CHECK(!modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
 }
 static void error_tests(void)
 {
