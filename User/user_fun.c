@@ -1549,6 +1549,19 @@ uint16_t user_calcCRC16InFlash(uint32_t address, uint32_t siz){
   return crc;
 }
 
+/* Конец записанной части базы ID, байт от начала области; дальше флеш стёрта (0xFF).
+   UINT32_MAX - ещё не известно, тогда читается вся область. */
+static uint32_t id_used_bytes = UINT32_MAX;
+
+/* CRC-16 части базы ID [off, off+n): читается только записанная часть, стёртый хвост
+   досчитывается без чтения. Результат тот же, что при чтении всей области. */
+static uint16_t id_crc16(uint32_t off, uint32_t n){
+  uint32_t real = 0;
+  if (off < id_used_bytes) real = id_used_bytes - off < n ? id_used_bytes - off : n;
+  uint16_t crc = real ? user_calcCRC16InFlash(mem[MB_ID].start + off, real) : 0xFFFF;
+  return crc16_ffInit(n - real, crc);
+}
+
 // Отправка данных в формате протокола
 /* Назначение кадра серверу — единственный слот канала, без копии/heap. */
 #ifdef COMM_NEW_CORE
@@ -1902,7 +1915,7 @@ void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
   send_buffer[7] = uniqId; // uniqId
   send_buffer[8] = 5; // id
   
-  crcData = user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size);
+  crcData = id_crc16(0, mem[MB_ID].size);
   memcpy(&send_buffer[9], (uint8_t*)&crcData, 2); // crc id
   
   crcData = user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size);
@@ -1980,7 +1993,7 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
 #endif        
       
       for (uint16_t i = 0; i < 100; i++){
-        crcData = user_calcCRC16InFlash(memAddress, sizeBlock);
+        crcData = id_crc16(memAddress - mem[MB_ID].start, sizeBlock);
         memcpy(&send_buffer[9 + (i*2)], (uint8_t*)&crcData, 2); // crc id
         memAddress += sizeBlock;
       }
@@ -1991,7 +2004,7 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   user_debug(">>U Send crc data (cmd 16)\r\n"); 
 #endif  
       
-      crcData = user_calcCRC16InFlash(memAddress + (sizeBlock*idx), sizeBlock);
+      crcData = id_crc16(sizeBlock*idx, sizeBlock);
       memcpy(&send_buffer[9], (uint8_t*)&crcData, 2); // crc id
     }
     // ------- меняемый блок ---------
@@ -3524,10 +3537,14 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         device.datetimeID = tmp32;
         /* Команда 13 только заполняет ячейки: счёт и конец базы - на ходу, без чтения 1,6 МБ. */
         if (added == UINT16_MAX) device.numbersCount = user_getNumbersCount();
-        else { device.numbersCount += added; id_cells_end = last; }
+        else {
+          device.numbersCount += added; id_cells_end = last;
+          if (id_used_bytes != UINT32_MAX && id_used_bytes < (uint32_t)last * sizeof(cellID_s))
+            id_used_bytes = (uint32_t)last * sizeof(cellID_s);
+        }
         }
         user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
-                           user_calcCRC16InFlash(mem[MB_ID].start, mem[MB_ID].size), cch, uniqId);
+                           id_crc16(0, mem[MB_ID].size), cch, uniqId);
       }
       break;
       
@@ -4440,7 +4457,7 @@ uint16_t user_getNumbersCount(void){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint8_t tbuffer[1024];
   cellID_s *c;
-  uint16_t cnt = 0, cell = 0;
+  uint16_t cnt = 0, cell = 0, used = 0;
 
   id_cells_end = 0;
   // по странично читаем
@@ -4450,6 +4467,9 @@ uint16_t user_getNumbersCount(void){
     for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
       cell++;
+      /* Последняя ячейка, где есть хоть один записанный байт: за ней флеш стёрта. */
+      for (uint8_t b = 0; b < sizeof(cellID_s); b++)
+        if (tbuffer[a + b] != 0xff) { used = cell; break; }
       // пустая ячейка
       if (c->index == 0xffff) continue;
 
@@ -4458,6 +4478,7 @@ uint16_t user_getNumbersCount(void){
     }
     wdt_reload();
   }
+  id_used_bytes = (uint32_t)used * sizeof(cellID_s);
 
   return cnt;
 }
