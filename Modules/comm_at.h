@@ -3,6 +3,7 @@
 #define COMM_AT_H
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /* Общий разбор ограниченной строки; пробелы убираются только явно. */
 bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text);
@@ -57,6 +58,9 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms);
    SEND OK подтверждает приём модемом; TCP ACK проверяет канал отдельно. */
 uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint32_t timeout_ms, uint32_t now_ms);
 void comm_at_poll(uint32_t now_ms);
+/* Канал назначает приёмник после init AT, до первой операции чтения. */
+void comm_at_sink(uint16_t (*binary)(const uint8_t *, uint16_t));
+bool comm_at_field(const char *text, size_t capacity, bool host);
 /* После ошибки границ/потери тела остаётся занят до init нового сеанса. */
 bool comm_at_busy(void);
 #endif

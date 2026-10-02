@@ -9,6 +9,10 @@ enum { COMM_CH_PING = 1, COMM_CH_DNS = 2 };
    callback только отмечает событие; не запускает AT. */
 void comm_channel_init(void (*event)(uint8_t kind, uint8_t result));
 void comm_channel_poll(uint32_t now_ms);
+/* Тело предварительно до read_done OK; вместимость 0 откладывает QIRD. */
+void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),
+                          void (*read_done)(uint16_t, uint8_t));
+void comm_channel_rx_capacity(uint16_t count);
 bool comm_channel_ready(void);
 /* Производитель пишет прямо сюда; capacity по sizeof слота. Занято/приоритет — NULL. */
 uint8_t *comm_tx_acquire(uint16_t *capacity);

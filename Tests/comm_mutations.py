@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from comm_at_host import ROOT, ZIG, unit as at_unit
 from comm_slm_host import unit as modem_unit
+from comm_server_host import unit as channel_unit
 
 
 def uart_unit():
@@ -20,7 +21,7 @@ def run():
     out.mkdir(parents=True, exist_ok=True)
     os.environ['ZIG_GLOBAL_CACHE_DIR'] = str(out / 'zig-global')
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out / 'zig-local')
-    sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit())
+    sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit(), channel=channel_unit())
     sources = {name: text.replace('\r\n', '\n') for name, text in sources.items()}
     cases = (
         ('uart', 'rts-stop-boundary', '- 1u - used < 128u', '- 1u - used <= 128u'),
@@ -36,13 +37,13 @@ def run():
         ('at', 'poll-unlimited', 'if (count > budget) count = budget;', ''),
         ('at', 'callback-start', 'return state != IDLE || in_poll;', 'return state != IDLE;'),
         ('at', 'old-OK-sync', 'state == SYNC_WAIT && sync_seen && code == COMM_AT_OK', 'state == SYNC_WAIT && code == COMM_AT_OK'),
-        ('modem', 'direct-push', ',0,0\\0"', ',0,1\\0"'),
+        ('channel', 'direct-push', ',0,0\\0"', ',0,1\\0"'),
         ('modem', 'QIACT-20s', '150000, /* COMM_T_QIACT */', '20000, /* COMM_T_QIACT */'),
-        ('modem', 'TCP-before-URC', 'if (slm.attempt.open_seen) {', 'if (slm.attempt.tcp_ack) {'),
-        ('modem', 'drop-QIRD-followup', 'slm.attempt.recv = slm.attempt.recv || slm.attempt.bytes;', 'slm.attempt.recv = 0;'),
+        ('channel', 'TCP-before-URC', 'else if (!ch.flags.open_seen) return;', 'else if (!ch.flags.open_ack) return;'),
+        ('channel', 'drop-QIRD-followup', 'ch.flags.recv = ch.flags.recv || ch.bytes;', 'ch.flags.recv = 0;'),
         ('modem', 'ignore-manual-APN', 'if (slm_text(SLM_CFG_APN)[0]) return slm_text(SLM_CFG_APN);', 'if (slm_text(SLM_CFG_APN)[0]) return "";'),
-        ('modem', 'grow-final-TCP-time', 'slm.attempt.status.state == SLM_STARTING || slm.attempt.status.step == SLM_READ', 'slm.attempt.status.state != SLM_IDLE'),
-        ('modem', 'TCP-time-overwritten-by-read', '(next <= SLM_STEP_COUNT && (slm.attempt.status.state != SLM_OPEN || next != SLM_READ))', '(next <= SLM_STEP_COUNT)'),
+        ('channel', 'grow-final-TCP-time', 'if (slm.attempt.recording) {', 'if (slm.attempt.status.state != SLM_IDLE) {'),
+        ('channel', 'TCP-time-overwritten-by-read', 'slm.attempt.recording = next < SLM_STEP_COUNT;', 'slm.attempt.recording = 1;'),
     )
     for group, label, old, new in cases:
         text = sources[group]

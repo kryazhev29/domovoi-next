@@ -42,17 +42,15 @@ static const comm_modem_step_t steps[] = {
   {156, COMM_T_AT_SIMPLE, 21, 22, (SLM_PHASE_NETWORK << 4) | MODEM_NETWORK},
   {158, COMM_T_AT_SIMPLE, 22, 22, (SLM_PHASE_PDP << 4) | MODEM_IMSI},
   {163, COMM_T_AT_SIMPLE, 23, 23, (SLM_PHASE_PDP << 4) | MODEM_OK},
-  {188, COMM_T_QIACT, 24, 24, (SLM_PHASE_PDP << 4) | MODEM_PDP},
-  {196, COMM_T_AT_SIMPLE, 25, 25, (SLM_PHASE_TCP << 4) | MODEM_TCP},
-  {223, COMM_T_QIRD, 24, 24, (SLM_PHASE_TCP << 4) | MODEM_READ},
+  {188, COMM_T_QIACT, SLM_STEP_COUNT, SLM_STEP_COUNT, (SLM_PHASE_PDP << 4) | MODEM_PDP},
 };
 typedef char command_offsets_fit[(sizeof(commands) <= UINT8_MAX + 1u) ? 1 : -1];
-typedef char all_steps_present[(sizeof(steps) / sizeof(steps[0]) == SLM_STEP_COUNT - SLM_AT_READY) ? 1 : -1];
+typedef char all_steps_present[(sizeof(steps) / sizeof(steps[0]) == SLM_ACTIVATE + 1u - SLM_AT_READY) ? 1 : -1];
 static const comm_modem_profile_t slm_profile = {
   commands, steps, "SLM336", "+QIURC: \"recv\",\005", "+QIURC: \"closed\",\005",
   "+QIURC: \"pdpdeact\",\005", "+QIOPEN:\005,\005", "+QURCCFG: \"urcport\",",
   "\"uart1\"", "+QCFG: \"nwscanmode\",\005",
-  {"CREG?", "CEREG?"}, {"+CREG:\005,\005|", "+CEREG:\005,\005|"}, 2, COMM_AT_SLM_QIRD
+  {"CREG?", "CEREG?"}, {"+CREG:\005,\005|", "+CEREG:\005,\005|"}, 2, COMM_AT_SLM_QIRD, 196, 223
 };
 bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
 {

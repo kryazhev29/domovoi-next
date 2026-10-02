@@ -9,7 +9,7 @@ C_FILES=(
     'Modules/comm_at.c','Modules/comm_at.h','Modules/modem_slm336.c','Modules/modem_slm336.h',
     'Modules/comm_channel.c','Modules/comm_channel.h','Modules/comm_server.c','Modules/comm_server.h',
     'User/comm_timeouts.c','User/comm_timeouts.h','User/user_comm.c','User/user_comm.h',
-    'User/user_fun.c','User/photo.c','Tests/test_comm_server.c','Tests/comm_photo_slot.c','Tests/comm_upload_slot.c',
+    'User/user_fun.c','User/photo.c','Tests/test_comm_server.c','Tests/test_comm_channel.c','Tests/comm_photo_slot.c','Tests/comm_upload_slot.c',
 )
 PY_FILES=('Tests/run_host.py','Tests/comm_server_host.py','Tests/comm_slm_host.py',
           'Tests/comm_budget.py','Tests/comm_mutations.py','Tests/test_photo_mutations.py','Tests/check_comm_sources.py')

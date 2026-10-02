@@ -1,4 +1,4 @@
-/* Доработка: Кряжев А., 2026. SLM336 до готового TCP, без протокола сервера. */
+/* Доработка: Кряжев А., 2026. SLM336 до активного PDP, без протокола сервера. */
 #ifndef MODEM_SLM336_H
 #define MODEM_SLM336_H
 #include <stdint.h>
@@ -14,7 +14,7 @@ enum {
 };
 enum { SLM_PHASE_POWER, SLM_PHASE_SETUP, SLM_PHASE_SIM, SLM_PHASE_NETWORK,
        SLM_PHASE_PDP, SLM_PHASE_TCP, SLM_PHASE_COUNT };
-enum { SLM_IDLE, SLM_STARTING, SLM_OPEN, SLM_FAILED };
+enum { SLM_IDLE, SLM_STARTING, SLM_READY, SLM_FAILED };
 enum { SLM_ERR_NONE, SLM_ERR_TIMEOUT, SLM_ERR_AT, SLM_ERR_RESPONSE,
        SLM_ERR_NO_SIM, SLM_ERR_PIN, SLM_ERR_PUK, SLM_ERR_NETWORK,
        SLM_ERR_PDP, SLM_ERR_TCP, SLM_ERR_STREAM, SLM_ERR_NO_ANSWER, SLM_ERR_TYPE };
@@ -42,9 +42,6 @@ typedef struct {
 } slm_settings_t;
 typedef struct {
   comm_power_gpio_t gpio;
-  uint16_t (*binary)(const uint8_t *data, uint16_t count);
-  /* Тело предварительно до read_done OK; чужих указателей драйвер не хранит. */
-  void (*read_done)(uint16_t count, uint8_t reason);
   void (*type_found)(uint8_t type);
 } slm_handlers_t;
 /* Только для изолированного нового сеанса: отменяет UART и включает v5.
@@ -52,32 +49,28 @@ typedef struct {
 bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms);
 /* Канал получает строки своей операции и URC; вызов AT из callback запрещён. */
 void comm_modem_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t));
-uint8_t comm_modem_command(const comm_at_request_t *request, uint32_t now_ms);
+uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms);
 uint8_t comm_modem_payload(const uint8_t *data, uint16_t count, uint32_t now_ms);
-uint8_t comm_modem_tcp_open(uint8_t address, uint32_t now_ms);
 bool comm_modem_reserve(void);
-void comm_modem_socket(bool open);
-void comm_modem_hold(bool hold);
 bool comm_modem_busy(void);
 void comm_modem_poll(uint32_t now_ms);
 bool comm_modem_ready(void);
-/* Вместимость будущего потребителя, 1..256; ноль откладывает новые QIRD. */
-void comm_modem_rx_capacity(uint16_t count);
+uint8_t comm_modem_state(void);
+/* UINT8_MAX означает, что DONE ещё не получен; результат забирается один раз. */
+uint8_t comm_modem_result(void);
+/* STEP_COUNT завершает текущий шаг, STEP_COUNT+1 обновляет снимок. */
+void comm_modem_record(uint8_t step, uint8_t reason, uint16_t code);
 const slm_diag_t *comm_modem_diag(void);
 const slm_status_t *comm_modem_status(void);
 void comm_modem_off(void);
 /* Совместимость принятых слоёв; реализация общая, дополнительных функций нет. */
 #define modem_slm336_transport comm_modem_transport
-#define modem_slm336_command comm_modem_command
+#define modem_slm336_command comm_modem_request
 #define modem_slm336_payload comm_modem_payload
-#define modem_slm336_tcp_open comm_modem_tcp_open
 #define modem_slm336_reserve comm_modem_reserve
-#define modem_slm336_socket comm_modem_socket
-#define modem_slm336_hold comm_modem_hold
 #define modem_slm336_busy comm_modem_busy
 #define modem_slm336_poll comm_modem_poll
 #define modem_slm336_ready comm_modem_ready
-#define modem_slm336_rx_capacity comm_modem_rx_capacity
 #define modem_slm336_diag comm_modem_diag
 #define modem_slm336_status comm_modem_status
 #define modem_slm336_off comm_modem_off

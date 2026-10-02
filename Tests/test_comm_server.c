@@ -100,7 +100,7 @@ static bool no_traffic(void)
   ++event13; flash_model[0x70000]=13; return true;
 }
 static const comm_server_handlers_t test_server_handlers={registration_producer,status_producer,server_session,server_rx_process,no_traffic};
-static const slm_handlers_t transport_handlers={sim_gpio,user_comm_rx,user_comm_rx_done,sim_type};
+static const slm_handlers_t transport_handlers={sim_gpio,sim_type};
 
 static void transport_tx(void)
 {
@@ -167,7 +167,7 @@ static void transport_tick(unsigned increment)
   if (ping_reply_kind && (int32_t)(sim_now-ping_reply_due)>=0) {
     sim_feed(ping_reply_kind==3 ? "+QPING: 0,2,1,1,30,30,30\r\n" : ping_reply_kind==1 ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n+QPING: 0,2,1,1,30,30,30\r\n" : "+QPING: 0,2,0,2,0,0,0\r\n"); ping_reply_kind=0;
   }
-  modem_slm336_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); transport_tx(); sim_now+=increment;
+  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); transport_tx(); sim_now+=increment;
 }
 static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<ms) transport_tick(10); }
 static void server_reset(void)
@@ -185,6 +185,7 @@ static void server_reset(void)
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   /* Выход к TCP — принятой моделью этапа 3. */
   comm_server_init(&test_server_handlers);
+  comm_channel_receive(user_comm_rx, user_comm_rx_done);
   for (unsigned i=0;!comm_server_online() && i<1500;++i) transport_tick(10);
   CHECK(comm_server_online() && modem_slm336_ready() && sim_now<11000);
   advance(500);
@@ -309,4 +310,4 @@ static void garbage_test(void)
   printf("comm_server garbage: 24 model hours, %u payloads, %u ring overflows, %u long lines, entire NOR unchanged PASS\n",fragments,overflows,long_lines);
 }
 int main(void)
-{ CHECK(slm_regressions()==0); server_tests(); garbage_test(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); garbage_test(); return 0; }

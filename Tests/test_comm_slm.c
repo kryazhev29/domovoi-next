@@ -4,7 +4,9 @@ static uint32_t sim_now, reply_due;
 static unsigned sim_ticks, sim_commands, sim_gmm, sim_found, sim_qird, sim_done_reads;
 static uint16_t sim_body_count, sim_read_size;
 static uint8_t sim_read_reason;
+#ifdef COMM_CHANNEL_MODEL
 static uint8_t sim_body[1024];
+#endif
 static char sim_pending[400], sim_sent[128];
 static int sim_silence_step, sim_error_step;
 static unsigned sim_no_sim, sim_pin, sim_open_delay, sim_open_error, sim_rat_change;
@@ -45,6 +47,7 @@ static void sim_gpio(uint8_t pin, bool high)
   power_trace[power_events].pin = pin;
   power_trace[power_events++].high = (uint8_t)high;
 }
+#ifdef COMM_CHANNEL_MODEL
 static uint16_t sim_binary(const uint8_t *p, uint16_t n)
 {
   CHECK(p >= rx && p < rx + sizeof(rx));
@@ -58,8 +61,9 @@ static void sim_read_done(uint16_t n, uint8_t reason)
   CHECK(n <= sim_read_size); sim_read_reason = reason;
   ++sim_done_reads;
 }
+#endif
 static void sim_type(uint8_t type) { CHECK(type == 2); ++sim_found; }
-static const slm_handlers_t sim_handlers = {sim_gpio, sim_binary, sim_read_done, sim_type};
+static const slm_handlers_t sim_handlers = {sim_gpio, sim_type};
 
 static void sim_reset(void)
 {
@@ -127,13 +131,14 @@ static void sim_tx(void)
     else { sim_reply("OK\r\n", 30); sim_open_pending = true; sim_open_due = sim_now + sim_open_delay; }
   } else if (!strncmp(sim_sent, "AT+QIRD=", 8)) {
     sim_qird++;
-    CHECK(sim_read_size && slm.attempt.capacity <= 256);
+    unsigned want; CHECK(sim_read_size && sscanf(sim_sent, "AT+QIRD=0,%u", &want) == 1 && want <= 256);
     if (sim_qird == 1) sim_reply("+QIRD: 4\r\nOK\r\n\r\n+QIURC: \"recv\",0\r\nOK\r\n", 20);
     else if (sim_qird == 2) sim_reply("+QIURC: \"recv\",0\r\n+QIRD: 3\r\nXYZ\r\nOK\r\n", 20);
     else if (sim_qird == 3 && sim_empty_urc) sim_reply("+QIRD: 0\r\n+QIURC: \"recv\",0\r\nOK\r\n", 20);
     else sim_reply("+QIRD: 0\r\nOK\r\n", 20);
   } else sim_reply("OK\r\n", 30);
 }
+static void (*sim_poll)(uint32_t) = comm_modem_poll;
 static void sim_tick(void)
 {
   ++sim_ticks;
@@ -149,7 +154,7 @@ static void sim_tick(void)
       }
     } else { sim_feed(sim_pending); sim_pending[0] = 0; }
   }
-  modem_slm336_poll(sim_now);
+  sim_poll(sim_now);
   sim_tx();
   sim_now += 10;
 }
@@ -165,9 +170,9 @@ static void path_tests(void)
   sim_reset(); sim_start(); sim_until(15000);
   CHECK(modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_NONE && !sim_gmm);
   CHECK(sim_now >= 8000 && sim_now <= 11000 && sim_ticks > 800);
-  CHECK(slm.attempt.status.completed_phases == 63 && !slm.diag.failure_count);
+  CHECK(slm.attempt.status.completed_phases == 31 && !slm.diag.failure_count);
   CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 700);
-  CHECK((slm.diag.steps[SLM_TCP] * 10u) == 500);
+  CHECK(slm.diag.steps[SLM_TCP] == 0);
   CHECK(power_events == 5 && power_trace[0].pin == 13 && !power_trace[0].high);
   CHECK(power_trace[1].pin == 14 && power_trace[1].high);
   CHECK(power_trace[2].pin == 13 && power_trace[2].time == 2100 && power_trace[2].high);
@@ -203,13 +208,6 @@ static void error_tests(void)
   sim_reset(); sim_pin = 1; sim_start(); sim_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_PIN);
   sim_reset(); sim_error_step = SLM_ACTIVATE; sim_start(); sim_until(15000);
   CHECK(slm.attempt.status.reason == SLM_ERR_PDP && slm.attempt.status.step == SLM_ACTIVATE);
-  sim_reset(); sim_open_delay = 149000; sim_start(); sim_until(170000);
-  CHECK(modem_slm336_ready() && (slm.diag.steps[SLM_TCP] * 10u) == 149000);
-  sim_reset(); sim_open_delay = 151000; sim_start(); sim_until(170000);
-  CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_TCP);
-  for (unsigned i = 0; i < 200; ++i) sim_tick();
-  CHECK(!modem_slm336_ready() && slm.attempt.status.state == SLM_FAILED);
-  sim_reset(); sim_open_error = 1; sim_start(); sim_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_TCP && slm.attempt.status.modem_code == 566);
   sim_reset(); sim_network_wait = 1; sim_start(); sim_until(80000); CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_NETWORK);
 }
 static void timeout_step_tests(void)
@@ -230,27 +228,7 @@ static void timeout_step_tests(void)
   sim_now += 899u; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_RAIL);
   ++sim_now; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_KEY);
 }
-static void read_tests(void)
-{
-  sim_reset(); sim_empty_urc = 1; sim_start();
-  while (slm.attempt.status.step != SLM_TCP) sim_tick();
-  sim_feed("+QIURC: \"recv\",0\r\n"); sim_until(15000);
-  CHECK(modem_slm336_ready() && sim_qird == 0); /* Данные до TCP/вместимости не теряются. */
-  uint16_t tcp_time = slm.diag.steps[SLM_TCP];
-  sim_read_size = 64; modem_slm336_rx_capacity(sim_read_size);
-  for (unsigned i = 0; i < 100; ++i) sim_tick();
-  CHECK(sim_qird == 4 && sim_done_reads == 4 && sim_body_count == 7 && !sim_read_reason);
-  CHECK(slm.diag.steps[SLM_TCP] == tcp_time);
-  CHECK(!memcmp(sim_body, "OK\r\nXYZ", 7) && !comm_at_busy());
-  sim_feed("+QIURC: \"recv\",1\r\n");
-  for (unsigned i = 0; i < 10; ++i) sim_tick(); CHECK(sim_qird == 4);
-  modem_slm336_rx_capacity(0); sim_feed("+QIURC: \"recv\",0\r\n");
-  for (unsigned i = 0; i < 10; ++i) sim_tick(); CHECK(sim_qird == 4);
-  sim_reset(); sim_start(); sim_until(15000); sim_read_size = 64;
-  modem_slm336_rx_capacity(64); sim_silence_step = SLM_READ; sim_feed("+QIURC: \"recv\",0\r\n");
-  for (unsigned i = 0; i < 110; ++i) sim_tick();
-  CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_READ && sim_read_reason == SLM_ERR_TIMEOUT);
-}
+
 static void edge_tests(void)
 {
   sim_reset(); sim_imsi = "999011234567890\r\nOK\r\n"; sim_start(); sim_until(15000);
@@ -262,28 +240,11 @@ static void edge_tests(void)
   memset(test_config.login,'l',sizeof(test_config.login)-1u);
   memset(test_config.password,'p',sizeof(test_config.password)-1u);
   sim_start();
-  while (slm.attempt.status.step != SLM_TCP && slm.attempt.status.state == SLM_STARTING) sim_tick();
-  CHECK(slm.attempt.status.step == SLM_TCP && slm.attempt.status.state == SLM_STARTING); /* Максимальный QICSGP помещается. */
+  while (slm.attempt.status.state != SLM_READY && slm.attempt.status.state == SLM_STARTING) sim_tick();
+  CHECK(slm.attempt.status.step == SLM_ACTIVATE && slm.attempt.status.state == SLM_READY); /* Максимальный QICSGP помещается. */
   modem_slm336_off();
   sim_reset(); sim_start(); sim_until(15000);
-  sim_feed("+QIURC: \"closed\",1\r\n"); sim_tick(); CHECK(modem_slm336_ready());
-  sim_feed("+QIURC: \"closed\",0\r\n"); sim_tick(); CHECK(slm.attempt.status.reason == SLM_ERR_TCP);
-  sim_reset(); sim_start(); sim_until(15000);
   sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(slm.attempt.status.reason == SLM_ERR_PDP);
-  sim_reset(); sim_start(); sim_until(15000); sim_read_size = 64; modem_slm336_rx_capacity(64);
-  sim_pause = 1; sim_feed("+QIURC: \"recv\",0\r\n");
-  for (unsigned i = 0; i < 15; ++i) sim_tick();
-  CHECK(!sim_done_reads && !sim_body_count && comm_at_busy());
-  sim_pause = 0;
-  for (unsigned i = 0; i < 30; ++i) sim_tick();
-  CHECK(sim_qird == 3 && sim_body_count == 7 && sim_done_reads == 3);
-  sim_reset(); sim_start(); sim_until(15000); sim_read_size = 64; modem_slm336_rx_capacity(64);
-  sim_feed("+QIURC: \"recv\",0\r\n"); sim_tick();
-  sim_pending[0] = 0; sim_feed("+QIRD: 4\r\nxy"); sim_tick();
-  CHECK(sim_body_count == 2 && !sim_done_reads);
-  interrupt_byte('z', USART_SR_FE); sim_tick();
-  CHECK(slm.attempt.status.reason == SLM_ERR_STREAM && sim_done_reads == 1 && sim_read_reason == SLM_ERR_STREAM);
-  CHECK(!modem_slm336_ready());
 }
 static void diagnostic_tests(void)
 {
@@ -328,7 +289,7 @@ static void settings_tests(void)
 }
 int main(void)
 {
-  path_tests(); error_tests(); timeout_step_tests(); read_tests(); edge_tests(); diagnostic_tests(); settings_tests();
-  puts("comm_slm: power/setup/SIM1/SIM2/network/APN/QIACT/late QIOPEN/QIRD/timeouts/timing PASS");
+  path_tests(); error_tests(); timeout_step_tests(); edge_tests(); diagnostic_tests(); settings_tests();
+  puts("comm_slm: power/setup/SIM1/SIM2/network/APN/QIACT/timeouts/timing PASS");
   return 0;
 }

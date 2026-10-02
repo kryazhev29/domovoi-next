@@ -106,6 +106,21 @@ void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
   parser_reset();
 }
 
+bool comm_at_field(const char *p, size_t size, bool host)
+{
+  size_t i;
+  for (i = 0; i < size; ++i) {
+    unsigned char c = (unsigned char)p[i];
+    if (!c) return !host || i != 0;
+    if (host ? !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+           || (c >= '0' && c <= '9') || c == '.' || c == '-')
+        : c < 32 || c > 126 || c == '"' || c == '\\') return false;
+  }
+  return false;
+}
+void comm_at_sink(uint16_t (*binary)(const uint8_t *, uint16_t))
+{ if (!in_poll) handlers.binary = binary; }
+
 bool comm_at_busy(void)
 {
   return state != IDLE || in_poll;
