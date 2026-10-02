@@ -177,6 +177,10 @@ static void storage_fault_tests(void) {
  failed_header_read=PHOTO_RECORD_HEAD;photo_send();
  assert(sends==before_sends && photo->readAddress==address && photo->offset==offset && !comm_tx_busy());
  failed_header_read=UINT32_MAX;drain();
+ assert(photo_request(CH_USB,2,NULL,0)==CMD_SUCCESS);
+ before_sends=sends;size_t held_heap=live_heap;failed_header_read=PHOTO_RECORD_HEAD;
+ for(unsigned k=0;k<10;k++){photo_send();assert(live_heap==held_heap && sends==before_sends && !photo->offset && photo->pending);}
+ failed_header_read=UINT32_MAX;drain();assert(sends>before_sends);
  /* Failed verification cannot bless even bytes that happen to match. */
  failed_header_read=0;assert(!photo_write(0,flash,4));failed_header_read=UINT32_MAX;
  fail_write=1;assert(!photo_write(0,flash,4));fail_write=0;
