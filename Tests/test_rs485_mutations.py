@@ -2,7 +2,9 @@
 import os, pathlib, shutil, subprocess, sys, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 mutations=[
- ('photo_start_rate','User/photo.c','uart_init(PORT1_PORT, rs485_baud(), 0, photo->rx','uart_init(PORT1_PORT, 115200, 0, photo->rx'),
+ # После 89ac32c порт/скорость камеры выбираются по профилю платы.
+ # В host rs485cfg проверяется профиль RS485: все 256 кодов скорости.
+ ('photo_start_rate','User/photo.c','uart_init(PHOTO_PORT, PHOTO_BAUD, 0, photo->rx','uart_init(PHOTO_PORT, 115200, 0, photo->rx'),
  ('photo_stop_rate','User/photo.c','  photo->stage = P_IDLE;','  uart_init(PORT1_PORT, 115200, 0, port_buffer, PORTBUFSIZE); photo->stage = P_IDLE;'),
  ('baud0','User/photo.c','default: return 115200;','default: return 9600;'),
  ('baud1','User/photo.c','case 1: return 57600;','case 1: return 9600;'),
