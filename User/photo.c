@@ -11,15 +11,8 @@ extern uint8_t port_buffer[PORTBUFSIZE];
 #define PHOTO_LIMIT 65535u
 #define PHOTO_BLOCK 512u
 #define PHOTO_RESOLUTION 7u // C328: 5 = 320x240, 7 = 640x480
-#ifdef BOARD_IP_V3
-/* IP_v3: камера на порту RS232 (USART2, PA2/PA3, DD4), 115200 - как в старой прошивке v1-v3
-   (PORT2_PORT, user_fun.c:1360). RS485 остаётся на своём порту. Доработка: Кряжев А., 2026 */
-#define PHOTO_PORT 1u
-#define PHOTO_BAUD 115200u
-#else
 #define PHOTO_PORT PORT1_PORT
 #define PHOTO_BAUD rs485_baud()
-#endif
 /* Только указатель в статической RAM. Буферы существуют в heap во время работы.
  * Размер SETPACKSIZE включает ID, длину и verify; RX оставлен с запасом 6 байт. */
 typedef struct {
@@ -48,13 +41,7 @@ static uint8_t photo_alloc(void)
 }
 static void photo_stop(void)
 {
-#ifdef BOARD_IP_V3
-  /* photo->rx освобождается вместе с photo: вне съёмки приём с камеры выключен (ОЗУ на
-     отдельный буфер нет). photo_start включает его снова. */
-  USART_ITConfig(USART2, USART_IT_RXNE, DISABLE);
-#else
   uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
-#endif
   photo->stage = P_IDLE;
   photo->used = 0;
   device.getPhoto = 0;
@@ -147,15 +134,9 @@ cmdCode_e photo_start(uint8_t address)
   uint8_t i, found = 0;
   uint32_t scan;
   photoParam_s previous;
-#ifdef BOARD_IP_V3
-  /* IP_v3: одна камера на порту 232, как в старой прошивке v1-v3; список периферии и режим
-     RS485 к ней не относятся, адрес не проверяется. Доработка: Кряжев А., 2026 */
-  (void)i; (void)address; (void)found;
-#else
   for (i = 0; i < 8; i++)
     if (config.rs485Periphery[i].type == 3 && config.rs485Periphery[i].address == address) found = 1;
   if (!found || config.rs485Mode != 1) return CMD_PARAMERROR;
-#endif
   if (device.status.readyToUpdate || !photo_alloc()) return CMD_RUNERROR;
   if (photo->stage) return CMD_RUNERROR;
   device.countPhoto = user_getPhotoCount();
@@ -697,12 +678,3 @@ void photo_poll(void)
   if (!erased && photo_cleanup_active()) photo_cleanup_step();
 }
 
-#ifdef BOARD_IP_V3
-/* IP_v3: фотофиксация как в старой прошивке v1-v3 - снимок при проходе и по входу 1, без
-   задержки. Идущая съёмка не прерывается. Доработка: Кряжев А., 2026 */
-void photo_auto(void)
-{
-  if (photo && photo->stage) return;
-  if (photo_start(0) != CMD_SUCCESS) user_debug("Photo: auto capture refused\r\n");
-}
-#endif

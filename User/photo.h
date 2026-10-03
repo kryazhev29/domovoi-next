@@ -16,7 +16,4 @@ uint8_t photo_recover(void);
 /* 0: нет очистки; 1: очистка активна; 2: маркер не удалось прочитать. */
 uint8_t photo_cleanup_active(void);
 uint16_t photo_confirmed_offset(uint32_t address, uint16_t size);
-#ifdef BOARD_IP_V3
-void photo_auto(void);
-#endif
 #endif

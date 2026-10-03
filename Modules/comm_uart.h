@@ -16,8 +16,7 @@ typedef struct {
 } comm_uart_stats_t;
 
 /* Только main: init/abort, один потребитель RX и один производитель TX.
-   Сборка порта: COMM_UART_STANDALONE; старый uart_stm32f10x.c исключён.
-   В рабочем проекте этапа 1 порт не подключён. */
+   USART3 принадлежит только этому модулю. */
 void comm_uart_init(uint32_t baud);
 /* Только системный тик 1 мс и IRQ порта: учёт DMA и программный RTS. */
 void comm_uart_tick(void);

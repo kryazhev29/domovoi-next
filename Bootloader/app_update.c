@@ -117,11 +117,7 @@ int manual_platform_supported(void) {
    поставить загрузчик 140) принимает и загрузчик 139 - возврат к общему номеру.
    Доработка: Кряжев А., 2026 */
 int manual_board_hw(uint8_t hw) {
-#if defined(BOARD_IP_V3) && DOMOVOI_APP_HW == 140
- return hw==139u||hw==140u;
-#else
  return hw==(uint8_t)DOMOVOI_APP_HW;
-#endif
 }
 int manual_stage_read(uint32_t off,void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;

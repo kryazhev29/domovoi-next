@@ -265,10 +265,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'app_trial_confirm();\r\n          if (!app_trial_active()) fw_log(LOG_FW_DONE, NULL);' in case(1),'event 136 on confirmation'
         assert 'fw_log(strcmp(reason, "TRIAL FAIL") == 0 ? LOG_FW_ROLLBACK : LOG_FW_FAIL, reason);' in case(1),'bootloader result: 137 after a failed trial'
         assert '0x48570000+DOMOVOI_APP_HW' in source('CMSIS/STM32F10x/Source/startup_stm32f10x_md.s'),'board marker in the vector table'
-        assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==4 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
-        # Release_IPv3 - old MODEM board (IP_v3, HW 139): PA0 stays an input; Release_140 - transition from loader 140
-        assert source('DomovoiNext.ewp').count('<state>BOARD_IP_V3</state>')==2,'IP_v3 builds are marked for C'
-        assert '#ifdef BOARD_IP_V3' in source('board.h') and '#ifdef BOARD_IP_V3' in source('board.c'),'IP_v3 keeps PA0 (RS232 CTS) an input'
+        assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==2 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
+        # Только v5: сборок для других плат нет (решение владельца 03.10.2026).
+        assert 'BOARD_IP_V3' not in source('DomovoiNext.ewp') and 'Release_140' not in source('DomovoiNext.ewp'),'v5 only'
         unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))
     elif kind=='serverrx':
         user=source('User/user_fun.c')
@@ -447,7 +446,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=source('Tests/test_comm_uart.c').replace('/* HEADER */',header).replace('/* PRODUCTION */',code)
         unit=unit.replace('/* TICK */',function(source('stm32_it.c'),'SysTick_Handler'))
         profile=sys.argv[3] if len(sys.argv)>3 else 'v5'
-        defines={'v5':'', 'ipv3':'#define BOARD_IP_V3 1\n', 'mini':'#define DOMOVOI_APP_HW 140\n', 'mini-ipv3':'#define DOMOVOI_APP_HW 140\n#define BOARD_IP_V3 1\n'}
+        defines={'v5':''}
         unit=defines[profile]+unit
     elif kind=='commat':
         from comm_at_host import unit as comm_at_unit

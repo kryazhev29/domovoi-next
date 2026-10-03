@@ -3484,9 +3484,6 @@ void user_readinputs (void){
     }
     if (device.status.stateIn1){
       log_addSystemEvent(LOG_SYS_IN1ON);
-#ifdef BOARD_IP_V3
-      photo_auto(); // вход 1 - кнопка с фото, как в старой прошивке v1-v3
-#endif
     }
     else
       log_addSystemEvent(LOG_SYS_IN1OFF);
@@ -4017,9 +4014,6 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
   // проходы ограничены: сервер раздаёт остаток остальным контроллерам объекта
   if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);
   if (started) log_addControlEvent(LOG_CON_IDTIMESTART, id, 255);
-#ifdef BOARD_IP_V3
-  photo_auto(); // фотофиксация прохода, как в старой прошивке v1-v3
-#endif
   return true;
 }
 

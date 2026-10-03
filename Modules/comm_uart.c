@@ -48,12 +48,10 @@ void comm_uart_tick(void)
     uart_state.counters.errors |= COMM_UART_OVERFLOW;
     error_add(&uart_state.counters.overflow);
   }
-#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
   if (uart_state.rx_view == sizeof(rx)) used = sizeof(rx);
   /* PB14: HIGH Ч стоп при свободно < 128, LOW Ч пуск при зан€то < 128. */
   if (used > sizeof(rx) - 1u - 128u) { RTSG_HIGH; }
   else if (used < 128u) { RTSG_LOW; }
-#endif
   __set_PRIMASK(mask);
 }
 
@@ -143,9 +141,7 @@ void comm_uart_init(uint32_t baud)
   uart_state.counters.errors = uart_state.counters.overflow = uart_state.counters.ore = uart_state.counters.fe = uart_state.counters.ne = 0;
   gpio.GPIO_Speed = GPIO_Speed_50MHz;
   gpio.GPIO_Pin = GPIO_Pin_11;
-#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
   gpio.GPIO_Pin |= GPIO_Pin_13;
-#endif
   gpio.GPIO_Mode = GPIO_Mode_IPU;
   GPIO_Init(GPIOB, &gpio);
   gpio.GPIO_Pin = GPIO_Pin_10;
@@ -154,15 +150,11 @@ void comm_uart_init(uint32_t baud)
   USART_StructInit(&uart);
   uart.USART_BaudRate = baud;
   uart.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
-#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
   /* v5: PB14 Ч программный RTS, PB13 Ч аппаратный CTS. */
   gpio.GPIO_Pin = GPIO_Pin_14;
   gpio.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOB, &gpio);
   uart.USART_HardwareFlowControl = USART_HardwareFlowControl_CTS;
-#else
-  uart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-#endif
   USART_Init(USART3, &uart);
   /* IDLE IRQ не нужен: DMA HT/TC, SysTick и peek публикуют весь RX. */
   USART3->CR3 |= USART_CR3_DMAR;

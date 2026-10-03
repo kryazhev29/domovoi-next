@@ -29,8 +29,8 @@ def measure(label, limits=False):
                 shutil.copyfile(source, target)
         cmd = [str(IAR / 'bin/iccarm.exe'), name, '--cpu', 'Cortex-M3', '--thumb',
                '-Ohz', '-e', '--dlib_config', str(IAR / 'inc/c/DLib_Config_Normal.h'),
-               '-DSTM32F10X_MD', '-DUSE_STDPERIPH_DRIVER', '-DCOMM_UART_STANDALONE',
-               '-DCOMM_NEW_CORE', '-DDOMOVOI_APP_HW=139', '-I.', '-IModules', '-IUser',
+               '-DSTM32F10X_MD', '-DUSE_STDPERIPH_DRIVER',
+               '-DDOMOVOI_APP_HW=139', '-I.', '-IModules', '-IUser',
                '-ICMSIS/Include', '-ICMSIS/STM32F10x/Include',
                '-ISTM32F10x_StdPeriph_Driver/inc', '-IUSB-FS-CDC_User/Inc',
                '-ISTM32_USB-FS-Device_Driver/inc', '-IUtilities',

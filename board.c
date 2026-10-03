@@ -20,12 +20,7 @@ void board_init (void)
 
   // Выходы Push-Pull
   // USB_PULLUP, OUT2
-#ifdef BOARD_IP_V3
-  // IP_v3: PA0 - выход микросхемы RS232, остаётся входом. Доработка: Кряжев А., 2026
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_8;
-#else
   GPIO_InitStruct.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_0;
-#endif
   GPIO_InitStruct.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_Init(GPIOA, &GPIO_InitStruct); 
