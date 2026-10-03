@@ -68,7 +68,7 @@ const slm_diag_t *comm_modem_diag(void);
 const slm_status_t *comm_modem_status(void);
 void comm_modem_off(void);
 /* URC (RING, +CLIP, +CMTI) - слушателям при любом состоянии AT; AT из них нельзя. */
-enum { COMM_URC_CALL, COMM_URC_SMS, COMM_URC_COUNT };
+enum { COMM_URC_CALL, COMM_URC_SMS, COMM_URC_BALANCE, COMM_URC_COUNT };
 void comm_modem_listen(uint8_t slot, void (*urc)(const uint8_t *, uint16_t));
 /* Номер попытки запуска модема: изменился - модем настроен заново. */
 uint8_t comm_modem_session(void);

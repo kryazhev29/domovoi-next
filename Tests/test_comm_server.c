@@ -29,6 +29,11 @@ static unsigned chups, chup_silence; static char last_command[32];
 static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
 static unsigned cmgs_error, sms_received_count;
 static void sms_received_model(char *number, char *text);
+/* Баланс: ответ модели на AT+CUSD=1 (URC через 2 с или до OK), счётчики, итог. */
+static const char *cusd_reply, *ussd_code; static unsigned cusd_count, cusd_cancel, cusd_error, cusd_early, balance_count;
+static uint32_t cusd_due; static uint16_t balance_value;
+static const char *ussd_model(void) { return ussd_code; }
+static void balance_model(uint16_t rubles) { balance_value=rubles; ++balance_count; }
 static void photo_connection_lost(void) {}
 static bool log_addSystemEvent(unsigned e) { CHECK(e == LOG_SYS_CONNECT1); return true; }
 static void user_parse_comand(uint8_t *p, unsigned channel);
@@ -167,6 +172,16 @@ static void transport_tx(void)
     else sim_reply("OK\r\n",30);
     return;
   }
+  if (!strncmp(cmd,"AT+CUSD=",8)) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    if (!strcmp(cmd,"AT+CUSD=2")) { ++cusd_cancel; sim_reply("OK\r\n",30); return; }
+    CHECK(!strcmp(cmd,"AT+CUSD=1,\"*100#\",15")); ++cusd_count;
+    if (cusd_error) sim_reply("+CME ERROR: 4\r\n",30);
+    else if (cusd_early && cusd_reply) { char r[400]; snprintf(r,sizeof(r),"%sOK\r\n",cusd_reply); sim_reply(r,30); }
+    else { sim_reply("OK\r\n",30); cusd_due=sim_now+2000; }
+    return;
+  }
   if (!strcmp(cmd,"AT+CHUP")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC); ++chups;
@@ -220,7 +235,9 @@ static void transport_tick(unsigned increment)
   if (ping_reply_kind && (int32_t)(sim_now-ping_reply_due)>=0) {
     sim_feed(ping_reply_kind==3 ? "+QPING: 0,2,1,1,30,30,30\r\n" : ping_reply_kind==1 ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n+QPING: 0,2,1,1,30,30,30\r\n" : "+QPING: 0,2,0,2,0,0,0\r\n"); ping_reply_kind=0;
   }
-  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); comm_sms_poll(sim_now); transport_tx(); sim_now+=increment;
+  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
+  if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
+  transport_tx(); sim_now+=increment;
 }
 static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<ms) transport_tick(10); }
 static void server_reset(void)
@@ -238,6 +255,8 @@ static void server_reset(void)
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   chups=chup_silence=0; last_command[0]=0; comm_call_init(call_caller);
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
+  ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
+  comm_balance_init(ussd_model, balance_model);
   /* Выход к TCP — принятой моделью этапа 3. */
   comm_server_init(&test_server_handlers);
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
@@ -385,4 +404,4 @@ static void garbage_test(void)
 /* RECOVER */
 /* CALL */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); garbage_test(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); garbage_test(); recover_tests(); return 0; }

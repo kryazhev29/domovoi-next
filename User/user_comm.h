@@ -15,4 +15,6 @@ uint32_t user_comm_local_time(void);
 /* SMS на номер; false - не принято к отправке. */
 bool user_comm_sms(const char *number, const char *text);
 bool user_comm_busy(void);
+const char *user_comm_ussd(void);
+void user_comm_balance(uint16_t rubles);
 #endif

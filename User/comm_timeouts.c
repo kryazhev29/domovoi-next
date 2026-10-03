@@ -58,4 +58,7 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   5000, /* COMM_T_SMS */
   60000, /* COMM_T_SMS_SEND */
   30000, /* COMM_T_SMS_RETRY */
+  /* Баланс: ответ сети на USSD до 30 с; неудача - снова через 30 мин, удача - через сутки. */
+  30000, /* COMM_T_USSD */
+  1800000, /* COMM_T_USSD_RETRY */
 };

@@ -9,6 +9,7 @@
 #include "../Modules/comm_info.h"
 #include "../Modules/comm_call.h"
 #include "../Modules/comm_sms.h"
+#include "../Modules/comm_balance.h"
 void server_rx_process(void);
 static void user_comm_registration(void) { user_send_registrationData(CH_SERVER); }
 static void user_comm_status(void) { user_send_statusPack(CH_SERVER); }
@@ -45,6 +46,7 @@ bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handl
   comm_recover_init(&hooks, now_ms);
   comm_call_init(user_comm_call);
   comm_sms_init(user_smsreceived);
+  comm_balance_init(user_comm_ussd, user_comm_balance);
   return true;
 }
 /* Одна SMS в очереди: занято или неверный номер - false, событие отправки не пишется. */
@@ -57,4 +59,5 @@ void user_comm_poll(uint32_t now_ms)
   comm_info_poll(now_ms);
   comm_call_poll(now_ms);
   comm_sms_poll(now_ms);
+  comm_balance_poll(now_ms);
 }
