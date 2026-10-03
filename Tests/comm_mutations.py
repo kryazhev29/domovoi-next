@@ -74,6 +74,10 @@ def run():
         ('channel', 'ussd-first-number-only', 'if (f) { s = f; break; }', 'if (0) { s = f; break; }'),
         ('channel', 'ussd-failure-waits-a-day', 'bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];', 'bal.next = bal.now + comm_timeouts[COMM_T_DAY];'),
         ('channel', 'ussd-menu-left-open', 'if (bal.menu && comm_modem_side(&bal_cancel))', 'if (0 && comm_modem_side(&bal_cancel))'),
+        ('channel', 'volte-unsupported-retried', 'call.volte_modem = VOLTE_UNSUPPORTED;', 'call.volte_modem = VOLTE_UNKNOWN;'),
+        ('channel', 'volte-during-call', 'call.state != CALL_IDLE || call.volte_modem', 'call.volte_modem'),
+        ('channel', 'volte-written-every-time', 'call.volte_modem != want ? &volte_set[want] : NULL', '&volte_set[want]'),
+        ('channel', 'volte-new-start-not-checked', 'call.session = session; call.volte_modem = VOLTE_UNKNOWN;', 'call.session = session;'),
         ('channel', 'call-side-kept-after-restart', '  memset(&slm.attempt, 0, sizeof(slm.attempt));\n  slm_side_cancel();', '  memset(&slm.attempt, 0, sizeof(slm.attempt));'),
     )
     for group, label, old, new in cases:

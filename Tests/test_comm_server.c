@@ -29,6 +29,9 @@ static unsigned chups, chup_silence; static char last_command[32];
 static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
 static unsigned cmgs_error, sms_received_count;
 static void sms_received_model(char *number, char *text);
+/* VoLTE: настройка, состояние модема, ответ ERROR, счётчики запросов и записей. */
+static uint8_t volte_flag, volte_modem; static unsigned volte_error, volte_queries, volte_sets;
+static uint8_t volte_flag_model(void) { return volte_flag; }
 /* Баланс: ответ модели на AT+CUSD=1 (URC через 2 с или до OK), счётчики, итог. */
 static const char *cusd_reply, *ussd_code; static unsigned cusd_count, cusd_cancel, cusd_error, cusd_early, balance_count;
 static uint32_t cusd_due; static uint16_t balance_value;
@@ -172,6 +175,15 @@ static void transport_tx(void)
     else sim_reply("OK\r\n",30);
     return;
   }
+  if (!strncmp(cmd,"AT+SETVOLTE",11)) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    if (!strcmp(cmd,"AT+SETVOLTE?")) volte_queries+=volte_error;
+    if (volte_error) { sim_reply("ERROR\r\n",30); return; }
+    if (!strcmp(cmd,"AT+SETVOLTE?")) { ++volte_queries; sim_reply(volte_modem ? "+SETVOLTE: 1\r\nOK\r\n" : "+SETVOLTE: 0\r\nOK\r\n",30); }
+    else { CHECK(!strcmp(cmd,"AT+SETVOLTE=0") || !strcmp(cmd,"AT+SETVOLTE=1")); ++volte_sets; volte_modem=cmd[12]=='1'; sim_reply("OK\r\n",30); }
+    return;
+  }
   if (!strncmp(cmd,"AT+CUSD=",8)) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
@@ -253,7 +265,7 @@ static void server_reset(void)
   device.status=0x1234; device.freeBufferSize=2048; device.answerID=0; incoming_count=sent_count=0;
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
-  chups=chup_silence=0; last_command[0]=0; comm_call_init(call_caller);
+  chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(call_caller, volte_flag_model);
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
   comm_balance_init(ussd_model, balance_model);
@@ -404,4 +416,4 @@ static void garbage_test(void)
 /* RECOVER */
 /* CALL */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); garbage_test(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); recover_tests(); return 0; }

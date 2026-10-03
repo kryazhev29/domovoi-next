@@ -61,4 +61,5 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   /* Баланс: ответ сети на USSD до 30 с; неудача - снова через 30 мин, удача - через сутки. */
   30000, /* COMM_T_USSD */
   1800000, /* COMM_T_USSD_RETRY */
+  5000, /* COMM_T_VOLTE: AT+SETVOLTE пишет настройку модема */
 };

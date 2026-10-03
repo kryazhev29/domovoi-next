@@ -4752,6 +4752,7 @@ uint32_t user_comm_local_time(void)
 /* Ночной перезапуск модема не рвёт обновление прошивки. */
 /* Баланс SIM (статус 2): USSD из настроек (команда 12) и разобранный ответ, рубли. */
 const char *user_comm_ussd(void) { return config.ussdBalance; }
+uint8_t user_comm_volte(void) { return config.useVoLTE; }
 void user_comm_balance(uint16_t rubles) { device.balance = rubles; }
 /* Ночной перезапуск модема ждёт конца загрузки FW и вызова. */
 bool user_comm_busy(void) { return device.FWinProgress != 0 || comm_call_active(); }

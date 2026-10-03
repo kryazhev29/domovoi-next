@@ -16,5 +16,6 @@ uint32_t user_comm_local_time(void);
 bool user_comm_sms(const char *number, const char *text);
 bool user_comm_busy(void);
 const char *user_comm_ussd(void);
+uint8_t user_comm_volte(void);
 void user_comm_balance(uint16_t rubles);
 #endif

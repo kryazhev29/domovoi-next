@@ -7,7 +7,7 @@ C_FILES=(
     'stm32_it.c','Modules/comm_uart.c','Modules/comm_uart.h','Modules/comm_power_v5.c','Modules/comm_power_v5.h',
     'Modules/comm_modem.c','Modules/comm_modem.h','Tests/test_comm_uart.c','Tests/test_comm_at.c',
     'Modules/comm_at.c','Modules/comm_at.h','Modules/modem_slm336.c','Modules/modem_slm336.h',
-    'Modules/comm_channel.c','Modules/comm_channel.h','Modules/comm_server.c','Modules/comm_server.h','Modules/comm_recover.c','Modules/comm_recover.h','Modules/comm_info.c','Modules/comm_info.h','Modules/comm_call.c','Modules/comm_call.h','Modules/comm_sms.c','Modules/comm_sms.h','Tests/test_comm_sms.c','Modules/comm_balance.c','Modules/comm_balance.h','Tests/test_comm_balance.c','Tests/test_comm_recover.c','Tests/test_comm_call.c',
+    'Modules/comm_channel.c','Modules/comm_channel.h','Modules/comm_server.c','Modules/comm_server.h','Modules/comm_recover.c','Modules/comm_recover.h','Modules/comm_info.c','Modules/comm_info.h','Modules/comm_call.c','Modules/comm_call.h','Modules/comm_sms.c','Modules/comm_sms.h','Tests/test_comm_sms.c','Modules/comm_balance.c','Modules/comm_balance.h','Tests/test_comm_balance.c','Tests/test_comm_volte.c','Tests/test_comm_recover.c','Tests/test_comm_call.c',
     'User/comm_timeouts.c','User/comm_timeouts.h','User/user_comm.c','User/user_comm.h',
     'User/user_fun.c','User/photo.c','Tests/test_comm_server.c','Tests/test_comm_channel.c','Tests/comm_photo_slot.c','Tests/comm_upload_slot.c',
 )

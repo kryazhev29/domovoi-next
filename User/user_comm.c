@@ -44,7 +44,7 @@ bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handl
   user_comm_reset_session();
   comm_server_no_internet(comm_recover_no_internet);
   comm_recover_init(&hooks, now_ms);
-  comm_call_init(user_comm_call);
+  comm_call_init(user_comm_call, user_comm_volte);
   comm_sms_init(user_smsreceived);
   comm_balance_init(user_comm_ussd, user_comm_balance);
   return true;
