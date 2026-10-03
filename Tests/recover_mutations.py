@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Modules/comm_recover.c'
 MODEM = ROOT / 'Modules/comm_modem.c'
+INFO = ROOT / 'Modules/comm_info.c'
+CHANNEL = ROOT / 'Modules/comm_channel.c'
 CASES = (
     ('power-pause-skip', b'rc_power_ladder(rc_pause(COMM_T_POWER_1, rc.power_step));\r\n    return;\r\n  case SLM_ERR_TIMEOUT:', b'rc_power_ladder(0);\r\n    return;\r\n  case SLM_ERR_TIMEOUT:'),
     ('soft-forever', b'if (++rc.soft_fails >= 3u)', b'if (++rc.soft_fails >= 30u)'),
@@ -19,12 +21,15 @@ CASES = (
     ('night-twice', b'&& day != rc.night_day', b''),
     ('no-ladder-reset', b'rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;', b'rc.soft_fails = 0;'),
     ('deact-error-fails', b' && !(action == MODEM_ANY && slm.attempt.result < COMM_AT_GOT_PROMPT)', b'', MODEM),
+    ('query-error-reopens', b'  if (op == OP_QUERY) { query.cmd = NULL; return; }', b'  if (op == OP_QUERY) query.cmd = NULL;', CHANNEL),
+    ('csq-not-parsed', b'info.v.csq = v[0] <= 99u ? (uint8_t)v[0] : 99u;', b'(void)v;', INFO),
+    ('stale-info-offline', b'    info.v.csq = 99; info.v.creg', b'    info.v.csq = info.v.csq; info.v.creg', INFO),
     ('no-session-reset', b'if (rc.hooks && rc.hooks->reset_session) rc.hooks->reset_session();', b''),
 )
 
 
 def main():
-    originals = {SOURCE: SOURCE.read_bytes(), MODEM: MODEM.read_bytes()}
+    originals = {path: path.read_bytes() for path in (SOURCE, MODEM, INFO, CHANNEL)}
     missed = []
     try:
         for name, old, new, *where in CASES:

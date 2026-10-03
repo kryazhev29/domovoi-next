@@ -4426,6 +4426,9 @@
         <file>
             <name>$PROJ_DIR$\Modules\comm_recover.c</name>
         </file>
+        <file>
+            <name>$PROJ_DIR$\Modules\comm_info.c</name>
+        </file>
     </group>
     <group>
         <name>STM32_USB-FS-Device_Driver</name>

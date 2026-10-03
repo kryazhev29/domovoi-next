@@ -5,6 +5,7 @@
 #include "../Modules/comm_server.h"
 #include "../Modules/comm_channel.h"
 #include "../Modules/comm_recover.h"
+#include "../Modules/comm_info.h"
 void server_rx_process(void);
 static void user_comm_registration(void) { user_send_registrationData(CH_SERVER); }
 static void user_comm_status(void) { user_send_statusPack(CH_SERVER); }
@@ -46,4 +47,5 @@ void user_comm_poll(uint32_t now_ms)
   comm_channel_rx_capacity(user_comm_rx_capacity());
   comm_server_poll(now_ms);
   comm_recover_poll(now_ms);
+  comm_info_poll(now_ms);
 }

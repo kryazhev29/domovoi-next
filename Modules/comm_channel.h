@@ -16,6 +16,8 @@ void comm_channel_rx_capacity(uint16_t count);
 bool comm_channel_ready(void);
 /* ћодем перестал отвечать посреди работы канала: нужен перезапуск модема. */
 bool comm_channel_fault(void);
+/* —лужебна€ команда при свободном канале; false - зан€т или нет соединени€. */
+bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t));
 uint32_t comm_channel_diag(void);
 /* ѕроизводитель пишет пр€мо сюда; capacity по sizeof слота. «ан€то/приоритет Ч NULL. */
 uint8_t *comm_tx_acquire(uint16_t *capacity);

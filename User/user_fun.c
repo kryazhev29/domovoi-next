@@ -8,6 +8,7 @@
 #include "photo.h"
 #include "user_comm.h"
 #include "../Modules/comm_recover.h"
+#include "../Modules/comm_info.h"
 #include "../Modules/comm_uart.h"
 #include "../Modules/comm_modem.h"
 #include "idindex.h"
@@ -857,6 +858,11 @@ void user_loop(void)
     device.minute = device.datetime % 3600u / 60u;
     // уровень сигнала
     device.connected = comm_channel_ready();
+    /* Статусы 1/2 и NextConfig: сигнал, регистрация CS/PS, тип сети (как у прежней связи). */
+    device.csq = comm_info()->csq;
+    device.creg = comm_info()->creg;
+    device.cgreg = comm_info()->cgreg;
+    device.netType = comm_info()->net;
     
     // перезагрузка через заданный таймаут
     if (device.timeToReset){

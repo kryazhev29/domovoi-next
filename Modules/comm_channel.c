@@ -18,7 +18,9 @@ static struct {
 } ch;
 enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT };
 enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_ACK };
-enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ };
+enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY };
+/* Служебный запрос (сигнал, регистрация): одна команда, строки ответа - заказчику. */
+static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
 static void channel_emit(uint8_t kind, uint8_t value)
 { if (ch.event) ch.event(kind, value); }
 /* IPv4: четыре проверенных октета, с кавычками или без. */
@@ -65,6 +67,7 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
     channel_read_done(SLM_ERR_PDP);
     comm_channel_reopen(0); return;
   }
+  if (ch.operation == OP_QUERY && kind == COMM_AT_LINE) { if (query.line) query.line(p, n); return; }
   if (ch.operation == OP_VERIFY && comm_at_prefix(p,n,"+QISTATE:")) ch.answer = 1;
   if (ch.operation == OP_OPEN) {
     if (comm_at_parse(p,n,comm_modem_profile()->open,v) && v[0] == 0) {
@@ -146,6 +149,12 @@ void comm_channel_reopen(uint32_t pause_ms)
   }
   if (had_socket) channel_emit(COMM_CH_CLOSED, 0);
 }
+/* Самый низкий приоритет: только при свободном канале, без отправки и чтения. */
+bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t))
+{
+  if (!comm_channel_ready() || query.cmd || !cmd) return false;
+  query.cmd = cmd; query.line = line; return true;
+}
 bool comm_channel_probe(uint8_t kind)
 {
   if (!comm_channel_ready() || ch.probe || ch.probe_active || (kind != COMM_CH_PING && kind != COMM_CH_DNS)) return false;
@@ -215,6 +224,7 @@ static void channel_completed(void)
     if (reason) comm_channel_reopen(0);
     return;
   }
+  if (op == OP_QUERY) { query.cmd = NULL; return; } /* ответ разобран; ERROR - не повод рвать TCP */
   if (op == OP_PING || op == OP_DNS) {
     if (result != COMM_AT_OK && ch.probe_active == (op == OP_PING ? COMM_CH_PING : COMM_CH_DNS)) {
       ch.probe = ch.probe_active = 0; channel_emit(COMM_CH_PROBE_DONE, 0);
@@ -311,4 +321,6 @@ void comm_channel_poll(uint32_t now_ms)
   }
   else if (ch.tx_state == TX_FREE && !ch.flags.urgent && ch.flags.recv && ch.capacity && ch.binary)
     channel_command(NULL, COMM_AT_TEXT, COMM_T_QIRD, OP_READ);
+  else if (ch.tx_state == TX_FREE && !ch.flags.urgent && query.cmd)
+    channel_command(query.cmd, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_QUERY);
 }

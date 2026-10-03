@@ -15,6 +15,7 @@ static void rc_tick(unsigned ms)
 {
   power_events = 0; /* в трассе питани€ 16 мест, здесь считаем перезапуски сами */
   transport_tick(ms);
+  comm_info_poll(sim_now);
   rc_note(); /* решение могло прийти из сервера (нет интернета) и исполнитьс€ в этом же такте */
   comm_recover_poll(sim_now);
   rc_note();
@@ -50,8 +51,19 @@ static void rc_expect(unsigned i, uint32_t ms, uint8_t power)
 {
   CHECK(i < rc_logged && rc_log[i].ms == ms && rc_log[i].power == power);
 }
+/* —игнал, регистраци€, тип сети: опрос через канал раз в 30 с, ERROR на запрос не рвЄт TCP,
+   без св€зи - Ђнеизвестної. */
+static void info_tests(void)
+{
+  rc_online(); rc_run(40000u);
+  CHECK(comm_info()->csq == 22 && comm_info()->creg == 1 && comm_info()->cgreg == 1 && comm_info()->net == 4);
+  { unsigned before = opens; sim_nwinfo_error = 1; rc_run(70000u); CHECK(opens == before && comm_server_online()); }
+  CHECK(comm_info()->csq == 22);
+  comm_modem_off(); rc_run(100); CHECK(comm_info()->csq == 99 && !comm_info()->creg && !comm_info()->net);
+}
 static void recover_tests(void)
 {
+  info_tests();
   /* 1. Ќет SIM час: только сн€тие питани€, паузы 10/30 мин, AT-перезапусков нет. */
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(3600000u);
   CHECK(rc_logged == 3 && !rc_soft_starts && rc_power_starts == 3);

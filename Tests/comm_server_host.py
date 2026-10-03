@@ -3,8 +3,8 @@ from pathlib import Path
 import argparse, os, subprocess, tempfile
 from comm_slm_host import unit as slm_unit, memory, ROOT, ZIG, HEADERS, MODULES
 
-NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c')
-NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h')
+NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c')
+NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h', 'Modules/comm_info.h')
 
 def source(name):
     return (ROOT / name).read_bytes().decode('cp1251')
