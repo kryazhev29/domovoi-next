@@ -1,0 +1,97 @@
+/* Доработка: Кряжев А., 2026. SMS в режиме PDU на модели модема и канала.
+   PDU приёма и отправки собраны отдельно (Python, не этим кодом); hellohello - пример
+   SMS-DELIVER из открытого описания формата. */
+static char sms_got_number[24], sms_got_text[SMS_TEXT + 1u];
+static const char *sms_reply_to;
+static void sms_received_model(char *number, char *text)
+{
+  ++sms_received_count;
+  CHECK(strlen(number) < sizeof(sms_got_number) && strlen(text) <= SMS_TEXT);
+  strcpy(sms_got_number, number); strcpy(sms_got_text, text);
+  if (sms_reply_to) CHECK(comm_sms_send(number, sms_reply_to));
+}
+static const char pdu_cmd7[] = "07919730071111F1040B919761214365F70000623001210000210DA3393D4CAFCF41B4992CC602";
+static const char pdu_ucs2[] = "07919730071111F10406D04DEA140008623001210000212004110430043B0430043D0441002000310030003000200440002E002004010451";
+static const char pdu_concat[] = "07919730071111F1440B819830551521F20000623001210000210F0500032A0201E061391DF4769701";
+static const char pdu_bit8[] = "07919730071111F1040B919761000000F10004623001210000210541420D0A43";
+static const char pdu_long7[] = "07919730071111F1040B919761000000F2000062300121000021A0783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1783C1E8FC7E3F1";
+static const char pdu_hello[] = "07917283010010F5040BC87238880900F10000993092516195800AE8329BFD4697D9EC37";
+static const char pdu_inject[] = "07919730071111F1040B919761000000F500006230012100002119AB213309D58144AB5B2E6683C16030182C2762C56835";
+static const char pdu_submit_type[] = "07919730071111F101000B919761214365F700000141";
+static void sms_reset(void)
+{
+  memset(sim_store, 0, sizeof(sim_store)); sms_reply_to=NULL; call_reset();
+  sms_got_number[0]=sms_got_text[0]=0;
+}
+/* Новая SMS: модем кладёт на SIM и сообщает ячейку. */
+static void sms_arrive(unsigned cell, const char *pdu)
+{
+  char urc[32]; sim_store[cell]=pdu;
+  snprintf(urc,sizeof(urc),"+CMTI: \"SM\",%u\r\n",cell); sim_feed(urc); advance(300);
+}
+static void sms_expect(const char *number, const char *text)
+{
+  CHECK(sms_received_count==1 && !strcmp(sms_got_number,number) && !strcmp(sms_got_text,text));
+}
+static void sms_tests(void)
+{
+  /* Настройка после SIM: PDU, память SIM, +CMTI, затем обзор SIM. */
+  sms_reset();
+  CHECK(strstr(sms_log,"AT+CMGF=0;AT+CPMS=\"SM\",\"SM\",\"SM\";AT+CNMI=2,1,0,0,0;AT+CMGL=4;"));
+  CHECK(comm_server_online());
+  sms_arrive(1,pdu_cmd7); sms_expect("+79161234567","#status 4321,");
+  CHECK(!sim_store[1] && strstr(sms_log,"AT+CMGR=1;AT+CMGD=1;"));
+  /* Кириллица UCS2 от буквенного отправителя -> cp1251. */
+  sms_reset(); sms_arrive(3,pdu_ucs2);
+  sms_expect("MTS","\xC1\xE0\xEB\xE0\xED\xF1 100 \xF0. \xA8\xB8");
+  /* Часть склейки: заголовок и заполнение пропущены. 8 бит - как есть. */
+  sms_reset(); sms_arrive(2,pdu_concat); sms_expect("89035551122","part one");
+  sms_reset(); sms_arrive(2,pdu_bit8); sms_expect("+79160000001","AB\r\nC");
+  sms_reset(); sms_arrive(2,pdu_hello); sms_expect("27838890001","hellohello");
+  /* 160 символов: тело длиннее строки AT приходит кусками. */
+  sms_reset(); sms_arrive(9,pdu_long7);
+  { char x[161]; memset(x,'x',160); x[160]=0; sms_expect("+79160000002",x); }
+  /* Текст SMS не становится ответом модема: поддельный +CLIP не открывает. */
+  sms_reset(); sms_arrive(4,pdu_inject); sms_expect("+79160000005","+CLIP: \"+79160000009\",145");
+  advance(2000); CHECK(!calls && !chups && !comm_call_active());
+  /* Битая, не DELIVER и пустая ячейка: не отдаются, ячейка стирается. */
+  static const char *const bad[] = {pdu_submit_type, "07919730071111F1040B9197612143", "0791973007ZZ"};
+  for (unsigned i=0;i<3;++i) {
+    sms_reset(); sms_arrive(5,bad[i]);
+    CHECK(!sms_received_count && !sim_store[5] && strstr(sms_log,"AT+CMGD=5;"));
+  }
+  sms_reset(); sim_feed("+CMTI: \"SM\",7\r\n"); advance(300);
+  CHECK(!sms_received_count && strstr(sms_log,"AT+CMGR=7;AT+CMGD=7;"));
+  /* Лежавшие на SIM до запуска модема - прочитаны и стёрты. */
+  memset(sim_store,0,sizeof(sim_store)); sim_store[2]=pdu_cmd7; sim_store[6]=pdu_hello;
+  call_reset(); advance(500);
+  CHECK(sms_received_count==2 && !sim_store[2] && !sim_store[6] && !strcmp(sms_got_text,"hellohello"));
+  /* Отправка: GSM 7 бит, UCS2, обрезка; длина в CMGS - без адреса SMSC. */
+  sms_reset(); CHECK(comm_sms_send("+79161234567","status: ok 1")); CHECK(!comm_sms_send("+79161234567","x"));
+  advance(300);
+  CHECK(strstr(sms_log,"AT+CMGS=25;") && !strcmp(sms_sent_pdu,"0011000B919761214365F70000AA0C737A985E9FEB40EF352806"));
+  CHECK(comm_sms_send("79161234567","\xCF\xF0\xE8\xE2\xE5\xF2")); advance(300);
+  CHECK(strstr(sms_log,"AT+CMGS=26;") && !strcmp(sms_sent_pdu,"0011000B919761214365F70008AA0C041F04400438043204350442"));
+  { char a[131]; memset(a,'A',130); a[130]=0; CHECK(comm_sms_send("1234",a)); }
+  advance(300);
+  CHECK(strstr(sms_log,"AT+CMGS=110;") && !strncmp(sms_sent_pdu,"001100048121430000AA72C16030180C0683",36) && strlen(sms_sent_pdu)==222);
+  CHECK(!comm_sms_send("+7916x",".") && !comm_sms_send("",".") && !comm_sms_send("123456789012345678901","."));
+  /* Ответ из обработчика уходит; отказ сети освобождает очередь. */
+  sms_reset(); sms_reply_to="#status: Ok"; sms_arrive(1,pdu_cmd7); advance(300);
+  CHECK(strstr(sms_log,"AT+CMGD=1;AT+CMGS=") && comm_server_online());
+  cmgs_error=1; CHECK(comm_sms_send("+79161234567","x")); advance(300); CHECK(comm_sms_send("+79161234567","y"));
+  /* Перезапуск модема: настройка заново, ожидающая команда снимается. */
+  sms_reset(); CHECK(comm_modem_restart(false,sim_now)); sms_log[0]=0;
+  for (unsigned i=0;!strstr(sms_log,"AT+CMGL=4;") && i<3000;++i) transport_tick(10);
+  CHECK(strstr(sms_log,"AT+CMGF=0;") && strstr(sms_log,"AT+CMGL=4;"));
+  /* Передача кадра и отправка SMS не смешиваются после '>'. */
+  sms_reset();
+  for (unsigned k=0;k<20;++k) {
+    uint16_t cap; uint8_t *p=comm_tx_acquire(&cap);
+    if (p) { memset(p,0x33,12); CHECK(comm_tx_commit(12)); }
+    if (k%3==0) comm_sms_send("+79161234567","ping");
+    advance(70);
+  }
+  advance(2000); CHECK(comm_server_online() && !comm_tx_busy());
+  puts("comm_sms: setup, +CMTI, GSM/UCS2/8-bit/alpha/concat/160 chunks, injection, bad PDU, stored, send GSM/UCS2/cut, restart, prompt PASS");
+}

@@ -25,6 +25,10 @@ static uint8_t open_addresses[64];
 static uint32_t timers_getMillis(void) { return sim_now; }
 /* «вонок: сколько раз сброшен, ответ модема на сброс, последн€€ команда перед данными. */
 static unsigned chups, chup_silence; static char last_command[32];
+/* SMS: €чейки SIM 1..10 (PDU hex), журнал команд SMS, последн€€ отправленна€ PDU. */
+static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
+static unsigned cmgs_error, sms_received_count;
+static void sms_received_model(char *number, char *text);
 static void photo_connection_lost(void) {}
 static bool log_addSystemEvent(unsigned e) { CHECK(e == LOG_SYS_CONNECT1); return true; }
 static void user_parse_comand(uint8_t *p, unsigned channel);
@@ -112,6 +116,14 @@ static const slm_handlers_t transport_handlers={sim_gpio,sim_type,sim_imei};
 static void transport_tx(void)
 {
   if (!(regs.CR1 & USART_CR1_TXEIE)) return;
+  if (tx_data == msg.out) {
+    CHECK(!strncmp(last_command,"AT+CMGS=",8) && tx_count < sizeof(sms_sent_pdu) && tx_data[tx_count-1u] == 0x1A);
+    memcpy(sms_sent_pdu,tx_data,tx_count-1u); sms_sent_pdu[tx_count-1u]=0;
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    sim_reply(cmgs_error ? "+CMS ERROR: 500\r\n" : "+CMGS: 12\r\n\r\nOK\r\n",40);
+    return;
+  }
   if (tx_data == frame) {
     /* ѕосле '>' - только данные: служебна€ команда не встаЄт между QISEND и кадром. */
     CHECK(!strncmp(last_command,"AT+QISEND=0,",12) && strcmp(last_command,"AT+QISEND=0,0"));
@@ -132,6 +144,29 @@ static void transport_tx(void)
   CHECK(tx_data==command);
   char cmd[128]; CHECK(tx_count<=sizeof(cmd)); memcpy(cmd,command,tx_count); cmd[tx_count-1u]=0;
   snprintf(last_command,sizeof(last_command),"%s",cmd);
+  if (!strncmp(cmd,"AT+CMG",6) || !strncmp(cmd,"AT+CPMS",7) || !strncmp(cmd,"AT+CNMI",7)) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    if (strlen(sms_log)+strlen(cmd)+2u>=sizeof(sms_log)) sms_log[0]=0; /* долгие прогоны восстановлени€ */
+    strcat(sms_log,cmd); strcat(sms_log,";");
+    unsigned i;
+    char head[48];
+    if (!strcmp(cmd,"AT+CMGL=4")) {
+      for (i=1;i<11;++i) if (sim_store[i]) {
+        snprintf(head,sizeof(head),"+CMGL: %u,0,,%u\r\n",i,(unsigned)strlen(sim_store[i])/2u-8u);
+        sim_feed(head); sim_feed(sim_store[i]); sim_feed("\r\n");
+      }
+      sim_feed("\r\nOK\r\n");
+    } else if (sscanf(cmd,"AT+CMGR=%u",&i)==1) {
+      if (i<11 && sim_store[i]) {
+        snprintf(head,sizeof(head),"+CMGR: 0,,%u\r\n",(unsigned)strlen(sim_store[i])/2u-8u);
+        sim_feed(head); sim_feed(sim_store[i]); sim_feed("\r\n\r\nOK\r\n");
+      } else sim_feed("+CMS ERROR: 321\r\n");
+    } else if (sscanf(cmd,"AT+CMGD=%u",&i)==1) { CHECK(i<11); sim_store[i]=NULL; sim_reply("OK\r\n",30); }
+    else if (!strncmp(cmd,"AT+CMGS=",8)) sim_reply("> ",30);
+    else sim_reply("OK\r\n",30);
+    return;
+  }
   if (!strcmp(cmd,"AT+CHUP")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC); ++chups;
@@ -185,7 +220,7 @@ static void transport_tick(unsigned increment)
   if (ping_reply_kind && (int32_t)(sim_now-ping_reply_due)>=0) {
     sim_feed(ping_reply_kind==3 ? "+QPING: 0,2,1,1,30,30,30\r\n" : ping_reply_kind==1 ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n+QPING: 0,2,1,1,30,30,30\r\n" : "+QPING: 0,2,0,2,0,0,0\r\n"); ping_reply_kind=0;
   }
-  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); transport_tx(); sim_now+=increment;
+  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); comm_sms_poll(sim_now); transport_tx(); sim_now+=increment;
 }
 static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<ms) transport_tick(10); }
 static void server_reset(void)
@@ -202,6 +237,7 @@ static void server_reset(void)
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   chups=chup_silence=0; last_command[0]=0; comm_call_init(call_caller);
+  sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
   /* ¬ыход к TCP Ч прин€той моделью этапа 3. */
   comm_server_init(&test_server_handlers);
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
@@ -349,4 +385,4 @@ static void garbage_test(void)
 /* RECOVER */
 /* CALL */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); garbage_test(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); garbage_test(); recover_tests(); return 0; }

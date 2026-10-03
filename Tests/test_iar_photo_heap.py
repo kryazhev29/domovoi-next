@@ -30,16 +30,18 @@ def call(name,arg=0):
     return u.reg_read(UC_ARM_REG_R0)
 call('__iar_data_init3')
 pointers=[];sizes=[]
-for n in [state,2056,2056,534]:
+# Пик новой связи: состояние фото, самый большой ответ по USB (32 записи журнала, 1040)
+# и блок фото для USB; копий UART/URC старого GSM больше нет.
+for n in [state,1040,534]:
     p=call('__basic_malloc',n);assert p
     chunk=struct.unpack('<I',u.mem_read(p-8,4))[0]
     assert n<=chunk<=n+16,(n,p,chunk)
     pointers.append(p);sizes.append(chunk)
-assert sum(sizes)<=4888
-print(f'IAR heap: photo_s={state}, chunks={sizes}, peak={sum(sizes)}/5120, free={5120-sum(sizes)}')
+assert sum(sizes)<=4096-1024 # запас не меньше 1 КБ
+print(f'IAR heap: photo_s={state}, chunks={sizes}, peak={sum(sizes)}/4096, free={4096-sum(sizes)}')
 # Неудачное выделение не повреждает живые объекты и следующий вызов.
 for i,p in enumerate(pointers):u.mem_write(p,bytes([0xA0+i])*16)
-assert call('__basic_malloc',1024)==0
+assert call('__basic_malloc',4096-sum(sizes))==0
 for i,p in enumerate(pointers):assert bytes(u.mem_read(p,16))==bytes([0xA0+i])*16
 call('__basic_free',pointers[-1]);assert call('__basic_malloc',534)
 print('IAR allocation failure and retry: OK')

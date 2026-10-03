@@ -34,7 +34,8 @@ u.mem_map(0x40000000,0x30000);u.mem_map(0xE000E000,0x1000)
 stop=0x0801fff0
 top=mapped_address('CSTACK$$Limit');bottom=mapped_address('CSTACK$$Base')
 heap=mapped_address('HEAP$$Limit')-mapped_address('HEAP$$Base')
-assert heap==5120 and top-bottom==4096
+# Куча 4096 (03.10): malloc(4096) сектора и буферы старого GSM убраны; пик - test_iar_photo_heap.
+assert heap==4096 and top-bottom==4096
 assert addr('HEAP$$Limit')<=addr('fault_record')==0x20004fc0
 for table in ('pEpInt_IN','pEpInt_OUT'):
     assert mapped_size(table)==28

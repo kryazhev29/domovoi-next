@@ -18,9 +18,11 @@ static struct {
   void (*imei_found)(const char *);
   comm_power_gpio_t gpio;
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
-  void (*urc)(const uint8_t *, uint16_t);
-  /* Служебная команда вне очереди канала: cmd ждёт AT, running - в работе. */
-  struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); uint8_t timeout, running, done, result; } side;
+  void (*urc[COMM_URC_COUNT])(const uint8_t *, uint16_t);
+  uint8_t session; /* растёт с каждой попыткой запуска */
+  /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
+     данные уходят в том же poll; результат забирает только владелец req. */
+  struct { const comm_side_t *req; uint8_t queued, running, prompted, done, result; } side;
   slm_diag_t diag;
 } slm;
 typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 128u) ? 1 : -1];
@@ -84,11 +86,14 @@ static void slm_fail(uint8_t reason)
 
 static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
-  if (kind == COMM_AT_URC && slm.urc) slm.urc(p, n);
+  if (kind == COMM_AT_URC)
+    for (uint8_t i = 0; i < COMM_URC_COUNT; ++i) if (slm.urc[i]) slm.urc[i](p, n);
   if (slm.side.running) {
-    if (kind == COMM_AT_LINE) { if (slm.side.line) slm.side.line(p, n); return; }
+    if (kind == COMM_AT_LINE) { if (slm.side.req->line) slm.side.req->line(p, n, detail); return; }
     if (kind == COMM_AT_DONE) {
-      slm.side.running = 0; slm.side.done = 1; slm.side.result = (uint8_t)detail;
+      slm.side.running = 0;
+      if (detail == COMM_AT_GOT_PROMPT && slm.side.req->payload) { slm.side.prompted = 1; return; }
+      slm.side.done = 1; slm.side.result = (uint8_t)detail;
       if (detail <= COMM_AT_TIMEOUT) return;
       kind = COMM_AT_STREAM_ERROR; /* поток потерян - как у любой команды */
     }
@@ -194,8 +199,8 @@ static bool slm_valid_settings(void)
 /* Перезапуск или выключение снимает служебную команду: владелец получает ERROR. */
 static void slm_side_cancel(void)
 {
-  if (slm.side.cmd || slm.side.running) { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
-  slm.side.cmd = NULL; slm.side.running = 0;
+  if (slm.side.queued || slm.side.running || slm.side.prompted) { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
+  slm.side.queued = slm.side.running = slm.side.prompted = 0;
 }
 /* Новая попытка: обнуляется всё, кроме кольца последних десяти сбоев. */
 static void slm_begin(bool power, uint32_t now_ms)
@@ -205,6 +210,7 @@ static void slm_begin(bool power, uint32_t now_ms)
   memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
   memset(&slm.attempt, 0, sizeof(slm.attempt));
   slm_side_cancel();
+  ++slm.session;
   slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
   slm.attempt.status.state = SLM_STARTING; slm.attempt.recording = 1;
   comm_uart_abort();
@@ -253,34 +259,44 @@ void comm_modem_off(void)
 }
 void comm_modem_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t))
 { slm.transport_event = event; }
-void comm_modem_listen(void (*urc)(const uint8_t *, uint16_t)) { slm.urc = urc; }
+void comm_modem_listen(uint8_t slot, void (*urc)(const uint8_t *, uint16_t)) { if (slot < COMM_URC_COUNT) slm.urc[slot] = urc; }
+uint8_t comm_modem_session(void) { return slm.session; }
 /* Модем принимает служебную команду после настройки порта (эхо выключено). */
 static bool slm_side_allowed(void)
 {
   return slm.attempt.status.state == SLM_READY
     || (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
 }
-bool comm_modem_side(const char *cmd, void (*line)(const uint8_t *, uint16_t), uint8_t timeout_id)
+bool comm_modem_side(const comm_side_t *req)
 {
-  if (!cmd || slm.side.cmd || slm.side.running || timeout_id >= COMM_T_COUNT || !slm_side_allowed()) return false;
-  slm.side.cmd = cmd; slm.side.line = line; slm.side.timeout = timeout_id; slm.side.done = 0;
+  if (!req || !req->cmd || req->timeout >= COMM_T_COUNT || slm.side.queued || slm.side.running
+      || slm.side.prompted || (slm.side.done && slm.side.req != req) || !slm_side_allowed()) return false;
+  slm.side.req = req; slm.side.queued = 1; slm.side.done = 0;
   return true;
 }
-uint8_t comm_modem_side_result(void)
+uint8_t comm_modem_side_result(const comm_side_t *req)
 {
-  if (!slm.side.done) return UINT8_MAX;
+  if (!slm.side.done || slm.side.req != req) return UINT8_MAX;
   slm.side.done = 0; return slm.side.result;
 }
 /* Вне очереди: между командами канала и шагами запуска, но не после '>'. */
 static void slm_side_issue(void)
 {
-  if (!slm.side.cmd || comm_at_busy() || comm_at_prompt()) return;
-  if (!slm_side_allowed()) { slm_side_cancel(); return; }
-  comm_at_request_t req = {(const uint8_t *)slm.side.cmd, (uint16_t)strlen(slm.side.cmd), COMM_AT_TEXT,
-    comm_timeouts[slm.side.timeout]};
-  uint8_t r = comm_at_start(&req, slm.attempt.now);
-  if (r == COMM_AT_BUSY) return;
-  slm.side.cmd = NULL;
+  const comm_side_t *s = slm.side.req;
+  uint8_t r;
+  if (slm.side.prompted) { /* модем ждёт данные: ничто другое не уходит в UART */
+    r = comm_at_payload(s->payload, s->count, COMM_AT_TEXT, comm_timeouts[s->timeout], slm.attempt.now);
+    if (r == COMM_AT_BUSY) return;
+    slm.side.prompted = 0;
+  } else {
+    if (!slm.side.queued || comm_at_busy() || comm_at_prompt()) return;
+    if (!slm_side_allowed()) { slm_side_cancel(); return; }
+    comm_at_request_t req = {(const uint8_t *)s->cmd, (uint16_t)strlen(s->cmd), s->mode,
+      comm_timeouts[s->timeout]};
+    r = comm_at_start(&req, slm.attempt.now);
+    if (r == COMM_AT_BUSY) return;
+    slm.side.queued = 0;
+  }
   if (r == COMM_AT_ACCEPTED) slm.side.running = 1;
   else { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
 }
@@ -289,6 +305,7 @@ bool comm_modem_busy(void) { return comm_at_busy(); }
 
 uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms)
 {
+  if (slm.side.prompted) return COMM_AT_BUSY;
   if ((slm.attempt.status.state == SLM_STARTING && !slm.attempt.in_poll)
       || (slm.attempt.status.state != SLM_STARTING && slm.attempt.status.state != SLM_READY)) return COMM_AT_BUSY;
   uint8_t r = comm_at_start(request, now_ms);
@@ -297,7 +314,8 @@ uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms)
 }
 uint8_t comm_modem_payload(const uint8_t *data, uint16_t count, uint32_t now_ms)
 {
-  uint8_t r = comm_at_payload(data, count, comm_timeouts[COMM_T_SEND_RESULT], now_ms);
+  if (slm.side.prompted) return COMM_AT_BUSY;
+  uint8_t r = comm_at_payload(data, count, COMM_AT_SEND, comm_timeouts[COMM_T_SEND_RESULT], now_ms);
   if (r == COMM_AT_ACCEPTED) slm.attempt.done = 0;
   return r;
 }

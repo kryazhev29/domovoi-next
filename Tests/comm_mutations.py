@@ -64,6 +64,11 @@ def run():
         ('channel', 'call-command-after-prompt', 'comm_at_busy() || comm_at_prompt()) return;', 'comm_at_busy()) return;'),
         ('channel', 'call-second-open', 'call.state != CALL_NUMBER && (call.state <= CALL_WAIT_NUMBER || strcmp(number, call.number))', 'call.state != CALL_NUMBER'),
         ('channel', 'call-hidden-number-not-hung-up', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_HANGUP;', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_DONE;'),
+        ('channel', 'sms-long-body-fault', 'if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }', 'if (1) { fault(COMM_AT_LINE_OVERFLOW); return; }'),
+        ('channel', 'sms-bad-cell-kept', 'msg.erase = msg.queue[0];', 'msg.erase = r == COMM_AT_OK ? msg.queue[0] : 0;'),
+        ('channel', 'sms-udh-fill-bits', 'msg.skip = (uint8_t)(((o + 1u) * 8u + 6u) / 7u);', 'msg.skip = (uint8_t)(o + 1u);'),
+        ('channel', 'sms-cmgs-length-with-smsc', 'uint16_t tpdu = (uint16_t)(msg.out_count / 2u - 1u);', 'uint16_t tpdu = (uint16_t)(msg.out_count / 2u);'),
+        ('channel', 'sms-cms-error-not-final', '&& !comm_at_prefix(line, line_count, "+CMS ERROR:")', ''),
         ('channel', 'call-side-kept-after-restart', '  memset(&slm.attempt, 0, sizeof(slm.attempt));\n  slm_side_cancel();', '  memset(&slm.attempt, 0, sizeof(slm.attempt));'),
     )
     for group, label, old, new in cases:

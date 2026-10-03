@@ -12,6 +12,7 @@ static struct {
   char number[21];
   uint8_t state;
 } call;
+static const comm_side_t call_hangup = {"AT+CHUP", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_CALL_HANGUP};
 /* +CLIP: "<номер>",<тип>,... (27.007 §7.18); номер - цифры и '+', может быть пустым. */
 static bool call_number(const uint8_t *p, uint16_t n, char *out)
 {
@@ -45,7 +46,7 @@ void comm_call_init(void (*caller)(const char *))
 {
   memset(&call, 0, sizeof(call));
   call.caller = caller;
-  comm_modem_listen(call_urc);
+  comm_modem_listen(COMM_URC_CALL, call_urc);
 }
 bool comm_call_active(void) { return call.state != CALL_IDLE; }
 void comm_call_poll(uint32_t now_ms)
@@ -60,11 +61,11 @@ void comm_call_poll(uint32_t now_ms)
     if (call.caller) call.caller(call.number);
     break;
   case CALL_HANGUP:
-    if (comm_modem_side("AT+CHUP", NULL, COMM_T_CALL_HANGUP)) call.state = CALL_HANGING;
+    if (comm_modem_side(&call_hangup)) call.state = CALL_HANGING;
     else if (now_ms - call.last >= comm_timeouts[COMM_T_CALL_QUIET]) call.state = CALL_DONE;
     break;
   case CALL_HANGING: /* любой исход: если вызов жив, следующий RING сбросит его снова */
-    if (comm_modem_side_result() != UINT8_MAX) call.state = CALL_DONE;
+    if (comm_modem_side_result(&call_hangup) != UINT8_MAX) call.state = CALL_DONE;
     break;
   case CALL_DONE:
     if (now_ms - call.last >= comm_timeouts[COMM_T_CALL_QUIET]) { call.state = CALL_IDLE; call.number[0] = 0; }

@@ -67,13 +67,25 @@ void comm_modem_record(uint8_t step, uint8_t reason, uint16_t code);
 const slm_diag_t *comm_modem_diag(void);
 const slm_status_t *comm_modem_status(void);
 void comm_modem_off(void);
-/* URC (RING, +CLIP, SMS) - слушателю при любом состоянии AT; AT из него нельзя. */
-void comm_modem_listen(void (*urc)(const uint8_t *, uint16_t));
-/* Служебная команда вне очереди канала (сброс вызова, SMS); cmd - постоянная строка.
-   Одна в работе; строки ответа - line. false - занято или модем ещё не настроен. */
-bool comm_modem_side(const char *cmd, void (*line)(const uint8_t *, uint16_t), uint8_t timeout_id);
-/* UINT8_MAX - ещё в работе; результат AT отдаётся один раз, перезапуск даёт ERROR. */
-uint8_t comm_modem_side_result(void);
+/* URC (RING, +CLIP, +CMTI) - слушателям при любом состоянии AT; AT из них нельзя. */
+enum { COMM_URC_CALL, COMM_URC_SMS, COMM_URC_COUNT };
+void comm_modem_listen(uint8_t slot, void (*urc)(const uint8_t *, uint16_t));
+/* Номер попытки запуска модема: изменился - модем настроен заново. */
+uint8_t comm_modem_session(void);
+/* Служебная команда вне очереди канала (сброс вызова, SMS). Запрос живёт у владельца
+   до результата: cmd - строка AT, mode - TEXT/PROMPT/PDU, line(p, n, detail) - строки
+   ответа (PDU: detail=1 - кусок тела), payload - данные после '>' (PROMPT). */
+typedef struct {
+  const char *cmd;
+  const uint8_t *payload;
+  void (*line)(const uint8_t *, uint16_t, uint16_t);
+  uint16_t count;
+  uint8_t mode, timeout;
+} comm_side_t;
+/* Одна в работе; false - занято, чужой результат не забран или модем не настроен. */
+bool comm_modem_side(const comm_side_t *req);
+/* UINT8_MAX - ещё в работе или не req; результат AT один раз, перезапуск даёт ERROR. */
+uint8_t comm_modem_side_result(const comm_side_t *req);
 /* Совместимость принятых слоёв; реализация общая, дополнительных функций нет. */
 #define modem_slm336_transport comm_modem_transport
 #define modem_slm336_command comm_modem_request

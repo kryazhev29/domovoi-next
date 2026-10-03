@@ -53,4 +53,9 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   1000, /* COMM_T_CALL_NUMBER */
   5000, /* COMM_T_CALL_HANGUP */
   8000, /* COMM_T_CALL_QUIET */
+  /* SMS: чтение/стирание/настройка на SIM до 5 с; отправка в сеть до 60 с
+     (27.005 допускает дольше, но канал AT стоит); отказ настройки - снова через 30 с. */
+  5000, /* COMM_T_SMS */
+  60000, /* COMM_T_SMS_SEND */
+  30000, /* COMM_T_SMS_RETRY */
 };

@@ -52,7 +52,7 @@ static void call_tests(void)
   for (unsigned i=0;ch.tx_state!=TX_PROMPT && i<100;++i) transport_tick(10);
   CHECK(ch.tx_state==TX_PROMPT);
   ring("+CLIP: \"+79161112233\",145\r\n"); advance(50);
-  CHECK(calls==1 && !chups && slm.side.cmd); /* сброс ждёт ответа на QISEND */
+  CHECK(calls==1 && !chups && slm.side.queued); /* сброс ждёт ответа на QISEND */
   sim_feed("> "); advance(500); CHECK(chups==1 && sent_count==12 && !comm_tx_busy());
   /* Вызов виден как занятость (ночной перезапуск модема ждёт его конца). */
   call_reset(); CHECK(!user_comm_busy_model()); ring(NULL); advance(20); CHECK(comm_call_active());

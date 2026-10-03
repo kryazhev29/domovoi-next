@@ -9,6 +9,9 @@ static uint32_t started, timeout, recovery;
 static uint16_t remaining, read_limit, modem_code;
 static uint8_t command_count, line_count;
 static uint8_t state, mode, grammar, result, in_poll, cr, prompt_space, header, sync_seen;
+/* PDU: строка после заголовка ответа - тело SMS (hex), без разбора и кусками;
+   1 - ждём тело, 2 - отдан кусок. */
+static uint8_t pdu_body;
 enum { IDLE, RUN, COMPLETE, DRAIN, SYNC_SEND, SYNC_WAIT, SYNC_COMPLETE, FAULT };
 enum { LINES, M66_HEADER, BODY, BODY_CR, BODY_LF };
 
@@ -62,7 +65,7 @@ static void parser_reset(void)
 {
   line_count = remaining = 0;
   grammar = LINES;
-  cr = prompt_space = header = 0;
+  cr = prompt_space = header = pdu_body = 0;
 }
 
 static void fault(uint8_t reason)
@@ -143,7 +146,7 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
   uint8_t trailing_space = prompt_space;
   if (!available()) return COMM_AT_BUSY;
   if (!request || !request->command || request->count < 2u
-      || request->count >= sizeof(command) || request->mode > COMM_AT_M66_QIRD
+      || request->count >= sizeof(command) || request->mode == COMM_AT_SEND || request->mode > COMM_AT_PDU
       || !request->timeout_ms || request->timeout_ms > INT32_MAX
       || !recovery || recovery > INT32_MAX) return COMM_AT_INVALID;
   if (request->command[0] != 'A' || request->command[1] != 'T') return COMM_AT_INVALID;
@@ -220,13 +223,14 @@ static void binary_header(void)
   grammar = n ? BODY : LINES;
 }
 
-uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint32_t timeout_ms, uint32_t now_ms)
+uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint8_t finals, uint32_t timeout_ms, uint32_t now_ms)
 {
   if (!available()) return COMM_AT_BUSY;
-  if (!data || !count || !timeout_ms || timeout_ms > INT32_MAX || result != COMM_AT_GOT_PROMPT)
+  if (!data || !count || !timeout_ms || timeout_ms > INT32_MAX || result != COMM_AT_GOT_PROMPT
+      || (finals != COMM_AT_SEND && finals != COMM_AT_TEXT))
     return COMM_AT_INVALID;
   if (!comm_uart_tx(data, count)) return COMM_AT_BUSY;
-  run(COMM_AT_SEND, timeout_ms, now_ms); prompt_space = 1; command_count = 0;
+  run(finals, timeout_ms, now_ms); prompt_space = 1; command_count = 0;
   return COMM_AT_ACCEPTED;
 }
 
@@ -236,7 +240,8 @@ static bool final(uint8_t *code)
   uint8_t matched = comm_at_choice(line, line_count, state == RUN && mode == COMM_AT_SEND
     ? "SEND OK\0SEND FAIL\0ERROR\0" : "OK\0ERROR\0");
   if (matched) { *code = matched == 1 ? COMM_AT_OK : COMM_AT_ERROR; return true; }
-  if (!comm_at_prefix(line, line_count, "+CME ERROR:")) return false;
+  /* +CMS ERROR - отказ команд SMS (27.005 §3.2.5), тот же разбор кода. */
+  if (!comm_at_prefix(line, line_count, "+CME ERROR:") && !comm_at_prefix(line, line_count, "+CMS ERROR:")) return false;
   pos = comm_at_spaces(line, line_count, sizeof("+CME ERROR:") - 1u);
   uint8_t letter = pos < line_count ? line[pos] | 32u : 0;
   if (letter >= 'a' && letter <= 'z') {
@@ -257,9 +262,11 @@ static bool final(uint8_t *code)
 static void complete_line(void)
 {
   uint8_t code;
-  if (!line_count) return;
+  /* Тело кончилось ровно на границе куска: пустой последний кусок. */
+  if (!line_count) { if (pdu_body == 2) { pdu_body = 0; event(COMM_AT_LINE, line, 0, 0); } return; }
   if ((state == RUN || state == SYNC_WAIT) && line_count + 1u == command_count
       && !memcmp(line, command, line_count)) return; /* Эхо до ATE0. */
+  if (pdu_body) { pdu_body = 0; event(COMM_AT_LINE, line, line_count, 0); return; }
   if (comm_at_prefix(line, line_count, "+QIRD:")
       && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
           || (mode != COMM_AT_SLM_QIRD && mode != COMM_AT_M66_QIRD))) {
@@ -289,7 +296,10 @@ static void complete_line(void)
     sync_seen = comm_at_number(line, line_count, &pos, 2, &value) && pos == line_count;
   }
   if (urc()) event(COMM_AT_URC, line, line_count, 0);
-  else if (state == RUN) event(COMM_AT_LINE, line, line_count, 0);
+  else if (state == RUN) {
+    event(COMM_AT_LINE, line, line_count, 0);
+    if (mode == COMM_AT_PDU && solicited()) pdu_body = 1; /* +CMGR:/+CMGL: - дальше тело */
+  }
 }
 
 static void byte(uint8_t value)
@@ -316,7 +326,10 @@ static void byte(uint8_t value)
     return;
   }
   if (!value || cr) { fault(COMM_AT_BAD_FRAME); return; }
-  if (line_count >= sizeof(line)) { fault(COMM_AT_LINE_OVERFLOW); return; }
+  if (line_count >= sizeof(line)) {
+    if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }
+    event(COMM_AT_LINE, line, line_count, 1); line_count = 0; pdu_body = 2; /* кусок, дальше продолжение */
+  }
   line[line_count++] = value;
 }
 

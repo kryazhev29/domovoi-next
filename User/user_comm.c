@@ -8,6 +8,7 @@
 #include "../Modules/comm_recover.h"
 #include "../Modules/comm_info.h"
 #include "../Modules/comm_call.h"
+#include "../Modules/comm_sms.h"
 void server_rx_process(void);
 static void user_comm_registration(void) { user_send_registrationData(CH_SERVER); }
 static void user_comm_status(void) { user_send_statusPack(CH_SERVER); }
@@ -43,15 +44,11 @@ bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handl
   comm_server_no_internet(comm_recover_no_internet);
   comm_recover_init(&hooks, now_ms);
   comm_call_init(user_comm_call);
+  comm_sms_init(user_smsreceived);
   return true;
 }
-/* Отправка SMS через новую связь - этап 6 (общий доступ к AT с каналом). До него
-   SMS не уходит, и событие отправки не пишется. */
-bool user_comm_sms(const char *number, const char *text)
-{
-  (void)number; (void)text;
-  return false;
-}
+/* Одна SMS в очереди: занято или неверный номер - false, событие отправки не пишется. */
+bool user_comm_sms(const char *number, const char *text) { return comm_sms_send(number, text); }
 void user_comm_poll(uint32_t now_ms)
 {
   comm_channel_rx_capacity(user_comm_rx_capacity());
@@ -59,4 +56,5 @@ void user_comm_poll(uint32_t now_ms)
   comm_recover_poll(now_ms);
   comm_info_poll(now_ms);
   comm_call_poll(now_ms);
+  comm_sms_poll(now_ms);
 }
