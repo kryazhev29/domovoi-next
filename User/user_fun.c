@@ -11,6 +11,7 @@
 #include "../Modules/comm_info.h"
 #include "../Modules/comm_uart.h"
 #include "../Modules/comm_modem.h"
+#include "../Modules/comm_call.h"
 #include "idindex.h"
 #include "usb_istr.h"
 #include "../Bootloader/app_update.h"
@@ -658,8 +659,9 @@ bool user_incomingcall (char* num, uint8_t typ)
   
   if (typ == CT_PHONE){
     
-    // номер звонящего
-    strcpy(device.callingnumber, num);    
+    // номер звонящего: длиннее поля не пишем
+    strncpy(device.callingnumber, num, sizeof(device.callingnumber) - 1u);
+    device.callingnumber[sizeof(device.callingnumber) - 1u] = 0;
   }  
 
   // 10 цифр номера
@@ -4748,7 +4750,8 @@ static void user_send_commDiag(uint8_t uniqId)
 uint32_t user_comm_local_time(void)
 { return device.datetime >= ID_TIME_VALID ? device.datetime : UINT32_MAX; }
 /* Ночной перезапуск модема не рвёт обновление прошивки. */
-bool user_comm_busy(void) { return device.FWinProgress != 0; }
+/* Ночной перезапуск модема ждёт конца загрузки FW и вызова. */
+bool user_comm_busy(void) { return device.FWinProgress != 0 || comm_call_active(); }
 
 /* Адрес сервера в настройках - "домен:порт" (как у старой связи). */
 static char comm_host[2][32];

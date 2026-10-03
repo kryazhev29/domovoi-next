@@ -23,9 +23,12 @@ static unsigned ping_reply_kind, read_error, long_lines;
 static uint32_t open_times[64];
 static uint8_t open_addresses[64];
 static uint32_t timers_getMillis(void) { return sim_now; }
+/* Звонок: сколько раз сброшен, ответ модема на сброс, последняя команда перед данными. */
+static unsigned chups, chup_silence; static char last_command[32];
 static void photo_connection_lost(void) {}
 static bool log_addSystemEvent(unsigned e) { CHECK(e == LOG_SYS_CONNECT1); return true; }
 static void user_parse_comand(uint8_t *p, unsigned channel);
+static void call_caller(const char *number);
 /* CRC */
 /* RX */
 
@@ -110,6 +113,8 @@ static void transport_tx(void)
 {
   if (!(regs.CR1 & USART_CR1_TXEIE)) return;
   if (tx_data == frame) {
+    /* После '>' - только данные: служебная команда не встаёт между QISEND и кадром. */
+    CHECK(!strncmp(last_command,"AT+QISEND=0,",12) && strcmp(last_command,"AT+QISEND=0,0"));
     CHECK(tx_count <= sizeof(sent_frame)); sent_count=tx_count; memcpy(sent_frame,tx_data,tx_count);
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
@@ -126,6 +131,13 @@ static void transport_tx(void)
   }
   CHECK(tx_data==command);
   char cmd[128]; CHECK(tx_count<=sizeof(cmd)); memcpy(cmd,command,tx_count); cmd[tx_count-1u]=0;
+  snprintf(last_command,sizeof(last_command),"%s",cmd);
+  if (!strcmp(cmd,"AT+CHUP")) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC); ++chups;
+    if (!chup_silence) sim_reply("OK\r\n",40);
+    return;
+  }
   if (!strncmp(cmd,"AT+QISEND=",10) || !strcmp(cmd,"AT+QICLOSE=0") || !strncmp(cmd,"AT+QPING=",9)
       || !strncmp(cmd,"AT+QIDNSGIP=",12) || !strncmp(cmd,"AT+QIRD=",8) || !strncmp(cmd,"AT+QIOPEN=",10) || !strcmp(cmd,"AT+QISTATE=0,1")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
@@ -173,7 +185,7 @@ static void transport_tick(unsigned increment)
   if (ping_reply_kind && (int32_t)(sim_now-ping_reply_due)>=0) {
     sim_feed(ping_reply_kind==3 ? "+QPING: 0,2,1,1,30,30,30\r\n" : ping_reply_kind==1 ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n+QPING: 0,2,1,1,30,30,30\r\n" : "+QPING: 0,2,0,2,0,0,0\r\n"); ping_reply_kind=0;
   }
-  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); transport_tx(); sim_now+=increment;
+  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); transport_tx(); sim_now+=increment;
 }
 static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<ms) transport_tick(10); }
 static void server_reset(void)
@@ -189,6 +201,7 @@ static void server_reset(void)
   device.status=0x1234; device.freeBufferSize=2048; device.answerID=0; incoming_count=sent_count=0;
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
+  chups=chup_silence=0; last_command[0]=0; comm_call_init(call_caller);
   /* Выход к TCP — принятой моделью этапа 3. */
   comm_server_init(&test_server_handlers);
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
@@ -334,5 +347,6 @@ static void garbage_test(void)
   printf("comm_server garbage: 24 model hours, %u payloads, %u ring overflows, %u long lines, entire NOR unchanged PASS\n",fragments,overflows,long_lines);
 }
 /* RECOVER */
+/* CALL */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); garbage_test(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); garbage_test(); recover_tests(); return 0; }

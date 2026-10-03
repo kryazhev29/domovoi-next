@@ -3,8 +3,8 @@ from pathlib import Path
 import argparse, os, subprocess, tempfile
 from comm_slm_host import unit as slm_unit, memory, ROOT, ZIG, HEADERS, MODULES
 
-NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c')
-NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h', 'Modules/comm_info.h')
+NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c', 'Modules/comm_call.c')
+NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h', 'Modules/comm_info.h', 'Modules/comm_call.h')
 
 def source(name):
     return (ROOT / name).read_bytes().decode('cp1251')
@@ -35,7 +35,7 @@ def unit():
                        .replace('comm_tx_commit(', 'legacy_commit(').replace('user_comm_free(', 'legacy_free(') for n in producers)
     current = '\n'.join(function(user, n) for n in producers)
     producer_code = helpers + legacy + '\n' + current
-    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('User/crc.c'), 'crc16_calc')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c'))
+    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('User/crc.c'), 'crc16_calc')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c')).replace('/* CALL */', source('Tests/test_comm_call.c'))
 
 def arm(out):
     names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'User/user_comm.c')
@@ -44,9 +44,9 @@ def arm(out):
         tmp = Path(tmp)
         for name in names:
             (tmp / Path(name).name).write_text(source(name).replace('\r\n','\n').replace('../Modules/',''), encoding='utf-8')
-        (tmp/'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void*,const void*,size_t);\nvoid *memset(void*,int,size_t);\nint memcmp(const void*,const void*,size_t);\nsize_t strlen(const char*);\n', encoding='ascii')
+        (tmp/'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void*,const void*,size_t);\nvoid *memset(void*,int,size_t);\nint memcmp(const void*,const void*,size_t);\nsize_t strlen(const char*);\nint strcmp(const char*,const char*);\nchar *strncpy(char*,const char*,size_t);\n', encoding='ascii')
         (tmp/'stdio.h').write_text('#include <stddef.h>\nint snprintf(char*,size_t,const char*,...);\n', encoding='ascii')
-        (tmp/'user_fun.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#define CH_SERVER 1\ntypedef uint8_t logSystem_e;\nvoid user_send_registrationData(unsigned);\nvoid user_send_statusPack(unsigned);\nbool log_addSystemEvent(logSystem_e);\nuint32_t user_comm_local_time(void);\nbool user_comm_busy(void);\n',encoding='ascii')
+        (tmp/'user_fun.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#define CH_SERVER 1\ntypedef uint8_t logSystem_e;\nvoid user_send_registrationData(unsigned);\nvoid user_send_statusPack(unsigned);\nbool log_addSystemEvent(logSystem_e);\nuint32_t user_comm_local_time(void);\nbool user_comm_busy(void);\n#define CT_PHONE 1\nbool user_incomingcall(char*,uint8_t);\n',encoding='ascii')
         for name in (*MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.c'):
             stem = Path(name).stem; obj = out/(stem+'.o')
             subprocess.run([ZIG,'cc','-target','thumb-freestanding-eabi','-mcpu=cortex_m3','-mthumb','-Oz','-std=c99','-Wall','-Wextra','-Werror','-fstack-usage','-I'+str(tmp),'-c',str(tmp/(stem+'.c')),'-o',str(obj)],check=True)

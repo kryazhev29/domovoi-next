@@ -67,6 +67,13 @@ void comm_modem_record(uint8_t step, uint8_t reason, uint16_t code);
 const slm_diag_t *comm_modem_diag(void);
 const slm_status_t *comm_modem_status(void);
 void comm_modem_off(void);
+/* URC (RING, +CLIP, SMS) - слушателю при любом состоянии AT; AT из него нельзя. */
+void comm_modem_listen(void (*urc)(const uint8_t *, uint16_t));
+/* Служебная команда вне очереди канала (сброс вызова, SMS); cmd - постоянная строка.
+   Одна в работе; строки ответа - line. false - занято или модем ещё не настроен. */
+bool comm_modem_side(const char *cmd, void (*line)(const uint8_t *, uint16_t), uint8_t timeout_id);
+/* UINT8_MAX - ещё в работе; результат AT отдаётся один раз, перезапуск даёт ERROR. */
+uint8_t comm_modem_side_result(void);
 /* Совместимость принятых слоёв; реализация общая, дополнительных функций нет. */
 #define modem_slm336_transport comm_modem_transport
 #define modem_slm336_command comm_modem_request

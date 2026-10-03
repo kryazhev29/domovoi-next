@@ -63,4 +63,6 @@ void comm_at_sink(uint16_t (*binary)(const uint8_t *, uint16_t));
 bool comm_at_field(const char *text, size_t capacity, bool host);
 /* После ошибки границ/потери тела остаётся занят до init нового сеанса. */
 bool comm_at_busy(void);
+/* После приглашения '>' модем ждёт данные: посторонняя команда стала бы их частью. */
+bool comm_at_prompt(void);
 #endif

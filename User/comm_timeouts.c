@@ -48,4 +48,9 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   600000, /* COMM_T_EARLY_AT */
   3600000, /* COMM_T_EARLY_TCP */
   86400000, /* COMM_T_DAY */
+  /* Звонок без ответа: номер после RING до 1 с; сброс AT+CHUP до 5 с;
+     вызов окончен, если 8 с нет RING/CLIP (RING идёт раз в ~5 с). */
+  1000, /* COMM_T_CALL_NUMBER */
+  5000, /* COMM_T_CALL_HANGUP */
+  8000, /* COMM_T_CALL_QUIET */
 };

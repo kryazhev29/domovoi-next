@@ -60,6 +60,11 @@ def run():
         ('modem', 'ignore-manual-APN', 'if (slm_text(SLM_CFG_APN)[0]) return slm_text(SLM_CFG_APN);', 'if (slm_text(SLM_CFG_APN)[0]) return "";'),
         ('channel', 'grow-final-TCP-time', 'if (slm.attempt.recording) {', 'if (slm.attempt.status.state != SLM_IDLE) {'),
         ('channel', 'TCP-time-overwritten-by-read', 'slm.attempt.recording = next < SLM_STEP_COUNT;', 'slm.attempt.recording = 1;'),
+        # Этап 6, звонок без ответа.
+        ('channel', 'call-command-after-prompt', 'comm_at_busy() || comm_at_prompt()) return;', 'comm_at_busy()) return;'),
+        ('channel', 'call-second-open', 'call.state != CALL_NUMBER && (call.state <= CALL_WAIT_NUMBER || strcmp(number, call.number))', 'call.state != CALL_NUMBER'),
+        ('channel', 'call-hidden-number-not-hung-up', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_HANGUP;', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_DONE;'),
+        ('channel', 'call-side-kept-after-restart', '  memset(&slm.attempt, 0, sizeof(slm.attempt));\n  slm_side_cancel();', '  memset(&slm.attempt, 0, sizeof(slm.attempt));'),
     )
     for group, label, old, new in cases:
         text = sources[group]

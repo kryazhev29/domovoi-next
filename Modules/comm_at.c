@@ -100,7 +100,7 @@ void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
   memset(&handlers, 0, sizeof(handlers));
   if (callbacks) handlers = *callbacks;
   state = IDLE;
-  command_count = read_limit = modem_code = 0;
+  command_count = read_limit = modem_code = result = 0;
   recovery = recovery_ms;
   sync_seen = 0;
   parser_reset();
@@ -125,6 +125,7 @@ bool comm_at_busy(void)
 {
   return state != IDLE || in_poll;
 }
+bool comm_at_prompt(void) { return state == IDLE && result == COMM_AT_GOT_PROMPT; }
 
 static bool available(void)
 {

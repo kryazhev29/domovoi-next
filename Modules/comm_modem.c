@@ -18,6 +18,9 @@ static struct {
   void (*imei_found)(const char *);
   comm_power_gpio_t gpio;
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
+  void (*urc)(const uint8_t *, uint16_t);
+  /* Служебная команда вне очереди канала: cmd ждёт AT, running - в работе. */
+  struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); uint8_t timeout, running, done, result; } side;
   slm_diag_t diag;
 } slm;
 typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 128u) ? 1 : -1];
@@ -81,6 +84,15 @@ static void slm_fail(uint8_t reason)
 
 static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
+  if (kind == COMM_AT_URC && slm.urc) slm.urc(p, n);
+  if (slm.side.running) {
+    if (kind == COMM_AT_LINE) { if (slm.side.line) slm.side.line(p, n); return; }
+    if (kind == COMM_AT_DONE) {
+      slm.side.running = 0; slm.side.done = 1; slm.side.result = (uint8_t)detail;
+      if (detail <= COMM_AT_TIMEOUT) return;
+      kind = COMM_AT_STREAM_ERROR; /* поток потерян - как у любой команды */
+    }
+  }
   if (kind == COMM_AT_DONE) {
     slm.attempt.done = 1; slm.attempt.result = (uint8_t)detail;
     slm.attempt.status.modem_code = n;
@@ -179,6 +191,12 @@ static bool slm_valid_settings(void)
   }
   return true;
 }
+/* Перезапуск или выключение снимает служебную команду: владелец получает ERROR. */
+static void slm_side_cancel(void)
+{
+  if (slm.side.cmd || slm.side.running) { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
+  slm.side.cmd = NULL; slm.side.running = 0;
+}
 /* Новая попытка: обнуляется всё, кроме кольца последних десяти сбоев. */
 static void slm_begin(bool power, uint32_t now_ms)
 {
@@ -186,6 +204,7 @@ static void slm_begin(bool power, uint32_t now_ms)
   memset(slm.diag.steps, 0, sizeof(slm.diag.steps));
   memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
   memset(&slm.attempt, 0, sizeof(slm.attempt));
+  slm_side_cancel();
   slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
   slm.attempt.status.state = SLM_STARTING; slm.attempt.recording = 1;
   comm_uart_abort();
@@ -230,9 +249,41 @@ void comm_modem_off(void)
 {
   if (slm.attempt.in_poll) return;
   comm_uart_abort(); comm_power_v5_off(); slm.attempt.status.state = SLM_IDLE;
+  slm_side_cancel();
 }
 void comm_modem_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t))
 { slm.transport_event = event; }
+void comm_modem_listen(void (*urc)(const uint8_t *, uint16_t)) { slm.urc = urc; }
+/* Модем принимает служебную команду после настройки порта (эхо выключено). */
+static bool slm_side_allowed(void)
+{
+  return slm.attempt.status.state == SLM_READY
+    || (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
+}
+bool comm_modem_side(const char *cmd, void (*line)(const uint8_t *, uint16_t), uint8_t timeout_id)
+{
+  if (!cmd || slm.side.cmd || slm.side.running || timeout_id >= COMM_T_COUNT || !slm_side_allowed()) return false;
+  slm.side.cmd = cmd; slm.side.line = line; slm.side.timeout = timeout_id; slm.side.done = 0;
+  return true;
+}
+uint8_t comm_modem_side_result(void)
+{
+  if (!slm.side.done) return UINT8_MAX;
+  slm.side.done = 0; return slm.side.result;
+}
+/* Вне очереди: между командами канала и шагами запуска, но не после '>'. */
+static void slm_side_issue(void)
+{
+  if (!slm.side.cmd || comm_at_busy() || comm_at_prompt()) return;
+  if (!slm_side_allowed()) { slm_side_cancel(); return; }
+  comm_at_request_t req = {(const uint8_t *)slm.side.cmd, (uint16_t)strlen(slm.side.cmd), COMM_AT_TEXT,
+    comm_timeouts[slm.side.timeout]};
+  uint8_t r = comm_at_start(&req, slm.attempt.now);
+  if (r == COMM_AT_BUSY) return;
+  slm.side.cmd = NULL;
+  if (r == COMM_AT_ACCEPTED) slm.side.running = 1;
+  else { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
+}
 bool comm_modem_busy(void) { return comm_at_busy(); }
 
 
@@ -379,6 +430,7 @@ void comm_modem_poll(uint32_t now_ms)
     goto end;
   }
   comm_at_poll(now_ms); /* После ошибки шага завершаем ресинхронизацию. */
+  slm_side_issue();
   if (slm.attempt.status.state != SLM_STARTING) goto end;
   comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
   if (slm.attempt.done) slm_completed();
