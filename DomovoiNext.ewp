@@ -960,7 +960,7 @@
                 </option>
                 <option>
                     <name>IlinkStackCallGraphFile</name>
-                    <state></state>
+                    <state>$PROJ_DIR$\Release\List\calls.xml</state>
                 </option>
                 <option>
                     <name>CrcAlgorithm</name>
@@ -2052,7 +2052,7 @@
                 </option>
                 <option>
                     <name>IlinkStackCallGraphFile</name>
-                    <state></state>
+                    <state>$PROJ_DIR$\Release\List\calls.xml</state>
                 </option>
                 <option>
                     <name>CrcAlgorithm</name>
