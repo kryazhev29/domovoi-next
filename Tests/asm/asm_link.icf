@@ -1,0 +1,6 @@
+define memory mem with size = 4G;
+define region ROM = mem:[from 0x08000000 to 0x0801FFFF];
+define region RAM = mem:[from 0x20000000 to 0x20004FFF];
+do not initialize { readwrite, zeroinit };
+place in ROM { readonly };
+place in RAM { readwrite, zeroinit };

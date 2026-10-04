@@ -2,6 +2,8 @@
 
 #include "crc.h"
 
+/* ASM_CRC: Cortex-M3 kernels; C stays the host/boot reference. */
+#ifndef ASM_CRC
 /*расчет контрольной суммы табличным способом*/
 //#define CRC_TABLE_CALC  1    
 
@@ -85,6 +87,8 @@ unsigned short crc16_calcInit(unsigned char* buf, unsigned short size, unsigned 
   #endif
   return crc;
 }
+
+#endif /* !ASM_CRC */
 
 /* Столбцы m - линейное отображение 16 бит над GF(2); результат m*x. */
 static unsigned short gf2_apply(const unsigned short *m, unsigned short x)

@@ -4709,6 +4709,7 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
     return true;
 }
 
+#ifndef ASM_CRC
 uint32_t CRC32(uint32_t crc, uint32_t data){
   crc = crc ^ data;
   for (uint8_t i = 0; i < 32; i++){
@@ -4719,6 +4720,7 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
   }
   return crc;
 }
+#endif /* !ASM_CRC */
 
 /* Команда 111, раскладка версии 4: 57 значений uint32, младшим байтом вперёд.
  *  0 версия, 1 время работы с, 2 миллисекунды,

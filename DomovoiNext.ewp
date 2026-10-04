@@ -227,6 +227,7 @@
                 <debug>1</debug>
                 <option>
                     <name>CCDefines</name>
+                    <state>ASM_CRC</state>
                     <state>STM32F10X_MD</state>
                     <state>USE_STDPERIPH_DRIVER</state>
                 </option>
@@ -1319,6 +1320,7 @@
                 <debug>0</debug>
                 <option>
                     <name>CCDefines</name>
+                    <state>ASM_CRC</state>
                     <state>STM32F10X_MD</state>
                     <state>USE_STDPERIPH_DRIVER</state>
                 </option>
@@ -2351,6 +2353,9 @@
         </file>
         <file>
             <name>$PROJ_DIR$\User\crc.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\asm\crc_asm.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\flash_w25.c</name>
