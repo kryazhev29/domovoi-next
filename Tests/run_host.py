@@ -390,6 +390,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         if '/* >>> Сборка таблиц страницами:' in user:helper+='\n'+user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]
         crcsrc=source('User/crc.c')
         if 'static uint16_t id_crc16(' in user:helper=chr(10).join(function(crcsrc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])+chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'id_crc16')+chr(10)+helper
+        if '/* >>> Праздники целиком' in user:helper+='\n'+user[user.index('/* >>> Праздники целиком'):user.index('/* <<< Праздники целиком */')]
         code=helper+'\n'+sync_end(user)+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
         types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e','logSystem_e')
         unit=(ROOT/'Tests/test_sync.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)

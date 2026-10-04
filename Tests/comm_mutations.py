@@ -117,6 +117,8 @@ def run():
 def user_mutations(out):
     """Пользовательская часть (SMS-команды, журнал): поломка user_fun.c в копии исходников, своя группа run_host."""
     cases = (
+        ('holiday-date-as-index', 'if (!holiday_write(&ptr[10], ptr[9]))', 'if (ptr[10] == 0 || !holiday_write(&ptr[10], ptr[9]))', 'sync'),
+        ('holiday-tail-kept', 'h->dates[off + i] : 0xFFu', 'h->dates[off + i] : page[i]', 'sync'),
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
         ('sms-reply-lowercase', "*c = (char)(*c - 'a' + 'A');", '*c = (char)(*c + 0);'),
         ('sms-setout-bad-number-silent', 'выхода с таким номером нет\n            strcat(v, ": Error \\"Format not correct\\"");', 'выхода с таким номером нет\n            strcat(v, "");'),

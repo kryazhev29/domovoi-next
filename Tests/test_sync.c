@@ -52,7 +52,24 @@ static void sync_end_tests(void){uint8_t p[2048];
  reset();memset(flash,255,sizeof(flash));packet(p,13,1,1,0);command(p,8+cell_size(13),CH_SERVER,42);sync_refuse=1;
  ticks(30);CHECK(!sync_events[6]);ticks(1);CHECK(sync_events[6]==1);ticks(60);CHECK(sync_events[6]==1);
  puts("sync end: events 6-10 once after 30 s quiet, failed packet ignored, busy journal retried passed");}
-int main(int argc,char **argv){uint8_t p[2048];unsigned c,mode,first,last_cmd;CHECK(argc<=3);mode=argc>1?(unsigned)atoi(argv[1]):0;first=argc==3?(unsigned)atoi(argv[2]):13;last_cmd=argc==3?first:16;
+/* Holidays: a list of dates without cell numbers, replaced as a whole (Protocol2 rows 359-362). */
+static void holiday_tests(void){uint8_t p[2048];uint32_t d[3]={1767225600u,1767312000u,1778198400u},s=mem[MB_HOLIDAY].start;unsigned i,f;
+ memset(p,0,sizeof(p));p[4]=16;{uint32_t t=1234;memcpy(p+5,&t,4);}p[9]=3;memcpy(p+10,d,12);
+ /* 1 Jan 00:00 has a zero low byte: it used to be taken as cell number 0 and refused. */
+ reset();command(p,8+12,CH_SERVER,42);CHECK(!answers&&stamps==1&&device.datetimeHoliday==1234&&!memcmp(flash+s,d,12));
+ for(i=12;i<1024;i++)CHECK(flash[s+i]==0xff);
+ CHECK(!memcmp(flash+s+1024,before+s+1024,4096-1024));
+ /* A shorter list replaces the longer one. */
+ p[9]=1;command(p,8+4,CH_SERVER,42);CHECK(stamps==2&&!memcmp(flash+s,d,4)&&flash[s+4]==0xff&&flash[s+8]==0xff);
+ /* Wrong length or no dates: 1, nothing written. */
+ reset();p[9]=2;command(p,8+4,CH_SERVER,42);CHECK(answers==1&&answer==CMD_PARAMERROR&&!writes&&!erases);
+ reset();p[9]=0;command(p,8,CH_SERVER,42);CHECK(answers==1&&answer==CMD_PARAMERROR&&!writes);
+ /* Storage not ready, read/erase/write failure: 2, timestamp unchanged. */
+ reset();p[9]=1;table_storage_ready=false;command(p,12,CH_SERVER,42);CHECK(answers==1&&answer==CMD_RUNERROR&&!writes);table_storage_ready=true;
+ for(f=0;f<3;f++){reset();fail_read=f==0;fail_erase=f==1;fail_write=f==2;command(p,12,CH_SERVER,42);
+  CHECK(answers==1&&answer==CMD_RUNERROR&&!stamps&&!device.datetimeHoliday);}
+ puts("holidays: dates in order from cell 1, zero low byte accepted, list replaced as a whole, errors keep the timestamp passed");}
+int main(int argc,char **argv){uint8_t p[2048];unsigned c,mode,first,last_cmd;CHECK(argc<=3);mode=argc>1?(unsigned)atoi(argv[1]):0;first=argc==3?(unsigned)atoi(argv[2]):13;last_cmd=argc==3?first:15;
  (void)test_malloc;(void)wdt_reload;(void)diag_heap_fail;
  mem[MB_ID]=(cellMem_s){4096,8192};mem[MB_SHEDULE]=(cellMem_s){12288,2048};mem[MB_GROUP]=(cellMem_s){16384,2048};mem[MB_HOLIDAY]=(cellMem_s){20480,1024};
  for(c=first;c<=last_cmd;c++){unsigned z=cell_size(c),last=mem[block(c)].size/z;
@@ -79,5 +96,5 @@ int main(int argc,char **argv){uint8_t p[2048];unsigned c,mode,first,last_cmd;CH
  packet(p,13,2,4,4);command(p,72,CH_SERVER,42);CHECK(device.numbersCount==10&&!rescans&&id_cells_end==5);
  packet(p,13,1,2,0);command(p,40,CH_SERVER,42);CHECK(device.numbersCount==11&&id_cells_end==5);
  fail_write=1;packet(p,13,1,9,0);command(p,40,CH_SERVER,42);CHECK(rescans==1&&answer==CMD_RUNERROR);
- if(argc==1)sync_end_tests();
+ if(argc==1){sync_end_tests();holiday_tests();}
  puts("sync: invalid second cell, bounds, allocation failure and valid writes, ID count without rescan passed");return 0;}

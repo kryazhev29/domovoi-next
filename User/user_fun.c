@@ -2825,6 +2825,23 @@ static bool sync_write_cells(const uint8_t *records, uint16_t count, memBlock_e 
 }
 /* <<< Сборка таблиц страницами */
 
+/* >>> Праздники целиком: даты подряд с первой ячейки, остаток списка - 0xFF. */
+typedef struct { const uint8_t *dates; uint16_t bytes; } holiday_pages_s;
+static uint8_t holiday_page(const void *context, uint16_t off, uint8_t *page)
+{
+  const holiday_pages_s *h = context;
+  if (!mem_read(mem[MB_HOLIDAY].start + off, page, 256)) return 0;
+  for (uint16_t i = 0; i < 256u && off + i < mem[MB_HOLIDAY].size; i++)
+    page[i] = off + i < h->bytes ? h->dates[off + i] : 0xFFu;
+  return 1;
+}
+static bool holiday_write(const uint8_t *dates, uint8_t count)
+{
+  holiday_pages_s h = {dates, (uint16_t)(count * sizeof(cellHoliday_s))};
+  return mem_replace_pages(mem[MB_HOLIDAY].start, holiday_page, &h);
+}
+/* <<< Праздники целиком */
+
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
   uint16_t len, crc, i;
@@ -3233,7 +3250,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       
     case 16: // синхро. праздников
       {
-        if (!sync_cells_valid(ptr, len, MB_HOLIDAY, sizeof(cellHoliday_s))){
+        /* Праздники - список дат без номера ячейки (Протокол2, строки 359-362), синхронизируются
+           целиком. Раньше номером ячейки считался младший байт даты: полночь отвергалась. */
+        if (len < 8 || ptr[9] == 0 || (uint32_t)(len - 8) != (uint32_t)ptr[9] * sizeof(cellHoliday_s)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
@@ -3242,7 +3261,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         break;
       }
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        if (!sync_write_cells(&ptr[10], ptr[9], MB_HOLIDAY, sizeof(cellHoliday_s))) {
+        if (!holiday_write(&ptr[10], ptr[9])) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
         }
