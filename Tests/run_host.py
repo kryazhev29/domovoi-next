@@ -133,6 +133,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'fw_idle' not in user and '15000' not in loop,'old limits'
         assert 'updateTimeout' not in function(user,'fw_take_block'),'a block must not touch the limit'
         saved=function(user,'user_readsavedinformation')
+        assert 'fw_rollback_poll();' in loop,'deferred firmware work is polled'
+        assert 'device.FWblockIdx = DV.FWblockIdx;' in saved,'resume uses saved progress'
         assert 'device.FWinProgress = DV.FWinProgress;' in saved and 'device.updateTimeout = DV.updateTimeout;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
         reset=function(user,'user_factoryReset')
         assert reset.index('device.FWinProgress = 0;')<reset.index('user_setdefault();'),'factory reset cancels a download'
@@ -275,6 +277,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         # Events 6-10: settings count as a sync packet once saved; the quiet timer ticks every second.
         c12=case(12);assert c12.index('sync_packet(SYNC_CONFIG);')>c12.index('if (!saved) {'),'event 7 after saved settings'
         assert 'sync_end_tick();' in loop,'sync end ticks in the main loop'
+        # Block request (13): the retry clock starts only when the request left; a busy slot retries in 50 ms, not 20 s.
+        assert 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx))' in loop,'block request not lost'
         # Update events of the journal sheet (system 1-5 struck out): 132 start, 133 failure with its
         # reason code, 134 time limit, 135 just before the install restart, 136 trial confirmed, 137 rollback.
         rest=user

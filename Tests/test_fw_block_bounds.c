@@ -23,6 +23,8 @@ static void fw_abort(const char *why) { (void)why;aborts++;device.startWaitFWtim
 static void fw_log(logUpdate_e event,const char *why) { CHECK(event==LOG_FW_FAIL && !strcmp(why,"HW"));logs++; }
 static bool mem_write(uint32_t address,uint8_t *p,uint16_t n)
 { CHECK(n==1024 && p==input+2 && address==FWBLOCK_OFFSET+(uint32_t)device.FWblockIdx*1024);writes++; return true; }
+static unsigned erases;static uint32_t erased[8];static int erase_fail;
+static bool mem_erase_sector(uint32_t a) { CHECK(a%4096u==0);if(erase_fail)return false;if(erases<8)erased[erases]=a;erases++;return true; }
 static bool fw_block_written(uint32_t address,const uint8_t *p) { (void)address;CHECK(p==input+2);return written!=0; }
 static bool mem_read(uint32_t address,uint8_t *p,uint16_t n) { CHECK(address==0 && n==sizeof(bootFWparam_s));memset(p,0,n);reads++; return true; }
 static bool user_checkFirmware(uint32_t address,uint32_t n,uint32_t crc) { CHECK(address==FWBLOCK_OFFSET && !n && !crc);return true; }
@@ -77,9 +79,20 @@ static void test_command(void)
     }
     puts("fwblockbounds command20: DEBUG_USER respects payload boundaries; one unchanged command4 response passed");
 }
+/* A sector is erased right before the first block written into it: blocks 3 and 7 cross 0x1000 and 0x2000. */
+static void test_lazy_erase(void)
+{
+    uint8_t p[1026]={0};input=p;input_size=sizeof(p);
+    init();device.FWblockIdx=0;device.FWblockCount=8;erases=0;
+    for(uint16_t k=0;k<8;k++){memcpy(p,&k,2);CHECK(fw_take_block(p,sizeof(p),CH_SERVER)==FW_BLOCK_OK);}
+    CHECK(erases==2&&erased[0]==0x1000&&erased[1]==0x2000);
+    init();device.FWblockIdx=3;device.FWblockCount=8;erases=0;erase_fail=1;p[0]=3;p[1]=0;
+    CHECK(fw_take_block(p,sizeof(p),CH_SERVER)==FW_BLOCK_BADWRITE&&device.FWblockIdx==3&&!writes);erase_fail=0;
+    puts("fwblockbounds: each sector erased before its first block, erase failure is a write failure passed");
+}
 int main(int argc,char **argv)
 {
     if(argc>1) { CHECK(!strcmp(argv[1],"errors"));test_errors(); }
-    else {test_lengths();test_errors();test_command();}
+    else {test_lengths();test_errors();test_command();test_lazy_erase();}
     return 0;
 }

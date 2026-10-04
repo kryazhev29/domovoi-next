@@ -27,7 +27,8 @@ static bool mem_read(uint32_t a,uint8_t*p,uint16_t n){CHECK(a+n<=sizeof(flash));
 static bool mem_write(uint32_t a,uint8_t*p,uint16_t n){uint32_t i;CHECK(a+n<=sizeof(flash));
  if(fail_flash==2)return false;
  for(i=0;i<n;i++){if(torn&&i>=n/2u)break;if(a+i==stuck)continue;flash[a+i]&=p[i];}if(torn)torn--;return true;}
-static bool user_clearMemBlock(memBlock_e mb){if(fail_flash==1)return false;memset(flash+mem[mb].start,0xff,mem[mb].size);return true;}
+static unsigned erases;
+static bool mem_erase_sector(uint32_t a){CHECK(a%4096u==0&&a+4096u<=sizeof(flash));if(fail_flash==1)return false;memset(flash+a,0xff,4096);erases++;return true;}
 static uint32_t crc_word(uint32_t c,uint32_t v){unsigned i;c^=v;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0);return c;}
 static uint32_t stm_crc(const uint8_t*p,uint32_t n){uint32_t c=0xffffffffu,w,i;for(i=0;i<n;i+=4){memcpy(&w,p+i,4);c=crc_word(c,w);}return c;}
 /* FIRMWARE CRC */
@@ -47,7 +48,7 @@ static void fw_resume_after_boot(void);
 
 static uint8_t image[96*1024];
 static void reset(void){memset(flash,0xff,sizeof(flash));memset(&device,0,sizeof(device));device.hardwareVersion=139;device.registredOnServer=1;
- saves=torn=sent=trial=manual=nlogs=fail_flash=0;stuck=0xffffffffu;boot_ver=0x32;read_fail_at=UINT32_MAX;read_fail_copy=0;}
+ fw_rollback_pos=fw_rollback_end=0;saves=torn=sent=trial=manual=nlogs=fail_flash=0;stuck=0xffffffffu;boot_ver=0x32;read_fail_at=UINT32_MAX;read_fail_copy=0;}
 /* Update events carry a reason code (Protocol2 E534): the text names the reason, NULL - code 0. */
 static int last_log(int num,const char*reason){return nlogs&&logs[nlogs-1].num==num&&logs[nlogs-1].reason==fw_reason_code(reason);}
 static cmdCode_e start(uint16_t number,uint32_t build,uint32_t size,uint32_t crc,uint16_t blocks,dataChanel_e cch){
@@ -72,7 +73,7 @@ static void start_tests(void){uint32_t size=66716,crc;uint16_t blocks=66;
  reset();flash[5000]=0;
  CHECK(start(71,1789600000,size,crc,blocks,CH_SERVER)==CMD_SUCCESS);
  CHECK(device.FWinProgress&&device.status.readyToUpdate&&device.updateTimeout==600&&device.cchFWupdate==CH_SERVER);
- CHECK(device.FWblockIdx==0&&device.FWblockCount==blocks&&device.firmwarePercent==0&&saves==1&&flash[5000]==0xff);
+ CHECK(device.FWblockIdx==0&&device.FWblockCount==blocks&&device.firmwarePercent==0&&saves==1&&flash[5000]==0);
  {bootFWparam_s h;memcpy(&h,flash,sizeof(h));CHECK(h.appIdent==0xffffffffu&&h.firmwareVersion==71&&h.buildDate==1789600000&&h.firmwareSize==size&&h.firmwareCRC==crc&&h.hardwareVersion==139);}
  CHECK(last_log(LOG_FW_START,NULL));
  /* The same file again on the same channel carries on; the block is asked for at once. */
@@ -92,6 +93,11 @@ static void start_tests(void){uint32_t size=66716,crc;uint16_t blocks=66;
  CHECK(flash[5000]==0&&!device.FWinProgress&&!device.status.readyToUpdate);
  /* USB start: NextConfig sends the blocks; no bit 11, no timeout, nothing saved. */
  reset();CHECK(start(71,1,size,crc,blocks,CH_USB)==CMD_SUCCESS&&!device.FWinProgress&&!device.status.readyToUpdate&&!device.updateTimeout&&!saves&&device.cchFWupdate==CH_USB);
+ /* Command 19 erases sector 0 only, every next sector goes right before its first block:
+    erasing 128 KB at once stopped the loop for seconds and dropped the link. An old image does not spoil the new one. */
+ reset();memset(flash,0x5a,0x20000);erases=0;CHECK(start(71,1789600000,size,crc,blocks,CH_SERVER)==CMD_SUCCESS&&erases==1&&flash[5000]==0x5a);
+ {uint16_t k;for(k=0;k<blocks;k++)CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);}
+ CHECK(!memcmp(flash+0x200,image,size)&&device.rebootToUpdate&&erases==1u+(0x200u+blocks*1024u-1u)/4096u);
  puts("command 19: fields, answer 0 with bit 11 and the 10-minute timeout, carry on with the same file, 2 with its reason, 1 PARAM, USB");}
 
 static void rollback_tests(void){uint32_t size=66716;bootFWparam_s h;
@@ -103,8 +109,20 @@ static void rollback_tests(void){uint32_t size=66716;bootFWparam_s h;
  CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR&&last_log(LOG_FW_FAIL,"BAD BACKUP")&&!device.rebootToUpdate);
  /* A good backup is staged in the image area with its magic erased, bit 11 set, restart requested. */
  h.firmwareCRC^=1u;memcpy(flash+135168,&h,sizeof(h));flash[100]=0;
- CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_SUCCESS&&device.rebootToUpdate&&device.status.readyToUpdate&&device.cchFWupdate==CH_SERVER);
+ {unsigned before=erases,steps=0;
+ CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_SUCCESS&&!device.rebootToUpdate&&device.status.readyToUpdate&&device.cchFWupdate==CH_SERVER);
+ CHECK(erases==before);CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_RUNERROR);
+ while(!device.rebootToUpdate&&steps++<1000){before=erases;fw_rollback_poll();CHECK(erases-before<=1);}
+ CHECK(device.rebootToUpdate&&steps<1000);}
  CHECK(!memcmp(flash+4,flash+135168+4,size+0x200-4)&&!memcmp(flash,"\xff\xff\xff\xff",4)&&last_log(LOG_FW_ROLLBACK,NULL));
+ /* Ошибка позднего шага запрещает установку и снимает бит 11. */
+ for(unsigned failure=1;failure<=2;failure++){
+  device.rebootToUpdate=0;device.status.readyToUpdate=0;fail_flash=failure;
+  CHECK(start(1,0,0,0,0,CH_SERVER)==CMD_SUCCESS);fw_rollback_poll();
+  CHECK(!device.rebootToUpdate&&!device.status.readyToUpdate&&!fw_rollback_end&&sent_code==FW_BLOCK_END);
+  CHECK(last_log(LOG_FW_FAIL,"WRITE"));
+  fail_flash=0;
+ }
  puts("rollback: no backup, bad backup, staged copy with the magic erased");}
 
 static void download(uint32_t size,uint16_t blocks,uint32_t crc){reset();
@@ -186,7 +204,7 @@ static void resume_tests(void){uint32_t seed=12345u,i;uint16_t blocks=37,k,idx;u
  for(i=0;i<sizeof(image);i++){seed=seed*1103515245u+12345u;image[i]=(uint8_t)(seed>>16);}
  memset(image+5*1024,0xff,1024);memset(image+6*1024,0xff,300);memset(image+36*1024+1016,0xff,8);/* legitimate FF block, FF prefix, FF tail */
  for(k=0;k<blocks;k++){unsigned o;for(o=0;o<sizeof(offs)/sizeof(offs[0]);o++){uint32_t base=0x200u+(uint32_t)k*1024u;
-  stage(blocks,64);
+  stage(blocks,64);device.FWblockIdx=k>3?k-3:0;
   memcpy(flash+0x200,image,(uint32_t)k*1024u);/* blocks before k complete */
   memcpy(flash+base,image+base-0x200,offs[o]);/* block k torn after offs[o] bytes */
   if(offs[o]<1024)flash[base+offs[o]]&=(uint8_t)(image[base-0x200+offs[o]]|0x5a);/* one byte with bits still set */
@@ -197,7 +215,7 @@ static void resume_tests(void){uint32_t seed=12345u,i;uint16_t blocks=37,k,idx;u
   CHECK(!memcmp(flash+0x200,image,(uint32_t)blocks*1024u));cuts++;}}
  /* Nothing written: start from 0. Everything written: request the last block again. */
  stage(blocks,64);fw_resume_after_boot();CHECK(device.FWblockIdx==0&&device.firmwarePercent==0);
- stage(blocks,64);memcpy(flash+0x200,image,(uint32_t)blocks*1024u);fw_resume_after_boot();CHECK(device.FWblockIdx==blocks-1);
+ stage(blocks,64);device.FWblockIdx=blocks-1;memcpy(flash+0x200,image,(uint32_t)blocks*1024u);fw_resume_after_boot();CHECK(device.FWblockIdx==blocks-1);
  /* No download in progress: nothing read back, nothing saved, a stale timeout is dropped, no block is taken. */
  stage(blocks,64);device.FWinProgress=0;device.updateTimeout=900;fw_resume_after_boot();
  CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&!saves&&!device.updateTimeout&&!device.FWblockIdx&&!device.FWblockCount);
@@ -235,27 +253,42 @@ static void read_error_tests(void){
  CHECK(start(71,1789600000,2048,crc,2,CH_SERVER)==CMD_RUNERROR&&device.FWinProgress);
  stage(2,71);read_fail_at=0;read_fail_copy=1;fw_resume_after_boot();
  CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&saves==1);
- /* The first, second, and last erased chunk must all stop
-    the resume scan instead of skipping over uncertain data. */
- for(k=0;k<3;++k){
-  stage(2,71);read_fail_copy=1;
-  read_fail_at=FWBLOCK_OFFSET+1024+(k==2?960u:(uint32_t)k*64u);
+ /* Повреждённый сохранённый курсор не пропускает загрузку. */
+ for(k=2;k<5;++k){stage(2,71);device.FWblockIdx=k;
   fw_resume_after_boot();CHECK(!device.FWinProgress&&!device.status.readyToUpdate&&saves==1);
  }
  puts("firmware read faults: CRC, read-back, final header, repeated start and resume fail closed");
 }
 
 static uint32_t audit_ms;
-static unsigned audit_requests;
+static unsigned audit_requests,audit_busy;
 static uint8_t uniqIDCnt;
 static uint32_t timers_getMillis(void){return audit_ms;}
-static void user_getFWblockFromServer(dataChanel_e ch,uint16_t idx){
- CHECK(ch==CH_SERVER&&idx==device.FWblockIdx);audit_requests++;
+static bool user_getFWblockFromServer(dataChanel_e ch,uint16_t idx){
+ CHECK(ch==CH_SERVER&&idx==device.FWblockIdx);
+ if(audit_busy){audit_busy--;return false;}audit_requests++;return true;
 }
 /* AUDIT LOOP */
 static void audit_seconds(unsigned n){while(n--){audit_ms+=1000;audit_poll();audit_tick();}}
 static void slow_server_tests(void){
  uint16_t k;uint32_t size=68784,crc;unsigned requests;
+ /* Занятый слот не запускает двадцатисекундное ожидание. */
+ reset();make_image(size);crc=stm_crc(image,size);audit_ms=1000;audit_requests=0;
+ CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ for(k=0;k<68;k++){
+  audit_busy=3;requests=audit_requests;
+  while(audit_busy){audit_ms+=50;audit_poll();CHECK(!device.startWaitFWtime&&audit_requests==requests);}
+  audit_ms+=50;audit_poll();CHECK(audit_requests==requests+1);
+  CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
+ }
+ CHECK(device.rebootToUpdate&&audit_ms<600000u);
+ /* Старый образ за сохранённым курсором не является частью новой загрузки. */
+ reset();memset(flash,0x55,mem[MB_FIRMWARE].size);
+ CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);
+ CHECK(block(0,1026,CH_SERVER)==FW_BLOCK_OK);
+ device.FWblockIdx=0;fw_resume_after_boot();CHECK(device.FWblockIdx==0);
+ for(k=0;k<68;k++)CHECK(block(k,1026,CH_SERVER)==FW_BLOCK_OK);
+ CHECK(device.rebootToUpdate&&!memcmp(flash+FWBLOCK_OFFSET,image,size));
  /* Темп сервера 15 с на блок: 600 секунд кончаются на середине, загрузка прекращается. */
  reset();make_image(size);crc=stm_crc(image,size);audit_ms=1000;audit_requests=0;
  CHECK(start(71,1789922853,size,crc,68,CH_SERVER)==CMD_SUCCESS);

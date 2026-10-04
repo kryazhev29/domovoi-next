@@ -119,6 +119,11 @@ def user_mutations(out):
     cases = (
         ('holiday-date-as-index', 'if (!holiday_write(&ptr[10], ptr[9]))', 'if (ptr[10] == 0 || !holiday_write(&ptr[10], ptr[9]))', 'sync'),
         ('holiday-tail-kept', 'h->dates[off + i] : 0xFFu', 'h->dates[off + i] : page[i]', 'sync'),
+        ('fw-request-busy-timer', 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx))', 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx) || 1)', 'fwstart'),
+        ('fw-sector-erase-skipped', 'sector >= adr + 1024u || mem_erase_sector(sector)', 'sector >= adr + 1024u || (0 && mem_erase_sector(sector)) || 1', 'fwblockbounds'),
+        ('fw-start-erases-tail', 'if (!mem_erase_sector(mem[MB_FIRMWARE].start))', 'if (!mem_erase_sector(mem[MB_FIRMWARE].start) || !mem_erase_sector(mem[MB_FIRMWARE].start + 4096u))', 'fwstart'),
+        ('fw-resume-stale-tail', 'return device.FWblockIdx < device.FWblockCount ? device.FWblockIdx : UINT16_MAX;', 'return device.FWblockIdx < device.FWblockCount ? device.FWblockCount - 1u : UINT16_MAX;', 'fwstart'),
+        ('fw-rollback-starts-reset-early', 'fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET;', 'fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET; device.rebootToUpdate=1;', 'fwstart'),
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
         ('sms-reply-lowercase', "*c = (char)(*c - 'a' + 'A');", '*c = (char)(*c + 0);'),
         ('sms-setout-bad-number-silent', 'выхода с таким номером нет\n            strcat(v, ": Error \\"Format not correct\\"");', 'выхода с таким номером нет\n            strcat(v, "");'),

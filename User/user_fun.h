@@ -92,7 +92,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId);
 // Пакет 9 - выгрузка ID из временного буфера
 void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId);
 // Пакет 13 - Запрос конкретного блока прошивки
-void user_getFWblockFromServer(dataChanel_e cch, uint16_t block);
+bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block);
 // Пакет 14 - передача фотографии
 void user_send_Photos(dataChanel_e cch, uint8_t uniqId);
 // Разбор данных

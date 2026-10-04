@@ -128,6 +128,7 @@ static bool upload_finish(uint8_t cmd){
 
 
 static void fw_resume_after_boot(void);
+static void fw_rollback_poll(void);
 static void server_rx_reset(void);
 /* Диагностика стенда, команда 111, только по USB, только чтение. */
 #define USB_DIAG_COMMAND 111u
@@ -792,6 +793,7 @@ void user_loop(void)
   if (config.wiegandType != 0)
     WG_process();
   idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
+  fw_rollback_poll();
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
 
   // каждые 50 мс
@@ -801,8 +803,10 @@ void user_loop(void)
     // запущен процесс обновления
     if (device.registredOnServer && device.FWinProgress){
       if (device.startWaitFWtime == 0){
-        user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx);
-        device.startWaitFWtime = timers_getMillis();
+        /* Срок ожидания - только для ушедшего запроса: канал занят (ушёл ответ 4) - повтор
+           через 50 мс, а не через 20 с (было: блок в 20 с, 74 блока не успевали за 10 минут). */
+        if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx))
+          device.startWaitFWtime = timers_getMillis();
       } else{
         // не дождались блока прошивки
         if ((timers_getMillis() - device.startWaitFWtime) >= FW_BLOCK_RETRY_MS){
@@ -1211,6 +1215,7 @@ void user_readsavedinformation (void)
       device.firmwareSize = DV.firmwareSize;
       device.firmwareCRC = DV.firmwareCRC;
       device.FWblockCount = DV.FWblockCount;
+      device.FWblockIdx = DV.FWblockIdx;
       device.firmwarePercent = DV.firmwarePercent;
       device.FWinProgress = DV.FWinProgress;
       device.updateTimeout = DV.updateTimeout;
@@ -1791,6 +1796,7 @@ void user_send_smsToServer(char* sms){
   }
 }
 
+
 // Пакет 8 - трансляция ID со считывателей
 // cmdState: 1 - норм, 255 - таймаут
 /* >>> ответ считывателя (пакет 8)
@@ -2243,10 +2249,10 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
 }
 
 // Пакет 13 - Запрос конкретного блока прошивки
-void user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
+bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   uint8_t send_local[16];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
-  if (!send_buffer) return;
+  if (!send_buffer) return false;
   uint16_t len = 5;
   uint16_t crc;
   
@@ -2274,19 +2280,9 @@ void user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   send_buffer[len + 6] = crc&0xff; // crc
   send_buffer[len + 7] = (crc>>8)&0xff;
     
-  switch (cch){
-  case CH_USB:
-    usb_send(send_buffer, len + 8);
-    break;
-    
-  case CH_SERVER:
-    comm_tx_commit(len + 8);
-    break;
-    
-  case CH_SMS:
-    
-    break;
-  }    
+  if (cch == CH_SERVER) return comm_tx_commit(len + 8);
+  if (cch == CH_USB) usb_send(send_buffer, len + 8);
+  return true;
 }
 
 // Пакет 14 - передача фотографии
@@ -2416,10 +2412,12 @@ static void fw_log(logUpdate_e num, const char *reason)
 }
 
 static uint8_t fw_write_errors;
+static uint32_t fw_rollback_pos, fw_rollback_end;
 
 /* Загрузка заканчивается без установки. Блоки получают 253 до следующей команды 19. */
 static void fw_abort(const char *reason)
 {
+  fw_rollback_end = 0;
   device.FWinProgress = 0;
   device.status.readyToUpdate = 0;
   device.updateTimeout = 0;
@@ -2471,7 +2469,7 @@ static const char *fw_start_refused(void)
   if (BOOT_VER < 0x30) return "OLD BOOT";
   if (boot_manual_busy()) return "BOOT BUSY";
   if (app_trial_active()) return "IN TRIAL";
-  if (device.rebootToUpdate || device.FWinProgress) return "BUSY";
+  if (device.rebootToUpdate || device.FWinProgress || fw_rollback_end) return "BUSY";
   return NULL;
 }
 
@@ -2490,8 +2488,6 @@ static uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, 
 static cmdCode_e fw_rollback(dataChanel_e cch)
 {
   bootFWparam_s fwParam;
-  uint32_t block;
-
   if (!mem_read(mem[MB_BACKUP].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s))) return CMD_RUNERROR;
   if ((fwParam.buildDate == 0xffffffff) || (fwParam.firmwareSize == 0xffffffff) ||
       (fwParam.firmwareCRC == 0xffffffff) || (fwParam.firmwareVersion == 0xffff)){
@@ -2503,18 +2499,36 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
     fw_log(LOG_FW_FAIL, "BAD BACKUP");
     return CMD_RUNERROR;
   }
-  if (!user_clearMemBlock(MB_FIRMWARE)) return CMD_RUNERROR;
-  for (block = 0; block < (fwParam.firmwareSize + FWBLOCK_OFFSET); block += 128){
-    if (!mem_read(mem[MB_BACKUP].start + block, bf, 128)) return CMD_RUNERROR;
-    if (block == 0) memset(bf, 0xff, 4); /* метку пишет app_boot_request */
-    if (!mem_write(mem[MB_FIRMWARE].start + block, bf, 128)) return CMD_RUNERROR;
-    wdt_reload();
-  }
-  fw_log(LOG_FW_ROLLBACK, NULL); // откат по команде сервера: причина 0
+  fw_rollback_pos = 0;
+  fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET;
   device.cchFWupdate = cch;
   device.status.readyToUpdate = 1;
-  device.rebootToUpdate = 1;
   return CMD_SUCCESS;
+}
+
+/* Один фрагмент за проход: стирание не больше одного сектора, без нового буфера. */
+static void fw_rollback_poll(void)
+{
+  uint16_t n;
+  bootFWparam_s h;
+  if (!fw_rollback_end) return;
+  n = fw_rollback_end - fw_rollback_pos > 128u ? 128u : (uint16_t)(fw_rollback_end - fw_rollback_pos);
+  if ((fw_rollback_pos & 4095u) == 0 && !mem_erase_sector(mem[MB_FIRMWARE].start + fw_rollback_pos)) {
+    fw_end("WRITE", 0); return;
+  }
+  if (!mem_read(mem[MB_BACKUP].start + fw_rollback_pos, bf, n)) { fw_end("READ", 0); return; }
+  if (fw_rollback_pos == 0) memset(bf, 0xff, 4);
+  if (!mem_write(mem[MB_FIRMWARE].start + fw_rollback_pos, bf, n)) { fw_end("WRITE", 0); return; }
+  fw_rollback_pos += n;
+  wdt_reload();
+  if (fw_rollback_pos < fw_rollback_end) return;
+  fw_rollback_end = 0;
+  if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h)) ||
+      !user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, h.firmwareSize, h.firmwareCRC)) {
+    fw_end("CRC", 0); return;
+  }
+  fw_log(LOG_FW_ROLLBACK, NULL);
+  device.rebootToUpdate = 1;
 }
 
 /* Команда 19 (E122): ответ 0 принято, 1 неверные поля, 2 сейчас нельзя. Номер с установленным
@@ -2548,7 +2562,8 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   }
   if (number == 1) return fw_rollback(cch);
 
-  if (!user_clearMemBlock(MB_FIRMWARE)) return CMD_RUNERROR;
+  /* Только первый сектор (заголовок и начало блока 0): остальные стирает fw_take_block. */
+  if (!mem_erase_sector(mem[MB_FIRMWARE].start)) return CMD_RUNERROR;
   memset(&fwParam, 0xff, sizeof(fwParam));
   fwParam.hardwareVersion = device.hardwareVersion;
   fwParam.firmwareVersion = number;
@@ -2623,10 +2638,12 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
     fw_log(LOG_FW_FAIL, "HW");
     return FW_BLOCK_END;
   }
-  /* Команда 19 стёрла область образа: пишем на место. Повторная запись тех же байт ничего не
-     меняет и дописывает оборванный блок. */
+  /* Сектор стирается перед первым блоком, который в него пишет (команда 19 стирает только
+     первый): стирание всей области сразу останавливало цикл на секунды и рвало связь.
+     Повтор блока стирает свой сектор снова - там только этот блок - и дописывает оборванное. */
   adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u;
-  bool written = mem_write(adr, (uint8_t*)&p[2], 1024);
+  uint32_t sector = (adr + 4095u) & ~4095u;
+  bool written = (sector >= adr + 1024u || mem_erase_sector(sector)) && mem_write(adr, (uint8_t*)&p[2], 1024);
   wdt_reload();
   if (!written || !fw_block_written(adr, &p[2])){
     if (++fw_write_errors < FW_WRITE_TRIES) return FW_BLOCK_BADWRITE;
@@ -2645,23 +2662,11 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   return fw_blocks_done(user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC));
 }
 
-/* Блоки пишутся в область, стёртую командой 19, и больше не стираются: повторная запись блока
- * оставляет те же байты, запись оборванного блока его дописывает. Докачка начинается с
- * последнего блока, где есть хоть один записанный байт, - он мог оборваться. */
+/* После отложенного стирания хвост содержит старый образ. Продолжаем с сохранённого
+ * курсора: повтор уже записанных блоков безопасен для NOR, хвост стирается при записи. */
 static uint16_t fw_resume_block(void)
 {
-  uint8_t b[64];
-  uint16_t block = device.FWblockCount, off, i;
-  while (block != 0) {
-    --block;
-    for (off = 0; off < 1024u; off += sizeof(b)) {
-      if (!mem_read(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u + off, b, sizeof(b))) return UINT16_MAX;
-      for (i = 0; i < sizeof(b); i++)
-        if (b[i] != 0xFF) return block;
-    }
-    wdt_reload();
-  }
-  return 0;
+  return device.FWblockIdx < device.FWblockCount ? device.FWblockIdx : UINT16_MAX;
 }
 
 /* После сброса продолжить загрузку с сервера, если она шла (бит 11 переживает сброс, E440).

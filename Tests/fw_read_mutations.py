@@ -19,7 +19,7 @@ def run():
         ('final-header', 'if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s))) {', 'if (mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s)) && 0) {'),
         ('same-download', 'if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h))) return 0;', 'mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h));'),
         ('resume-header', 'if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h)) || BOOT_VER', 'if ((mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h)) && 0) || BOOT_VER'),
-        ('resume-scan', 'if (!mem_read(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u + off, b, sizeof(b))) return UINT16_MAX;', 'mem_read(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u + off, b, sizeof(b));'),
+        ('resume-cursor', 'device.FWblockIdx < device.FWblockCount ? device.FWblockIdx : UINT16_MAX', 'device.FWblockIdx'),
     )
     out = ROOT / 'Release/fw-read-review'
     out.mkdir(parents=True, exist_ok=True)
