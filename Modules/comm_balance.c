@@ -8,7 +8,7 @@ enum { BAL_IDLE, BAL_ASK, BAL_WAIT, BAL_CANCEL };
 static const comm_side_t bal_cancel = {"AT+CUSD=2", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_AT_SIMPLE};
 static struct {
   const char *(*code)(void);
-  void (*result)(uint16_t);
+  void (*result)(int32_t);
   uint32_t now, since, next;
   comm_side_t req;
   char cmd[24];
@@ -66,11 +66,11 @@ static void bal_finish(bool ok)
   bal.state = BAL_IDLE;
   if (ok && comm_balance_parse(bal.text, &v)) {
     bal.next = bal.now + comm_timeouts[COMM_T_DAY];
-    if (bal.result) bal.result(v < 1 ? 1u : v > 65000 ? 65000u : (uint16_t)v);
+    if (bal.result) bal.result(v);
   } else bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];
   if (bal.menu && comm_modem_side(&bal_cancel)) bal.state = BAL_CANCEL; /* меню оператора - закрыть */
 }
-void comm_balance_init(const char *(*code)(void), void (*result)(uint16_t))
+void comm_balance_init(const char *(*code)(void), void (*result)(int32_t))
 {
   memset(&bal, 0, sizeof(bal));
   bal.code = code; bal.result = result;

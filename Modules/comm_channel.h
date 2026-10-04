@@ -3,7 +3,8 @@
 #define COMM_CHANNEL_H
 #include <stdint.h>
 #include <stdbool.h>
-enum { COMM_CH_OPENED, COMM_CH_CLOSED, COMM_CH_TX_DONE, COMM_CH_PROBE_DONE, COMM_CH_FAULT };
+/* OPENED и OPEN_FAILED - с адресом (0 - основной, 1 - резервный). */
+enum { COMM_CH_OPENED, COMM_CH_CLOSED, COMM_CH_TX_DONE, COMM_CH_PROBE_DONE, COMM_CH_FAULT, COMM_CH_OPEN_FAILED };
 enum { COMM_CH_PING = 1, COMM_CH_DNS = 2 };
 /* init только после отмены UART/начала изолированного сеанса драйвера.
    callback только отмечает событие; не запускает AT. */

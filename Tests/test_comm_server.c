@@ -6,7 +6,6 @@ static struct {
   uint16_t status, freeBufferSize;
 } device;
 #define CH_SERVER 1
-#define LOG_SYS_CONNECT1 14
 static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)];
 static unsigned server_commands, server_sessions, event13, event_retry;
 static unsigned registrations_sent, statuses_sent, opens, closes, pings, dns_requests;
@@ -34,11 +33,10 @@ static uint8_t volte_flag, volte_modem; static unsigned volte_error, volte_queri
 static uint8_t volte_flag_model(void) { return volte_flag; }
 /* Баланс: ответ модели на AT+CUSD=1 (URC через 2 с или до OK), счётчики, итог. */
 static const char *cusd_reply, *ussd_code; static unsigned cusd_count, cusd_cancel, cusd_error, cusd_early, balance_count;
-static uint32_t cusd_due; static uint16_t balance_value;
+static uint32_t cusd_due; static int32_t balance_value;
 static const char *ussd_model(void) { return ussd_code; }
-static void balance_model(uint16_t rubles) { balance_value=rubles; ++balance_count; }
+static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_count; }
 static void photo_connection_lost(void) {}
-static bool log_addSystemEvent(unsigned e) { CHECK(e == LOG_SYS_CONNECT1); return true; }
 static void user_parse_comand(uint8_t *p, unsigned channel);
 static void call_caller(const char *number);
 /* CRC */
@@ -119,6 +117,20 @@ static bool no_traffic(void)
   ++event13; flash_model[0x70000]=13; return true;
 }
 static const comm_server_handlers_t test_server_handlers={registration_producer,status_producer,server_session,server_rx_process,no_traffic};
+/* События журнала связи по порядку: вид и адрес; link_refuse - журнал не принял, повтор при следующем случае. */
+static uint8_t link_kinds[256], link_addrs[256]; static unsigned links, link_refuse;
+static bool link_model(uint8_t kind, uint8_t address)
+{
+  if (link_refuse) { --link_refuse; return false; }
+  if (links < sizeof(link_kinds)) { link_kinds[links] = kind; link_addrs[links] = address; }
+  ++links; return true;
+}
+static unsigned link_count(uint8_t kind, uint8_t address)
+{
+  unsigned n = 0;
+  for (unsigned i = 0; i < links && i < sizeof(link_kinds); ++i) n += link_kinds[i] == kind && link_addrs[i] == address;
+  return n;
+}
 static const slm_handlers_t transport_handlers={sim_gpio,sim_type,sim_imei};
 
 static void transport_tx(void)
@@ -270,7 +282,8 @@ static void server_reset(void)
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
   comm_balance_init(ussd_model, balance_model);
   /* Выход к TCP — принятой моделью этапа 3. */
-  comm_server_init(&test_server_handlers);
+  comm_server_link(link_model);
+  comm_server_init(&test_server_handlers); links=link_refuse=0;
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
   for (unsigned i=0;!comm_server_online() && i<1500;++i) transport_tick(10);
   CHECK(comm_server_online() && modem_slm336_ready() && sim_now<11000);
@@ -413,7 +426,41 @@ static void garbage_test(void)
   CHECK(!memcmp(flash_model,flash_before,sizeof(flash_model)));
   printf("comm_server garbage: 24 model hours, %u payloads, %u ring overflows, %u long lines, entire NOR unchanged PASS\n",fragments,overflows,long_lines);
 }
+static void until_online(void) { for (unsigned i=0;!comm_server_online() && i<200000;++i) transport_tick(10); CHECK(comm_server_online()); }
+/* Лист «Журнал событий»: 14/15 подключён (сервер принял регистрацию), 16/17 ошибка соединения -
+   один раз до удачного, 18/19 потеря связи после регистрации. Номер сервера - по адресу. */
+static void link_tests(void)
+{
+  server_reset(); CHECK(links==1 && link_kinds[0]==COMM_LINK_UP && link_addrs[0]==0);
+  sim_feed("+QIURC: \"closed\",0\r\n"); advance(2000);
+  CHECK(links==3 && link_kinds[1]==COMM_LINK_LOST && link_addrs[1]==0 && link_kinds[2]==COMM_LINK_UP);
+  /* Перезапуск модема на связи - тоже потеря. */
+  comm_server_init(&test_server_handlers); CHECK(links==4 && link_kinds[3]==COMM_LINK_LOST);
+  /* Сервер не открывает TCP: одно событие на всю серию попыток. */
+  server_reset(); sim_open_error=1; comm_channel_reopen(0);
+  for (unsigned i=0;opens<6 && i<100000;++i) transport_tick(10);
+  CHECK(opens>=6 && link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && links==3);
+  sim_open_error=0; until_online(); CHECK(links==4 && link_kinds[3]==COMM_LINK_UP);
+  /* После удачного соединения ошибка пишется снова. */
+  sim_open_error=1; comm_channel_reopen(0);
+  for (unsigned i=0;links<6;++i) { CHECK(i<100000); transport_tick(10); }
+  CHECK(link_count(COMM_LINK_FAIL,0)==2);
+  /* TCP открыт, регистрацию сервер не принял - ошибка соединения, не «подключён» и не «потеря». */
+  server_reset(); drop_register=1; comm_channel_reopen(0); advance(30000);
+  CHECK(link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_UP,0)==1); /* UP - от server_reset */
+  /* Журнал не принял запись - повтор при следующей неудаче. */
+  server_reset(); link_refuse=1; sim_open_error=1; comm_channel_reopen(0); link_refuse=1;
+  for (unsigned i=0;opens<4 && i<100000;++i) transport_tick(10);
+  CHECK(link_count(COMM_LINK_FAIL,0)==1);
+  /* Резервный сервер: ошибка каждого - по разу, «подключён» - с адресом, где открылся TCP. */
+  server_reset(); reserve_enabled=1; sim_open_error=1; comm_channel_reopen(0);
+  for (unsigned i=0;opens<10 && i<200000;++i) transport_tick(10);
+  CHECK(link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_FAIL,1)==1);
+  sim_open_error=0; until_online(); CHECK(link_kinds[links-1u]==COMM_LINK_UP && link_addrs[links-1u]==open_addresses[opens-1u]);
+  CHECK(comm_server_address()==open_addresses[opens-1u]);
+  puts("comm_server link events: connected, lost, connect error once until success, rejected registration, retry, reserve PASS");
+}
 /* RECOVER */
 /* CALL */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); recover_tests(); return 0; }

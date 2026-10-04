@@ -206,8 +206,8 @@ static void channel_completed(void)
       : result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT : SLM_ERR_TCP;
     comm_modem_record(SLM_STEP_COUNT, reason, ch.flags.open_seen ? ch.open_code : comm_modem_status()->modem_code);
     if (ch.state == CH_OPENING) {
-      if (reason) comm_channel_reopen(0);
-      else { ch.state = CH_OPEN; channel_emit(COMM_CH_OPENED, 0); }
+      if (reason) { channel_emit(COMM_CH_OPEN_FAILED, ch.address); comm_channel_reopen(0); }
+      else { ch.state = CH_OPEN; channel_emit(COMM_CH_OPENED, ch.address); }
     }
     return;
   }

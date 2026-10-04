@@ -11,7 +11,7 @@ static char sim_pending[400], sim_sent[128];
 static int sim_silence_step, sim_error_step;
 static unsigned sim_no_sim, sim_pin, sim_open_delay, sim_open_error, sim_rat_change;
 static unsigned sim_port_change, sim_network_wait, sim_early_open, sim_trickle;
-static unsigned sim_empty_urc, sim_pause, sim_send_sim2, sim_nwinfo_error;
+static unsigned sim_empty_urc, sim_pause, sim_send_sim2, sim_nwinfo_error, sim_csq;
 static const char *sim_imsi;
 static unsigned sim_activation_delay, sim_data_echo, sim_send_race;
 static uint32_t sim_open_due;
@@ -87,7 +87,7 @@ static void sim_reset(void)
   sim_silence_step = sim_error_step = -1;
   sim_no_sim = sim_pin = sim_open_error = sim_rat_change = sim_port_change = 0;
   sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = 0;
-  sim_send_sim2 = 1; sim_nwinfo_error = 0; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
+  sim_send_sim2 = 1; sim_nwinfo_error = 0; sim_csq = 22; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
   sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
 }
 static void sim_feed(const char *s)
@@ -116,7 +116,7 @@ static void sim_tx(void)
   if ((int)step == sim_error_step) { sim_reply("ERROR\r\n", 30); return; }
   if (!strcmp(sim_sent, "AT")) sim_reply("OK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+QISDE=0")) { sim_data_echo = 0; sim_reply("OK\r\n", 30); }
-  else if (!strcmp(sim_sent, "AT+CSQ")) sim_reply("+CSQ: 22,99\r\nOK\r\n", 30);
+  else if (!strcmp(sim_sent, "AT+CSQ")) { char r[32]; snprintf(r, sizeof(r), "+CSQ: %u,99\r\nOK\r\n", sim_csq); sim_reply(r, 30); }
   else if (!strcmp(sim_sent, "AT+QNWINFO")) sim_reply(sim_nwinfo_error ? "ERROR\r\n" : "+QNWINFO: \"FDD LTE\",\"25001\",\"LTE BAND 3\",1300\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+GSN")) sim_reply("864180068438709\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+GMM")) { sim_gmm++; sim_reply("SLM336E\r\nOK\r\n", 30); }

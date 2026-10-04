@@ -43,6 +43,8 @@ bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handl
   if (!modem_slm336_start(settings, handlers, now_ms)) return false;
   user_comm_reset_session();
   comm_server_no_internet(comm_recover_no_internet);
+  comm_server_link(user_comm_link);
+  comm_info_low_signal(user_comm_low_signal);
   comm_recover_init(&hooks, now_ms);
   comm_call_init(user_comm_call, user_comm_volte);
   comm_sms_init(user_smsreceived);

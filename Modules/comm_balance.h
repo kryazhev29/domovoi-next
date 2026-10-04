@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 /* code() - USSD из настроек ("*100#", пусто - не спрашивать); result(рубли) - только
-   при разобранном ответе: 1..65000 (0 и меньше - 1, протокол не знает минуса). */
-void comm_balance_init(const char *(*code)(void), void (*result)(uint16_t rubles));
+   при разобранном ответе, с минусом, как в тексте оператора. */
+void comm_balance_init(const char *(*code)(void), void (*result)(int32_t rubles));
 void comm_balance_poll(uint32_t now_ms);
 /* Рубли из текста ответа (cp1251); false - числа нет. */
 bool comm_balance_parse(const char *text, int32_t *rubles);

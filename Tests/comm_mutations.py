@@ -2,6 +2,7 @@
 from pathlib import Path
 import os
 import subprocess
+import sys
 import tempfile
 from comm_at_host import ROOT, ZIG, unit as at_unit
 from comm_slm_host import unit as modem_unit
@@ -79,6 +80,20 @@ def run():
         ('channel', 'volte-written-every-time', 'call.volte_modem != want ? &volte_set[want] : NULL', '&volte_set[want]'),
         ('channel', 'volte-new-start-not-checked', 'call.session = session; call.volte_modem = VOLTE_UNKNOWN;', 'call.session = session;'),
         ('channel', 'call-side-kept-after-restart', '  memset(&slm.attempt, 0, sizeof(slm.attempt));\n  slm_side_cancel();', '  memset(&slm.attempt, 0, sizeof(slm.attempt));'),
+        # Доводка этапа 6: журнал связи 11, 12, 14-19, 38.
+        ('channel', 'link-fail-every-time', 'if ((sv_noted & bit) || !sv_link) return;', 'if (!sv_link) return;'),
+        ('channel', 'link-up-keeps-noted', 'server_link(COMM_LINK_UP, sv.address); sv_noted = 0;', 'server_link(COMM_LINK_UP, sv.address);'),
+        ('channel', 'link-refused-not-retried', 'if (sv_link(kind, address)) sv_noted |= bit;', 'sv_link(kind, address); sv_noted |= bit;'),
+        ('channel', 'link-open-failed-silent', 'channel_emit(COMM_CH_OPEN_FAILED, ch.address); comm_channel_reopen(0);', 'comm_channel_reopen(0);'),
+        ('channel', 'link-address-ignored', 'sv.address = value;', 'sv.address = 0;'),
+        ('channel', 'link-rejected-as-lost', 'sv.state >= SV_ONLINE ? COMM_LINK_LOST : COMM_LINK_FAIL', 'COMM_LINK_LOST'),
+        ('channel', 'link-restart-not-lost', 'if (sv.state >= SV_ONLINE) server_link(COMM_LINK_LOST, sv.address);', ''),
+        ('channel', 'no-net-without-sim', 's->phase == SLM_PHASE_SIM || s->phase == SLM_PHASE_NETWORK', 's->phase == SLM_PHASE_NETWORK'),
+        ('channel', 'no-internet-qiact', 's->reason == SLM_ERR_PDP || s->phase == SLM_PHASE_PDP', '0'),
+        ('channel', 'no-internet-probe', '  comm_server_note(COMM_LINK_NO_INTERNET);\n  if (rc.net_step', '  if (rc.net_step'),
+        ('channel', 'low-signal-threshold', 'if (info.v.csq < 15u)', 'if (info.v.csq <= 15u)'),
+        ('channel', 'low-signal-once', '(int32_t)(now_ms - info.day) >= 0', '0'),
+        ('channel', 'low-signal-every-cycle', 'info.daily = 1; info.day', 'info.daily = 0; info.day'),
     )
     for group, label, old, new in cases:
         text = sources[group]
@@ -94,6 +109,38 @@ def run():
             assert result.returncode and b'FAIL ' in result.stderr, ('undetected', label)
         print(label, 'detected', flush=True)
     print('comm mutations:', len(cases), '/', len(cases), 'detected')
+    user_mutations(out)
+
+
+def user_mutations(out):
+    """Пользовательская часть (SMS-команды, журнал связи): поломка в копии исходников, группа sms."""
+    cases = (
+        ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
+        ('sms-reply-lowercase', "*c = (char)(*c - 'a' + 'A');", '*c = (char)(*c + 0);'),
+        ('sms-setout-bad-number-silent', 'выхода с таким номером нет\n            strcat(v, ": Error \\"Format not correct\\"");', 'выхода с таким номером нет\n            strcat(v, "");'),
+        ('status-server-number', 'user_comm_server(comm_server_address()) + 1', 'user_comm_server(comm_server_address() & 0u) + 1'),
+        ('server-number-ignores-switch', 'return address || (!config.useServer1 && config.useServer2);', 'return address;'),
+        ('link-server-2', 'if (kind <= COMM_LINK_LOST) event', 'if (0) event'),
+        ('balance-event-threshold', 'if (rubles < 100) log_addSystemValue', 'if (rubles < 1) log_addSystemValue'),
+    )
+    names = ('User/user_fun.c', 'User/user_str_fun.c', 'structures.h', 'Modules/comm_server.h', 'Tests/test_sms.c')
+    for label, old, new in cases:
+        with tempfile.TemporaryDirectory(dir=out) as tmp:
+            tmp = Path(tmp)
+            for name in names:
+                (tmp / name).parent.mkdir(parents=True, exist_ok=True)
+                data = (ROOT / name).read_bytes()
+                if name == 'User/user_fun.c':
+                    text = data.decode('cp1251').replace('\r\n', '\n')
+                    assert text.count(old) == 1, label
+                    data = text.replace(old, new).replace('\n', '\r\n').encode('cp1251')
+                (tmp / name).write_bytes(data)
+            result = subprocess.run([sys.executable, str(ROOT / 'Tests/run_host.py'), 'work', 'sms'], capture_output=True,
+                                    timeout=120, env={**os.environ, 'DOMOVOI_ROOT': str(tmp)})
+            (out / (label + '.log')).write_bytes(result.stdout + result.stderr)
+            assert result.returncode and b'FAIL ' in result.stderr, ('undetected', label)
+        print(label, 'detected', flush=True)
+    print('user comm mutations:', len(cases), '/', len(cases), 'detected')
 
 
 if __name__ == '__main__':

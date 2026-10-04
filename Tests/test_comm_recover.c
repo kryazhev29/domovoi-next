@@ -53,6 +53,8 @@ static void rc_expect(unsigned i, uint32_t ms, uint8_t power)
 }
 /* Сигнал, регистрация, тип сети: опрос через канал раз в 30 с, ERROR на запрос не рвёт TCP,
    без связи - «неизвестно». */
+static unsigned low_signals; static uint8_t low_csq;
+static void low_model(uint8_t csq) { ++low_signals; low_csq = csq; }
 static void info_tests(void)
 {
   rc_online(); rc_run(40000u);
@@ -60,6 +62,16 @@ static void info_tests(void)
   { unsigned before = opens; sim_nwinfo_error = 1; rc_run(70000u); CHECK(opens == before && comm_server_online()); }
   CHECK(comm_info()->csq == 22);
   comm_modem_off(); rc_run(100); CHECK(comm_info()->csq == 99 && !comm_info()->creg && !comm_info()->net);
+  /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
+  /* Время модели после rc_online идёт с начала, срок опроса - из прошлого сценария: 2 мин на свежий цикл. */
+  rc_online(); sim_csq = 12; rc_run(120000u); comm_info_low_signal(low_model); rc_run(40000u);
+  CHECK(low_signals == 1 && low_csq == 12);
+  rc_run(3600000u); CHECK(low_signals == 1);
+  rc_run(23u * 3600000u + 60000u); CHECK(low_signals == 2);
+  static const unsigned levels[] = {15, 99, 14};
+  for (unsigned i = 0; i < 3; ++i) { sim_csq = levels[i]; rc_run(40000u); comm_info_low_signal(low_model); rc_run(40000u); }
+  CHECK(low_signals == 3 && low_csq == 14);
+  sim_csq = 22;
 }
 static void recover_tests(void)
 {
@@ -68,10 +80,18 @@ static void recover_tests(void)
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(3600000u);
   CHECK(rc_logged == 3 && !rc_soft_starts && rc_power_starts == 3);
   rc_expect(0, 600000u, 1); rc_expect(1, 1800000u, 1); rc_expect(2, 3600000u, 1);
+  CHECK(link_count(COMM_LINK_NO_NET, 0) == 1 && !link_count(COMM_LINK_NO_INTERNET, 0)); /* событие 11 один раз */
   /* 2. Нет сети: с AT 10 с, 30 с, третья неудача подряд - питание 10 мин, дальше 60 с. */
   rc_online(); sim_network_wait = 1; rc_fresh(); rc_run(3600000u);
   rc_expect(0, 10000u, 0); rc_expect(1, 30000u, 0); rc_expect(2, 600000u, 1);
   rc_expect(3, 60000u, 0); rc_expect(4, 60000u, 0); rc_expect(5, 1800000u, 1);
+  CHECK(link_count(COMM_LINK_NO_NET, 0) == 1);
+  /* Сеть нашлась, связь есть - при следующей потере сети событие 11 снова. */
+  sim_network_wait = 0; rc_run(3600000u); CHECK(comm_server_online());
+  sim_network_wait = 1; rc_fresh(); rc_run(150000u); CHECK(link_count(COMM_LINK_NO_NET, 0) == 2);
+  /* Мобильный интернет не включается (QIACT): событие 12 один раз, 11 нет. */
+  rc_online(); sim_error_step = SLM_ACTIVATE; rc_fresh(); rc_run(3600000u);
+  CHECK(rc_logged >= 3 && link_count(COMM_LINK_NO_INTERNET, 0) == 1 && !link_count(COMM_LINK_NO_NET, 0));
   /* 3. Модем молчит после включения: питание 10/30/60 мин. */
   rc_online(); sim_silence_step = SLM_AT_READY; rc_fresh(); rc_run(3 * 3600000u);
   rc_expect(0, 600000u, 1); rc_expect(1, 1800000u, 1); rc_expect(2, 3600000u, 1); CHECK(!rc_soft_starts);
@@ -97,6 +117,7 @@ static void recover_tests(void)
   CHECK(rc_logged >= 3 && rc_soft_starts == 1 && rc_power_starts >= 1);
   rc_expect(0, 0, 0); rc_expect(1, 0, 1); rc_expect(2, 600000u, 1);
   CHECK(rc_log[0].opens >= 2); /* до перезапуска модема TCP переоткрыт */
+  CHECK(link_count(COMM_LINK_NO_INTERNET, 0) >= 1 && !link_count(COMM_LINK_NO_NET, 0)); /* ping и DNS молчат - событие 12 */
   /* 8. Ранний перезапуск: 3 таймаута AT в работе за 10 мин - питание сразу; 2 - нет. */
   rc_online();
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000);

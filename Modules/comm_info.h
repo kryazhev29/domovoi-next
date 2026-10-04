@@ -13,5 +13,7 @@ typedef struct {
 
 void comm_info_poll(uint32_t now_ms);
 const comm_info_t *comm_info(void);
+/* Событие 38 (сигнал ниже 15): handler(csq) после ближайшего полного опроса, дальше раз в сутки. */
+void comm_info_low_signal(void (*handler)(uint8_t csq));
 
 #endif

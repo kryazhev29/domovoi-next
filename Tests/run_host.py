@@ -252,8 +252,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         c8=case(8);head=c8[:c8.index('if (ptr[5] != 0 &&')]
         assert 'if (fw_update_quiet()){' in head and 'CMD_RUNERROR' in head,'command 8 refused in update mode'
         sms=function(user,'user_smsreceived')
-        gate=sms[sms.index('if (fw_update_quiet()'):sms.index('if (strcmp(v, "add") == 0){')]
-        assert all('strcmp(v, "%s") == 0'%c in gate for c in ('add','reset','setout','default')) and '"imei"' not in gate and '"status"' not in gate,'SMS control commands refused in update mode'
+        gate=sms[sms.index('if (fw_update_quiet()'):sms.index('if (strcmp(cmd, "add") == 0){')]
+        assert all('strcmp(cmd, "%s") == 0'%c in gate for c in ('add','reset','setout','default')) and '"imei"' not in gate and '"status"' not in gate,'SMS control commands refused in update mode'
         call=user[user.index('bool user_incomingcall (char* num, uint8_t typ)'):user.index('void user_comanderror')]
         assert 'fw_update_quiet' not in call,'calls keep working in update mode'
         # Update events of the journal sheet (system 1-5 struck out): 132 start, 133 failure with its
@@ -306,8 +306,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='sms':
         user=source('User/user_fun.c');strings=source('User/user_str_fun.c')
         code='\n'.join(function(strings,n) for n in ('skipchar','user_strcpy'))+'\n'
-        code+='\n'.join(function(user,n) for n in ('user_last10digitsnumber','user_sendsms','user_smsreceived'))
-        types=typedefs(source('structures.h'),'logSystem_e','logControl_e','codeType_e')
+        code+='\n'.join(function(user,n) for n in ('user_last10digitsnumber','user_sendsms','user_comm_server','user_smsreceived','log_addSystemValue','user_comm_link','user_comm_balance','user_comm_low_signal'))
+        links=re.search(r'enum \{ COMM_LINK_UP[^}]*\};',source('Modules/comm_server.h')).group(0)
+        types=typedefs(source('structures.h'),'logSystem_e','logControl_e','codeType_e')+'\n'+links
         unit=(ROOT/'Tests/test_sms.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='uarttimer':
         uart=source('Modules/uart_stm32f10x.c')

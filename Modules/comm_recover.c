@@ -83,6 +83,9 @@ static bool rc_early(void)
 static void rc_failed(void)
 {
   const slm_status_t *s = comm_modem_status();
+  /* ∆урнал: не дошЄл до сети - событие 11, до мобильного интернета - 12. */
+  if (s->reason == SLM_ERR_PDP || s->phase == SLM_PHASE_PDP) comm_server_note(COMM_LINK_NO_INTERNET);
+  else if (s->phase == SLM_PHASE_SIM || s->phase == SLM_PHASE_NETWORK) comm_server_note(COMM_LINK_NO_NET);
   switch (s->reason) {
   case SLM_ERR_NO_ANSWER: case SLM_ERR_STREAM:
     /* «амолчал посреди работы - питание сразу; молчит после включени€ - по паузам. */
@@ -139,6 +142,7 @@ void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms)
    сн€тие питани€ сразу, дальше по паузам. */
 void comm_recover_no_internet(void)
 {
+  comm_server_note(COMM_LINK_NO_INTERNET);
   if (rc.net_step == 0u) comm_channel_reopen(0);
   else if (rc.net_step == 1u) rc_schedule(false, 0);
   else rc_power_ladder(rc_now_then_ladder());

@@ -12,6 +12,14 @@ typedef struct {
 } comm_server_handlers_t;
 /* Ни ping, ни DNS не прошли: вместо переоткрытия TCP зовётся handler. */
 void comm_server_no_internet(void (*handler)(void));
+/* События журнала связи (лист «Журнал событий» 11, 12, 14-19): адрес 0 - основной, 1 - резервный.
+   UP - сервер принял регистрацию, FAIL - TCP не открылся или регистрацию не приняли,
+   LOST - связь после регистрации пропала. FAIL, NO_NET, NO_INTERNET - один раз до UP;
+   handler вернул false - повтор при следующем случае. */
+enum { COMM_LINK_UP, COMM_LINK_FAIL, COMM_LINK_LOST, COMM_LINK_NO_NET, COMM_LINK_NO_INTERNET };
+void comm_server_link(bool (*handler)(uint8_t kind, uint8_t address));
+void comm_server_note(uint8_t kind); /* NO_NET, NO_INTERNET - от восстановления */
+uint8_t comm_server_address(void);
 uint32_t comm_server_diag(void);
 void comm_server_init(const comm_server_handlers_t *handlers);
 void comm_server_poll(uint32_t now_ms);

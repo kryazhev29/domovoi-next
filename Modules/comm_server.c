@@ -6,20 +6,33 @@
 static struct {
   comm_server_handlers_t handlers;
   uint32_t now, registration_since, status_since, stable_since, silent_since;
-  uint8_t state, registrations, misses, status_id, last_status_id, silent_step;
+  uint8_t state, registrations, misses, status_id, last_status_id, silent_step, address;
   struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1; } flags;
 } sv;
 enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
-/* Вне sv: переживает comm_server_init при перезапуске модема. */
+/* Вне sv: переживают comm_server_init при перезапуске модема. */
 static void (*sv_no_internet)(void);
+static bool (*sv_link)(uint8_t, uint8_t);
+static uint8_t sv_noted; /* записано до исправления: биты 0/1 - ошибка адреса 0/1, 2 - нет сети, 3 - нет интернета */
 void comm_server_no_internet(void (*handler)(void)) { sv_no_internet = handler; }
+void comm_server_link(bool (*handler)(uint8_t, uint8_t)) { sv_link = handler; }
+static void server_link(uint8_t kind, uint8_t address)
+{
+  uint8_t bit = kind == COMM_LINK_FAIL ? (uint8_t)(1u << address) : kind >= COMM_LINK_NO_NET ? (uint8_t)(1u << (kind - 1u)) : 0u;
+  if ((sv_noted & bit) || !sv_link) return;
+  if (sv_link(kind, address)) sv_noted |= bit;
+}
+void comm_server_note(uint8_t kind) { server_link(kind, 0); }
+uint8_t comm_server_address(void) { return sv.address; }
 static void server_channel_event(uint8_t kind, uint8_t value)
 {
   if (kind == COMM_CH_OPENED) {
-    sv.state = SV_REG; sv.registrations = sv.misses = 0;
+    sv.state = SV_REG; sv.registrations = sv.misses = 0; sv.address = value;
   } else if (kind == COMM_CH_CLOSED || kind == COMM_CH_FAULT) {
+    if (sv.state != SV_OFF) server_link(sv.state >= SV_ONLINE ? COMM_LINK_LOST : COMM_LINK_FAIL, sv.address);
     sv.state = SV_OFF; sv.flags.stable = 0;
   } else {
+    if (kind == COMM_CH_OPEN_FAILED) { server_link(COMM_LINK_FAIL, value); return; }
     if (kind == COMM_CH_PROBE_DONE && (sv.state == SV_PING || sv.state == SV_DNS)) {
       sv.flags.check_pending = 0;
       if (value) { sv.state = SV_SILENT; sv.silent_since = sv.now; }
@@ -34,6 +47,7 @@ static void server_channel_event(uint8_t kind, uint8_t value)
 }
 void comm_server_init(const comm_server_handlers_t *handlers)
 {
+  if (sv.state >= SV_ONLINE) server_link(COMM_LINK_LOST, sv.address); /* перезапуск модема на связи */
   memset(&sv, 0, sizeof(sv));
   if (handlers) sv.handlers = *handlers;
   comm_channel_init(server_channel_event);
@@ -48,6 +62,7 @@ void comm_server_registered(uint8_t success)
   if (!success) { comm_channel_reopen(0); return; }
   comm_channel_registered(); sv.state = SV_ONLINE; sv.flags.traffic_event = sv.misses = sv.flags.status_wait = 0;
   sv.flags.stable = 1; sv.stable_since = sv.status_since = sv.now;
+  server_link(COMM_LINK_UP, sv.address); sv_noted = 0;
 }
 void comm_server_status_sent(uint8_t unique_id)
 {

@@ -17,5 +17,11 @@ bool user_comm_sms(const char *number, const char *text);
 bool user_comm_busy(void);
 const char *user_comm_ussd(void);
 uint8_t user_comm_volte(void);
-void user_comm_balance(uint16_t rubles);
+/* Ѕаланс в рубл€х (минус - долг): статус 2 и событие 37. */
+void user_comm_balance(int32_t rubles);
+/* ∆урнал св€зи: событи€ 11, 12, 14-19 (comm_server.h), 38 - сигнал ниже 15. */
+bool user_comm_link(uint8_t kind, uint8_t address);
+void user_comm_low_signal(uint8_t csq);
+/* Ќомер сервера по адресу канала: 0 - сервер 1, 1 - сервер 2. */
+uint8_t user_comm_server(uint8_t address);
 #endif

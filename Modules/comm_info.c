@@ -3,6 +3,7 @@
 #include "comm_channel.h"
 #include "comm_at.h"
 #include "modem_slm336.h"
+#include "comm_timeouts.h"
 #include <string.h>
 
 #define INFO_PERIOD_MS 30000u
@@ -11,9 +12,11 @@
 static const char *const info_cmd[] = {"AT+CSQ", "AT+CREG?", "AT+CGREG?", "AT+CEREG?", "AT+QNWINFO"};
 static struct {
   comm_info_t v;
-  uint32_t next;
-  uint8_t step, ps; /* ps: бит 0 - CGREG, бит 1 - CEREG */
-} info = {{99, 0, 0, 0}, 0, 0, 0};
+  uint32_t next, day; /* day - срок суточной проверки сигнала */
+  uint8_t step, ps, daily; /* ps: бит 0 - CGREG, бит 1 - CEREG; daily - срок day назначен */
+} info = {{99, 0, 0, 0}, 0, 0, 0, 0, 0};
+static void (*info_low)(uint8_t);
+void comm_info_low_signal(void (*handler)(uint8_t csq)) { info_low = handler; info.daily = 0; }
 
 /* Есть ли в строке подстрока (короткие строки ответа, без кучи). */
 static bool info_has(const uint8_t *p, uint16_t n, const char *s)
@@ -53,7 +56,13 @@ void comm_info_poll(uint32_t now_ms)
   if ((int32_t)(now_ms - info.next) < 0) return;
   if (!comm_channel_query(info_cmd[info.step], info_line)) return;
   info.step = (uint8_t)((info.step + 1u) % (sizeof(info_cmd) / sizeof(info_cmd[0])));
-  if (!info.step) info.next = now_ms + INFO_PERIOD_MS;
+  if (info.step) return;
+  info.next = now_ms + INFO_PERIOD_MS;
+  /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
+  if (info_low && (!info.daily || (int32_t)(now_ms - info.day) >= 0)) {
+    info.daily = 1; info.day = now_ms + comm_timeouts[COMM_T_DAY];
+    if (info.v.csq < 15u) info_low(info.v.csq);
+  }
 }
 
 const comm_info_t *comm_info(void) { return &info.v; }

@@ -475,8 +475,7 @@ void user_comm_session(bool open)
   device.connectionhandle = 0; device.registredOnServer = 0; device.answerTimeout = 0;
   /* Поколение TCP отменяет неподтверждённый пакет; сохранённые курсоры и USB не трогаем. */
   log_unacked[1] = temp_unacked[1] = 0;
-  if (!open) photo_connection_lost();
-  else log_addSystemEvent(LOG_SYS_CONNECT1);
+  if (!open) photo_connection_lost(); /* «подключён» пишет user_comm_link после регистрации */
 }
 
 // принято СМС
@@ -535,16 +534,20 @@ void user_smsreceived (char* num, char* data)
     v = &tempStrBuffer[0];
     // команда
     user_strcpy(v, dt, ' ', 10);
+    /* Лист «SMS»: команда строчными, ответ начинается с неё заглавными («ADD: ...»). */
+    char cmd[11];
+    strcpy(cmd, v);
+    for (char *c = v; *c; ++c) if (*c >= 'a' && *c <= 'z') *c = (char)(*c - 'a' + 'A');
 
     if (validPin == true){
       /* Режим обновления (таблица E437): управляющие команды ждут окончания обновления. */
-      if (fw_update_quiet() && (strcmp(v, "add") == 0 || strcmp(v, "reset") == 0 ||
-                                strcmp(v, "setout") == 0 || strcmp(v, "default") == 0)){
+      if (fw_update_quiet() && (strcmp(cmd, "add") == 0 || strcmp(cmd, "reset") == 0 ||
+                                strcmp(cmd, "setout") == 0 || strcmp(cmd, "default") == 0)){
         strcat(v, ": Error \"Update in progress\"");
         user_sendsms(v, num);
       } else
       // добавить ID
-      if (strcmp(v, "add") == 0){
+      if (strcmp(cmd, "add") == 0){
         if (validFormat){
           strncpy(&tempStrBuffer[96], arg, 10);
           tempStrBuffer[106] = 0; // ID завершён; короткий аргумент дополнен нулями.
@@ -561,45 +564,46 @@ void user_smsreceived (char* num, char* data)
       } else
       
       // запросить IMEI
-      if (strcmp(v, "imei") == 0){
+      if (strcmp(cmd, "imei") == 0){
         strcat(v, ": ");
         strcat(v, device.IMEIGSM);
         user_sendsms(v, num);
       } else
         
       // запросить статус
-      if (strcmp(v, "status") == 0){
-        sprintf(v, "status:\r\n-signal: %d\r\n-net: %s\r\n-cloud: %d\r\n-fw: %d\r\n-trig: %s", 
-                device.csq, "", device.connected, device.firmwareVersion, "");
+      if (strcmp(cmd, "status") == 0){
+        /* -NET: тип сети comm_info (0 нет, 1 GSM/GPRS, 3 3G, 4 LTE); -CLOUD: связь/номер сервера;
+           -TRIG: E1-E4 - первые четыре триггера команды 5. */
+        static const char *const net[] = {"Not network", "gprs", "edge", "3G", "4G", "5G"};
+        sprintf(v, "STATUS:\r\n-SIGNAL: %d\r\n-NET: %s\r\n-CLOUD: %d/%d\r\n-FW: %d\r\n-TRIG: %d/%d/%d/%d",
+                device.csq, net[device.netType < 6u ? device.netType : 0], device.connected,
+                user_comm_server(comm_server_address()) + 1, device.firmwareVersion,
+                device.triggers.handUnBlock, device.triggers.sheduleUnBlock,
+                device.triggers.autoregistration, device.triggers.openAll);
         user_sendsms(v, num);
       } else
         
       // перезагрузить
-      if (strcmp(v, "reset") == 0){
+      if (strcmp(cmd, "reset") == 0){
         strcat(v, ": Go to reset");
         user_sendsms(v, num);
         device.timeToReset = 5;
       } else
         
       // включить выход N
-      if (strcmp(v, "setout") == 0){
+      if (strcmp(cmd, "setout") == 0){
         if (validFormat){
           uint8_t out = atoi(arg);
-          
-          if (out == 1){
-            if (config.rele[0].onCmdServer){
-              out_load (OUT1, OUT_ON, 0, 0, 0);
-              strcat(v, ": Out 1 enabled");
+
+          if (out == 1 || out == 2){
+            if (config.rele[out - 1u].onCmdServer){
+              out_load (out == 1 ? OUT1 : OUT2, OUT_ON, 0, 0, 0);
+              strcat(v, out == 1 ? ": Out 1 enabled" : ": Out 2 enabled");
             } else{
-              strcat(v, ": Error, Out 1 is blocked");
+              strcat(v, ": Error, Out is blocked");
             }
-          } else if (out == 2){
-            if (config.rele[1].onCmdServer){
-              out_load (OUT2, OUT_ON, 0, 0, 0);
-              strcat(v, ": Out 2 enabled");          
-            } else{
-              strcat(v, ": Error, Out 2 is blocked");             
-            }
+          } else{ // выхода с таким номером нет
+            strcat(v, ": Error \"Format not correct\"");
           }
           user_sendsms(v, num);
         } else{
@@ -609,12 +613,12 @@ void user_smsreceived (char* num, char* data)
       } else
         
       // обновить прошивку N
-      if (strcmp(v, "update") == 0){
+      if (strcmp(cmd, "update") == 0){
         //777
       } else
         
       // заводские настройки
-      if (strcmp(v, "default") == 0){
+      if (strcmp(cmd, "default") == 0){
         user_factoryReset();
         strcat(v, ": Complete");
         user_sendsms(v, num);
@@ -626,8 +630,8 @@ void user_smsreceived (char* num, char* data)
     }
   }
 
-  // пересылать смс администратору
-  if (device.triggers.smsToAdmin){
+  // пересылать смс администратору (пакет 7): команды не пересылаются
+  if (device.triggers.smsToAdmin && *data != '#'){
     user_send_smsToServer(data);
   }  
 }
@@ -987,23 +991,6 @@ void user_loop(void)
       }
     }
     
-    // раз в сутки
-    if ((device.last_hour == 23) && (device.hour == 0)){
-      
-      // проверка баланса 
-      if (config.ussdBalance[0] != 0){
-        // информируем
-        if (device.triggers.smsLowBalance){
-          if (device.balance < 100){
-            // информировать админа
-            log_addSystemEvent(LOG_SYS_LOWBALANCE);
-          }
-        }
-        // проверяем
-      }
-      
-    }
-    device.last_hour = device.hour;
   } // 1 минута
 }
 
@@ -4505,6 +4492,14 @@ bool log_addSystemEvent(logSystem_e num){
   return log_put(&cell);
 }
 
+/* Событие с числом текстом в поле ID (37 - баланс, 38 - сигнал), остаток поля нули. */
+static bool log_addSystemValue(logSystem_e num, int32_t value)
+{
+  char id[12] = {0};
+  sprintf(id, "%d", (int)value);
+  return log_addSystemEventID(num, id);
+}
+
 // добавить системное событие
 bool log_addSystemEventID(logSystem_e num, char *id){
   cellLog_s cell;
@@ -4753,7 +4748,23 @@ uint32_t user_comm_local_time(void)
 /* Баланс SIM (статус 2): USSD из настроек (команда 12) и разобранный ответ, рубли. */
 const char *user_comm_ussd(void) { return config.ussdBalance; }
 uint8_t user_comm_volte(void) { return config.useVoLTE; }
-void user_comm_balance(uint16_t rubles) { device.balance = rubles; }
+void user_comm_balance(int32_t rubles)
+{
+  device.balance = rubles < 1 ? 1u : rubles > 65000 ? 65000u : (uint16_t)rubles; /* статус 2: 0 - не определён */
+  /* 37 «Баланс ниже нормы»: после каждого запроса, порог 100 р (триггер «баланс менее 100»). */
+  if (rubles < 100) log_addSystemValue(LOG_SYS_LOWBALANCE, rubles);
+}
+void user_comm_low_signal(uint8_t csq) { log_addSystemValue(LOG_SYS_LOWSIGNAL, csq); }
+/* Журнал связи: 14/15 подключён, 16/17 ошибка соединения, 18/19 потеря связи с сервером 1/2;
+   11 нет регистрации в сети, 12 нет интернета. */
+bool user_comm_link(uint8_t kind, uint8_t address)
+{
+  static const uint8_t first[] = {LOG_SYS_CONNECT1, LOG_SYS_ERRCONNECT1, LOG_SYS_FAILCONNECT1, LOG_SYS_NOTGSMREG, LOG_SYS_NOTGPRSREG};
+  if (kind >= sizeof(first)) return true;
+  uint8_t event = first[kind];
+  if (kind <= COMM_LINK_LOST) event = (uint8_t)(event + user_comm_server(address));
+  return log_addSystemEvent((logSystem_e)event);
+}
 /* Ночной перезапуск модема ждёт конца загрузки FW и вызова. */
 bool user_comm_busy(void) { return device.FWinProgress != 0 || comm_call_active(); }
 
@@ -4769,6 +4780,8 @@ static void comm_split(uint8_t n, const char *server)
   memcpy(comm_host[n], server, len); comm_host[n][len] = 0;
   comm_port[n] = colon ? (uint16_t)atoi(colon + 1) : 0;
 }
+/* Адрес 0 - сервер 1, если он включён или выключены оба (как в comm_endpoint); адрес 1 - сервер 2. */
+uint8_t user_comm_server(uint8_t address) { return address || (!config.useServer1 && config.useServer2); }
 /* Читаем текущие настройки: команда 12 применяется без перезагрузки платы.
    Указатель живёт до следующего запроса поля; сборщик AT копирует его сразу. */
 static void comm_endpoint(uint8_t n)
