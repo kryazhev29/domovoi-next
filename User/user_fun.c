@@ -3632,12 +3632,7 @@ bool user_findID(char *id, cellID_s *cell){
       c = (cellID_s*)&tbuffer[a];
       // пустая ячейка
       if (c->index == 0xffff) continue;
-      // пустое поле ID
-      uint16_t sum = 0;
-      for (uint8_t i = 0; i<10; i++)
-        sum += (uint8_t)c->ID[i];
-      if (sum == 2550 || sum == 0) continue; // поле ID пустое: 0xFF или нули
-      // проверяем на совпадение
+      /* The query is already nonempty: an equal stored ID is nonempty too. */
       if (memcmp(c->ID, id, 10) == 0){
         memcpy(cell, c, sizeof(cellID_s));
         return true;
