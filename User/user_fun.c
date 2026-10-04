@@ -377,27 +377,34 @@ static void server_rx_consume(uint16_t n)
 // Найти в начале буфера целый кадр с верным CRC и пометить готовым; мусор перед ним отбросить.
 static void server_rx_scan(void)
 {
-  uint16_t body, total, crc;
-  while (server_rx_count && !server_rx_ready && !server_rx_busy){
-    if (memcmp(server_rx_buffer, "SLDN", server_rx_count < 4 ? server_rx_count : 4)){
-      server_rx_consume(1);
+  uint16_t body, total, crc, offset = 0, left;
+  uint8_t *p;
+  if (server_rx_ready || server_rx_busy) return;
+  /* Compact once: a corrupt full frame must not cause quadratic copying. */
+  while (offset < server_rx_count){
+    p = server_rx_buffer + offset;
+    left = server_rx_count - offset;
+    if (memcmp(p, "SLDN", left < 4 ? left : 4)){
+      offset++;
       continue;
     }
-    if (server_rx_count < 6) return;
-    body = (uint16_t)server_rx_buffer[4] | ((uint16_t)server_rx_buffer[5] << 8);
+    if (left < 6) break;
+    body = (uint16_t)p[4] | ((uint16_t)p[5] << 8);
     if (body < 3 || body > SERVER_RX_CAPACITY - 8){
-      server_rx_consume(1);
+      offset++;
       continue;
     }
     total = body + 8;
-    if (server_rx_count < total) return;
-    crc = (uint16_t)server_rx_buffer[total - 2] | ((uint16_t)server_rx_buffer[total - 1] << 8);
-    if (crc != crc16_calc(server_rx_buffer + 4, body + 2)){
-      server_rx_consume(1);
+    if (left < total) break;
+    crc = (uint16_t)p[total - 2] | ((uint16_t)p[total - 1] << 8);
+    if (crc != crc16_calc(p + 4, body + 2)){
+      offset++;
       continue;
     }
     server_rx_ready = total;
+    break;
   }
+  if (offset) server_rx_consume(offset);
 }
 
 // данные с сервера
