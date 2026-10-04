@@ -197,6 +197,14 @@
         "left": 5,
         "ready": 0,
         "tail_hex": "534c444e0c"
+      },
+      "nested_bad_crc": {
+        "instructions": 14082991,
+        "move_calls": 2048,
+        "move_bytes": 2096128,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
       }
     },
     "lib_id_equal": {
@@ -344,6 +352,14 @@
         "left": 5,
         "ready": 0,
         "tail_hex": "534c444e0c"
+      },
+      "nested_bad_crc": {
+        "instructions": 3566879,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
       }
     },
     "lib_id_equal": {

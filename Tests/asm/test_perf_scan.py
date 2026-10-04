@@ -276,9 +276,19 @@ def main():
         assert crc16(bad[4:-2]) != int.from_bytes(bad[-2:], 'little')
         frame = b'SLDN\x0c\x00'+b'\xa5'*12
         frame += crc16(frame[4:]).to_bytes(2, 'little')
+        # All plausible nested frames end at the same byte, each with bad CRC.
+        # Compaction is linear now, but CRC retries can still dominate this case.
+        nested = bytearray(b'\xa5'*2048)
+        offsets = range(0, 2038, 6)
+        for off in offsets:
+            nested[off:off+6] = b'SLDN'+(2040-off).to_bytes(2, 'little')
+        rejected = {crc16(nested[off+4:-2]) for off in offsets}
+        trailer = next(v for v in range(65536) if v not in rejected)
+        nested[-2:] = trailer.to_bytes(2, 'little')
         results[label]['scan'] = {n: scan(path, data) for n, data in {
             'bad_full': bad, 'bad_partial_tail': bad[:-3]+b'SLD',
-            'garbage': b'X'*2048, 'valid': frame, 'partial': frame[:5]}.items()}
+            'garbage': b'X'*2048, 'valid': frame, 'partial': frame[:5],
+            'nested_bad_crc': bytes(nested)}.items()}
         results[label]['lib_id_equal'] = count_call(path, '__iar_small_memcmp', (BUF, BUF+0x10000, 10))
         results[label]['find_id'] = {str(n)+'/'+str(match): find_id(path, n, match)
             for n, match in ((32, -1), (1024, -1), (1024, 0), (1024, 511), (1024, 1023))}
