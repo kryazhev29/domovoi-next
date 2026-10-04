@@ -158,4 +158,8 @@ uint16_t user_getPhotoCount(void);
 bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc);
 uint32_t CRC32(uint32_t crc, uint32_t data);
 
+void user_storage_poll(void);
+bool user_storage_command_ready(void);
+bool user_storage_flash_ready(void);
+
 #endif

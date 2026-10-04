@@ -7,7 +7,7 @@ uint8_t spi_ready(void) { return (SPI1->CR1 & SPI_CR1_SPE) != 0; }
 static uint8_t spi_wait_flag(uint16_t flag, uint8_t set)
 {
   if (!spi_ready()) return 0;
-  uint32_t budget = 32000u;
+  uint32_t budget = 512u; /* A byte takes <= 16 SPI clocks; stop a broken peripheral promptly. */
   while (((SPI1->SR & flag) != 0) != (set != 0)) {
     if (--budget == 0) { SPI_Cmd(SPI1, DISABLE); return 0; }
   }

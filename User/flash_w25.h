@@ -15,6 +15,12 @@
 
 #define FLASH_W25_PAGE_SIZE     256
 
+/* Start owns src until poll returns 2 (verified) or 3 (error). NULL means erase. */
+bool w25_async_start(uint32_t address, const uint8_t *src, uint16_t len, uint32_t now);
+uint8_t w25_async_poll(uint32_t now); /* 0 idle, 1 pending, 2 done, 3 error */
+bool w25_async_active(void);
+bool w25_read_available(void);
+
 // Чтение данных с памяти
 bool w25_read_data (Int32U address, pInt8U dst, Int16U len);
 // Запись данных в память

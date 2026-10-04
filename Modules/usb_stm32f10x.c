@@ -228,6 +228,7 @@ static void usb_rx_consume(uint16_t length)
 // usb check data --------------------------------------------------------------
 void usb_check_data (void)
 {
+  uint8_t store_ready = user_storage_command_ready();
   uint32_t mask = __get_PRIMASK();
   uint16_t count, skip = 0, body, total, crc;
   __disable_irq();
@@ -247,6 +248,7 @@ void usb_check_data (void)
     __set_PRIMASK(mask);
     return;
   }
+  if (!store_ready) { __set_PRIMASK(mask); return; }
   if (usb_rx_discard) {
     usb_buffer_count = 0;
     usb_rx_discard = 0;

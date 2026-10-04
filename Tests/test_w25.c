@@ -45,7 +45,7 @@ static bool erase_result(uint32_t a){
  w25_erase_sector(a);return true;
 #endif
 }
-static void reset(void){memset(flash,255,sizeof(flash));memset(payload,0x5A,sizeof(payload));stuck=reject_wren=drop_write=drop_erase=programs=erases=reads=wel=fail_page=0;}
+static void reset(void){memset(&w25_job,0,sizeof(w25_job));memset(flash,255,sizeof(flash));memset(payload,0x5A,sizeof(payload));stuck=reject_wren=drop_write=drop_erase=programs=erases=reads=wel=fail_page=0;}
 int main(void){
  reset();stuck=1;CHECK(!write_result(17,payload,300));CHECK(!programs);
  reset();reject_wren=1;CHECK(!write_result(17,payload,300));CHECK(!programs);
@@ -55,5 +55,20 @@ int main(void){
  reset();memset(flash,0,sizeof(flash));drop_erase=1;CHECK(!erase_result(27));CHECK(erases==1);
  reset();memset(flash,0,sizeof(flash));CHECK(erase_result(27));{unsigned i;for(i=0;i<4096;i++)CHECK(flash[i]==255);}
  reset();stuck=1;CHECK(!erase_result(0));CHECK(!erases);
+
+ reset();CHECK(w25_async_start(17,payload,64,0)); CHECK(!w25_async_start(0,NULL,0,0));
+ CHECK(!w25_write_data(100,payload,1)); CHECK(!w25_erase_sector(4096));
+ stuck=1; for(unsigned now=1;now<20;now++) CHECK(w25_async_poll(now)==1);
+ CHECK(w25_async_poll(20)==3&&!w25_async_active());
+ reset(); CHECK(w25_async_start(0,payload,64,0xFFFFFFFAu)); stuck=1;
+ CHECK(w25_async_poll(5)==1); CHECK(w25_async_poll(14)==3);
+ reset(); drop_write=1; CHECK(w25_async_start(0,payload,64,0)); CHECK(w25_async_poll(1)==3);
+ reset(); reject_wren=1; CHECK(!w25_async_start(0,payload,64,0)); CHECK(!programs);
+ reset(); CHECK(!w25_async_start(250,payload,64,0)); CHECK(!programs);
+ reset(); memset(flash,0,sizeof(flash)); CHECK(w25_async_start(0,NULL,0,0));
+ for(unsigned i=0;i<64;i++){unsigned before=reads;CHECK(w25_async_poll(i)==(i==63?2:1));CHECK(reads-before<=64);}
+ CHECK(erases==1&&!w25_async_active());
+ reset(); memset(flash,0,sizeof(flash));drop_erase=1;CHECK(w25_async_start(0,NULL,0,0));CHECK(w25_async_poll(1)==3);
+ puts("w25 async: BUSY, ownership, deadline/wrap, WEL, dropped erase/program, bounded verification passed");
  puts("w25: real driver BUSY/WEL/program/erase/readback/page-stop passed");return 0;
 }

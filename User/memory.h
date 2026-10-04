@@ -14,6 +14,13 @@
 #define MEM_CONFIG_SLOT1      0x1F7000u
 #define MEM_CONFIG_SLOT_SIZE 8192u
 extern volatile uint32_t mem_config_errors;
+/* Fixed config/device snapshots, unchanged disk layout. Reset only after completion. */
+bool mem_config_begin(const uint8_t *config512, const uint8_t *device512);
+void mem_config_poll(uint32_t now);
+uint8_t mem_config_result(void); /* 0 idle, 1 pending, 2 verified, 3 error */
+void mem_config_reset(void);
+const uint8_t *mem_config_snapshot(void);
+
 bool mem_recover(void);
 bool mem_tables_ready(void);
 bool mem_replace_sector(uint32_t adr, const uint8_t *image);

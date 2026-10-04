@@ -50,6 +50,28 @@ config_s config;
 #pragma data_alignment=4
 device_s device;
 
+/* >>> Cooperative storage callers */
+static uint8_t store_runtime, store_save_requested, store_reset_requested;
+static struct {
+  uint32_t erase, end, retry_at, usb_epoch;
+  uint16_t cursor;
+  uint8_t job, clear, waiting, cmd, channel, uniq, quiet, repeat;
+  uint8_t last_id[4], seen;
+} store;
+enum { US_SAVE=1, US_ACK, US_MARK, US_ERASE, US_CLEAN, US_CONFIG, US_RESET, US_REPLY, US_COMMAND, US_RECOVER, US_RECOVER_CLEAN };
+static bool store_ack(uint8_t cmd, dataChanel_e cch);
+static void store_usb_session(void);
+static bool store_finish(uint8_t cmd);
+static bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
+static bool store_config_start(void);
+static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
+static void store_restore(const device_s *saved);
+void user_storage_poll(void);
+bool user_storage_command_ready(void) { store_usb_session(); return !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
+static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || user_storage_command_ready(); }
+bool user_storage_flash_ready(void) { return store.clear != 9 && !w25_async_active() && w25_read_available(); }
+/* <<< Cooperative storage callers */
+
 /* >>> подтверждение выгрузки */
 static uint16_t log_usbReadIndex, temp_usbReadIndex;
 static uint16_t log_unacked[2], temp_unacked[2];
@@ -90,6 +112,7 @@ static void upload_reset(uint8_t cmd){
   upload_store();
 }
 static bool upload_ack(uint8_t cmd, dataChanel_e cch){
+  if (store_runtime) return store_ack(cmd, cch);
   uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
   uint8_t channel = cch == CH_USB ? 0 : 1;
   if (!pending[channel]) return true;
@@ -105,6 +128,7 @@ static bool upload_ack(uint8_t cmd, dataChanel_e cch){
   return true;
 }
 static bool upload_finish(uint8_t cmd){
+  if (store_runtime) return store_finish(cmd);
   uint16_t server = upload_index(cmd, CH_SERVER), usb = upload_index(cmd, CH_USB);
   bool active = cmd == 10 ? device.status.readyLogData || device.logsCount != 0 :
                            device.status.readyID || device.tempIDsCount != 0;
@@ -434,6 +458,7 @@ void server_rx_process(void)
   if (server_rx_busy) return; // вызов изнутри разбора: кадры выполнит внешний цикл
   while (server_rx_ready){
     if (comm_tx_busy()) return;
+    if (!store_command_allowed(server_rx_buffer[8])) return;
     total = server_rx_ready;
     server_rx_ready = 0;
     server_rx_busy = 1;
@@ -468,6 +493,8 @@ void user_comm_session(bool open)
   device.connectionhandle = 0; device.registredOnServer = 0; device.answerTimeout = 0;
   /* Поколение TCP отменяет неподтверждённый пакет; сохранённые курсоры и USB не трогаем. */
   log_unacked[1] = temp_unacked[1] = 0;
+  if (store.job && store.channel == CH_SERVER) store.quiet = 1;
+  log_unacked[1] = temp_unacked[1] = 0; store.seen &= 5u;
   if (!open) photo_connection_lost(); /* «подключён» пишет user_comm_link после регистрации */
 }
 
@@ -745,6 +772,7 @@ void user_init(void)
   // внешний порт
   rs485_init(); // порт 485
   uart_setRecTimeout(PORT1_PORT, 10); // время заполнения/ожидания приемного буфера 10 мс  
+  store_runtime = 1;
 }
 
 // очистить блок памяти
@@ -791,10 +819,10 @@ void user_loop(void)
 {
   /* Карта - первой и на каждом проходе: конец кадра ловится сразу после паузы,
      а не на следующем 10-мс такте. */
-  if (config.wiegandType != 0)
+  if (config.wiegandType != 0 && user_storage_flash_ready())
     WG_process();
-  idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
-  fw_rollback_poll();
+  if (user_storage_command_ready() && user_storage_flash_ready()) idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
+  if (user_storage_command_ready() && user_storage_flash_ready()) fw_rollback_poll();
   fw_status_poll();
   unreg_sms_poll();
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
@@ -873,7 +901,7 @@ void user_loop(void)
     device.worktime++; // время работы от момента включения, в секундах
     device.datetime++; // внутренние часы
     log_checkPending(); // события, ждущие времени от сервера
-    user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
+    if (user_storage_flash_ready()) user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
     // вычислим день недели, час и минуту
     device.day = user_getweakday(device.datetime);
     device.hour = device.datetime % 86400u / 3600u;
@@ -1099,6 +1127,7 @@ void user_readconfig(void)
 // запись конфигурации в память
 void user_writeconfig(void)
 {
+  if (store_runtime) { store_save_requested = 1; return; }
   wdt_reload();
   config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);
   (void)mem_patch(mem[MB_CONFIG].start, (const uint8_t*)&config, sizeof(config));
@@ -1225,6 +1254,7 @@ void user_readsavedinformation (void)
       
       device.moduleType = DV.moduleType;
       upload_restore(&DV);
+      store_restore(&DV);
        
       break;
     }
@@ -1236,6 +1266,7 @@ void user_readsavedinformation (void)
 // Безопастное завершение работы прибора
 void user_savereset (void)
 {
+  if (store_runtime) { store_reset_requested = 1; return; }
   log_flushPending(); // события, не дождавшиеся времени, - в журнал до перезагрузки
   user_saveindex(); // сохраняем индексы и т.п.
   wdt_reload();
@@ -1256,6 +1287,7 @@ void user_savereset (void)
  * слота, и следующий старт находил неверную CRC настроек и записывал заводские (18.09.2026). */
 void user_saveindex (void)
 {
+  if (store_runtime) { store_save_requested = 1; return; }
   user_writeConfigAndDevice();
 } 
 
@@ -1273,6 +1305,7 @@ bool user_writeConfigAndDevice(void)
 
 void port_check_data(void)
 {
+  if (!user_storage_flash_ready()) return;
   photo_poll();
   if (!device.getPhoto && uart_getstate(PORT1_PORT) && !uart_isReceiving(PORT1_PORT))
     uart_clear(PORT1_PORT);
@@ -2136,6 +2169,7 @@ void user_send_configToConfigurator(dataChanel_e cch){
    Раньше позиция была общей, и чтение по USB забирало события у сервера (18.09.2026). */
 void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
   if (cch != CH_USB && cch != CH_SERVER) return;
+  if (store_runtime && !store_upload_request(10, cch, uniqId)) return;
   if (!upload_ack(10, cch)) return;
   uint16_t readIdx = upload_index(10, cch);
 
@@ -2216,6 +2250,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
 // Пакет 9 - выгрузка ID из временного буфера
 void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
   if (cch != CH_USB && cch != CH_SERVER) return;
+  if (store_runtime && !store_upload_request(9, cch, uniqId)) return;
   if (!upload_ack(9, cch)) return;
   uint16_t readIdx = upload_index(9, cch);
  
@@ -3025,7 +3060,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 #endif 
       if ((len - 3) == 16){
         memcpy((uint8_t*)&device.triggers, &ptr[5], 16);
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
         
         if (device.status.unblockHand != device.triggers.handUnBlock){
           if (device.triggers.handUnBlock)
@@ -3061,7 +3095,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         device.status.autoRegistration = device.triggers.autoregistration;
         device.status.openAnyUser = device.triggers.openAll;
         // сохранить состояние в памяти
-        user_saveindex();   
+        store_command_start(5, cch, uniqId);
       }
       else{
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -3191,21 +3225,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           config_terminate_strings();
           device.datetimeConfig = config.datetime;
           device.status.defaultConfig = 0;
-          bool saved = user_writeConfigAndDevice();
-          config_exchange(&ptr[5]); // старые настройки - в ОЗУ, новые - в кадре
-          if (!saved) {
-            device.datetimeConfig = oldtime;
-            device.crc = oldcrc;
-            device.status.defaultConfig = olddefault;
-            user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-            break;
-          }
-          sync_packet(SYNC_CONFIG);
-          rs485_set_config(&ptr[5]);
-          /* После неудачного старта с неверными настройками оживляем связь. */
-          if (comm_modem_state() == SLM_IDLE) user_comm_boot();
-          user_send_timeshtamp(SHTAMP_CONFIG, config.datetime,
-                               user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size), cch, uniqId);
+          store.channel = cch; store.uniq = uniqId; store.cmd = 12; store.quiet = 0;
+          bool saved = store_config_start();
+          config_exchange(&ptr[5]);
+          device.datetimeConfig = oldtime;
+          device.crc = oldcrc;
+          device.status.defaultConfig = olddefault;
+          if (!saved) user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         }
       }
       else{
@@ -3345,7 +3371,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     user_debug(">>U Recv cmd fw update (cmd 19)\r\n");
 #endif
       if ((len - 3) == 16){
-        user_send_answer_comand(ptr[4], fw_start(&ptr[5], cch), cch, uniqId);
+        cmdCode_e started = fw_start(&ptr[5], cch);
+        if (started == CMD_SUCCESS && store_save_requested) store_command_start(19, cch, uniqId);
+        else user_send_answer_comand(ptr[4], started, cch, uniqId);
       } else{
         fw_log(LOG_FW_FAIL, "PARAM");
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -4422,6 +4450,7 @@ static void log_uniqueIndex(cellLog_s *cl, uint32_t adr){
 
 // добавить событие в буфер
 bool log_addEvent(cellLog_s *cl){
+  if (store.clear == 10 || !user_storage_flash_ready()) return false;
   uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
   cellLog_s cell;
   uint32_t startAddress = device.newAddressLog;
@@ -4909,3 +4938,213 @@ void user_comm_boot(void)
   if (!user_comm_start(&comm_settings, &handlers, timers_getMillis()))
     (void)comm_modem_restart(true, timers_getMillis());
 }
+
+/* >>> Cooperative storage implementation */
+#define STORE_CLEAR_MARK 0x31434C00u
+static void store_usb_session(void)
+{
+  if (store.usb_epoch == usb_bus_resets) return;
+  store.usb_epoch = usb_bus_resets;
+  log_unacked[0] = temp_unacked[0] = 0; store.seen &= 10u;
+  if (store.job && store.channel == CH_USB) store.quiet = 1;
+}
+/* device.reserv[0..7] is the existing upload checkpoint. Bytes 8..15 hold
+ * a cleanup intent and its exclusive end. The CRC of device covers both. */
+static void store_marker(uint8_t cmd, uint32_t end)
+{
+  uint32_t mark = cmd ? STORE_CLEAR_MARK | cmd : 0;
+  memcpy(device.reserv + 8, &mark, 4); memcpy(device.reserv + 12, &end, 4);
+}
+static bool store_snapshot(void)
+{
+  config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
+  device.crc = crc16_calc((uint8_t*)&device, sizeof(device) - 2);
+  return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
+}
+static void store_restore(const device_s *saved)
+{
+  uint32_t mark, end, start, limit;
+  memcpy(&mark, saved->reserv + 8, 4); memcpy(&end, saved->reserv + 12, 4);
+  if (mark != (STORE_CLEAR_MARK | 10u) && mark != (STORE_CLEAR_MARK | 9u)) return;
+  uint8_t cmd = (uint8_t)mark;
+  start = mem[cmd == 10 ? MB_LOG : MB_TEMPID].start;
+  limit = start + mem[cmd == 10 ? MB_LOG : MB_TEMPID].size;
+  if (end < start || end > limit) return;
+  store_marker(cmd, end); store.clear = store.cmd = cmd;
+  store.erase = start & ~4095u; store.end = end;
+  store.job = US_RECOVER; store.waiting = 0; store.quiet = 1;
+  store.erase = start;
+}
+static bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
+{
+  uint8_t slot = (cmd == 10 ? 0 : 2) + (cch == CH_USB ? 0 : 1);
+  if (store.job || mem_config_result()) return false;
+  store.cmd = cmd; store.channel = cch; store.uniq = uniq; store.quiet = 0;
+  store.repeat = (store.seen & (1u << slot)) && store.last_id[slot] == uniq;
+  store.last_id[slot] = uniq; store.seen |= 1u << slot;
+  return true;
+}
+static bool store_ack(uint8_t cmd, dataChanel_e cch)
+{
+  uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
+  uint8_t channel = cch == CH_USB ? 0 : 1;
+  if (!pending[channel] || store.repeat) return true;
+  uint16_t old = upload_index(cmd, cch);
+  store.cursor = pending[channel];
+  upload_setIndex(cmd, cch, store.cursor); upload_store();
+  bool accepted = store_snapshot();
+  upload_setIndex(cmd, cch, old); upload_store();
+  if (accepted) store.job = US_ACK;
+  else store.seen &= ~(1u << ((cmd == 10 ? 0 : 2) + channel));
+  return false;
+}
+static bool store_finish(uint8_t cmd)
+{
+  bool active = cmd == 10 ? device.status.readyLogData || device.logsCount : device.status.readyID || device.tempIDsCount;
+  if (!active && !upload_index(cmd, CH_SERVER) && !upload_index(cmd, CH_USB)) return true;
+  uint32_t start = mem[cmd == 10 ? MB_LOG : MB_TEMPID].start;
+  uint32_t end = start + mem[cmd == 10 ? MB_LOG : MB_TEMPID].size;
+  uint32_t used = cmd == 10 ? device.newAddressLog : device.newAddressTempID;
+  if (used > start && used < end) end = used;
+  store.clear = cmd; store.erase = start & ~4095u; store.end = end;
+  store_marker(cmd, end);
+  /* Keep the already durable cursors until the cleanup intent itself is durable. */
+  store.job = US_MARK;
+  if (!store_snapshot()) store.retry_at = timers_getMillis() + 1000u;
+  return false;
+}
+static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
+{
+  store.cmd = cmd; store.channel = cch; store.uniq = uniq; store.quiet = 0;
+  if (store_snapshot()) { store.job = US_COMMAND; store_save_requested = 0; }
+  else user_send_answer_comand(cmd, CMD_RUNERROR, cch, uniq);
+}
+static void store_config_complete(void)
+{
+  rs485_set_config(mem_config_snapshot());
+  device.datetimeConfig = config.datetime; device.status.defaultConfig = 0;
+  sync_packet(SYNC_CONFIG);
+  if (comm_modem_state() == SLM_IDLE) user_comm_boot();
+}
+static bool store_config_start(void)
+{
+  if (store.job || !store_snapshot()) return false;
+  store.job = US_CONFIG; return true;
+}
+static void store_reply(void)
+{
+  uint8_t cmd = store.cmd, id = store.uniq, quiet = store.quiet;
+  dataChanel_e cch = (dataChanel_e)store.channel;
+  if (!quiet && cch == CH_SERVER && comm_tx_busy()) return;
+  store.job = 0;
+  if (quiet) return;
+  if (cmd == 10) user_send_logRecords(cch, id);
+  else if (cmd == 9) user_send_tempIDs(cch, id);
+  else if (cmd == 12) user_send_timeshtamp(SHTAMP_CONFIG, config.datetime,
+      user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size), cch, id);
+  else user_send_answer_comand(cmd, CMD_SUCCESS, cch, id);
+}
+void user_storage_poll(void)
+{
+  store_usb_session();
+  uint32_t now = timers_getMillis();
+  uint8_t result = mem_config_result();
+  if (result == 1) { mem_config_poll(now); return; }
+  if (store.job == US_REPLY) { store_reply(); return; }
+  if (store.job == US_RECOVER) {
+    /* An older application ignores the reserved intent and may have appended
+     * after a rollback. Preserve a nonempty first sector; resend its records
+     * from cursor zero instead of erasing data that might not be acknowledged. */
+    uint8_t b[64];
+    uint32_t start = mem[store.clear == 10 ? MB_LOG : MB_TEMPID].start;
+    if ((int32_t)(now - store.retry_at) < 0) return;
+    if (!w25_read_data(store.erase, b, sizeof(b))) { store.retry_at = now + 1000u; return; }
+    for (uint16_t i = 0; i < sizeof(b); ++i) if (b[i] != 255u) {
+      upload_reset(store.clear); store_marker(0, 0); store.job = US_RECOVER_CLEAN;
+      if (!store_snapshot()) store.retry_at = now + 1000u;
+      return;
+    }
+    store.erase += sizeof(b);
+    if (!(store.erase & 4095u) || store.erase >= store.end) {
+      store.erase = start & ~4095u; store.job = US_ERASE;
+    }
+    return;
+  }
+  if (store.job == US_ERASE) {
+    if ((int32_t)(now - store.retry_at) < 0) return;
+    if (store.waiting) {
+      uint8_t r = w25_async_poll(now);
+      if (r == 1) return;
+      store.waiting = 0;
+      if (r != 2) { store.retry_at = now + 1000u; return; }
+      store.erase += 4096u;
+      return;
+    }
+    if (store.erase < store.end) {
+      store.waiting = w25_async_start(store.erase, NULL, 0, now);
+      if (!store.waiting) store.retry_at = now + 1000u;
+      return;
+    }
+    upload_reset(store.clear);
+    if (store.clear == 10) {
+      device.logsCount = 0; device.status.readyLogData = 0; device.newAddressLog = mem[MB_LOG].start;
+    } else {
+      device.tempIDsCount = 0; device.status.readyID = 0; device.newAddressTempID = mem[MB_TEMPID].start;
+    }
+    store_marker(0, 0); store.job = US_CLEAN;
+    if (!store_snapshot()) store.retry_at = now + 1000u;
+    return;
+  }
+  if (result == 3) {
+    mem_config_reset();
+    if (store.job == US_MARK || store.job == US_CLEAN || store.job == US_RECOVER_CLEAN) {
+      /* Never append over a possibly published cleanup intent, even on an error. */
+      store.retry_at = now + 1000u; return;
+    }
+    uint8_t job = store.job;
+    store.job = 0;
+    if (job == US_SAVE) store_save_requested = 1;
+    if (job == US_ACK) store.seen &= ~(1u << ((store.cmd == 10 ? 0 : 2) + (store.channel == CH_USB ? 0 : 1)));
+    if ((job == US_CONFIG || job == US_COMMAND) && !store.quiet)
+      user_send_answer_comand(store.cmd, CMD_RUNERROR, (dataChanel_e)store.channel, store.uniq);
+    return;
+  }
+  if (result == 2) {
+    uint8_t job = store.job;
+    if (job == US_CONFIG) {
+      store_config_complete();
+    }
+    mem_config_reset();
+    if (job == US_ACK) {
+      uint16_t *pending = store.cmd == 10 ? log_unacked : temp_unacked;
+      upload_setIndex(store.cmd, (dataChanel_e)store.channel, store.cursor); upload_store();
+      pending[store.channel == CH_USB ? 0 : 1] = 0;
+      store.job = US_REPLY;
+    } else if (job == US_MARK) {
+      upload_reset(store.clear); store.job = US_ERASE; store.retry_at = now;
+    } else if (job == US_CLEAN || job == US_RECOVER_CLEAN) {
+      store.clear = 0; store.job = US_REPLY;
+    } else if (job == US_CONFIG || job == US_COMMAND) store.job = US_REPLY;
+    else if (job == US_RESET) {
+      if (log_pendingCount || store_save_requested) {
+        store.job = 0; store_save_requested = 0; return;
+      }
+      store_reset_requested = 0; store.job = 0;
+      USB_PULLUP_OFF; comm_modem_off(); NVIC_SystemReset();
+    } else store.job = 0;
+    return;
+  }
+  if (store.job == US_MARK || store.job == US_CLEAN || store.job == US_RECOVER_CLEAN) {
+    if ((int32_t)(now - store.retry_at) >= 0 && !store_snapshot()) store.retry_at = now + 1000u;
+    return;
+  }
+  if (store.job || !w25_read_available()) return;
+  if (store_reset_requested) {
+    log_flushPending();
+    if (log_pendingCount) return;
+    if (store_snapshot()) store.job = US_RESET;
+  } else if (store_save_requested) {
+    if (store_snapshot()) { store_save_requested = 0; store.job = US_SAVE; }
+  }
+}
+/* <<< Cooperative storage implementation */

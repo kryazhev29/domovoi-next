@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         print('Flash map: config banks and scratch sectors outside all rounded mem[] and boot areas',flush=True)
         code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
-        defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch')))
+        defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch','uint8_t mem_config_result')))
         test=(ROOT/'Tests/test_storage.c').read_text()
         legacy=subprocess.check_output(['git','show','203c55b:User/user_fun.c'],cwd=ROOT).decode('cp1251')
         legacy_code='\n'.join(function(legacy,n) for n in ['user_writeConfigAndDevice','user_readconfig'])
@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind in ('sectorjournal','bootjournal'):
         code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
-        defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch')))
+        defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch','uint8_t mem_config_result')))
         shared=''
         if '#include "sector_journal.h"' in source('User/memory.c'):
             shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n'
@@ -118,7 +118,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         case=cases(user)
         # Call sites: commands 19 and 20 go through the tested functions, command 4 carries their code.
         c19=case(19);c20=case(20)
-        assert '(len - 3) == 16' in c19 and 'user_send_answer_comand(ptr[4], fw_start(&ptr[5], cch), cch, uniqId);' in c19,'command 19'
+        assert '(len - 3) == 16' in c19 and 'cmdCode_e started = fw_start(&ptr[5], cch);' in c19 and 'store_command_start(19, cch, uniqId)' in c19,'command 19'
         assert 'fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);' in c20 and 'FW_BLOCK_SKIP' not in user and 'user_send_statusUpdateFW(ptr[4], code, cch, uniqId);' in c20,'command 20'
         # Command 2: a download is cancelled before the reset, a rollback or install is left alone.
         c2=case(2)
@@ -275,7 +275,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         call=user[user.index('bool user_incomingcall (char* num, uint8_t typ)'):user.index('void user_comanderror')]
         assert 'fw_update_quiet' not in call,'calls keep working in update mode'
         # Events 6-10: settings count as a sync packet once saved; the quiet timer ticks every second.
-        c12=case(12);assert c12.index('sync_packet(SYNC_CONFIG);')>c12.index('if (!saved) {'),'event 7 after saved settings'
+        c12=case(12);assert 'store_config_start()' in c12 and 'sync_packet(SYNC_CONFIG);' in function(user,'store_config_complete') and 'if (result == 2)' in function(user,'user_storage_poll'),'event 7 after verified settings'
         assert 'sync_end_tick();' in loop,'sync end ticks in the main loop'
         # Block request (13): the retry clock starts only when the request left; a busy slot retries in 50 ms, not 20 s.
         assert 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx))' in loop,'block request not lost'
@@ -526,6 +526,31 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             unit=proto+helpers+unit
         else:
             unit=helpers+unit
+    if 'Cooperative config publication' in unit:
+        unit='#include <stdint.h>\n#include <stdbool.h>\nuint8_t mem_config_result(void);\nbool w25_async_active(void){return false;}\nbool w25_async_start(uint32_t a,const uint8_t*p,uint16_t n,uint32_t now){(void)a;(void)p;(void)n;(void)now;return false;}\nuint8_t w25_async_poll(uint32_t now){(void)now;return 3;}\n'+unit
+    if kind == 'w25':
+        unit='#include <stdint.h>\n#include <stdbool.h>\nbool w25_read_data(uint32_t,uint8_t*,uint16_t);\n'+unit
+    # Existing isolated tests cover synchronous startup/compatibility paths.
+    # Runtime continuations have their own real-code harness (test_store_callers.py).
+    if ('store.' in unit or 'store_runtime' in unit or 'store_restore(' in unit or 'store_command_start(' in unit) and 'static uint8_t store_runtime' not in unit and 'unsigned job,channel,quiet,seen' not in unit:
+        unit='#include <stdint.h>\n#include <stdbool.h>\n#define store_runtime 0\nstatic uint8_t store_save_requested __attribute__((unused)), store_reset_requested __attribute__((unused));\nstatic struct {uint8_t job,clear,channel,uniq,cmd,quiet,seen;} store __attribute__((unused));\n#define store_ack(a,b) false\n#define store_finish(a) false\n#define store_restore(a) ((void)0)\n#define store_upload_request(a,b,c) true\n#define store_command_start(a,b,c) user_send_answer_comand(a,CMD_SUCCESS,b,c)\n'+unit
+    if 'store_command_allowed(' in unit and 'bool store_command_allowed(' not in unit:
+        unit='#define store_command_allowed(cmd) 1\n'+unit
+    if 'user_storage_flash_ready()' in unit and 'bool user_storage_flash_ready(void)' not in unit:
+        unit='#define user_storage_flash_ready() 1\n'+unit
+    if 'user_storage_command_ready()' in unit and 'bool user_storage_command_ready(void)' not in unit:
+        unit='#define user_storage_command_ready() 1\n'+unit
+    if kind in ('cfgstrings','commands'):
+        unit=unit.replace('void command(', 'void command_step(')
+        helper = '\nvoid command(uint8_t*,uint16_t,dataChanel_e,uint8_t);\nstatic config_s staged_config; static bool staged_ok;\nstatic bool store_config_start(void){staged_config=config; staged_ok=user_writeConfigAndDevice(); return staged_ok;}\nstatic const uint8_t *mem_config_snapshot(void){return (const uint8_t*)&staged_config;}\n'
+        at=unit.index('void command_step(')
+        unit=unit[:at]+helper+unit[at:]
+        at=unit.index('int main(')
+        unit=unit[:at]+function(source('User/user_fun.c'),'store_config_complete')+'\nvoid command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){staged_ok=false;command_step(ptr,len,cch,uniqId);if(staged_ok){store_config_complete();user_send_timeshtamp(SHTAMP_CONFIG,config.datetime,user_calcCRC16InFlash(mem[MB_CONFIG].start,mem[MB_CONFIG].size),cch,uniqId);}}\n'+unit[at:]
+    if kind == 'rs485cfg':
+        helper='static config_s staged_config; static bool staged_ok;\nstatic bool store_config_start(void){staged_config=config; staged_ok=user_writeConfigAndDevice(); return staged_ok;}\nstatic const uint8_t *mem_config_snapshot(void){return (const uint8_t*)&staged_config;}\n'+function(source('User/user_fun.c'),'store_config_complete')+'\n'
+        unit=unit.replace('static void receive_config(',helper+'static void receive_config_step(')
+        unit=unit.replace('static void test_rs485cfg(void)', 'static void receive_config(dataChanel_e cch,uint8_t code){staged_ok=false;receive_config_step(cch,code);if(staged_ok){store_config_complete();user_send_timeshtamp(SHTAMP_CONFIG,config.datetime,user_calcCRC16InFlash(mem[MB_CONFIG].start,mem[MB_CONFIG].size),cch,7);}}\nstatic void test_rs485cfg(void)')
     (d/'test.c').write_text(unit.replace('\r\n','\n'))
     subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)

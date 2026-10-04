@@ -25,11 +25,12 @@ def main():
     results = [run("sources", ["Tests/check_comm_sources.py"])]
     results += [run(g, ["Tests/run_host.py", "work", g]) for g in GROUPS]
     results += [run("tx " + s, ["Tests/run_host.py", "work", "tx", s]) for s in TX]
+    results += [run("async config", ["Tests/test_store_async.py"]), run("async callers", ["Tests/test_store_callers.py"])]
     results.append(run("modem_sim", ["-m", "unittest", "Tests/modem_sim.py"]))
     results.append(run("comm_review", ["Tests/comm_review_host.py"]))
     results.append(run("uart arm", ["Tests/build_comm_uart.py"]))
     if not fast:
-        for script in ("comm_mutations.py", "recover_mutations.py", "idindex_mutations.py"):
+        for script in ("comm_mutations.py", "recover_mutations.py", "idindex_mutations.py", "store_async_mutations.py"):
             results.append(run(script, ["Tests/" + script], timeout=3600))
     print("TOTAL %d/%d passed" % (sum(results), len(results)))
     sys.exit(0 if all(results) else 1)

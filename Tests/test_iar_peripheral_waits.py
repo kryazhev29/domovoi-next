@@ -8,6 +8,7 @@ if mode in ('spi','all'):
     for sr in (0,2,0x83):
         m=Machine();m.init();m.u.mem_map(0x42000000,0x600000);m.write(0x40013000,0x40,2);m.write(0x40013008,sr,2)
         m.call('spi_read_byte',budget=1500000)
+        assert m.steps < 10000, ('SPI fault exceeds bounded step',m.steps)
         assert not m.read(0x40013000,2)&0x40,'B34 SPI fault must disable peripheral'
         assert not m.call('w25_read_data',0,0x21000000,1,budget=1500000),'B34 SPI failure reported as read success'
     print('B34 IAR SPI TXE/RXNE/BSY stuck: bounded, W25 returns failure PASS')

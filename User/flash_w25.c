@@ -4,6 +4,63 @@
 ******************************************************************************/
 #include "flash_w25.h"
 
+/* One NOR command in flight. No DMA and no callbacks into the main loop. */
+static struct {
+  const uint8_t *data;
+  uint32_t address, started;
+  uint16_t length, checked;
+  uint8_t active;
+} w25_job;
+bool w25_async_active(void) { return w25_job.active != 0; }
+bool w25_read_available(void) { return spi_ready() && !(w25_read_status() & 1u) && spi_ready(); }
+
+bool w25_async_start(uint32_t address, const uint8_t *src, uint16_t len, uint32_t now)
+{
+  if (address >= 0x1000000u || (uint32_t)len > 0x1000000u - address) return false;
+  if (w25_job.active || !w25_read_available()) return false;
+  if (src && (!len || len > 64u || (address & 255u) + len > 256u)) return false;
+  if (!src && (address & 4095u)) return false;
+  w25_WREN();
+  if (!(w25_read_status() & 2u) || !spi_ready()) return false;
+  w25_chip_ON(); w25_delay_ON();
+  spi_send_byte(src ? 0x02 : 0x20);
+  spi_send_byte((address >> 16) & 255u);
+  spi_send_byte((address >> 8) & 255u);
+  spi_send_byte(address & 255u);
+  if (src) spi_send((uint8_t*)src, len);
+  w25_chip_OFF(); w25_delay_OFF();
+  if (!spi_ready()) return false;
+  w25_job.data = src; w25_job.address = address;
+  w25_job.length = src ? len : 4096u; w25_job.checked = 0;
+  w25_job.started = now; w25_job.active = 1;
+  return true;
+}
+uint8_t w25_async_poll(uint32_t now)
+{
+  uint8_t b[64], status;
+  uint16_t n;
+  if (!w25_job.active) return 0;
+  status = w25_read_status();
+  if (!spi_ready()) goto failed;
+  if (status & 1u) {
+    /* Deadline applies to NOR BUSY, not to time spent waiting for poll calls. */
+    if ((uint32_t)(now - w25_job.started) >= (w25_job.data ? 20u : 1000u)) goto failed;
+    return 1;
+  }
+  n = w25_job.length - w25_job.checked;
+  if (n > sizeof(b)) n = sizeof(b);
+  if (!w25_read_data(w25_job.address + w25_job.checked, b, n)) goto failed;
+  for (uint16_t i = 0; i < n; ++i)
+    if (b[i] != (w25_job.data ? w25_job.data[w25_job.checked + i] : 255u)) goto failed;
+  w25_job.checked += n;
+  if (w25_job.checked != w25_job.length) return 1;
+  w25_job.active = 0;
+  return 2;
+failed:
+  w25_job.active = 0;
+  return 3;
+}
+
 // Чтение данных с памяти -----------------------------------------------------
 bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
 {
@@ -26,6 +83,7 @@ bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
 // Запись данных в память -----------------------------------------------------
 bool w25_write_data (Int32U address, pInt8U src, Int16U len)
 {
+  if (w25_job.active) return false;
   uint32_t k;
   uint16_t s;
   
@@ -60,6 +118,7 @@ bool w25_write_data (Int32U address, pInt8U src, Int16U len)
 // Стереть сектор -------------------------------------------------------------
 bool w25_erase_sector (Int32U address)
 {
+  if (w25_job.active) return false;
   if (w25_busy() & 1u) return false;
 
   w25_WREN();
@@ -157,6 +216,7 @@ void w25_erase_chip (void)
 static uint8_t w25_busy (void)
 {
   uint8_t data;
+  if (w25_job.active) return w25_read_status();
   uint32_t count = 1000000;
 
   w25_chip_ON();
