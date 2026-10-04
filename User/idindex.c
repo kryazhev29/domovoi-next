@@ -29,11 +29,13 @@ static uint32_t ix_fnv(uint32_t h, const uint8_t *p, uint8_t n)
   while (n--) { h ^= *p++; h *= 16777619u; }
   return h;
 }
+#ifndef ASM_ID_HASH
 uint32_t idindex_hash(uint16_t index, const uint8_t *id)
 {
   uint8_t n[2] = {(uint8_t)index, (uint8_t)(index >> 8)};
   return ix_fnv(ix_fnv(2166136261u, n, 2), id, 10);
 }
+#endif
 static uint32_t ix_bucket(const uint8_t *id)
 {
   uint32_t h = ix_fnv(2166136261u, id, 10);
