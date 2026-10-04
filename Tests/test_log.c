@@ -45,6 +45,7 @@ static const struct { int value, sheet; const char *name; } table[] = {
   {LOG_CON_OUTONBYAVTO, 73, "output by plate"}, {LOG_CON_OUTONBYTEST, 74, "server command: admin test"},
   {LOG_CON_OUTONBYAPI, 75, "server command: API"}, {LOG_CON_OUTONBYVOICE, 76, "server command: voice assistant"},
   {LOG_CON_OUTONBYAPP, 77, "server command: mobile app"}, {LOG_CON_RECVIDONREADER, 78, "ID from reader"},
+  {LOG_CON_PASSLIMIT, 79, "passes of the day used up"},
   {LOG_CON_PHOTOFIX, 129, "photo"},
   {LOG_CON_PASSCOUNT, 131, "pass counter"},
   {LOG_CON_IDTIMEEND, 138, "ID use time ended"}, {LOG_CON_IDTIMESTART, 139, "ID use time started"},
@@ -129,6 +130,6 @@ int main(void)
   for(i=0;i<LOG_PENDING_MAX;i++)CHECK(log_addSystemEvent(LOG_SYS_NOTGSMREG));
   CHECK(!log_addSystemEvent(LOG_SYS_NOTGPRSREG)&&log_pendingCount==LOG_PENDING_MAX);
   fail_write=0;
-  puts("PASS journal: 54 event numbers match the sheet, logType is the event number, events wait for the server time, record numbers grow");
+  puts("PASS journal: 55 event numbers match the sheet, logType is the event number, events wait for the server time, record numbers grow");
   return 0;
 }

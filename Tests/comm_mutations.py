@@ -1,6 +1,7 @@
 """Доработка: Кряжев А., 2026. Прежние мутации UART/AT/модема после табличного переноса."""
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -113,7 +114,7 @@ def run():
 
 
 def user_mutations(out):
-    """Пользовательская часть (SMS-команды, журнал связи): поломка в копии исходников, группа sms."""
+    """Пользовательская часть (SMS-команды, журнал): поломка user_fun.c в копии исходников, своя группа run_host."""
     cases = (
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
         ('sms-reply-lowercase', "*c = (char)(*c - 'a' + 'A');", '*c = (char)(*c + 0);'),
@@ -122,20 +123,25 @@ def user_mutations(out):
         ('server-number-ignores-switch', 'return address || (!config.useServer1 && config.useServer2);', 'return address;'),
         ('link-server-2', 'if (kind <= COMM_LINK_LOST) event', 'if (0) event'),
         ('balance-event-threshold', 'if (rubles < 100) log_addSystemValue', 'if (rubles < 1) log_addSystemValue'),
+        # Журнал: 6-10 конец синхронизации, 78 ID по запросу сервера, 79 проходы суток кончились.
+        ('sync-end-without-quiet', 'if (!sync_quiet || --sync_quiet) return;', 'if (!sync_quiet) return; sync_quiet = 0;', 'sync'),
+        ('sync-end-busy-dropped', 'if (sync_pending) sync_quiet = 1;', 'sync_pending = 0;', 'sync'),
+        ('reader-event-wrong', 'log_addControlEvent(LOG_CON_RECVIDONREADER, tb, 0);', 'log_addControlEvent(LOG_CON_IDNOTINBASE, tb, 0);', 'idtext'),
+        ('reader-address-ignored', '(source != 3 || device.addressGetID == address)', '(source != 3 || device.addressGetID >= address)', 'idtext'),
+        ('pass-limit-wrong-pass', 'if (cnt == 0) log_addControlEvent(LOG_CON_PASSLIMIT', 'if (cnt == 1) log_addControlEvent(LOG_CON_PASSLIMIT', 'access'),
     )
-    names = ('User/user_fun.c', 'User/user_str_fun.c', 'structures.h', 'Modules/comm_server.h', 'Tests/test_sms.c')
-    for label, old, new in cases:
+    for label, old, new, *group in cases:
         with tempfile.TemporaryDirectory(dir=out) as tmp:
             tmp = Path(tmp)
-            for name in names:
-                (tmp / name).parent.mkdir(parents=True, exist_ok=True)
-                data = (ROOT / name).read_bytes()
-                if name == 'User/user_fun.c':
-                    text = data.decode('cp1251').replace('\r\n', '\n')
-                    assert text.count(old) == 1, label
-                    data = text.replace(old, new).replace('\n', '\r\n').encode('cp1251')
-                (tmp / name).write_bytes(data)
-            result = subprocess.run([sys.executable, str(ROOT / 'Tests/run_host.py'), 'work', 'sms'], capture_output=True,
+            for name in ('User', 'Modules', 'Tests', 'Bootloader', 'CMSIS'):
+                shutil.copytree(ROOT / name, tmp / name, ignore=shutil.ignore_patterns('__pycache__', '*.o', 'Release', 'Debug'))
+            for name in ('structures.h', 'DomovoiNext.ewp', 'main.c', 'board.h'):
+                shutil.copy2(ROOT / name, tmp / name)
+            path = tmp / 'User/user_fun.c'
+            text = path.read_bytes().decode('cp1251').replace('\r\n', '\n')
+            assert text.count(old) == 1, label
+            path.write_bytes(text.replace(old, new).replace('\n', '\r\n').encode('cp1251'))
+            result = subprocess.run([sys.executable, str(ROOT / 'Tests/run_host.py'), 'work', group[0] if group else 'sms'], capture_output=True,
                                     timeout=120, env={**os.environ, 'DOMOVOI_ROOT': str(tmp)})
             (out / (label + '.log')).write_bytes(result.stdout + result.stderr)
             assert result.returncode and b'FAIL ' in result.stderr, ('undetected', label)

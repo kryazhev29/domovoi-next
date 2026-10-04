@@ -27,6 +27,10 @@ def typedefs(text,*names):
 def cases(user):
     parse=user[user.index('void user_parse_comand'):]
     return lambda n:parse[parse.index('\r\n    case %d:'%n):parse.index('\r\n    case %d:'%(n+1))]
+def sync_end(user):
+    return user[user.index('/* >>> Конец синхронизации'):user.index('/* <<< Конец синхронизации */')]
+def sync_stub(user):
+    return re.search(r'enum \{ SYNC_ID[^}]*\};',user).group(0)+'\n#define sync_packet(b) ((void)(b))\n'
 def config_helpers(user):
     return ''.join(function(user,n)+'\n' for n in ('config_exchange','config_terminate_strings') if 'static void '+n+'(' in user)
 
@@ -107,7 +111,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')
             unit=re.sub(r'typedef struct \{ uint8_t rs485Mode, reserv\[4\]; periphery_s rs485Periphery\[8\]; \} config_s;',types,unit)
             unit=unit.replace('uint8_t readyToUpdate, readyPhoto;', 'uint8_t readyToUpdate, readyPhoto, defaultConfig;').replace('uint32_t datetime, newAddressPhoto;', 'uint32_t datetime, datetimeConfig, newAddressPhoto; uint16_t crc;')
-            extra=config_helpers(user)+source('Tests/test_rs485cfg.c').replace('/* COMMAND12 */',case(12))
+            extra=config_helpers(user)+sync_stub(user)+source('Tests/test_rs485cfg.c').replace('/* COMMAND12 */',case(12))
             unit=unit.replace('int main(int argc,char **argv) {',extra+'\nint main(int argc,char **argv) {\n test_rs485cfg();')
     elif kind=='fwstart':
         user=source('User/user_fun.c')
@@ -185,6 +189,18 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert allowed + ';' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
         # Command 8: a requested output that did not switch answers 2, not success.
         assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
+        # Каждое событие листа (таблица test_log.c) где-то пишется. Вторые серверы и 7-10
+        # получаются сдвигом от первого номера; 34 - функции нет в настройках и протоколе (вопрос заказчику).
+        writers=user+source('User/user_comm.c')+source('User/photo.c')
+        derived={'LOG_SYS_CONNECT2':'LOG_SYS_CONNECT1','LOG_SYS_ERRCONNECT2':'LOG_SYS_ERRCONNECT1','LOG_SYS_FAILCONNECT2':'LOG_SYS_FAILCONNECT1',
+                 'LOG_SYS_ENDCONFUPDATE':'LOG_SYS_ENDIDUPDATE + i','LOG_SYS_ENDGROUPUPDATE':'LOG_SYS_ENDIDUPDATE + i',
+                 'LOG_SYS_ENDSHEDULEUPDATE':'LOG_SYS_ENDIDUPDATE + i','LOG_SYS_ENDHOLLIDAYUPDATE':'LOG_SYS_ENDIDUPDATE + i'}
+        not_written={'LOG_SYS_RESETONSHEDULE'}
+        names=re.findall(r'\{(LOG_\w+), \d+,',(ROOT/'Tests/test_log.c').read_text())
+        assert len(names)>=55,'journal table'
+        missing=[n for n in names if n not in not_written and n not in writers and not (n in derived and derived[n] in writers)]
+        assert not missing,('journal events never written',missing)
+        assert 'event = (uint8_t)(event + user_comm_server(address));' in user,'second server by offset'
         code=function(source('User/crc.c'),'crc16_calc')+'\n'+pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','logUpdate_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='logcommit':
@@ -256,6 +272,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert all('strcmp(cmd, "%s") == 0'%c in gate for c in ('add','reset','setout','default')) and '"imei"' not in gate and '"status"' not in gate,'SMS control commands refused in update mode'
         call=user[user.index('bool user_incomingcall (char* num, uint8_t typ)'):user.index('void user_comanderror')]
         assert 'fw_update_quiet' not in call,'calls keep working in update mode'
+        # Events 6-10: settings count as a sync packet once saved; the quiet timer ticks every second.
+        c12=case(12);assert c12.index('sync_packet(SYNC_CONFIG);')>c12.index('if (!saved) {'),'event 7 after saved settings'
+        assert 'sync_end_tick();' in loop,'sync end ticks in the main loop'
         # Update events of the journal sheet (system 1-5 struck out): 132 start, 133 failure with its
         # reason code, 134 time limit, 135 just before the install restart, 136 trial confirmed, 137 rollback.
         rest=user
@@ -301,7 +320,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         if 'static void upload_restore(' in user:
             restore='static uint16_t log_usbReadIndex,temp_usbReadIndex;\n'+function(user,'upload_store')+'\n'+function(user,'upload_restore')+'\n'
         code=restore+config_helpers(user)+'\n'.join(function(user,n) for n in ('user_readconfig','user_readsavedinformation'))
-        code+='\nvoid command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(12)+'default: abort(); }}'
+        code+='\n'+sync_stub(user)+'void command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_config_strings.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
     elif kind=='sms':
         user=source('User/user_fun.c');strings=source('User/user_str_fun.c')
@@ -317,8 +336,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_uart_timer.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idtext':
         user=source('User/user_fun.c')
-        code=typedefs(source('structures.h'),'codeType_e')+'\n'+'\n'.join(function(user,n) for n in ('WG_readedID','RF433_readedID','RFID_readedID'))
-        unit=(ROOT/'Tests/test_id_text.c').read_text().replace('/* PRODUCTION */',code)
+        code='\n'.join(function(user,n) for n in ('reader_id','WG_readedID','RF433_readedID','RFID_readedID'))
+        types='#include <stdbool.h>\n#include <stdint.h>\n'+typedefs(source('structures.h'),'codeType_e','logControl_e')+'\n'
+        unit=types+(ROOT/'Tests/test_id_text.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='usbresume':
         unit=(ROOT/'Tests/test_usb_resume.c').read_text().replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/hw_config.c'),'Leave_LowPowerMode'))
     elif kind=='usbdesc':
@@ -370,8 +390,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         if '/* >>> Сборка таблиц страницами:' in user:helper+='\n'+user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]
         crcsrc=source('User/crc.c')
         if 'static uint16_t id_crc16(' in user:helper=chr(10).join(function(crcsrc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])+chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'id_crc16')+chr(10)+helper
-        code=helper+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
-        types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
+        code=helper+'\n'+sync_end(user)+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
+        types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e','logSystem_e')
         unit=(ROOT/'Tests/test_sync.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idsync':
         user=source('User/user_fun.c');case=cases(user);crcsrc=source('User/crc.c')
@@ -380,7 +400,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code+='static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'user_calcCRC16InFlash')+chr(10)+function(user,'id_crc16')+chr(10)+function(user,'sync_cells_valid')+chr(10)
         code+=user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]+chr(10)
         code+=function(user,'user_findID')+chr(10)+function(user,'user_getNumbersCount')+chr(10)
-        code+='void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+case(13)+'default: abort(); }}'
+        code+=sync_stub(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+case(13)+'default: abort(); }}'
         types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
         unit=(ROOT/'Tests/test_id_sync.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='persistence':
@@ -389,7 +409,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#define HAVE_RESULT '+str(int('bool user_writeConfigAndDevice' in user))+'\n'+(ROOT/'Tests/test_persistence.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */',code)
     elif kind=='commands':
         user=source('User/user_fun.c');case=cases(user)
-        code=function(source('User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
+        code=function(source('User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+sync_stub(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_commands.c').read_text().replace('/* CONFIG TYPES */',typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')).replace('/* PRODUCTION */',code)
     elif kind=='wiegandirq':
         wg=source('User/wiegand.c')

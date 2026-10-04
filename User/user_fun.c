@@ -197,25 +197,29 @@ void usb_data_reading(uint8_t* ptr, uint16_t len)
 }
 
 // обработчик событий
+/* ID со считывателя: ждал ли его сервер (команда 6: источник 1 Wiegand, 2 RF433, 3 RFID
+   с адресом) - событие 78 и пакет 8; затем обычная проверка доступа. */
+static void reader_id(char *tb, uint8_t source, uint8_t address, codeType_e type)
+{
+  if (device.sourceGetID == source && (source != 3 || device.addressGetID == address)){
+    device.timeToGetID = 0;
+    device.sourceGetID = 0;
+    log_addControlEvent(LOG_CON_RECVIDONREADER, tb, 0);
+    user_send_readedIDtoServer((uint8_t*)tb, 1);
+  }
+  user_checkIdAndControl(tb, type);
+}
+
 // получен идентификатор по wiegand
 void WG_readedID(uint32_t id){
   char tb[11];
-  
+
   sprintf(tb, "00%08X", id);
 #ifdef DEBUG_USER
   sprintf(tempStrBuffer, ">>U Wiegand ID: %s\r\n", tb);
-  user_debug(tempStrBuffer); 
+  user_debug(tempStrBuffer);
 #endif
-  
-  if (device.sourceGetID == 1) // запрос ID c сервера
-  {
-    device.timeToGetID = 0;
-    device.sourceGetID = 0;
-    user_send_readedIDtoServer((uint8_t*)tb, 1);
-  }
-  
-  // проверить номер
-  user_checkIdAndControl(tb, CT_WIEGAND); 
+  reader_id(tb, 1, 0, CT_WIEGAND);
 }
 
 // получен идентификатор по rf433
@@ -228,15 +232,7 @@ void RF433_readedID(uint32_t id){
   user_debug(tempStrBuffer); 
 #endif
   
-  if (device.sourceGetID == 2) // запрос ID c сервера
-  {
-    device.timeToGetID = 0;
-    device.sourceGetID = 0;
-    user_send_readedIDtoServer((uint8_t*)tb, 1);
-  }
-  
-  // проверить номер
-  user_checkIdAndControl(tb, CT_RF433); 
+  reader_id(tb, 2, 0, CT_RF433);
 }
 
 // получен идентификатор по RFID
@@ -249,14 +245,7 @@ void RFID_readedID(uint32_t id, uint8_t address){
   user_debug(tempStrBuffer); 
 #endif
   
-  if ((device.sourceGetID == 3) && (device.addressGetID == address)) // запрос ID c сервера
-  {
-    device.timeToGetID = 0;
-    device.sourceGetID = 0;
-    user_send_readedIDtoServer((uint8_t*)tb, 1);
-  }
-  // проверить номер
-  user_checkIdAndControl(tb, CT_RFID); 
+  reader_id(tb, 3, address, CT_RFID);
 }
 // <<< переопределение функций --------------------------
 
@@ -777,6 +766,24 @@ bool user_clearMemBlock(memBlock_e mb){
 }
 
 // циклический обработчик
+/* >>> Конец синхронизации (лист «Журнал событий», 6-10)
+   Признака последнего пакета в протоколе нет: синхронизация идёт подряд командами 12-16
+   (буфер 3 сервера), её конец - SYNC_QUIET_S секунд без них. Бит i - событие 6+i. */
+#define SYNC_QUIET_S 30u
+enum { SYNC_ID = 1u, SYNC_CONFIG = 2u, SYNC_GROUP = 4u, SYNC_SHEDULE = 8u, SYNC_HOLIDAY = 16u };
+static uint8_t sync_pending, sync_quiet;
+static void sync_packet(uint8_t bit) { sync_pending |= bit; sync_quiet = SYNC_QUIET_S; }
+/* Раз в секунду; журнал не принял запись - повтор через секунду. */
+static void sync_end_tick(void)
+{
+  if (!sync_quiet || --sync_quiet) return;
+  for (uint8_t i = 0; i < 5u; ++i)
+    if ((sync_pending & (1u << i)) && log_addSystemEvent((logSystem_e)(LOG_SYS_ENDIDUPDATE + i)))
+      sync_pending &= (uint8_t)~(1u << i);
+  if (sync_pending) sync_quiet = 1;
+}
+/* <<< Конец синхронизации */
+
 void user_loop(void)
 {
   /* Карта - первой и на каждом проходе: конец кадра ловится сразу после паузы,
@@ -900,6 +907,7 @@ void user_loop(void)
         user_send_readedIDtoServer(0, 255);
       }
     }
+    sync_end_tick(); // события 6-10
     
     // время получения ответа от сервера при подключении
     if (device.answerTimeout){
@@ -3139,6 +3147,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
             break;
           }
+          sync_packet(SYNC_CONFIG);
           rs485_set_config(&ptr[5]);
           /* После неудачного старта с неверными настройками оживляем связь. */
           if (comm_modem_state() == SLM_IDLE) user_comm_boot();
@@ -3173,6 +3182,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;
         }
         device.datetimeID = tmp32;
+        sync_packet(SYNC_ID);
         /* Команда 13 только заполняет ячейки: счёт и конец базы - на ходу, без чтения 1,6 МБ. */
         if (added == UINT16_MAX) device.numbersCount = user_getNumbersCount();
         else {
@@ -3203,6 +3213,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;
         }
         device.datetimeShedule = tmp32;
+        sync_packet(SYNC_SHEDULE);
         user_send_timeshtamp(SHTAMP_SHEDULE, device.datetimeShedule,
                            user_calcCRC16InFlash(mem[MB_SHEDULE].start, mem[MB_SHEDULE].size), cch, uniqId);
 
@@ -3225,6 +3236,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;
         }
         device.datetimeGroup = tmp32;
+        sync_packet(SYNC_GROUP);
         user_send_timeshtamp(SHTAMP_GROUP, device.datetimeGroup,
                            user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size), cch, uniqId);
 
@@ -3247,6 +3259,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;
         }
         device.datetimeHoliday = tmp32;
+        sync_packet(SYNC_HOLIDAY);
         user_send_timeshtamp(SHTAMP_HOLIDAY, device.datetimeHoliday,
                            user_calcCRC16InFlash(mem[MB_HOLIDAY].start, mem[MB_HOLIDAY].size), cch, uniqId);
 
@@ -4002,6 +4015,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
   }
   // проходы ограничены: сервер раздаёт остаток остальным контроллерам объекта
   if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);
+  if (cnt == 0) log_addControlEvent(LOG_CON_PASSLIMIT, id, 0); // 79: последний проход суток
   if (started) log_addControlEvent(LOG_CON_IDTIMESTART, id, 255);
   return true;
 }

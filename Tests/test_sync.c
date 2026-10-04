@@ -26,6 +26,9 @@ static uint16_t id_today(void){return 10;}
 static void id_set_pass_day(cellID_s *c,uint16_t day){memcpy(c->reserve+4,&day,2);}
 static uint32_t id_time_end(cellID_s *c){return c->blockTime;}
 static void id_watch_end(uint32_t t){(void)t;}
+/* Journal events 6-10 (end of sync); sync_refuse - journal busy, retried next second. */
+static unsigned sync_events[16], sync_refuse;
+static bool log_addSystemEvent(logSystem_e e){if(sync_refuse){sync_refuse--;return false;}CHECK(e>=6&&e<=10);sync_events[e]++;return true;}
 static bool mem_replace_sector(uint32_t a,const uint8_t *p) { return mem_erase_sector(a) && mem_write(a,p,MEMSECTORSIZE); }
 static bool mem_replace_pages(uint32_t a,uint8_t (*reader)(const void*,uint16_t,uint8_t*),const void *ctx){uint8_t image[4096];for(uint16_t off=0;off<4096;off+=256)if(!reader(ctx,off,image+off))return false;return mem_replace_sector(a,image);}
 /* PRODUCTION */
@@ -33,6 +36,22 @@ static unsigned cell_size(unsigned c){return c==13?sizeof(cellID_s):c==14?sizeof
 static memBlock_e block(unsigned c){return c==13?MB_ID:c==14?MB_SHEDULE:c==15?MB_GROUP:MB_HOLIDAY;}
 static void reset(void){memset(flash,0xA5,sizeof(flash));memcpy(before,flash,sizeof(flash));memset(&device,0,sizeof(device));answers=stamps=erases=writes=allocations=0;fail_alloc=fail_erase=fail_write=fail_read=0;}
 static void packet(uint8_t *p,unsigned c,unsigned count,unsigned a,unsigned b){unsigned z=cell_size(c);memset(p,0,2048);p[4]=c;{uint32_t time=1234;memcpy(p+5,&time,4);}p[9]=count;p[10]=a;p[11]=c==13?a>>8:0;p[10+z]=b;p[11+z]=c==13?b>>8:0;if(c==13){p[22]=1;p[22+z]=1;}}
+static void ticks(unsigned n){while(n--)sync_end_tick();}
+static void sync_end_tests(void){uint8_t p[2048];
+ /* 6 ID, 8 groups, 9 schedules, 10 holidays: once, 30 s after the last sync packet. */
+ memset(sync_events,0,sizeof(sync_events));sync_pending=sync_quiet=0;
+ reset();packet(p,14,1,1,0);command(p,8+cell_size(14),CH_SERVER,42);packet(p,15,1,1,0);command(p,8+cell_size(15),CH_SERVER,42);
+ ticks(29);CHECK(!sync_events[8]&&!sync_events[9]);
+ packet(p,14,1,1,0);command(p,8+cell_size(14),CH_SERVER,42);ticks(29);CHECK(!sync_events[9]);
+ ticks(1);CHECK(sync_events[8]==1&&sync_events[9]==1&&!sync_events[6]&&!sync_events[10]);
+ ticks(100);CHECK(sync_events[8]==1&&sync_events[9]==1);
+ /* A packet that was not written does not count. */
+ reset();fail_write=1;packet(p,16,1,1,0);command(p,8+cell_size(16),CH_SERVER,42);fail_write=0;ticks(40);CHECK(!sync_events[10]);
+ reset();packet(p,16,1,1,0);command(p,8+cell_size(16),CH_SERVER,42);ticks(30);CHECK(sync_events[10]==1);
+ /* Journal busy: retried a second later, written once. */
+ reset();memset(flash,255,sizeof(flash));packet(p,13,1,1,0);command(p,8+cell_size(13),CH_SERVER,42);sync_refuse=1;
+ ticks(30);CHECK(!sync_events[6]);ticks(1);CHECK(sync_events[6]==1);ticks(60);CHECK(sync_events[6]==1);
+ puts("sync end: events 6-10 once after 30 s quiet, failed packet ignored, busy journal retried passed");}
 int main(int argc,char **argv){uint8_t p[2048];unsigned c,mode,first,last_cmd;CHECK(argc<=3);mode=argc>1?(unsigned)atoi(argv[1]):0;first=argc==3?(unsigned)atoi(argv[2]):13;last_cmd=argc==3?first:16;
  (void)test_malloc;(void)wdt_reload;(void)diag_heap_fail;
  mem[MB_ID]=(cellMem_s){4096,8192};mem[MB_SHEDULE]=(cellMem_s){12288,2048};mem[MB_GROUP]=(cellMem_s){16384,2048};mem[MB_HOLIDAY]=(cellMem_s){20480,1024};
@@ -60,4 +79,5 @@ int main(int argc,char **argv){uint8_t p[2048];unsigned c,mode,first,last_cmd;CH
  packet(p,13,2,4,4);command(p,72,CH_SERVER,42);CHECK(device.numbersCount==10&&!rescans&&id_cells_end==5);
  packet(p,13,1,2,0);command(p,40,CH_SERVER,42);CHECK(device.numbersCount==11&&id_cells_end==5);
  fail_write=1;packet(p,13,1,9,0);command(p,40,CH_SERVER,42);CHECK(rescans==1&&answer==CMD_RUNERROR);
+ if(argc==1)sync_end_tests();
  puts("sync: invalid second cell, bounds, allocation failure and valid writes, ID count without rescan passed");return 0;}
