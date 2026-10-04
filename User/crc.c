@@ -104,22 +104,21 @@ static unsigned short gf2_apply(const unsigned short *m, unsigned short x)
    по 16x16 бит вместо count*8 сдвигов. */
 unsigned short crc16_ffInit(unsigned long count, unsigned short init)
 {
-  unsigned short a[16], m[16], t[16], av, v = 0;
+  unsigned short a[16], t[16], av;
   unsigned char zero = 0, j;
-  for (j = 0; j < 16; j++) { a[j] = crc16_calcInit(&zero, 1, (unsigned short)(1u << j)); m[j] = (unsigned short)(1u << j); }
+  if (!count) return init;
+  for (j = 0; j < 16; j++) a[j] = crc16_calcInit(&zero, 1, (unsigned short)(1u << j));
   av = crc16_calcInit(&zero, 1, 0xFF);
   while (count) {
-    if (count & 1u) {
-      for (j = 0; j < 16; j++) t[j] = gf2_apply(a, m[j]);
-      for (j = 0; j < 16; j++) m[j] = t[j];
-      v = gf2_apply(a, v) ^ av;
-    }
+    /* Apply each selected affine power directly to the only required vector. */
+    if (count & 1u) init = gf2_apply(a, init) ^ av;
+    count >>= 1;
+    if (!count) break;
     av = gf2_apply(a, av) ^ av;
     for (j = 0; j < 16; j++) t[j] = gf2_apply(a, a[j]);
     for (j = 0; j < 16; j++) a[j] = t[j];
-    count >>= 1;
   }
-  return gf2_apply(m, init) ^ v;
+  return init;
 }
 
 // Вычисление контрольной суммы CRC Dallas
