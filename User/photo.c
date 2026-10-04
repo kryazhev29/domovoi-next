@@ -1,6 +1,7 @@
 // Доработка: Кряжев А., 2026
 // C328/OV528: последовательность команд из старого Modules/jpeg.c.
 #include "photo.h"
+#include "sector_journal.h"
 #include "../Modules/comm_channel.h"
 extern device_s device;
 extern config_s config;
@@ -199,16 +200,13 @@ uint32_t photo_storage_end(void)
 }
 static uint8_t photo_backup_crc(uint32_t address, uint16_t n, uint32_t *result)
 {
-  uint8_t b[64], bit;
-  uint16_t i, step;
+  uint8_t b[64];
+  uint16_t step;
   uint32_t crc = 0xFFFFFFFFu;
   while (n) {
     step = n > sizeof(b) ? sizeof(b) : n;
     if (!mem_read(address, b, step)) return 0;
-    for (i = 0; i < step; i++) {
-      crc ^= b[i];
-      for (bit = 0; bit < 8; bit++) crc = (crc >> 1) ^ ((crc & 1u) ? 0xEDB88320u : 0u);
-    }
+    crc = crc32_update(crc, b, step);
     wdt_reload(); address += step; n -= step;
   }
   *result = crc;
