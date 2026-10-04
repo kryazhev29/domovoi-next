@@ -3,12 +3,15 @@
    SMS-DELIVER из открытого описания формата. */
 static char sms_got_number[24], sms_got_text[SMS_TEXT + 1u];
 static const char *sms_reply_to;
-static void sms_received_model(char *number, char *text)
+static bool sms_hold;
+static bool sms_received_model(char *number, char *text)
 {
+  if (sms_hold) return false;
   ++sms_received_count;
   CHECK(strlen(number) < sizeof(sms_got_number) && strlen(text) <= SMS_TEXT);
   strcpy(sms_got_number, number); strcpy(sms_got_text, text);
   if (sms_reply_to) CHECK(comm_sms_send(number, sms_reply_to));
+  return true;
 }
 static const char pdu_cmd7[] = "07919730071111F1040B919761214365F70000623001210000210DA3393D4CAFCF41B4992CC602";
 static const char pdu_ucs2[] = "07919730071111F10406D04DEA140008623001210000212004110430043B0430043D0441002000310030003000200440002E002004010451";
@@ -35,6 +38,11 @@ static void sms_expect(const char *number, const char *text)
 }
 static void sms_tests(void)
 {
+  /* Непринятое SMS остаётся на SIM и в текущем буфере до освобождения канала. */
+  sms_reset();sms_hold=true;sms_arrive(1,pdu_hello);advance(1000);
+  CHECK(!sms_received_count && sim_store[1] && !strstr(sms_log,"AT+CMGD=1;"));
+  sms_hold=false;advance(1000);CHECK(sms_received_count==1 && !sim_store[1]);
+
   /* Настройка после SIM: PDU, память SIM, +CMTI, затем обзор SIM. */
   sms_reset();
   CHECK(strstr(sms_log,"AT+CMGF=0;AT+CPMS=\"SM\",\"SM\",\"SM\";AT+CNMI=2,1,0,0,0;AT+CMGL=4;"));

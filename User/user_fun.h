@@ -26,7 +26,7 @@ uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, u
 // >>> переопределение функций --------------------------
 void user_errorconnection (int8_t handle);
 void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz);
-void user_smsreceived (char* num, char* data);
+bool user_smsreceived (char* num, char* data);
 void user_sendsms(char *mes, char *num);
 void user_smssended (void);
 bool user_incomingcall (char* num, uint8_t typ);
@@ -80,7 +80,7 @@ void user_send_crcPack(dataChanel_e cch, uint8_t uniqId);
 // ѕакет 6,16 -  пакет контрольные суммы стуктуры ID абонентов
 void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId);
 // ѕакет 7 -  трансл€ци€ SMS
-void user_send_smsToServer(char* sms);
+bool user_send_smsToServer(char* sms);
 // ѕакет 8 - трансл€ци€ ID со считывателей
 void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState);
 // ѕакет 11 - подтверждение приема команды от сервера

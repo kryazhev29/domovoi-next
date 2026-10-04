@@ -129,6 +129,8 @@ static bool upload_finish(uint8_t cmd){
 
 static void fw_resume_after_boot(void);
 static void fw_rollback_poll(void);
+static void fw_status_poll(void);
+static void unreg_sms_poll(void);
 static void server_rx_reset(void);
 /* Диагностика стенда, команда 111, только по USB, только чтение. */
 #define USB_DIAG_COMMAND 111u
@@ -471,8 +473,10 @@ void user_comm_session(bool open)
 
 // принято СМС
 // формат команды [Символ – #][Команда][Пробел][ПИН код контроллера][Запятая][Аргументы команды]
-void user_smsreceived (char* num, char* data)
+bool user_smsreceived (char* num, char* data)
 {
+  /* SIM хранит SMS, пока единственный слот передачи занят. Событие пишем лишь при приёме. */
+  if (device.triggers.smsToAdmin && *data != '#' && !user_send_smsToServer(data)) return false;
   log_addSystemEventID(LOG_SYS_RECVSMS, user_last10digitsnumber(num));
   
   //777 в какой момент utc конвертить в текст?
@@ -621,10 +625,7 @@ void user_smsreceived (char* num, char* data)
     }
   }
 
-  // пересылать смс администратору (пакет 7): команды не пересылаются
-  if (device.triggers.smsToAdmin && *data != '#'){
-    user_send_smsToServer(data);
-  }  
+  return true;
 }
 
 // отправить СМС
@@ -794,6 +795,8 @@ void user_loop(void)
     WG_process();
   idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
   fw_rollback_poll();
+  fw_status_poll();
+  unreg_sms_poll();
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
 
   // каждые 50 мс
@@ -1566,12 +1569,34 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
 }
 
 // Пакет 4 - пакет статуса обновления FW
+/* >>> ход обновления */
+static struct { uint8_t due, percent, code, id; } fw_status_pending;
+static void fw_status_poll(void)
+{
+  uint16_t capacity, crc;
+  uint8_t *b;
+  if (!fw_status_pending.due || !comm_server_online()) return;
+  b = comm_tx_acquire(&capacity);
+  if (!b) return;
+  memcpy(b, "SLDN", 4); b[4]=5; b[5]=0; b[6]=255; b[7]=fw_status_pending.id; b[8]=4;
+  b[9]=fw_status_pending.percent; b[10]=fw_status_pending.code;
+  crc=crc16_calc(b+4,7); b[11]=(uint8_t)crc; b[12]=(uint8_t)(crc>>8);
+  if (comm_tx_commit(13)) fw_status_pending.due=0;
+}
+/* <<< ход обновления */
 void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8_t uniqId){
+  (void)cmd;
   uint16_t crc;
   uint16_t len = 5; // timeout comand + uniqId + id + payload
   uint8_t send_local[13];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
-  if (!send_buffer) return;
+  if (!send_buffer) {
+    if (cch == CH_SERVER) {
+      fw_status_pending.due=1; fw_status_pending.percent=device.firmwarePercent;
+      fw_status_pending.code=code; fw_status_pending.id=uniqId;
+    }
+    return;
+  }
   
 #ifdef DEBUG_USER
   user_debug(">>U Send status update (cmd 4)\r\n"); 
@@ -1754,15 +1779,16 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
 }
 
 // Пакет 7 -  трансляция SMS
-void user_send_smsToServer(char* sms){
+bool user_send_smsToServer(char* sms){
+  if (!comm_server_online()) return false;
   uint16_t crc;
   uint16_t capacity, size = 0;
   uint8_t *send_buffer = comm_tx_acquire(&capacity);
-  if (!send_buffer) return;
-  if (!sms) { comm_tx_release(); return; }
+  if (!send_buffer) return false;
+  if (!sms) { comm_tx_release(); return false; }
   /* Не дать strlen/16-битной длине обойти вместимость единственного слота. */
   while (size + 11u <= capacity && sms[size]) ++size;
-  if (size + 11u > capacity) { comm_tx_release(); return; }
+  if (size + 11u > capacity) { comm_tx_release(); return false; }
   uint16_t len = size + 3u;
 
   if (send_buffer != NULL){
@@ -1790,12 +1816,29 @@ void user_send_smsToServer(char* sms){
     send_buffer[len + 6] = crc&0xff; // crc
     send_buffer[len + 7] = (crc>>8)&0xff;
     
-    comm_tx_commit(len + 8);
-    
+    if (comm_tx_commit(len + 8)) return true;
     user_comm_free(send_buffer, CH_SERVER);
   }
+  return false;
 }
 
+/* >>> уведомление об ID */
+/* Последний неизвестный ID ждёт слота; все отказы остаются в журнале (событие 65). */
+static struct { char id[10]; uint8_t due; } unreg_sms_pending;
+static void unreg_sms_note(const char *id)
+{
+  memcpy(unreg_sms_pending.id, id, 10);
+  unreg_sms_pending.due = 1;
+}
+static void unreg_sms_poll(void)
+{
+  char text[31];
+  if (!unreg_sms_pending.due) return;
+  memcpy(text, unreg_sms_pending.id, 10); text[10]=0;
+  strcat(text, ": ID is unregistred!");
+  if (user_send_smsToServer(text)) unreg_sms_pending.due = 0;
+}
+/* <<< уведомление об ID */
 
 // Пакет 8 - трансляция ID со считывателей
 // cmdState: 1 - норм, 255 - таймаут
@@ -3923,8 +3966,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
       // ID не найден - включено информирование админа
       log_addControlEvent(LOG_CON_IDNOTINBASE, id, 0);
       if (device.triggers.smsUnreg){
-        sprintf(tempStrBuffer, "%s: ID is unregistred!", id);
-        user_send_smsToServer(tempStrBuffer);
+        unreg_sms_note(id);
       }
     }
   }

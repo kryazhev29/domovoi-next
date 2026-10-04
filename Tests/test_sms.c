@@ -67,8 +67,9 @@ static bool log_addControlEvent(logControl_e event, char *id, uint8_t cnt)
 static void user_factoryReset(void) { resets++; }
 static void out_load(uint8_t out, uint8_t mode, uint16_t activ, uint16_t pause, uint8_t period)
 { CHECK(mode == OUT_ON && activ == 0 && pause == 0 && period == 0); last_output = out; outputs++; }
-static void user_send_smsToServer(char *data)
-{ CHECK(strlen(data) < sizeof(forwarded_text)); strcpy(forwarded_text, data); forwarded++; }
+static bool sms_slot_busy;
+static bool user_send_smsToServer(char *data)
+{ if(sms_slot_busy)return false; CHECK(strlen(data) < sizeof(forwarded_text)); strcpy(forwarded_text, data); forwarded++; return true; }
 static int checked_sprintf(char *dest, size_t capacity, const char *format, ...)
 {
     va_list args, copy;
@@ -245,6 +246,9 @@ int main(int argc, char **argv)
     run_case("#unknown 1234,", NULL, 0);
     run_case("#update 1234,", NULL, 0);
     run_case("plain text", NULL, 0);
+    {char number[]="+79031234567",message[]="text";unsigned before=forwarded,events=received_events;
+     sms_slot_busy=true;CHECK(!user_smsreceived(number,message)&&forwarded==before&&received_events==events);
+     sms_slot_busy=false;CHECK(user_smsreceived(number,message)&&forwarded==before+1&&received_events==events+1);}
     test_status();
     puts("sms: all reply sites preserve recipient, reply text and journal number passed");
     test_journal();

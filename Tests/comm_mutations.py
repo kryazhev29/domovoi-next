@@ -94,6 +94,10 @@ def run():
         ('channel', 'no-internet-probe', '  comm_server_note(COMM_LINK_NO_INTERNET);\n  if (rc.net_step', '  if (rc.net_step'),
         ('channel', 'low-signal-threshold', 'if (info.v.csq < 15u)', 'if (info.v.csq <= 15u)'),
         ('channel', 'low-signal-once', '(int32_t)(now_ms - info.day) >= 0', '0'),
+        ('channel', 'sms-deleted-before-forward', 'if (!msg.received(msg.number, msg.text)) return;', '(void)msg.received(msg.number, msg.text);'),
+        ('channel', 'unknown-id-notification-dropped', 'unreg_sms_pending.due = 1;', 'unreg_sms_pending.due = 0;'),
+        ('channel', 'update-result-dropped', 'fw_status_pending.due=1;', 'fw_status_pending.due=0;'),
+        ('channel', 'status-change-forgotten', 'status_reported = status;', 'status_reported = status ^ 1u;'),
         ('channel', 'reader-reply-dropped-when-busy', 'if (!b) return;\n  b[0]', 'if (!b) { reader_out.state = 0; return; }\n  b[0]'),
         ('channel', 'low-signal-every-cycle', 'info.daily = 1; info.day', 'info.daily = 0; info.day'),
     )
@@ -117,13 +121,14 @@ def run():
 def user_mutations(out):
     """Пользовательская часть (SMS-команды, журнал): поломка user_fun.c в копии исходников, своя группа run_host."""
     cases = (
-        ('holiday-date-as-index', 'if (!holiday_write(&ptr[10], ptr[9]))', 'if (ptr[10] == 0 || !holiday_write(&ptr[10], ptr[9]))', 'sync'),
-        ('holiday-tail-kept', 'h->dates[off + i] : 0xFFu', 'h->dates[off + i] : page[i]', 'sync'),
         ('fw-request-busy-timer', 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx))', 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx) || 1)', 'fwstart'),
         ('fw-sector-erase-skipped', 'sector >= adr + 1024u || mem_erase_sector(sector)', 'sector >= adr + 1024u || (0 && mem_erase_sector(sector)) || 1', 'fwblockbounds'),
         ('fw-start-erases-tail', 'if (!mem_erase_sector(mem[MB_FIRMWARE].start))', 'if (!mem_erase_sector(mem[MB_FIRMWARE].start) || !mem_erase_sector(mem[MB_FIRMWARE].start + 4096u))', 'fwstart'),
         ('fw-resume-stale-tail', 'return device.FWblockIdx < device.FWblockCount ? device.FWblockIdx : UINT16_MAX;', 'return device.FWblockIdx < device.FWblockCount ? device.FWblockCount - 1u : UINT16_MAX;', 'fwstart'),
         ('fw-rollback-starts-reset-early', 'fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET;', 'fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET; device.rebootToUpdate=1;', 'fwstart'),
+        ('holiday-date-as-index', 'if (!holiday_write(&ptr[10], ptr[9]))', 'if (ptr[10] == 0 || !holiday_write(&ptr[10], ptr[9]))', 'sync'),
+        ('holiday-tail-kept', 'h->dates[off + i] : 0xFFu', 'h->dates[off + i] : page[i]', 'sync'),
+        ('sms-backpressure-ignored', "*data != '#' && !user_send_smsToServer(data)", "*data != '#' && !user_send_smsToServer(data) && 0"),
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
         ('sms-reply-lowercase', "*c = (char)(*c - 'a' + 'A');", '*c = (char)(*c + 0);'),
         ('sms-setout-bad-number-silent', 'выхода с таким номером нет\n            strcat(v, ": Error \\"Format not correct\\"");', 'выхода с таким номером нет\n            strcat(v, "");'),

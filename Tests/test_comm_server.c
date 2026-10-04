@@ -3,7 +3,7 @@ static struct {
   int8_t connectionhandle; uint8_t registredOnServer, answerTimeout, answerID;
   char IMEIGSM[16]; uint8_t protocolVersion, hardwareVersion;
   uint32_t datetime, datetimeID, datetimeGroup, datetimeShedule, datetimeConfig, datetimeHoliday;
-  uint16_t status, freeBufferSize;
+  uint16_t status, freeBufferSize; uint8_t firmwarePercent;
 } device;
 #define CH_SERVER 1
 static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)];
@@ -27,7 +27,7 @@ static unsigned chups, chup_silence; static char last_command[32];
 /* SMS: €чейки SIM 1..10 (PDU hex), журнал команд SMS, последн€€ отправленна€ PDU. */
 static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
 static unsigned cmgs_error, sms_received_count;
-static void sms_received_model(char *number, char *text);
+static bool sms_received_model(char *number, char *text);
 /* VoLTE: настройка, состо€ние модема, ответ ERROR, счЄтчики запросов и записей. */
 static uint8_t volte_flag, volte_modem; static unsigned volte_error, volte_queries, volte_sets;
 static uint8_t volte_flag_model(void) { return volte_flag; }
@@ -92,7 +92,6 @@ static uint8_t *legacy_acquire(uint16_t needed) { return needed <= sizeof(legacy
 static uint8_t *legacy_tx_acquire(uint16_t *capacity) { *capacity = sizeof(legacy_buffer); return legacy_buffer; }
 static bool legacy_commit(uint16_t n) { CHECK(n<=sizeof(legacy_frame)); memcpy(legacy_frame,legacy_buffer,n); legacy_count=n; return true; }
 #define legacy_free(p, cch) ((void)(p), (void)(cch))
-static void status_event_sent(uint16_t status, uint32_t now) { (void)status; (void)now; }
 /* PRODUCERS */
 static void registration_producer(void)
 {
@@ -461,6 +460,33 @@ static void link_tests(void)
   puts("comm_server link events: connected, lost, connect error once until success, rejected registration, retry, reserve PASS");
 }
 /* ѕакет 8 (ответ на команду 6): зан€тый слот канала не тер€ет его - уходит, когда слот свободен. */
+static void unregistered_sms_tests(void)
+{
+  server_reset();uint8_t busy=0;user_send_anyData(27,&busy,1,CH_SERVER,1);
+  unreg_sms_note("1234567890");unreg_sms_poll();CHECK(ch.frame_count==12);
+  for(unsigned i=0;i<1000 && sent_frame[8]!=7;i++){transport_tick(10);unreg_sms_poll();}
+  CHECK(sent_frame[8]==7 && !memcmp(sent_frame+9,"1234567890: ID is unregistred!",sizeof("1234567890: ID is unregistred!")-1));
+  advance(500);sent_frame[8]=0;unreg_sms_poll();advance(500);CHECK(sent_frame[8]!=7);
+  puts("unknown ID notification: waits for a free slot and is sent once PASS");
+}
+
+static void pending_update_tests(void)
+{
+  server_reset();uint16_t old=device.status;
+  status_event_sent(old,sim_now-2000);uint8_t busy=0;user_send_anyData(27,&busy,1,CH_SERVER,1);
+  device.status^=1;CHECK(status_event_due(device.status,sim_now));user_send_statusPack(CH_SERVER);
+  CHECK(status_event_due(device.status,sim_now));advance(500);user_send_statusPack(CH_SERVER);
+  CHECK(!status_event_due(device.status,sim_now));advance(500);
+
+  server_reset();uint8_t a=0;user_send_anyData(27,&a,1,CH_SERVER,1);
+  device.firmwarePercent=37;user_send_statusUpdateFW(20,253,CH_SERVER,77);
+  device.firmwarePercent=0;
+  for(unsigned i=0;i<1000 && !(sent_count==13 && sent_frame[8]==4);i++){transport_tick(10);fw_status_poll();}
+  CHECK(sent_count==13 && sent_frame[8]==4 && sent_frame[7]==77 && sent_frame[9]==37 && sent_frame[10]==253);
+  advance(500);sent_frame[8]=0;fw_status_poll();advance(500);CHECK(sent_frame[8]!=4);
+  puts("update result: busy slot keeps code, percent and ID until sent once PASS");
+}
+
 static void reader_tests(void)
 {
   server_reset(); uint16_t cap; uint8_t *p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
@@ -479,4 +505,4 @@ static void reader_tests(void)
 /* RECOVER */
 /* CALL */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); reader_tests(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }

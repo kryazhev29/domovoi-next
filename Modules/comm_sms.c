@@ -11,7 +11,7 @@ enum { CODE_GSM, CODE_8BIT, CODE_UCS2 };
 enum { SMS_OP_NONE, SMS_OP_SETUP, SMS_OP_LIST, SMS_OP_READ, SMS_OP_DELETE, SMS_OP_SEND };
 static const char *const sms_setup[] = { "AT+CMGF=0", "AT+CPMS=\"SM\",\"SM\",\"SM\"", "AT+CNMI=2,1,0,0,0" };
 static struct {
-  void (*received)(char *, char *);
+  bool (*received)(char *, char *);
   uint32_t now, retry;
   comm_side_t req;
   uint16_t acc, out_count;
@@ -137,7 +137,7 @@ static void sms_urc(const uint8_t *p, uint16_t n)
   uint8_t i = pos ? sms_index(p, n, pos) : 0;
   if (i) sms_queue(i);
 }
-void comm_sms_init(void (*received)(char *, char *))
+void comm_sms_init(bool (*received)(char *, char *))
 {
   memset(&msg, 0, sizeof(msg));
   msg.received = received; msg.session = (uint8_t)(comm_modem_session() - 1u);
@@ -185,7 +185,10 @@ void comm_sms_poll(uint32_t now_ms)
     if (r == UINT8_MAX) return;
     sms_done(r);
   }
-  if (msg.deliver) { msg.deliver = 0; msg.received(msg.number, msg.text); }
+  if (msg.deliver) {
+    if (!msg.received(msg.number, msg.text)) return;
+    msg.deliver = 0;
+  }
   const slm_status_t *st = comm_modem_status();
   if (st->state != SLM_READY && !(st->state == SLM_STARTING && st->step > SLM_SIM)) return;
   if (!msg.ready) {

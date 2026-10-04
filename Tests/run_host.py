@@ -133,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'fw_idle' not in user and '15000' not in loop,'old limits'
         assert 'updateTimeout' not in function(user,'fw_take_block'),'a block must not touch the limit'
         saved=function(user,'user_readsavedinformation')
-        assert 'fw_rollback_poll();' in loop,'deferred firmware work is polled'
+        assert 'fw_rollback_poll();' in loop and 'fw_status_poll();' in loop,'deferred firmware work is polled'
         assert 'device.FWblockIdx = DV.FWblockIdx;' in saved,'resume uses saved progress'
         assert 'device.FWinProgress = DV.FWinProgress;' in saved and 'device.updateTimeout = DV.updateTimeout;' in saved and saved.index('fw_resume_after_boot();')>saved.index('while (read_count--)'),'resume at boot'
         reset=function(user,'user_factoryReset')
