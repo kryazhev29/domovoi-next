@@ -138,6 +138,7 @@ uint32_t stack_free_bytes(void); // main.c: нетронутый снизу шаблон стека, байт
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
 static void user_send_usbDiag(uint8_t uniqId);
 static void user_send_commDiag(uint8_t uniqId);
+static void reader_reply_poll(void);
 /* ѕор€док обновлени€ по листу "ѕротокол2": статус 1 вне очереди (E95), режим обновлени€ - бит
  * 11 (E440), команда 19 (E122), блоки 13 и 20 (E96, E123), команда 4 (E476, E477). ќбъ€влено до
  * команды 19. */
@@ -791,6 +792,7 @@ void user_loop(void)
   if (config.wiegandType != 0)
     WG_process();
   idindex_poll(mem[MB_ID].start); /* фонова€ пересборка индекса ID, короткий шаг */
+  reader_reply_poll(); /* пакет 8 ждЄт свободного слота канала */
 
   // каждые 50 мс
   if (timers_get(1) >= 50)
@@ -1791,42 +1793,28 @@ void user_send_smsToServer(char* sms){
 
 // ѕакет 8 - трансл€ци€ ID со считывателей
 // cmdState: 1 - норм, 255 - таймаут
+/* >>> ответ считывател€ (пакет 8)
+   ќтвет на команду 6 ждЄт свободного слота канала: раньше при зан€том слоте (статус,
+   ответ на команду) он молча тер€лс€ и сервер не узнавал ни ID, ни конец ожидани€. */
+static struct { uint8_t state; char id[10]; } reader_out;
 void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState){
-  uint16_t crc;
-  uint16_t len = 14; // timeout comand + uniqIdCnt + id + payload
-  uint8_t send_local[22];
-  uint8_t *send_buffer = CH_SERVER == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
-  if (!send_buffer) return;
-  
-#ifdef DEBUG_USER
-  user_debug(">>U IDs data (cmd 8)\r\n"); 
-#endif    
-  
-  send_buffer[0] = 'S'; // идент
-  send_buffer[1] = 'L';
-  send_buffer[2] = 'D';
-  send_buffer[3] = 'N';
-  send_buffer[4] = _1B(len);  // длина
-  send_buffer[5] = _2B(len);
-  
-  // ------- мен€емый блок ---------
-  send_buffer[6] = 255; // таймаут актуальности команды
-  send_buffer[7] = uniqIDCnt++; // uniqIdCnt
-  send_buffer[8] = 8; // id
-  send_buffer[9] = cmdState; //  од выполнени€
-  if (id == 0)
-    memset(&send_buffer[10], 0, 10);
-  else
-    memcpy(&send_buffer[10], id, 10);
-  // ------- мен€емый блок ---------
-  
-  crc = crc16_calc(&send_buffer[4], len + 2);
-  
-  send_buffer[len + 6] = crc&0xff; // crc
-  send_buffer[len + 7] = (crc>>8)&0xff;
-  
-  comm_tx_commit(len + 8);
+  reader_out.state = cmdState; // 1 - ID считан, 255 - врем€ вышло
+  if (id == 0) memset(reader_out.id, 0, 10);
+  else memcpy(reader_out.id, id, 10);
 }
+static void reader_reply_poll(void)
+{
+  if (!reader_out.state) return;
+  uint8_t *b = user_comm_acquire(22);
+  if (!b) return;
+  b[0] = 'S'; b[1] = 'L'; b[2] = 'D'; b[3] = 'N'; b[4] = 14; b[5] = 0; // длина: 3 + код + 10 байт ID
+  b[6] = 255; b[7] = uniqIDCnt++; b[8] = 8; b[9] = reader_out.state;
+  memcpy(&b[10], reader_out.id, 10);
+  uint16_t crc = crc16_calc(&b[4], 16);
+  b[20] = (uint8_t)crc; b[21] = (uint8_t)(crc >> 8);
+  if (comm_tx_commit(22)) reader_out.state = 0;
+}
+/* <<< ответ считывател€ */
 
 // ѕакет 11 - подтверждение приема команды от сервера
 void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId){

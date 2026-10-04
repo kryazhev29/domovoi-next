@@ -94,6 +94,7 @@ def run():
         ('channel', 'no-internet-probe', '  comm_server_note(COMM_LINK_NO_INTERNET);\n  if (rc.net_step', '  if (rc.net_step'),
         ('channel', 'low-signal-threshold', 'if (info.v.csq < 15u)', 'if (info.v.csq <= 15u)'),
         ('channel', 'low-signal-once', '(int32_t)(now_ms - info.day) >= 0', '0'),
+        ('channel', 'reader-reply-dropped-when-busy', 'if (!b) return;\n  b[0]', 'if (!b) { reader_out.state = 0; return; }\n  b[0]'),
         ('channel', 'low-signal-every-cycle', 'info.daily = 1; info.day', 'info.daily = 0; info.day'),
     )
     for group, label, old, new in cases:

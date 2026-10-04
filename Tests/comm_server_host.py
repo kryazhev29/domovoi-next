@@ -35,6 +35,8 @@ def unit():
                        .replace('comm_tx_commit(', 'legacy_commit(').replace('user_comm_free(', 'legacy_free(') for n in producers)
     current = '\n'.join(function(user, n) for n in producers)
     producer_code = helpers + legacy + '\n' + current
+    if '/* >>> ответ считывателя' in user:
+        producer_code += '\n' + user[user.index('/* >>> ответ считывателя'):user.index('/* <<< ответ считывателя */')]
     return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('User/crc.c'), 'crc16_calc')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c')).replace('/* CALL */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):

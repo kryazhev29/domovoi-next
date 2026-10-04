@@ -460,7 +460,23 @@ static void link_tests(void)
   CHECK(comm_server_address()==open_addresses[opens-1u]);
   puts("comm_server link events: connected, lost, connect error once until success, rejected registration, retry, reserve PASS");
 }
+/* Пакет 8 (ответ на команду 6): занятый слот канала не теряет его - уходит, когда слот свободен. */
+static void reader_tests(void)
+{
+  server_reset(); uint16_t cap; uint8_t *p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
+  user_send_readedIDtoServer(NULL,255); reader_reply_poll(); CHECK(ch.frame_count==12);
+  unsigned i; for (i=0;!(sent_count==22 && sent_frame[8]==8) && i<1000;++i) { transport_tick(10); reader_reply_poll(); }
+  CHECK(sent_count==22 && sent_frame[8]==8 && sent_frame[9]==255);
+  for (i=10;i<20;++i) CHECK(sent_frame[i]==0);
+  advance(500); user_send_readedIDtoServer((uint8_t*)"0012345678",1);
+  for (i=0;!(sent_frame[8]==8 && sent_frame[9]==1) && i<1000;++i) { transport_tick(10); reader_reply_poll(); }
+  CHECK(sent_frame[9]==1 && !memcmp(sent_frame+10,"0012345678",10));
+  /* Отправлен один раз: дальше пакетов 8 нет. */
+  sent_frame[8]=0; for (i=0;i<300;++i) { transport_tick(10); reader_reply_poll(); }
+  CHECK(sent_frame[8]!=8);
+  puts("reader reply: packet 8 waits for a free slot, timeout and card both delivered once PASS");
+}
 /* RECOVER */
 /* CALL */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); reader_tests(); recover_tests(); return 0; }
