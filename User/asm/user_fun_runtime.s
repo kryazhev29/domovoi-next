@@ -122,6 +122,7 @@
         EXTERN idindex_find
         EXTERN idindex_hash
         EXTERN idindex_poll
+        EXTERN idindex_runtime_active
         EXTERN idindex_runtime_suspend
         EXTERN idindex_scanned
         EXTERN led_fun100ms
@@ -495,6 +496,9 @@ user_storage_flash_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall idindex_runtime_active
+        BL       idindex_runtime_active
+        CBNZ.N   R0,??user_storage_flash_ready_0
           CFI FunCall photo_storage_busy
         BL       photo_storage_busy
         CBNZ.N   R0,??user_storage_flash_ready_0
@@ -20481,6 +20485,11 @@ store_reply:
         DATA32
         DC32     fault_record
 
+        SECTION `.text`:CODE:NOROOT(2)
+        DATA
+ix_owner_mem:
+        DC32 mem
+
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock533 Using cfiCommon0
           CFI Function user_storage_poll
@@ -20496,6 +20505,15 @@ user_storage_poll:
           CFI CFA R13+80
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall idindex_runtime_active
+        BL       idindex_runtime_active
+        CBZ.N    R0,ix_owner_poll_idle
+        LDR.W    R0,ix_owner_mem
+        LDR      R0,[R0, #+16]
+          CFI FunCall idindex_poll
+        BL       idindex_poll
+        B.W      ??user_storage_poll_1
+ix_owner_poll_idle:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R5,R0

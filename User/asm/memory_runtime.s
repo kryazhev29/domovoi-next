@@ -57,6 +57,7 @@
         PUBLIC mem_replace_pages
         PUBLIC mem_replace_sector
         PUBLIC mem_rewrite
+        EXTERN idindex_runtime_active
         PUBLIC mem_tables_ready
         PUBLIC mem_write
         PUBLIC sj_io_erase
@@ -253,6 +254,9 @@ mem_tables_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall idindex_runtime_active
+        BL       idindex_runtime_active
+        CBNZ.N   R0,??mem_tables_ready_0
           CFI FunCall table_runtime_blocks_reads
         BL       table_runtime_blocks_reads
         CBNZ.N   R0,??mem_tables_ready_0
