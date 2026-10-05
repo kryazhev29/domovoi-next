@@ -16,6 +16,8 @@
         PUBLIC id_watch_end
         EXTERN expiry_runtime_begin
         EXTERN expiry_runtime_cancel
+        EXTERN idclear_runtime_begin
+        EXTERN idclear_runtime_cancel
         PUBLIC id_used_bytes
         PUBLIC log_job
         PUBLIC log_lastIndex
@@ -5375,6 +5377,8 @@ user_savereset:
         BL       ?Subroutine25
 ??CrossCallReturnLabel_79:
         CBZ.N    R0,??user_savereset_0
+          CFI FunCall idclear_runtime_cancel
+        BL       idclear_runtime_cancel
           CFI FunCall expiry_runtime_cancel
         BL       expiry_runtime_cancel
           CFI FunCall table_runtime_cancel
@@ -13297,10 +13301,12 @@ user_parse_comand:
 ??user_parse_comand_37:
         MOVS     R0,R5
         BNE.N    ??user_parse_comand_1
-        MOVS     R0,#+2
-          CFI FunCall user_clearMemBlock
-        BL       user_clearMemBlock
-        CBNZ.N   R0,??user_parse_comand_94
+        MOV      R1,R6
+          CFI FunCall idclear_runtime_begin
+        BL       idclear_runtime_begin
+        CMP      R0,#+0
+        BEQ.N    ??user_parse_comand_52
+        B.W      ??user_parse_comand_1
 ??user_parse_comand_52:
         BL       ?Subroutine71
 ??CrossCallReturnLabel_251:
