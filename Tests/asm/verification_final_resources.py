@@ -99,6 +99,7 @@ def collect(root):
                         'optional_alignment_padding':4})
     entry=re.search(r'Program entry\n.*?Maximum call chain\s+(\*\?\*\s+)?([\d\']+)\s+bytes',maptext,re.S)
     static={'elf_sha256':hashlib.sha256((root/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest(),
+            'binary_sha256':hashlib.sha256((root/'Release/Exe/DomovoiNext.bin').read_bytes()).hexdigest(),
             'binary_bytes':(root/'Release/Exe/DomovoiNext.bin').stat().st_size,
             'map_memory':counts,'heap_bytes':base.heap_bytes,'cstack_bytes':base.top-base.bottom,
             'static_gap_before_fault_record':base.addr('fault_record')-base.addr('HEAP$$Limit'),
@@ -107,8 +108,11 @@ def collect(root):
             'iar_program_entry_report':None if not entry else {'bytes':int(entry[2].replace("'",'')),
                 'indirect_incomplete':bool(entry[1]),'not_a_proven_reachable_maximum':True},
             'interrupts':irq,
+            'enabled_wiegand_irqs_absent_from_iar_root_table':[name for name in ('EXTI2_IRQHandler','EXTI3_IRQHandler')
+                if name in base.symbols and name not in [item['name'] for item in irq]],
             'stack_limitations':['IAR CFI still includes preserved unreachable historical bodies, e.g. user_checkIdTimeEnd.',
                 'Indirect calls and IRQ nesting prevent treating this map as a complete global bound.',
+                'The IAR interrupt-root table omits Wiegand EXTI2/3 even though WG_init enables them.',
                 'Exception hardware frame is 32 bytes per level plus possible four-byte alignment.']}
     traces={}
 
@@ -186,7 +190,7 @@ def collect(root):
         owner=(bytes(m.u.mem_read(pointer,1092)),bytes(m.u.mem_read(m.addr('sjr'),128)),bytes(m.flash),m.io)
         return owner,m.steps,m.top-m.minimum,m.u.reg_read(UC_ARM_REG_PRIMASK)
     expected,instructions,_,_=irq_step();irq_max=0;irq_cases=0
-    for name in ('SysTick_Handler','DMA1_Channel3_IRQHandler','USART3_IRQHandler'):
+    for name in ('SysTick_Handler','DMA1_Channel3_IRQHandler','USART3_IRQHandler','EXTI2_IRQHandler','EXTI3_IRQHandler'):
         for at in sorted(set((0,instructions//4,instructions//2,3*instructions//4,instructions-1))):
             actual,_,used,mask=irq_step(name,at)
             assert actual==expected and mask==0
@@ -222,6 +226,9 @@ def collect(root):
         'chain':['user_writeConfigAndDevice synchronous config journal','user_clearMemBlock on 2,3,4,5,7,8,9',
                  'user_setdefault persists config','user_initvariables rescans ID/log/temp/photo and comm boot'],
         'limitations':'Remains synchronous; response/SMS lifetime and recovery need a separate design. No factory command was executed.'}
+    assert static['elf_sha256']==hashlib.sha256((root/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest(), 'ELF changed during collection'
+    assert static['binary_sha256']==hashlib.sha256((root/'Release/Exe/DomovoiNext.bin').read_bytes()).hexdigest(), 'BIN changed during collection'
+    assert maptext==(root/'Release/List/DomovoiNext.map').read_text(errors='replace'), 'map changed during collection'
     return {'static':static,'operation_traces':traces,'allocator_stress':stress,'shared_scratch_irq':scratch,'residual_runtime':residual,
             'largest_observed_admitted_heap':max(v['peak_observed']['used_chunks'] for v in traces.values()),
             'largest_observed_admitted_stack':max(v['measured_stack'] for v in traces.values()),
