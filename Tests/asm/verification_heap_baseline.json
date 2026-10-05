@@ -31,5 +31,6 @@
   },
   "repeated_lifetimes": 32,
   "allocator_stack_peak": 44,
-  "abi_bounds_oom_live_bytes_primask": "PASS"
+  "abi_bounds_oom_live_bytes_primask": "PASS",
+  "scope": "Synthetic simultaneous allocations, not a proved reachable production lifetime. Photo TX excludes table/upload admission; USB rings are static."
 }

@@ -104,6 +104,7 @@ def run(root):
         'allocation_scenario': 'Synthetic simultaneous allocator stress; actual subsystem lifetime overlap is checked separately.',
         'heap': m.heap_bytes, 'cstack': m.top - m.bottom,
         'static_gap': m.addr('fault_record') - m.addr('HEAP$$Limit'),
+        'scope': 'Synthetic simultaneous allocations, not a proved reachable production lifetime.',
         'concurrent_chunks': chunks, 'concurrent_used': sum(chunks),
         'concurrent_free': concurrent, 'fragmented_holes': fragmented,
         'fully_coalesced': pristine, 'repeated_lifetimes': 32,

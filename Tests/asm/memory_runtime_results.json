@@ -34,7 +34,8 @@
         4096
       ],
       "fragmentation": 0.0
-    }
+    },
+    "scope": "Synthetic allocator pressure, not a proved production lifetime"
   },
   "cached_reads": [
     {

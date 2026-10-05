@@ -34,7 +34,7 @@ def allocator():
     fragmented=heap_stats(m)
     for i in (1,3):m.checked('__basic_free',live[i])
     recovered=heap_stats(m);assert recovered['largest_request']==4088
-    return {'live_chunks':chunks,'peak':peak,'fragmented':fragmented,'coalesced':recovered}
+    return {'scope':'Synthetic allocator pressure, not a proved production lifetime','live_chunks':chunks,'peak':peak,'fragmented':fragmented,'coalesced':recovered}
 
 def config_machine():
     m=StorageMachine();old=bytes((i*7+13)&255 for i in range(4096))
