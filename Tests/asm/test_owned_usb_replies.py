@@ -50,7 +50,7 @@ def setup(kind, busy):
     return m, active, expected
 
 
-def run():
+def run(instruction_limit=12000):
     results = {}
     for kind in ('crc_pack', 'crc_list', 'upload', 'clear', 'photo', 'fw_setup'):
         control, active, expected = setup(kind, False)
@@ -59,7 +59,8 @@ def run():
             if not active(): break
             control.now += 1; control.checked('user_storage_poll')
             costs.append(control.steps)
-            assert control.steps < 12000
+            if instruction_limit is not None:
+                assert control.steps < instruction_limit, (kind, control.steps)
         else: raise AssertionError(('not complete', kind))
         length = word(control, 'USART_Rx_ptr_in')
         assert length > 0
@@ -72,7 +73,9 @@ def run():
         rejected = []
         for _ in range(len(costs) + 3):
             m.now += 1; m.checked('user_storage_poll'); rejected.append(m.steps)
-            assert m.steps < 12000 and word(m, 'USART_Rx_ptr_in') == 0
+            if instruction_limit is not None:
+                assert m.steps < instruction_limit, (kind, m.steps)
+            assert word(m, 'USART_Rx_ptr_in') == 0
         assert active(), ('lost owned reply on busy', kind)
         m.write(m.addr('USART_Rx_ptr_out'), 0)
         for _ in range(3):
@@ -88,7 +91,8 @@ def run():
                          'observed_stack': control.stack_peak}
     return {'results': results, 'status': 'PASS',
             'units': 'Unicorn instructions, real queue writer, NOR boundary modeled; not board time',
-            'elf_sha256': hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()}
+            'instruction_limit': instruction_limit,
+            'elf_sha256': hashlib.sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()}
 
 
 if __name__ == '__main__':

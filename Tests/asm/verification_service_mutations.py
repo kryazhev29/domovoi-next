@@ -75,7 +75,7 @@ def run():
             raise AssertionError((mode, 'mutation survived'))
         detected[mode] = detail
         print(mode, 'DETECTED in linked Thumb', flush=True)
-    return {'elf_sha256': hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest(),
+    return {'elf_sha256': hashlib.sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest(),
             'mutations': detected, 'detected': len(detected)}
 
 

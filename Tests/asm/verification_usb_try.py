@@ -18,11 +18,15 @@ def init_transport(m, *, inp=0, out=0, enabled=1, configured=5,
 
 
 class UsbTryMachine(Machine):
+    expected_stack = 16
+    instruction_limit = 15000
     def __init__(self):
         super().__init__();self.init();self.observations=[];self.writes=[];self.reads=[]
         self.observe=False;self.copy_started=False;self.last_source=0;self.pending_action=None
-        self.u.hook_add(UC_HOOK_MEM_WRITE,self.memory_write)
-        self.u.hook_add(UC_HOOK_MEM_READ,self.memory_read)
+        # Hook the observed regions. Unicorn 2.1.4 global memory hooks can
+        # misexecute conditional Thumb POP/IT instructions in compiler output.
+        self.u.hook_add(UC_HOOK_MEM_WRITE,self.memory_write,begin=0x20000000,end=self.bottom-1)
+        self.u.hook_add(UC_HOOK_MEM_READ,self.memory_read,begin=0x21000000,end=0x21000fff)
         self.u.hook_add(UC_HOOK_CODE,self.check_publish)
     def memory_write(self,u,access,p,n,value,x):
         if not self.observe:return
@@ -76,10 +80,11 @@ class UsbTryMachine(Machine):
         try:result=self.call('usb_try_send',0 if null else 0x21000000,length,budget=15000)
         finally:self.observe=False
         assert self.u.reg_read(UC_ARM_REG_PRIMASK)==mask
-        assert self.u.reg_read(UC_ARM_REG_SP)==self.top and self.top-self.minimum==16
+        assert self.u.reg_read(UC_ARM_REG_SP)==self.top
+        if self.expected_stack is not None:assert self.top-self.minimum==self.expected_stack
         assert [self.u.reg_read(r) for r in regs]==saved
         assert bytes(self.u.mem_read(0x21000000,1285))==self.payload+b'GUARD'
-        assert self.steps<15000,'busy wait or unbounded copy'
+        if self.instruction_limit is not None:assert self.steps<self.instruction_limit,'busy wait or unbounded copy'
         ring=bytes(self.u.mem_read(self.addr('USART_Rx_Buffer'),1280));new_in=self.read(self.addr('USART_Rx_ptr_in'))
         if result:
             assert len(self.reads)==length and all(n==1 for p,n in self.reads)

@@ -1,5 +1,6 @@
 """Свежий ELF IAR; IRQ вызывается на границе инструкции с учётом PRIMASK."""
-import pathlib, struct, sys, re
+import pathlib, struct, sys, re, os
+from iar_image import image_paths
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 for deps in (ROOT/'Release/photo_test_deps',ROOT.parents[1]/'СофтЭксперт/Для новой системы/Domovoi Next_IAR95/Domovoi Next_IAR95/Release/photo_test_deps'):
     if deps.exists():sys.path.insert(0,str(deps))
@@ -7,6 +8,8 @@ from elftools.elf.elffile import ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser
 from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_HOOK_MEM_WRITE
 from unicorn.arm_const import *
+
+_IMAGE_METADATA = {}
 
 class Machine:
     def __init__(self, boot=False):
@@ -16,38 +19,50 @@ class Machine:
         self.volatile={}
         image=ROOT/('Bootloader/build/Release' if boot else 'Release')
         stem='DomovoiBoot' if boot else 'DomovoiNext'
-        with (image/'Exe'/f'{stem}.out').open('rb') as f:
-            elf=ELFFile(f)
-            for s in elf.get_section_by_name('.symtab').iter_symbols():
-                self.symbols[s.name]=s['st_value']
-                self.symboltypes[s.name]=s['st_info']['type']
-            for cu in elf.get_dwarf_info().iter_CUs():
-                for die in cu.iter_DIEs():
-                    a=die.attributes.get('DW_AT_name')
-                    if a and a.value in (b'milliSeconds',b'timer',b'USART_Rx_ptr_in',b'USART_Rx_ptr_out',b'USART_Rx_length',b'USB_Tx_State') and die.tag=='DW_TAG_variable' and 'DW_AT_type' in die.attributes:
-                        item=die.get_DIE_from_attribute('DW_AT_type');qualified=False
-                        for _ in range(6):
-                            if item.tag=='DW_TAG_volatile_type':qualified=True;break
-                            if 'DW_AT_type' not in item.attributes:break
-                            item=item.get_DIE_from_attribute('DW_AT_type')
-                        self.volatile[a.value.decode()]=qualified
-                    if not a or a.value!=b'uart_t' or die.tag!='DW_TAG_typedef':continue
-                    for member in die.get_DIE_from_attribute('DW_AT_type').iter_children():
-                        if 'DW_AT_name' not in member.attributes:continue
-                        offset=member.attributes['DW_AT_data_member_location'].value
-                        if not isinstance(offset,int):offset=DWARFExprParser(cu.structs).parse_expr(offset)[0].args[0]
-                        self.members[member.attributes['DW_AT_name'].value.decode()]=offset
+        elf_path, bin_path, map_path = image_paths(boot)
+        key = (str(elf_path), elf_path.stat().st_mtime_ns)
+        if key in _IMAGE_METADATA:
+            self.symbols,self.symboltypes,self.members,self.volatile = [dict(v) for v in _IMAGE_METADATA[key]]
+        else:
+            with elf_path.open('rb') as f:
+                elf=ELFFile(f)
+                for s in elf.get_section_by_name('.symtab').iter_symbols():
+                    self.symbols[s.name]=s['st_value']
+                    self.symboltypes[s.name]=s['st_info']['type']
+                for cu in elf.get_dwarf_info().iter_CUs():
+                    for die in cu.iter_DIEs():
+                        a=die.attributes.get('DW_AT_name')
+                        if a and a.value in (b'milliSeconds',b'timer',b'USART_Rx_ptr_in',b'USART_Rx_ptr_out',b'USART_Rx_length',b'USB_Tx_State') and die.tag=='DW_TAG_variable' and 'DW_AT_type' in die.attributes:
+                            item=die.get_DIE_from_attribute('DW_AT_type');qualified=False
+                            for _ in range(6):
+                                if item.tag=='DW_TAG_volatile_type':qualified=True;break
+                                if 'DW_AT_type' not in item.attributes:break
+                                item=item.get_DIE_from_attribute('DW_AT_type')
+                            self.volatile[a.value.decode()]=qualified
+                        if not a or a.value!=b'uart_t' or die.tag!='DW_TAG_typedef':continue
+                        for member in die.get_DIE_from_attribute('DW_AT_type').iter_children():
+                            if 'DW_AT_name' not in member.attributes:continue
+                            offset=member.attributes['DW_AT_data_member_location'].value
+                            if not isinstance(offset,int):offset=DWARFExprParser(cu.structs).parse_expr(offset)[0].args[0]
+                            self.members[member.attributes['DW_AT_name'].value.decode()]=offset
+            _IMAGE_METADATA[key] = tuple(dict(v) for v in (self.symbols,self.symboltypes,self.members,self.volatile))
         self.u=Uc(UC_ARCH_ARM,UC_MODE_THUMB|UC_MODE_MCLASS)
-        self.u.mem_map(0x08000000,0x20000);self.u.mem_write(0x08000000 if boot else 0x08008200,(image/'Exe'/f'{stem}.bin').read_bytes())
-        self.u.mem_map(0x20000000,0x5000);self.u.mem_map(0x21000000,0x1000)
+        flash_bytes=int(os.environ.get('DOMOVOI_MODEL_FLASH_BYTES','0x20000'),0)
+        self.u.mem_map(0x08000000,flash_bytes);self.u.mem_write(0x08000000 if boot else 0x08008200,bin_path.read_bytes())
+        self.u.mem_map(0x20000000,int(os.environ.get('DOMOVOI_MODEL_RAM_BYTES','0x5000'),0));self.u.mem_map(0x21000000,0x1000)
+        self.u.mem_map(0xe0001000,0x1000)
         self.u.mem_map(0x40000000,0x30000);self.u.mem_map(0xE000E000,0x1000)
-        self.maptext=(image/'List'/f'{stem}.map').read_text(errors='replace')
+        self.maptext=map_path.read_text(errors='replace')
         self.top=self.map_addr('CSTACK$$Limit');self.bottom=self.map_addr('CSTACK$$Base')
         self.heap_bytes=self.map_addr('HEAP$$Limit')-self.map_addr('HEAP$$Base') if 'HEAP$$Limit' in self.symbols else 0
-        self.stop=0x0801fff0;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={}
+        self.stop=0x08000000+flash_bytes-16;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={}
         self.u.reg_write(UC_ARM_REG_XPSR,0x01000000)
         self.u.hook_add(UC_HOOK_CODE,self.hook)
     def addr(self,n):
+        # IAR selects dlmalloc instead of the basic heap at High/Speed.
+        # Existing fixtures hook the allocator implementation, not its trampoline.
+        if n not in self.symbols and n in ('__basic_malloc','__basic_free'):
+            n = {'__basic_malloc':'__iar_dlmalloc','__basic_free':'__iar_dlfree'}[n]
         key=n if n in self.symbols else '_A_'+n
         address=self.symbols[key]
         return address & ~1 if self.symboltypes[key]=='STT_FUNC' else address

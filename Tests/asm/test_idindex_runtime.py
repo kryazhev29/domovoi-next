@@ -290,7 +290,7 @@ def test_real_w25():
         a = wire['address']; m.u.mem_write(p, bytes(m.flash[a:a+n]))
         wire['address'] += n; wire['read'] += n; m.ret()
 
-    m.u.hook_add(UC_HOOK_MEM_WRITE, cs)
+    m.u.hook_add(UC_HOOK_MEM_WRITE, cs, begin=0x40010c10, end=0x40010c14)
     for name, fn in [('spi_send_byte', send_byte), ('spi_read_byte', read_byte), ('spi_send', send), ('spi_read', read)]:
         m.stubs[m.addr(name)] = fn
     m.costs = []; max_read = max_status = 0

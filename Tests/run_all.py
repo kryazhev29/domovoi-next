@@ -21,6 +21,8 @@ def run(title, args, timeout=900):
 
 
 def main():
+    if '--project' in sys.argv:
+        sys.exit(subprocess.call([PY,str(ROOT/'Tests/asm/c_vs_asm_project.py'),*sys.argv[1:]],cwd=ROOT))
     fast = "--fast" in sys.argv
     results = [run("sources", ["Tests/check_comm_sources.py"])]
     results += [run(g, ["Tests/run_host.py", "work", g]) for g in GROUPS]

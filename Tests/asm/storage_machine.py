@@ -1,5 +1,5 @@
 """Real final IAR machine, modeled NOR boundary, real allocator and caller ABI."""
-import sys,struct,re
+import sys,struct,re,os
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'Tests'))
 from iar_irq_support import *
@@ -8,7 +8,7 @@ from functools import lru_cache
 
 @lru_cache(None)
 def layout(module,name):
-    with (ROOT/'Release/task-asm-storage/export'/f'{module}.o').open('rb') as f:
+    with (Path(os.environ.get('DOMOVOI_LAYOUT_OBJECTS',ROOT/'Release/task-asm-storage/export'))/f'{module}.o').open('rb') as f:
         e=ELFFile(f)
         for cu in e.get_dwarf_info().iter_CUs():
             for die in cu.iter_DIEs():

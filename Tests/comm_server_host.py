@@ -1,5 +1,6 @@
 """Доработка: Кряжев А., 2026. Канал/сервер на настоящих UART, AT и SLM."""
 from pathlib import Path
+from source_select import source_path
 import argparse, os, subprocess, tempfile
 from comm_slm_host import unit as slm_unit, memory, ROOT, ZIG, HEADERS, MODULES
 
@@ -7,7 +8,7 @@ NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.
 NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h', 'Modules/comm_info.h', 'Modules/comm_call.h', 'Modules/comm_sms.h', 'Modules/comm_balance.h')
 
 def source(name):
-    return (ROOT / name).read_bytes().decode('cp1251')
+    return source_path(ROOT,name).read_bytes().decode('cp1251')
 
 def function(text, name):
     import re
@@ -45,6 +46,9 @@ def unit():
     if '/* >>> ответ считывателя' in user:
         producer_code += '\n' + user[user.index('/* >>> ответ считывателя'):user.index('/* <<< ответ считывателя */')]
     old += '\n#define table_runtime_quiet(ch) ((void)(ch))\n#define fw_async_quiet(ch) ((void)(ch))\n#define user_storage_command_ready() 1\n#define store_command_allowed(cmd) 1\nstatic struct {unsigned job,channel,quiet,seen;} store;\n'
+    # Storage state machines are tested against the linked ELF. Here the modem
+    # model only exercises notification of those owners on session changes.
+    old += '\n#define service_crc_quiet(ch) ((void)(ch))\n#define upload_runtime_quiet(ch) ((void)(ch))\n#define fw_service_quiet(ch) ((void)(ch))\n'
     return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('Tests/asm/reference/User/crc.c'), 'crc16_calc')+'\n'+function(source('Tests/asm/reference/User/crc.c'), 'crc16_calcInit')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c')).replace('/* CALL */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):

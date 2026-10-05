@@ -1,0 +1,308 @@
+"""Compare linked IAR images on identical fixtures; count instructions, not board time.
+
+Output defaults to TEMP. Diagnostic High/Speed image is never a flashable artifact.
+"""
+import argparse
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+import random
+import re
+import struct
+import sys
+import tempfile
+from collections import defaultdict
+from functools import lru_cache
+
+from c_vs_asm_suite import ROOT, select_image
+import iar_irq_support as support
+from iar_image import image_paths
+from unicorn import UC_HOOK_CODE
+from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_PC
+from elftools.elf.elffile import ELFFile
+
+sys.path.insert(0, str(Path(tempfile.gettempdir())/'domovoi-c-asm-deps'))
+from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS
+
+
+@lru_cache(None)
+def public_inventory():
+    result = {}
+    for path in sorted((ROOT/'User/asm').glob('*.s')):
+        for name in re.findall(r'^\s+PUBLIC\s+(\S+)',path.read_text(encoding='cp1251'),re.M):
+            result[name] = path.stem
+    return result
+
+
+class Profile:
+    """Inclusive per-export counters, including private callees and library code.
+
+    Two transparent estimates are provided: one cycle/instruction and a deliberately
+    conservative no-prefetch fetch model (two wait cycles per 32-bit Flash word).
+    Neither is a Cortex-M3 cycle-accurate simulation. External NOR time is excluded.
+    """
+    def __init__(self, machine, totals):
+        self.m=machine; self.totals=totals; self.stack=[]; self.n=0; self.wait=0
+        self.enabled=False; self.cache={}; self.word=None
+        self.md=Cs(CS_ARCH_ARM,CS_MODE_THUMB|CS_MODE_MCLASS)
+        inventory=public_inventory()
+        self.names={machine.addr(n):n for n in inventory if n in machine.symbols and machine.symboltypes[n]=='STT_FUNC'}
+        machine.u.hook_add(UC_HOOK_CODE,self.hook)
+
+    def close(self):
+        while self.stack:self.finish()
+
+    def finish(self):
+        name,ret,start,wait=self.stack.pop()
+        n=self.n-start; estimate=n+self.wait-wait
+        r=self.totals.setdefault(name,{'calls':0,'instructions':0,'fetch_estimate':0,'min':n,'max':n})
+        r['calls']+=1; r['instructions']+=n; r['fetch_estimate']+=estimate
+        r['min']=min(r['min'],n);r['max']=max(r['max'],n)
+
+    def hook(self,u,a,size,_):
+        if not self.enabled:return
+        while self.stack and a==self.stack[-1][1]:self.finish()
+        if a in self.names and a not in self.m.stubs:
+            self.stack.append((self.names[a],u.reg_read(UC_ARM_REG_LR)&~1,self.n,self.wait))
+        # Stubbed hardware boundaries contribute no invented CPU instructions.
+        if a in self.m.stubs:return
+        self.n+=1
+        if 0x08000000<=a<0x08100000:
+            first=a&~3;last=(a+size-1)&~3
+            self.wait+=2*(int(first!=self.word)+int(last!=first))
+            self.word=last
+
+    def run(self, fn):
+        start=self.n;wait=self.wait;self.enabled=True
+        try:return fn()
+        finally:self.close();self.enabled=False;self.last={'instructions':self.n-start,'fetch_estimate':self.n-start+self.wait-wait}
+
+
+def snapshot(m):
+    """Only externally meaningful bytes; RAM addresses differ between links."""
+    result={'nor':bytes(m.flash)} if hasattr(m,'flash') else {}
+    for name in ('sent','wires','answers','timestamps','events','loads','logs','expiry_events','commands'):
+        if hasattr(m,name):result[name]=copy.deepcopy(getattr(m,name))
+    return result
+
+
+def serial(value):
+    if isinstance(value,(bytes,bytearray)):
+        return {'bytes':len(value),'sha256':hashlib.sha256(value).hexdigest()}
+    if isinstance(value,(tuple,list)):return [serial(v) for v in value]
+    if isinstance(value,dict):return {k:serial(v) for k,v in value.items()}
+    return value
+
+
+def scenarios(totals):
+    from storage_machine import StorageMachine
+    from test_table_runtime import rows
+    from test_access_reads import AccessMachine
+    from test_upload_runtime import UploadMachine,log
+    from test_photo_runtime import PhotoMachine,prefix_flash
+    from test_fw_service_runtime import FirmwareMachine
+    from test_expiry_runtime import ExpiryMachine,record
+    from test_idclear_runtime import ClearMachine
+    from test_service_runtime import ServiceMachine
+    from test_memory_runtime import config_machine
+    from test_idindex_runtime import IndexMachine
+    from verification_usb_try import init_transport
+    out={}
+    def execute(name,m,fn):
+        p=Profile(m,totals);value=p.run(fn)
+        out[name]={'result':snapshot(m),'returned':value,'cost':p.last}
+        print('scenario',name,p.last['instructions'],flush=True)
+        return value
+
+    for cmd,indices in ((13,[1,128,129]),(14,[1,64]),(15,[1,128]),(16,[1,2])):
+        m=StorageMachine();data=rows(indices,16 if cmd==15 else 32)
+        if cmd==16:data=b'\x01\x02\x03\x04'*2
+        execute('sync-'+str(cmd),m,lambda:(m.command(cmd,data,len(indices)),m.drain()))
+
+    # Compare actual persistent state after interruption of each journal action.
+    m=StorageMachine();m.record_changes=True;initial=bytes(m.flash)
+    m.command(13,rows([1]),1);m.drain();flash=bytearray(initial)
+    recover=[]
+    for kind,a,b in m.changes:
+        for n in sorted({0,1,len(b)//2,len(b)}):
+            cut=bytearray(flash)
+            for i,x in enumerate(b[:n]):cut[a+i]=x if kind=='erase' else cut[a+i]&x
+            r=StorageMachine(cut);r.limit_reads=1000000
+            assert r.checked('sj_recover',budget=2000000)
+            recover.append(hashlib.sha256(r.flash).hexdigest())
+        for i,x in enumerate(b):flash[a+i]=x if kind=='erase' else flash[a+i]&x
+    out['journal-power']={'result':recover,'cost':None}
+
+    for cmd in (10,20):
+        for count in (0,1,32):
+            m=UploadMachine();m.fixture(cmd,[log(i+1) for i in range(count)])
+            execute(f'upload-{cmd}-{count}',m,lambda:(m.request(),m.drain_upload()))
+
+    m=PhotoMachine(prefix_flash());m.boot_media()
+    address,stamp=execute('photo-capture',m,lambda:m.capture(bytes(range(129))))
+    def photo_upload():
+        m.packet(21,b'');m.drain()
+        for _ in range(20):
+            m.port();m.drain()
+            if len(m.sent)>=2:break
+        m.packet(21,struct.pack('<IH',stamp,129));m.drain()
+    execute('photo-upload-ack',m,photo_upload)
+
+    for number in (1,2,0):
+        m=FirmwareMachine();m.fixture()
+        execute('fw-'+str(number),m,lambda:(m.begin(number),m.drain()))
+    for stage in ('start','read','poll'):
+        m=FirmwareMachine();m.fixture();m.fault=(stage,1)
+        execute('fw-failure-'+stage,m,lambda:(m.begin(1),m.drain()))
+
+    m=ExpiryMachine();m.install([record(1),record(2,first=1700000400),record(129)],(0,1,128))
+    execute('expiry',m,lambda:(m.start_expiry(),m.expiry_drain()))
+    m=ClearMachine();execute('clear',m,lambda:(m.parse(),m.clear_drain()))
+    m=IndexMachine();m.setup((1,2,128,256))
+    execute('index',m,m.drain_index)
+
+    # Full physical ID area: 1,601,536 bytes / 32-byte cells, last ID matches.
+    # The model records the real call to loads_load at the relay boundary.
+    for match in (True,False):
+        m=AccessMachine();m.put_group(1)
+        for cell in range(1,50049):m.put_id(cell,b'%010d'%cell)
+        ident=0x21000000;m.u.mem_write(ident,b'0000050048' if match else b'9999999999')
+        execute('card-full-'+('last' if match else 'miss'),m,
+                lambda:m.checked('user_checkIdAndControl',ident,2,budget=12000000))
+
+    for cmd in (17,18):
+        m=ServiceMachine(8192,1601536)
+        m.stubs.pop(m.addr('usb_try_send'),None);init_transport(m,inp=0,out=0,epoch=0)
+        def server():
+            m.packet(cmd)
+            for _ in range(40000):
+                if not m.active():break
+                m.now+=1;m.checked('user_storage_poll')
+            else:raise AssertionError('service did not complete')
+            n=int.from_bytes(m.u.mem_read(m.addr('USART_Rx_ptr_in'),4),'little')
+            return bytes(m.u.mem_read(m.addr('USART_Rx_Buffer'),n))
+        execute('packet-'+str(cmd)+'-usb-ring',m,server)
+    return out
+
+
+def kernel_scenarios(totals):
+    m=support.Machine();m.init();p=Profile(m,totals)
+    rng=random.Random(4883384);buf=0x21000000;matrix=0x21000800
+    out={};mat=[rng.randrange(65536) for _ in range(16)]
+    m.u.mem_write(matrix,struct.pack('<16H',*mat))
+    tests=[]
+    for off in range(4):
+        for n in (0,1,2,3,4,10,31,64,256,1024):
+            tests += [('fast_all_ff',(buf+off,n),b'\xff'*(n+4)),
+                      ('fast_sldn',(buf+off,n),b'X'*(n+4)),
+                      ('crc16_calc',(buf+off,n),rng.randbytes(n+4))]
+    for x in (0,1,3,0x8000,0x8080,0xffff):tests.append(('fast_gf2_apply',(matrix,x),b''))
+    for _ in range(20):
+        data=rng.randbytes(10)
+        tests.append(('fast_fnv10',(buf,),data))
+        tests.append(('idindex_hash',(rng.randrange(1,50049),buf),data))
+    for i,(name,args,data) in enumerate(tests):
+        if data:m.u.mem_write(buf,data)
+        value=p.run(lambda:m.call(name,*args))
+        out[f'{name}/{i}']={'result':value,'cost':p.last,'arguments':args[1:]}
+    return out
+
+
+def main_iteration(totals):
+    from storage_machine import StorageMachine
+    m=StorageMachine();p=Profile(m,totals)
+    # Do not run hardware startup. Execute the actual main loop with initialized
+    # runtime BSS/data, idle peripherals, no modem RX, no card and no storage job.
+    for name in ('stack_paint','board_init','NVIC_SetVectorTable','led_load',
+                 'timers_init','spi_init','adc_init','delay_ms','timers_pause','wdt_init','user_init','usb_init'):
+        if name in m.symbols:m.stubs[m.addr(name)]=m.ret
+    visits=[]
+    def boundary(u,a,n,_):
+        if a!=m.addr('gsm_check_data'):return
+        visits.append(p.n)
+        if len(visits)==1:
+            m.stubs.pop(m.addr('timers_pause'),None)
+            p.close();p.n=p.wait=0;p.enabled=True
+        else:
+            p.close();p.enabled=False;u.reg_write(UC_ARM_REG_PC,m.stop);u.emu_stop()
+    m.u.hook_add(UC_HOOK_CODE,boundary)
+    m.call('main',budget=2000000)
+    assert len(visits)==2
+    return {'result':snapshot(m),'cost':{'instructions':p.n,'fetch_estimate':p.n+p.wait},
+            'scope':'Actual main: first gsm_check_data entry to next entry; idle peripherals, initialization calls stubbed'}
+
+
+def coverage(totals):
+    """Additional measured calls from existing boundary and failure fixtures."""
+    import importlib
+    original_init=support.Machine.__init__;original_call=support.Machine.call
+    def init(m,*args,**kw):
+        original_init(m,*args,**kw);m.compare_profile=Profile(m,totals);m.compare_profile.enabled=True
+    def call(m,*args,**kw):
+        try:return original_call(m,*args,**kw)
+        finally:m.compare_profile.close()
+    support.Machine.__init__=init;support.Machine.call=call
+    out={}
+    plans={
+        'test_access_reads':('table_cells','holidays','find_id','access'),
+        'test_memory_runtime':('cached_reads','config_ownership','config_faults'),
+        'test_idindex_runtime':('test_faults','test_cancel_restart','test_real_w25'),
+        'test_service_runtime':('faults_and_lifetime','config_reply','ff_affine','pending_timeout','real_w25'),
+        'test_upload_runtime':('test_parser','test_gaps_and_faults','test_busy_empty_cancel'),
+        'test_idclear_runtime':('sessions_cancel_faults','guards'),
+        'test_expiry_runtime':('cancel_and_sessions','faults'),
+        'test_fw_service_runtime':('boundaries_errors','io_faults','busy_cancel','real_spi','exact_failure_logs'),
+        'test_photo_edges':('cancellation','corrupt','failures','stream','transport_and_heap','ownership','headers_and_space'),
+        'c_vs_asm_extra':('fw_bridge','usb_queue'),
+    }
+    try:
+        for module,names in plans.items():
+            for name in names:
+                key=module+'.'+name
+                try:
+                    import contextlib,io
+                    with contextlib.redirect_stdout(io.StringIO()):getattr(importlib.import_module(module),name)()
+                    out[key]='PASS'
+                except Exception as exc:out[key]=type(exc).__name__+': '+str(exc)
+            print('profile',module,len(totals),'exports',flush=True)
+    finally:support.Machine.__init__=original_init;support.Machine.call=original_call
+    return out
+
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--variant',choices=('ASM','C','C_SPEED'))
+    parser.add_argument('--kernels-only',action='store_true');parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--main-only',action='store_true')
+    parser.add_argument('--coverage-only',action='store_true')
+    parser.add_argument('--paired',action='store_true')
+    args=parser.parse_args()
+    if args.paired:
+        all_results={};oracle=None
+        for variant in ('ASM','C','C_SPEED'):
+            select_image(variant);totals={};raw=kernel_scenarios(totals)
+            raw.update(scenarios(totals));raw['main-idle']=main_iteration(totals)
+            if oracle is None:oracle=raw
+            else:
+                assert set(raw)==set(oracle)
+                for name,expected in oracle.items():
+                    for field in ('result','returned'):
+                        assert raw[name].get(field)==expected.get(field),(variant,name,field)
+            all_results[variant]={'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest(),
+                'scenarios':serial(raw),'functions':totals,'exports':public_inventory()}
+            print('PASS byte equality',variant,len(raw),'scenarios',flush=True)
+        args.output.write_text(json.dumps({'variants':all_results,'comparison':'Python equality of actual result bytes, event lists and complete 4 MiB NOR snapshots before serialization; power recovery uses full NOR SHA-256','mismatches':0},indent=2)+'\n',encoding='utf-8')
+        return
+    if not args.variant:parser.error('--variant or --paired is required')
+    select_image(args.variant)
+    totals={};result={} if args.main_only or args.coverage_only else kernel_scenarios(totals)
+    if not args.kernels_only and not args.main_only and not args.coverage_only:result.update(scenarios(totals))
+    if not args.kernels_only and not args.coverage_only:result['main-idle']=main_iteration(totals)
+    extra=coverage(totals) if args.coverage_only else {}
+    artifact={'variant':args.variant,'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest(),
+              'method':'Instructions + 2 wait cycles per nonreused 32-bit Flash fetch; no pipeline, prefetch, branch penalties, external NOR latency or IRQ time',
+              'scenarios':serial(result),'functions':totals,'exports':public_inventory(),'coverage_fixtures':extra}
+    args.output.write_text(json.dumps(artifact,indent=2)+'\n',encoding='utf-8')
+
+if __name__=='__main__':main()

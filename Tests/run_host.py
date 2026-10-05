@@ -1,12 +1,13 @@
 # Доработка: Кряжев А., 2026
 import os, pathlib, subprocess, sys, tempfile, re
+from source_select import source_path
 # DOMOVOI_ROOT runs the tests against a copy, e.g. with a deliberate fault.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
 ZIG=r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe'
 ref=sys.argv[1] if len(sys.argv)>1 and sys.argv[1]!='work' else None
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
-    return (subprocess.check_output(['git','show',ref+':'+name.removeprefix('Tests/asm/reference/')],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
+    return (subprocess.check_output(['git','show',ref+':'+name.removeprefix('Tests/asm/reference/')],cwd=ROOT) if ref else source_path(ROOT,name).read_bytes()).decode('cp1251')
 def function(text,name):
     m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|int|RESULT|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
@@ -367,7 +368,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='outs':
         import re as _re
         outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
-        unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',outs)
+        # DWT is outside the host model; keep the real relay implementation.
+        unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */','void prof_relay_on(void) {}\n'+outs)
     elif kind=='crcff':
         crc=source('Tests/asm/reference/User/crc.c')
         user=source('Tests/asm/reference/User/user_fun.c')
@@ -387,6 +389,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_flash_commands.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellMem_s','memBlock_e','dataChanel_e','cmdCode_e')).replace('/* PRODUCTION */',code)
     elif kind=='w25':
         driver=source('Tests/asm/reference/User/flash_w25.c')
+        driver=driver.replace('__no_operation();','') # hardware CS delay, like the existing host NOP stub
         result='bool' if 'bool w25_write_data' in driver else 'void'
         protos='static uint8_t w25_busy(void); static inline void w25_delay_ON(void); static inline void w25_delay_OFF(void); static void w25_WREN(void); static void w25_WRDI(void); static '+result+' w25_page_program(Int32U,pInt8U,Int16U);\n'
         code=protos+re.sub(r'^#include[^\n]*','',driver,flags=re.M)
@@ -423,7 +426,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         wg=source('User/wiegand.c')
         code='\n'.join(x for x in wg.splitlines() if re.match(r'^(?:volatile )?(?:uint32_t|uint8_t|bool) wg',x))+'\n'
         code+='\n'.join(function(wg,n) for n in ('EXTI2_IRQHandler','EXTI3_IRQHandler','WG_process'))
-        unit=(ROOT/'Tests/test_wiegand_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+        prof='uint32_t prof_card_mark;\n#define PROF_NOW() (0u)\n#define PROF_STEP(i, call) do { call; } while (0)\n'
+        unit=(ROOT/'Tests/test_wiegand_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',prof+code)
     elif kind=='timersirq':
         timers=source('Modules/timers.c').replace('inline void timers_handle','void timers_handle')
         code='\n'.join(x for x in timers.splitlines() if x.startswith(('unsigned int milliSeconds','unsigned int timer[','volatile unsigned int milliSeconds','volatile unsigned int timer[','#define timer_cnt')))+'\n'
@@ -438,11 +442,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='recovery':
         code=source('Tests/asm/reference/Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
+        if 'uint8_t usb_try_send(' in code:code=code.replace(function(code,'usb_try_send'),'')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         code+=function(source('USB-FS-CDC_User/Src/usb_istr.c'),'USB_Istr')
         unit=(ROOT/'Tests/test_usb_recovery.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='rx':
         code=source('Tests/asm/reference/Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
+        if 'uint8_t usb_try_send(' in code:code=code.replace(function(code,'usb_try_send'),'')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         user=function(source('Tests/asm/reference/User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
         unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)

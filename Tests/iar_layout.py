@@ -1,8 +1,16 @@
 """Смещения полей из DWARF текущего IAR, без ручной копии структуры."""
 from iar_irq_support import ROOT, ELFFile, DWARFExprParser
+from iar_image import image_paths
+from functools import lru_cache
 
 def fields(name, boot=False):
-    image=ROOT/('Bootloader/build/Release/Exe/DomovoiBoot.out' if boot else 'Release/Exe/DomovoiNext.out')
+    image=image_paths(boot)[0]
+    return dict(_fields(str(image), image.stat().st_mtime_ns, name))
+
+@lru_cache(None)
+def _fields(path, version, name):
+    from pathlib import Path
+    image=Path(path)
     with image.open('rb') as f:
         dwarf=ELFFile(f).get_dwarf_info()
         for cu in dwarf.iter_CUs():

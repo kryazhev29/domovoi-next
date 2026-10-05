@@ -1,0 +1,417 @@
+// Доработка: Кряжев А., 2026
+#include "usb_stm32f10x.h"
+
+#define USBBUFFERSIZE                   (uint16_t)2048
+
+#pragma data_alignment=4
+uint8_t usb_buffer[USBBUFFERSIZE]; // принятые данные по usb
+volatile uint16_t usb_buffer_count = 0;
+volatile uint8_t usb_rx_processing = 0;
+volatile uint8_t usb_rx_discard = 0;
+volatile uint16_t usb_rx_silence = 0;
+/* Граница байта на момент истечения; поздний ввод не должен оживить этот префикс. */
+volatile uint16_t usb_rx_expired = 0;
+static void usb_rx_consume(uint16_t length);
+volatile uint32_t usb_rx_errors = 0;
+uint8_t usb_enabled = 0;
+volatile uint32_t usb_tx_errors = 0;
+volatile uint32_t usb_debug_dropped = 0;
+volatile uint32_t usb_recovery_count = 0;
+volatile uint8_t usb_recovery_pending = 0;
+volatile uint8_t usb_recovery_ms = 0;
+
+/* Сторож USB. Возраст считается в миллисекундах и не переполняется. Зависание взводится только
+ * после записи хоста, поэтому данные для закрытого COM-порта никогда не вызывают
+ * переподключение. Причины: 1 таймаут сброса ESOF, 2 очередь IN не забирается, 3 OUT при
+ * ненастроенном USB. */
+#define USB_WATCH_MS 2000u
+#define USB_AGE_MAX 0xFFFFu
+volatile uint32_t usb_esof_forced = 0;
+volatile uint32_t usb_esof_timeouts = 0;
+volatile uint32_t usb_bus_resets = 0;
+volatile uint32_t usb_recovery_reason = 0;
+volatile uint32_t usb_watch_in_recoveries = 0;
+volatile uint32_t usb_watch_unconf_recoveries = 0;
+volatile uint32_t usb_out_unconfigured = 0;
+volatile uint32_t usb_last_recovery[7];
+volatile uint16_t usb_in_ago = USB_AGE_MAX;
+volatile uint16_t usb_out_ago = USB_AGE_MAX;
+volatile uint16_t usb_sof_ago = USB_AGE_MAX;
+volatile uint16_t usb_hung_ms = 0;
+volatile uint16_t usb_unconf_ms = 0;
+volatile uint8_t usb_hung_armed = 0;
+volatile uint8_t usb_unconf_armed = 0;
+
+/* Команда 111 v2: регистры USB на момент последнего восстановления и сейчас. EP1 TX NAK при
+ * USB_Tx_State 1 означает потерянное прерывание CTR_TX; TX VALID - хост перестал опрашивать.
+ * Только чтение, без побочных действий над регистрами. */
+#define USB_REGS 9u
+extern volatile uint8_t USB_Tx_State;
+extern volatile uint32_t usb_in_armed;
+volatile uint32_t usb_in_taken = 0;
+uint32_t usb_last_regs[USB_REGS];
+/* Прерывания ERR: нет ответа, ошибка CRC, битстаффинга или кадра на шине. */
+volatile uint32_t usb_bus_errors = 0;
+uint32_t usb_last_bus_errors = 0;
+/* Регистр адреса устройства и EP0R: устройство, потерявшее адрес, по-прежнему видит SOF
+ * (широковещательный), но не получает адресованных ему IN. */
+uint32_t usb_last_addr[2];
+
+/* EP1R, EP3R, счётчик TX EP1, ISTR, CNTR, FNR, USB_Tx_State, IN выставлен, IN забран. */
+static void usb_regs_read(uint32_t *r)
+{
+  r[0] = _GetENDPOINT(ENDP1);
+  r[1] = _GetENDPOINT(ENDP3);
+  r[2] = _GetEPTxCount(ENDP1);
+  r[3] = _GetISTR();
+  r[4] = _GetCNTR();
+  r[5] = _GetFNR();
+  r[6] = USB_Tx_State;
+  r[7] = usb_in_armed;
+  r[8] = usb_in_taken;
+}
+
+/* Прерывание USB: хост забрал пакет IN. */
+void usb_in_done(void)
+{
+  usb_in_ago = 0;
+  usb_hung_ms = 0;
+  usb_in_taken++;
+}
+
+/* Прерывание USB: ошибка шины. */
+void usb_bus_error_seen(void)
+{
+  usb_bus_errors++;
+}
+
+/* Прерывание USB: начало кадра. */
+void usb_sof_seen(void)
+{
+  usb_sof_ago = 0;
+}
+
+/* Вызывается при неустранимом таймауте сброса USB. Переподключение делается из главного цикла,
+ * внутри прерывания USB никогда не ждать хоста или SysTick. */
+void usb_request_recovery(void)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  usb_last_recovery[0] = usb_recovery_reason;
+  usb_last_recovery[1] = bDeviceState;
+  usb_last_recovery[2] = USB_Tx_Pending();
+  usb_last_recovery[3] = USB_Tx_Queued();
+  usb_last_recovery[4] = usb_in_ago;
+  usb_last_recovery[5] = usb_out_ago;
+  usb_last_recovery[6] = usb_sof_ago;
+  usb_regs_read(usb_last_regs); /* до того, как FRES и отключение их изменят */
+  usb_last_bus_errors = usb_bus_errors;
+  usb_last_addr[0] = _GetDADDR();
+  usb_last_addr[1] = _GetENDPOINT(ENDP0);
+  usb_hung_armed = usb_unconf_armed = 0;
+  usb_hung_ms = usb_unconf_ms = 0;
+  usb_out_ago = USB_AGE_MAX;
+  _SetCNTR(CNTR_FRES);
+  USB_PULLUP_OFF;
+  usb_enabled = 0;
+  USB_Tx_Reset();
+  usb_clear_buffer();
+  bDeviceState = UNCONNECTED;
+  usb_recovery_ms = 20;
+  usb_recovery_pending = 1;
+  usb_recovery_count++;
+  __set_PRIMASK(mask);
+}
+
+
+// Инициализация --------------------------------------------------------------
+void usb_init(void)
+{ 
+  USB_PULLUP_OFF; /* Подтяжка включается только после инициализации USB. */
+  
+  Set_System();
+  Set_USBClock();
+  USB_Interrupts_Config();
+  USB_Init();
+  usb_enabled = 1;
+  USB_PULLUP_ON;
+}
+
+// Копируем даные из USB в буфер ----------------------------------------------
+void usb_datareceived (uint8_t* ptr, uint16_t len)
+{
+  uint32_t mask = __get_PRIMASK();
+  uint16_t count;
+  /* Прерывание USB и SysTick делят счётчик тишины; входящий PRIMASK сохраняется. */
+  __disable_irq();
+  count = usb_buffer_count;
+  if (len != 0) {
+    usb_out_ago = 0;
+    if (bDeviceState != CONFIGURED) { usb_out_unconfigured++; usb_unconf_armed = 1; }
+    else if (USB_Tx_Pending()) usb_hung_armed = 1;
+  }
+  if (usb_rx_discard || len == 0) { __set_PRIMASK(mask); return; }
+  if (!usb_rx_processing) {
+    uint16_t expired = usb_rx_expired;
+    uint32_t total = 0;
+    if (expired >= 6 && !memcmp(usb_buffer, "SLDN", 4))
+      total = ((uint32_t)usb_buffer[4] | ((uint32_t)usb_buffer[5] << 8)) + 8;
+    if (expired && (expired < 6 || (total > expired && total <= USBBUFFERSIZE))) {
+      /* Место освобождается до добавления, даже если главный цикл ещё не обработал таймаут. */
+      usb_rx_consume(expired);
+      count = usb_buffer_count;
+    }
+  }
+  if (len > USBBUFFERSIZE - count) {
+    usb_rx_discard = 1;
+    usb_rx_errors++;
+    __set_PRIMASK(mask);
+    return;
+  }
+  memcpy(usb_buffer + count, ptr, len);
+  __DMB();
+  usb_buffer_count = count + len;
+  usb_rx_silence = 0;
+  __set_PRIMASK(mask);
+}
+
+/* Возвращает, принята ли очередь целиком; отказы также сохраняются для диагностики. */
+uint8_t usb_send (uint8_t* ptr, uint16_t len)
+{
+  if (usb_enabled && USB_DETECT && USART_To_USB_Send_Data(ptr, len)) return 1;
+  usb_tx_errors++;
+  return 0;
+}
+
+void usb_sendstr (char* str)
+{
+  uint16_t len = strlen(str), sent = 0;
+  if (usb_enabled && USB_DETECT) sent = USB_Send_Debug((uint8_t*)str, len);
+  usb_debug_dropped += len - sent;
+}
+
+// check time proccess, 1 ms --------------------------------------------------
+void usb_timer1ms (void)
+{
+  uint32_t mask = __get_PRIMASK();
+  uint16_t silence, count;
+  __disable_irq();
+  if (usb_recovery_ms != 0) --usb_recovery_ms;
+  if (usb_in_ago < USB_AGE_MAX) usb_in_ago++;
+  if (usb_out_ago < USB_AGE_MAX) usb_out_ago++;
+  if (usb_sof_ago < USB_AGE_MAX) usb_sof_ago++;
+  if (!USB_Tx_Pending()) { usb_hung_armed = 0; usb_hung_ms = 0; }
+  else if (usb_hung_armed && usb_hung_ms < USB_AGE_MAX) usb_hung_ms++;
+  if (bDeviceState == CONFIGURED) { usb_unconf_armed = 0; usb_unconf_ms = 0; }
+  else if (usb_unconf_armed && usb_unconf_ms < USB_AGE_MAX) usb_unconf_ms++;
+  silence = usb_rx_silence;
+  count = usb_buffer_count;
+  if (count != 0 && silence < 200) {
+    silence++;
+    usb_rx_silence = silence;
+    if (silence == 200) usb_rx_expired = count;
+  }
+  __set_PRIMASK(mask);
+}
+
+/* Вызывается с запрещёнными прерываниями, после освобождения префикса, взятого разборщиком. */
+static void usb_rx_consume(uint16_t length)
+{
+  uint16_t count = usb_buffer_count, expired = usb_rx_expired;
+  count -= length;
+  memmove(usb_buffer, usb_buffer + length, count);
+  usb_buffer_count = count;
+  usb_rx_expired = expired > length ? expired - length : 0;
+  if (count == 0) usb_rx_silence = 0;
+}
+
+// usb check data --------------------------------------------------------------
+void usb_check_data (void)
+{
+  uint8_t store_ready = user_storage_command_ready();
+  uint32_t mask = __get_PRIMASK();
+  uint16_t count, skip = 0, body, total, crc;
+  __disable_irq();
+  if (usb_rx_processing) { __set_PRIMASK(mask); return; }
+  if (usb_recovery_pending) {
+    if (usb_recovery_ms == 0 && USB_DETECT) {
+      usb_recovery_pending = 0;
+      usb_init();
+    }
+    __set_PRIMASK(mask);
+    return;
+  }
+  if (usb_hung_ms >= USB_WATCH_MS || usb_unconf_ms >= USB_WATCH_MS) {
+    if (usb_hung_ms >= USB_WATCH_MS) { usb_recovery_reason = 2; usb_watch_in_recoveries++; }
+    else { usb_recovery_reason = 3; usb_watch_unconf_recoveries++; }
+    usb_request_recovery();
+    __set_PRIMASK(mask);
+    return;
+  }
+  if (!store_ready) { __set_PRIMASK(mask); return; }
+  if (usb_rx_discard) {
+    usb_buffer_count = 0;
+    usb_rx_discard = 0;
+    usb_rx_silence = 0;
+    usb_rx_expired = 0;
+  }
+  count = usb_buffer_count;
+  /* Оставить до трёх последних байт: с них может начинаться следующий SLDN. */
+  while (count - skip >= 4 && memcmp(usb_buffer + skip, "SLDN", 4)) skip++;
+  if (skip) {
+    count -= skip;
+    usb_rx_consume(skip);
+  }
+  if (count < 6) {
+    uint16_t expired = usb_rx_expired;
+    if (expired) usb_rx_consume(expired);
+    __set_PRIMASK(mask); return;
+  }
+  body = (uint16_t)usb_buffer[4] | ((uint16_t)usb_buffer[5] << 8);
+  if (body < 3 || body > USBBUFFERSIZE - 8) {
+    usb_rx_consume(1);
+    usb_rx_errors++;
+    __set_PRIMASK(mask); return;
+  }
+  total = body + 8;
+  {
+    uint16_t expired = usb_rx_expired;
+    if (expired != 0 && expired < total) {
+      /* Отбрасывается только истёкший незаконченный префикс, свежие байты сохраняются. */
+      usb_rx_consume(expired);
+      usb_rx_errors++;
+      __set_PRIMASK(mask); return;
+    }
+  }
+  if (count < total) { __set_PRIMASK(mask); return; }
+  /* Прерывание может дописывать, пока прошивка разбирает кадр, но не может изменить этот
+   * префикс. Сброс USB откладывает отбрасывание, пока разборщик не вернёт буфер. */
+  usb_rx_processing = 1;
+  __set_PRIMASK(mask);
+  crc = (uint16_t)usb_buffer[total - 2] | ((uint16_t)usb_buffer[total - 1] << 8);
+  if (crc == crc16_calc(usb_buffer + 4, body + 2)) {
+    if (!usb_rx_discard) usb_data_reading(usb_buffer, total);
+  } else {
+    usb_rx_errors++;
+    total = 4; /* Заявленной длине доверять нельзя: поиск продолжается после этого SLDN. */
+  }
+  mask = __get_PRIMASK();
+  __disable_irq();
+  if (usb_rx_discard) {
+    usb_buffer_count = 0;
+    usb_rx_discard = 0;
+    usb_rx_silence = 0;
+    usb_rx_expired = 0;
+  } else {
+    usb_rx_consume(total);
+  }
+  usb_rx_processing = 0;
+  __set_PRIMASK(mask);
+}
+
+// активен usb или нет ---------------------------------------------------------
+uint8_t usb_get_state (void)
+{
+  return usb_enabled;
+}
+
+// очистка буфера --------------------------------------------------------------
+void usb_clear_buffer (void)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  if (usb_rx_processing) usb_rx_discard = 1;
+  else {
+    usb_buffer_count = 0;
+    usb_rx_discard = 0;
+    usb_rx_silence = 0;
+    usb_rx_expired = 0;
+  }
+  __set_PRIMASK(mask);
+}
+
+// разбор принятых данных определяется пользователем ---------------------------
+__weak void usb_data_reading(uint8_t* ptr, uint16_t len)
+{
+}
+
+/* Команда 111: 23 значения USB в порядке, описанном у user_send_usbDiag. */
+void usb_diag_fill(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  uint8_t i;
+  __disable_irq();
+  v[0] = usb_esof_forced;
+  v[1] = usb_esof_timeouts;
+  v[2] = usb_bus_resets;
+  v[3] = usb_recovery_count;
+  v[4] = usb_watch_in_recoveries;
+  v[5] = usb_watch_unconf_recoveries;
+  for (i = 0; i < 7; i++) v[6 + i] = usb_last_recovery[i];
+  v[13] = bDeviceState;
+  v[14] = USB_Tx_Pending();
+  v[15] = USB_Tx_Queued();
+  v[16] = usb_in_ago;
+  v[17] = usb_out_ago;
+  v[18] = usb_sof_ago;
+  v[19] = usb_tx_errors;
+  v[20] = usb_rx_errors;
+  v[21] = usb_debug_dropped;
+  v[22] = usb_out_unconfigured;
+  __set_PRIMASK(mask);
+}
+
+/* Хвост команды 111 v2: 9 значений регистров на момент последнего восстановления, затем 9
+ * текущих. */
+void usb_diag_fill_regs(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  uint8_t i;
+  __disable_irq();
+  for (i = 0; i < USB_REGS; i++) v[i] = usb_last_regs[i];
+  usb_regs_read(&v[USB_REGS]);
+  __set_PRIMASK(mask);
+}
+
+/* Хвост команды 111 v3: ошибки шины сейчас и на момент последнего восстановления. */
+void usb_diag_fill_errors(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  v[0] = usb_bus_errors;
+  v[1] = usb_last_bus_errors;
+  __set_PRIMASK(mask);
+}
+
+/* Хвост команды 111 v4: DADDR и EP0R на момент последнего восстановления, затем текущие. */
+void usb_diag_fill_addr(uint32_t *v)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  v[0] = usb_last_addr[0];
+  v[1] = usb_last_addr[1];
+  v[2] = _GetDADDR();
+  v[3] = _GetENDPOINT(ENDP0);
+  __set_PRIMASK(mask);
+}
+
+/* Same bounded producer and single-publication contract as usb_try_send ASM. */
+extern uint8_t store[];
+extern volatile uint32_t USART_Rx_ptr_out,USART_Rx_ptr_in;
+extern uint8_t USART_Rx_Buffer[];
+uint8_t usb_try_send(const uint8_t *ptr,uint16_t len)
+{
+  uint32_t mask,in,out,space,epoch; uint8_t result=0;
+  if(len>=1280 || (len && !ptr) || !usb_enabled || !(GPIOB->IDR & (1u<<15))) return 0;
+  mask=__get_PRIMASK(); __disable_irq();
+  memcpy(&epoch,store+12,4);
+  if(bDeviceState!=CONFIGURED || epoch!=usb_bus_resets) goto done;
+  out=USART_Rx_ptr_out; if(out==1280) out=0; else if(out>1280) goto done;
+  in=USART_Rx_ptr_in; if(in>=1280) goto done;
+  space=out+1279-in; if(space>=1280) space-=1280;
+  if(space<len) goto done;
+  while(len--) { USART_Rx_Buffer[in++]=*ptr++; if(in==1280) in=0; }
+  __DMB(); USART_Rx_ptr_in=in; result=1;
+done: __set_PRIMASK(mask); return result;
+}
+
