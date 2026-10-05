@@ -12,6 +12,10 @@
         PUBLIC id_cells_end
         PUBLIC id_endScan
         PUBLIC id_nextEnd
+        PUBLIC id_time_end
+        PUBLIC id_watch_end
+        EXTERN expiry_runtime_begin
+        EXTERN expiry_runtime_cancel
         PUBLIC id_used_bytes
         PUBLIC log_job
         PUBLIC log_lastIndex
@@ -5399,6 +5403,8 @@ user_savereset:
         BL       ?Subroutine25
 ??CrossCallReturnLabel_79:
         CBZ.N    R0,??user_savereset_0
+          CFI FunCall expiry_runtime_cancel
+        BL       expiry_runtime_cancel
           CFI FunCall table_runtime_cancel
         BL       table_runtime_cancel
           CFI FunCall service_crc_cancel
@@ -15480,6 +15486,9 @@ user_getNumbersCount:
           CFI Function user_checkIdTimeEnd
         THUMB
 user_checkIdTimeEnd:
+; Hand-written runtime continuation. Historical body below is unreachable.
+          CFI FunCall expiry_runtime_begin
+        B.W      expiry_runtime_begin
         PUSH     {R3-R9,LR}
           CFI R14 Frame(CFA, -4)
           CFI R9 Frame(CFA, -8)
