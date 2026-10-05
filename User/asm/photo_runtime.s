@@ -14,6 +14,7 @@
         #include "flash_owner.h"
         EXTERN flash_claim
         EXTERN flash_release
+        EXTERN reply_send
         PRESERVE8
         REQUIRE8
 
@@ -2530,35 +2531,12 @@ photo_storage_poll:
         MOVEQ    R9,#+12
         MOVS     R6,#+0
         LDR      R0,[R4, #+0]
-        LDRB     R0,[R0, #+50]
-        CBNZ.N   R0,??photo_storage_poll_126
+        LDRB     R2,[R0, #+50]
         UXTH     R1,R9
         LDR      R0,[R7, #+0]
-          CFI FunCall usb_try_send
-        BL       usb_try_send
+          CFI FunCall reply_send
+        BL       reply_send
         MOV      R6,R0
-        B.N      ??photo_storage_poll_127
-??photo_storage_poll_126:
-        MOV      R0,SP
-          CFI FunCall comm_tx_acquire
-        BL       comm_tx_acquire
-        CBZ.N    R0,??photo_storage_poll_128
-        LDRH     R2,[SP, #+0]
-        UXTH     R1,R9
-        CMP      R2,R1
-        BCC.N    ??photo_storage_poll_129
-        UXTH     R2,R9
-        LDR      R1,[R7, #+0]
-          CFI FunCall __aeabi_memcpy
-        BL       __aeabi_memcpy
-        UXTH     R0,R9
-          CFI FunCall comm_tx_commit
-        BL       comm_tx_commit
-        MOV      R6,R0
-??photo_storage_poll_129:
-          CFI FunCall comm_tx_release
-        BL       comm_tx_release
-??photo_storage_poll_127:
         CBNZ.N   R6,??photo_storage_poll_130
 ??photo_storage_poll_128:
         LDRB     R0,[R7, #+118]

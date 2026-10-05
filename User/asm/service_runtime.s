@@ -66,6 +66,7 @@
         PUBLIC service_crc_poll
         PUBLIC service_crc_cancel
         PUBLIC service_crc_quiet
+        PUBLIC reply_send
 
 ; Context: address0, real4, erased8, datetime12, crc16,
 ; kind18, phase19, channel20, uniq21, segment22, requested-index23,
@@ -546,36 +547,13 @@ sc_poll_send:
         CMP R0,#0
         BNE sc_poll_done
 sc_poll_tx_ready:
-        LDRH R5,[R4,#24]
-        LDRB R0,[R4,#20]
-        CMP R0,#0
-        BNE sc_poll_server
+        LDRH R1,[R4,#24]
+        LDRB R2,[R4,#20]
         ADD R0,R4,#96
-        MOV R1,R5
-        CFI FunCall usb_try_send
-        BL usb_try_send
+        CFI FunCall reply_send
+        BL reply_send
         CMP R0,#0
         BEQ sc_poll_done
-        B sc_poll_free
-sc_poll_server:
-        MOV R0,R5
-        CFI FunCall user_comm_acquire
-        BL user_comm_acquire
-        CMP R0,#0
-        BEQ sc_poll_done
-        ADD R1,R4,#96
-        MOV R2,R5
-        CFI FunCall __aeabi_memcpy
-        BL __aeabi_memcpy
-        MOV R0,R5
-        CFI FunCall comm_tx_commit
-        BL comm_tx_commit
-        MOV R5,R0
-        CFI FunCall comm_tx_release
-        BL comm_tx_release
-        CMP R5,#0
-        BEQ sc_poll_done
-        B sc_poll_free
 sc_poll_free:
         CFI FunCall service_crc_cancel
         BL service_crc_cancel
@@ -583,6 +561,45 @@ sc_poll_done:
         POP {R3-R7,PC}
         CFI EndBlock sc_poll_block
         LTORG
+        SECTION .text:CODE:NOROOT(1)
+        CFI Block rs_block Using sc_frame
+        CFI Function reply_send
+        THUMB
+; R0 = packet, R1 = length, R2 = channel (0 USB, otherwise server). Returns 1 when
+; the whole packet is queued, 0 when the transport is busy: the owner keeps the
+; packet and calls again next pass. One copy for every owner that does so.
+reply_send:
+        CBNZ R2,rs_server
+        CFI FunCall usb_try_send
+        B.W usb_try_send
+rs_server:
+        PUSH {R4-R6,LR}
+        CFI R4 Frame(CFA,-16)
+        CFI R5 Frame(CFA,-12)
+        CFI R6 Frame(CFA,-8)
+        CFI R14 Frame(CFA,-4)
+        CFI CFA R13+16
+        MOV R4,R0
+        MOV R5,R1
+        MOV R0,R1
+        CFI FunCall user_comm_acquire
+        BL user_comm_acquire
+        CBZ R0,rs_done
+        MOV R1,R4
+        MOV R2,R5
+        CFI FunCall __aeabi_memcpy
+        BL __aeabi_memcpy
+        MOV R0,R5
+        CFI FunCall comm_tx_commit
+        BL comm_tx_commit
+        CBNZ R0,rs_done
+        ; Not committed: hand the frame back (after a commit it is the channel's).
+        CFI FunCall comm_tx_release
+        BL comm_tx_release
+        MOVS R0,#0
+rs_done:
+        POP {R4-R6,PC}
+        CFI EndBlock rs_block
         SECTION .rodata:CONST:NOROOT(2)
         DATA
 ; 32 * (16 matrix columns, affine constant, padding), little-endian halfwords.

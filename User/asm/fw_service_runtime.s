@@ -35,6 +35,7 @@
         EXTERN comm_tx_commit
         EXTERN comm_tx_release
         EXTERN usb_try_send
+        EXTERN reply_send
         EXTERN __aeabi_memcpy
         EXTERN store
         EXTERN store_snapshot
@@ -865,31 +866,11 @@ fsp_send:
         LDRB R0,[R4,#122]
         CMP R0,#0
         BNE fsp_sent
-        LDRB R0,[R4,#118]
-        CMP R0,#0
-        BEQ fsp_usb
-        LDRH R0,[R4,#124]
-        CFI FunCall user_comm_acquire
-        BL user_comm_acquire
-        CMP R0,#0
-        BEQ fsp_return
-        MOV R1,R4
-        LDRH R2,[R4,#124]
-        CFI FunCall __aeabi_memcpy
-        BL __aeabi_memcpy
-        LDRH R0,[R4,#124]
-        CFI FunCall comm_tx_commit
-        BL comm_tx_commit
-        CMP R0,#0
-        BNE fsp_sent
-        CFI FunCall comm_tx_release
-        BL comm_tx_release
-        B fsp_return
-fsp_usb:
         MOV R0,R4
         LDRH R1,[R4,#124]
-        CFI FunCall usb_try_send
-        BL usb_try_send
+        LDRB R2,[R4,#118]
+        CFI FunCall reply_send
+        BL reply_send
         CMP R0,#0
         BEQ fsp_return
 fsp_sent:

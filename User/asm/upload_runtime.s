@@ -25,6 +25,7 @@
         EXTERN comm_tx_commit
         EXTERN comm_tx_release
         EXTERN usb_try_send
+        EXTERN reply_send
         EXTERN crc16_calcInit
         EXTERN __aeabi_memcpy
         EXTERN store_upload_request
@@ -511,40 +512,21 @@ up_poll_cancel:
         BL upload_runtime_cancel
         B.N up_poll_return
 up_poll_send:
-        LDRB R0,[R4,#+33]
-        CBNZ R0,up_poll_send_server
         LDR R0,[R4]
         LDRH R1,[R4,#+30]
-          CFI FunCall usb_try_send
-        BL usb_try_send
+        LDRB R2,[R4,#+33]
+          CFI FunCall reply_send
+        BL reply_send
         CMP R0,#+0
-        BEQ.N up_poll_return
+        BEQ.W up_poll_return
+        ; USB: a reply queued across a USB reset belongs to the old session.
+        LDRB R0,[R4,#+33]
+        CBNZ R0,up_poll_sent
         LDR.W R0,up_usb_epoch
         LDR R0,[R0]
         LDR R1,[R4,#+12]
         CMP R0,R1
         BNE.N up_poll_cancel
-        B.N up_poll_sent
-up_poll_send_server:
-        ; Lease the shared transport frame only within this one call: no poll
-        ; yields while TX_BUILD is owned. The fixed packet copy is <=1038 bytes.
-        LDRH R0,[R4,#+30]
-          CFI FunCall user_comm_acquire
-        BL user_comm_acquire
-        CMP R0,#+0
-        BEQ.W up_poll_return
-        LDR R1,[R4]
-        LDRH R2,[R4,#+30]
-          CFI FunCall __aeabi_memcpy
-        BL __aeabi_memcpy
-        LDRH R0,[R4,#+30]
-          CFI FunCall comm_tx_commit
-        BL comm_tx_commit
-        CMP R0,#+0
-        BNE.N up_poll_sent
-          CFI FunCall comm_tx_release
-        BL comm_tx_release
-        B.W up_poll_return
 up_poll_sent:
         LDRH R0,[R4,#+20]
         CMP R0,#+0
