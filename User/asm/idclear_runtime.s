@@ -17,6 +17,7 @@
         EXTERN usb_bus_resets
         EXTERN usb_try_send
         EXTERN crc16_calc
+        EXTERN answer11
         EXTERN user_storage_command_ready
         EXTERN mem_tables_ready
         EXTERN idindex_runtime_suspend
@@ -232,30 +233,12 @@ idclear_error:
         STRB R0,[R4,#17]
         MOVS R0,#3
         STRB R0,[R4,#16]
-        LDR R0,=0x4e444c53
-        STR R0,[R4,#36]
-        MOVS R0,#11
-        STRH R0,[R4,#40]
-        MOVS R0,#255
-        STRB R0,[R4,#42]
-        LDRB R0,[R4,#22]
-        STRB R0,[R4,#43]
-        MOVS R0,#11
-        STRB R0,[R4,#44]
-        MOVS R0,#103
-        STRB R0,[R4,#45]
-        MOVS R0,#2
-        STRB R0,[R4,#46]
-        LDR R1,=device
-        LDR R0,[R1,#47]
-        STR R0,[R4,#47]
-        LDRH R0,[R1,#165]
-        STRH R0,[R4,#51]
-        ADD R0,R4,#40
-        MOVS R1,#13
-        CFI FunCall crc16_calc
-        BL crc16_calc
-        STRH R0,[R4,#53]
+        ADD R0,R4,#36
+        LDRB R1,[R4,#22]
+        MOVS R2,#103
+        MOVS R3,#2
+        CFI FunCall answer11
+        BL answer11
         POP {R4,PC}
         CFI EndBlock ic_error
 

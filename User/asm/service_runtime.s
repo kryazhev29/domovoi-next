@@ -67,6 +67,7 @@
         PUBLIC service_crc_cancel
         PUBLIC service_crc_quiet
         PUBLIC reply_send
+        PUBLIC answer11
 
 ; Context: address0, real4, erased8, datetime12, crc16,
 ; kind18, phase19, channel20, uniq21, segment22, requested-index23,
@@ -496,31 +497,19 @@ sc_poll_complete:
 sc_poll_bad:
         MOVS R0,#19
         STRH R0,[R4,#24]
-        MOVS R0,#11
-        STRH R0,[R4,#100]
-        STRB R0,[R4,#104]
         LDRB R1,[R4,#18]
-        MOVS R0,#18
+        MOVS R2,#18
         CMP R1,#5
         IT EQ
-        MOVEQ R0,#17
+        MOVEQ R2,#17
         CMP R1,#4
         IT EQ
-        MOVEQ R0,#12
-        STRB R0,[R4,#105]
-        MOVS R0,#2
-        STRB R0,[R4,#106]
-        LDR R6,=device
-        ADD R1,R6,#47       ; device.datetime; packed fields copied as bytes.
-        ADD R0,R4,#107
-        MOVS R2,#4
-        CFI FunCall __aeabi_memcpy
-        BL __aeabi_memcpy
-        ADD R1,R6,#165      ; device.freeBufferSize.
-        ADD R0,R4,#111
-        MOVS R2,#2
-        CFI FunCall __aeabi_memcpy
-        BL __aeabi_memcpy
+        MOVEQ R2,#12
+        LDRB R1,[R4,#103]
+        MOVS R3,#2
+        ADD R0,R4,#96
+        CFI FunCall answer11
+        BL answer11
         B sc_poll_segments_done
 sc_poll_wait:
         CFI FunCall timers_getMillis
@@ -600,6 +589,42 @@ rs_server:
 rs_done:
         POP {R4-R6,PC}
         CFI EndBlock rs_block
+        SECTION .text:CODE:NOROOT(2)
+        CFI Block a11_block Using sc_frame
+        CFI Function answer11
+        THUMB
+; Answer 11, the exact 19-byte wire: R0 = packet, R1 = uniq, R2 = answered command,
+; R3 = code. SLDN, length 11, ttl 255, uniq, 11, command, code, device time and
+; free buffer, CRC16 of bytes 4..16.
+answer11:
+        PUSH {R4,LR}
+        CFI R4 Frame(CFA,-8)
+        CFI R14 Frame(CFA,-4)
+        CFI CFA R13+8
+        MOV R4,R0
+        LDR R0,=0x4e444c53
+        STR R0,[R4]
+        MOVS R0,#11
+        STRH R0,[R4,#4]
+        STRB R0,[R4,#8]
+        MOVS R0,#255
+        STRB R0,[R4,#6]
+        STRB R1,[R4,#7]
+        STRB R2,[R4,#9]
+        STRB R3,[R4,#10]
+        LDR R1,=device
+        LDR R0,[R1,#47]
+        STR R0,[R4,#11]
+        LDRH R0,[R1,#165]
+        STRH R0,[R4,#15]
+        ADD R0,R4,#4
+        MOVS R1,#13
+        CFI FunCall crc16_calc
+        BL crc16_calc
+        STRH R0,[R4,#17]
+        POP {R4,PC}
+        CFI EndBlock a11_block
+        LTORG
         SECTION .rodata:CONST:NOROOT(2)
         DATA
 ; 32 * (16 matrix columns, affine constant, padding), little-endian halfwords.

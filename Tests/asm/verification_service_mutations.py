@@ -5,6 +5,15 @@ from test_service_runtime import *
 
 
 def patch(m, mode):
+    if mode == 'commit-retry':
+        # The commit result lives in reply_send (shared since 859c443): a failed
+        # commit reported as sent loses the reply instead of retrying it.
+        start = m.addr('reply_send'); code = bytes(m.u.mem_read(start, 64))
+        pattern = b'\x00\x20\x70\xbd' # movs r0,#0; pop {r4-r6,pc} after release
+        assert code.count(pattern) == 1
+        off = code.index(pattern); replacement = b'\x01\x20'
+        original = code[off:off+2]; m.u.mem_write(start+off, replacement)
+        return {'symbol': 'reply_send', 'offset': off, 'original': original.hex(), 'replacement': replacement.hex()}
     name = 'service_crc_quiet' if mode == 'session-cancel' else 'service_crc_poll'
     start = m.addr(name)
     code = bytes(m.u.mem_read(start, 24 if mode == 'session-cancel' else 600))

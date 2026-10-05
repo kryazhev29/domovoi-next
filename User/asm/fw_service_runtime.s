@@ -31,6 +31,7 @@
         EXTERN timers_getMillis
         EXTERN CRC32
         EXTERN crc16_calc
+        EXTERN answer11
         EXTERN user_comm_acquire
         EXTERN comm_tx_commit
         EXTERN comm_tx_release
@@ -833,29 +834,12 @@ fsp_before_ack_cleanup:
         MOVS R6,#2
 fsp_answer:
         ; Exact existing answer command wire: 19 bytes, immutable on retry.
-        LDR.W R0,=0x4e444c53
-        STR R0,[R4]
-        MOVS R0,#11
-        STRH R0,[R4,#4]
-        MOVS R0,#255
-        STRB R0,[R4,#6]
-        LDRB R0,[R4,#119]
-        STRB R0,[R4,#7]
-        MOVS R0,#11
-        STRB R0,[R4,#8]
-        MOVS R0,#19
-        STRB R0,[R4,#9]
-        STRB R6,[R4,#10]
-        LDR.W R0,=device
-        LDR R1,[R0,#47]
-        STR R1,[R4,#11]
-        LDRH R1,[R0,#165]
-        STRH R1,[R4,#15]
-        ADD R0,R4,#4
-        MOVS R1,#13
-        CFI FunCall crc16_calc
-        BL crc16_calc
-        STRH R0,[R4,#17]
+        MOV R0,R4
+        LDRB R1,[R4,#119]
+        MOVS R2,#19
+        MOV R3,R6
+        CFI FunCall answer11
+        BL answer11
         MOVS R0,#19
         STRH R0,[R4,#124]
         MOVS R0,#16
