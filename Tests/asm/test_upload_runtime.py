@@ -98,7 +98,7 @@ class UploadMachine(StorageMachine):
 
 def wire(cmd, uniq, first, cells, total=None):
     if not cells:
-        data = b'\0'*(3 if cmd == 10 else 2)
+        data = b'\0'*3  # Protocol2: left (2) + count (1), answers 9 and 10 alike
         body = struct.pack('<HBBB', len(data)+3, 255, uniq, cmd)+data
     else:
         count = len(cells); total = total if total is not None else count

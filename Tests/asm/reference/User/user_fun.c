@@ -2334,8 +2334,8 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
 
   if (device.tempIDsCount == 0 || readIdx >= device.tempIDsCount){
     if (!upload_finish(9)) return;
-    uint16_t empty = 0;
-    user_send_anyData(9, (uint8_t*)&empty, 2, cch, uniqId);
+    uint8_t empty[3] = {0, 0, 0}; /* Protocol2: left (2) + count (1), as answer 10 */
+    user_send_anyData(9, empty, sizeof(empty), cch, uniqId);
     return;
   }
   uint32_t readAdr = mem[MB_TEMPID].start + (uint32_t)readIdx * sizeof(cellID_s);

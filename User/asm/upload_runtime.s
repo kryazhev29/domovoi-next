@@ -581,10 +581,8 @@ up_poll_empty:
         MOVW R0,#+19539
         MOVT R0,#+20036
         STR R0,[R7]
-        MOVS R0,#+5
-        CMP R5,#+10
-        IT EQ
-        MOVEQ R0,#+6
+        ; Empty answer 9 and 10 alike (Protocol2: 2 bytes left + 1 byte count).
+        MOVS R0,#+6
         STRH R0,[R7,#+4]
         ADDS R0,R0,#+8
         STRH R0,[R4,#+30]
