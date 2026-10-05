@@ -1,0 +1,187 @@
+{
+  "units": "Unicorn instructions, not board cycles or time",
+  "cases": {
+    "bad_full": {
+      "before": {
+        "max_instructions": 32820,
+        "total_instructions": 32820,
+        "passes": 1,
+        "stack_bytes": 24,
+        "left": 0,
+        "ready": 0,
+        "tail": ""
+      },
+      "after": {
+        "max_instructions": 5493,
+        "total_instructions": 41233,
+        "passes": 17,
+        "stack_bytes": 64,
+        "left": 0,
+        "ready": 0,
+        "tail": ""
+      }
+    },
+    "bad_partial_tail": {
+      "before": {
+        "max_instructions": 32840,
+        "total_instructions": 32840,
+        "passes": 1,
+        "stack_bytes": 24,
+        "left": 3,
+        "ready": 0,
+        "tail": "534c44"
+      },
+      "after": {
+        "max_instructions": 5493,
+        "total_instructions": 41382,
+        "passes": 18,
+        "stack_bytes": 64,
+        "left": 3,
+        "ready": 0,
+        "tail": "534c44"
+      }
+    },
+    "garbage": {
+      "before": {
+        "max_instructions": 12332,
+        "total_instructions": 12332,
+        "passes": 1,
+        "stack_bytes": 24,
+        "left": 0,
+        "ready": 0,
+        "tail": ""
+      },
+      "after": {
+        "max_instructions": 2239,
+        "total_instructions": 16681,
+        "passes": 9,
+        "stack_bytes": 64,
+        "left": 0,
+        "ready": 0,
+        "tail": ""
+      }
+    },
+    "valid": {
+      "before": {
+        "max_instructions": 224,
+        "total_instructions": 224,
+        "passes": 1,
+        "stack_bytes": 24,
+        "left": 20,
+        "ready": 20,
+        "tail": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      },
+      "after": {
+        "max_instructions": 330,
+        "total_instructions": 330,
+        "passes": 1,
+        "stack_bytes": 40,
+        "left": 20,
+        "ready": 20,
+        "tail": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      }
+    },
+    "partial": {
+      "before": {
+        "max_instructions": 53,
+        "total_instructions": 53,
+        "passes": 1,
+        "stack_bytes": 24,
+        "left": 5,
+        "ready": 0,
+        "tail": "534c444e0c"
+      },
+      "after": {
+        "max_instructions": 119,
+        "total_instructions": 119,
+        "passes": 1,
+        "stack_bytes": 40,
+        "left": 5,
+        "ready": 0,
+        "tail": "534c444e0c"
+      }
+    },
+    "nested_bad_crc": {
+      "before": {
+        "max_instructions": 3520452,
+        "total_instructions": 3520452,
+        "passes": 1,
+        "stack_bytes": 24,
+        "left": 0,
+        "ready": 0,
+        "tail": ""
+      },
+      "after": {
+        "max_instructions": 6747,
+        "total_instructions": 4247145,
+        "passes": 1385,
+        "stack_bytes": 64,
+        "left": 0,
+        "ready": 0,
+        "tail": ""
+      }
+    },
+    "scan_boundary": {
+      "before": {
+        "max_instructions": 719,
+        "total_instructions": 719,
+        "passes": 1,
+        "stack_bytes": 24,
+        "left": 20,
+        "ready": 20,
+        "tail": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      },
+      "after": {
+        "max_instructions": 855,
+        "total_instructions": 855,
+        "passes": 1,
+        "stack_bytes": 56,
+        "left": 20,
+        "ready": 20,
+        "tail": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      }
+    }
+  },
+  "service": {
+    "2048": {
+      "before": {
+        "max_instructions": 3696475,
+        "max_input_pass_instructions": 3696475,
+        "passes": 1
+      },
+      "after": {
+        "max_instructions": 6763,
+        "max_input_pass_instructions": 3254,
+        "passes": 1385
+      }
+    },
+    "1": {
+      "before": {
+        "max_instructions": 3764026,
+        "max_input_pass_instructions": 3764026,
+        "passes": 1
+      },
+      "after": {
+        "max_instructions": 297003,
+        "max_input_pass_instructions": 297003,
+        "passes": 1386
+      }
+    },
+    "128_byte_pass": {
+      "before": {
+        "max_instructions": 3535636,
+        "max_input_pass_instructions": 3535636,
+        "passes": 16
+      },
+      "after": {
+        "max_instructions": 20124,
+        "max_input_pass_instructions": 20124,
+        "passes": 1401
+      }
+    }
+  },
+  "sha256": {
+    "Release\\task-bounded\\baseline.out": "323ac9db52c1a77667370fc82db94dde39863452eb67113f6d078d8ccff6a9ba",
+    "Release\\Exe\\DomovoiNext.out": "a9ef9c17c1f511b473af9f8995016dda9eb904f84a64931f204a11ed6fbda547"
+  }
+}

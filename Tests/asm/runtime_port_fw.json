@@ -1,0 +1,63 @@
+{
+  "units": "Unicorn instructions, modeled NOR; not hardware time",
+  "cases": {
+    "0/2": {
+      "before": {
+        "max_instructions": 6641,
+        "total_instructions": 6641,
+        "passes": 1,
+        "begin_instructions": 6641,
+        "max_poll_instructions": 0,
+        "stack_bytes": 144
+      },
+      "after": {
+        "max_instructions": 1803,
+        "total_instructions": 4166,
+        "passes": 83,
+        "begin_instructions": 1803,
+        "max_poll_instructions": 104,
+        "stack_bytes": 132
+      }
+    },
+    "3/5": {
+      "before": {
+        "max_instructions": 6632,
+        "total_instructions": 6632,
+        "passes": 1,
+        "begin_instructions": 6632,
+        "max_poll_instructions": 0,
+        "stack_bytes": 144
+      },
+      "after": {
+        "max_instructions": 1791,
+        "total_instructions": 4290,
+        "passes": 88,
+        "begin_instructions": 1791,
+        "max_poll_instructions": 104,
+        "stack_bytes": 132
+      }
+    },
+    "95/96": {
+      "before": {
+        "max_instructions": 854553,
+        "total_instructions": 854553,
+        "passes": 1,
+        "begin_instructions": 854553,
+        "max_poll_instructions": 0,
+        "stack_bytes": 144
+      },
+      "after": {
+        "max_instructions": 1791,
+        "total_instructions": 1015073,
+        "passes": 1625,
+        "begin_instructions": 1791,
+        "max_poll_instructions": 743,
+        "stack_bytes": 132
+      }
+    }
+  },
+  "sha256": {
+    "Release\\task-bounded\\baseline.out": "323ac9db52c1a77667370fc82db94dde39863452eb67113f6d078d8ccff6a9ba",
+    "Release\\Exe\\DomovoiNext.out": "fd98b38d6570cbf7aa73f35d1a267d65883da0d57c44038d0b782530948c0500"
+  }
+}

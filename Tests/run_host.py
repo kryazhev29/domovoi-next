@@ -6,7 +6,7 @@ ZIG=r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-ne
 ref=sys.argv[1] if len(sys.argv)>1 and sys.argv[1]!='work' else None
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
-    return (subprocess.check_output(['git','show',ref+':'+name],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
+    return (subprocess.check_output(['git','show',ref+':'+name.removeprefix('Tests/asm/reference/')],cwd=ROOT) if ref else (ROOT/name).read_bytes()).decode('cp1251')
 def function(text,name):
     m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|int|RESULT|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     d=pathlib.Path(d)
     if kind=='storage':
         # Check physical erase-sector footprints, not just logical byte ranges.
-        mapping=source('User/user_fun.c')
+        mapping=source('Tests/asm/reference/User/user_fun.c')
         ranges=[]
         for name,start,size in re.findall(r'mem\[(MB_\w+)\]\.start = (\d+);\s*mem\[\1\]\.size = (\d+);',mapping):
             start,size=int(start),int(size)
@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             return int(value[1],0)
         header=source('User/memory.h'); boot=source('Bootloader/boot_core.h')
         occupied=[(constant(header,n),constant(header,n)+constant(header,'MEM_CONFIG_SLOT_SIZE')) for n in ('MEM_CONFIG_SLOT0','MEM_CONFIG_SLOT1')]
-        if '#include "sector_journal.h"' in source('User/memory.c'):
+        if '#include "sector_journal.h"' in source('Tests/asm/reference/User/memory.c'):
             journal=source('User/sector_journal.h')
             occupied += [(constant(journal,n),constant(journal,n)+constant(journal,'SJ_SECTOR')) for n in ('SJ_DATA','SJ_META')]
         boot_end=constant(boot,'BOOT_BACKUP')+constant(boot,'BOOT_SLOT_SIZE')
@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             for name,a,b in ranges:assert hi<=a or lo>=b,(name,hex(a),hex(b))
             for a,b in occupied[i+1:]:assert hi<=a or lo>=b
         print('Flash map: config banks and scratch sectors outside all rounded mem[] and boot areas',flush=True)
-        code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
+        code=source('Tests/asm/reference/User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
         defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch','uint8_t mem_config_result')))
         test=(ROOT/'Tests/test_storage.c').read_text()
@@ -67,14 +67,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         for n in ['user_writeConfigAndDevice','user_readconfig','user_setdefault','user_saveindex','mem_read','mem_write','mem_erase_sector']:
             legacy_code=re.sub(r'\b'+n+r'\b','legacy_'+n,legacy_code)
         reset='#define TEST_STORAGE_BOOT() (cfg_legacy_checked = 0)\n' if 'cfg_legacy_checked' in code else '#define TEST_STORAGE_BOOT() ((void)0)\n'
-        shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n' if '#include "sector_journal.h"' in source('User/memory.c') else ''
-        unit=test.replace('/* PRODUCTION */',defines+'\n'+shared+code+'\n'+reset+function(source('User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
+        shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n' if '#include "sector_journal.h"' in source('Tests/asm/reference/User/memory.c') else ''
+        unit=test.replace('/* PRODUCTION */',defines+'\n'+shared+code+'\n'+reset+function(source('Tests/asm/reference/User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
     elif kind in ('sectorjournal','bootjournal'):
-        code=source('User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
+        code=source('Tests/asm/reference/User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
         defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch','uint8_t mem_config_result')))
         shared=''
-        if '#include "sector_journal.h"' in source('User/memory.c'):
+        if '#include "sector_journal.h"' in source('Tests/asm/reference/User/memory.c'):
             shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n'
             code=code.replace('#include "sector_journal.h"','')
         boot_test=''
@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             code+='\nstatic int storage_read(uint32_t a,void *p,uint32_t n) { return w25_read_data(a,p,(uint16_t)n); }\nstatic int storage_write(uint32_t a,const void *p,uint32_t n) { return w25_write_data(a,(uint8_t*)p,(uint16_t)n); }\nstatic int storage_erase(uint32_t a) { return w25_erase_sector(a); }\nstatic void boot_service(void) { services++; }\n'+adapters
             boot_test='CHECK(!boot_ext_erase(SJ_DATA) && !boot_ext_write(SJ_DATA,after,32) && !sj_io_erase(0x20000u) && !sj_io_write(0x21000u,after,32) && !sj_io_read(0xffffffffu,image,2));'
         expected=[]
-        mapping=source('User/user_fun.c')
+        mapping=source('Tests/asm/reference/User/user_fun.c')
         for name,start,size in re.findall(r'mem\[(MB_\w+)\]\.start = (\d+);\s*mem\[\1\]\.size = (\d+);',mapping):
             if name in ('MB_ID','MB_GROUP','MB_SHEDULE','MB_HOLIDAY','MB_TEMPID'):
                 start,size=int(start),int(size);expected.append('{'+str(start&~4095)+'u,'+str((start+size+4095)&~4095)+'u}')
@@ -95,14 +95,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_sector_journal.c').read_text(encoding='utf8').replace('/* PRODUCTION */',defines+'\n'+shared+code).replace('/* EXPECTED DESTINATIONS */',layout).replace('/* BOOT_ADAPTER_TEST */',boot_test)
 
     elif kind in ('photo','rs485cfg'):
-        user=source('User/user_fun.c'); case=cases(user)
+        user=source('Tests/asm/reference/User/user_fun.c'); case=cases(user)
         assert 'len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR' in case(7)
         assert 'if (len == 3 || len == 9)' in case(21)
         assert 'photo_request(cch, uniqId, NULL, 0)' in function(user,'user_send_Photos')
         assert 'photo_poll();' in function(user,'port_check_data')
         assert 'photo_connection_lost();' in function(user,'user_comm_session')
         assert '(cmd == 7 || cmd == 21) ? 5 : 255' in function(user,'user_send_answer_comand')
-        code=source('User/photo.c').replace('#include "photo.h"','').replace('#include "sector_journal.h"','')
+        code=source('Tests/asm/reference/User/photo.c').replace('#include "photo.h"','').replace('#include "sector_journal.h"','')
         code=function(source('User/sector_journal.c'),'crc32_update')+'\n'+code
         code=code.replace('#include "../Modules/comm_channel.h"','')
         code=source('Tests/comm_photo_slot.c')+'\n'+code
@@ -115,7 +115,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             extra=config_helpers(user)+sync_stub(user)+source('Tests/test_rs485cfg.c').replace('/* COMMAND12 */',case(12))
             unit=unit.replace('int main(int argc,char **argv) {',extra+'\nint main(int argc,char **argv) {\n test_rs485cfg();')
     elif kind=='fwstart':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         case=cases(user)
         # Call sites: commands 19 and 20 go through the tested functions, command 4 carries their code.
         c19=case(19);c20=case(20)
@@ -149,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         audit='static void audit_poll(void){\n'+poll+'\n}\nstatic void audit_tick(void){\n'+tick+'\n}\n'
         unit=(ROOT/'Tests/test_fw_start.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers).replace('/* AUDIT LOOP */',audit).replace('/* FIRMWARE CRC */', function(user,'CRC32')+'\n'+function(user,'user_checkFirmware'))
     elif kind=='log':
-        user=source('User/user_fun.c');st=source('structures.h')
+        user=source('Tests/asm/reference/User/user_fun.c');st=source('structures.h')
         case=cases(user)
         # The controller writes no command or exchange events (answers of 16.09, sheet E525).
         assert 'log_addComandEvent' not in user and 'log_addTransferEvent' not in user and 'LOG_CMD_' not in st and 'LOG_TR_' not in st and 'LT_SYSTEM' not in st,'command and exchange events'
@@ -171,7 +171,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'log_addControlEvent(server_out_event, id, cnt);' in function(user,'user_activateOut'),'server event from its source'
         # Journal sheet 131: after every pass of an ID with limited passes; 129: photo number when the photo is stored.
         assert 'if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);' in function(user,'user_activateOut'),'pass counter event'
-        assert 'log_addPhotoEvent(photo->stamp);' in source('User/photo.c'),'photo event'
+        assert 'log_addPhotoEvent(photo->stamp);' in source('Tests/asm/reference/User/photo.c'),'photo event'
         # Journal upload: the empty answer is 3 bytes (0 left, 0 in packet), sent before the erase; used sectors only.
         up=function(user,'user_send_logRecords')
         assert up.count('user_send_anyData(10, empty, sizeof(empty), cch, uniqId);')==1 and 'uint8_t empty[3] = {0, 0, 0};' in up and 'tmp16' not in up,'empty journal answer'
@@ -194,7 +194,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
         # Каждое событие листа (таблица test_log.c) где-то пишется. Вторые серверы и 7-10
         # получаются сдвигом от первого номера; 34 - функции нет в настройках и протоколе (вопрос заказчику).
-        writers=user+source('User/user_comm.c')+source('User/photo.c')
+        writers=user+source('Tests/asm/reference/User/user_comm.c')+source('Tests/asm/reference/User/photo.c')
         derived={'LOG_SYS_CONNECT2':'LOG_SYS_CONNECT1','LOG_SYS_ERRCONNECT2':'LOG_SYS_ERRCONNECT1','LOG_SYS_FAILCONNECT2':'LOG_SYS_FAILCONNECT1',
                  'LOG_SYS_ENDCONFUPDATE':'LOG_SYS_ENDIDUPDATE + i','LOG_SYS_ENDGROUPUPDATE':'LOG_SYS_ENDIDUPDATE + i',
                  'LOG_SYS_ENDSHEDULEUPDATE':'LOG_SYS_ENDIDUPDATE + i','LOG_SYS_ENDHOLLIDAYUPDATE':'LOG_SYS_ENDIDUPDATE + i'}
@@ -204,24 +204,24 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         missing=[n for n in names if n not in not_written and n not in writers and not (n in derived and derived[n] in writers)]
         assert not missing,('journal events never written',missing)
         assert 'event = (uint8_t)(event + user_comm_server(address));' in user,'second server by offset'
-        code=function(source('User/crc.c'),'crc16_calc')+'\n'+pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
+        code=function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'+pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
         unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','logUpdate_e','cellLog_s')).replace('/* PRODUCTION */',code)
     elif kind=='logcommit':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         names=['log_blank','log_valid','log_uniqueIndex','log_addEvent','log_getRecordsCount','log_readRecords']
-        code='static uint32_t log_lastIndex;\n'+function(source('User/crc.c'),'crc16_calc')+'\n'
+        code='static uint32_t log_lastIndex;\n'+function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
         code+='\n'.join(function(user,n) for n in names if re.search(r'(?m)^(?:static )?(?:bool|void|uint16_t) '+n+r'\(',user))
         unit=(ROOT/'Tests/test_log_commit.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s')).replace('/* PRODUCTION */',code)
         if 'static bool log_readRecords(' not in user:
             unit=unit.replace('/* PRODUCTION */',code)
             unit=unit.replace('static void reset(void)', 'static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){return mem_read(4096+first*32,p,count*32);}\nstatic void reset(void)')
     elif kind=='countends':
-        user=source('User/user_fun.c')
-        code='static uint32_t log_lastIndex;\n'+function(source('User/crc.c'),'crc16_calc')+'\n'
+        user=source('Tests/asm/reference/User/user_fun.c')
+        code='static uint32_t log_lastIndex;\n'+function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
         code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_getRecordsCount','user_getTempIDRecordsCount'])
         unit=(ROOT/'Tests/test_count_ends.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s')).replace('/* PRODUCTION */',code)
     elif kind=='access':
-        user=source('User/user_fun.c');st=source('structures.h')
+        user=source('Tests/asm/reference/User/user_fun.c');st=source('structures.h')
         case=cases(user)
         # Relays (Д-07): permissions are worked out before any way of opening, both relays never forced.
         check=function(user,'user_checkIdAndControl')
@@ -260,7 +260,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_checkIdTimeEnd','user_activateOut'])
         unit=(ROOT/'Tests/test_access.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='rules':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         rules=user[user.index('/* Статус 1 вне очереди (таблица E92'):user.index('/* Режим обновления, бит 11 статуса 1')]
         defines=[x for x in user.splitlines() if x.startswith('#define TIMETOSTATUSRESPONSE')][0]+'\n'
         # Call sites: each rule must be applied where the table puts it.
@@ -294,20 +294,20 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'BOARD_IP_V3' not in source('DomovoiNext.ewp') and 'Release_140' not in source('DomovoiNext.ewp'),'v5 only'
         unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))
     elif kind=='serverrx':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         for name in ['user_comm_session','user_comm_rx_done']:
             assert 'server_rx_reset();' in function(user,name),name
-        assert function(source('User/user_comm.c'),'user_comm_poll').count('server_rx_begin_pass();') == 1
+        assert function(source('Tests/asm/reference/User/user_comm.c'),'user_comm_poll').count('server_rx_begin_pass();') == 1
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('/* QIRD копирует прямо в прежний сборщик')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='fwblockbounds':
-        user=source('User/user_fun.c');case=cases(user)
+        user=source('Tests/asm/reference/User/user_fun.c');case=cases(user)
         defines='\n'.join(x for x in user.splitlines() if x.startswith('#define FW_'))+'\n#define FWBLOCK_OFFSET 0x200u\n'
         code=function(user,'fw_take_block')+'\nvoid command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(20)+'default: abort(); }}'
         types=typedefs(source('structures.h'),'dataChanel_e','logUpdate_e','bootFWparam_s')
         unit=(ROOT/'Tests/test_fw_block_bounds.c').read_text().replace('/* TYPES */',types).replace('/* DEFINES */',defines).replace('/* PRODUCTION */',code)
     elif kind=='cmdlengths':
-        user=source('User/user_fun.c');parse=function(user,'user_parse_comand')
+        user=source('Tests/asm/reference/User/user_fun.c');parse=function(user,'user_parse_comand')
         types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s','status_s','triggers_s','device_s','dataChanel_e','cmdCode_e','logSystem_e','logUpdate_e')
         helper=function(user,'command_args_valid')+'\n' if 'static bool command_args_valid(' in user else ''
         labels=list(re.finditer(r'^    (?:case [^:]+:|default:)',parse,re.M))
@@ -318,18 +318,18 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert len(selected)==len(wanted)
         defines='\n'.join(x for x in user.splitlines() if x.startswith(('#define REG_UNKNOWN_IMEI','#define REG_NOT_BOUND','#define USB_COMM_DIAG_COMMAND')))
         code=defines+'\n'+helper+function(user,'usb_cmd_without_pin')+'\n'+parse[:parse.index('  switch (ptr[4])')]+'  switch(ptr[4]){'+''.join(selected)+'default: abort(); }}'
-        unit=(ROOT/'Tests/test_command_lengths.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_command_lengths.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
     elif kind=='cfgstrings':
-        user=source('User/user_fun.c');case=cases(user)
+        user=source('Tests/asm/reference/User/user_fun.c');case=cases(user)
         types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s','status_s','triggers_s','device_s','memBlock_e','dataChanel_e','cmdCode_e','shtamp_e')
         restore=''
         if 'static void upload_restore(' in user:
             restore='static uint16_t log_usbReadIndex,temp_usbReadIndex;\n'+function(user,'upload_store')+'\n'+function(user,'upload_restore')+'\n'
         code=restore+config_helpers(user)+'\n'.join(function(user,n) for n in ('user_readconfig','user_readsavedinformation'))
         code+='\n'+sync_stub(user)+'void command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(12)+'default: abort(); }}'
-        unit=(ROOT/'Tests/test_config_strings.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_config_strings.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
     elif kind=='sms':
-        user=source('User/user_fun.c');strings=source('User/user_str_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c');strings=source('User/user_str_fun.c')
         code='\n'.join(function(strings,n) for n in ('skipchar','user_strcpy'))+'\n'
         code+='\n'.join(function(user,n) for n in ('user_last10digitsnumber','user_sendsms','user_comm_server','user_smsreceived','log_addSystemValue','user_comm_link','user_comm_balance','user_comm_low_signal'))
         links=re.search(r'enum \{ COMM_LINK_UP[^}]*\};',source('Modules/comm_server.h')).group(0)
@@ -341,7 +341,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code='\n'.join(function(uart.replace('inline bool uart_addbyte','bool uart_addbyte'),n) for n in ('uart_addbyte','uart_getstate','uart_isReceiving','uart_timer1ms'))
         unit=(ROOT/'Tests/test_uart_timer.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idtext':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         code='\n'.join(function(user,n) for n in ('reader_id','WG_readedID','RF433_readedID','RFID_readedID'))
         types='#include <stdbool.h>\n#include <stdint.h>\n'+typedefs(source('structures.h'),'codeType_e','logControl_e')+'\n'
         unit=types+(ROOT/'Tests/test_id_text.c').read_text().replace('/* PRODUCTION */',code)
@@ -350,10 +350,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='usbdesc':
         unit=(ROOT/'Tests/test_usb_descriptor.c').read_text().replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_GetStringDescriptor'))
     elif kind=='logupload':
-        unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_send_logRecords'))
+        unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('Tests/asm/reference/User/user_fun.c'),'user_send_logRecords'))
     elif kind=='uploadretry':
-        user=source('User/user_fun.c')
-        code=function(source('User/crc.c'),'crc16_calc')+'\n'
+        user=source('Tests/asm/reference/User/user_fun.c')
+        code=function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
         if '/* >>> подтверждение выгрузки */' in user:
             code+=user[user.index('/* >>> подтверждение выгрузки */'):user.index('/* <<< подтверждение выгрузки */')]+'\n'
         else:
@@ -361,48 +361,48 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_readRecords','user_send_anyData','user_send_logRecords','user_send_tempIDs','user_factoryReset'])
         unit=(ROOT/'Tests/test_upload_retry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s','dataChanel_e')).replace('/* PRODUCTION */',code)
     elif kind=='idindex':
-        code=source('User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))
+        code=source('Tests/asm/reference/User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))
         unit=(ROOT/'Tests/test_idindex.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='outs':
         import re as _re
         outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
         unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',outs)
     elif kind=='crcff':
-        crc=source('User/crc.c')
-        user=source('User/user_fun.c')
+        crc=source('Tests/asm/reference/User/crc.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         code=chr(10).join(function(crc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])
         code+=chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'user_calcCRC16InFlash')+chr(10)+function(user,'id_crc16')
         unit=(ROOT/'Tests/test_crc_ff.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='crcblocks':
-        user=source('User/user_fun.c');crc=source('User/crc.c')
+        user=source('Tests/asm/reference/User/user_fun.c');crc=source('Tests/asm/reference/User/crc.c')
         code=chr(10).join(function(crc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])
         code+=chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'id_crc16')+chr(10)+function(user,'user_send_crcMemoryID')
         unit=(ROOT/'Tests/test_crc_blocks.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='flashcmds':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         start=user.index('    case 103:')
         end=user.index('    case 104:',start) if '    case 104:' in user[start:] else user.index('    case 105:',start)
         code=function(user,'user_clearMemBlock')+'\nstatic void command(uint8_t *ptr,dataChanel_e cch,uint8_t uniqId){switch(ptr[4]){'+user[start:end]+'default:abort();}}'
         unit=(ROOT/'Tests/test_flash_commands.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellMem_s','memBlock_e','dataChanel_e','cmdCode_e')).replace('/* PRODUCTION */',code)
     elif kind=='w25':
-        driver=source('User/flash_w25.c')
+        driver=source('Tests/asm/reference/User/flash_w25.c')
         result='bool' if 'bool w25_write_data' in driver else 'void'
         protos='static uint8_t w25_busy(void); static inline void w25_delay_ON(void); static inline void w25_delay_OFF(void); static void w25_WREN(void); static void w25_WRDI(void); static '+result+' w25_page_program(Int32U,pInt8U,Int16U);\n'
         code=protos+re.sub(r'^#include[^\n]*','',driver,flags=re.M)
         unit='#define HAVE_RESULT '+str(int(result=='bool'))+'\n'+(ROOT/'Tests/test_w25.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='sync':
-        user=source('User/user_fun.c');case=cases(user)
+        user=source('Tests/asm/reference/User/user_fun.c');case=cases(user)
         helper=function(user,'sync_cells_valid') if 'static bool sync_cells_valid(' in user else ''
         if '/* >>> Сборка таблиц страницами:' in user:helper+='\n'+user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]
-        crcsrc=source('User/crc.c')
+        crcsrc=source('Tests/asm/reference/User/crc.c')
         if 'static uint16_t id_crc16(' in user:helper=chr(10).join(function(crcsrc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])+chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'id_crc16')+chr(10)+helper
         if '/* >>> Праздники целиком' in user:helper+='\n'+user[user.index('/* >>> Праздники целиком'):user.index('/* <<< Праздники целиком */')]
         code=helper+'\n'+sync_end(user)+'\nvoid command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { uint32_t tmp32; switch(ptr[4]) {'+''.join(case(n) for n in range(13,17))+'default: abort(); }}'
         types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cellShedule_s','cellGroup_s','cellHoliday_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e','logSystem_e')
         unit=(ROOT/'Tests/test_sync.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idsync':
-        user=source('User/user_fun.c');case=cases(user);crcsrc=source('User/crc.c')
-        code=source('User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))+chr(10)
+        user=source('Tests/asm/reference/User/user_fun.c');case=cases(user);crcsrc=source('Tests/asm/reference/User/crc.c')
+        code=source('Tests/asm/reference/User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))+chr(10)
         code+=chr(10).join(function(crcsrc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])+chr(10)
         code+='static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'user_calcCRC16InFlash')+chr(10)+function(user,'id_crc16')+chr(10)+function(user,'sync_cells_valid')+chr(10)
         code+=user[user.index('/* >>> Сборка таблиц страницами:'):user.index('/* <<< Сборка таблиц страницами */')]+chr(10)
@@ -411,12 +411,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         types=typedefs(source('structures.h'),'cellMem_s','cellID_s','cmdCode_e','shtamp_e','memBlock_e','dataChanel_e')
         unit=(ROOT/'Tests/test_id_sync.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='persistence':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         code='\n'.join(function(user,n) for n in ['user_writeConfigAndDevice','user_updateID'])
         unit='#define HAVE_RESULT '+str(int('bool user_writeConfigAndDevice' in user))+'\n'+(ROOT/'Tests/test_persistence.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */',code)
     elif kind=='commands':
-        user=source('User/user_fun.c');case=cases(user)
-        code=function(source('User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+sync_stub(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
+        user=source('Tests/asm/reference/User/user_fun.c');case=cases(user)
+        code=function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+sync_stub(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_commands.c').read_text().replace('/* CONFIG TYPES */',typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')).replace('/* PRODUCTION */',code)
     elif kind=='wiegandirq':
         wg=source('User/wiegand.c')
@@ -430,7 +430,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code+='\n'.join(function(timers,n) for n in ('timers_set','timers_get','timers_handle','timers_pause','timers_getMillis'))
         unit=(ROOT/'Tests/test_timers_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='crc':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         # Compile the actual CRC gate; the command switch is unreachable here.
         code=user[user.index('void user_parse_comand'):]
         code=(function(user,'command_args_valid')+'\n' if 'static bool command_args_valid(' in user else '')+code[:code.index('  /* ПИН (команда 102)')]+'  (void)tmp32;\n}\n'
@@ -443,7 +443,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='rx':
         code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
-        user=function(source('User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
+        user=function(source('Tests/asm/reference/User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
         unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)
     elif kind=='usbresetwait':
         pwr=source('USB-FS-CDC_User/Src/usb_pwr.c');code=''
@@ -458,15 +458,15 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code+='\nstatic uint8_t *(*audit_getstatus(void))(uint16_t){\nuint32_t Related_Endpoint,Reserved,Status;\nuint8_t *(*CopyRoutine)(uint16_t)=NULL;\nif(pInformation->USBwIndex1)return NULL;\n'+block+'\nreturn CopyRoutine;\n}'
         unit=(ROOT/'Tests/test_usb_setup_bounds.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='utcday':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         clock=user[user.index('    device.day = user_getweakday'):user.index('    device.connected = comm_channel_ready();')]
         code='\n'.join(function(user,n) for n in ('user_getweakday','user_dayIsHoliday'))+'\nstatic void audit_clock(void){\n'+clock+'\n}'
         unit=(ROOT/'Tests/test_utc_day.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellHoliday_s')).replace('/* PRODUCTION */',code)
     elif kind=='idexpiry':
-        user=source('User/user_fun.c')
+        user=source('Tests/asm/reference/User/user_fun.c')
         unit=(ROOT/'Tests/test_id_expiry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
     elif kind=='tempidmeta':
-        unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('User/user_fun.c'),'user_findTempID')+'\n'+function(source('User/user_fun.c'),'user_addIdToTempBuffer'))
+        unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('Tests/asm/reference/User/user_fun.c'),'user_findTempID')+'\n'+function(source('Tests/asm/reference/User/user_fun.c'),'user_addIdToTempBuffer'))
     elif kind=='commuart':
         header=source('Modules/comm_uart.h')
         code=source('Modules/comm_uart.c')
@@ -513,7 +513,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     if 'mem_tables_ready()' in unit and 'bool mem_tables_ready(void)' not in unit:
         unit='#include <stdbool.h>\nstatic bool table_storage_ready=true;\nstatic bool mem_tables_ready(void) { return table_storage_ready; }\n'+unit
     if kind!='commserver':
-        helpers=source('User/user_fun.c')
+        helpers=source('Tests/asm/reference/User/user_fun.c')
         helpers=helpers[helpers.index('/* Назначение кадра серверу'):helpers.index('void user_send_anyData(')]
         # Отправка серверу - только слот канала: помощники и модель слота нужны, если тест их зовёт.
         if not re.search(r'user_comm_(acquire|free)\(', unit): helpers=''
@@ -561,9 +561,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         at=unit.index('void command_step(')
         unit=unit[:at]+helper+unit[at:]
         at=unit.index('int main(')
-        unit=unit[:at]+function(source('User/user_fun.c'),'store_config_complete')+'\nvoid command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){staged_ok=false;command_step(ptr,len,cch,uniqId);if(staged_ok){store_config_complete();user_send_timeshtamp(SHTAMP_CONFIG,config.datetime,user_calcCRC16InFlash(mem[MB_CONFIG].start,mem[MB_CONFIG].size),cch,uniqId);}}\n'+unit[at:]
+        unit=unit[:at]+function(source('Tests/asm/reference/User/user_fun.c'),'store_config_complete')+'\nvoid command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){staged_ok=false;command_step(ptr,len,cch,uniqId);if(staged_ok){store_config_complete();user_send_timeshtamp(SHTAMP_CONFIG,config.datetime,user_calcCRC16InFlash(mem[MB_CONFIG].start,mem[MB_CONFIG].size),cch,uniqId);}}\n'+unit[at:]
     if kind == 'rs485cfg':
-        helper='static config_s staged_config; static bool staged_ok;\nstatic bool store_config_start(void){staged_config=config; staged_ok=user_writeConfigAndDevice(); return staged_ok;}\nstatic const uint8_t *mem_config_snapshot(void){return (const uint8_t*)&staged_config;}\n'+function(source('User/user_fun.c'),'store_config_complete')+'\n'
+        helper='static config_s staged_config; static bool staged_ok;\nstatic bool store_config_start(void){staged_config=config; staged_ok=user_writeConfigAndDevice(); return staged_ok;}\nstatic const uint8_t *mem_config_snapshot(void){return (const uint8_t*)&staged_config;}\n'+function(source('Tests/asm/reference/User/user_fun.c'),'store_config_complete')+'\n'
         unit=unit.replace('static void receive_config(',helper+'static void receive_config_step(')
         unit=unit.replace('static void test_rs485cfg(void)', 'static void receive_config(dataChanel_e cch,uint8_t code){staged_ok=false;receive_config_step(cch,code);if(staged_ok){store_config_complete();user_send_timeshtamp(SHTAMP_CONFIG,config.datetime,user_calcCRC16InFlash(mem[MB_CONFIG].start,mem[MB_CONFIG].size),cch,7);}}\nstatic void test_rs485cfg(void)')
     if 'fast_' in unit:

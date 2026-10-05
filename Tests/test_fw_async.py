@@ -3,7 +3,7 @@ import pathlib, subprocess, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 ns={'__file__':str(ROOT/'Tests/run_host.py')}
 code=(ROOT/'Tests/run_host.py').read_text(encoding='utf-8');exec(code[:code.index('with tempfile.TemporaryDirectory')],ns)
-src,fun,types=ns['source'],ns['function'],ns['typedefs'];u=src('User/user_fun.c')
+src,fun,types=ns['source'],ns['function'],ns['typedefs'];u=src('Tests/asm/reference/User/user_fun.c')
 defs='\n'.join(x for x in u.splitlines() if x.startswith('#define FW_'))
 jobs=u[u.index('/* >>> Cooperative firmware block writer */'):u.index('/* <<< Cooperative firmware block writer */')]
 prod='\n'.join(fun(u,n) for n in ('CRC32','fw_abort','fw_blocks_done','fw_take_block','user_storage_command_ready','user_storage_flash_ready'))+'\n'+jobs

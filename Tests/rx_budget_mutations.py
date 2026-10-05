@@ -13,7 +13,7 @@ CASES=(
 with tempfile.TemporaryDirectory() as d:
     dst=pathlib.Path(d)
     shutil.copytree(ROOT/'User',dst/'User');shutil.copytree(ROOT/'Tests',dst/'Tests',ignore=shutil.ignore_patterns('__pycache__'))
-    p=dst/'User/user_fun.c';original=p.read_bytes()
+    p=dst/'Tests/asm/reference/User/user_fun.c';original=p.read_bytes()
     for label,old,new in CASES:
         assert old.encode() in original,label
         p.write_bytes(original.replace(old.encode(),new.encode(),1))

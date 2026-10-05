@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / 'User/idindex.c'
+SOURCE = ROOT / 'Tests/asm/reference/User/idindex.c'
 CASES = (
     ('no-invalid-mark', b'if (ix.state == IX_READY && !ix_mark(false, 0))', b'if (0 && !ix_mark(false, 0))'),
     ('fill-put-skip', b'!(ix.state == IX_FILL && index < ix.step)', b'!(ix.state == IX_FILL && index > ix.step)'),

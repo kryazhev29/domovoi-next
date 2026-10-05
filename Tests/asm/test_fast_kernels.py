@@ -37,7 +37,7 @@ def build(out, assembly=None, production=None):
         keep.extend(prefix+n for n in names)
     run([IAR/'iasmarm.exe', assembly or ROOT/'Tests/asm/fast_candidates.s',
          '--cpu', 'Cortex-M3', '-o', out/'asm.o'])
-    body = function((ROOT/'User/crc.c').read_text(encoding='cp1251'), 'crc16_ffInit')
+    body = function((ROOT/'Tests/asm/reference/User/crc.c').read_text(encoding='cp1251'), 'crc16_ffInit')
     wrappers = 'extern unsigned short crc16_calcInit(unsigned char*, unsigned short, unsigned short);\n'
     for name in variants('gf2'):
         wrappers += 'extern unsigned short '+name+'(const unsigned short*, unsigned short);\n'

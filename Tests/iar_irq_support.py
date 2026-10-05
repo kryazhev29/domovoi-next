@@ -58,6 +58,13 @@ class Machine:
         return value
     def map_size(self,n):
         found=re.search(r'^(?:_A_)?'+re.escape(n)+r"\s+0x[0-9a-f']+\s+(0x[0-9a-f]+)\s+Data",self.maptext,re.M|re.I)
+        if not found:
+            # IAR assembler PUBLIC data has no DWARF size. Read its actual
+            # allocation directive, after confirming the linked symbol exists.
+            self.addr(n)
+            for asm in (ROOT/'User/asm').glob('*_runtime.s'):
+                size=re.search(r'^'+re.escape(n)+r':\s*\n\s*DS8\s+(\d+)',asm.read_text(),re.M)
+                if size:return int(size[1])
         assert found,n
         return int(found[1],16)
     def ret(self,value=0):

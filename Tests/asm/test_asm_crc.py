@@ -85,11 +85,11 @@ def build(out):
     journal = source('User/sector_journal.c')
     name = 'crc32_update' if 'uint32_t crc32_update(' in journal else 'sj_crc'
     c = function(journal, name).replace('static ', '').replace(name, 'crc32_update')
-    c += '\n' + function(source('User/user_fun.c'), 'CRC32')
+    c += '\n' + function(source('Tests/asm/reference/User/user_fun.c'), 'CRC32')
     (out / 'ref.c').write_text('#include <stdint.h>\n' + c, encoding='ascii')
     (out / 'nibble.c').write_text(nibble_reference(), encoding='ascii')
     objs = []
-    for i, src in enumerate([ROOT / 'User/crc.c', out / 'ref.c', out / 'nibble.c']):
+    for i, src in enumerate([ROOT / 'Tests/asm/reference/User/crc.c', out / 'ref.c', out / 'nibble.c']):
         obj = out / f'c{i}.o'
         run([IAR / 'iccarm.exe', src, '--cpu', 'Cortex-M3', '--thumb', '-Ohz', '-e',
              '-I', ROOT / 'User', *('-D' + f + '=ref_' + f for f in FUNCS), '-o', obj])

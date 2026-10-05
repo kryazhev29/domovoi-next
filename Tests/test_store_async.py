@@ -8,7 +8,7 @@ base = src("Tests/test_storage.c").split("/* PRODUCTION */")[0]
 base = base.replace("oplength[256]", "oplength[1024]")
 base = base.replace("bool w25_read_data(", "static unsigned read_fault, read_calls;\nbool w25_read_data(")
 base = base.replace("{CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);return true;}", "{if(read_fault && ++read_calls==read_fault)return false;CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);return true;}")
-mem = src("User/memory.c")
+mem = src("Tests/asm/reference/User/memory.c")
 mem = re.sub(r'^#include[^\n]*', '', mem, flags=re.M)
 shared = src("User/sector_journal.h") + "\n" + src("User/sector_journal.c").replace('#include "sector_journal.h"', '')
 header = "\n".join(x for x in src("User/memory.h").splitlines() if x.startswith(("#define MEM", "typedef uint8_t (*mem_page_reader", "bool mem_patch", "uint8_t mem_config_result")))

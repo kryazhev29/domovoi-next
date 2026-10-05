@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 IAR = Path(r'C:\Program Files\IAR Systems\Embedded Workbench 9.2\arm')
 MODULES = ('Modules/comm_uart.c', 'Modules/comm_at.c', 'Modules/modem_slm336.c',
            'Modules/comm_power_v5.c', 'User/comm_timeouts.c',
-           'Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c', 'User/user_comm.c')
+           'Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c', 'Tests/asm/reference/User/user_comm.c')
 
 
 def measure(label, limits=False):

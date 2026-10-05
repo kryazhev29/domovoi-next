@@ -1,0 +1,46 @@
+{
+  "units": "Unicorn instructions; modeled NOR, NOT cycles or milliseconds",
+  "cases": {
+    "table_1": {
+      "instructions": 431747,
+      "stack": 1128
+    },
+    "table_63": {
+      "instructions": 556584,
+      "stack": 1040
+    },
+    "photo_crc_1": {
+      "instructions": 114,
+      "stack": 120
+    },
+    "photo_crc_4095": {
+      "instructions": 40586,
+      "stack": 120
+    }
+  },
+  "photo_layout": {
+    "stamp": 0,
+    "address": 4,
+    "deadline": 8,
+    "started": 12,
+    "last": 16,
+    "readAddress": 20,
+    "size": 24,
+    "written": 26,
+    "offset": 28,
+    "packet": 30,
+    "used": 32,
+    "stage": 34,
+    "retry": 35,
+    "syncAck": 36,
+    "syncSeen": 37,
+    "pending": 38,
+    "requestId": 39,
+    "rxBytes": 40,
+    "rxHead": 42,
+    "channel": 50,
+    "rx": 51,
+    "frame": 115
+  },
+  "sha256": "621593cecd237a6075a6c31355dc74223c6584c666b0b38dd622761840c46fd4"
+}

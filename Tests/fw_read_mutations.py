@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run():
-    source = (ROOT / 'User/user_fun.c').read_text(encoding='cp1251')
+    source = (ROOT / 'Tests/asm/reference/User/user_fun.c').read_text(encoding='cp1251')
     cases = (
         ('crc-read', 'if (!mem_read (adr, bf, readed)) return false;', 'mem_read (adr, bf, readed);'),
         ('crc-empty', 'if (!size || (size & 3u))', 'if (size & 3u)'),
@@ -25,14 +25,14 @@ def run():
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='fw-read-', dir=out) as directory:
         copied = Path(directory)
-        for name in ('User/user_fun.c', 'structures.h', 'Tests/test_fw_start.c'):
+        for name in ('Tests/asm/reference/User/user_fun.c', 'structures.h', 'Tests/test_fw_start.c'):
             target = copied / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, target)
         env = dict(os.environ, DOMOVOI_ROOT=str(copied))
         for label, old, new in cases:
             assert source.count(old) == 1, label
-            (copied / 'User/user_fun.c').write_bytes(source.replace(old, new).replace('\n', '\r\n').encode('cp1251'))
+            (copied / 'Tests/asm/reference/User/user_fun.c').write_bytes(source.replace(old, new).replace('\n', '\r\n').encode('cp1251'))
             result = subprocess.run([sys.executable, str(ROOT / 'Tests/run_host.py'), 'work', 'fwstart'],
                                     env=env, capture_output=True, timeout=300)
             output = result.stdout + result.stderr

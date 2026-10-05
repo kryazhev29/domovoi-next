@@ -150,7 +150,7 @@ def user_mutations(out):
                 shutil.copytree(ROOT / name, tmp / name, ignore=shutil.ignore_patterns('__pycache__', '*.o', 'Release', 'Debug'))
             for name in ('structures.h', 'DomovoiNext.ewp', 'main.c', 'board.h'):
                 shutil.copy2(ROOT / name, tmp / name)
-            path = tmp / 'User/user_fun.c'
+            path = tmp / 'Tests/asm/reference/User/user_fun.c'
             text = path.read_bytes().decode('cp1251').replace('\r\n', '\n')
             assert text.count(old) == 1, label
             path.write_bytes(text.replace(old, new).replace('\n', '\r\n').encode('cp1251'))

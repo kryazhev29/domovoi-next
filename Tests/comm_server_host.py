@@ -26,7 +26,7 @@ def unit():
     old = old.replace('  sim_tx();', '  legacy_sim_tx();')
     headers = '\n'.join(line for n in NEW_HEADERS for line in source(n).splitlines() if not line.startswith('#include "'))
     code = '\n'.join(line for n in NEW for line in source(n).splitlines() if not line.startswith('#include'))
-    user = source('User/user_fun.c')
+    user = source('Tests/asm/reference/User/user_fun.c')
     rx = user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
     # Сохранённый сборщик и его стык QIRD; настоящие CRC/границы/отложенное исполнение.
     helpers = user[user.index('/* Назначение кадра серверу'):user.index('void user_send_anyData(')]
@@ -45,10 +45,10 @@ def unit():
     if '/* >>> ответ считывателя' in user:
         producer_code += '\n' + user[user.index('/* >>> ответ считывателя'):user.index('/* <<< ответ считывателя */')]
     old += '\n#define fw_async_quiet(ch) ((void)(ch))\n#define user_storage_command_ready() 1\n#define store_command_allowed(cmd) 1\nstatic struct {unsigned job,channel,quiet,seen;} store;\n'
-    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('User/crc.c'), 'crc16_calc')+'\n'+function(source('User/crc.c'), 'crc16_calcInit')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c')).replace('/* CALL */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
+    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('Tests/asm/reference/User/crc.c'), 'crc16_calc')+'\n'+function(source('Tests/asm/reference/User/crc.c'), 'crc16_calcInit')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c')).replace('/* CALL */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):
-    names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'User/user_comm.c')
+    names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'Tests/asm/reference/User/user_comm.c')
     rows = []
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         tmp = Path(tmp)
@@ -57,7 +57,7 @@ def arm(out):
         (tmp/'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void*,const void*,size_t);\nvoid *memset(void*,int,size_t);\nvoid *memmove(void*,const void*,size_t);\nint memcmp(const void*,const void*,size_t);\nsize_t strlen(const char*);\nint strcmp(const char*,const char*);\nchar *strncpy(char*,const char*,size_t);\nchar *strstr(const char*,const char*);\n', encoding='ascii')
         (tmp/'stdio.h').write_text('#include <stddef.h>\nint snprintf(char*,size_t,const char*,...);\n', encoding='ascii')
         (tmp/'user_fun.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#define CH_SERVER 1\ntypedef uint8_t logSystem_e;\nvoid user_send_registrationData(unsigned);\nvoid user_send_statusPack(unsigned);\nbool log_addSystemEvent(logSystem_e);\nuint32_t user_comm_local_time(void);\nbool user_comm_busy(void);\n#define CT_PHONE 1\nbool user_incomingcall(char*,uint8_t);\nbool user_smsreceived(char*,char*);\nbool user_storage_flash_ready(void);\n',encoding='ascii')
-        for name in (*MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.c'):
+        for name in (*MODULES, *NEW, 'Modules/comm_at.c', 'Tests/asm/reference/User/user_comm.c'):
             stem = Path(name).stem; obj = out/(stem+'.o')
             subprocess.run([ZIG,'cc','-target','thumb-freestanding-eabi','-mcpu=cortex_m3','-mthumb','-Oz','-std=c99','-Wall','-Wextra','-Werror','-fstack-usage','-I'+str(tmp),'-c',str(tmp/(stem+'.c')),'-o',str(obj)],check=True)
             ram, flash = memory(obj); rows.append(f'{stem}: RAM={ram} Flash={flash} heap=0')

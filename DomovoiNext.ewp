@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <project>
     <fileVersion>4</fileVersion>
     <configuration>
@@ -2343,20 +2343,21 @@
     </group>
     <group>
         <name>User</name>
+        <file><name>$PROJ_DIR$\User\runtime_layout.c</name></file>
         <file>
-            <name>$PROJ_DIR$\User\photo.c</name>
+            <name>$PROJ_DIR$\User\asm\photo_runtime.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\idindex.c</name>
+            <name>$PROJ_DIR$\User\asm\idindex_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\comm_timeouts.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\user_comm.c</name>
+            <name>$PROJ_DIR$\User\asm\user_comm_runtime.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\crc.c</name>
+            <name>$PROJ_DIR$\User\asm\crc_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\asm\crc_asm.s</name>
@@ -2368,13 +2369,13 @@
             <name>$PROJ_DIR$\User\asm\fast_kernels.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\flash_w25.c</name>
+            <name>$PROJ_DIR$\User\asm\flash_w25_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\indication.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\memory.c</name>
+            <name>$PROJ_DIR$\User\asm\memory_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\sector_journal.c</name>
@@ -2383,7 +2384,7 @@
             <name>$PROJ_DIR$\User\outs.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\user_fun.c</name>
+            <name>$PROJ_DIR$\User\asm\user_fun_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\user_str_fun.c</name>

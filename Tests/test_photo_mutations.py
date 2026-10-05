@@ -61,12 +61,12 @@ subprocess.run([sys.executable,str(ROOT/"Tests/run_host.py"),"work","photo"],che
 reports=[]
 with tempfile.TemporaryDirectory(prefix='photo-mutations-') as tmp:
  copy=pathlib.Path(tmp)
- for name in ['Tests/run_host.py','Tests/test_photo.c','Tests/comm_photo_slot.c','User/user_fun.c','User/photo.c','User/sector_journal.c','User/fast_kernels.h']:
+ for name in ['Tests/run_host.py','Tests/test_photo.c','Tests/comm_photo_slot.c','Tests/asm/reference/User/user_fun.c','Tests/asm/reference/User/photo.c','User/sector_journal.c','User/fast_kernels.h']:
   dest=copy/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,dest)
- original=(copy/'User/photo.c').read_text(encoding='cp1251')
+ original=(copy/'Tests/asm/reference/User/photo.c').read_text(encoding='cp1251')
  for name,old,new in mutations:
   assert original.count(old)==1,(name,original.count(old))
-  (copy/'User/photo.c').write_bytes(original.replace(old,new).replace('\n','\r\n').encode('cp1251'))
+  (copy/'Tests/asm/reference/User/photo.c').write_bytes(original.replace(old,new).replace('\n','\r\n').encode('cp1251'))
   r=subprocess.run([sys.executable,str(ROOT/'Tests/run_host.py'),'work','photo'],env={**os.environ,'DOMOVOI_ROOT':str(copy)},capture_output=True,text=True)
   output=r.stdout+r.stderr
   assert r.returncode and 'error:' not in output and 'Assertion failed' in output,(name,r.returncode,output)

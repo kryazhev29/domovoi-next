@@ -18,7 +18,7 @@ from test_asm_crc import (ROOT, IAR, Machine, function, run, BUF, ARGS, STACK, U
 
 
 def build(out, assembly=None):
-    source = (ROOT / 'User/idindex.c').read_text(encoding='cp1251')
+    source = (ROOT / 'Tests/asm/reference/User/idindex.c').read_text(encoding='cp1251')
     c = '#include <stdint.h>\n' + function(source, 'ix_fnv') + '\n' + function(source, 'idindex_hash')
     c += '\nuint32_t unrolled_hash(uint16_t index, const uint8_t *id) {\n'
     c += 'uint32_t h = (2166136261u ^ (uint8_t)index) * 16777619u;\n'

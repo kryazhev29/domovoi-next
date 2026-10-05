@@ -10,7 +10,7 @@ def review_unit():
     code = unit().replace('int main(void)', 'static int original_regressions(void)')
     code = code.replace('uint8_t protocolVersion, hardwareVersion;',
                         'uint8_t protocolVersion, hardwareVersion, moduleType;')
-    user = (ROOT / 'User/user_fun.c').read_bytes().decode('cp1251')
+    user = (ROOT / 'Tests/asm/reference/User/user_fun.c').read_bytes().decode('cp1251')
     code += '\nstatic struct { char netOperator[32], server1[32], server2[32]; uint8_t netType, useServer1, useServer2; } config;\n'
     code += user[user.index('static char comm_host[2][32]'):user.index('static const slm_settings_t comm_settings')]
     code += (ROOT / 'Tests/test_comm_review.c').read_bytes().decode('cp1251')
