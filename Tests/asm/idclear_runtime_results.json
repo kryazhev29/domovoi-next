@@ -41,5 +41,5 @@
     "partial_erase_cuts_with_real_startup_scan": 10,
     "atomic": false
   },
-  "elf_sha256": "07d950a3ff0ce650d4460d83331e29c6d7d0e0e4c1e3f2977356292ae538f613"
+  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7"
 }

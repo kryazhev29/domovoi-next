@@ -1,11 +1,13 @@
 """Whole production poll including the real nonblocking USB queue writer."""
 import hashlib
 import json
-from storage_machine import ROOT
+import struct
+from storage_machine import ROOT, crc16
 from test_service_runtime import ServiceMachine
 from test_upload_runtime import UploadMachine, log, wire as upload_wire
 from test_idclear_runtime import ClearMachine, wire as clear_wire
 from test_photo_runtime import PhotoMachine
+from test_fw_service_runtime import FirmwareMachine
 from verification_usb_try import init_transport
 
 
@@ -31,6 +33,12 @@ def setup(kind, busy):
         m.fixture(10, cells); transport(m, busy); m.request()
         expected = upload_wire(10, 7, 0, cells)
         active = lambda: bool(m.ptr())
+    elif kind == 'fw_setup':
+        m = FirmwareMachine(); m.fixture(); transport(m, busy); m.begin(2, 0, True)
+        body = struct.pack('<HBBBBBIH', 11, 255, 7, 11, 19, 0,
+                           m.read_word(m.device+47), m.read_word(m.device+165, 2))
+        expected = b'SLDN' + body + struct.pack('<H', crc16(body))
+        active = lambda: bool(m.ptr())
     elif kind == 'clear':
         m = ClearMachine(); transport(m, busy); m.parse()
         expected = clear_wire(); active = m.clear_active
@@ -44,7 +52,7 @@ def setup(kind, busy):
 
 def run():
     results = {}
-    for kind in ('crc_pack', 'crc_list', 'upload', 'clear', 'photo'):
+    for kind in ('crc_pack', 'crc_list', 'upload', 'clear', 'photo', 'fw_setup'):
         control, active, expected = setup(kind, False)
         costs = []
         for _ in range(40000):

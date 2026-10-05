@@ -21,7 +21,7 @@ class FirmwareMachine(UploadMachine):
         super().__init__();self.stubs[self.addr('usb_try_send')]=self.usb
         self.u.mem_write(self.addr('mem'),struct.pack('<IIII',0x1000,0x19000,0x1a000,0x19000))
         self.write(0x08007ffc,0x40,1);self.write(self.device+19,3,1)
-        self.max_fw_read=0;self.logs=[];self.nor_phases=[];self.alloc_trace=[];self.phase_costs={};self.snapshot_ctx=None;self.snapshot_cfg=None
+        self.poll_costs=[];self.max_fw_read=0;self.logs=[];self.nor_phases=[];self.alloc_trace=[];self.phase_costs={};self.snapshot_ctx=None;self.snapshot_cfg=None
         self.stubs[self.addr('log_addUpdateEvent')]=lambda:(self.logs.append(tuple(self.args()[:2])),self.ret())[-1]
         self.stubs[self.addr('w25_erase_sector')]=lambda:(_ for _ in ()).throw(AssertionError('synchronous erase'))
         self.stubs[self.addr('w25_write_data')]=lambda:(_ for _ in ()).throw(AssertionError('synchronous write'))
@@ -50,7 +50,7 @@ class FirmwareMachine(UploadMachine):
     def tick_fw(self):
         phase=self.phase();owner=self.checked('fw_service_active');self.now+=1
         before=self.u.reg_read(UC_ARM_REG_PRIMASK)
-        self.checked('user_storage_poll')
+        self.checked('user_storage_poll');self.poll_costs.append(self.steps)
         assert self.u.reg_read(UC_ARM_REG_PRIMASK)==before
         assert self.io_budget<=1
         assert self.read_budget <= (64 if owner else 256),(phase,self.read_budget)
@@ -76,7 +76,7 @@ def normal():
             assert m.read_word(m.device+171,1)==1
             assert not m.read_word(m.addr('fw_rollback_end'))
         assert largest_free(m)==4088
-        out[f'{number}_{size}_{ch}']={'polls':n,'max_instructions':max(m.costs[:-26]),'total_instructions':sum(m.costs[:-26]),'stack':m.stack_peak,'max_fw_read':m.max_fw_read,'phase_maximum':m.phase_costs}
+        out[f'{number}_{size}_{ch}']={'polls':n,'max_poll_instructions':max(m.poll_costs),'total_poll_instructions':sum(m.poll_costs),'max_instructions':max(m.costs[:-26]),'total_instructions':sum(m.costs[:-26]),'stack':m.stack_peak,'max_fw_read':m.max_fw_read,'phase_maximum':m.phase_costs}
     return out
 
 
@@ -245,7 +245,7 @@ def real_spi():
     else:raise AssertionError('real SPI stuck')
     assert m.flash[0x1200:0x1200+len(m.image)]==m.image and m.sent[0][10]==0
     assert m.read_word(m.device+171,1)==1
-    return dict(polls=n,max_instructions=max(m.costs),total_instructions=sum(m.costs),stack=m.stack_peak,spi_read_max=mxread,fw_spi_read_max=fwread,spi_status_max=mxstatus,phase_maximum=m.phase_costs)
+    return dict(polls=n,max_poll_instructions=max(m.poll_costs),total_poll_instructions=sum(m.poll_costs),max_instructions=max(m.costs),total_instructions=sum(m.costs),stack=m.stack_peak,spi_read_max=mxread,fw_spi_read_max=fwread,spi_status_max=mxstatus,phase_maximum=m.phase_costs)
 
 def exact_failure_logs():
     cases=[(1,1,'read',None),(1,2,'read',(133,7)),(2,4,'start',None),

@@ -47,6 +47,6 @@
     "blocks": 2,
     "no_automatic_apply": true
   },
-  "elf_sha256": "2645c7547f6d8d86ce7ed6ad5959576c38d1c914063dc74fe9566b52c800f29a",
+  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7",
   "scope": "Linked final firmware code, modeled NOR and transport; no board timing"
 }

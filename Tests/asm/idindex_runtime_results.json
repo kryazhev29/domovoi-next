@@ -29,7 +29,7 @@
     "((1, 2, 129), True)": {
       "passes": 830,
       "max_instructions": 92,
-      "total_instructions": 24952,
+      "total_instructions": 34612,
       "stack": 168,
       "max_read": 64,
       "max_async_actions": 1,
@@ -64,7 +64,7 @@
     "max_spi_read_bytes": 64,
     "max_status_reads": 4
   },
-  "elf_sha256": "954cc19862d859a2bb0641d1a9390816faf69d37d690973bc0aced90ba5df64b",
+  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7",
   "index_bss_bytes": 24,
   "status": "PASS"
 }

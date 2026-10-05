@@ -2,8 +2,8 @@
   "normal": {
     "(9, 1, 0, 0)": {
       "passes": 9,
-      "maximum": 365,
-      "total": 1229,
+      "maximum": 373,
+      "total": 1237,
       "stack": 172,
       "read_bytes": 74,
       "max_read": 32
@@ -11,7 +11,7 @@
     "(9, 1536, 0, 1)": {
       "passes": 1658,
       "maximum": 727,
-      "total": 144190,
+      "total": 144198,
       "stack": 172,
       "read_bytes": 50152,
       "max_read": 32
@@ -19,7 +19,7 @@
     "(9, 1536, 1500, 0)": {
       "passes": 1584,
       "maximum": 732,
-      "total": 138907,
+      "total": 138915,
       "stack": 172,
       "read_bytes": 49512,
       "max_read": 32
@@ -27,7 +27,7 @@
     "(10, 1, 0, 0)": {
       "passes": 9,
       "maximum": 495,
-      "total": 1925,
+      "total": 1933,
       "stack": 172,
       "read_bytes": 96,
       "max_read": 32
@@ -35,7 +35,7 @@
     "(10, 3072, 0, 1)": {
       "passes": 3127,
       "maximum": 727,
-      "total": 872573,
+      "total": 872581,
       "stack": 172,
       "read_bytes": 99328,
       "max_read": 32
@@ -43,7 +43,7 @@
     "(10, 3072, 3071, 0)": {
       "passes": 6151,
       "maximum": 495,
-      "total": 1737170,
+      "total": 1737178,
       "stack": 172,
       "read_bytes": 196608,
       "max_read": 32
@@ -74,6 +74,7 @@
     "idle_photo_ack_free_bytes": 1776
   },
   "ack_power_cuts": 532,
-  "elf_sha256": "07d950a3ff0ce650d4460d83331e29c6d7d0e0e4c1e3f2977356292ae538f613",
+  "power_elf_sha256": "07d950a3ff0ce650d4460d83331e29c6d7d0e0e4c1e3f2977356292ae538f613",
+  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7",
   "status": "PASS"
 }
