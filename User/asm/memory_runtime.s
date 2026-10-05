@@ -57,6 +57,7 @@
         PUBLIC mem_replace_pages
         PUBLIC mem_replace_sector
         PUBLIC mem_rewrite
+        EXTERN fw_service_active
         EXTERN upload_runtime_active
         EXTERN idindex_runtime_active
         PUBLIC mem_tables_ready
@@ -255,6 +256,10 @@ mem_tables_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall fw_service_active
+        BL       fw_service_active
+        CMP R0,#+0
+        BNE.W ??mem_tables_ready_0
           CFI FunCall upload_runtime_active
         BL       upload_runtime_active
         CBNZ.N   R0,??mem_tables_ready_0

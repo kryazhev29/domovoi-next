@@ -2352,6 +2352,9 @@
             <name>$PROJ_DIR$\User\asm\idindex_runtime.s</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\asm\fw_service_runtime.s</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\asm\upload_runtime.s</name>
         </file>
         <file>

@@ -124,6 +124,13 @@
         EXTERN idindex_poll
         EXTERN idindex_runtime_active
         EXTERN upload_runtime_begin
+        EXTERN fw_service_busy
+        EXTERN fw_service_begin
+        EXTERN fw_service_active
+        EXTERN fw_service_poll
+        EXTERN fw_service_cancel
+        EXTERN fw_service_quiet
+        EXTERN fw_service_config_result
         EXTERN upload_runtime_active
         EXTERN upload_runtime_poll
         EXTERN upload_runtime_cancel
@@ -333,6 +340,18 @@
         PUBLIC temp_unacked
         PUBLIC user_comm_acquire
         PUBLIC store_upload_request
+        PUBLIC fw_start_rejected
+        PUBLIC fw_start_refused
+        PUBLIC fw_same_download
+        PUBLIC fw_log
+        PUBLIC fw_abort
+        PUBLIC fw_end
+        PUBLIC fw_rollback_pos
+        PUBLIC fw_rollback_end
+        PUBLIC fw_write_errors
+        PUBLIC store
+        PUBLIC store_snapshot
+        PUBLIC store_save_requested
         PUBLIC upload_ack
         PUBLIC upload_index
         PUBLIC upload_finish
@@ -448,6 +467,10 @@ user_storage_command_ready:
           CFI CFA R13+8
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall fw_service_active
+        BL       fw_service_active
+        CMP R0,#+0
+        BNE.W ??user_storage_command_ready_0
           CFI FunCall upload_runtime_active
         BL       upload_runtime_active
         CBNZ.N   R0,??user_storage_command_ready_0
@@ -518,6 +541,10 @@ user_storage_flash_ready:
           CFI FunCall idindex_runtime_active
         BL       idindex_runtime_active
         CBNZ.N   R0,??user_storage_flash_ready_0
+          CFI FunCall fw_service_active
+        BL       fw_service_active
+        CMP R0,#+0
+        BNE.W ??user_storage_flash_ready_0
           CFI FunCall upload_runtime_active
         BL       upload_runtime_active
         CBNZ.N   R0,??user_storage_flash_ready_0
@@ -2110,6 +2137,9 @@ user_comm_session:
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
         MOV      R4,R0
+        MOVS     R0,#+1
+          CFI FunCall fw_service_quiet
+        BL       fw_service_quiet
         MOVS     R0,#+1
           CFI FunCall upload_runtime_quiet
         BL       upload_runtime_quiet
@@ -5400,6 +5430,8 @@ user_savereset:
         BL       ?Subroutine25
 ??CrossCallReturnLabel_79:
         CBZ.N    R0,??user_savereset_0
+          CFI FunCall fw_service_cancel
+        BL       fw_service_cancel
           CFI FunCall upload_runtime_cancel
         BL       upload_runtime_cancel
           CFI FunCall table_runtime_cancel
@@ -9201,6 +9233,10 @@ user_getFWblockFromServer:
           CFI CFA R13+40
         MOV      R5,R0
         MOV      R6,R1
+          CFI FunCall fw_service_busy
+        BL       fw_service_busy
+        CMP R0,#+0
+        BNE.W ??user_getFWblockFromServer_0
           CFI FunCall fw_async_active
         BL       fw_async_active
         CBNZ.N   R0,??user_getFWblockFromServer_0
@@ -9790,6 +9826,8 @@ fw_abort:
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
         MOV      R4,R0
+          CFI FunCall fw_service_cancel
+        BL       fw_service_cancel
           CFI FunCall fw_async_cancel
         BL       fw_async_cancel
         MOVS     R1,#+0
@@ -10178,6 +10216,11 @@ fw_rollback:
           CFI Function fw_rollback_poll
         THUMB
 fw_rollback_poll:
+        LDR.W R0,fw_service_runtime_flag
+        LDRB R0,[R0]
+        CMP R0,#+0
+        IT NE
+        BXNE LR
         PUSH     {R4-R8,LR}
           CFI R14 Frame(CFA, -4)
           CFI R8 Frame(CFA, -8)
@@ -10290,6 +10333,10 @@ fw_rollback_poll:
           CFI CFA R13+24
         POP      {R4-R8,PC}
           CFI EndBlock cfiBlock263
+        SECTION `.text`:CODE:NOROOT(2)
+        DATA
+fw_service_runtime_flag:
+        DC32 store_runtime
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -13168,6 +13215,13 @@ user_parse_comand:
         BLNE     user_debug
         CMP      R4,#+19
         BNE.N    ??user_parse_comand_86
+        MOV R2,R6
+        MOV R1,R5
+        ADD R0,R7,#+5
+          CFI FunCall fw_service_begin
+        BL fw_service_begin
+        CMP R0,#+0
+        BNE.W ??user_parse_comand_1
         MOV      R1,R5
         ADDS     R0,R7,#+5
           CFI FunCall fw_start
@@ -19470,6 +19524,9 @@ store_usb_session:
         LDR      R0,[R2, #+0]
         STR      R0,[R4, #+12]
         MOVS     R0,#+0
+          CFI FunCall fw_service_quiet
+        BL       fw_service_quiet
+        MOVS     R0,#+0
           CFI FunCall upload_runtime_quiet
         BL       upload_runtime_quiet
         MOVS     R0,#+0
@@ -20565,12 +20622,21 @@ ix_owner_poll_idle:
         BL       upload_runtime_poll
         B.W      ??user_storage_poll_1
 upload_owner_poll_idle:
+          CFI FunCall fw_service_active
+        BL fw_service_active
+        CBZ R0,fw_service_owner_idle
+          CFI FunCall fw_service_poll
+        BL fw_service_poll
+        B.W ??user_storage_poll_1
+fw_service_owner_idle:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R5,R0
           CFI FunCall mem_config_result
         BL       mem_config_result
         MOV      R6,R0
+          CFI FunCall fw_service_config_result
+        BL fw_service_config_result
           CFI FunCall table_runtime_active
         BL       table_runtime_active
         CBZ.N    R0,??user_storage_poll_0
