@@ -72,7 +72,8 @@
     "idle_photo_ack_free_bytes": 1776
   },
   "ack_power_cuts": 532,
-  "elf_sha256": "a4874e0b9a2d104e570d9974b122216bece326b97877448c364fa870a312de0b",
+  "elf_sha256": "e62ab6029bc1a523d38c1840d4e367a7ca1ddd2d18d584a218c2c1d50a9bb536",
   "status": "PASS",
-  "parser": 2
+  "parser": 2,
+  "media_gate": 4
 }

@@ -11,6 +11,7 @@
         EXTERN device
         EXTERN store_runtime
         EXTERN usb_bus_resets
+        EXTERN mem_tables_ready
         EXTERN w25_read_data
         EXTERN log_blank
         EXTERN log_valid
@@ -92,6 +93,12 @@ upload_runtime_begin:
         LDR R0,[R0]
         CMP R0,#+0
         BNE.W up_begin_handled
+        ; Capture the public media/recovery gate before publishing this owner.
+        ; Reads below bypass mem_read only after this check succeeds.
+          CFI FunCall mem_tables_ready
+        BL mem_tables_ready
+        CMP R0,#+0
+        BEQ.W up_begin_handled
         ; Reserve BOTH objects before ACK can request durable cursor writes.
         MOVS R0,#+36
           CFI FunCall malloc
