@@ -13,6 +13,7 @@
         #define SHT_PROGBITS 0x1
 
         EXTERN crc32_update
+        EXTERN mem_config_result
         EXTERN memcmp
         EXTERN sj_destination
         EXTERN w25_async_active
@@ -77,8 +78,9 @@
 
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
+; data[64] remains persistent for W25; check[64] is poll-local.
 sjr:
-        DS8 192
+        DS8 128
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock0 Using cfiCommon0
@@ -142,6 +144,10 @@ sj_runtime_begin:
         MOV      R4,R0
         MOV      R7,R1
         MOV      R5,R2
+          CFI FunCall mem_config_result
+        BL       mem_config_result
+        CMP      R0,#+0
+        BNE.N    ??sj_runtime_begin_0
         LDR.N    R6,??DataTable6
         LDRB     R0,[R6, #+54]
         CMP      R0,#+0
@@ -232,6 +238,10 @@ sj_runtime_poll:
           CFI R5 Frame(CFA, -8)
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
+; Scratch is consumed synchronously; the outgoing fifth argument reuses it
+; only in phases where no comparison bytes remain live. No DMA owns it.
+        SUB      SP,SP,#+64
+          CFI CFA R13+80
         MOV      R5,R0
         LDR.N    R4,??DataTable6
         LDRB     R0,[R4, #+54]
@@ -278,14 +288,37 @@ sj_runtime_poll:
         TBH      [PC, R0, LSL #+1]
         DATA
 ??sj_runtime_poll_0:
-        DC16     0x44,0x4C,0x51,0x62
-        DC16     0x71,0x9E,0xA5,0xBF
-        DC16     0xCA,0xD5,0xDA,0xDE
-        DC16     0xE9,0xF4,0x10E,0x1F
-        DC16     0x25,0x25,0x25,0x25
-        DC16     0x25,0x25,0x25,0x25
-        DC16     0x25,0x25,0x25,0x25
-        DC16     0x25,0x110,0x2B
+        DC16 (??sj_runtime_poll_15-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_18-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_19-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_20-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_24-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_28-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_29-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_30-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_31-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_32-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_33-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_34-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_35-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_37-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_40-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_9-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_8-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_41-??sj_runtime_poll_0)/2
+        DC16 (??sj_runtime_poll_6-??sj_runtime_poll_0)/2
         THUMB
 ??sj_runtime_poll_9:
         BL       ?Subroutine3
@@ -305,7 +338,10 @@ sj_runtime_poll:
 ??sj_runtime_poll_6:
         MOVS     R0,#+3
 ??sj_runtime_poll_1:
+        ADD      SP,SP,#+64
+          CFI CFA R13+16
         POP      {R1,R4,R5,PC}
+          CFI CFA R13+80
 ??sj_runtime_poll_10:
         BL       ?Subroutine2
 ??CrossCallReturnLabel_5:
@@ -375,13 +411,16 @@ sj_runtime_poll:
 ??sj_runtime_poll_12:
         MOVS     R0,#+1
 ??sj_runtime_poll_23:
+        ADD      SP,SP,#+64
+          CFI CFA R13+16
         POP      {R1,R4,R5,PC}
+          CFI CFA R13+80
 ??sj_runtime_poll_21:
         MOVS     R1,#+3
         B.N      ??sj_runtime_poll_22
 ??sj_runtime_poll_24:
         MOVS     R2,#+64
-        ADD      R1,R4,#+125
+        MOV      R1,SP
         BL       ?Subroutine10
 ??CrossCallReturnLabel_22:
           CFI FunCall w25_read_data
@@ -440,15 +479,15 @@ sj_runtime_poll:
 ??CrossCallReturnLabel_13:
         CMP      R0,#+0
         ITT      EQ
-        LDRBEQ   R0,[R4, #+153]
+        LDRBEQ   R0,[SP, #+28]
         CMPEQ    R0,#+255
         BNE.N    ??sj_runtime_poll_26
-        LDRB     R0,[R4, #+154]
+        LDRB     R0,[SP, #+29]
         CMP      R0,#+255
         ITTTT    EQ
-        LDRBEQ   R0,[R4, #+155]
+        LDRBEQ   R0,[SP, #+30]
         CMPEQ    R0,#+255
-        LDRBEQ   R0,[R4, #+156]
+        LDRBEQ   R0,[SP, #+31]
         CMPEQ    R0,#+255
         BNE.N    ??sj_runtime_poll_26
         MOVS     R0,#+8
@@ -541,7 +580,10 @@ sj_runtime_poll:
         B.N      ??sj_runtime_poll_16
 ??sj_runtime_poll_41:
         MOVS     R0,#+2
+        ADD      SP,SP,#+64
+          CFI CFA R13+16
         POP      {R1,R4,R5,PC}
+          CFI CFA R13+80
           CFI EndBlock cfiBlock6
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -586,14 +628,14 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond8 Using cfiCommon0
           CFI (cfiCond8) Function sj_runtime_poll
           CFI (cfiCond8) Conditional ??CrossCallReturnLabel_24
           CFI (cfiCond8) R4 Frame(CFA, -12)
           CFI (cfiCond8) R5 Frame(CFA, -8)
           CFI (cfiCond8) R14 Frame(CFA, -4)
-          CFI (cfiCond8) CFA R13+16
+          CFI (cfiCond8) CFA R13+80
           CFI Block cfiPicker9 Using cfiCommon1
           CFI (cfiPicker9) NoFunction
           CFI (cfiPicker9) Picker
@@ -615,14 +657,14 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond11 Using cfiCommon0
           CFI (cfiCond11) Function sj_runtime_poll
           CFI (cfiCond11) Conditional ??CrossCallReturnLabel_22
           CFI (cfiCond11) R4 Frame(CFA, -12)
           CFI (cfiCond11) R5 Frame(CFA, -8)
           CFI (cfiCond11) R14 Frame(CFA, -4)
-          CFI (cfiCond11) CFA R13+16
+          CFI (cfiCond11) CFA R13+80
           CFI Block cfiPicker12 Using cfiCommon1
           CFI (cfiPicker12) NoFunction
           CFI (cfiPicker12) Picker
@@ -643,14 +685,14 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond14 Using cfiCommon0
           CFI (cfiCond14) Function sj_runtime_poll
           CFI (cfiCond14) Conditional ??CrossCallReturnLabel_20
           CFI (cfiCond14) R4 Frame(CFA, -12)
           CFI (cfiCond14) R5 Frame(CFA, -8)
           CFI (cfiCond14) R14 Frame(CFA, -4)
-          CFI (cfiCond14) CFA R13+16
+          CFI (cfiCond14) CFA R13+80
           CFI Block cfiPicker15 Using cfiCommon1
           CFI (cfiPicker15) NoFunction
           CFI (cfiPicker15) Picker
@@ -674,14 +716,14 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond17 Using cfiCommon0
           CFI (cfiCond17) Function sj_runtime_poll
           CFI (cfiCond17) Conditional ??CrossCallReturnLabel_18
           CFI (cfiCond17) R4 Frame(CFA, -12)
           CFI (cfiCond17) R5 Frame(CFA, -8)
           CFI (cfiCond17) R14 Frame(CFA, -4)
-          CFI (cfiCond17) CFA R13+16
+          CFI (cfiCond17) CFA R13+80
           CFI Block cfiPicker18 Using cfiCommon1
           CFI (cfiPicker18) NoFunction
           CFI (cfiPicker18) Picker
@@ -703,21 +745,21 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond20 Using cfiCommon0
           CFI (cfiCond20) Function sj_runtime_poll
           CFI (cfiCond20) Conditional ??CrossCallReturnLabel_15
           CFI (cfiCond20) R4 Frame(CFA, -12)
           CFI (cfiCond20) R5 Frame(CFA, -8)
           CFI (cfiCond20) R14 Frame(CFA, -4)
-          CFI (cfiCond20) CFA R13+16
+          CFI (cfiCond20) CFA R13+80
           CFI Block cfiCond21 Using cfiCommon0
           CFI (cfiCond21) Function sj_runtime_poll
           CFI (cfiCond21) Conditional ??CrossCallReturnLabel_16
           CFI (cfiCond21) R4 Frame(CFA, -12)
           CFI (cfiCond21) R5 Frame(CFA, -8)
           CFI (cfiCond21) R14 Frame(CFA, -4)
-          CFI (cfiCond21) CFA R13+16
+          CFI (cfiCond21) CFA R13+80
           CFI Block cfiPicker22 Using cfiCommon1
           CFI (cfiPicker22) NoFunction
           CFI (cfiPicker22) Picker
@@ -740,20 +782,20 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond24 Using cfiCommon0
           CFI (cfiCond24) Function sj_runtime_poll
           CFI (cfiCond24) Conditional ??CrossCallReturnLabel_12
           CFI (cfiCond24) R4 Frame(CFA, -12)
           CFI (cfiCond24) R5 Frame(CFA, -8)
           CFI (cfiCond24) R14 Frame(CFA, -4)
-          CFI (cfiCond24) CFA R13+16
+          CFI (cfiCond24) CFA R13+80
           CFI Block cfiPicker25 Using cfiCommon1
           CFI (cfiPicker25) NoFunction
           CFI (cfiPicker25) Picker
         THUMB
 ?Subroutine6:
-        ADD      R1,R4,#+125
+        MOV      R1,SP
         ADD      R0,R4,#+20
           CFI (cfiCond23) FunCall sj_runtime_poll memcmp
           CFI (cfiCond23) FunCall sj_runtime_poll memcmp
@@ -769,21 +811,21 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond27 Using cfiCommon0
           CFI (cfiCond27) Function sj_runtime_poll
           CFI (cfiCond27) Conditional ??CrossCallReturnLabel_10
           CFI (cfiCond27) R4 Frame(CFA, -12)
           CFI (cfiCond27) R5 Frame(CFA, -8)
           CFI (cfiCond27) R14 Frame(CFA, -4)
-          CFI (cfiCond27) CFA R13+16
+          CFI (cfiCond27) CFA R13+80
           CFI Block cfiPicker28 Using cfiCommon1
           CFI (cfiPicker28) NoFunction
           CFI (cfiPicker28) Picker
         THUMB
 ?Subroutine5:
         MOVS     R2,#+32
-        ADD      R1,R4,#+125
+        MOV      R1,SP
         MOV      R0,#+2072576
           CFI (cfiCond26) FunCall sj_runtime_poll w25_read_data
           CFI (cfiCond26) FunCall sj_runtime_poll w25_read_data
@@ -799,21 +841,21 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond30 Using cfiCommon0
           CFI (cfiCond30) Function sj_runtime_poll
           CFI (cfiCond30) Conditional ??CrossCallReturnLabel_8
           CFI (cfiCond30) R4 Frame(CFA, -12)
           CFI (cfiCond30) R5 Frame(CFA, -8)
           CFI (cfiCond30) R14 Frame(CFA, -4)
-          CFI (cfiCond30) CFA R13+16
+          CFI (cfiCond30) CFA R13+80
           CFI Block cfiPicker31 Using cfiCommon1
           CFI (cfiPicker31) NoFunction
           CFI (cfiPicker31) Picker
         THUMB
 ?Subroutine4:
         MOVS     R2,#+64
-        ADD      R1,R4,#+125
+        MOV      R1,SP
         LDR      R0,[R4, #+16]
           CFI (cfiCond29) FunCall sj_runtime_poll crc32_update
           CFI (cfiCond29) FunCall sj_runtime_poll crc32_update
@@ -829,14 +871,14 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond33 Using cfiCommon0
           CFI (cfiCond33) Function sj_runtime_poll
           CFI (cfiCond33) Conditional ??CrossCallReturnLabel_6
           CFI (cfiCond33) R4 Frame(CFA, -12)
           CFI (cfiCond33) R5 Frame(CFA, -8)
           CFI (cfiCond33) R14 Frame(CFA, -4)
-          CFI (cfiCond33) CFA R13+16
+          CFI (cfiCond33) CFA R13+80
           CFI Block cfiPicker34 Using cfiCommon1
           CFI (cfiPicker34) NoFunction
           CFI (cfiPicker34) Picker
@@ -861,21 +903,21 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond36 Using cfiCommon0
           CFI (cfiCond36) Function sj_runtime_poll
           CFI (cfiCond36) Conditional ??CrossCallReturnLabel_4
           CFI (cfiCond36) R4 Frame(CFA, -12)
           CFI (cfiCond36) R5 Frame(CFA, -8)
           CFI (cfiCond36) R14 Frame(CFA, -4)
-          CFI (cfiCond36) CFA R13+16
+          CFI (cfiCond36) CFA R13+80
           CFI Block cfiPicker37 Using cfiCommon1
           CFI (cfiPicker37) NoFunction
           CFI (cfiPicker37) Picker
         THUMB
 ?Subroutine2:
         MOVS     R2,#+64
-        ADD      R1,R4,#+125
+        MOV      R1,SP
         ADD      R0,R4,#+61
           CFI (cfiCond35) FunCall sj_runtime_poll memcmp
           CFI (cfiCond35) FunCall sj_runtime_poll memcmp
@@ -891,21 +933,21 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond39 Using cfiCommon0
           CFI (cfiCond39) Function sj_runtime_poll
           CFI (cfiCond39) Conditional ??CrossCallReturnLabel_2
           CFI (cfiCond39) R4 Frame(CFA, -12)
           CFI (cfiCond39) R5 Frame(CFA, -8)
           CFI (cfiCond39) R14 Frame(CFA, -4)
-          CFI (cfiCond39) CFA R13+16
+          CFI (cfiCond39) CFA R13+80
           CFI Block cfiPicker40 Using cfiCommon1
           CFI (cfiPicker40) NoFunction
           CFI (cfiPicker40) Picker
         THUMB
 ?Subroutine1:
         MOVS     R2,#+64
-        ADD      R1,R4,#+125
+        MOV      R1,SP
         LDR      R0,[R4, #+8]
         LDRH     R3,[R4, #+52]
         ADDS     R0,R3,R0
@@ -923,14 +965,14 @@ sj_runtime_poll:
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+16
+          CFI CFA R13+80
           CFI Block cfiCond42 Using cfiCommon0
           CFI (cfiCond42) Function sj_runtime_poll
           CFI (cfiCond42) Conditional ??CrossCallReturnLabel_0
           CFI (cfiCond42) R4 Frame(CFA, -12)
           CFI (cfiCond42) R5 Frame(CFA, -8)
           CFI (cfiCond42) R14 Frame(CFA, -4)
-          CFI (cfiCond42) CFA R13+16
+          CFI (cfiCond42) CFA R13+80
           CFI Block cfiPicker43 Using cfiCommon1
           CFI (cfiPicker43) NoFunction
           CFI (cfiPicker43) Picker

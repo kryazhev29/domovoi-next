@@ -11,7 +11,7 @@ typedef struct {
   uint32_t address, expected, crc, header[8];
   uint16_t offset;
   uint8_t phase, after, waiting, committed, cancelled, fault, changed;
-  uint8_t data[64], check[64];
+  uint8_t data[64]; /* async-owned; comparison scratch lives in ASM poll frame */
 } sj_runtime_state_s;
 /* Shared 64-byte payload storage. Table/photo owners are mutually exclusive. */
 extern sj_runtime_state_s sjr;
