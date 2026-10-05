@@ -1,0 +1,2310 @@
+{
+  "units": "Unicorn instructions, not board cycles/time; NOR reads modeled",
+  "before": {
+    "elf_sha256": "a6ab658b9c160115407f20e19efb472074e263fdf269f076bd48d6e353b674e5",
+    "index": {
+      "match": {
+        "instructions": 220,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 1,
+        "cell": "0700373930303030303030378989898989898989898989898989898989898989"
+      },
+      "empty": {
+        "instructions": 132,
+        "reads": [
+          [
+            3241216,
+            64
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 0,
+        "cell": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+      },
+      "mismatch": {
+        "instructions": 222,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 0,
+        "cell": "0700373930303030303030368989898989898989898989898989898989898989"
+      },
+      "deleted": {
+        "instructions": 154,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 0,
+        "cell": "ffff373930303030303030378989898989898989898989898989898989898989"
+      },
+      "bucket_fault": {
+        "instructions": 128,
+        "reads": [
+          [
+            3241216,
+            64
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 255,
+        "cell": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+      },
+      "cell_fault": {
+        "instructions": 142,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 255,
+        "cell": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+      }
+    },
+    "index_random_checks": 128,
+    "blank_sector": {
+      "-1/-1": {
+        "instructions": 33543,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            192,
+            64
+          ],
+          [
+            256,
+            64
+          ],
+          [
+            320,
+            64
+          ],
+          [
+            384,
+            64
+          ],
+          [
+            448,
+            64
+          ],
+          [
+            512,
+            64
+          ],
+          [
+            576,
+            64
+          ],
+          [
+            640,
+            64
+          ],
+          [
+            704,
+            64
+          ],
+          [
+            768,
+            64
+          ],
+          [
+            832,
+            64
+          ],
+          [
+            896,
+            64
+          ],
+          [
+            960,
+            64
+          ],
+          [
+            1024,
+            64
+          ],
+          [
+            1088,
+            64
+          ],
+          [
+            1152,
+            64
+          ],
+          [
+            1216,
+            64
+          ],
+          [
+            1280,
+            64
+          ],
+          [
+            1344,
+            64
+          ],
+          [
+            1408,
+            64
+          ],
+          [
+            1472,
+            64
+          ],
+          [
+            1536,
+            64
+          ],
+          [
+            1600,
+            64
+          ],
+          [
+            1664,
+            64
+          ],
+          [
+            1728,
+            64
+          ],
+          [
+            1792,
+            64
+          ],
+          [
+            1856,
+            64
+          ],
+          [
+            1920,
+            64
+          ],
+          [
+            1984,
+            64
+          ],
+          [
+            2048,
+            64
+          ],
+          [
+            2112,
+            64
+          ],
+          [
+            2176,
+            64
+          ],
+          [
+            2240,
+            64
+          ],
+          [
+            2304,
+            64
+          ],
+          [
+            2368,
+            64
+          ],
+          [
+            2432,
+            64
+          ],
+          [
+            2496,
+            64
+          ],
+          [
+            2560,
+            64
+          ],
+          [
+            2624,
+            64
+          ],
+          [
+            2688,
+            64
+          ],
+          [
+            2752,
+            64
+          ],
+          [
+            2816,
+            64
+          ],
+          [
+            2880,
+            64
+          ],
+          [
+            2944,
+            64
+          ],
+          [
+            3008,
+            64
+          ],
+          [
+            3072,
+            64
+          ],
+          [
+            3136,
+            64
+          ],
+          [
+            3200,
+            64
+          ],
+          [
+            3264,
+            64
+          ],
+          [
+            3328,
+            64
+          ],
+          [
+            3392,
+            64
+          ],
+          [
+            3456,
+            64
+          ],
+          [
+            3520,
+            64
+          ],
+          [
+            3584,
+            64
+          ],
+          [
+            3648,
+            64
+          ],
+          [
+            3712,
+            64
+          ],
+          [
+            3776,
+            64
+          ],
+          [
+            3840,
+            64
+          ],
+          [
+            3904,
+            64
+          ],
+          [
+            3968,
+            64
+          ],
+          [
+            4032,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 1
+      },
+      "0/-1": {
+        "instructions": 20,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "1/-1": {
+        "instructions": 28,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "3/-1": {
+        "instructions": 44,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "4/-1": {
+        "instructions": 52,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "63/-1": {
+        "instructions": 524,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "64/-1": {
+        "instructions": 544,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "4095/-1": {
+        "instructions": 33536,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            192,
+            64
+          ],
+          [
+            256,
+            64
+          ],
+          [
+            320,
+            64
+          ],
+          [
+            384,
+            64
+          ],
+          [
+            448,
+            64
+          ],
+          [
+            512,
+            64
+          ],
+          [
+            576,
+            64
+          ],
+          [
+            640,
+            64
+          ],
+          [
+            704,
+            64
+          ],
+          [
+            768,
+            64
+          ],
+          [
+            832,
+            64
+          ],
+          [
+            896,
+            64
+          ],
+          [
+            960,
+            64
+          ],
+          [
+            1024,
+            64
+          ],
+          [
+            1088,
+            64
+          ],
+          [
+            1152,
+            64
+          ],
+          [
+            1216,
+            64
+          ],
+          [
+            1280,
+            64
+          ],
+          [
+            1344,
+            64
+          ],
+          [
+            1408,
+            64
+          ],
+          [
+            1472,
+            64
+          ],
+          [
+            1536,
+            64
+          ],
+          [
+            1600,
+            64
+          ],
+          [
+            1664,
+            64
+          ],
+          [
+            1728,
+            64
+          ],
+          [
+            1792,
+            64
+          ],
+          [
+            1856,
+            64
+          ],
+          [
+            1920,
+            64
+          ],
+          [
+            1984,
+            64
+          ],
+          [
+            2048,
+            64
+          ],
+          [
+            2112,
+            64
+          ],
+          [
+            2176,
+            64
+          ],
+          [
+            2240,
+            64
+          ],
+          [
+            2304,
+            64
+          ],
+          [
+            2368,
+            64
+          ],
+          [
+            2432,
+            64
+          ],
+          [
+            2496,
+            64
+          ],
+          [
+            2560,
+            64
+          ],
+          [
+            2624,
+            64
+          ],
+          [
+            2688,
+            64
+          ],
+          [
+            2752,
+            64
+          ],
+          [
+            2816,
+            64
+          ],
+          [
+            2880,
+            64
+          ],
+          [
+            2944,
+            64
+          ],
+          [
+            3008,
+            64
+          ],
+          [
+            3072,
+            64
+          ],
+          [
+            3136,
+            64
+          ],
+          [
+            3200,
+            64
+          ],
+          [
+            3264,
+            64
+          ],
+          [
+            3328,
+            64
+          ],
+          [
+            3392,
+            64
+          ],
+          [
+            3456,
+            64
+          ],
+          [
+            3520,
+            64
+          ],
+          [
+            3584,
+            64
+          ],
+          [
+            3648,
+            64
+          ],
+          [
+            3712,
+            64
+          ],
+          [
+            3776,
+            64
+          ],
+          [
+            3840,
+            64
+          ],
+          [
+            3904,
+            64
+          ],
+          [
+            3968,
+            64
+          ],
+          [
+            4032,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "-1/0": {
+        "instructions": 15,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "-1/2048": {
+        "instructions": 16783,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            192,
+            64
+          ],
+          [
+            256,
+            64
+          ],
+          [
+            320,
+            64
+          ],
+          [
+            384,
+            64
+          ],
+          [
+            448,
+            64
+          ],
+          [
+            512,
+            64
+          ],
+          [
+            576,
+            64
+          ],
+          [
+            640,
+            64
+          ],
+          [
+            704,
+            64
+          ],
+          [
+            768,
+            64
+          ],
+          [
+            832,
+            64
+          ],
+          [
+            896,
+            64
+          ],
+          [
+            960,
+            64
+          ],
+          [
+            1024,
+            64
+          ],
+          [
+            1088,
+            64
+          ],
+          [
+            1152,
+            64
+          ],
+          [
+            1216,
+            64
+          ],
+          [
+            1280,
+            64
+          ],
+          [
+            1344,
+            64
+          ],
+          [
+            1408,
+            64
+          ],
+          [
+            1472,
+            64
+          ],
+          [
+            1536,
+            64
+          ],
+          [
+            1600,
+            64
+          ],
+          [
+            1664,
+            64
+          ],
+          [
+            1728,
+            64
+          ],
+          [
+            1792,
+            64
+          ],
+          [
+            1856,
+            64
+          ],
+          [
+            1920,
+            64
+          ],
+          [
+            1984,
+            64
+          ],
+          [
+            2048,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      }
+    },
+    "ff_checks": 200,
+    "ff": {
+      "0": {
+        "instructions": 10,
+        "result": 65535,
+        "stack_bytes": 96
+      },
+      "1": {
+        "instructions": 610,
+        "result": 255,
+        "stack_bytes": 104
+      },
+      "16000": {
+        "instructions": 27898,
+        "result": 8147,
+        "stack_bytes": 104
+      },
+      "1601536": {
+        "instructions": 41194,
+        "result": 51273,
+        "stack_bytes": 104
+      },
+      "4294967295": {
+        "instructions": 65098,
+        "result": 16448,
+        "stack_bytes": 104
+      }
+    },
+    "scan": {
+      "bad_full": {
+        "instructions": 83993,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "bad_partial_tail": {
+        "instructions": 83960,
+        "move_calls": 1,
+        "move_bytes": 3,
+        "left": 3,
+        "ready": 0,
+        "tail_hex": "534c44"
+      },
+      "garbage": {
+        "instructions": 63519,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "valid": {
+        "instructions": 237,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 20,
+        "ready": 20,
+        "tail_hex": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      },
+      "partial": {
+        "instructions": 66,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 5,
+        "ready": 0,
+        "tail_hex": "534c444e0c"
+      },
+      "nested_bad_crc": {
+        "instructions": 3566879,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      }
+    },
+    "photo": {
+      "0": {
+        "instructions": 14,
+        "reads": 0,
+        "read_bytes": 0,
+        "watchdog": 0
+      },
+      "1": {
+        "instructions": 53,
+        "reads": 1,
+        "read_bytes": 1,
+        "watchdog": 1
+      },
+      "64": {
+        "instructions": 587,
+        "reads": 1,
+        "read_bytes": 64,
+        "watchdog": 1
+      },
+      "65": {
+        "instructions": 626,
+        "reads": 2,
+        "read_bytes": 65,
+        "watchdog": 2
+      },
+      "4095": {
+        "instructions": 36682,
+        "reads": 64,
+        "read_bytes": 4095,
+        "watchdog": 64
+      }
+    },
+    "find_id": {
+      "32/-1/False": {
+        "instructions": 1107,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/-1/False": {
+        "instructions": 32200,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/-1/True": {
+        "instructions": 87496,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/0/False": {
+        "instructions": 364,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/511/False": {
+        "instructions": 16370,
+        "reads": 16,
+        "read_bytes": 16384
+      },
+      "1024/1023/False": {
+        "instructions": 32418,
+        "reads": 32,
+        "read_bytes": 32768
+      }
+    },
+    "log_blank": {
+      "-1": {
+        "instructions": 260,
+        "result": 1,
+        "stack_bytes": 0
+      },
+      "0": {
+        "instructions": 7,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "1": {
+        "instructions": 15,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "2": {
+        "instructions": 23,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "3": {
+        "instructions": 31,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "4": {
+        "instructions": 39,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "5": {
+        "instructions": 47,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "6": {
+        "instructions": 55,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "7": {
+        "instructions": 63,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "8": {
+        "instructions": 71,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "9": {
+        "instructions": 79,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "10": {
+        "instructions": 87,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "11": {
+        "instructions": 95,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "12": {
+        "instructions": 103,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "13": {
+        "instructions": 111,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "14": {
+        "instructions": 119,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "15": {
+        "instructions": 127,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "16": {
+        "instructions": 135,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "17": {
+        "instructions": 143,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "18": {
+        "instructions": 151,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "19": {
+        "instructions": 159,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "20": {
+        "instructions": 167,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "21": {
+        "instructions": 175,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "22": {
+        "instructions": 183,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "23": {
+        "instructions": 191,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "24": {
+        "instructions": 199,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "25": {
+        "instructions": 207,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "26": {
+        "instructions": 215,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "27": {
+        "instructions": 223,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "28": {
+        "instructions": 231,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "29": {
+        "instructions": 239,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "30": {
+        "instructions": 247,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "31": {
+        "instructions": 255,
+        "result": 0,
+        "stack_bytes": 0
+      }
+    }
+  },
+  "after": {
+    "elf_sha256": "323ac9db52c1a77667370fc82db94dde39863452eb67113f6d078d8ccff6a9ba",
+    "index": {
+      "match": {
+        "instructions": 154,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 1,
+        "cell": "0700373930303030303030378989898989898989898989898989898989898989"
+      },
+      "empty": {
+        "instructions": 66,
+        "reads": [
+          [
+            3241216,
+            64
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 0,
+        "cell": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+      },
+      "mismatch": {
+        "instructions": 156,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 0,
+        "cell": "0700373930303030303030368989898989898989898989898989898989898989"
+      },
+      "deleted": {
+        "instructions": 88,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 0,
+        "cell": "ffff373930303030303030378989898989898989898989898989898989898989"
+      },
+      "bucket_fault": {
+        "instructions": 62,
+        "reads": [
+          [
+            3241216,
+            64
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 255,
+        "cell": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+      },
+      "cell_fault": {
+        "instructions": 76,
+        "reads": [
+          [
+            3241216,
+            64
+          ],
+          [
+            266432,
+            32
+          ]
+        ],
+        "stack_bytes": 96,
+        "value": 255,
+        "cell": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+      }
+    },
+    "index_random_checks": 128,
+    "blank_sector": {
+      "-1/-1": {
+        "instructions": 8776,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            192,
+            64
+          ],
+          [
+            256,
+            64
+          ],
+          [
+            320,
+            64
+          ],
+          [
+            384,
+            64
+          ],
+          [
+            448,
+            64
+          ],
+          [
+            512,
+            64
+          ],
+          [
+            576,
+            64
+          ],
+          [
+            640,
+            64
+          ],
+          [
+            704,
+            64
+          ],
+          [
+            768,
+            64
+          ],
+          [
+            832,
+            64
+          ],
+          [
+            896,
+            64
+          ],
+          [
+            960,
+            64
+          ],
+          [
+            1024,
+            64
+          ],
+          [
+            1088,
+            64
+          ],
+          [
+            1152,
+            64
+          ],
+          [
+            1216,
+            64
+          ],
+          [
+            1280,
+            64
+          ],
+          [
+            1344,
+            64
+          ],
+          [
+            1408,
+            64
+          ],
+          [
+            1472,
+            64
+          ],
+          [
+            1536,
+            64
+          ],
+          [
+            1600,
+            64
+          ],
+          [
+            1664,
+            64
+          ],
+          [
+            1728,
+            64
+          ],
+          [
+            1792,
+            64
+          ],
+          [
+            1856,
+            64
+          ],
+          [
+            1920,
+            64
+          ],
+          [
+            1984,
+            64
+          ],
+          [
+            2048,
+            64
+          ],
+          [
+            2112,
+            64
+          ],
+          [
+            2176,
+            64
+          ],
+          [
+            2240,
+            64
+          ],
+          [
+            2304,
+            64
+          ],
+          [
+            2368,
+            64
+          ],
+          [
+            2432,
+            64
+          ],
+          [
+            2496,
+            64
+          ],
+          [
+            2560,
+            64
+          ],
+          [
+            2624,
+            64
+          ],
+          [
+            2688,
+            64
+          ],
+          [
+            2752,
+            64
+          ],
+          [
+            2816,
+            64
+          ],
+          [
+            2880,
+            64
+          ],
+          [
+            2944,
+            64
+          ],
+          [
+            3008,
+            64
+          ],
+          [
+            3072,
+            64
+          ],
+          [
+            3136,
+            64
+          ],
+          [
+            3200,
+            64
+          ],
+          [
+            3264,
+            64
+          ],
+          [
+            3328,
+            64
+          ],
+          [
+            3392,
+            64
+          ],
+          [
+            3456,
+            64
+          ],
+          [
+            3520,
+            64
+          ],
+          [
+            3584,
+            64
+          ],
+          [
+            3648,
+            64
+          ],
+          [
+            3712,
+            64
+          ],
+          [
+            3776,
+            64
+          ],
+          [
+            3840,
+            64
+          ],
+          [
+            3904,
+            64
+          ],
+          [
+            3968,
+            64
+          ],
+          [
+            4032,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 1
+      },
+      "0/-1": {
+        "instructions": 24,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "1/-1": {
+        "instructions": 31,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "3/-1": {
+        "instructions": 45,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "4/-1": {
+        "instructions": 54,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "63/-1": {
+        "instructions": 138,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "64/-1": {
+        "instructions": 161,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "4095/-1": {
+        "instructions": 8769,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            192,
+            64
+          ],
+          [
+            256,
+            64
+          ],
+          [
+            320,
+            64
+          ],
+          [
+            384,
+            64
+          ],
+          [
+            448,
+            64
+          ],
+          [
+            512,
+            64
+          ],
+          [
+            576,
+            64
+          ],
+          [
+            640,
+            64
+          ],
+          [
+            704,
+            64
+          ],
+          [
+            768,
+            64
+          ],
+          [
+            832,
+            64
+          ],
+          [
+            896,
+            64
+          ],
+          [
+            960,
+            64
+          ],
+          [
+            1024,
+            64
+          ],
+          [
+            1088,
+            64
+          ],
+          [
+            1152,
+            64
+          ],
+          [
+            1216,
+            64
+          ],
+          [
+            1280,
+            64
+          ],
+          [
+            1344,
+            64
+          ],
+          [
+            1408,
+            64
+          ],
+          [
+            1472,
+            64
+          ],
+          [
+            1536,
+            64
+          ],
+          [
+            1600,
+            64
+          ],
+          [
+            1664,
+            64
+          ],
+          [
+            1728,
+            64
+          ],
+          [
+            1792,
+            64
+          ],
+          [
+            1856,
+            64
+          ],
+          [
+            1920,
+            64
+          ],
+          [
+            1984,
+            64
+          ],
+          [
+            2048,
+            64
+          ],
+          [
+            2112,
+            64
+          ],
+          [
+            2176,
+            64
+          ],
+          [
+            2240,
+            64
+          ],
+          [
+            2304,
+            64
+          ],
+          [
+            2368,
+            64
+          ],
+          [
+            2432,
+            64
+          ],
+          [
+            2496,
+            64
+          ],
+          [
+            2560,
+            64
+          ],
+          [
+            2624,
+            64
+          ],
+          [
+            2688,
+            64
+          ],
+          [
+            2752,
+            64
+          ],
+          [
+            2816,
+            64
+          ],
+          [
+            2880,
+            64
+          ],
+          [
+            2944,
+            64
+          ],
+          [
+            3008,
+            64
+          ],
+          [
+            3072,
+            64
+          ],
+          [
+            3136,
+            64
+          ],
+          [
+            3200,
+            64
+          ],
+          [
+            3264,
+            64
+          ],
+          [
+            3328,
+            64
+          ],
+          [
+            3392,
+            64
+          ],
+          [
+            3456,
+            64
+          ],
+          [
+            3520,
+            64
+          ],
+          [
+            3584,
+            64
+          ],
+          [
+            3648,
+            64
+          ],
+          [
+            3712,
+            64
+          ],
+          [
+            3776,
+            64
+          ],
+          [
+            3840,
+            64
+          ],
+          [
+            3904,
+            64
+          ],
+          [
+            3968,
+            64
+          ],
+          [
+            4032,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "-1/0": {
+        "instructions": 14,
+        "reads": [
+          [
+            0,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      },
+      "-1/2048": {
+        "instructions": 4398,
+        "reads": [
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            192,
+            64
+          ],
+          [
+            256,
+            64
+          ],
+          [
+            320,
+            64
+          ],
+          [
+            384,
+            64
+          ],
+          [
+            448,
+            64
+          ],
+          [
+            512,
+            64
+          ],
+          [
+            576,
+            64
+          ],
+          [
+            640,
+            64
+          ],
+          [
+            704,
+            64
+          ],
+          [
+            768,
+            64
+          ],
+          [
+            832,
+            64
+          ],
+          [
+            896,
+            64
+          ],
+          [
+            960,
+            64
+          ],
+          [
+            1024,
+            64
+          ],
+          [
+            1088,
+            64
+          ],
+          [
+            1152,
+            64
+          ],
+          [
+            1216,
+            64
+          ],
+          [
+            1280,
+            64
+          ],
+          [
+            1344,
+            64
+          ],
+          [
+            1408,
+            64
+          ],
+          [
+            1472,
+            64
+          ],
+          [
+            1536,
+            64
+          ],
+          [
+            1600,
+            64
+          ],
+          [
+            1664,
+            64
+          ],
+          [
+            1728,
+            64
+          ],
+          [
+            1792,
+            64
+          ],
+          [
+            1856,
+            64
+          ],
+          [
+            1920,
+            64
+          ],
+          [
+            1984,
+            64
+          ],
+          [
+            2048,
+            64
+          ]
+        ],
+        "stack_bytes": 80,
+        "value": 0
+      }
+    },
+    "ff_checks": 200,
+    "ff": {
+      "0": {
+        "instructions": 10,
+        "result": 65535,
+        "stack_bytes": 96
+      },
+      "1": {
+        "instructions": 574,
+        "result": 255,
+        "stack_bytes": 96
+      },
+      "16000": {
+        "instructions": 12144,
+        "result": 8147,
+        "stack_bytes": 96
+      },
+      "1601536": {
+        "instructions": 17568,
+        "result": 51273,
+        "stack_bytes": 96
+      },
+      "4294967295": {
+        "instructions": 27972,
+        "result": 16448,
+        "stack_bytes": 96
+      }
+    },
+    "scan": {
+      "bad_full": {
+        "instructions": 32820,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "bad_partial_tail": {
+        "instructions": 32840,
+        "move_calls": 1,
+        "move_bytes": 3,
+        "left": 3,
+        "ready": 0,
+        "tail_hex": "534c44"
+      },
+      "garbage": {
+        "instructions": 12332,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "valid": {
+        "instructions": 224,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 20,
+        "ready": 20,
+        "tail_hex": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      },
+      "partial": {
+        "instructions": 53,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 5,
+        "ready": 0,
+        "tail_hex": "534c444e0c"
+      },
+      "nested_bad_crc": {
+        "instructions": 3520452,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      }
+    },
+    "photo": {
+      "0": {
+        "instructions": 14,
+        "reads": 0,
+        "read_bytes": 0,
+        "watchdog": 0
+      },
+      "1": {
+        "instructions": 53,
+        "reads": 1,
+        "read_bytes": 1,
+        "watchdog": 1
+      },
+      "64": {
+        "instructions": 587,
+        "reads": 1,
+        "read_bytes": 64,
+        "watchdog": 1
+      },
+      "65": {
+        "instructions": 626,
+        "reads": 2,
+        "read_bytes": 65,
+        "watchdog": 2
+      },
+      "4095": {
+        "instructions": 36682,
+        "reads": 64,
+        "read_bytes": 4095,
+        "watchdog": 64
+      }
+    },
+    "find_id": {
+      "32/-1/False": {
+        "instructions": 1107,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/-1/False": {
+        "instructions": 32200,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/-1/True": {
+        "instructions": 87496,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/0/False": {
+        "instructions": 364,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/511/False": {
+        "instructions": 16370,
+        "reads": 16,
+        "read_bytes": 16384
+      },
+      "1024/1023/False": {
+        "instructions": 32418,
+        "reads": 32,
+        "read_bytes": 32768
+      }
+    },
+    "log_blank": {
+      "-1": {
+        "instructions": 260,
+        "result": 1,
+        "stack_bytes": 0
+      },
+      "0": {
+        "instructions": 7,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "1": {
+        "instructions": 15,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "2": {
+        "instructions": 23,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "3": {
+        "instructions": 31,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "4": {
+        "instructions": 39,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "5": {
+        "instructions": 47,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "6": {
+        "instructions": 55,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "7": {
+        "instructions": 63,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "8": {
+        "instructions": 71,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "9": {
+        "instructions": 79,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "10": {
+        "instructions": 87,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "11": {
+        "instructions": 95,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "12": {
+        "instructions": 103,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "13": {
+        "instructions": 111,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "14": {
+        "instructions": 119,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "15": {
+        "instructions": 127,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "16": {
+        "instructions": 135,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "17": {
+        "instructions": 143,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "18": {
+        "instructions": 151,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "19": {
+        "instructions": 159,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "20": {
+        "instructions": 167,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "21": {
+        "instructions": 175,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "22": {
+        "instructions": 183,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "23": {
+        "instructions": 191,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "24": {
+        "instructions": 199,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "25": {
+        "instructions": 207,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "26": {
+        "instructions": 215,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "27": {
+        "instructions": 223,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "28": {
+        "instructions": 231,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "29": {
+        "instructions": 239,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "30": {
+        "instructions": 247,
+        "result": 0,
+        "stack_bytes": 0
+      },
+      "31": {
+        "instructions": 255,
+        "result": 0,
+        "stack_bytes": 0
+      }
+    }
+  },
+  "linked_scan_differential": 264,
+  "linked_previous_hash_checks": 4096,
+  "linked_previous_crc_checks": 1000,
+  "baseline_commit": "548d780",
+  "implementation_commit": "174d940"
+}
