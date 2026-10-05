@@ -1,6 +1,6 @@
 /* Доработка: Кряжев А., 2026. */
 /* C oracle for the ASM runtime table command machine; included only by export.
- * At most 64 flash bytes per CRC step, 63 overlay records per journal chunk.
+ * CRC: 64-byte reads, <=4 chunks and one millisecond per poll.
  * No incoming pointer survives table_runtime_begin. */
 struct {
   uint8_t *records;
@@ -40,10 +40,20 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
     if (table_job.cmd==13) {
       cellID_s *old=(cellID_s*)(page+local);
       uint8_t first[4],done=old->reserve[6];
+      /* The reader runs twice: count only the journal preflight, once per
+       * sector. Publish the delta only after all sectors are verified. */
+      if (sjr.phase==16) {
+        if (old->index==0xffff) table_job.numbers++;
+        else table_job.sum^=idindex_hash(index,(uint8_t*)old->ID);
+        table_job.sum^=idindex_hash(index,record+2);
+        if (index>table_job.last) table_job.last=index;
+        if ((uint32_t)index*32>table_job.used) table_job.used=(uint32_t)index*32;
+      }
       bool keep=old->index!=0xffff && !memcmp(old->ID,record+2,10);
       memcpy(first,old->reserve,4); memcpy(old,record,table_job.cell_size);
       if (keep) { memcpy(old->reserve,first,4); old->reserve[6]=done; }
       id_set_pass_day(old,table_job.day);
+      if (sjr.phase==16) id_watch_end(id_time_end(old));
     } else memcpy(page+local,record,table_job.cell_size);
   }
   return 1;
@@ -63,14 +73,29 @@ static bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_
   memcpy(&table_job.stamp,ptr+5,4); table_job.cmd=cmd; table_job.mb=mb;
   table_job.channel=channel; table_job.uniq=uniq; table_job.start=mem[mb].start;
   table_job.day=id_today(); table_job.phase=1; flash_claim(FO_TABLE);
-  if (cmd==13) idindex_runtime_suspend();
+  if (cmd==13) {
+    table_job.last=id_cells_end; table_job.used=id_used_bytes;
+    idindex_runtime_suspend();
+  }
   return true;
 }
 static void table_scan_begin(void)
 {
   table_job.phase=3; table_job.offset=0; table_job.crc=0xffff;
-  table_job.numbers=table_job.last=0; table_job.sum=table_job.used=0;
-  if (table_job.cmd==13) id_nextEnd=0;
+  table_job.sector=mem[table_job.mb].size;
+  /* batch/sector are dead after the journal: reuse as recount flag/read end. */
+  table_job.batch=0;
+  if (table_job.cmd==13) {
+    if (!table_job.failed && !table_job.cancelled && id_used_bytes!=UINT32_MAX) {
+      device.numbersCount+=table_job.numbers; id_cells_end=table_job.last;
+      id_used_bytes=table_job.used; table_job.sector=table_job.used;
+      idindex_table_commit(table_job.sum,table_job.last);
+    } else {
+      table_job.batch=1; id_used_bytes=UINT32_MAX; id_nextEnd=0;
+      table_job.numbers=table_job.last=0; table_job.sum=table_job.used=0;
+    }
+  } else if (table_job.cmd==16 && !table_job.failed && !table_job.cancelled)
+    table_job.sector=table_job.bytes;
 }
 static void table_runtime_finish(void)
 {
@@ -123,29 +148,34 @@ static void table_runtime_poll(uint32_t now)
     return;
   }
   if (table_job.phase==3) {
-    uint8_t b[64]; uint16_t n=64;
-    if (mem[table_job.mb].size-table_job.offset<n) n=(uint16_t)(mem[table_job.mb].size-table_job.offset);
-    if (!w25_read_data(table_job.start+table_job.offset,b,n)) {
-      table_fault=table_job.failed=1; table_job.phase=4; return;
-    }
-    table_job.crc=crc16_calcInit(b,n,table_job.crc);
-    if (table_job.cmd==13) for (uint16_t i=0;i<n;i+=32) {
-      cellID_s *cell=(cellID_s*)(b+i);
-      if (!fast_all_ff(b+i,32)) table_job.used=table_job.offset+i+32;
-      if (cell->index==0xffff) continue;
-      uint16_t index=(uint16_t)((table_job.offset+i)/32+1);
-      table_job.numbers++; table_job.last=index;
-      table_job.sum^=idindex_hash(index,(uint8_t*)cell->ID);
-      id_watch_end(id_time_end(cell));
-    }
-    table_job.offset+=n;
-    if (table_job.offset==mem[table_job.mb].size) {
-      if (table_job.cmd==13) {
-        device.numbersCount=table_job.numbers; id_cells_end=table_job.last; id_used_bytes=table_job.used;
-        idindex_scanned(table_job.sum,table_job.last);
+    uint8_t *b=sjr.data, chunks=4; /* journal idle; no additional RAM */
+    uint32_t started=timers_getMillis();
+    do {
+      uint16_t n=64;
+      if (table_job.offset==table_job.sector) {
+        table_job.crc=crc16_ffInit(mem[table_job.mb].size-table_job.offset,table_job.crc);
+        if (table_job.batch) {
+          device.numbersCount=table_job.numbers; id_cells_end=table_job.last; id_used_bytes=table_job.used;
+          idindex_scanned(table_job.sum,table_job.last);
+        }
+        table_job.phase=4; break;
       }
-      table_job.phase=4;
-    }
+      if (table_job.sector-table_job.offset<n) n=(uint16_t)(table_job.sector-table_job.offset);
+      if (!w25_read_data(table_job.start+table_job.offset,b,n)) {
+        table_fault=table_job.failed=1; table_job.phase=4; return;
+      }
+      table_job.crc=crc16_calcInit(b,n,table_job.crc);
+      if (table_job.batch) for (uint16_t i=0;i<n;i+=32) {
+        cellID_s *cell=(cellID_s*)(b+i);
+        if (!fast_all_ff(b+i,32)) table_job.used=table_job.offset+i+32;
+        if (cell->index==0xffff) continue;
+        uint16_t index=(uint16_t)((table_job.offset+i)/32+1);
+        table_job.numbers++; table_job.last=index;
+        table_job.sum^=idindex_hash(index,(uint8_t*)cell->ID);
+        id_watch_end(id_time_end(cell));
+      }
+      table_job.offset+=n;
+    } while (--chunks && timers_getMillis()-started<1u);
     return;
   }
   if (table_job.phase==4) {

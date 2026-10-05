@@ -121,6 +121,9 @@ def scenarios(totals):
         if cmd==16:data=b'\x01\x02\x03\x04'*2
         execute('sync-'+str(cmd),m,lambda:(m.command(cmd,data,len(indices)),m.drain()))
 
+    from test_id_sync_fast import paired_scenarios
+    out.update(paired_scenarios())
+
     # Compare actual persistent state after interruption of each journal action.
     m=StorageMachine();m.record_changes=True;initial=bytes(m.flash)
     m.command(13,rows([1]),1);m.drain();flash=bytearray(initial)

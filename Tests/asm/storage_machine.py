@@ -112,8 +112,9 @@ class StorageMachine(Machine):
         self.u.mem_write(0x21000000,b'\xA5'*len(p)) # receiver immediately reuses it
     def active(self):return self.call('table_runtime_active')!=0
     def tick(self):
+        crc_phase = bytes(self.u.mem_read(self.addr('table_job')+50,1)) == b'\x03'
         self.now+=1;self.checked('user_storage_poll')
-        assert self.read_budget<=self.limit_reads,('read budget',self.read_budget)
+        assert self.read_budget <= max(self.limit_reads,256 if crc_phase else 0),('read budget',self.read_budget)
         assert self.io_budget<=1,('one async action',self.io_budget)
     def drain(self,limit=10000):
         for _ in range(limit):

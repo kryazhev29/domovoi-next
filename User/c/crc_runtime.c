@@ -108,21 +108,15 @@ static unsigned short gf2_apply(const unsigned short *m, unsigned short x)
    Шаг по одному байту 0xFF аффинный: r -> T*r ^ c, где T - шаг по байту 0,
    c = T*0xFF. Степень отображения считается удвоением: log2(count) шагов
    по 16x16 бит вместо count*8 сдвигов. */
+#include <stdint.h>
+#include "service_ff.inc"
 unsigned short crc16_ffInit(unsigned long count, unsigned short init)
 {
-  unsigned short a[16], t[16], av;
-  unsigned char zero = 0, j;
-  if (!count) return init;
-  for (j = 0; j < 16; j++) a[j] = crc16_calcInit(&zero, 1, (unsigned short)(1u << j));
-  av = crc16_calcInit(&zero, 1, 0xFF);
+  unsigned char power=0;
   while (count) {
-    /* Apply each selected affine power directly to the only required vector. */
-    if (count & 1u) init = gf2_apply(a, init) ^ av;
-    count >>= 1;
-    if (!count) break;
-    av = gf2_apply(a, av) ^ av;
-    for (j = 0; j < 16; j++) t[j] = gf2_apply(a, a[j]);
-    for (j = 0; j < 16; j++) a[j] = t[j];
+    if (count & 1u) init=gf2_apply(sc_ff_powers[power],init)^sc_ff_powers[power][16];
+    count>>=1;
+    if (++power==15) power=0;
   }
   return init;
 }

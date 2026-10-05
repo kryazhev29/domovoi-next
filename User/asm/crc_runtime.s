@@ -44,85 +44,47 @@
           CFI R14 SameValue
           CFI EndCommon cfiCommon0
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock0 Using cfiCommon0
           CFI Function crc16_ffInit
         THUMB
 crc16_ffInit:
-        PUSH     {R3-R8,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R8 Frame(CFA, -8)
-          CFI R7 Frame(CFA, -12)
-          CFI R6 Frame(CFA, -16)
-          CFI R5 Frame(CFA, -20)
-          CFI R4 Frame(CFA, -24)
-          CFI CFA R13+28
-        SUB      SP,SP,#+68
-          CFI CFA R13+96
-        MOV      R4,R0
-        MOV      R5,R1
-        MOVS     R0,#+0
-        STRB     R0,[SP, #+0]
-        CBZ.N    R4,??crc16_ffInit_0
-        MOVS     R7,#+0
-        ADD      R8,SP,#+4
-??crc16_ffInit_1:
-        MOVS     R2,#+1
-        LSLS     R2,R2,R7
-        UXTH     R2,R2
-        MOVS     R1,#+1
-        MOV      R0,SP
-          CFI FunCall crc16_calcInit
-        BL       crc16_calcInit
-        STRH     R0,[R8, R7, LSL #+1]
-        ADDS     R7,R7,#+1
-        CMP      R7,#+16
-        BLT.N    ??crc16_ffInit_1
-        MOVS     R2,#+255
-        MOVS     R1,#+1
-        MOV      R0,SP
-          CFI FunCall crc16_calcInit
-        BL       crc16_calcInit
-        MOV      R7,R0
-        B.N      ??crc16_ffInit_2
-??crc16_ffInit_3:
-        MOV      R1,R7
-        ADD      R0,SP,#+4
-          CFI FunCall fast_gf2_apply
-        BL       fast_gf2_apply
-        EORS     R7,R7,R0
-        MOVS     R6,#+0
-??crc16_ffInit_4:
-        LDRH     R1,[R8, R6, LSL #+1]
-        ADD      R0,SP,#+4
-          CFI FunCall fast_gf2_apply
-        BL       fast_gf2_apply
-        ADD      R1,SP,#+36
-        STRH     R0,[R1, R6, LSL #+1]
-        ADDS     R6,R6,#+1
-        CMP      R6,#+16
-        BLT.N    ??crc16_ffInit_4
-        MOVS     R2,#+32
-        ADD      R0,SP,#+4
-          CFI FunCall __aeabi_memcpy4
-        BL       __aeabi_memcpy4
-??crc16_ffInit_2:
-        LSLS     R0,R4,#+31
-        BPL.N    ??crc16_ffInit_5
-        MOV      R1,R5
-        ADD      R0,SP,#+4
-          CFI FunCall fast_gf2_apply
-        BL       fast_gf2_apply
-        EOR      R5,R7,R0
-??crc16_ffInit_5:
-        LSRS     R4,R4,#+1
-        BNE.N    ??crc16_ffInit_3
-??crc16_ffInit_0:
-        MOV      R0,R5
-        ADD      SP,SP,#+72
-          CFI CFA R13+24
-        POP      {R4-R8,PC}
+        PUSH {R4-R8,LR}
+        CFI R4 Frame(CFA,-24)
+        CFI R5 Frame(CFA,-20)
+        CFI R6 Frame(CFA,-16)
+        CFI R7 Frame(CFA,-12)
+        CFI R8 Frame(CFA,-8)
+        CFI R14 Frame(CFA,-4)
+        CFI CFA R13+24
+        MOV R4,R0
+        MOV R5,R1
+        LDR R6,=sc_ff_powers
+        MOVS R7,#0
+ff_more:
+        CBZ R4,ff_done
+        LSLS R0,R4,#31
+        BPL ff_next
+        MOV R0,R6
+        MOV R1,R5
+        CFI FunCall fast_gf2_apply
+        BL fast_gf2_apply
+        LDRH R1,[R6,#32]
+        EOR R5,R0,R1
+ff_next:
+        LSRS R4,R4,#1
+        ADDS R6,R6,#36
+        ADDS R7,R7,#1
+        CMP R7,#15
+        BNE ff_more
+        LDR R6,=sc_ff_powers
+        MOVS R7,#0
+        B ff_more
+ff_done:
+        MOV R0,R5
+        POP {R4-R8,PC}
           CFI EndBlock cfiBlock0
+        LTORG
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock1 Using cfiCommon0
@@ -168,4 +130,24 @@ crc8_calc:
         DATA
         DC32 0
 
+        SECTION .rodata:CONST:NOROOT(2)
+        DATA
+        PUBLIC sc_ff_powers
+; FF^(2^k) affine CRC-16/MODBUS powers repeat after k=14.
+sc_ff_powers:
+        DC16 0xC0C1,0xC181,0xC301,0xC601,0xCC01,0xD801,0xF001,0xA001,0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,0x4040,0x0000
+        DC16 0x9001,0x6001,0xC002,0xC007,0xC00D,0xC019,0xC031,0xC061,0xC0C1,0xC181,0xC301,0xC601,0xCC01,0xD801,0xF001,0xA001,0xB001,0x0000
+        DC16 0xFC01,0xB801,0x3001,0x6002,0xC004,0xC00B,0xC015,0xC029,0xC051,0xC0A1,0xC141,0xC281,0xC501,0xCA01,0xD401,0xE801,0x9401,0x0000
+        DC16 0xCCC1,0xD981,0xF301,0xA601,0x0C01,0x1802,0x3004,0x6008,0xC010,0xC023,0xC045,0xC089,0xC111,0xC221,0xC441,0xC881,0x8441,0x0000
+        DC16 0x90C1,0x6181,0xC302,0xC607,0xCC0D,0xD819,0xF031,0xA061,0x00C1,0x0182,0x0304,0x0608,0x0C10,0x1820,0x3040,0x6080,0x7040,0x0000
+        DC16 0xAC01,0x1801,0x3002,0x6004,0xC008,0xC013,0xC025,0xC049,0xC091,0xC121,0xC241,0xC481,0xC901,0xD201,0xE401,0x8801,0xA401,0x0000
+        DC16 0xF0C1,0xA181,0x0301,0x0602,0x0C04,0x1808,0x3010,0x6020,0xC040,0xC083,0xC105,0xC209,0xC411,0xC821,0xD041,0xE081,0x9041,0x0000
+        DC16 0x9C01,0x7801,0xF002,0xA007,0x000D,0x001A,0x0034,0x0068,0x00D0,0x01A0,0x0340,0x0680,0x0D00,0x1A00,0x3400,0x6800,0x7400,0x0000
+        DC16 0xFCC1,0xB981,0x3301,0x6602,0xCC04,0xD80B,0xF015,0xA029,0x0051,0x00A2,0x0144,0x0288,0x0510,0x0A20,0x1440,0x2880,0x5440,0x0000
+        DC16 0x9CC1,0x7981,0xF302,0xA607,0x0C0D,0x181A,0x3034,0x6068,0xC0D0,0xC1A3,0xC345,0xC689,0xCD11,0xDA21,0xF441,0xA881,0xB441,0x0000
+        DC16 0xACC1,0x1981,0x3302,0x6604,0xCC08,0xD813,0xF025,0xA049,0x0091,0x0122,0x0244,0x0488,0x0910,0x1220,0x2440,0x4880,0x6440,0x0000
+        DC16 0xA0C1,0x0181,0x0302,0x0604,0x0C08,0x1810,0x3020,0x6040,0xC080,0xC103,0xC205,0xC409,0xC811,0xD021,0xE041,0x8081,0xA041,0x0000
+        DC16 0xA001,0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,0x0100,0x0200,0x0400,0x0800,0x1000,0x2000,0x4000,0x6000,0x0000
+        DC16 0xF001,0xA001,0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,0x0100,0x0200,0x0400,0x0800,0x1000,0x2000,0x5000,0x0000
+        DC16 0xCC01,0xD801,0xF001,0xA001,0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,0x0100,0x0200,0x0400,0x0800,0x4400,0x0000
         END
