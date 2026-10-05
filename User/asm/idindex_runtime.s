@@ -23,6 +23,7 @@
         PUBLIC idindex_find
         PUBLIC idindex_poll
         PUBLIC idindex_put
+        PUBLIC idindex_runtime_suspend
         PUBLIC idindex_scanned
 
           CFI Names cfiNames0
@@ -69,7 +70,7 @@ ix_bucket:
         BL       fast_fnv10
         EOR      R1,R0,R0, LSR #+12
         EOR      R1,R1,R0, LSR #+24
-        LDR.N    R0,??DataTable8
+        LDR.N    R0,??DataTable9
         AND      R0,R0,R1, LSL #+6
         ADD      R0,R0,#+3145728
         POP      {R1,PC}
@@ -89,11 +90,11 @@ ix_mark:
         CBZ.N    R0,??ix_mark_0
         STR      R1,[SP, #+0]
         MVNS     R1,R1
-        LDR.N    R0,??DataTable8_1
+        LDR.N    R0,??DataTable9_1
         EORS     R1,R0,R1
         STR      R1,[SP, #+4]
 ??ix_mark_0:
-        LDR.N    R4,??DataTable8_2
+        LDR.N    R4,??DataTable9_2
         LDRH     R0,[R4, #+8]
         CMP      R0,#+512
         BCC.N    ??ix_mark_1
@@ -124,7 +125,7 @@ ix_rebuild:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.N    R4,??DataTable8_2
+        LDR.N    R4,??DataTable9_2
         LDRB     R0,[R4, #+10]
         CMP      R0,#+3
         BNE.N    ??ix_rebuild_0
@@ -160,7 +161,7 @@ ix_last:
           CFI CFA R13+88
         MOV      R4,R0
         MOVS     R5,#+0
-        LDR.N    R6,??DataTable8_2
+        LDR.N    R6,??DataTable9_2
         MOV      R0,#+512
         STRH     R0,[R6, #+8]
         MOVS     R7,#+0
@@ -173,7 +174,7 @@ ix_last:
         BL       mem_read
         CBZ.N    R0,??ix_last_1
         MOVS     R1,#+0
-        LDR.N    R3,??DataTable8_1
+        LDR.N    R3,??DataTable9_1
 ??ix_last_2:
         LDR      R2,[SP, R1, LSL #+3]
         CMN      R2,#+1
@@ -228,7 +229,7 @@ idindex_scanned:
         MOV      R4,R0
         MOVS     R0,#+0
         STR      R0,[SP, #+0]
-        LDR.N    R5,??DataTable8_2
+        LDR.N    R5,??DataTable9_2
         STR      R4,[R5, #+0]
         STRH     R1,[R5, #+6]
         LDRB     R0,[R5, #+10]
@@ -271,7 +272,7 @@ idindex_find:
         MOV      R4,R0
         MOV      R6,R1
         MOV      R5,R2
-        LDR.N    R0,??DataTable8_2
+        LDR.N    R0,??DataTable9_2
         LDRB     R0,[R0, #+10]
         CMP      R0,#+3
         BNE.N    ??idindex_find_0
@@ -408,7 +409,7 @@ idindex_put:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.N    R4,??DataTable8_2
+        LDR.N    R4,??DataTable9_2
         LDRB     R2,[R4, #+10]
         CMP      R2,#+3
         BEQ.N    ??idindex_put_0
@@ -448,7 +449,7 @@ idindex_commit:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.N    R4,??DataTable8_2
+        LDR.N    R4,??DataTable9_2
         LDR      R2,[R4, #+0]
         EORS     R0,R0,R2
         STR      R0,[R4, #+0]
@@ -483,7 +484,7 @@ idindex_poll:
           CFI R4 Frame(CFA, -16)
           CFI CFA R13+32
         MOV      R6,R0
-        LDR.N    R5,??DataTable8_2
+        LDR.N    R5,??DataTable9_2
         LDRB     R0,[R5, #+10]
         CMP      R0,#+1
         BNE.N    ??idindex_poll_0
@@ -560,24 +561,36 @@ idindex_poll:
         POP      {R0-R6,PC}
           CFI EndBlock cfiBlock9
 
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiBlock10 Using cfiCommon0
+          CFI Function idindex_runtime_suspend
+          CFI NoCalls
+        THUMB
+idindex_runtime_suspend:
+        MOVS     R1,#+4
+        LDR.N    R0,??DataTable9_2
+        STRB     R1,[R0, #+10]
+        BX       LR
+          CFI EndBlock cfiBlock10
+
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable8:
+??DataTable9:
         DATA32
         DC32     0x3ffc0
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable8_1:
+??DataTable9_1:
         DATA32
         DC32     0x58444931
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable8_2:
+??DataTable9_2:
         DATA32
         DC32     ix
 

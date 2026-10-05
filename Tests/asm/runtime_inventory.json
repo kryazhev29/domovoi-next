@@ -43,8 +43,6 @@
       "fw_update_quiet",
       "gsm_check_data",
       "gsm_user_debug",
-      "holiday_page",
-      "holiday_write",
       "id_crc16",
       "id_expired",
       "id_first_pass",
@@ -102,10 +100,16 @@
       "store_usb_session",
       "sync_cells_valid",
       "sync_end_tick",
-      "sync_new_ids",
       "sync_packet",
-      "sync_page",
-      "sync_write_cells",
+      "table_chunk",
+      "table_runtime_active",
+      "table_runtime_begin",
+      "table_runtime_blocks_reads",
+      "table_runtime_cancel",
+      "table_runtime_finish",
+      "table_runtime_poll",
+      "table_runtime_quiet",
+      "table_scan_begin",
       "timers_user_handle",
       "unreg_sms_note",
       "unreg_sms_poll",
@@ -203,8 +207,8 @@
       "user_writeConfigAndDevice",
       "user_writeconfig"
     ],
-    "instruction_data_bytes": 33352,
-    "assembly_sha256": "aae921b547fc1433f03588a7897bb795ba80e450e0667102d829e8fec2ccf1f8"
+    "instruction_data_bytes": 33705,
+    "assembly_sha256": "e77479f14d93b3ea061dc1702d280f91409a10cd048199c668173506bdc6b28a"
   },
   "flash_w25": {
     "functions": [
@@ -272,8 +276,8 @@
       "sj_io_service",
       "sj_io_write"
     ],
-    "instruction_data_bytes": 3472,
-    "assembly_sha256": "b21c2cb258e2efa19988be6f701446270badadae34465ef419be0ade5e9f9056"
+    "instruction_data_bytes": 3500,
+    "assembly_sha256": "a0f9bc7e60307d3001dfb2d42ca3ca2ac270573af0acef896baa2549a301f384"
   },
   "photo": {
     "functions": [
@@ -326,6 +330,7 @@
       "idindex_find",
       "idindex_poll",
       "idindex_put",
+      "idindex_runtime_suspend",
       "idindex_scanned",
       "ix_add",
       "ix_bucket",
@@ -333,8 +338,8 @@
       "ix_mark",
       "ix_rebuild"
     ],
-    "instruction_data_bytes": 796,
-    "assembly_sha256": "aed57705e8137c763ca7c4d6a7fb20287f99b5100fa870d254f0684eaabc6e2b"
+    "instruction_data_bytes": 804,
+    "assembly_sha256": "0497cf1725d24e55fa92fb24eb09300ffa0d60b9ee7f4bea9feeda6628bcb4d8"
   },
   "user_comm": {
     "functions": [
@@ -349,5 +354,18 @@
     ],
     "instruction_data_bytes": 288,
     "assembly_sha256": "8f50da7e7bf9857626fa00cb692c93668ddf8838145b16a19b6346f13751d481"
+  },
+  "sector_runtime": {
+    "functions": [
+      "sj_runtime_begin",
+      "sj_runtime_blocked",
+      "sj_runtime_cancel",
+      "sj_runtime_poll",
+      "sj_runtime_reset",
+      "sjr_fail",
+      "sjr_start"
+    ],
+    "instruction_data_bytes": 1226,
+    "assembly_sha256": "8964780267b7aa98088d54c1568a6dd0668b0bc2f4c7653f69208f038799beef"
   }
 }

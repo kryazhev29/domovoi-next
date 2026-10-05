@@ -29,7 +29,10 @@
         EXTERN sj_recover
         EXTERN sj_replace
         EXTERN sj_replace_pages
+        EXTERN sj_runtime_blocked
         EXTERN sj_span
+        EXTERN store_runtime
+        EXTERN table_runtime_blocks_reads
         EXTERN user_wait_stable_power
         EXTERN w25_async_active
         EXTERN w25_async_poll
@@ -250,15 +253,27 @@ mem_tables_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall table_runtime_blocks_reads
+        BL       table_runtime_blocks_reads
+        CBNZ.N   R0,??mem_tables_ready_0
+          CFI FunCall sj_runtime_blocked
+        BL       sj_runtime_blocked
+        CBNZ.N   R0,??mem_tables_ready_0
         LDR.W    R0,??DataTable19
+        LDRB     R0,[R0, #+0]
+        CBNZ.N   R0,??mem_tables_ready_1
+        LDR.W    R0,??DataTable19_1
         LDRB     R0,[R0, #+0]
         CBNZ.N   R0,??mem_tables_ready_0
           CFI FunCall mem_recover
         BL       mem_recover
-        CBZ.N    R0,??mem_tables_ready_1
-??mem_tables_ready_0:
-        MOVS     R0,#+1
+        CBZ.N    R0,??mem_tables_ready_2
 ??mem_tables_ready_1:
+        MOVS     R0,#+1
+        POP      {R1,PC}
+??mem_tables_ready_0:
+        MOVS     R0,#+0
+??mem_tables_ready_2:
         POP      {R1,PC}
           CFI EndBlock cfiBlock8
 
@@ -327,7 +342,7 @@ mem_reserved:
         SUBS     R3,R3,R0
         CMP      R3,R1
         BCC.N    ??mem_reserved_1
-        LDR.W    R2,??DataTable19_1
+        LDR.W    R2,??DataTable19_2
         CMP      R0,R2
         BCS.N    ??mem_reserved_0
         ADDS     R0,R1,R0
@@ -1690,8 +1705,8 @@ mem_read:
           CFI CFA R13+16
         BL       ?Subroutine4
 ??CrossCallReturnLabel_6:
-        BL       ?Subroutine15
-??CrossCallReturnLabel_34:
+        BL       ?Subroutine16
+??CrossCallReturnLabel_36:
         CBZ.N    R0,??mem_read_0
         MOV      R2,R5
         MOV      R1,R4
@@ -1743,7 +1758,7 @@ mem_read:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond56 Using cfiCommon0
           CFI Function mem_read
-          CFI Conditional ??CrossCallReturnLabel_34
+          CFI Conditional ??CrossCallReturnLabel_36
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -1751,7 +1766,7 @@ mem_read:
           CFI CFA R13+16
           CFI Block cfiCond57 Using cfiCommon0
           CFI (cfiCond57) Function mem_write
-          CFI (cfiCond57) Conditional ??CrossCallReturnLabel_33
+          CFI (cfiCond57) Conditional ??CrossCallReturnLabel_35
           CFI (cfiCond57) R4 Frame(CFA, -16)
           CFI (cfiCond57) R5 Frame(CFA, -12)
           CFI (cfiCond57) R6 Frame(CFA, -8)
@@ -1761,11 +1776,11 @@ mem_read:
           CFI (cfiPicker58) NoFunction
           CFI (cfiPicker58) Picker
         THUMB
-?Subroutine15:
+?Subroutine16:
         MOV      R1,R5
           CFI Block cfiCond59 Using cfiCommon0
           CFI (cfiCond59) Function mem_patch2
-          CFI (cfiCond59) Conditional ??CrossCallReturnLabel_32
+          CFI (cfiCond59) Conditional ??CrossCallReturnLabel_34
           CFI (cfiCond59) R4 Frame(CFA, -32)
           CFI (cfiCond59) R5 Frame(CFA, -28)
           CFI (cfiCond59) R6 Frame(CFA, -24)
@@ -1775,7 +1790,7 @@ mem_read:
           CFI (cfiCond59) R10 Frame(CFA, -8)
           CFI (cfiCond59) R14 Frame(CFA, -4)
           CFI (cfiCond59) CFA R13+56
-??Subroutine15_0:
+??Subroutine16_0:
         MOV      R0,R6
           CFI (cfiCond56) FunCall mem_read cfg_range
           CFI (cfiCond57) FunCall mem_write cfg_range
@@ -1799,8 +1814,8 @@ mem_write:
           CFI CFA R13+16
         BL       ?Subroutine4
 ??CrossCallReturnLabel_5:
-        BL       ?Subroutine15
-??CrossCallReturnLabel_33:
+        BL       ?Subroutine16
+??CrossCallReturnLabel_35:
         CBZ.N    R0,??mem_write_0
         MOV      R2,R5
         MOV      R1,R4
@@ -1940,8 +1955,8 @@ mem_patch2:
           CFI FunCall user_wait_stable_power
         BL       user_wait_stable_power
         UXTH     R1,R10
-        BL       ??Subroutine15_0
-??CrossCallReturnLabel_32:
+        BL       ??Subroutine16_0
+??CrossCallReturnLabel_34:
         CBZ.N    R0,??mem_patch2_3
         STR      R9,[SP, #+0]
         MOV      R3,R5
@@ -2119,8 +2134,8 @@ mem_config_reset:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        BL       ?Subroutine16
-??CrossCallReturnLabel_35:
+        BL       ?Subroutine15
+??CrossCallReturnLabel_32:
         BEQ.N    ??mem_config_reset_0
         LDR      R0,[R4, #+0]
           CFI FunCall free
@@ -2258,6 +2273,13 @@ cfg_async_page:
         DATA
 ??DataTable19_1:
         DATA32
+        DC32     store_runtime
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable19_2:
+        DATA32
         DC32     0x1fb000
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -2274,8 +2296,8 @@ mem_config_poll:
         SUB      SP,SP,#+64
           CFI CFA R13+80
         MOV      R5,R0
-        BL       ?Subroutine16
-??CrossCallReturnLabel_36:
+        BL       ?Subroutine15
+??CrossCallReturnLabel_33:
         BNE.N    ??mem_config_poll_1
         LDRB     R0,[R4, #+100]
         CBZ.N    R0,??mem_config_poll_2
@@ -2574,13 +2596,13 @@ mem_config_poll:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond78 Using cfiCommon0
           CFI Function mem_config_reset
-          CFI Conditional ??CrossCallReturnLabel_35
+          CFI Conditional ??CrossCallReturnLabel_32
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
           CFI Block cfiCond79 Using cfiCommon0
           CFI (cfiCond79) Function mem_config_poll
-          CFI (cfiCond79) Conditional ??CrossCallReturnLabel_36
+          CFI (cfiCond79) Conditional ??CrossCallReturnLabel_33
           CFI (cfiCond79) R4 Frame(CFA, -16)
           CFI (cfiCond79) R5 Frame(CFA, -12)
           CFI (cfiCond79) R6 Frame(CFA, -8)
@@ -2590,7 +2612,7 @@ mem_config_poll:
           CFI (cfiPicker80) NoFunction
           CFI (cfiPicker80) Picker
         THUMB
-?Subroutine16:
+?Subroutine15:
         LDR.N    R4,??DataTable21_14
         LDRB     R0,[R4, #+99]
         CMP      R0,#+1

@@ -2344,6 +2344,7 @@
     <group>
         <name>User</name>
         <file><name>$PROJ_DIR$\User\runtime_layout.c</name></file>
+        <file><name>$PROJ_DIR$\User\asm\sector_runtime_runtime.s</name></file>
         <file>
             <name>$PROJ_DIR$\User\asm\photo_runtime.s</name>
         </file>

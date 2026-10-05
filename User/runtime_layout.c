@@ -19,3 +19,5 @@ __root const cellShedule_s * const asm_debug_cellShedule_s = 0;
 __root const cellHoliday_s * const asm_debug_cellHoliday_s = 0;
 __root const photoParam_s * const asm_debug_photoParam_s = 0;
 __root const bootFWparam_s * const asm_debug_bootFWparam_s = 0;
+#include "sector_runtime.h"
+__root const sj_runtime_state_s * const asm_debug_sjr = 0;

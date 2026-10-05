@@ -12,7 +12,14 @@ uint8_t sj_io_write(uint32_t adr, const uint8_t *p, uint16_t n) { return sj_span
 uint8_t sj_io_erase(uint32_t adr) { return !(adr & 4095u) && sj_span(adr, 4096) && w25_erase_sector(adr); }
 void sj_io_service(void) { wdt_reload(); }
 bool mem_recover(void) { mem_check_power(); mem_storage_ready = sj_recover(); return mem_storage_ready; }
+#ifdef ASM_RUNTIME
+#include "sector_runtime.h"
+extern bool table_runtime_blocks_reads(void);
+extern uint8_t store_runtime; /* Exported data symbol in the ASM module. */
+bool mem_tables_ready(void) { return !table_runtime_blocks_reads() && !sj_runtime_blocked() && (mem_storage_ready || (!store_runtime && mem_recover())); }
+#else
 bool mem_tables_ready(void) { return mem_storage_ready || mem_recover(); }
+#endif
 static bool mem_guard(uint32_t adr, uint16_t n)
 {
   uint32_t sector, last;

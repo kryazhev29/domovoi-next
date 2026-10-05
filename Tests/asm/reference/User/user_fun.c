@@ -52,6 +52,21 @@ config_s config;
 device_s device;
 
 /* >>> Cooperative storage callers */
+#ifdef ASM_RUNTIME
+#include "sector_runtime.h"
+static bool table_runtime_active(void);
+bool table_runtime_blocks_reads(void);
+static void table_runtime_poll(uint32_t now);
+static void table_runtime_cancel(void);
+static void table_runtime_quiet(dataChanel_e channel);
+void idindex_runtime_suspend(void);
+#else
+#define table_runtime_active() 0
+#define table_runtime_blocks_reads() 0
+#define table_runtime_poll(now) ((void)0)
+#define table_runtime_cancel() ((void)0)
+#define table_runtime_quiet(channel) ((void)0)
+#endif
 static bool fw_async_active(void);
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel);
 static void fw_async_reply(uint8_t id);
@@ -76,9 +91,9 @@ static bool store_config_start(void);
 static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
 static void store_restore(const device_s *saved);
 void user_storage_poll(void);
-bool user_storage_command_ready(void) { store_usb_session(); return !fw_async_active() && !log_async_active() && !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
+bool user_storage_command_ready(void) { store_usb_session(); return !table_runtime_active() && !fw_async_active() && !log_async_active() && !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
 static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || user_storage_command_ready(); }
-bool user_storage_flash_ready(void) { return !fw_async_active() && !log_async_active() && store.clear != 9 && !w25_async_active() && w25_read_available(); }
+bool user_storage_flash_ready(void) { return !table_runtime_active() && !fw_async_active() && !log_async_active() && store.clear != 9 && !w25_async_active() && w25_read_available(); }
 /* <<< Cooperative storage callers */
 
 /* >>> подтверждение выгрузки */
@@ -543,6 +558,7 @@ void user_comm_session(bool open)
 {
   server_rx_reset();
   fw_async_quiet(CH_SERVER);
+  table_runtime_quiet(CH_SERVER);
   device.connectionhandle = 0; device.registredOnServer = 0; device.answerTimeout = 0;
   /* ѕоколение TCP отмен€ет неподтверждЄнный пакет; сохранЄнные курсоры и USB не трогаем. */
   log_unacked[1] = temp_unacked[1] = 0;
@@ -1320,7 +1336,7 @@ void user_readsavedinformation (void)
 // Ѕезопастное завершение работы прибора
 void user_savereset (void)
 {
-  if (store_runtime) { store_reset_requested = 1; return; }
+  if (store_runtime) { table_runtime_cancel(); store_reset_requested = 1; return; }
   log_flushPending(); // событи€, не дождавшиес€ времени, - в журнал до перезагрузки
   user_saveindex(); // сохран€ем индексы и т.п.
   wdt_reload();
@@ -2982,6 +2998,10 @@ static bool holiday_write(const uint8_t *dates, uint8_t count)
 }
 /* <<< ѕраздники целиком */
 
+#ifdef ASM_RUNTIME
+#include "../table_runtime.inc"
+#endif
+
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
   uint16_t len, crc, i;
@@ -3019,6 +3039,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     return;
   }
 
+#ifdef ASM_RUNTIME
+  if (store_runtime && !store_command_allowed(ptr[4])) {
+    user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId); return;
+  }
+#endif
   switch (ptr[4]) // команда
   {
     case 1: // ќтвет контроллеру на регистрацию
@@ -3307,6 +3332,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
+#ifdef ASM_RUNTIME
+        if (!table_runtime_begin(ptr,cch,uniqId))
+          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
+#else
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
         {
         uint16_t last = id_cells_end;
@@ -3330,6 +3359,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
         user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
                            id_crc16(0, mem[MB_ID].size), cch, uniqId);
+#endif
+
       }
       break;
       
@@ -3343,6 +3374,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
+#ifdef ASM_RUNTIME
+        if (!table_runtime_begin(ptr,cch,uniqId))
+          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
+#else
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
         if (!sync_write_cells(&ptr[10], ptr[9], MB_SHEDULE, sizeof(cellShedule_s))) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
@@ -3352,6 +3387,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         sync_packet(SYNC_SHEDULE);
         user_send_timeshtamp(SHTAMP_SHEDULE, device.datetimeShedule,
                            user_calcCRC16InFlash(mem[MB_SHEDULE].start, mem[MB_SHEDULE].size), cch, uniqId);
+
+#endif
 
       }      
       break;
@@ -3366,6 +3403,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
+#ifdef ASM_RUNTIME
+        if (!table_runtime_begin(ptr,cch,uniqId))
+          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
+#else
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
         if (!sync_write_cells(&ptr[10], ptr[9], MB_GROUP, sizeof(cellGroup_s))) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
@@ -3375,6 +3416,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         sync_packet(SYNC_GROUP);
         user_send_timeshtamp(SHTAMP_GROUP, device.datetimeGroup,
                            user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size), cch, uniqId);
+
+#endif
 
       }
       break;
@@ -3391,6 +3434,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
+#ifdef ASM_RUNTIME
+        if (!table_runtime_begin(ptr,cch,uniqId))
+          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
+#else
         memcpy((uint8_t*)&tmp32, &ptr[5], 4);
         if (!holiday_write(&ptr[10], ptr[9])) {
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
@@ -3400,6 +3447,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         sync_packet(SYNC_HOLIDAY);
         user_send_timeshtamp(SHTAMP_HOLIDAY, device.datetimeHoliday,
                            user_calcCRC16InFlash(mem[MB_HOLIDAY].start, mem[MB_HOLIDAY].size), cch, uniqId);
+
+#endif
 
       }
       break;
@@ -5228,6 +5277,7 @@ static void store_usb_session(void)
   if (store.usb_epoch == usb_bus_resets) return;
   store.usb_epoch = usb_bus_resets;
   fw_async_quiet(CH_USB);
+  table_runtime_quiet(CH_USB);
   log_unacked[0] = temp_unacked[0] = 0; store.seen &= 10u;
   if (store.job && store.channel == CH_USB) store.quiet = 1;
 }
@@ -5333,6 +5383,7 @@ void user_storage_poll(void)
   store_usb_session();
   uint32_t now = timers_getMillis();
   uint8_t result = mem_config_result();
+  if (table_runtime_active()) { table_runtime_poll(now); return; }
   if (fw_async_active()) { fw_storage_poll(now); return; }
   if (log_async_active()) { log_storage_poll(now); return; }
   if (result == 1) { mem_config_poll(now); return; }

@@ -544,7 +544,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#define log_async_active() false\n'+unit
     if 'fw_async_active(' in unit and 'bool fw_async_active(void) {' not in unit:
         unit='#define fw_async_active() false\n'+unit
-    for helper,args,value in [('fw_async_begin','a,b,c','false'),('fw_async_reply','id','((void)(id))'),('fw_async_quiet','ch','((void)(ch))'),('fw_async_cancel','','((void)0)')]:
+    for helper,args,value in [('table_runtime_active','','false'),('table_runtime_quiet','ch','((void)(ch))'),('table_runtime_cancel','','((void)0)'),('fw_async_begin','a,b,c','false'),('fw_async_reply','id','((void)(id))'),('fw_async_quiet','ch','((void)(ch))'),('fw_async_cancel','','((void)0)')]:
         if helper+'(' in unit and 'static void '+helper+'(' not in unit and 'static bool '+helper+'(' not in unit:
             unit='#define '+helper+'('+args+') '+value+'\n'+unit
     if 'server_rx_verified(' in unit and 'bool server_rx_verified(' not in unit:

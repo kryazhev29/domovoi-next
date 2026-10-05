@@ -155,3 +155,7 @@ void idindex_poll(uint32_t base)
   }
   if (ix.step > ix.end) ix.state = ix_mark(true, ix.sum) ? IX_READY : IX_OFF;
 }
+
+#ifdef ASM_RUNTIME
+void idindex_runtime_suspend(void) { ix.state=IX_OFF; }
+#endif

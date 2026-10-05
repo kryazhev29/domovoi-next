@@ -8,15 +8,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 IAR = Path(r'C:\Program Files\IAR Systems\Embedded Workbench 9.2\arm')
-MODULES = ['user_fun', 'flash_w25', 'memory', 'photo', 'crc', 'idindex', 'user_comm']
+MODULES = ['user_fun', 'flash_w25', 'memory', 'photo', 'crc', 'idindex', 'user_comm', 'sector_runtime']
 INCLUDES = ['CMSIS/Include', 'CMSIS/STM32F10x/Include', 'Modules',
             'STM32F10x_StdPeriph_Driver/inc', 'User', '.',
-            'STM32_USB-FS-Device_Driver/inc', 'USB-FS-CDC_User/Inc']
+            'STM32_USB-FS-Device_Driver/inc', 'USB-FS-CDC_User/Inc', 'Tests/asm/reference/User']
 FLAGS = ['--no_cse', '--no_unroll', '--no_inline', '--no_code_motion',
          '--no_tbaa', '--no_clustering', '--no_scheduling', '--debug',
          '--endian=little', '--cpu=Cortex-M3', '-e', '--fpu=None', '-Ohz',
          '--dlib_config', str(IAR/'inc/c/DLib_Config_Normal.h')]
-FLAGS += ['-D'+d for d in ('ASM_CRC','ASM_ID_HASH','ASM_FAST_KERNELS',
+FLAGS += ['-D'+d for d in ('ASM_RUNTIME','ASM_CRC','ASM_ID_HASH','ASM_FAST_KERNELS',
                           'STM32F10X_MD','USE_STDPERIPH_DRIVER')]
 FLAGS += [x for d in INCLUDES for x in ('-I',str(ROOT/d))]
 
@@ -56,6 +56,9 @@ def export(name):
                 if line.strip(): left-=1
         fixed.extend(cfi+block)
     asm='\n'.join(fixed)+'\n'
+    # Listing includes a caller argument which standalone IASM does not accept
+    # on conditional IndirectCall. The enclosing CFI Function carries it.
+    asm=re.sub(r'(CFI\s+\([^\n]+\)\s+IndirectCall)\s+\w+',r'\1',asm)
     # Preserve named state visibility for ELF ABI/ownership tests. IAR omits
     # local assembler data labels from the linked symbol table otherwise.
     functions=set(re.findall(r'^\s*CFI Function\s+(\w+)',asm,re.M))
