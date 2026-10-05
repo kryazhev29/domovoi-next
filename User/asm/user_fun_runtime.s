@@ -136,6 +136,11 @@
         EXTERN idindex_hash
         EXTERN idindex_poll
         EXTERN idindex_runtime_active
+        EXTERN upload_runtime_begin
+        EXTERN upload_runtime_active
+        EXTERN upload_runtime_poll
+        EXTERN upload_runtime_cancel
+        EXTERN upload_runtime_quiet
         EXTERN idindex_runtime_suspend
         EXTERN idindex_scanned
         EXTERN led_fun100ms
@@ -335,6 +340,13 @@
         PUBLIC user_writeConfigAndDevice
         PUBLIC user_writeconfig
 
+        PUBLIC log_blank
+        PUBLIC log_valid
+        PUBLIC store_upload_request
+        PUBLIC upload_ack
+        PUBLIC upload_index
+        PUBLIC upload_finish
+
           CFI Names cfiNames0
           CFI StackFrame CFA R13 DATA
           CFI Resource R0:32, R1:32, R2:32, R3:32, R4:32, R5:32, R6:32, R7:32
@@ -458,6 +470,9 @@ user_storage_command_ready:
         BL service_crc_active
         CMP R0,#0
         BNE.W ??user_storage_command_ready_0
+          CFI FunCall upload_runtime_active
+        BL       upload_runtime_active
+        CBNZ.N   R0,??user_storage_command_ready_0
           CFI FunCall photo_storage_busy
         BL       photo_storage_busy
         CBNZ.N   R0,??user_storage_command_ready_0
@@ -534,6 +549,9 @@ user_storage_flash_ready:
         BL service_crc_active
         CMP R0,#0
         BNE.W ??user_storage_flash_ready_0
+          CFI FunCall upload_runtime_active
+        BL       upload_runtime_active
+        CBNZ.N   R0,??user_storage_flash_ready_0
           CFI FunCall photo_storage_busy
         BL       photo_storage_busy
         CBNZ.N   R0,??user_storage_flash_ready_0
@@ -2123,6 +2141,9 @@ user_comm_session:
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
         MOV      R4,R0
+        MOVS     R0,#+1
+          CFI FunCall upload_runtime_quiet
+        BL       upload_runtime_quiet
           CFI FunCall server_rx_reset
         BL       server_rx_reset
         MOVS     R0,#+1
@@ -5415,6 +5436,8 @@ user_savereset:
         CBZ.N    R0,??user_savereset_0
           CFI FunCall expiry_runtime_cancel
         BL       expiry_runtime_cancel
+          CFI FunCall upload_runtime_cancel
+        BL       upload_runtime_cancel
           CFI FunCall table_runtime_cancel
         BL       table_runtime_cancel
           CFI FunCall service_crc_cancel
@@ -8430,6 +8453,13 @@ user_send_logRecords:
         IT       NE
         CMPNE    R0,#+1
         BNE.N    ??user_send_logRecords_0
+        MOV      R2,R8
+        MOV      R1,R9
+        MOVS     R0,#+10
+          CFI FunCall upload_runtime_begin
+        BL       upload_runtime_begin
+        CMP      R0,#+0
+        BNE.W    ??user_send_logRecords_5
         BL       ?Subroutine25
 ??CrossCallReturnLabel_80:
         CBZ.N    R0,??user_send_logRecords_1
@@ -8913,6 +8943,13 @@ user_send_tempIDs:
         IT       NE
         CMPNE    R0,#+1
         BNE.N    ??user_send_tempIDs_0
+        MOV      R2,R8
+        MOV      R1,R10
+        MOVS     R0,#+9
+          CFI FunCall upload_runtime_begin
+        BL       upload_runtime_begin
+        CMP      R0,#+0
+        BNE.W    ??user_send_tempIDs_4
         BL       ?Subroutine25
 ??CrossCallReturnLabel_81:
         CBZ.N    R0,??user_send_tempIDs_1
@@ -19484,6 +19521,9 @@ store_usb_session:
         LDR      R0,[R2, #+0]
         STR      R0,[R4, #+12]
         MOVS     R0,#+0
+          CFI FunCall upload_runtime_quiet
+        BL       upload_runtime_quiet
+        MOVS     R0,#+0
           CFI FunCall fw_async_quiet
         BL       fw_async_quiet
         MOVS     R0,#+0
@@ -20600,6 +20640,13 @@ sc_storage_idle:
         BL expiry_runtime_poll
         B.W ??user_storage_poll_1
 ex_storage_idle:
+          CFI FunCall upload_runtime_active
+        BL       upload_runtime_active
+        CBZ.N    R0,upload_owner_poll_idle
+          CFI FunCall upload_runtime_poll
+        BL       upload_runtime_poll
+        B.W      ??user_storage_poll_1
+upload_owner_poll_idle:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R5,R0

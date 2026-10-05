@@ -61,6 +61,7 @@
         PUBLIC mem_replace_pages
         PUBLIC mem_replace_sector
         PUBLIC mem_rewrite
+        EXTERN upload_runtime_active
         EXTERN idindex_runtime_active
         EXTERN service_crc_active
         EXTERN expiry_runtime_active
@@ -263,6 +264,9 @@ mem_tables_ready:
           CFI FunCall expiry_runtime_active
         BL expiry_runtime_active
         CBNZ R0,??mem_tables_ready_0
+          CFI FunCall upload_runtime_active
+        BL       upload_runtime_active
+        CBNZ.N   R0,??mem_tables_ready_0
           CFI FunCall idindex_runtime_active
         BL idindex_runtime_active
         CBNZ R0,??mem_tables_ready_0

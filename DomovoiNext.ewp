@@ -2353,6 +2353,9 @@
             <name>$PROJ_DIR$\User\asm\idindex_runtime.s</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\asm\upload_runtime.s</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\comm_timeouts.c</name>
         </file>
         <file>
