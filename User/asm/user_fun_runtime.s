@@ -63,6 +63,13 @@
 
         #define SHT_PROGBITS 0x1
 
+        EXTERN service_crc_active
+        EXTERN service_crc_begin_pack
+        EXTERN service_crc_begin_id
+        EXTERN service_crc_begin_config
+        EXTERN service_crc_poll
+        EXTERN service_crc_cancel
+        EXTERN service_crc_quiet
         EXTERN CRC32
         EXTERN WG_init
         EXTERN WG_process
@@ -122,6 +129,7 @@
         EXTERN idindex_find
         EXTERN idindex_hash
         EXTERN idindex_poll
+        EXTERN idindex_runtime_active
         EXTERN idindex_runtime_suspend
         EXTERN idindex_scanned
         EXTERN led_fun100ms
@@ -239,6 +247,7 @@
         PUBLIC usb_data_reading
         PUBLIC user_activateOut
         PUBLIC user_addIdToTempBuffer
+        PUBLIC user_comm_acquire
         PUBLIC user_calcCRC16InFlash
         PUBLIC user_checkFirmware
         PUBLIC user_checkIdAndControl
@@ -431,6 +440,14 @@ user_storage_command_ready:
           CFI CFA R13+8
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall idindex_runtime_active
+        BL idindex_runtime_active
+        CMP R0,#0
+        BNE.W ??user_storage_command_ready_0
+          CFI FunCall service_crc_active
+        BL service_crc_active
+        CMP R0,#0
+        BNE.W ??user_storage_command_ready_0
           CFI FunCall photo_storage_busy
         BL       photo_storage_busy
         CBNZ.N   R0,??user_storage_command_ready_0
@@ -495,6 +512,14 @@ user_storage_flash_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall idindex_runtime_active
+        BL idindex_runtime_active
+        CMP R0,#0
+        BNE.W ??user_storage_flash_ready_0
+          CFI FunCall service_crc_active
+        BL service_crc_active
+        CMP R0,#0
+        BNE.W ??user_storage_flash_ready_0
           CFI FunCall photo_storage_busy
         BL       photo_storage_busy
         CBNZ.N   R0,??user_storage_flash_ready_0
@@ -2092,6 +2117,9 @@ user_comm_session:
         MOVS     R0,#+1
           CFI FunCall table_runtime_quiet
         BL       table_runtime_quiet
+        MOVS R0,#1
+          CFI FunCall service_crc_quiet
+        BL service_crc_quiet
         LDR.N    R0,??DataTable32_3
         MOVS     R1,#+0
         STRB     R1,[R0, #+127]
@@ -5373,6 +5401,8 @@ user_savereset:
         CBZ.N    R0,??user_savereset_0
           CFI FunCall table_runtime_cancel
         BL       table_runtime_cancel
+          CFI FunCall service_crc_cancel
+        BL service_crc_cancel
           CFI FunCall photo_storage_cancel
         BL       photo_storage_cancel
         MOVS     R1,#+1
@@ -6580,11 +6610,16 @@ user_send_statusUpdateFW:
           CFI EndBlock cfiCond118
           CFI EndBlock cfiPicker119
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock120 Using cfiCommon0
           CFI Function user_send_crcPack
         THUMB
 user_send_crcPack:
+        LDR R3,=store_runtime
+        LDRB R3,[R3]
+        CMP R3,#0
+          CFI FunCall service_crc_begin_pack
+        BNE.W service_crc_begin_pack
         PUSH     {R3-R6,LR}
           CFI R14 Frame(CFA, -4)
           CFI R6 Frame(CFA, -8)
@@ -6736,11 +6771,16 @@ user_send_crcPack:
           CFI EndBlock cfiCond122
           CFI EndBlock cfiPicker123
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock124 Using cfiCommon0
           CFI Function user_send_crcMemoryID
         THUMB
 user_send_crcMemoryID:
+        LDR R3,=store_runtime
+        LDRB R3,[R3]
+        CMP R3,#0
+          CFI FunCall service_crc_begin_id
+        BNE.W service_crc_begin_id
         PUSH     {R2-R10,LR}
           CFI R14 Frame(CFA, -4)
           CFI R10 Frame(CFA, -8)
@@ -19430,6 +19470,9 @@ store_usb_session:
         MOVS     R0,#+0
           CFI FunCall table_runtime_quiet
         BL       table_runtime_quiet
+        MOVS R0,#0
+          CFI FunCall service_crc_quiet
+        BL service_crc_quiet
         MOVS     R1,#+0
         LDR.W    R0,??DataTable197_19
         STRH     R1,[R0, #+0]
@@ -20338,6 +20381,18 @@ store_reply:
         CMP      R7,#+1
         BEQ.N    ??store_reply_1
 ??store_reply_2:
+        CMP R5,#12
+        BNE sc_store_reply_other
+        MOV R0,R7
+        MOV R1,R6
+          CFI FunCall service_crc_begin_config
+        BL service_crc_begin_config
+        CBZ R0,sc_store_reply_wait
+        MOVS R0,#0
+        STRB R0,[R4,#18]
+sc_store_reply_wait:
+        POP {R0,R4-R7,PC}
+sc_store_reply_other:
         MOVS     R0,#+0
         STRB     R0,[R4, #+18]
         CMP      R5,#+10
@@ -20481,6 +20536,11 @@ store_reply:
         DATA32
         DC32     fault_record
 
+        SECTION `.text`:CODE:NOROOT(2)
+        DATA
+ix_owner_mem:
+        DC32 mem
+
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock533 Using cfiCommon0
           CFI Function user_storage_poll
@@ -20496,6 +20556,22 @@ user_storage_poll:
           CFI CFA R13+80
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall idindex_runtime_active
+        BL idindex_runtime_active
+        CBZ R0,ix_owner_poll_idle
+        LDR.W R0,ix_owner_mem
+        LDR R0,[R0,#16]
+          CFI FunCall idindex_poll
+        BL idindex_poll
+        B.W ??user_storage_poll_1
+ix_owner_poll_idle:
+          CFI FunCall service_crc_active
+        BL service_crc_active
+        CBZ R0,sc_storage_idle
+          CFI FunCall service_crc_poll
+        BL service_crc_poll
+        B.W ??user_storage_poll_1
+sc_storage_idle:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R5,R0

@@ -1,0 +1,70 @@
+{
+  "normal": {
+    "((), False)": {
+      "passes": 266,
+      "max_instructions": 61,
+      "total_instructions": 7464,
+      "stack": 88,
+      "max_read": 0,
+      "max_async_actions": 1,
+      "counts": {
+        "read": 0,
+        "start": 66,
+        "poll": 198
+      }
+    },
+    "((1,), False)": {
+      "passes": 270,
+      "max_instructions": 92,
+      "total_instructions": 7650,
+      "stack": 96,
+      "max_read": 64,
+      "max_async_actions": 1,
+      "counts": {
+        "read": 2,
+        "start": 67,
+        "poll": 201
+      }
+    },
+    "((1, 2, 129), True)": {
+      "passes": 830,
+      "max_instructions": 92,
+      "total_instructions": 24952,
+      "stack": 168,
+      "max_read": 64,
+      "max_async_actions": 1,
+      "counts": {
+        "read": 132,
+        "start": 70,
+        "poll": 210
+      }
+    },
+    "((1, 50048), False)": {
+      "passes": 50321,
+      "max_instructions": 92,
+      "total_instructions": 2660312,
+      "stack": 96,
+      "max_read": 64,
+      "max_async_actions": 1,
+      "counts": {
+        "read": 50050,
+        "start": 68,
+        "poll": 204
+      }
+    }
+  },
+  "faults": 18,
+  "cancel_restart": 8,
+  "boundaries": 4,
+  "real_w25": {
+    "passes": 4374,
+    "max_instructions": 939,
+    "total_instructions": 3776912,
+    "stack": 296,
+    "max_spi_read_bytes": 64,
+    "max_status_reads": 4
+  },
+  "elf_sha256": "954cc19862d859a2bb0641d1a9390816faf69d37d690973bc0aced90ba5df64b",
+  "index_bss_bytes": 24,
+  "status": "PASS"
+}
