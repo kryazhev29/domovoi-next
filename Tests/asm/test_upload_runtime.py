@@ -25,6 +25,9 @@ class UploadMachine(StorageMachine):
                          ('comm_tx_busy', lambda:self.ret(self.busy or self.lease))]:
             self.stubs[self.addr(name)] = fn
 
+        if 'usb_try_send' in self.symbols:
+            self.stubs[self.addr('usb_try_send')] = self.usb
+
     def usb(self):
         p, n, _, _ = self.args()
         assert n <= 1038

@@ -21,7 +21,7 @@
         EXTERN user_comm_acquire
         EXTERN comm_tx_commit
         EXTERN comm_tx_release
-        EXTERN usb_send
+        EXTERN usb_try_send
         EXTERN crc16_calcInit
         EXTERN __aeabi_memcpy
         EXTERN store_upload_request
@@ -504,8 +504,8 @@ up_poll_send:
         CBNZ R0,up_poll_send_server
         LDR R0,[R4]
         LDRH R1,[R4,#+30]
-          CFI FunCall usb_send
-        BL usb_send
+          CFI FunCall usb_try_send
+        BL usb_try_send
         CMP R0,#+0
         BEQ.N up_poll_return
         LDR.W R0,up_usb_epoch

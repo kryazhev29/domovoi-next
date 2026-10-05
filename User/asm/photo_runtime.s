@@ -47,7 +47,7 @@
         EXTERN uart_send
         EXTERN uart_setRecTimeout
         EXTERN usb_bus_resets
-        EXTERN usb_send
+        EXTERN usb_try_send
         EXTERN user_debug
         EXTERN user_send_answer_comand
         EXTERN user_storage_background_ready
@@ -2443,8 +2443,8 @@ photo_storage_poll:
         CBNZ.N   R0,??photo_storage_poll_126
         UXTH     R1,R9
         LDR      R0,[R7, #+0]
-          CFI FunCall usb_send
-        BL       usb_send
+          CFI FunCall usb_try_send
+        BL       usb_try_send
         MOV      R6,R0
         B.N      ??photo_storage_poll_127
 ??photo_storage_poll_126:

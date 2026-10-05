@@ -2,53 +2,55 @@
   "normal": {
     "(9, 1, 0, 0)": {
       "passes": 9,
-      "maximum": 304,
-      "total": 1096,
+      "maximum": 365,
+      "total": 1229,
       "stack": 172,
       "read_bytes": 74,
       "max_read": 32
     },
     "(9, 1536, 0, 1)": {
       "passes": 1658,
-      "maximum": 715,
-      "total": 124269,
+      "maximum": 727,
+      "total": 144190,
       "stack": 172,
       "read_bytes": 50152,
       "max_read": 32
     },
     "(9, 1536, 1500, 0)": {
       "passes": 1584,
-      "maximum": 720,
-      "total": 119874,
+      "maximum": 732,
+      "total": 138907,
       "stack": 172,
       "read_bytes": 49512,
       "max_read": 32
     },
     "(10, 1, 0, 0)": {
       "passes": 9,
-      "maximum": 483,
-      "total": 1792,
+      "maximum": 495,
+      "total": 1925,
       "stack": 172,
       "read_bytes": 96,
       "max_read": 32
     },
     "(10, 3072, 0, 1)": {
       "passes": 3127,
-      "maximum": 715,
-      "total": 835024,
+      "maximum": 727,
+      "total": 872573,
       "stack": 172,
       "read_bytes": 99328,
       "max_read": 32
     },
     "(10, 3072, 3071, 0)": {
       "passes": 6151,
-      "maximum": 483,
-      "total": 1663333,
+      "maximum": 495,
+      "total": 1737170,
       "stack": 172,
       "read_bytes": 196608,
       "max_read": 32
     }
   },
+  "parser": 2,
+  "media_gate": 4,
   "faults_and_gaps": 11,
   "busy_empty_cancel": 19,
   "heap_ack": {
@@ -72,8 +74,6 @@
     "idle_photo_ack_free_bytes": 1776
   },
   "ack_power_cuts": 532,
-  "elf_sha256": "e62ab6029bc1a523d38c1840d4e367a7ca1ddd2d18d584a218c2c1d50a9bb536",
-  "status": "PASS",
-  "parser": 2,
-  "media_gate": 4
+  "elf_sha256": "07d950a3ff0ce650d4460d83331e29c6d7d0e0e4c1e3f2977356292ae538f613",
+  "status": "PASS"
 }

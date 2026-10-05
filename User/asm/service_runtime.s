@@ -50,7 +50,7 @@
         EXTERN comm_tx_commit
         EXTERN comm_tx_release
         EXTERN user_comm_acquire
-        EXTERN usb_send
+        EXTERN usb_try_send
         EXTERN user_send_answer_comand
         EXTERN user_storage_flash_ready
         EXTERN mem_config_result
@@ -534,8 +534,8 @@ sc_poll_tx_ready:
         BNE sc_poll_server
         ADD R0,R4,#96
         MOV R1,R5
-        CFI FunCall usb_send
-        BL usb_send
+        CFI FunCall usb_try_send
+        BL usb_try_send
         CMP R0,#0
         BEQ sc_poll_done
         B sc_poll_free

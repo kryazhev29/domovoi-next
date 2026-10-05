@@ -31,6 +31,9 @@ class ServiceMachine(StorageMachine):
                          ('comm_channel_ready', lambda: self.ret(1))]:
             self.stubs[self.addr(name)] = fn
 
+        if 'usb_try_send' in self.symbols:
+            self.stubs[self.addr('usb_try_send')] = self.send_usb
+
     def read(self):
         a, p, n, _ = self.args()
         self.read_ranges.append((a, n))

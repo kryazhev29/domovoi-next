@@ -64,6 +64,7 @@
         EXTERN upload_runtime_active
         EXTERN idindex_runtime_active
         EXTERN service_crc_active
+        EXTERN idclear_runtime_active
         EXTERN expiry_runtime_active
         PUBLIC mem_tables_ready
         PUBLIC mem_write
@@ -261,6 +262,10 @@ mem_tables_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall idclear_runtime_active
+        BL idclear_runtime_active
+        CMP R0,#0
+        BNE.W ??mem_tables_ready_0
           CFI FunCall expiry_runtime_active
         BL expiry_runtime_active
         CBNZ R0,??mem_tables_ready_0
@@ -2195,6 +2200,14 @@ mem_config_begin:
         BL       photo_storage_busy
         CMP      R0,#+0
         BNE.N    ??mem_config_begin_0
+          CFI FunCall upload_runtime_active
+        BL upload_runtime_active
+        CMP R0,#0
+        BNE.W ??mem_config_begin_0
+          CFI FunCall idclear_runtime_active
+        BL idclear_runtime_active
+        CMP R0,#0
+        BNE.W ??mem_config_begin_0
           CFI FunCall expiry_runtime_active
         BL expiry_runtime_active
         CMP R0,#0

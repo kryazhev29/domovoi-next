@@ -12,7 +12,7 @@
         EXTERN id_cells_end
         EXTERN id_used_bytes
         EXTERN usb_bus_resets
-        EXTERN usb_send
+        EXTERN usb_try_send
         EXTERN crc16_calc
         EXTERN user_storage_command_ready
         EXTERN mem_tables_ready
@@ -349,8 +349,8 @@ ic_reply:
         MOVNE R1,#19
         IT EQ
         MOVEQ R1,#11
-        CFI FunCall usb_send
-        BL usb_send
+        CFI FunCall usb_try_send
+        BL usb_try_send
         CBZ R0,ic_done
 ic_release:
         CFI FunCall idclear_release

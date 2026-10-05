@@ -21,6 +21,8 @@ class PhotoMachine(StorageMachine):
           ('comm_tx_acquire',self.acquire),('comm_tx_release',self.ret),
           ('comm_tx_commit',self.commit),('comm_tx_busy',lambda:self.ret(self.transport_busy))]:
             self.stubs[self.addr(name)]=fn
+        if 'usb_try_send' in self.symbols:
+            self.stubs[self.addr('usb_try_send')]=self.usb_send
     def uart_send(self):
         _,p,n,_=self.args();assert n<=6;self.commands.append(bytes(self.u.mem_read(p,n)));self.ret()
     def uart_clear(self):self.rx_count=0;self.ret()

@@ -2,7 +2,7 @@
   "success_heap": {
     "passes": 13,
     "maximum_instructions": 71,
-    "total_instructions": 418,
+    "total_instructions": 417,
     "stack": 120,
     "context_chunk": 64,
     "synthetic_heap_chunks": [
@@ -25,7 +25,7 @@
       "bytes": 1601536,
       "passes": 1566,
       "maximum_instructions": 71,
-      "total_instructions": 42747,
+      "total_instructions": 42746,
       "stack": 68,
       "async_starts": 391,
       "async_polls": 1173
@@ -41,5 +41,5 @@
     "partial_erase_cuts_with_real_startup_scan": 10,
     "atomic": false
   },
-  "elf_sha256": "48eb5ea8d46ee0a3fa06bf01bcd8dd9445c6d81b51aa21fe5a9e26e68e443010"
+  "elf_sha256": "07d950a3ff0ce650d4460d83331e29c6d7d0e0e4c1e3f2977356292ae538f613"
 }

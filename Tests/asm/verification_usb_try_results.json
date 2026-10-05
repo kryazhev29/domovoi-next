@@ -23,5 +23,5 @@
     "scope": "instruction copies only in Unicorn RAM; production files and ELF unchanged"
   },
   "units": "Unicorn instructions; not board cycles/time",
-  "elf_sha256": "3336dca689e69e8ebf92f18e4424c50e8e9c86c4f7c3ca47f776f3eda233131e"
+  "elf_sha256": "920faa14754ead4a941d7f2992360c39288fec4ff413529e5b90cc4b3ef718ee"
 }

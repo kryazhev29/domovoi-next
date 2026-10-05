@@ -1,0 +1,47 @@
+{
+  "results": {
+    "crc_pack": {
+      "packet_bytes": 21,
+      "polls": 257,
+      "maximum_poll_instructions": 714,
+      "total_poll_instructions": 162533,
+      "busy_last_poll_instructions": 101,
+      "observed_stack": 132
+    },
+    "crc_list": {
+      "packet_bytes": 211,
+      "polls": 1729,
+      "maximum_poll_instructions": 2110,
+      "total_poll_instructions": 237025,
+      "busy_last_poll_instructions": 101,
+      "observed_stack": 132
+    },
+    "upload": {
+      "packet_bytes": 1038,
+      "polls": 84,
+      "maximum_poll_instructions": 7513,
+      "total_poll_instructions": 45941,
+      "busy_last_poll_instructions": 125,
+      "observed_stack": 172
+    },
+    "clear": {
+      "packet_bytes": 11,
+      "polls": 10,
+      "maximum_poll_instructions": 252,
+      "total_poll_instructions": 976,
+      "busy_last_poll_instructions": 123,
+      "observed_stack": 132
+    },
+    "photo": {
+      "packet_bytes": 534,
+      "polls": 22,
+      "maximum_poll_instructions": 4009,
+      "total_poll_instructions": 12561,
+      "busy_last_poll_instructions": 187,
+      "observed_stack": 144
+    }
+  },
+  "status": "PASS",
+  "units": "Unicorn instructions, real queue writer, NOR boundary modeled; not board time",
+  "elf_sha256": "920faa14754ead4a941d7f2992360c39288fec4ff413529e5b90cc4b3ef718ee"
+}

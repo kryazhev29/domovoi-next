@@ -16,6 +16,11 @@
         PUBLIC id_watch_end
         EXTERN expiry_runtime_active
         EXTERN expiry_runtime_poll
+        EXTERN idclear_runtime_begin
+        EXTERN idclear_runtime_cancel
+        EXTERN idclear_runtime_quiet
+        EXTERN idclear_runtime_active
+        EXTERN idclear_runtime_poll
         EXTERN expiry_runtime_begin
         EXTERN expiry_runtime_cancel
         PUBLIC id_used_bytes
@@ -458,6 +463,10 @@ user_storage_command_ready:
           CFI CFA R13+8
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall idclear_runtime_active
+        BL idclear_runtime_active
+        CMP R0,#0
+        BNE.W ??user_storage_command_ready_0
           CFI FunCall expiry_runtime_active
         BL expiry_runtime_active
         CMP R0,#0
@@ -537,6 +546,10 @@ user_storage_flash_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall idclear_runtime_active
+        BL idclear_runtime_active
+        CMP R0,#0
+        BNE.W ??user_storage_flash_ready_0
           CFI FunCall expiry_runtime_active
         BL expiry_runtime_active
         CMP R0,#0
@@ -5434,6 +5447,8 @@ user_savereset:
         BL       ?Subroutine25
 ??CrossCallReturnLabel_79:
         CBZ.N    R0,??user_savereset_0
+          CFI FunCall idclear_runtime_cancel
+        BL idclear_runtime_cancel
           CFI FunCall expiry_runtime_cancel
         BL       expiry_runtime_cancel
           CFI FunCall upload_runtime_cancel
@@ -13384,10 +13399,12 @@ user_parse_comand:
 ??user_parse_comand_37:
         MOVS     R0,R5
         BNE.N    ??user_parse_comand_1
-        MOVS     R0,#+2
-          CFI FunCall user_clearMemBlock
-        BL       user_clearMemBlock
-        CBNZ.N   R0,??user_parse_comand_94
+        MOV      R1,R6
+          CFI FunCall idclear_runtime_begin
+        BL       idclear_runtime_begin
+        CMP      R0,#+0
+        BEQ.N    ??user_parse_comand_52
+        B.W      ??user_parse_comand_1
 ??user_parse_comand_52:
         BL       ?Subroutine71
 ??CrossCallReturnLabel_251:
@@ -19520,6 +19537,9 @@ store_usb_session:
         BEQ.N    ??store_usb_session_0
         LDR      R0,[R2, #+0]
         STR      R0,[R4, #+12]
+        MOVS R0,#0
+          CFI FunCall idclear_runtime_quiet
+        BL idclear_runtime_quiet
         MOVS     R0,#+0
           CFI FunCall upload_runtime_quiet
         BL       upload_runtime_quiet
@@ -20647,6 +20667,15 @@ ex_storage_idle:
         BL       upload_runtime_poll
         B.W      ??user_storage_poll_1
 upload_owner_poll_idle:
+          CFI FunCall idclear_runtime_active
+        BL idclear_runtime_active
+        CBZ R0,idclear_owner_poll_idle
+          CFI FunCall timers_getMillis
+        BL timers_getMillis
+          CFI FunCall idclear_runtime_poll
+        BL idclear_runtime_poll
+        B.W ??user_storage_poll_1
+idclear_owner_poll_idle:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R5,R0

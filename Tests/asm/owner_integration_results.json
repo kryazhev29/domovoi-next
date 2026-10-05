@@ -29,6 +29,36 @@
       "stack": 272
     }
   ],
+  "clear_scheduler": [
+    {
+      "action": "complete",
+      "passes": 10,
+      "maximum_instructions": 121,
+      "total_instructions": 845,
+      "stack": 132
+    },
+    {
+      "action": "reset_before",
+      "passes": 1,
+      "maximum_instructions": 124,
+      "total_instructions": 124,
+      "stack": 132
+    },
+    {
+      "action": "reset_pending",
+      "passes": 5,
+      "maximum_instructions": 128,
+      "total_instructions": 437,
+      "stack": 132
+    },
+    {
+      "action": "usb_epoch",
+      "passes": 10,
+      "maximum_instructions": 124,
+      "total_instructions": 906,
+      "stack": 132
+    }
+  ],
   "status": "PASS",
-  "elf_sha256": "c3dab1d68232b4ba31bad074e228cf6abb85cb5d87b2632109054169034ad68e"
+  "elf_sha256": "07d950a3ff0ce650d4460d83331e29c6d7d0e0e4c1e3f2977356292ae538f613"
 }
