@@ -14,7 +14,6 @@ typedef struct {
 RT_ASSERT(service_crc_size,sizeof(service_crc_s)==312);
 RT_ASSERT(service_crc_packet,offsetof(service_crc_s,packet)==96);
 service_crc_s *service_crc_job;
-#include "service_ff.inc"
 void *service_crc_active(void) { return service_crc_job; }
 void service_crc_cancel(void)
 {
@@ -62,10 +61,11 @@ static void sc_setup(service_crc_s *p)
 }
 void service_crc_poll(void)
 {
-  service_crc_s *p=service_crc_job; uint32_t now,n; uint8_t *out;
+  service_crc_s *p=service_crc_job; uint32_t now,n,started=timers_getMillis(); uint8_t *out,chunks=4;
   if(!p) return;
   if(p->phase==1) { sc_setup(p); return; }
   if(p->phase==2) {
+read_more:
     if(p->real) {
       if(!w25_read_available()) {
         now=timers_getMillis();
@@ -76,12 +76,12 @@ void service_crc_poll(void)
       p->waiting=0; n=p->real>64?64:p->real;
       if(!w25_read_data(p->address,p->scratch,(uint16_t)n)) goto bad;
       p->address+=n; p->real-=n;
-      p->crc=crc16_calcInit(p->scratch,(uint16_t)n,p->crc); return;
+      p->crc=crc16_calcInit(p->scratch,(uint16_t)n,p->crc);
+      if (--chunks && timers_getMillis()-started<1u) goto read_more;
+      return;
     }
     if(p->erased) {
-      n=p->erased; p->erased>>=1;
-      if(n&1u) p->crc=fast_gf2_apply(sc_ff_powers[p->power],p->crc)^sc_ff_powers[p->power][16];
-      p->power++; return;
+      p->crc=crc16_ffInit(p->erased,p->crc); p->erased=0;
     }
     if(p->kind==4) {
       p->length=18; rt_put16(p->packet+4,10); p->packet[8]=12; p->packet[9]=4;

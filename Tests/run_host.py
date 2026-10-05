@@ -16,7 +16,10 @@ def function(text,name):
         if text[i]=='{':depth+=1
         elif text[i]=='}':depth-=1
         i+=1
-    return text[m.start():i]
+    body=text[m.start():i]
+    if name=='crc16_ffInit' and 'sc_ff_powers' in body:
+        body=source('User/c/service_ff.inc')+'\n'+body
+    return body
 def typedefs(text,*names):
     # Packed like structures.h, so the tests see the real layouts and numbers.
     out=[]

@@ -93,6 +93,12 @@ void idindex_scanned(uint32_t sum, uint16_t cells_end)
   ix_rebuild();
 }
 
+/* Table journal has suspended the index; rebuild from the committed delta. */
+void idindex_table_commit(uint32_t delta, uint16_t end)
+{
+  idindex_scanned(ix.sum ^ delta, end);
+}
+
 int8_t idindex_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 {
   uint16_t e[IX_SLOTS];

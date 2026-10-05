@@ -112,7 +112,9 @@ def ownership():
     m.command(13,rows([1]),1);assert m.checked('table_runtime_active')
     for _ in range(2000):
         if not m.checked('table_runtime_active'):break
-        m.now+=1;m.checked('user_storage_poll');assert m.read_budget<=128 and m.io_budget<=1
+        crc_phase = m.u.mem_read(m.addr('table_job')+50, 1) == b'\x03'
+        m.now+=1;m.checked('user_storage_poll')
+        assert m.read_budget <= (256 if crc_phase else 128) and m.io_budget<=1
     else:raise AssertionError('table sharing did not terminate')
     m.port();m.drain();assert m.sent[-1][20:-2]==b'p'*116
     return 9

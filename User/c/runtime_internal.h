@@ -17,6 +17,7 @@ uint8_t flash_claim(uint8_t owner);
 uint8_t flash_release(uint8_t owner);
 uint8_t flash_read_allowed(void);
 void idindex_runtime_suspend(void);
+void idindex_table_commit(uint32_t delta, uint16_t end);
 bool idindex_runtime_active(void);
 uint8_t *user_comm_acquire(uint16_t n);
 uint8_t reply_send(const uint8_t *packet, uint16_t size, uint8_t channel);
