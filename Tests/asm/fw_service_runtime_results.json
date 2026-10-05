@@ -1,0 +1,159 @@
+{
+  "normal": {
+    "2_4_0": {
+      "polls": 674,
+      "max_instructions": 10830,
+      "total_instructions": 190678,
+      "stack": 176,
+      "max_fw_read": 0,
+      "phase_maximum": {
+        "4": 82,
+        "5": 82,
+        "6": 10830,
+        "8": 767,
+        "16": 166
+      }
+    },
+    "4_1028_1": {
+      "polls": 674,
+      "max_instructions": 10837,
+      "total_instructions": 190692,
+      "stack": 176,
+      "max_fw_read": 0,
+      "phase_maximum": {
+        "4": 82,
+        "5": 82,
+        "6": 10837,
+        "8": 767,
+        "16": 206
+      }
+    },
+    "1_4_0": {
+      "polls": 718,
+      "max_instructions": 10867,
+      "total_instructions": 194670,
+      "stack": 176,
+      "max_fw_read": 64,
+      "phase_maximum": {
+        "1": 96,
+        "2": 10867,
+        "8": 767,
+        "16": 105,
+        "10": 92,
+        "11": 93,
+        "12": 93,
+        "13": 114,
+        "14": 229
+      }
+    },
+    "1_132_1": {
+      "polls": 732,
+      "max_instructions": 10867,
+      "total_instructions": 196551,
+      "stack": 176,
+      "max_fw_read": 64,
+      "phase_maximum": {
+        "1": 96,
+        "2": 10867,
+        "8": 767,
+        "16": 145,
+        "10": 92,
+        "11": 93,
+        "12": 93,
+        "13": 114,
+        "14": 601
+      }
+    },
+    "1_4096_0": {
+      "polls": 1163,
+      "max_instructions": 11332,
+      "total_instructions": 296536,
+      "stack": 176,
+      "max_fw_read": 64,
+      "phase_maximum": {
+        "1": 96,
+        "2": 11332,
+        "8": 767,
+        "16": 105,
+        "10": 92,
+        "11": 93,
+        "12": 93,
+        "13": 114,
+        "14": 694
+      }
+    },
+    "1_97792_0": {
+      "polls": 11499,
+      "max_instructions": 11332,
+      "total_instructions": 2685350,
+      "stack": 176,
+      "max_fw_read": 64,
+      "phase_maximum": {
+        "1": 96,
+        "2": 11332,
+        "8": 767,
+        "16": 105,
+        "10": 92,
+        "11": 93,
+        "12": 93,
+        "13": 114,
+        "14": 694
+      }
+    }
+  },
+  "heap": {
+    "peak_chunks": 1360,
+    "free_bytes": 2736,
+    "largest_payload": 2728,
+    "fragments": 1,
+    "trace": [
+      [
+        "free",
+        536887520
+      ],
+      [
+        "snapshot",
+        0
+      ],
+      [
+        "config_begin",
+        0
+      ],
+      [
+        "malloc",
+        1024
+      ]
+    ],
+    "same_chunk": true,
+    "oom_cases": 3
+  },
+  "boundaries": 12,
+  "io_faults": 13,
+  "busy_cancel": 16,
+  "power_cuts": 580,
+  "real_spi": {
+    "polls": 1192,
+    "max_instructions": 10968,
+    "total_instructions": 769261,
+    "stack": 288,
+    "spi_read_max": 192,
+    "fw_spi_read_max": 64,
+    "spi_status_max": 3,
+    "phase_maximum": {
+      "1": 193,
+      "2": 10968,
+      "8": 1124,
+      "16": 105,
+      "10": 948,
+      "11": 190,
+      "12": 1087,
+      "13": 211,
+      "14": 698
+    }
+  },
+  "status": "PASS",
+  "full_suite_elf_sha256": "ffe007f88267a33ee1706e476d26f5532814c3ea14a7c5218182cdc44782b5ef",
+  "exact_failure_logs": 6,
+  "elf_sha256": "a2f8fc120e127eab44256e0629f751c480d62ca8557a112a0030cb42d5a3abb8",
+  "final_delta_validation": "Exact historical error log mapping only; six affected paths verified on final ELF."
+}
