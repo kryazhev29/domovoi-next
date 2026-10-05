@@ -2393,6 +2393,9 @@
             <name>$PROJ_DIR$\User\outs.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\prof.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\asm\user_fun_runtime.s</name>
         </file>
         <file><name>$PROJ_DIR$\User\asm\service_runtime.s</name></file>

@@ -14,6 +14,7 @@
         PUBLIC id_nextEnd
         PUBLIC id_time_end
         PUBLIC id_watch_end
+        EXTERN prof_send
         EXTERN expiry_runtime_active
         EXTERN expiry_runtime_poll
         EXTERN idclear_runtime_begin
@@ -13450,6 +13451,9 @@ user_parse_comand:
         MOV      R0,R6
           CFI FunCall user_send_commDiag
         BL       user_send_commDiag
+        MOV      R0,R6
+          CFI FunCall prof_send
+        BL       prof_send
         B.N      ??user_parse_comand_1
 ??user_parse_comand_42:
         MOVS     R0,R5

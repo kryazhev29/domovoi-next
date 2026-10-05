@@ -1,5 +1,6 @@
 
 #include "wiegand.h"
+#include "prof.h"
 
 volatile uint32_t wgData = 0;
 volatile uint32_t wgTime = 0;
@@ -69,7 +70,7 @@ void WG_process(void){
   if (wgDataAvalible){
     uint32_t id = wgID;
     wgDataAvalible = false; // снимаем владение до вызова обработчика
-    WG_readedID(id);
+    PROF_STEP(PROF_WG_CALL, WG_readedID(id));
   }
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
@@ -89,6 +90,8 @@ void WG_process(void){
   __set_PRIMASK(mask); // следующий фронт уже принадлежит следующему кадру
   if (complete){
     wgDataAvalible = (count == 26);
+    if (wgDataAvalible)
+      prof_card_mark = PROF_NOW() | 1u;
     if (wgDataAvalible)
       wgID = (data>>1) & 0x03FFFFFF; // прежнее формирование ID; паритет требует решения Q6
   }
