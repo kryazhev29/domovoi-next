@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspace>
+  <project><path>$WS_DIR$\DomovoiNext_ASM.ewp</path></project>
+  <project><path>$WS_DIR$\DomovoiNext_C.ewp</path></project>
+  <project><path>$WS_DIR$\DomovoiNext_HYBRID.ewp</path></project>
+  <batchBuild/>
+</workspace>

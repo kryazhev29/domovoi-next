@@ -35,10 +35,15 @@ def build(variant,configuration,base,iar,diagnostic=False):
     (out/('diagnostic-build.log' if diagnostic else 'build.log')).write_bytes(log)
     for line in log.decode(errors='replace').splitlines():
         if any(s in line for s in ('Error[','Warning[','Total number','Build succeeded')):print(line)
+    if result.returncode and b'weakly_canonical' in log and variant in ('ASM','C','HYBRID') and not diagnostic:
+        sys.path.insert(0,str(ROOT/'Tests'))
+        from build_iar import build as direct_build
+        direct_build(variant,base,configuration)
+        return 0
     return result.returncode
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('baseline','ASM','C'),required=True)
+    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('baseline','ASM','C','HYBRID'),required=True)
     p.add_argument('--configuration',choices=('Release','ReleaseSpeed'),default='Release')
     p.add_argument('--build-root',type=Path,default=Path(tempfile.gettempdir())/'domovoi-c-asm')
     p.add_argument('--iar',type=Path,default=Path(os.environ.get('IAR_BUILD',r'C:\Program Files\IAR Systems\Embedded Workbench 9.2\common\bin\IarBuild.exe')))

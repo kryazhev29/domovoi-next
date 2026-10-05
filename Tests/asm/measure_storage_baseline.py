@@ -29,7 +29,7 @@ for n in (1,4095):
     flash[0x50000:0x51000]=bytes((i*17)&255 for i in range(4096))
     assert m.call('photo_backup_crc',0x50000,n,0x21000000)
     out['cases']['photo_crc_'+str(n)]={'instructions':m.steps,'stack':m.top-m.minimum}
-p=m.call('__basic_malloc',192);m.write(m.addr('photo'),p)
+p=m.call('work_acquire',180,1);m.write(m.addr('photo'),p)
 layout=fields('photo_s');d=fields('device_s')
 m.u.mem_write(m.addr('mem')+8*8,struct.pack('<II',0x200000,0x100000))
 out['photo_layout']=layout

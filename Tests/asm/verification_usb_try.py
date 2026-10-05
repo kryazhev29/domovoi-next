@@ -21,7 +21,7 @@ class UsbTryMachine(Machine):
     expected_stack = 16
     instruction_limit = 15000
     def __init__(self):
-        super().__init__();self.init();self.observations=[];self.writes=[];self.reads=[]
+        super().__init__();self.size=self.map_size('USART_Rx_Buffer');self.init();self.observations=[];self.writes=[];self.reads=[]
         self.observe=False;self.copy_started=False;self.last_source=0;self.pending_action=None
         # Hook the observed regions. Unicorn 2.1.4 global memory hooks can
         # misexecute conditional Thumb POP/IT instructions in compiler output.
@@ -31,8 +31,8 @@ class UsbTryMachine(Machine):
     def memory_write(self,u,access,p,n,value,x):
         if not self.observe:return
         ring=self.addr('USART_Rx_Buffer');ip=self.addr('USART_Rx_ptr_in')
-        assert ring<=p<p+n<=ring+1280 or p==ip and n==4 or self.bottom<=p<p+n<=self.top,hex(p)
-        if ring<=p<ring+1280 or p==ip:
+        assert ring<=p<p+n<=ring+self.size or p==ip and n==4 or self.bottom<=p<p+n<=self.top,hex(p)
+        if ring<=p<ring+self.size or p==ip:
             assert self.u.reg_read(UC_ARM_REG_PRIMASK)==1,'unprotected ring mutation'
             self.writes.append((p,n,value))
     def memory_read(self,u,access,p,n,value,x):
@@ -41,11 +41,11 @@ class UsbTryMachine(Machine):
     def check_publish(self,u,pc,n,x):
         if not self.observe:return
         current=self.read(self.addr('USART_Rx_ptr_in'))
-        expected=(self.start_in+self.length)%1280
+        expected=(self.start_in+self.length)%self.size
         assert current in (self.start_in,expected) or self.reset_fired and current==0,'partial in-pointer publication'
         if not self.u.reg_read(UC_ARM_REG_PRIMASK):
             if current==expected and self.length and expected!=self.start_in:
-                ring=bytes(self.u.mem_read(self.addr('USART_Rx_Buffer'),1280))
+                ring=bytes(self.u.mem_read(self.addr('USART_Rx_Buffer'),self.size))
                 assert ring==self.expected_ring,'IRQ observed pointer before payload'
             self.observations.append((self.steps,current))
             if self.pending_action is not None:
@@ -58,19 +58,19 @@ class UsbTryMachine(Machine):
                         self.write(self.addr('USART_Rx_ptr_in'),0)
                         self.write(self.addr('USART_Rx_ptr_out'),0)
                     else:
-                        self.observed_irq=bytes(self.u.mem_read(self.addr('USART_Rx_Buffer'),1280)),current
+                        self.observed_irq=bytes(self.u.mem_read(self.addr('USART_Rx_Buffer'),self.size)),current
     def run(self,inp=0,out=0,length=64,mask=0,enabled=1,configured=5,epoch=7,stored_epoch=7,connected=True,null=False,irq=None):
         self.observe=False
         init_transport(self,inp=inp,out=out,enabled=enabled,configured=configured,
                        epoch=epoch,stored_epoch=stored_epoch,connected=connected)
-        self.before=bytes((i*37+11)&255 for i in range(1280))
+        self.before=bytes((i*37+11)&255 for i in range(self.size))
         self.u.mem_write(self.addr('USART_Rx_Buffer'),self.before)
-        self.payload=bytes((i*19+83)&255 for i in range(1280))
+        self.payload=bytes((i*19+83)&255 for i in range(self.size))
         self.u.mem_write(0x21000000,self.payload+b'GUARD')
         self.start_in=inp;self.length=length
         expectation=bytearray(self.before)
-        if inp<1280 and length<1280:
-            for i in range(length):expectation[(inp+i)%1280]=self.payload[i]
+        if inp<self.size and length<self.size:
+            for i in range(length):expectation[(inp+i)%self.size]=self.payload[i]
         self.expected_ring=bytes(expectation)
         self.observations=[];self.writes=[];self.reads=[];self.pending_action=irq;self.observed_irq=None;self.reset_fired=False
         regs=(UC_ARM_REG_R4,UC_ARM_REG_R5,UC_ARM_REG_R6,UC_ARM_REG_R7,UC_ARM_REG_R8,UC_ARM_REG_R9,UC_ARM_REG_R10,UC_ARM_REG_R11)
@@ -83,16 +83,16 @@ class UsbTryMachine(Machine):
         assert self.u.reg_read(UC_ARM_REG_SP)==self.top
         if self.expected_stack is not None:assert self.top-self.minimum==self.expected_stack
         assert [self.u.reg_read(r) for r in regs]==saved
-        assert bytes(self.u.mem_read(0x21000000,1285))==self.payload+b'GUARD'
+        assert bytes(self.u.mem_read(0x21000000,(self.size+5)))==self.payload+b'GUARD'
         if self.instruction_limit is not None:assert self.steps<self.instruction_limit,'busy wait or unbounded copy'
-        ring=bytes(self.u.mem_read(self.addr('USART_Rx_Buffer'),1280));new_in=self.read(self.addr('USART_Rx_ptr_in'))
+        ring=bytes(self.u.mem_read(self.addr('USART_Rx_Buffer'),self.size));new_in=self.read(self.addr('USART_Rx_ptr_in'))
         if result:
             assert len(self.reads)==length and all(n==1 for p,n in self.reads)
             assert [p for p,n in self.reads]==list(range(0x21000000,0x21000000+length))
             assert ring==self.expected_ring
             assert sum(1 for p,n,v in self.writes if p==self.addr('USART_Rx_ptr_in'))==1
             # A reset delivered after atomic publish may immediately clear ptr.
-            assert new_in==(inp+length)%1280 or irq and irq[1]=='reset' and new_in==0
+            assert new_in==(inp+length)%self.size or irq and irq[1]=='reset' and new_in==0
             assert sum(n for p,n,v in self.writes if p!=self.addr('USART_Rx_ptr_in'))==length
         else:
             assert not self.reads and not self.writes
@@ -102,10 +102,11 @@ class UsbTryMachine(Machine):
 
 
 def mutations():
+    m=UsbTryMachine()
     plans=[
         ('mask',b'\x72\xb6',b'\x00\xbf',dict(),1),
         ('epoch',b'\x9a\x42',b'\x00\xbf',dict(epoch=8),0),
-        ('wrap',b'\x08\xbf\x00\x23',b'\x08\xbf\x01\x23',dict(inp=1279,out=1279,length=2),1),
+        ('wrap',b'\x08\xbf\x00\x23',b'\x08\xbf\x01\x23',dict(inp=m.size-1,out=m.size-1,length=2),1),
         ('full_queue',b'\xaa\x42\x11\xd3',b'\xaa\x42\x00\xbf',dict(inp=0,out=1,length=1),0),
         ('configured',b'\x05\x2a',b'\x04\x2a',dict(),1),
     ]
@@ -134,28 +135,28 @@ def run():
     barrier=code.index(b'\xbf\xf3\x5f\x8f')
     assert b'\x13\x60' in code[barrier+4:barrier+12],'publish STR R3,[R2] must follow DMB'
     for mask in (0,1):
-        for inp in (0,1,639,1278,1279):
-            for out in (0,1,639,1278,1279,1280):
-                for length in (0,1,64,1278,1279,1280,65535):
+        for inp in (0,1,m.size//2,m.size-2,m.size-1):
+            for out in (0,1,m.size//2,m.size-2,m.size-1,m.size):
+                for length in (0,1,64,m.size-2,m.size-1,m.size,65535):
                     result,steps=m.run(inp,out,length,mask)
-                    free=((0 if out==1280 else out)+1279-inp)%1280
-                    assert result==int(length<1280 and length<=free),(inp,out,length,result,free)
+                    free=((0 if out==m.size else out)+(m.size-1)-inp)%m.size
+                    assert result==int(length<m.size and length<=free),(inp,out,length,result,free)
                     (accepted if result else refused).append(steps);cases+=1
     failures=0
-    for opts in [dict(enabled=0),dict(configured=0),dict(configured=4),dict(epoch=8),dict(stored_epoch=6),dict(connected=False),dict(null=True),dict(inp=1280),dict(inp=0xffffffff),dict(out=1281),dict(out=0xffffffff)]:
+    for opts in [dict(enabled=0),dict(configured=0),dict(configured=4),dict(epoch=8),dict(stored_epoch=6),dict(connected=False),dict(null=True),dict(inp=m.size),dict(inp=0xffffffff),dict(out=(m.size+1)),dict(out=0xffffffff)]:
         for mask in (0,1):
             assert m.run(mask=mask,**opts)[0]==0;failures+=1
     for mask in (0,1):assert m.run(length=0,null=True,mask=mask)[0]==1
     # Every instruction boundary on a short wrap copy: ISR reset either occurs
     # before lock (epoch mismatch rejects) or after complete atomic publish.
-    baseline=m.run(1277,1277,8)[1];irqcases=0
+    baseline=m.run((m.size-3),(m.size-3),8)[1];irqcases=0
     for point in range(baseline+1):
-        m.run(1277,1277,8,irq=(point,'reset'));irqcases+=1
+        m.run((m.size-3),(m.size-3),8,irq=(point,'reset'));irqcases+=1
     for point in (0,10,20,35,100,7000,11500):
-        m.run(0,0,1279,irq=(point,'observe'));irqcases+=1
+        m.run(0,0,(m.size-1),irq=(point,'observe'));irqcases+=1
     return dict(status='PASS',queue_boundary_cases=cases,rejected_conditions=failures,
         nullable_zero_cases=2,irq_boundary_cases=irqcases,maximum_instructions=max(accepted),
-        maximum_rejection_instructions=max(refused),stack=16,maximum_copy_bytes=1279,
+        maximum_rejection_instructions=max(refused),stack=16,maximum_copy_bytes=(m.size-1),
         atomic_publish='all payload stores under PRIMASK1; pointer published once after payload and linked DMB',
         code_sha256=hashlib.sha256(code).hexdigest(),mutations=mutations(),
         units='Unicorn instructions; not board cycles/time',

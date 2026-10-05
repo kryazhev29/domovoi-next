@@ -1,3 +1,6 @@
+#include "../work_slots.h"
+        EXTERN work_acquire
+        EXTERN work_release
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/User/photo.c
         PUBLIC photo
@@ -23,7 +26,6 @@
         EXTERN __aeabi_memclr
         EXTERN __aeabi_memcpy
         EXTERN __aeabi_memcpy4
-        EXTERN calloc
         EXTERN comm_channel_ready
         EXTERN comm_tx_acquire
         EXTERN comm_tx_busy
@@ -34,9 +36,7 @@
         EXTERN crc32_update
         EXTERN device
         EXTERN fast_all_ff
-        EXTERN free
         EXTERN log_addPhotoEvent
-        EXTERN malloc
         EXTERN mem
         EXTERN mem_read
         EXTERN memcmp
@@ -203,8 +203,9 @@ pr_release:
           CFI CFA R13+8
         LDR.W    R4,??DataTable14
         LDR      R0,[R4, #+0]
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_PHOTO_PACKET
+          CFI FunCall work_release
+        BL       work_release
         MOVS     R0,#+0
         STR      R0,[R4, #+0]
         STRB     R0,[R4, #+113]
@@ -2381,8 +2382,9 @@ photo_storage_poll:
         CMP      R0,#+0
         BNE.N    ??CrossCallReturnLabel_14
         MOVW     R0,#+534
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_PHOTO_PACKET
+          CFI FunCall work_acquire
+        BL       work_acquire
         STR      R0,[R7, #+0]
         CMP      R0,#+0
         BEQ.W    ??photo_storage_poll_10
@@ -3780,8 +3782,9 @@ pr_poll:
         LDRB     R0,[R8, #+106]
         CBNZ.N   R0,??pr_poll_2
         LDR      R0,[R5, #+0]
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_PHOTO_CONTEXT
+          CFI FunCall work_release
+        BL       work_release
         MOVS     R0,#+0
         STR      R0,[R5, #+0]
 ??pr_poll_2:
@@ -4214,8 +4217,10 @@ photo_alloc:
         CBNZ.N   R0,??photo_alloc_0
         MOVS     R1,#+180
         MOVS     R0,#+1
-          CFI FunCall calloc
-        BL       calloc
+        MOV R0,R1
+        MOVS R1,#WORK_PHOTO_CONTEXT
+          CFI FunCall work_acquire
+        BL       work_acquire
         STR      R0,[R4, #+0]
 ??photo_alloc_0:
         LDR      R0,[R4, #+0]

@@ -1,3 +1,6 @@
+#include "../work_slots.h"
+        EXTERN work_acquire
+        EXTERN work_release
 ; Handwritten Cortex-M3 / IAR cooperative command 9/10 upload.
 ; Context (36 heap bytes): packet0, pos4, limit8, USB epoch12,
 ; total16/first18/wanted20/copied22/seen24/crc26/offset28/wirelen30,
@@ -8,8 +11,6 @@
         EXTERN flash_release
         PRESERVE8
         REQUIRE8
-        EXTERN malloc
-        EXTERN free
         EXTERN mem
         EXTERN device
         EXTERN store_runtime
@@ -29,7 +30,7 @@
         EXTERN crc16_calcInit
         EXTERN __aeabi_memcpy
         EXTERN store_upload_request
-        EXTERN upload_ack
+        EXTERN work_upload_ack
         EXTERN upload_index
         EXTERN upload_finish
         EXTERN user_send_anyData
@@ -105,14 +106,16 @@ upload_runtime_begin:
         BEQ.W up_begin_handled
         ; Reserve BOTH objects before ACK can request durable cursor writes.
         MOVS R0,#+36
-          CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_UPLOAD_CONTEXT
+          CFI FunCall work_acquire
+        BL work_acquire
         CMP R0,#+0
         BEQ.W up_begin_handled
         MOV R7,R0
         MOVW R0,#+1040
-          CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_UPLOAD_PACKET
+          CFI FunCall work_acquire
+        BL work_acquire
         CMP R0,#+0
         BEQ.N up_begin_free_context
         STR R0,[R7]
@@ -125,10 +128,11 @@ upload_runtime_begin:
         BEQ.N up_begin_free_packet
         MOV R0,R4
         MOV R1,R5
-          CFI FunCall upload_ack
-        BL upload_ack
+        MOV R2,R7
+          CFI FunCall work_upload_ack
+        BL work_upload_ack
         CMP R0,#+0
-        BEQ.N up_begin_free_packet
+        BEQ.N up_begin_handled
         MOV R0,R4
         MOV R1,R5
           CFI FunCall upload_index
@@ -168,12 +172,14 @@ upload_runtime_begin:
         B.N up_begin_handled
 up_begin_free_packet:
         LDR R0,[R7]
-          CFI FunCall free
-        BL free
+        MOVS R1,#WORK_UPLOAD_PACKET
+          CFI FunCall work_release
+        BL work_release
 up_begin_free_context:
         MOV R0,R7
-          CFI FunCall free
-        BL free
+        MOVS R1,#WORK_UPLOAD_CONTEXT
+          CFI FunCall work_release
+        BL work_release
 up_begin_handled:
         MOVS R0,#+1
 up_begin_return:
@@ -232,12 +238,14 @@ upload_runtime_cancel:
         BL flash_release
         LDR R0,[R4]
         CBZ R0,up_cancel_context
-          CFI FunCall free
-        BL free
+        MOVS R1,#WORK_UPLOAD_PACKET
+          CFI FunCall work_release
+        BL work_release
 up_cancel_context:
         MOV R0,R4
-          CFI FunCall free
-        BL free
+        MOVS R1,#WORK_UPLOAD_CONTEXT
+          CFI FunCall work_release
+        BL work_release
 up_cancel_return:
         POP {R4,PC}
           CFI EndBlock up_cancel_cfi

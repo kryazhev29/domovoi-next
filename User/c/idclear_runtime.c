@@ -10,14 +10,14 @@ idclear_s *idclear_job;
 uint8_t idclear_runtime_active(void) { return idclear_job!=NULL; }
 void idclear_runtime_cancel(void) { if(idclear_job) idclear_job->cancel=idclear_job->quiet=1; }
 void idclear_runtime_quiet(uint8_t channel) { if(!channel && idclear_job) idclear_job->quiet=1; }
-static void idclear_release(void) { idclear_s *p=idclear_job; idclear_job=NULL; free(p); }
+static void idclear_release(void) { idclear_s *p=idclear_job; idclear_job=NULL; work_release(p, WORK_IDCLEAR); }
 uint8_t idclear_runtime_begin(uint8_t channel,uint8_t uniq)
 {
   uint32_t start=mem[MB_ID].start,size=mem[MB_ID].size,end=start+size;
   idclear_s *p;
   if(channel || idclear_job || !user_storage_command_ready() || !mem_tables_ready()) return 0;
   if(((start|size)&4095u) || start<0x41000u || end<start || end>0x1c8000u) return 0;
-  p=malloc(sizeof *p); if(!p) return 0;
+  p=work_acquire(sizeof *p, WORK_IDCLEAR); if(!p) return 0;
   p->cursor=p->start=start; p->end=end; p->epoch=usb_bus_resets;
   p->phase=1; p->waiting=p->cancel=p->quiet=p->touched=p->reserved=p->reserved2=0; p->uniq=uniq;
   rt_put32(p->success,0x4e444c53u); rt_put16(p->success+4,3);

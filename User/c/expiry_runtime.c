@@ -17,7 +17,7 @@ RT_ASSERT(expiry_size,sizeof(expiry_s)==1092);
 expiry_s *expiry_job;
 bool expiry_runtime_active(void) { return expiry_job!=NULL; }
 void expiry_runtime_cancel(void) { if(expiry_job) expiry_job->cancelled=1; }
-static void expiry_release(void) { flash_release(FO_EXPIRY); free(expiry_job); expiry_job=NULL; }
+static void expiry_release(void) { flash_release(FO_EXPIRY); work_release(expiry_job, WORK_EXPIRY); expiry_job=NULL; }
 bool expiry_runtime_begin(void)
 {
   uint32_t now,start,size,end,used; expiry_s *p;
@@ -26,7 +26,7 @@ bool expiry_runtime_begin(void)
   if(!id_endScan && (!id_nextEnd || now<id_nextEnd)) return false;
   start=mem[MB_ID].start; size=mem[MB_ID].size; end=start+size; used=32u*id_cells_end;
   if((start&31u) || (size&31u) || end<start || used>size) return false;
-  p=malloc(sizeof *p); if(!p) { id_endScan=1; return false; }
+  p=work_acquire(sizeof *p, WORK_EXPIRY); if(!p) { id_endScan=1; return false; }
   p->scan=p->start=p->snapshot_base=start; p->used_limit=start+used; p->partition_limit=end;
   p->scan_time=now; p->phase=6; p->cancelled=0; p->fill_offset=0;
   expiry_job=p; flash_claim(FO_EXPIRY); id_endScan=0; id_nextEnd=0; return true;

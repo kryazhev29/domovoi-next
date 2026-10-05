@@ -1,3 +1,12 @@
+#include "../work_slots.h"
+#ifndef RELEASE_BUILD
+#define DEBUG_USER
+#endif
+        EXTERN format_id
+        EXTERN format_i32
+        EXTERN format_status
+        EXTERN work_acquire
+        EXTERN work_release
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/User/user_fun.c
         PUBLIC comm_credential
@@ -68,7 +77,9 @@
         RTMODEL "__dlib_file_descriptor", "0"
         RTMODEL "__dlib_full_locale_support", "0"
         RTMODEL "__dlib_version", "6"
+#ifdef DEBUG_USER
         RTMODEL "__iar_require _Printf", "flags,int_specials,widths"
+#endif
         AAPCS BASE,INTERWORK
         PRESERVE8
         REQUIRE8
@@ -141,7 +152,6 @@
         EXTERN fast_all_ff
         EXTERN fast_sldn
         EXTERN fault_record
-        EXTERN free
         EXTERN idindex_find
         EXTERN idindex_hash
         EXTERN idindex_poll
@@ -164,7 +174,6 @@
         EXTERN led_load
         EXTERN loop_max_ms
         EXTERN loop_stalls
-        EXTERN malloc
         EXTERN mem_config_begin
         EXTERN mem_config_errors
         EXTERN mem_config_poll
@@ -244,10 +253,26 @@
         EXTERN w25_read_data
         EXTERN w25_read_devID
         EXTERN wdt_reload
+#ifdef HYBRID_CARD
+        EXTERN RF433_readedID
+
+        PUBLIC hybrid_unused_RF433_readedID
+#else
 
         PUBLIC RF433_readedID
+#endif
+#ifdef HYBRID_CARD
+        EXTERN RFID_readedID
+        PUBLIC hybrid_unused_RFID_readedID
+#else
         PUBLIC RFID_readedID
+#endif
+#ifdef HYBRID_CARD
+        EXTERN WG_readedID
+        PUBLIC hybrid_unused_WG_readedID
+#else
         PUBLIC WG_readedID
+#endif
         PUBLIC _A_tempStrBuffer
         PUBLIC config
         PUBLIC device
@@ -272,12 +297,22 @@
         PUBLIC timers_user_handle
         PUBLIC uniqIDCnt
         PUBLIC usb_data_reading
+#ifdef HYBRID_CARD
+        EXTERN user_activateOut
+        PUBLIC hybrid_unused_user_activateOut
+#else
         PUBLIC user_activateOut
+#endif
         PUBLIC user_addIdToTempBuffer
         PUBLIC user_comm_acquire
         PUBLIC user_calcCRC16InFlash
         PUBLIC user_checkFirmware
+#ifdef HYBRID_CARD
+        EXTERN user_checkIdAndControl
+        PUBLIC hybrid_unused_user_checkIdAndControl
+#else
         PUBLIC user_checkIdAndControl
+#endif
         PUBLIC user_checkIdTimeEnd
         PUBLIC user_checkShedule
         PUBLIC user_clearMemBlock
@@ -301,7 +336,12 @@
         PUBLIC user_debug
         PUBLIC user_errorconnection
         PUBLIC user_factoryReset
+#ifdef HYBRID_CARD
+        EXTERN user_findID
+        PUBLIC hybrid_unused_user_findID
+#else
         PUBLIC user_findID
+#endif
         PUBLIC user_findTempID
         PUBLIC user_getFWblockFromServer
         PUBLIC user_getGroup
@@ -1003,6 +1043,7 @@ gsm_user_debug:
           CFI Function user_debug
         THUMB
 user_debug:
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable32_3
         LDRB     R1,[R1, #+170]
         LSLS     R1,R1,#+29
@@ -1010,6 +1051,9 @@ user_debug:
         IT       MI
         BMI.W    usb_sendstr
         BX       LR
+#else
+        BX LR
+#endif
           CFI EndBlock cfiBlock16
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -1123,9 +1167,17 @@ reader_id:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock20 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_WG_readedID
+#else
           CFI Function WG_readedID
+#endif
         THUMB
+#ifdef HYBRID_CARD
+hybrid_unused_WG_readedID:
+#else
 WG_readedID:
+#endif
         PUSH     {R0-R4,LR}
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
@@ -1134,13 +1186,27 @@ WG_readedID:
 ??CrossCallReturnLabel_93:
         LDR.W    R4,??DataTable43_1
         MOV      R2,SP
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable44_2
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R4
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R4
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R3,#+2
         MOVS     R2,#+0
         MOVS     R1,#+1
@@ -1149,13 +1215,21 @@ WG_readedID:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond21 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_WG_readedID
+#else
           CFI Function WG_readedID
+#endif
           CFI Conditional ??CrossCallReturnLabel_93
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+24
           CFI Block cfiCond22 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI (cfiCond22) Function hybrid_unused_RF433_readedID
+#else
           CFI (cfiCond22) Function RF433_readedID
+#endif
           CFI (cfiCond22) Conditional ??CrossCallReturnLabel_92
           CFI (cfiCond22) R4 Frame(CFA, -8)
           CFI (cfiCond22) R14 Frame(CFA, -4)
@@ -1167,19 +1241,23 @@ WG_readedID:
 ?Subroutine29:
         MOV      R2,R0
           CFI Block cfiCond24 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI (cfiCond24) Function hybrid_unused_RFID_readedID
+#else
           CFI (cfiCond24) Function RFID_readedID
+#endif
           CFI (cfiCond24) Conditional ??CrossCallReturnLabel_91
           CFI (cfiCond24) R4 Frame(CFA, -12)
           CFI (cfiCond24) R5 Frame(CFA, -8)
           CFI (cfiCond24) R14 Frame(CFA, -4)
           CFI (cfiCond24) CFA R13+24
 ??Subroutine29_0:
-        LDR.W    R1,??DataTable44_3
+        MOV R1,#0
         MOV      R0,SP
-          CFI (cfiCond21) FunCall WG_readedID sprintf
-          CFI (cfiCond22) FunCall RF433_readedID sprintf
-          CFI (cfiCond24) FunCall RFID_readedID sprintf
-        B.W      sprintf
+          CFI (cfiCond21) FunCall WG_readedID format_id
+          CFI (cfiCond22) FunCall RF433_readedID format_id
+          CFI (cfiCond24) FunCall RFID_readedID format_id
+        B.W      format_id
           CFI EndBlock cfiCond21
           CFI EndBlock cfiCond22
           CFI EndBlock cfiPicker23
@@ -1187,9 +1265,17 @@ WG_readedID:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock25 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_RF433_readedID
+#else
           CFI Function RF433_readedID
+#endif
         THUMB
+#ifdef HYBRID_CARD
+hybrid_unused_RF433_readedID:
+#else
 RF433_readedID:
+#endif
         PUSH     {R0-R4,LR}
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
@@ -1198,13 +1284,27 @@ RF433_readedID:
 ??CrossCallReturnLabel_92:
         LDR.W    R4,??DataTable43_1
         MOV      R2,SP
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable43_2
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R4
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R4
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R3,#+3
         MOVS     R2,#+0
         MOVS     R1,#+2
@@ -1228,9 +1328,17 @@ RF433_readedID:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock27 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_RFID_readedID
+#else
           CFI Function RFID_readedID
+#endif
         THUMB
+#ifdef HYBRID_CARD
+hybrid_unused_RFID_readedID:
+#else
 RFID_readedID:
+#endif
         PUSH     {R1-R5,LR}
           CFI R14 Frame(CFA, -4)
           CFI R5 Frame(CFA, -8)
@@ -1242,13 +1350,27 @@ RFID_readedID:
 ??CrossCallReturnLabel_91:
         LDR.W    R4,??DataTable43_1
         MOV      R2,SP
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable44_4
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R4
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R4
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R3,#+4
         MOV      R2,R5
         MOVS     R1,#+3
@@ -1470,9 +1592,19 @@ user_errorconnection:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable44_14
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDR.W    R0,??DataTable32_3
         MOVS     R1,#+0
         STRB     R1,[R0, #+133]
@@ -2270,13 +2402,27 @@ user_smsreceived:
         LDR.W    R6,??DataTable43_1
         MOV      R3,R5
         MOVS     R2,#+111
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable54_1
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R6
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R6
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R2,#+1
         MOV      R1,R5
         MOVS     R0,#+10
@@ -2441,10 +2587,10 @@ user_smsreceived:
         LDR.W    R0,??DataTable58
         LDR      R3,[R0, R1]
         LDRB     R2,[R9, #+74]
-        LDR.W    R1,??DataTable58_1
+        MOV R1,#0
         MOV      R0,R6
-          CFI FunCall sprintf
-        BL       sprintf
+          CFI FunCall format_status
+        BL       format_status
         B.N      ??user_smsreceived_17
 ??user_smsreceived_16:
         BL       ?Subroutine46
@@ -3786,9 +3932,19 @@ user_sendsms:
           CFI CFA R13+16
         MOV      R5,R0
         MOV      R4,R1
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable61_2
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOV      R1,R5
         MOV      R0,R4
           CFI FunCall user_comm_sms
@@ -3819,9 +3975,19 @@ user_sendsms:
           CFI Function user_smssended
         THUMB
 user_smssended:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable61_3
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         B.W      user_debug
+#else
+        BX LR
+#endif
           CFI EndBlock cfiBlock66
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -3846,13 +4012,27 @@ user_incomingcall:
         MOV      R5,R1
         LDR.N    R6,??DataTable43_1
         MOV      R2,R4
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable60_2
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R6
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R6
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         CMP      R5,#+1
         BNE.N    ??user_incomingcall_0
         LDR.W    R6,??DataTable56
@@ -3886,9 +4066,19 @@ user_incomingcall:
           CFI Function user_comanderror
         THUMB
 user_comanderror:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable62
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         B.W      user_debug
+#else
+        BX LR
+#endif
           CFI EndBlock cfiBlock68
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -3896,9 +4086,19 @@ user_comanderror:
           CFI Function user_parseUSSD
         THUMB
 user_parseUSSD:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable62_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         B.W      user_debug
+#else
+        BX LR
+#endif
           CFI EndBlock cfiBlock69
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -4022,9 +4222,19 @@ user_clearMemBlock:
         ADD      R0,R5,R0, LSL #+3
         LDR      R0,[R0, #+4]
         CBZ.N    R0,??user_clearMemBlock_0
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable64_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOV      R0,R4
         LDR      R0,[R5, R0, LSL #+3]
         ADD      R1,R5,R4, LSL #+3
@@ -4530,9 +4740,19 @@ user_loop:
           CFI FunCall app_trial_expired
         BL       app_trial_expired
         CBZ.N    R0,??user_loop_11
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable67_2
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
           CFI FunCall app_trial_rollback
         BL       app_trial_rollback
           CFI FunCall user_savereset
@@ -4622,9 +4842,19 @@ user_loop:
         MOVS     R0,#+33
           CFI FunCall log_addSystemEvent
         BL       log_addSystemEvent
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable68_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
           CFI FunCall user_savereset
         BL       user_savereset
 ??user_loop_18:
@@ -4634,9 +4864,19 @@ user_loop:
         STRB     R0,[R6, #+112]
         LDRB     R0,[R6, #+112]
         CBNZ.N   R0,??user_loop_19
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable68_2
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
           CFI FunCall user_factoryReset
         BL       user_factoryReset
 ??user_loop_19:
@@ -4666,7 +4906,11 @@ user_loop:
         BEQ.N    ??user_loop_23
         B.N      ??user_loop_21
 ??user_loop_22:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable69
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_loop_24
 ??user_loop_23:
         LDRB     R0,[R6, #+135]
@@ -4675,10 +4919,20 @@ user_loop:
         LDRB     R0,[R6, #+135]
         CMP      R0,#+3
         BLT.N    ??user_loop_21
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable69_1
+#else
+        MOV R0,#0
+#endif
 ??user_loop_24:
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R0,#+0
         STRB     R0,[R6, #+133]
           CFI FunCall comm_channel_reopen
@@ -4769,9 +5023,19 @@ user_loop:
         MOVS     R0,#+32
           CFI FunCall log_addSystemEvent
         BL       log_addSystemEvent
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable74
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
           CFI FunCall user_savereset
         BL       user_savereset
 ??user_loop_30:
@@ -4996,9 +5260,19 @@ user_readconfig:
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
         MOVS     R5,#+20
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable76
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDR.N    R4,??DataTable54_2
 ??user_readconfig_0:
           CFI FunCall wdt_reload
@@ -5129,9 +5403,19 @@ user_setdefault:
           CFI CFA R13+8
           CFI FunCall wdt_reload
         BL       wdt_reload
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable77_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDR.N    R4,??DataTable54_2
         BL       ?Subroutine54
 ??CrossCallReturnLabel_188:
@@ -5227,9 +5511,19 @@ user_factoryReset:
           CFI CFA R13+8
           CFI FunCall fw_async_cancel
         BL       fw_async_cancel
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable77_6
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R0,#+10
           CFI FunCall upload_reset
         BL       upload_reset
@@ -5831,21 +6125,36 @@ user_send_anyData:
 ??CrossCallReturnLabel_219:
         B.N      ??user_send_anyData_3
 ??user_send_anyData_2:
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_acquire
+        BL       work_acquire
 ??user_send_anyData_3:
         MOVS     R4,R0
         BEQ.N    ??user_send_anyData_0
         LDR      R6,[SP, #+40]
         LDR.W    R10,??DataTable82_1
         MOV      R2,R9
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable82_2
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R10
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R10
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_123:
         STRB     R5,[R4, #+4]
@@ -5888,8 +6197,9 @@ user_send_anyData:
           CFI R11 SameValue
           CFI R14 SameValue
           CFI CFA R13+0
-          CFI FunCall free
-        B.W      free
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_release
+        B.W      work_release
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -6029,9 +6339,19 @@ user_send_registrationData:
 ??user_send_registrationData_1:
         CMP      R4,#+0
         BEQ.N    ??user_send_registrationData_2
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable82_3
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_124:
         MOVS     R0,#+40
@@ -6209,9 +6529,19 @@ user_send_statusPack:
 ??user_send_statusPack_1:
         CMP      R4,#+0
         BEQ.N    ??user_send_statusPack_2
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable84
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_125:
         MOVS     R0,#+18
@@ -6334,9 +6664,19 @@ user_send_statusPackSecond:
 ??user_send_statusPackSecond_1:
         CMP      R4,#+0
         BEQ.N    ??CrossCallReturnLabel_64
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable90
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_126:
         MOVS     R0,#+24
@@ -6545,9 +6885,19 @@ user_send_statusUpdateFW:
         STRB     R7,[R0, #+3]
         B.N      ??CrossCallReturnLabel_63
 ??user_send_statusUpdateFW_2:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable91
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_127:
         BL       ?Subroutine7
@@ -6682,9 +7032,19 @@ user_send_crcPack:
 ??user_send_crcPack_1:
         CMP      R4,#+0
         BEQ.N    ??CrossCallReturnLabel_62
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable94
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_128:
         MOVS     R0,#+13
@@ -6847,8 +7207,9 @@ user_send_crcMemoryID:
         BL       user_comm_acquire
         B.N      ??user_send_crcMemoryID_1
 ??user_send_crcMemoryID_0:
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_acquire
+        BL       work_acquire
 ??user_send_crcMemoryID_1:
         MOVS     R4,R0
         BEQ.N    ??user_send_crcMemoryID_2
@@ -6860,9 +7221,19 @@ user_send_crcMemoryID:
         CBNZ.N   R5,??user_send_crcMemoryID_3
         MOVS     R0,#+6
         STRB     R0,[R4, #+8]
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable97
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
 ??user_send_crcMemoryID_4:
         MOV      R1,#+16000
         LDR      R0,[R8, #+16]
@@ -6886,9 +7257,19 @@ user_send_crcMemoryID:
 ??user_send_crcMemoryID_3:
         MOVS     R0,#+15
         STRB     R0,[R4, #+8]
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable99
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOV      R1,#+16000
         SUBS     R0,R5,#+1
         MULS     R0,R0,R1
@@ -6914,8 +7295,9 @@ user_send_crcMemoryID:
         BL       ??Subroutine22_0
 ??CrossCallReturnLabel_61:
         MOV      R0,R4
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_release
+        BL       work_release
 ??user_send_crcMemoryID_2:
         POP      {R0,R1,R4-R10,PC}
 ??user_send_crcMemoryID_6:
@@ -7057,9 +7439,19 @@ user_send_smsToServer:
         BNE.N    ??user_send_smsToServer_3
         ADDS     R6,R6,#+3
         UXTH     R6,R6
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable100
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine30
 ??CrossCallReturnLabel_94:
         BL       ??Subroutine39_0
@@ -7465,9 +7857,19 @@ user_send_answer_comand:
 ??user_send_answer_comand_1:
         CMP      R4,#+0
         BEQ.N    ??CrossCallReturnLabel_60
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable101_2
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_130:
         MOVS     R0,#+11
@@ -7961,9 +8363,19 @@ user_send_timeshtamp:
 ??user_send_timeshtamp_1:
         CBZ.N    R4,??CrossCallReturnLabel_59
         LDR      R5,[SP, #+48]
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable102_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_131:
         MOVS     R0,#+10
@@ -8356,14 +8768,25 @@ user_send_configToConfigurator:
         BL       user_comm_acquire
         B.N      ??user_send_configToConfigurator_1
 ??user_send_configToConfigurator_0:
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_acquire
+        BL       work_acquire
 ??user_send_configToConfigurator_1:
         MOVS     R4,R0
         BEQ.N    ??user_send_configToConfigurator_2
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable100
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine38
 ??CrossCallReturnLabel_134:
         MOVS     R0,#+3
@@ -8401,8 +8824,9 @@ user_send_configToConfigurator:
           CFI R5 SameValue
           CFI R14 SameValue
           CFI CFA R13+0
-          CFI FunCall free
-        B.W      free
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_release
+        B.W      work_release
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
@@ -8529,8 +8953,9 @@ user_send_logRecords:
 ??user_send_logRecords_6:
         LSLS     R0,R5,#+5
         ADDS     R0,R0,#+16
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_acquire
+        BL       work_acquire
 ??user_send_logRecords_7:
         MOV      R4,R0
         LSLS     R6,R5,#+5
@@ -8541,9 +8966,19 @@ user_send_logRecords:
         SUBS     R7,R7,R5
         CMP      R4,#+0
         BEQ.N    ??user_send_logRecords_5
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable108
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine30
 ??CrossCallReturnLabel_95:
         STRB     R8,[R4, #+7]
@@ -8616,8 +9051,9 @@ user_send_logRecords:
         B.N      ??user_send_logRecords_16
 ??user_send_logRecords_9:
         MOV      R0,R4
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_release
+        BL       work_release
 ??user_send_logRecords_5:
         POP      {R0-R2,R4-R11,PC}
           CFI EndBlock cfiBlock205
@@ -9022,8 +9458,9 @@ user_send_tempIDs:
         MOVS     R0,#+10
         MULS     R0,R0,R5
         ADDS     R0,R0,#+16
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_acquire
+        BL       work_acquire
 ??user_send_tempIDs_6:
         MOV      R4,R0
         MOVS     R7,#+10
@@ -9035,9 +9472,19 @@ user_send_tempIDs:
         SUBS     R6,R6,R5
         CMP      R4,#+0
         BEQ.N    ??user_send_tempIDs_4
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable111
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine37
 ??CrossCallReturnLabel_122:
         LSRS     R0,R7,#+8
@@ -9129,8 +9576,9 @@ user_send_tempIDs:
         B.N      ??user_send_tempIDs_17
 ??user_send_tempIDs_10:
         MOV      R0,R4
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_REPLY
+          CFI FunCall work_release
+        BL       work_release
 ??user_send_tempIDs_4:
         POP      {R0-R2,R4-R11,PC}
           CFI EndBlock cfiBlock228
@@ -9276,13 +9724,27 @@ user_getFWblockFromServer:
         BEQ.N    ??user_getFWblockFromServer_5
         LDR.W    R7,??DataTable115_1
         MOV      R2,R6
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable115_2
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R7
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R7
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
 ??user_getFWblockFromServer_5:
         BL       ?Subroutine38
 ??CrossCallReturnLabel_135:
@@ -11922,9 +12384,19 @@ user_parse_comand:
         BEQ.W    ??user_parse_comand_44
         B.N      ??user_parse_comand_45
 ??user_parse_comand_10:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable127_2
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         CMP      R5,#+1
         BNE.N    ??user_parse_comand_46
         LDR.W    R4,??DataTable127
@@ -12021,9 +12493,19 @@ user_parse_comand:
         BL       comm_channel_reopen
         B.N      ??user_parse_comand_1
 ??user_parse_comand_11:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable127_4
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDR.W    R4,??DataTable127
         LDRB     R0,[R4, #+171]
         CMP      R0,#+0
@@ -12053,9 +12535,19 @@ user_parse_comand:
         STRB     R0,[R4, #+111]
         B.N      ??user_parse_comand_1
 ??user_parse_comand_12:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable127_6
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDRB     R0,[R7, #+5]
         CBNZ.N   R0,??user_parse_comand_56
           CFI FunCall user_factoryReset
@@ -12071,9 +12563,19 @@ user_parse_comand:
         STRB     R0,[R1, #+112]
         B.N      ??user_parse_comand_1
 ??user_parse_comand_13:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable127_7
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         CMP      R4,#+19
         BNE.W    ??user_parse_comand_57
         LDR.W    R4,??DataTable127
@@ -12148,9 +12650,19 @@ user_parse_comand:
         MOVS     R0,#+5
         B.N      ??user_parse_comand_62
 ??user_parse_comand_14:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable128
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDRB     R0,[R7, #+5]
         CMP      R0,#+0
         ITT      NE
@@ -12188,9 +12700,19 @@ user_parse_comand:
         MOVS     R0,#+7
         B.N      ??user_parse_comand_66
 ??user_parse_comand_16:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable128_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
           CFI FunCall fw_update_quiet
         BL       fw_update_quiet
         CMP      R0,#+0
@@ -12295,27 +12817,57 @@ user_parse_comand:
         MOV      R1,R8
         B.N      ??user_parse_comand_8
 ??user_parse_comand_17:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable128_4
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOV      R1,R6
         MOV      R0,R5
           CFI FunCall user_send_logRecords
         BL       user_send_logRecords
         B.N      ??user_parse_comand_1
 ??user_parse_comand_18:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable128_5
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOV      R1,R6
         MOV      R0,R5
           CFI FunCall user_send_tempIDs
         BL       user_send_tempIDs
         B.N      ??user_parse_comand_1
 ??user_parse_comand_19:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable128_6
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         CMP      R4,#+14
 ??user_parse_comand_67:
         BLT.W    ??user_parse_comand_57
@@ -12336,8 +12888,9 @@ user_parse_comand:
         SUB      R0,R4,#+13
         UXTH     R4,R0
         ADDS     R0,R4,#+1
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_SMS
+          CFI FunCall work_acquire
+        BL       work_acquire
         MOVS     R9,R0
         BNE.N    ??user_parse_comand_79
         BL       ?Subroutine71
@@ -12366,13 +12919,24 @@ user_parse_comand:
           CFI FunCall user_sendsms
         BL       user_sendsms
         MOV      R0,R9
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_SMS
+          CFI FunCall work_release
+        BL       work_release
         B.N      ??user_parse_comand_1
 ??user_parse_comand_20:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable128_8
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         SUBS     R4,R4,#+3
         CMP      R4,#+512
         BNE.N    ??user_parse_comand_57
@@ -12468,9 +13032,19 @@ user_parse_comand:
 ??user_parse_comand_83:
         B.N      ??user_parse_comand_52
 ??user_parse_comand_25:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable131
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOV      R1,R6
         MOV      R0,R5
           CFI FunCall user_send_crcPack
@@ -12478,9 +13052,19 @@ user_parse_comand:
 ??user_parse_comand_84:
         B.N      ??user_parse_comand_1
 ??user_parse_comand_26:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable131_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDRB     R0,[R7, #+5]
         CMP      R0,#+101
         BLT.N    ??user_parse_comand_85
@@ -12498,7 +13082,11 @@ user_parse_comand:
         MOVS     R0,R5
           CFI FunCall user_debug
         ITT      NE
+#ifdef DEBUG_USER
         LDRNE.W  R0,??DataTable131_2
+#else
+        MOVNE R0,#0
+#endif
         BLNE     user_debug
         CMP      R4,#+19
         BNE.N    ??user_parse_comand_86
@@ -12543,13 +13131,27 @@ user_parse_comand:
         LDRB     R2,[R7, #+5]
         LDRB     R0,[R7, #+6]
         ORR      R2,R2,R0, LSL #+8
+#ifdef DEBUG_USER
         LDR.W    R1,??DataTable133
+#else
+        MOV R1,#0
+#endif
         MOV      R0,R9
+#ifdef DEBUG_USER
           CFI FunCall sprintf
+#endif
+#ifdef DEBUG_USER
         BL       sprintf
+#endif
         MOV      R0,R9
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
 ??user_parse_comand_88:
         MOV      R2,R5
         SUBS     R1,R4,#+3
@@ -12572,9 +13174,19 @@ user_parse_comand:
         BL       user_send_statusUpdateFW
         B.N      ??user_parse_comand_1
 ??user_parse_comand_29:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable133_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         CMP      R4,#+3
         IT       NE
         CMPNE    R4,#+9
@@ -12593,18 +13205,38 @@ user_parse_comand:
         MOVS     R0,#+21
         B.N      ??user_parse_comand_66
 ??user_parse_comand_30:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable133_2
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOV      R1,R6
         MOV      R0,R5
           CFI FunCall user_send_statusPackSecond
         BL       user_send_statusPackSecond
         B.N      ??user_parse_comand_1
 ??user_parse_comand_31:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable133_3
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         ADDS     R2,R7,#+5
         ADD      R3,SP,#+4
         LDR      R1,[R2, #+0]
@@ -12616,9 +13248,19 @@ user_parse_comand:
 ??CrossCallReturnLabel_255:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_32:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable133_4
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         CMP      R5,#+1
           CFI FunCall comm_server_status_ack
         ITT      EQ
@@ -12634,9 +13276,19 @@ user_parse_comand:
 ??user_parse_comand_91:
         B.N      ??user_parse_comand_1
 ??user_parse_comand_33:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable134
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         BL       ?Subroutine72
 ??CrossCallReturnLabel_256:
         B.N      ??user_parse_comand_8
@@ -13310,9 +13962,17 @@ user_getweakday:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock353 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_user_findID
+#else
           CFI Function user_findID
+#endif
         THUMB
+#ifdef HYBRID_CARD
+hybrid_unused_user_findID:
+#else
 user_findID:
+#endif
         PUSH     {R3-R9,LR}
           CFI R14 Frame(CFA, -4)
           CFI R9 Frame(CFA, -8)
@@ -13611,7 +14271,11 @@ user_addIdToTempBuffer:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond357 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_user_findID
+#else
           CFI Function user_findID
+#endif
           CFI Conditional ??CrossCallReturnLabel_216
           CFI R4 Frame(CFA, -28)
           CFI R5 Frame(CFA, -24)
@@ -13754,9 +14418,17 @@ shedule_time_ok:
 
         SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock362 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_user_checkIdAndControl
+#else
           CFI Function user_checkIdAndControl
+#endif
         THUMB
+#ifdef HYBRID_CARD
+hybrid_unused_user_checkIdAndControl:
+#else
 user_checkIdAndControl:
+#endif
         PUSH     {R3-R6,LR}
           CFI R14 Frame(CFA, -4)
           CFI R6 Frame(CFA, -8)
@@ -13782,42 +14454,80 @@ user_checkIdAndControl:
         THUMB
 ??user_checkIdAndControl_5:
 ??jt3_0:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_7:
 ??jt3_1:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142_1
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_8:
 ??jt3_2:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142_2
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_9:
 ??jt3_3:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142_3
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_10:
 ??jt3_4:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142_4
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_11:
 ??jt3_5:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142_5
+#else
+        MOV R0,#0
+#endif
 ??user_checkIdAndControl_6:
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
 ??user_checkIdAndControl_4:
         LDR.W    R5,??DataTable139_1
         LDRH     R0,[R5, #+129]
         UBFX     R0,R0,#+7,#+1
         CBZ.N    R0,??user_checkIdAndControl_12
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142_6
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_12:
         LDRH     R0,[R5, #+129]
         UBFX     R0,R0,#+6,#+1
         CBZ.N    R0,??user_checkIdAndControl_14
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable142_7
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_14:
         STRH     R0,[SP, #+0]
@@ -13891,7 +14601,11 @@ user_checkIdAndControl:
           CFI FunCall user_findTempID
         BL       user_findTempID
         CBZ.N    R0,??user_checkIdAndControl_26
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable143
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_27
 ??user_checkIdAndControl_26:
         LDRH     R0,[R5, #+129]
@@ -13910,14 +14624,28 @@ user_checkIdAndControl:
         LDRH     R0,[R5, #+129]
         UBFX     R0,R0,#+4,#+1
         CBZ.N    R0,??user_checkIdAndControl_29
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable144
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_27
 ??user_checkIdAndControl_29:
         LDRB     R0,[R5, #+102]
         CBZ.N    R0,??user_checkIdAndControl_30
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable144_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         LDRB     R0,[R5, #+102]
           CFI FunCall user_checkShedule
         BL       user_checkShedule
@@ -13945,14 +14673,22 @@ user_checkIdAndControl:
         LDR      R0,[R5, #+47]
         CMP      R1,R0
         IT       CC
+#ifdef DEBUG_USER
         LDRCC.W  R0,??DataTable145
+#else
+        MOVCC R0,#0
+#endif
         BCC.N    ??user_checkIdAndControl_36
 ??user_checkIdAndControl_35:
         ADD      R0,SP,#+52
           CFI FunCall id_expired
         BL       id_expired
         CBZ.N    R0,??user_checkIdAndControl_37
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable146
+#else
+        MOV R0,#0
+#endif
 ??user_checkIdAndControl_36:
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_37:
@@ -13961,12 +14697,20 @@ user_checkIdAndControl:
           CFI FunCall user_getGroup
         BL       user_getGroup
         CBNZ.N   R0,??user_checkIdAndControl_38
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable146_1
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_38:
         LDRB     R0,[SP, #+6]
         CBZ.N    R0,??user_checkIdAndControl_39
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable147
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_40
 ??user_checkIdAndControl_39:
         SUBS     R0,R4,#+1
@@ -14005,25 +14749,49 @@ user_checkIdAndControl:
 ??user_checkIdAndControl_41:
         LDRB     R0,[SP, #+5]
         CBNZ.N   R0,??user_checkIdAndControl_48
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable149
+#else
+        MOV R0,#0
+#endif
 ??user_checkIdAndControl_27:
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         B.N      ??user_checkIdAndControl_32
 ??user_checkIdAndControl_48:
         ADD      R1,SP,#+20
           CFI FunCall user_getShedule
         BL       user_getShedule
         CBNZ.N   R0,??user_checkIdAndControl_49
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable149_1
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_49:
         LDRB     R0,[SP, #+25]
         CBZ.N    R0,??user_checkIdAndControl_50
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable149_2
+#else
+        MOV R0,#0
+#endif
 ??user_checkIdAndControl_40:
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R2,#+0
         MOV      R1,R6
         MOVS     R0,#+66
@@ -14036,14 +14804,22 @@ user_checkIdAndControl:
         ADD      R0,R0,R1
         LDRB     R0,[R0, #+6]
         CBNZ.N   R0,??user_checkIdAndControl_51
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable149_3
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_51:
         ADD      R0,SP,#+20
           CFI FunCall shedule_time_ok
         BL       shedule_time_ok
         CBNZ.N   R0,??user_checkIdAndControl_52
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable149_4
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_52:
         MOVS     R0,#+0
@@ -14060,7 +14836,11 @@ user_checkIdAndControl:
         CMP      R0,#+1
         BEQ.N    ??user_checkIdAndControl_32
 ??user_checkIdAndControl_55:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable149_5
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_54:
           CFI FunCall user_dayIsHoliday
@@ -14076,9 +14856,19 @@ user_checkIdAndControl:
         BL       user_activateOut
         B.N      ??user_checkIdAndControl_3
 ??user_checkIdAndControl_34:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable150
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R2,#+0
         MOV      R1,R6
         MOVS     R0,#+65
@@ -14091,10 +14881,20 @@ user_checkIdAndControl:
         BL       unreg_sms_note
         B.N      ??user_checkIdAndControl_3
 ??user_checkIdAndControl_33:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable151
+#else
+        MOV R0,#0
+#endif
 ??user_checkIdAndControl_13:
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
 ??user_checkIdAndControl_3:
         ADD      SP,SP,#+88
           CFI CFA R13+16
@@ -14166,9 +14966,17 @@ user_checkIdAndControl:
 
         SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock363 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_user_activateOut
+#else
           CFI Function user_activateOut
+#endif
         THUMB
+#ifdef HYBRID_CARD
+hybrid_unused_user_activateOut:
+#else
 user_activateOut:
+#endif
         PUSH     {R3-R9,LR}
           CFI R14 Frame(CFA, -4)
           CFI R9 Frame(CFA, -8)
@@ -14219,9 +15027,19 @@ user_activateOut:
         LDRBEQ   R0,[R5, #+1]
         CMPEQ    R0,#+0
         BNE.N    ??user_activateOut_6
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable151_1
+#else
+        MOV R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         B.N      ??user_activateOut_7
 ??user_activateOut_6:
         MOVS     R6,#+255
@@ -14301,10 +15119,24 @@ user_activateOut:
         CBZ.N    R0,??user_activateOut_16
         CMP      R4,#+0
         ITE      EQ
+#ifdef DEBUG_USER
         LDREQ.W  R0,??DataTable151_3
+#else
+        MOVEQ R0,#0
+#endif
+#ifdef DEBUG_USER
         LDRNE.W  R0,??DataTable151_4
+#else
+        MOVNE R0,#0
+#endif
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R1,#+11
         LDR.N    R2,??user_activateOut_1
         MUL      R0,R1,R4
@@ -15019,12 +15851,20 @@ user_checkShedule:
           CFI FunCall user_getShedule
         BL       user_getShedule
         CBNZ.N   R0,??user_checkShedule_1
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable157
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkShedule_2
 ??user_checkShedule_1:
         LDRB     R0,[SP, #+5]
         CBZ.N    R0,??user_checkShedule_3
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable157_1
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkShedule_2
 ??user_checkShedule_3:
         LDR.N    R1,??DataTable139_1
@@ -15032,14 +15872,22 @@ user_checkShedule:
         ADD      R0,SP,R1
         LDRB     R0,[R0, #+6]
         CBNZ.N   R0,??user_checkShedule_4
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable158
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkShedule_2
 ??user_checkShedule_4:
         MOV      R0,SP
           CFI FunCall shedule_time_ok
         BL       shedule_time_ok
         CBNZ.N   R0,??user_checkShedule_5
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable158_1
+#else
+        MOV R0,#0
+#endif
         B.N      ??user_checkShedule_2
 ??user_checkShedule_5:
         MOVS     R0,#+0
@@ -15056,10 +15904,20 @@ user_checkShedule:
         CMP      R0,#+1
         BEQ.N    ??user_checkShedule_6
 ??user_checkShedule_9:
+#ifdef DEBUG_USER
         LDR.W    R0,??DataTable160
+#else
+        MOV R0,#0
+#endif
 ??user_checkShedule_2:
+#ifdef DEBUG_USER
           CFI FunCall user_debug
+#endif
+#ifdef DEBUG_USER
         BL       user_debug
+#else
+
+#endif
         MOVS     R0,#+0
         B.N      ??user_checkShedule_0
 ??user_checkShedule_8:
@@ -15778,7 +16636,11 @@ log_readRecords:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond390 Using cfiCommon0
+#ifdef HYBRID_CARD
+          CFI Function hybrid_unused_user_findID
+#else
           CFI Function user_findID
+#endif
           CFI Conditional ??CrossCallReturnLabel_111
           CFI R4 Frame(CFA, -28)
           CFI R5 Frame(CFA, -24)
@@ -16110,8 +16972,9 @@ fw_async_begin:
         BCC.N    ??fw_async_begin_0
         LDR.W    R7,??DataTable166_3
         MOV      R0,#+1024
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_FW_BLOCK
+          CFI FunCall work_acquire
+        BL       work_acquire
         STR      R0,[R7, #+0]
         CBNZ.N   R0,??fw_async_begin_1
 ??fw_async_begin_0:
@@ -16171,8 +17034,9 @@ fw_async_complete:
         MOV      R4,R0
         LDR.W    R5,??DataTable166_3
         LDR      R0,[R5, #+0]
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_FW_BLOCK
+          CFI FunCall work_release
+        BL       work_release
         MOVS     R0,#+0
         STR      R0,[R5, #+0]
         STRB     R4,[R5, #+38]
@@ -16251,8 +17115,9 @@ fw_storage_poll:
         BEQ.N    ??fw_storage_poll_3
 ??fw_storage_poll_2:
         LDR      R0,[R4, #+0]
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_FW_BLOCK
+          CFI FunCall work_release
+        BL       work_release
         MOVS     R0,#+FO_FWBLOCK
           CFI FunCall flash_release
         BL       flash_release
@@ -17434,10 +18299,10 @@ log_addSystemValue:
         MOVS     R1,#+0
         MOVS     R3,#+0
         STM      R5,{R0,R1,R3}
-        ADR.N    R1,??DataTable166
+        MOV R1,#0
         MOV      R0,SP
-          CFI FunCall sprintf
-        BL       sprintf
+          CFI FunCall format_i32
+        BL       format_i32
         MOV      R1,SP
         MOV      R0,R4
           CFI FunCall log_addSystemEventID
@@ -21034,8 +21899,9 @@ ids___table_runtime_begin_2:
         BL       mem_tables_ready
         CBZ.N    R0,ids___table_runtime_begin_3
         MOV      R0,R8
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_TABLE
+          CFI FunCall work_acquire
+        BL       work_acquire
         MOVS     R9,R0
         BNE.N    ids___table_runtime_begin_4
 ids___table_runtime_begin_3:
@@ -21265,8 +22131,9 @@ ids___table_runtime_finish_0:
         BL       user_send_answer_comand
 ids___table_runtime_finish_5:
         LDR      R0,[R4, #+0]
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_TABLE
+          CFI FunCall work_release
+        BL       work_release
         MOVS     R0,#+0
         STR      R0,[R4, #+0]
         STRB     R0,[R4, #+50]

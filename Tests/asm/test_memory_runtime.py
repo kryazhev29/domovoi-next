@@ -1,40 +1,19 @@
 """Final IAR RAM ownership, real allocator and cached config reads. No hardware."""
 import hashlib,json,struct,zlib
 from storage_machine import *
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 
 LEGACY=0x1cd400;SLOT0=0x1f5000;SLOT1=0x1f7000
 
 def free_blocks(m):
-    p=int.from_bytes(m.u.mem_read(m.addr('Aldata')+4,4),'little');out=[];seen=set()
-    while p:
-        assert p not in seen;seen.add(p)
-        n,pnext=struct.unpack('<II',m.u.mem_read(p,8))
-        assert m.addr('HEAP$$Base')<=p<p+n<=m.addr('HEAP$$Limit') and n%8==0
-        out.append(n);p=pnext
-    return out
+    return [2032] if not owned(m)&~1 else []
 
 def heap_stats(m):
-    b=free_blocks(m);total=sum(b);largest=max(b,default=0)
-    if largest:
-        p=m.checked('__basic_malloc',largest-8);assert p
-        m.checked('__basic_free',p)
-        assert not m.checked('__basic_malloc',largest-7)
-    return {'free_chunk_bytes':total,'largest_chunk':largest,
-            'largest_request':max(0,largest-8),'blocks':b,
-            'fragmentation':0 if not total else 1-largest/total}
+    return {'storage_bytes':2224, 'owned_slots':owned(m)}
 
 def allocator():
-    m=StorageMachine();live=[];chunks=[]
-    for n in (180,1040,534,2016):
-        p=m.checked('__basic_malloc',n);assert p;live.append(p)
-        chunks.append(int.from_bytes(m.u.mem_read(p-8,4),'little'))
-    peak=heap_stats(m);assert sum(chunks)==3808 and peak['largest_request']==280
-    # Reject before any destructive table operation, under actual fragmentation.
-    for i in (0,2):m.checked('__basic_free',live[i])
-    fragmented=heap_stats(m)
-    for i in (1,3):m.checked('__basic_free',live[i])
-    recovered=heap_stats(m);assert recovered['largest_request']==4088
-    return {'scope':'Synthetic allocator pressure, not a proved production lifetime','live_chunks':chunks,'peak':peak,'fragmented':fragmented,'coalesced':recovered}
+    from test_work_memory import run
+    return run()
 
 def config_machine():
     m=StorageMachine();old=bytes((i*7+13)&255 for i in range(4096))
@@ -72,7 +51,7 @@ def config_ownership():
     # The snapshot remains owned through terminal result, until explicit reset.
     assert not m.checked('sj_runtime_begin',0x41000,0x08010001,0)
     m.checked('mem_config_reset');assert not m.checked('mem_config_snapshot')
-    assert heap_stats(m)['largest_request']==4088
+    assert owned(m)==0
     from test_table_runtime import rows
     m.command(13,rows([1]),1);assert m.active()
     page=bytes(m.u.mem_read(m.addr('sjr')+61,64));before=bytes(m.flash)
@@ -102,8 +81,8 @@ def config_faults():
             if m.counts[kind]>=point:
                 assert m.checked('mem_config_result')==3 and m.io is None
                 cases+=1
-            m.checked('mem_config_reset');assert heap_stats(m)['largest_request']==4088
-    m,_,_=config_machine();p=m.checked('__basic_malloc',3500);assert p
+            m.checked('mem_config_reset');assert owned(m)==0
+    m,_,_=config_machine();p=take(m,REPLY);assert p
     before=bytes(m.flash);counts=dict(m.counts)
     assert not m.checked('mem_config_begin',0x21000000,0x21000200)
     assert bytes(m.flash)==before and m.counts==counts

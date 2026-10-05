@@ -2,6 +2,7 @@
 #ifndef C_RUNTIME_INTERNAL_H
 #define C_RUNTIME_INTERNAL_H
 #include "includes.h"
+#include "../work_memory.h"
 #include "idindex.h"
 #include "sector_runtime.h"
 #include "../asm/flash_owner.h"

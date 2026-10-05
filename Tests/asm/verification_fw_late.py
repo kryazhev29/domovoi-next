@@ -1,3 +1,4 @@
+from test_work_memory import owned
 """Targeted late-error and reboot-state checks after owned FW status changes."""
 from verification_fw_bridge import *
 
@@ -11,7 +12,7 @@ def late_case(ch,registered=True,quiet=False):
     if not registered and ch:
         m.drain();assert len(m.sent)==1
         assert not m.read_word(m.device+171,1) and not m.read_word(m.addr('fw_rollback_end'))
-        assert largest_free(m)==4088
+        assert owned(m)==0
         return dict(channel=ch,registered=False,status_reply='suppressed')
     m.until(lambda:m.phase()==16)
     assert not m.read_word(m.device+171,1) and not m.read_word(m.addr('fw_rollback_end'))
@@ -31,7 +32,7 @@ def late_case(ch,registered=True,quiet=False):
         m.checked('user_comm_session',0);m.drain();assert len(m.sent)==1
     else:
         m.busy=m.commit_fail=False;m.drain();assert m.sent[-1]==frame and len(m.sent)==2
-    assert not m.ptr() and not m.io and largest_free(m)==4088
+    assert not m.ptr() and not m.io and owned(m)==0
     return dict(channel=ch,registered=registered,quiet=quiet,crc_mismatch='no reboot',
         wire_matches_legacy_helper=True,owned_reply_bytes=13,busy_passes=4)
 

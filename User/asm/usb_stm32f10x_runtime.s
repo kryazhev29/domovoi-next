@@ -1,3 +1,4 @@
+#include "../usb_ring_size.h"
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/Modules/usb_stm32f10x.c
         PUBLIC usb_buffer_count
@@ -1814,7 +1815,7 @@ usb_data_reading:
 
 ; Hand-written nonblocking enqueue for operation-owned, retryable replies.
 ; The producer publishes an entire packet atomically; the IRQ sees old or new
-; in-pointer, never a partial packet. No wait for the host; <=1279 copy bytes.
+; in-pointer, never a partial packet. No wait for the host; <=(USB_TX_RING_BYTES-1) copy bytes.
 ; store_usb_session must run before the owning continuation. Recheck its epoch
 ; with IRQ masked so a USB reset cannot enqueue a stale reply after reconnect.
         SECTION `.text`:CODE:NOROOT(2)
@@ -1831,7 +1832,7 @@ usb_try_send:
           CFI CFA R13+16
         MOV R4,R0
         UXTH R5,R1
-        CMP R5,#1280
+        CMP R5,#USB_TX_RING_BYTES
         BHS usb_try_no
         CMP R5,#0
         IT NE
@@ -1863,19 +1864,19 @@ usb_try_enabled:
         BNE usb_try_locked_no
         LDR R2,=USART_Rx_ptr_out
         LDR R2,[R2]
-        CMP R2,#1280
+        CMP R2,#USB_TX_RING_BYTES
         IT EQ
         MOVEQ R2,#0
         BHI usb_try_locked_no
         LDR R3,=USART_Rx_ptr_in
         LDR R3,[R3]
-        CMP R3,#1280
+        CMP R3,#USB_TX_RING_BYTES
         BHS usb_try_locked_no
-        ADD R2,R2,#1279
+        ADD R2,R2,#(USB_TX_RING_BYTES-1)
         SUB R2,R2,R3
-        CMP R2,#1280
+        CMP R2,#USB_TX_RING_BYTES
         IT CS
-        SUBCS R2,R2,#1280
+        SUBCS R2,R2,#USB_TX_RING_BYTES
         CMP R2,R5
         BLO usb_try_locked_no
         LDR R6,=USART_Rx_Buffer
@@ -1884,7 +1885,7 @@ usb_try_copy:
         LDRB R2,[R4],#1
         STRB R2,[R6,R3]
         ADDS R3,R3,#1
-        CMP R3,#1280
+        CMP R3,#USB_TX_RING_BYTES
         IT EQ
         MOVEQ R3,#0
         SUBS R5,R5,#1

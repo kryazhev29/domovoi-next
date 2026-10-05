@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Handwritten command19/start/rollback in final IAR ELF; no hardware timing claims."""
 import hashlib,json,struct
 from test_upload_runtime import UploadMachine,largest_free
@@ -27,8 +28,8 @@ class FirmwareMachine(UploadMachine):
         self.stubs[self.addr('w25_write_data')]=lambda:(_ for _ in ()).throw(AssertionError('synchronous write'))
         self.u.hook_add(UC_HOOK_CODE,self.allocator_trace)
     def allocator_trace(self,u,a,n,x):
-        if a==self.addr('__basic_malloc'):self.alloc_trace.append(('malloc',self.args()[0]))
-        if a==self.addr('__basic_free'):self.alloc_trace.append(('free',self.args()[0]))
+        if a==self.addr('work_acquire'):self.alloc_trace.append(('malloc',self.args()[0]))
+        if a==self.addr('work_release'):self.alloc_trace.append(('free',self.args()[0]))
         if a==self.addr('store_snapshot'):
             self.alloc_trace.append(('snapshot',0));self.snapshot_ctx=self.read_word(self.addr('fw_service_context'))
         if a==self.addr('mem_config_begin'):self.alloc_trace.append(('config_begin',0))
@@ -75,38 +76,26 @@ def normal():
             assert m.flash[0x1200:0x1200+size]==m.image
             assert m.read_word(m.device+171,1)==1
             assert not m.read_word(m.addr('fw_rollback_end'))
-        assert largest_free(m)==4088
+        assert largest_free(m)==2032
         out[f'{number}_{size}_{ch}']={'polls':n,'max_poll_instructions':max(m.poll_costs),'total_poll_instructions':sum(m.poll_costs),'max_instructions':max(m.costs[:-26]),'total_instructions':sum(m.costs[:-26]),'stack':m.stack_peak,'max_fw_read':m.max_fw_read,'phase_maximum':m.phase_costs}
     return out
 
 
 def heap_reservation():
-    out={}
-    m=FirmwareMachine();m.fixture();photo=m.checked('__basic_malloc',180);m.begin(2)
+    m=FirmwareMachine();m.fixture();photo=take(m,PHOTO);assert photo;m.begin(2)
     ctx=m.ptr();reserve=m.read_word(ctx+96);assert reserve
-    # Reach the verified header, then observe the real snapshot malloc address.
     m.until(lambda:m.phase()==6);trace=len(m.alloc_trace);m.tick_fw()
-    events=m.alloc_trace[trace:];assert events[:4]==[('free',reserve),('snapshot',0),('config_begin',0),('malloc',1024)],events
-    assert m.snapshot_ctx==0
-    # config runtime takes the exact just-released allocation on this layout.
-    assert m.read_word(m.addr('cfg_job'))==reserve
-    assert m.read_word(reserve-8)==1032
-    assert largest_free(m)==2728
-    out.update(peak_chunks=1360,free_bytes=2736,largest_payload=2728,fragments=1,trace=events[:4],same_chunk=True)
-    m.drain();m.checked('__basic_free',photo);assert largest_free(m)==4088
-    # OOM of either context or reservation cannot alter NOR or device FW state.
-    for amount in (4000,3000):
-        m=FirmwareMachine();m.fixture();held=m.checked('__basic_malloc',amount);before=bytes(m.flash);m.begin(2)
+    events=m.alloc_trace[trace:]
+    assert events[:4]==[('free',reserve),('snapshot',0),('config_begin',0),('malloc',1024)],events
+    assert m.snapshot_ctx==0 and m.read_word(m.addr('cfg_job'))==reserve
+    assert owned(m)==(1<<(PHOTO-1))|(1<<(FW_CONTEXT-1))|(1<<(CONFIG-1))
+    m.drain();drop(m,PHOTO,photo);assert owned(m)==0
+    for slot in (REPLY,CONFIG):
+        m=FirmwareMachine();m.fixture();held=take(m,slot);assert held
+        before=bytes(m.flash);m.begin(2)
         assert not m.ptr() and bytes(m.flash)==before and not m.counts['start'] and not m.sent
-        m.checked('__basic_free',held);assert largest_free(m)==4088
-    # Fragmented heap has enough aggregate free space but no 1024-byte block.
-    m=FirmwareMachine();m.fixture();chunks=[m.checked('__basic_malloc',500) for _ in range(7)]
-    for p in chunks[::2]:m.checked('__basic_free',p)
-    before=bytes(m.flash);m.begin(2);assert not m.ptr() and bytes(m.flash)==before
-    for p in chunks[1::2]:m.checked('__basic_free',p)
-    assert largest_free(m)==4088
-    out['oom_cases']=3
-    return out
+        drop(m,slot,held);assert owned(m)==0
+    return {'context_config_handoff':True,'same_buffer':True,'conflict_cases':2,'storage_bytes':2224}
 
 def boundaries_errors():
     count=0
@@ -144,7 +133,7 @@ def io_faults():
         if kind=='poll':m.tick_fw();assert m.io
         m.fault=(kind,m.counts[kind]+1);m.drain()
         assert not m.read_word(m.device+171,1) and not m.read_word(m.addr('fw_rollback_end'))
-        assert largest_free(m)==4088;count+=1
+        assert largest_free(m)==2032;count+=1
     return count
 
 def busy_cancel():
@@ -164,7 +153,7 @@ def busy_cancel():
         m.until(lambda:not m.ptr());assert m.io is None and not m.read_word(m.addr('fw_rollback_end'))
         # A cancelled config job has independent storage and must drain separately.
         m.until(lambda:m.read_word(m.addr('store')+18,1)==0)
-        assert largest_free(m)==4088;count+=1
+        assert largest_free(m)==2032;count+=1
     return count
 
 

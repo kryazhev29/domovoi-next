@@ -56,7 +56,7 @@ class AccessMachine(StorageMachine):
 
 
 def table_cells():
-    m = AccessMachine(); buf = 0x20003000
+    m = AccessMachine(); buf = 0x21000300
     m.put_group(5)
     m.flash[SHEDULE + 31 * 32:SHEDULE + 32 * 32] = bytes([32]) + bytes(range(1, 32))
     assert m.checked('user_getGroup', 5, buf) == 1 and bytes(m.u.mem_read(buf, 1)) == b'\5'
@@ -87,10 +87,10 @@ def holidays():
 
 
 def find_id():
-    m = AccessMachine(); buf = 0x20003000
+    m = AccessMachine(); buf = 0x21000300
     for cell in range(1, 70): m.put_id(cell, b'%010d' % cell)
     assert m.checked('user_findID', m.addr('config') + 0, buf) in (0,)  # пустой ID конфигурации
-    ident = 0x20003100; m.u.mem_write(ident, b'0000000060')
+    ident = 0x21000400; m.u.mem_write(ident, b'0000000060')
     assert m.checked('user_findID', ident, buf) == 1 and bytes(m.u.mem_read(buf + 2, 10)) == b'0000000060'
     m.u.mem_write(ident, b'9999999999'); assert m.checked('user_findID', ident, buf) == 0
     m.u.mem_write(ident, b'0000000060'); m.fail_read(2)
@@ -102,7 +102,7 @@ def access():
     out = {}
     m = AccessMachine(); m.put_group(1)
     for cell in range(1, 70): m.put_id(cell, b'%010d' % cell)
-    ident = 0x20003100
+    ident = 0x21000400
     m.u.mem_write(ident, b'0000000060'); m.checked('user_checkIdAndControl', ident, 2)
     assert m.loads and m.events and m.events[-1][0] == 71, ('access by Wiegand', m.events, m.loads)
     out['granted_stack'] = m.stack_peak

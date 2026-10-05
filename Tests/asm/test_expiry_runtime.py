@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Bounded background expiry against the preserved historical IAR body."""
 import hashlib,json,struct
 from storage_machine import *
@@ -101,7 +102,7 @@ def faults():
             assert not m.expiry_events and m.io is None
             assert m.u.mem_read(m.addr('id_endScan'),1)==b'\1'
             assert not m.checked('expiry_runtime_active');count+=1
-    m=ExpiryMachine();m.install([record()]);p=m.checked('__basic_malloc',4024);assert p
+    m=ExpiryMachine();m.install([record()]);p=take(m,REPLY);assert p
     before=bytes(m.flash);assert not m.start_expiry()
     assert bytes(m.flash)==before and not any(m.counts.values()) and not m.expiry_events;count+=1
     m=ExpiryMachine();m.install([record()]);m.write(m.addr('id_cells_end'),0xffff,2)
@@ -130,21 +131,21 @@ def full_scan_and_heap():
     from test_memory_runtime import heap_stats
     m=ExpiryMachine();m.write(m.addr('mem')+20,1601536)
     m.install([record(50048,first=NOW,minutes=1)],(50047,))
-    live=[m.checked('__basic_malloc',n) for n in (180,1040,534)]
+    live=[(slot,take(m,slot)) for slot in (PHOTO,PHOTO_PACKET)]
     assert all(live) and m.start_expiry()
     ctx=int.from_bytes(m.u.mem_read(m.addr('expiry_job'),4),'little')
-    chunk=int.from_bytes(m.u.mem_read(ctx-8,4),'little');assert chunk==1104
-    peak=heap_stats(m);assert peak['largest_request']==1200
+    assert ctx==m.addr('work_memory')+184
+    peak=heap_stats(m);assert owned(m)==7
     m.expiry_drain(80000)
     assert not m.expiry_events and m.io is None
     assert int.from_bytes(m.u.mem_read(m.addr('id_nextEnd'),4),'little')==NOW+60
     assert not m.start_expiry(),'future minimum must suppress a repeat sweep'
-    for p in live:m.checked('__basic_free',p)
-    assert heap_stats(m)['largest_request']==4088
+    for slot,p in live:drop(m,slot,p)
+    assert owned(m)==0
     return {'id_bytes':1601536,'passes':len(m.runtime_costs),'max_instructions':max(m.runtime_costs),
             'total_instructions':sum(m.runtime_costs),'max_read_bytes':max(m.runtime_reads),
-            'stack':m.stack_peak,'context_request':1092,'context_chunk':chunk,
-            'synthetic_overlap_chunks':[192,1048,544,chunk],'synthetic_overlap':2888,'free_at_overlap':peak}
+            'stack':m.stack_peak,'context_request':1092,'workspace_bytes':2224,
+            'live_workspace_payload':180+534+1092,'free_at_overlap':peak}
 
 if __name__=='__main__':
     import argparse

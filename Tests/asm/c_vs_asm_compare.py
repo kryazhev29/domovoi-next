@@ -275,15 +275,16 @@ def coverage(totals):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--variant',choices=('ASM','C','C_SPEED'))
+    parser=argparse.ArgumentParser();parser.add_argument('--variant',choices=('ASM','C','C_SPEED','HYBRID'))
     parser.add_argument('--kernels-only',action='store_true');parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--main-only',action='store_true')
     parser.add_argument('--coverage-only',action='store_true')
     parser.add_argument('--paired',action='store_true')
+    parser.add_argument('--variants',nargs='+',choices=('ASM','C','C_SPEED','HYBRID'),default=('ASM','C','C_SPEED'))
     args=parser.parse_args()
     if args.paired:
         all_results={};oracle=None
-        for variant in ('ASM','C','C_SPEED'):
+        for variant in args.variants:
             select_image(variant);totals={};raw=kernel_scenarios(totals)
             raw.update(scenarios(totals));raw['main-idle']=main_iteration(totals)
             if oracle is None:oracle=raw

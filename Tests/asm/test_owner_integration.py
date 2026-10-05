@@ -1,3 +1,4 @@
+from test_work_memory import owned
 """Production scheduler and cross-owner contracts in the current linked ELF."""
 import hashlib
 import json
@@ -37,7 +38,7 @@ def expiry_scheduler():
             assert m.expiry_events == [(138, b'abcdefghij'.hex(), 255)]
             assert m.flash[0x41000 + 28] == 56
         assert m.io is None
-        assert heap_stats(m)['largest_request'] == 4088
+        assert owned(m)==0
         cases.append({'cancel_at': cancel_at, 'passes': len(costs),
                       'maximum_instructions': max(costs),
                       'total_instructions': sum(costs), 'stack': m.stack_peak})
@@ -70,7 +71,7 @@ def clear_scheduler():
             assert m.io_budget <= 1 and m.read_budget == 0
             if not m.clear_active(): break
         else: raise AssertionError(('clear scheduler stuck', action))
-        assert m.io is None and heap_stats(m)['largest_request'] == 4088
+        assert m.io is None and owned(m)==0
         assert m.wires == ([wire()] if action == 'complete' else [])
         assert m.counters() == ((0, 0, 0) if action in ('complete', 'usb_epoch') else (7, 129, 8192))
         cases.append({'action': action, 'passes': len(costs), 'maximum_instructions': max(costs),

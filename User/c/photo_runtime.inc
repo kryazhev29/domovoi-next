@@ -35,7 +35,7 @@ void photo_storage_cancel(void)
 }
 static void pr_release(void)
 {
-  free(pr.tx); pr.tx=0; pr.phase=pr.waiting=pr.committed=0; flash_release(FO_PHOTO);
+  work_release(pr.tx, WORK_PHOTO_PACKET); pr.tx=0; pr.phase=pr.waiting=pr.committed=0; flash_release(FO_PHOTO);
 }
 static void pr_fail(void)
 {
@@ -365,7 +365,7 @@ void photo_storage_poll(uint32_t now)
     pr_release(); break;
   case PR_SEND_FILL:
     if (!pr.tx) {
-      pr.tx=malloc(PHOTO_BLOCK+22); if (!pr.tx) { pr_release(); break; }
+      pr.tx=work_acquire(PHOTO_BLOCK+22, WORK_PHOTO_PACKET); if (!pr.tx) { pr_release(); break; }
       uint16_t len=pr.send_size ? pr.send_size+14 : 4;
       memcpy(pr.tx,"SLDN",4); pr.tx[4]=(uint8_t)len; pr.tx[5]=(uint8_t)(len>>8); pr.tx[6]=60; pr.tx[7]=photo->requestId; pr.tx[8]=14;
       pr.tx[9]=pr.send_size ? (device.countPhoto>255 ? 255 : (uint8_t)device.countPhoto) : 0;
@@ -437,7 +437,7 @@ static void pr_poll(void)
         else { pr_send_begin(); return; }
       }
     }
-    if (!photo->stage && !photo->pending && !pr.phase) { free(photo); photo=0; }
+    if (!photo->stage && !photo->pending && !pr.phase) { work_release(photo, WORK_PHOTO_CONTEXT); photo=0; }
   }
   if (!pr.phase && !pr.fault && !device.countPhoto && device.newAddressPhoto>mem[MB_PHOTO].start && (!photo || !photo->stage)) pr_cleanup_begin();
 }

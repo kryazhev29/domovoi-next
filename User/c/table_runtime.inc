@@ -65,7 +65,7 @@ static bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_
                 cmd==15 ? sizeof(cellGroup_s) : sizeof(cellHoliday_s);
   uint16_t bytes=(uint16_t)ptr[9]*size;
   if (!user_storage_command_ready() || !bytes || bytes>2048 || !mem_tables_ready()) return false;
-  uint8_t *snapshot=malloc(bytes);
+  uint8_t *snapshot=work_acquire(bytes, WORK_TABLE);
   if (!snapshot) return false;
   memcpy(snapshot,ptr+10,bytes);
   memset(&table_job,0,sizeof(table_job));
@@ -110,7 +110,7 @@ static void table_runtime_finish(void)
     if (!table_job.quiet) user_send_timeshtamp((shtamp_e)kind,table_job.stamp,table_job.crc,(dataChanel_e)table_job.channel,table_job.uniq);
   } else if (!table_job.quiet)
     user_send_answer_comand(cmd,CMD_RUNERROR,(dataChanel_e)table_job.channel,table_job.uniq);
-  free(table_job.records); table_job.records=0; table_job.phase=0; flash_release(FO_TABLE);
+  work_release(table_job.records, WORK_TABLE); table_job.records=0; table_job.phase=0; flash_release(FO_TABLE);
 }
 static void table_runtime_poll(uint32_t now)
 {

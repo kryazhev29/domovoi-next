@@ -2,6 +2,8 @@
 #include "fast_kernels.h"
 #include "runtime_internal.h"
 #include "prof.h"
+#include "../user_format.h"
+#include "../hybrid/string_select.h"
 #include "stm32_it.h"
 // Пользовательские функции
 
@@ -21,7 +23,14 @@
 #include "../../Bootloader/boot_manual.h"
 
 // ************** Включить режим отладки **********
+#ifndef RELEASE_BUILD
 #define DEBUG_USER
+#endif
+
+#ifdef HYBRID_CARD
+uint32_t id_time_end(cellID_s *c);
+void id_watch_end(uint32_t end);
+#endif
 
 #define UNIPASS_INITVALUE       32768
 #define CRYPT_START             (uint8_t)0x5A
@@ -42,26 +51,48 @@
 
 // таблица адресов областей памяти контроллера
 #pragma data_alignment=4
+#ifdef HYBRID_CARD
+extern cellMem_s mem[10];
+#else
 cellMem_s mem[10];
+#endif
+#ifndef HYBRID_CARD
 static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count);
+#endif
 
 // конфигурация
 #pragma data_alignment=4
+#ifdef HYBRID_CARD
+extern config_s config;
+#else
 config_s config;
+#endif
 
 // оперативные переменные
 #pragma data_alignment=4
+#ifdef HYBRID_CARD
+extern device_s device;
+#else
 device_s device;
+#endif
 
 /* >>> Cooperative storage callers */
 #ifdef ASM_RUNTIME
 #include "sector_runtime.h"
 #include "photo_runtime.h"
+#ifndef HYBRID_CARD
 static bool table_runtime_active(void);
+#endif
 
+#ifndef HYBRID_CARD
 static void table_runtime_poll(uint32_t now);
+#endif
+#ifndef HYBRID_CARD
 static void table_runtime_cancel(void);
+#endif
+#ifndef HYBRID_CARD
 static void table_runtime_quiet(dataChanel_e channel);
+#endif
 void idindex_runtime_suspend(void);
 #else
 #define photo_storage_busy() 0
@@ -73,48 +104,108 @@ void idindex_runtime_suspend(void);
 #define table_runtime_cancel() ((void)0)
 #define table_runtime_quiet(channel) ((void)0)
 #endif
+#ifndef HYBRID_CARD
 static bool fw_async_active(void);
+#endif
+#ifndef HYBRID_CARD
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel);
+#endif
+#ifndef HYBRID_CARD
 static void fw_async_reply(uint8_t id);
+#endif
+#ifndef HYBRID_CARD
 static void fw_async_cancel(void);
+#endif
+#ifndef HYBRID_CARD
 static void fw_async_quiet(dataChanel_e channel);
+#endif
+#ifndef HYBRID_CARD
 static void fw_storage_poll(uint32_t now);
+#endif
+#ifndef HYBRID_CARD
 static bool log_async_active(void);
+#endif
+#ifndef HYBRID_CARD
 static void log_storage_poll(uint32_t now);
+#endif
+#ifdef HYBRID_CARD
+extern uint8_t store_runtime, store_save_requested, store_reset_requested;
+#else
 uint8_t store_runtime, store_save_requested, store_reset_requested;
+#endif
+#ifdef HYBRID_CARD
+extern struct {
+  uint32_t erase, end, retry_at, usb_epoch;
+  uint16_t cursor;
+  uint8_t job, clear, waiting, cmd, channel, uniq, quiet, repeat;
+  uint8_t last_id[4], seen;
+} store;
+#else
 struct {
   uint32_t erase, end, retry_at, usb_epoch;
   uint16_t cursor;
   uint8_t job, clear, waiting, cmd, channel, uniq, quiet, repeat;
   uint8_t last_id[4], seen;
 } store;
+#endif
 enum { US_SAVE=1, US_ACK, US_MARK, US_ERASE, US_CLEAN, US_CONFIG, US_RESET, US_REPLY, US_COMMAND, US_RECOVER, US_RECOVER_CLEAN };
+#ifndef HYBRID_CARD
 static bool store_ack(uint8_t cmd, dataChanel_e cch);
+#endif
+#ifndef HYBRID_CARD
 static void store_usb_session(void);
+#endif
+#ifndef HYBRID_CARD
 static bool store_finish(uint8_t cmd);
+#endif
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
+#ifndef HYBRID_CARD
 static bool store_config_start(void);
+#endif
+#ifndef HYBRID_CARD
 static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
+#endif
+#ifndef HYBRID_CARD
 static void store_restore(const device_s *saved);
+#endif
 void user_storage_poll(void);
+#ifndef HYBRID_CARD
 static bool storage_idle(void) { return !flash_owner && !w25_async_active() && w25_read_available(); }
+#endif
+#ifndef HYBRID_CARD
 bool user_storage_command_ready(void) {
 store_usb_session(); return !store.job && !store_reset_requested && !mem_config_result() && storage_idle();
 }
+#endif
+#ifndef HYBRID_CARD
 static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || user_storage_command_ready(); }
+#endif
+#ifndef HYBRID_CARD
 bool user_storage_flash_ready(void) {
 return store.clear!=9 && storage_idle();
 }
+#endif
 /* <<< Cooperative storage callers */
 
 /* >>> подтверждение выгрузки */
+#ifdef HYBRID_CARD
+extern uint16_t log_usbReadIndex, temp_usbReadIndex;
+#else
 uint16_t log_usbReadIndex, temp_usbReadIndex;
+#endif
+#ifdef HYBRID_CARD
+extern uint16_t log_unacked[2], temp_unacked[2];
+#else
 uint16_t log_unacked[2], temp_unacked[2];
+#endif
 
+#ifndef HYBRID_CARD
 uint16_t upload_index(uint8_t cmd, dataChanel_e cch){
   if (cmd == 10) return cch == CH_USB ? log_usbReadIndex : device.readLogIDIndex;
   return cch == CH_USB ? temp_usbReadIndex : device.readTempIDIndex;
 }
+#endif
+#ifndef HYBRID_CARD
 static void upload_setIndex(uint8_t cmd, dataChanel_e cch, uint16_t value){
   if (cmd == 10) {
     if (cch == CH_USB) log_usbReadIndex = value; else device.readLogIDIndex = value;
@@ -122,13 +213,17 @@ static void upload_setIndex(uint8_t cmd, dataChanel_e cch, uint16_t value){
     if (cch == CH_USB) temp_usbReadIndex = value; else device.readTempIDIndex = value;
   }
 }
+#endif
 // Только подтверждённые позиции, в ранее неиспользуемом резерве device.
+#ifndef HYBRID_CARD
 static void upload_store(void){
   uint32_t mark = 0x314C5055u;
   memcpy(device.reserv, &mark, 4);
   memcpy(device.reserv + 4, &log_usbReadIndex, 2);
   memcpy(device.reserv + 6, &temp_usbReadIndex, 2);
 }
+#endif
+#ifndef HYBRID_CARD
 static void upload_restore(const device_s *saved){
   uint32_t mark;
   memcpy(&mark, saved->reserv, 4);
@@ -139,6 +234,8 @@ static void upload_restore(const device_s *saved){
   memcpy(&temp_usbReadIndex, saved->reserv + 6, 2);
   upload_store();
 }
+#endif
+#ifndef HYBRID_CARD
 static void upload_reset(uint8_t cmd){
   upload_setIndex(cmd, CH_USB, 0);
   upload_setIndex(cmd, CH_SERVER, 0);
@@ -146,6 +243,8 @@ static void upload_reset(uint8_t cmd){
   pending[0] = pending[1] = 0;
   upload_store();
 }
+#endif
+#ifndef HYBRID_CARD
 bool upload_ack(uint8_t cmd, dataChanel_e cch){
   if (store_runtime) return store_ack(cmd, cch);
   uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
@@ -162,6 +261,8 @@ bool upload_ack(uint8_t cmd, dataChanel_e cch){
   pending[channel] = 0;
   return true;
 }
+#endif
+#ifndef HYBRID_CARD
 bool upload_finish(uint8_t cmd){
   if (store_runtime) return store_finish(cmd);
   uint16_t server = upload_index(cmd, CH_SERVER), usb = upload_index(cmd, CH_USB);
@@ -182,25 +283,48 @@ bool upload_finish(uint8_t cmd){
   if (cmd == 10) device.status.readyLogData = 0; else device.status.readyID = 0;
   return true;
 }
+#endif
 /* <<< подтверждение выгрузки */
 
 
 
+#ifndef HYBRID_CARD
 static void fw_resume_after_boot(void);
+#endif
+#ifndef HYBRID_CARD
 static void fw_rollback_poll(void);
+#endif
+#ifndef HYBRID_CARD
 static void fw_status_poll(void);
+#endif
+#ifndef HYBRID_CARD
 static void unreg_sms_poll(void);
+#endif
+#ifndef HYBRID_CARD
 static void server_rx_reset(void);
+#endif
 /* Диагностика стенда, команда 111, только по USB, только чтение. */
 #define USB_DIAG_COMMAND 111u
 /* Диагностика связи, команда 112 (предложение для Протокол2), только по USB, только чтение. */
 #define USB_COMM_DIAG_COMMAND 112u
 extern unsigned int loop_max_ms, loop_stalls;
-uint32_t stack_free_bytes(void); // main.c: нетронутый снизу шаблон стека, байт
+#ifdef HYBRID_CARD
+extern uint32_t stack_free_bytes(void);
+#else
+uint32_t stack_free_bytes(void);
+#endif // main.c: нетронутый снизу шаблон стека, байт
+#ifndef HYBRID_CARD
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
+#endif
+#ifndef HYBRID_CARD
 static void user_send_usbDiag(uint8_t uniqId);
+#endif
+#ifndef HYBRID_CARD
 static void user_send_commDiag(uint8_t uniqId);
+#endif
+#ifndef HYBRID_CARD
 static void reader_reply_poll(void);
+#endif
 /* Порядок обновления по листу "Протокол2": статус 1 вне очереди (E95), режим обновления - бит
  * 11 (E440), команда 19 (E122), блоки 13 и 20 (E96, E123), команда 4 (E476, E477). Объявлено до
  * команды 19. */
@@ -212,44 +336,74 @@ static void reader_reply_poll(void);
 #define FW_BLOCK_END            253u
 #define FW_BLOCK_BADWRITE       254u
 #define FW_BLOCK_BADFRAME       255u
+#ifndef HYBRID_CARD
 static void status_event_sent(uint16_t status, uint32_t now_ms);
+#endif
+#ifndef HYBRID_CARD
 static uint8_t status_event_due(uint16_t status, uint32_t now_ms);
+#endif
+#ifndef HYBRID_CARD
 static uint8_t fw_update_quiet(void);
+#endif
 void fw_end(const char *reason, uint8_t uniqId);
 void fw_log(logUpdate_e num, const char *reason);
 
 // буфер под прием данных от внешнего порта
 #pragma data_alignment=4
+#ifdef HYBRID_CARD
+extern uint8_t port_buffer[PORTBUFSIZE];
+#else
 uint8_t port_buffer[PORTBUFSIZE];
+#endif
 
+#ifndef HYBRID_CARD
 union{
   char tempStrBuffer[128]; // временный строковый буфер
   uint32_t bf32[32];
   uint8_t bf[128];
 };
+#else
+extern char _A_tempStrBuffer[128];
+#define tempStrBuffer _A_tempStrBuffer
+#endif
 
+#ifdef HYBRID_CARD
+extern uint8_t uniqIDCnt;
+#else
 uint8_t uniqIDCnt = 0;
+#endif
 
 // >>> переопределение функций --------------------------
+#ifndef HYBRID_CARD
 void gsm_user_debug (char* ptr)
 {
   if (device.logBits & 1)
     usb_sendstr(ptr);
 }
+#endif
 
+#ifndef HYBRID_CARD
 void user_debug(char* ptr)
 {
+#ifdef DEBUG_USER
   if (device.logBits & 4)
     usb_sendstr(ptr);
+#else
+  (void)ptr;
+#endif
 }
+#endif
 
+#ifndef HYBRID_CARD
 void timers_user_handle(void)
 {
   usb_timer1ms();
   uart_timer1ms();
 }
+#endif
 
 // обработка данных от usb
+#ifndef HYBRID_CARD
 void usb_data_reading(uint8_t* ptr, uint16_t len)
 {
   uint16_t body;
@@ -259,6 +413,7 @@ void usb_data_reading(uint8_t* ptr, uint16_t len)
   /* Сборщик USB передаёт ровно один целый кадр с проверенной CRC. */
   user_parse_comand(ptr + 4, CH_USB);
 }
+#endif
 
 // обработчик событий
 /* ID со считывателя: ждал ли его сервер (команда 6: источник 1 Wiegand, 2 RF433, 3 RFID
@@ -278,7 +433,7 @@ static void reader_id(char *tb, uint8_t source, uint8_t address, codeType_e type
 void WG_readedID(uint32_t id){
   char tb[11];
 
-  sprintf(tb, "00%08X", id);
+  format_id(tb, NULL, id);
 #ifdef DEBUG_USER
   sprintf(tempStrBuffer, ">>U Wiegand ID: %s\r\n", tb);
   user_debug(tempStrBuffer);
@@ -290,7 +445,7 @@ void WG_readedID(uint32_t id){
 void RF433_readedID(uint32_t id){
   char tb[11];
   //777
-  sprintf(tb, "00%08X", id);
+  format_id(tb, NULL, id);
 #ifdef DEBUG_USER
   sprintf(tempStrBuffer, ">>U RF433 ID: %s\r\n", tb);
   user_debug(tempStrBuffer); 
@@ -303,7 +458,7 @@ void RF433_readedID(uint32_t id){
 void RFID_readedID(uint32_t id, uint8_t address){
   char tb[11];
   //777
-  sprintf(tb, "00%08X", id);
+  format_id(tb, NULL, id);
 #ifdef DEBUG_USER
   sprintf(tempStrBuffer, ">>U RFID ID: %s\r\n", tb);
   user_debug(tempStrBuffer); 
@@ -315,14 +470,17 @@ void RFID_readedID(uint32_t id, uint8_t address){
 
 // >>> вспомогательные ---------------------------------------------------------
 // валиден ли IMEI
+#ifndef HYBRID_CARD
 Int8U user_imeivalid(void)
 {
   if (chkdigitstr(device.IMEIGSM, 15)) 
     return 1;
   return 0;
 }
+#endif
 
 // универсальный пароль на конфигурацию
+#ifndef HYBRID_CARD
 Int16U user_unipassword (void)
 {
   Int16U p = UNIPASS_INITVALUE;
@@ -352,14 +510,18 @@ Int16U user_unipassword (void)
 
   return p;
 }
+#endif
 
 // ожидание пока напряжение питания не станет выше порога
+#ifndef HYBRID_CARD
 void user_wait_stable_power(void)
 {
 
 }
+#endif
 
 // Преобразует время в целочисленное
+#ifndef HYBRID_CARD
 uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec)
 {
   uint32_t timedate, temp;
@@ -393,9 +555,11 @@ uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, u
   
   return timedate;
 }
+#endif
 // <<< вспомогательные ---------------------------------------------------------
 
 // ошибка подключения
+#ifndef HYBRID_CARD
 void user_errorconnection (int8_t handle){
 #ifdef DEBUG_USER
   user_debug(">>U Error connection ...\r\n"); 
@@ -405,25 +569,59 @@ void user_errorconnection (int8_t handle){
   
   log_addSystemEvent(LOG_SYS_ERRCONNECTION);
 }
+#endif
 
 /* TCP не сохраняет границы пакетов. Буфер хранит один кадр до проверки длины и CRC.
  * Неполный кадр живёт не дольше 30 с; новое соединение всегда начинается с чистого буфера. */
 #define SERVER_RX_CAPACITY 2048u
 #define SERVER_RX_TIMEOUT_MS 30000u
 #define SERVER_RX_WORK 256u
+#ifdef HYBRID_CARD
+extern uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
+#else
 uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
+#endif
+#ifdef HYBRID_CARD
+extern uint16_t server_rx_count;
+#else
 uint16_t server_rx_count;
+#endif
+#ifdef HYBRID_CARD
+extern uint32_t server_rx_last;
+#else
 uint32_t server_rx_last;
+#endif
+#ifdef HYBRID_CARD
+extern uint8_t server_rx_defer, server_rx_busy, server_rx_provisional;
+#else
 uint8_t server_rx_defer, server_rx_busy, server_rx_provisional;
+#endif
+#ifdef HYBRID_CARD
+extern uint16_t server_rx_ready;
+#else
 uint16_t server_rx_ready;
+#endif
 /* Only begin_pass replenishes these, never receive/process/reset. Search and
  * CRC share credits, including repeated byte callbacks and nested reception.
  * At most one scan compaction and one command/consume per service pass. */
+#ifdef HYBRID_CARD
+extern uint16_t server_rx_work;
+#else
 uint16_t server_rx_work;
+#endif
+#ifdef HYBRID_CARD
+extern uint8_t server_rx_compacted, server_rx_commands, server_rx_cancelled;
+#else
 uint8_t server_rx_compacted, server_rx_commands, server_rx_cancelled;
+#endif
+#ifdef HYBRID_CARD
+extern uint16_t server_rx_offset, server_rx_total, server_rx_pos, server_rx_crc;
+#else
 uint16_t server_rx_offset, server_rx_total, server_rx_pos, server_rx_crc;
+#endif
 void server_rx_process(void);
 
+#ifndef HYBRID_CARD
 static void server_rx_reset(void)
 {
   if (server_rx_busy) server_rx_cancelled = 1;
@@ -431,7 +629,9 @@ static void server_rx_reset(void)
   server_rx_ready = server_rx_offset = server_rx_total = server_rx_pos = 0;
   server_rx_provisional = 0;
 }
+#endif
 
+#ifndef HYBRID_CARD
 void server_rx_begin_pass(void)
 {
   if (server_rx_busy) return;
@@ -441,13 +641,17 @@ void server_rx_begin_pass(void)
   if (server_rx_count && (uint32_t)(timers_getMillis() - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
     server_rx_reset();
 }
+#endif
 
+#ifndef HYBRID_CARD
 static void server_rx_consume(uint16_t n)
 {
   server_rx_count -= n;
   memmove(server_rx_buffer, server_rx_buffer + n, server_rx_count);
 }
+#endif
 
+#ifndef HYBRID_CARD
 static void server_rx_scan(void)
 {
   uint16_t left, n, found, body;
@@ -502,7 +706,9 @@ static void server_rx_scan(void)
     server_rx_compacted = 1;
   }
 }
+#endif
 
+#ifndef HYBRID_CARD
 void user_dataconnection(int8_t handle, uint8_t *data, uint16_t siz)
 {
   uint32_t now = timers_getMillis();
@@ -525,7 +731,9 @@ void user_dataconnection(int8_t handle, uint8_t *data, uint16_t siz)
     if (!server_rx_defer) server_rx_process();
   }
 }
+#endif
 
+#ifndef HYBRID_CARD
 void server_rx_process(void)
 {
   uint16_t total;
@@ -545,13 +753,19 @@ void server_rx_process(void)
   server_rx_consume(total);
   server_rx_scan();
 }
+#endif
 
 /* QIRD копирует прямо в прежний сборщик. До финала команды выполнение отложено. */
+#ifndef HYBRID_CARD
 static bool server_rx_verified(const uint8_t *p)
 { return server_rx_busy && p == server_rx_buffer + 4; }
+#endif
 
+#ifndef HYBRID_CARD
 uint16_t user_comm_rx_capacity(void)
 { return server_rx_cancelled ? 0 : (uint16_t)(sizeof(server_rx_buffer) - server_rx_count); }
+#endif
+#ifndef HYBRID_CARD
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count)
 {
   uint16_t capacity = user_comm_rx_capacity();
@@ -560,11 +774,15 @@ uint16_t user_comm_rx(const uint8_t *data, uint16_t count)
   user_dataconnection(device.connectionhandle, (uint8_t *)data, count);
   return count;
 }
+#endif
+#ifndef HYBRID_CARD
 void user_comm_rx_done(uint16_t count, uint8_t reason)
 {
   (void)count; server_rx_provisional = 0;
   if (reason) server_rx_reset();
 }
+#endif
+#ifndef HYBRID_CARD
 void user_comm_session(bool open)
 {
   server_rx_reset();
@@ -578,9 +796,11 @@ void user_comm_session(bool open)
   log_unacked[1] = temp_unacked[1] = 0; store.seen &= 5u;
   if (!open) photo_connection_lost(); /* «подключён» пишет user_comm_link после регистрации */
 }
+#endif
 
 // принято СМС
 // формат команды [Символ – #][Команда][Пробел][ПИН код контроллера][Запятая][Аргументы команды]
+#ifndef HYBRID_CARD
 bool user_smsreceived (char* num, char* data)
 {
   /* SIM хранит SMS, пока единственный слот передачи занят. Событие пишем лишь при приёме. */
@@ -678,7 +898,7 @@ bool user_smsreceived (char* num, char* data)
         /* -NET: тип сети comm_info (0 нет, 1 GSM/GPRS, 3 3G, 4 LTE); -CLOUD: связь/номер сервера;
            -TRIG: E1-E4 - первые четыре триггера команды 5. */
         static const char *const net[] = {"Not network", "gprs", "edge", "3G", "4G", "5G"};
-        sprintf(v, "STATUS:\r\n-SIGNAL: %d\r\n-NET: %s\r\n-CLOUD: %d/%d\r\n-FW: %d\r\n-TRIG: %d/%d/%d/%d",
+        format_status(v, NULL,
                 device.csq, net[device.netType < 6u ? device.netType : 0], device.connected,
                 user_comm_server(comm_server_address()) + 1, device.firmwareVersion,
                 device.triggers.handUnBlock, device.triggers.sheduleUnBlock,
@@ -735,8 +955,10 @@ bool user_smsreceived (char* num, char* data)
 
   return true;
 }
+#endif
 
 // отправить СМС
+#ifndef HYBRID_CARD
 void user_sendsms(char *mes, char *num){  
 #ifdef DEBUG_USER
   user_debug(">>U Sending SMS ...\r\n"); 
@@ -744,16 +966,20 @@ void user_sendsms(char *mes, char *num){
   if (user_comm_sms(num, mes))
     log_addSystemEventID(LOG_SYS_SENDSMS, user_last10digitsnumber(num));
 }
+#endif
 
 // СМС отправлено
+#ifndef HYBRID_CARD
 void user_smssended (void)
 {
 #ifdef DEBUG_USER
   user_debug(">>U SMS sended ...\r\n"); 
 #endif  
 }
+#endif
 
 // входящий вызов
+#ifndef HYBRID_CARD
 bool user_incomingcall (char* num, uint8_t typ)
 {
 #ifdef DEBUG_USER
@@ -776,27 +1002,33 @@ bool user_incomingcall (char* num, uint8_t typ)
 
   return true;
 }
+#endif
 
 // ошибка команды
+#ifndef HYBRID_CARD
 void user_comanderror (int16_t er)
 {
 #ifdef DEBUG_USER
   user_debug(">>U Comand error ...\r\n"); 
 #endif
 }
+#endif
 
 // организовать подключения
 // парсер USSD
+#ifndef HYBRID_CARD
 void user_parseUSSD(char* ptr)
 {
 #ifdef DEBUG_USER
   user_debug(">>U Parse USSD ...\r\n"); 
 #endif  
 }
+#endif
 // <<< переопределение функций --------------------------
 
 
 // инициализация
+#ifndef HYBRID_CARD
 void user_init(void)
 {
   // Определяем тип памяти
@@ -855,8 +1087,10 @@ void user_init(void)
   uart_setRecTimeout(PORT1_PORT, 10); // время заполнения/ожидания приемного буфера 10 мс  
   store_runtime = 1;
 }
+#endif
 
 // очистить блок памяти
+#ifndef HYBRID_CARD
 bool user_clearMemBlock(memBlock_e mb){
   
   if (mem[mb].size == 0) return true;
@@ -876,6 +1110,7 @@ bool user_clearMemBlock(memBlock_e mb){
   if (mb == MB_ID) idindex_scanned(0, 0); /* база пуста - индекс пересобирается в фоне */
   return true;
 }
+#endif
 
 // циклический обработчик
 /* >>> Конец синхронизации (лист «Журнал событий», 6-10)
@@ -883,9 +1118,16 @@ bool user_clearMemBlock(memBlock_e mb){
    (буфер 3 сервера), её конец - SYNC_QUIET_S секунд без них. Бит i - событие 6+i. */
 #define SYNC_QUIET_S 30u
 enum { SYNC_ID = 1u, SYNC_CONFIG = 2u, SYNC_GROUP = 4u, SYNC_SHEDULE = 8u, SYNC_HOLIDAY = 16u };
+#ifdef HYBRID_CARD
+extern uint8_t sync_pending, sync_quiet;
+#else
 uint8_t sync_pending, sync_quiet;
+#endif
+#ifndef HYBRID_CARD
 static void sync_packet(uint8_t bit) { sync_pending |= bit; sync_quiet = SYNC_QUIET_S; }
+#endif
 /* Раз в секунду; журнал не принял запись - повтор через секунду. */
+#ifndef HYBRID_CARD
 static void sync_end_tick(void)
 {
   if (!sync_quiet || --sync_quiet) return;
@@ -894,8 +1136,10 @@ static void sync_end_tick(void)
       sync_pending &= (uint8_t)~(1u << i);
   if (sync_pending) sync_quiet = 1;
 }
+#endif
 /* <<< Конец синхронизации */
 
+#ifndef HYBRID_CARD
 void user_loop(void)
 {
   /* Карта - первой и на каждом проходе: конец кадра ловится сразу после паузы,
@@ -1119,8 +1363,10 @@ void user_loop(void)
     
   } // 1 минута
 }
+#endif
 
 // инициализация переменных
+#ifndef HYBRID_CARD
 void user_initvariables (void)
 {
   // чистим
@@ -1148,8 +1394,10 @@ void user_initvariables (void)
   if (device.countPhoto)
     device.status.readyPhoto = 1; 
 }
+#endif
 
 // Чтение конфигурации с памяти
+#ifndef HYBRID_CARD
 static void config_exchange(uint8_t *data)
 {
   uint8_t *p = (uint8_t*)&config;
@@ -1159,7 +1407,9 @@ static void config_exchange(uint8_t *data)
     data[i] = b;
   }
 }
+#endif
 
+#ifndef HYBRID_CARD
 static void config_terminate_strings(void)
 {
   bool changed = false;
@@ -1178,7 +1428,9 @@ static void config_terminate_strings(void)
 #undef CONFIG_TERM
   if (changed) config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
 }
+#endif
 
+#ifndef HYBRID_CARD
 void user_readconfig(void)
 {
   uint8_t read_count = 20;
@@ -1204,8 +1456,10 @@ void user_readconfig(void)
   }
   else config_terminate_strings();
 }
+#endif
 
 // запись конфигурации в память
+#ifndef HYBRID_CARD
 void user_writeconfig(void)
 {
   if (store_runtime) { store_save_requested = 1; return; }
@@ -1214,8 +1468,10 @@ void user_writeconfig(void)
   (void)mem_patch(mem[MB_CONFIG].start, (const uint8_t*)&config, sizeof(config));
   wdt_reload();
 }
+#endif
 
 // Загрузить настройки по умолчанию
+#ifndef HYBRID_CARD
 void user_setdefault (void)
 {
   wdt_reload();
@@ -1250,8 +1506,10 @@ void user_setdefault (void)
   user_writeConfigAndDevice();
   //user_writeconfig();
 }
+#endif
 
 // Сброс всего
+#ifndef HYBRID_CARD
 void user_factoryReset (void){
   fw_async_cancel();
 #ifdef DEBUG_USER
@@ -1292,8 +1550,10 @@ void user_factoryReset (void){
   // перезагружаем gsm
   user_comm_boot();
 }
+#endif
 
 // чтение сохраненной информации
+#ifndef HYBRID_CARD
 void user_readsavedinformation (void)
 {
   device_s DV;
@@ -1344,8 +1604,10 @@ void user_readsavedinformation (void)
   }
   fw_resume_after_boot();
 }
+#endif
 
 // Безопастное завершение работы прибора
+#ifndef HYBRID_CARD
 void user_savereset (void)
 {
   if (store_runtime) { idclear_runtime_cancel(); expiry_runtime_cancel(); fw_service_cancel(); upload_runtime_cancel(); service_crc_cancel(); table_runtime_cancel(); photo_storage_cancel(); store_reset_requested = 1; return; }
@@ -1362,18 +1624,22 @@ void user_savereset (void)
   // перезагружаем
   NVIC_SystemReset();
 }
+#endif
 
 // Сохранение указателей чтения/записи в памяти
 /* Настройки попадают в сектор из ОЗУ, где их проверили при старте, а не из чтения сектора:
  * чтение, испорченное на провале питания (включение модема), публиковалось в слот с верной CRC
  * слота, и следующий старт находил неверную CRC настроек и записывал заводские (18.09.2026). */
+#ifndef HYBRID_CARD
 void user_saveindex (void)
 {
   if (store_runtime) { store_save_requested = 1; return; }
   user_writeConfigAndDevice();
-} 
+}
+#endif
 
 // запись конфигурации и параметров device в память
+#ifndef HYBRID_CARD
 bool user_writeConfigAndDevice(void)
 {
   wdt_reload();
@@ -1384,7 +1650,9 @@ bool user_writeConfigAndDevice(void)
   wdt_reload();
   return ok;
 }
+#endif
 
+#ifndef HYBRID_CARD
 void port_check_data(void)
 {
   if (!user_storage_flash_ready()) return;
@@ -1392,15 +1660,19 @@ void port_check_data(void)
   if (!device.getPhoto && uart_getstate(PORT1_PORT) && !uart_isReceiving(PORT1_PORT))
     uart_clear(PORT1_PORT);
 }
+#endif
 
 // проверка входящих данных от модуля
+#ifndef HYBRID_CARD
 void gsm_check_data (void)
 {
   /* Каждый проход главного цикла: порт, AT, модем, канал, сервер, восстановление. */
   user_comm_poll(timers_getMillis());
 }
+#endif
 
 // расчет контрольной суммы структуры данных во flash
+#ifndef HYBRID_CARD
 uint16_t user_calcCRC16InFlash(uint32_t address, uint32_t siz){
   uint16_t crc = 0xFFFF;
   uint8_t bfr[1024];
@@ -1421,36 +1693,46 @@ uint16_t user_calcCRC16InFlash(uint32_t address, uint32_t siz){
   
   return crc;
 }
+#endif
 
 /* Конец записанной части базы ID, байт от начала области; дальше флеш стёрта (0xFF).
    UINT32_MAX - ещё не известно, тогда читается вся область. */
+#ifdef HYBRID_CARD
+extern uint32_t id_used_bytes;
+#else
 uint32_t id_used_bytes = UINT32_MAX;
+#endif
 
 /* CRC-16 части базы ID [off, off+n): читается только записанная часть, стёртый хвост
    досчитывается без чтения. Результат тот же, что при чтении всей области. */
+#ifndef HYBRID_CARD
 static uint16_t id_crc16(uint32_t off, uint32_t n){
   uint32_t real = 0;
   if (off < id_used_bytes) real = id_used_bytes - off < n ? id_used_bytes - off : n;
   uint16_t crc = real ? user_calcCRC16InFlash(mem[MB_ID].start + off, real) : 0xFFFF;
   return crc16_ffInit(n - real, crc);
 }
+#endif
 
 // Отправка данных в формате протокола
 /* Назначение кадра серверу — единственный слот канала, без копии/heap. */
+#ifndef HYBRID_CARD
 uint8_t *user_comm_acquire(uint16_t needed)
 {
   uint16_t capacity; uint8_t *p = comm_tx_acquire(&capacity);
   if (p && needed > capacity) { comm_tx_release(); return NULL; }
   return p;
 }
-#define user_comm_free(p, cch) do { if ((cch) == CH_SERVER) comm_tx_release(); else free(p); } while (0)
+#endif
+#define user_comm_free(p, cch) do { if ((cch) == CH_SERVER) comm_tx_release(); else work_release(p, WORK_REPLY); } while (0)
 
+#ifndef HYBRID_CARD
 void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId){
   // весь кадр должен помещаться в 16-битную длину транспорта
   if (size > 65524u || (size && data == NULL)) return;
   uint16_t crc;
   uint16_t len = size + 3; // timeout comand + uniqId + id + payload  
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : malloc(len + 8);
+  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : work_acquire(len + 8, WORK_REPLY);
   
   if (send_buffer != NULL){
 
@@ -1496,8 +1778,10 @@ void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cc
     user_comm_free(send_buffer, cch);
   }
 }
+#endif
 
 // Пакет 1 - пакет регистрации контроллера на сервере
+#ifndef HYBRID_CARD
 void user_send_registrationData(dataChanel_e cch){
   
   uint16_t crc;
@@ -1561,8 +1845,10 @@ void user_send_registrationData(dataChanel_e cch){
     break;
   }    
 }
+#endif
 
 // Пакет 2 - пакет статуса 1
+#ifndef HYBRID_CARD
 void user_send_statusPack(dataChanel_e cch){
     
   uint16_t crc;
@@ -1624,8 +1910,10 @@ void user_send_statusPack(dataChanel_e cch){
     break;
   }
 }
+#endif
 
 // Пакет 3 - пакет статуса 2
+#ifndef HYBRID_CARD
 void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
     
   uint16_t crc;
@@ -1682,10 +1970,16 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
     break;
   }
 }
+#endif
 
 // Пакет 4 - пакет статуса обновления FW
 /* >>> ход обновления */
+#ifdef HYBRID_CARD
+extern struct { uint8_t due, percent, code, id; } fw_status_pending;
+#else
 struct { uint8_t due, percent, code, id; } fw_status_pending;
+#endif
+#ifndef HYBRID_CARD
 static void fw_status_poll(void)
 {
   uint16_t capacity, crc;
@@ -1698,7 +1992,9 @@ static void fw_status_poll(void)
   crc=crc16_calc(b+4,7); b[11]=(uint8_t)crc; b[12]=(uint8_t)(crc>>8);
   if (comm_tx_commit(13)) fw_status_pending.due=0;
 }
+#endif
 /* <<< ход обновления */
+#ifndef HYBRID_CARD
 void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8_t uniqId){
   (void)cmd;
   uint16_t crc;
@@ -1752,8 +2048,10 @@ void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8
     break;
   }
 }
+#endif
 
 // Пакет 5 - контрольные суммы данных структур
+#ifndef HYBRID_CARD
 void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
   if (store_runtime) { service_crc_begin_pack(cch,uniqId); return; }
   uint16_t crc;
@@ -1814,8 +2112,10 @@ void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
   }
 
 }
+#endif
 
 // Пакет 6,15 -  пакет контрольные суммы стуктуры ID абонентов
+#ifndef HYBRID_CARD
 void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   if (store_runtime) { service_crc_begin_id(idx,cch,uniqId); return; }
   uint16_t crc;
@@ -1832,7 +2132,7 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
     len = 6;
   }
   
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : malloc(len + 8);
+  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : work_acquire(len + 8, WORK_REPLY);
   
   if (send_buffer != NULL){
     send_buffer[0] = 'S'; // идент
@@ -1894,8 +2194,10 @@ void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
     user_comm_free(send_buffer, cch);
   }
 }
+#endif
 
 // Пакет 7 -  трансляция SMS
+#ifndef HYBRID_CARD
 bool user_send_smsToServer(char* sms){
   if (!comm_server_online()) return false;
   uint16_t crc;
@@ -1938,15 +2240,21 @@ bool user_send_smsToServer(char* sms){
   }
   return false;
 }
+#endif
 
 /* >>> уведомление об ID */
 /* Последний неизвестный ID ждёт слота; все отказы остаются в журнале (событие 65). */
+#ifdef HYBRID_CARD
+extern struct { char id[10]; uint8_t due; } unreg_sms_pending;
+#else
 struct { char id[10]; uint8_t due; } unreg_sms_pending;
+#endif
 static void unreg_sms_note(const char *id)
 {
   memcpy(unreg_sms_pending.id, id, 10);
   unreg_sms_pending.due = 1;
 }
+#ifndef HYBRID_CARD
 static void unreg_sms_poll(void)
 {
   char text[31];
@@ -1955,6 +2263,7 @@ static void unreg_sms_poll(void)
   strcat(text, ": ID is unregistred!");
   if (user_send_smsToServer(text)) unreg_sms_pending.due = 0;
 }
+#endif
 /* <<< уведомление об ID */
 
 // Пакет 8 - трансляция ID со считывателей
@@ -1962,12 +2271,19 @@ static void unreg_sms_poll(void)
 /* >>> ответ считывателя (пакет 8)
    Ответ на команду 6 ждёт свободного слота канала: раньше при занятом слоте (статус,
    ответ на команду) он молча терялся и сервер не узнавал ни ID, ни конец ожидания. */
+#ifdef HYBRID_CARD
+extern struct { uint8_t state; char id[10]; } reader_out;
+#else
 struct { uint8_t state; char id[10]; } reader_out;
+#endif
+#ifndef HYBRID_CARD
 void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState){
   reader_out.state = cmdState; // 1 - ID считан, 255 - время вышло
   if (id == 0) memset(reader_out.id, 0, 10);
   else memcpy(reader_out.id, id, 10);
 }
+#endif
+#ifndef HYBRID_CARD
 static void reader_reply_poll(void)
 {
   if (!reader_out.state) return;
@@ -1980,9 +2296,11 @@ static void reader_reply_poll(void)
   b[20] = (uint8_t)crc; b[21] = (uint8_t)(crc >> 8);
   if (comm_tx_commit(22)) reader_out.state = 0;
 }
+#endif
 /* <<< ответ считывателя */
 
 // Пакет 11 - подтверждение приема команды от сервера
+#ifndef HYBRID_CARD
 void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId){
   
   uint16_t crc;
@@ -2031,8 +2349,10 @@ void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_
     break;
   }
 }
+#endif
 
 // Пакет 12 - таймштамп структур
+#ifndef HYBRID_CARD
 void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataChanel_e cch, uint8_t uniqId){
   
   uint16_t crc;
@@ -2077,9 +2397,11 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
     break;
   }
 }
+#endif
 
 // Пакет 17 - запрос информации о привязки контроллера к объекту
 // Пакет 100 - идентификация
+#ifndef HYBRID_CARD
 void user_send_identPackToConfigurator(dataChanel_e cch){
     
   uint16_t crc;
@@ -2125,8 +2447,10 @@ void user_send_identPackToConfigurator(dataChanel_e cch){
     break;
   }
 }
+#endif
 
 // Пакет 101 - пакет статуса 3
+#ifndef HYBRID_CARD
 void user_send_statusPackToConfigurator(dataChanel_e cch){
     
   uint16_t crc;
@@ -2198,13 +2522,15 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
     break;
   }
 }
+#endif
 
 // Пакет 106 - параметры конфигурации
+#ifndef HYBRID_CARD
 void user_send_configToConfigurator(dataChanel_e cch){
     
   uint16_t crc;
   uint16_t len = sizeof(config_s) + 3; // timeout comand + uniqIdCnt + id + payload
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : malloc(len + 8);
+  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : work_acquire(len + 8, WORK_REPLY);
   
   if (send_buffer != NULL){
     
@@ -2248,9 +2574,11 @@ void user_send_configToConfigurator(dataChanel_e cch){
     user_comm_free(send_buffer, cch);
   }
 }
+#endif
 
 /* USB читает журнал со своей позиции и не стирает его - стирает только выгрузка сервером.
    Раньше позиция была общей, и чтение по USB забирало события у сервера (18.09.2026). */
+#ifndef HYBRID_CARD
 void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
   if (upload_runtime_begin(10,cch,uniqId)) return;
   if (cch != CH_USB && cch != CH_SERVER) return;
@@ -2279,7 +2607,7 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
 
   if (cntId > 32) cntId = 32;
   // выделим память 1 кБ под записи журнала (32 * 32)
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire((cntId * sizeof(cellLog_s)) + 16) : malloc((cntId * sizeof(cellLog_s)) + 16);
+  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire((cntId * sizeof(cellLog_s)) + 16) : work_acquire((cntId * sizeof(cellLog_s)) + 16, WORK_REPLY);
   uint16_t len = (cntId * sizeof(cellLog_s)) + 6;
   uint16_t cntId2 = device.logsCount - readIdx - cntId;
   
@@ -2331,8 +2659,10 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
     user_comm_free(send_buffer, cch);
   }
 }
+#endif
 
 // Пакет 9 - выгрузка ID из временного буфера
+#ifndef HYBRID_CARD
 void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
   if (upload_runtime_begin(9,cch,uniqId)) return;
   if (cch != CH_USB && cch != CH_SERVER) return;
@@ -2357,7 +2687,7 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
 
   if (cntId > 100) cntId = 100;
   // выделим память 1 кБ под ID (100 * 10)
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire((cntId * 10) + 16) : malloc((cntId * 10) + 16);
+  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire((cntId * 10) + 16) : work_acquire((cntId * 10) + 16, WORK_REPLY);
   uint16_t len = (cntId * 10) + 6;
   uint16_t cntId2 = device.tempIDsCount - readIdx - cntId;
   
@@ -2411,8 +2741,10 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
     user_comm_free(send_buffer, cch);
   }
 }
+#endif
 
 // Пакет 13 - Запрос конкретного блока прошивки
+#ifndef HYBRID_CARD
 bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   if (fw_service_busy()) return false;
   if (fw_async_active()) return false;
@@ -2450,8 +2782,10 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   if (cch == CH_USB) usb_send(send_buffer, len + 8);
   return true;
 }
+#endif
 
 // Пакет 14 - передача фотографии
+#ifndef HYBRID_CARD
 void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
 {
 
@@ -2461,6 +2795,7 @@ void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
   user_send_answer_comand(21, photo_request(cch, uniqId, NULL, 0), cch, uniqId);
 #endif
 }
+#endif
 
 /* >>> время действия ID
  * Протокол2, строка 284: через useTime минут после первого прохода ID помечается на удаление -
@@ -2472,8 +2807,16 @@ void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
  * перечитывается только к нему, при старте и при новом времени от сервера. */
 #define ID_TIME_VALID 1600000000u // раньше этого времени часы ещё не получены от сервера
 #define ID_TIME_DONE  0x38u       // резерв[6]: событие 138 записано
-uint32_t id_nextEnd;       // ближайшее окончание в сутки первого прохода, 0 - нет
-bool id_endScan = true;    // перечитать базу: старт, новое время от сервера
+#ifdef HYBRID_CARD
+extern uint32_t id_nextEnd;
+#else
+uint32_t id_nextEnd;
+#endif       // ближайшее окончание в сутки первого прохода, 0 - нет
+#ifndef HYBRID_CARD
+bool id_endScan = true;
+#else
+extern bool id_endScan;
+#endif    // перечитать базу: старт, новое время от сервера
 static uint32_t id_first_pass(cellID_s *c){
   uint32_t t;
   memcpy(&t, c->reserve, 4);
@@ -2488,6 +2831,7 @@ static bool id_expired(cellID_s *c){
     device.datetime - first >= (uint32_t)c->useTime * 60u;
 }
 // окончание времени действия, если оно в сутки первого прохода и 138 ещё не записано; иначе 0
+#ifndef HYBRID_CARD
 uint32_t id_time_end(cellID_s *c){
   uint32_t first = id_first_pass(c), end;
   if (c->useTime == 0 || first == 0 || c->reserve[6] == ID_TIME_DONE) return 0;
@@ -2496,9 +2840,12 @@ uint32_t id_time_end(cellID_s *c){
   end = first + (uint32_t)c->useTime * 60u;
   return (end / ONE_DAY == first / ONE_DAY) ? end : 0;
 }
+#endif
+#ifndef HYBRID_CARD
 void id_watch_end(uint32_t end){
   if (end != 0 && (id_nextEnd == 0 || end < id_nextEnd)) id_nextEnd = end;
 }
+#endif
 /* <<< время действия ID */
 
 /* >>> проходы в сутки
@@ -2529,10 +2876,12 @@ static bool id_new_day(cellID_s *c){
 /* <<< проходы в сутки */
 
 /* USB без верного ПИНа: только опознание, статус, проверка ПИНа и диагностика USB. */
+#ifndef HYBRID_CARD
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
   return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND || cmd == USB_COMM_DIAG_COMMAND;
 }
+#endif
 
 /* Статус 1 вне очереди (таблица E92, A57, A58): входы, выходы и триггеры (биты 0-7) и
  * готовность к обновлению (бит 11). Биты 12-15 следуют за журналом и выгрузками и идут по
@@ -2540,30 +2889,45 @@ static bool usb_cmd_without_pin(uint8_t cmd)
  * чаще раза в секунду. */
 #define STATUS_EVENT_MASK       0x08FFu
 #define STATUS_EVENT_GAP_MS     1000u
+#ifdef HYBRID_CARD
+extern uint16_t status_reported;
+#else
 uint16_t status_reported;
+#endif
+#ifdef HYBRID_CARD
+extern uint32_t status_reported_ms;
+#else
 uint32_t status_reported_ms;
+#endif
 
+#ifndef HYBRID_CARD
 static uint8_t status_event_due(uint16_t status, uint32_t now_ms)
 {
   return ((status ^ status_reported) & STATUS_EVENT_MASK) != 0 &&
          (uint32_t)(now_ms - status_reported_ms) >= STATUS_EVENT_GAP_MS;
 }
+#endif
 
+#ifndef HYBRID_CARD
 static void status_event_sent(uint16_t status, uint32_t now_ms)
 {
   status_reported = status;
   status_reported_ms = now_ms;
 }
+#endif
 
 /* Режим обновления, бит 11 статуса 1 (Протокол2 E440): команда 8 и управляющие SMS отвергаются.
  * Звонки, карты и входы работают: у звонка высший приоритет. */
+#ifndef HYBRID_CARD
 static uint8_t fw_update_quiet(void)
 {
   return device.status.readyToUpdate;
 }
+#endif
 
 /* Код причины для аргумента 2 событий обновления (Протокол2 E534; E122: причина отказа пишется
  * в журнал). Номер в списке + 1; «BOOT n» - код загрузчика n + 20. */
+#ifndef HYBRID_CARD
 static uint32_t fw_reason_code(const char *text)
 {
   static const char *const names[] = {"PARAM", "BUSY", "OLD BOOT", "BOOT BUSY", "IN TRIAL",
@@ -2576,16 +2940,28 @@ static uint32_t fw_reason_code(const char *text)
   if (strncmp(text, "BOOT ", 5) == 0 && text[5] >= '0' && text[5] <= '9') return 20u + (uint32_t)(text[5] - '0');
   return 30;
 }
+#endif
 
+#ifndef HYBRID_CARD
 void fw_log(logUpdate_e num, const char *reason)
 {
   log_addUpdateEvent(num, fw_reason_code(reason));
 }
+#endif
 
+#ifdef HYBRID_CARD
+extern uint8_t fw_write_errors;
+#else
 uint8_t fw_write_errors;
+#endif
+#ifdef HYBRID_CARD
+extern uint32_t fw_rollback_pos, fw_rollback_end;
+#else
 uint32_t fw_rollback_pos, fw_rollback_end;
+#endif
 
 /* Загрузка заканчивается без установки. Блоки получают 253 до следующей команды 19. */
+#ifndef HYBRID_CARD
 void fw_abort(const char *reason)
 {
   fw_service_cancel();
@@ -2599,32 +2975,38 @@ void fw_abort(const char *reason)
   if (reason != NULL) fw_log(strcmp(reason, "TIMEOUT") == 0 ? LOG_FW_TIMEOUT : LOG_FW_FAIL, reason);
   if (device.cchFWupdate != CH_USB) user_saveindex();
 }
+#endif
 
 /* Контроллер сам прекращает загрузку (E96): команда 4 с кодом 253 по каналу загрузки, причина -
  * в журнал. */
+#ifndef HYBRID_CARD
 void fw_end(const char *reason, uint8_t uniqId)
 {
   fw_abort(reason);
   if (device.cchFWupdate == CH_USB || device.registredOnServer)
     user_send_statusUpdateFW(20, FW_BLOCK_END, (dataChanel_e)device.cchFWupdate, uniqId);
 }
+#endif
 
 /* В зарезервированном векторе 8 образа - 0x4857 и номер железа в младшем байте
  * (startup_stm32f10x_md.s, DOMOVOI_APP_HW). Чужая плата заканчивает загрузку событием 6.
  * Образы, собранные до появления метки, принимаются. */
 #define FW_HW_MARKER_OFFSET     0x20u
 #define FW_HW_MARKER_TAG        0x48570000u
+#ifndef HYBRID_CARD
 static uint8_t fw_image_foreign(const uint8_t *block0, uint8_t hw)
 {
   uint32_t w;
   memcpy((uint8_t*)&w, block0 + FW_HW_MARKER_OFFSET, 4);
   return hw != 0 && (w & 0xFFFFFF00u) == FW_HW_MARKER_TAG && (uint8_t)w != hw;
 }
+#endif
 
 /* Поля команды 19 (строки 368-372). Номер 0 зарезервирован; номер 1 - откат на резервную копию,
  * остальные поля могут быть нулевыми. Обновлению нужны билд, CRC и размер, помещающийся в
  * область образа. Таблица дописывает файл до кратного 1024; размер, кратный только 4, тоже
  * принимается, если блоков по 1024 байта хватает. */
+#ifndef HYBRID_CARD
 uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks)
 {
   if (number == 0) return 1;
@@ -2635,8 +3017,10 @@ uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size, uint32
          ((FWBLOCK_OFFSET + (uint32_t)blocks * 1024u) > mem[MB_FIRMWARE].size) ||
          (build == 0) || (size == 0) || (crc == 0) || (blocks == 0);
 }
+#endif
 
 /* Ответ 2, "сейчас нельзя" (E122): причина, или NULL, если команду 19 можно выполнять. */
+#ifndef HYBRID_CARD
 const char *fw_start_refused(void)
 {
   if (BOOT_VER < 0x30) return "OLD BOOT";
@@ -2645,8 +3029,10 @@ const char *fw_start_refused(void)
   if (device.rebootToUpdate || device.FWinProgress || fw_rollback_end) return "BUSY";
   return NULL;
 }
+#endif
 
 /* Идущая по этому каналу загрузка начата с этими полями. */
+#ifndef HYBRID_CARD
 uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks, dataChanel_e cch)
 {
   bootFWparam_s h;
@@ -2655,9 +3041,11 @@ uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, uint32_
   return h.firmwareVersion == number && h.buildDate == build &&
          h.firmwareSize == size && h.firmwareCRC == crc;
 }
+#endif
 
 /* Номер 1: подготовить резервную копию для загрузчика и перезапуститься. Возможно, пока копия
  * цела, иначе ответ 2. */
+#ifndef HYBRID_CARD
 static cmdCode_e fw_rollback(dataChanel_e cch)
 {
   bootFWparam_s fwParam;
@@ -2678,8 +3066,10 @@ static cmdCode_e fw_rollback(dataChanel_e cch)
   device.status.readyToUpdate = 1;
   return CMD_SUCCESS;
 }
+#endif
 
 /* Один фрагмент за проход: стирание не больше одного сектора, без нового буфера. */
+#ifndef HYBRID_CARD
 static void fw_rollback_poll(void)
 {
   if (store_runtime) return;
@@ -2704,10 +3094,12 @@ static void fw_rollback_poll(void)
   fw_log(LOG_FW_ROLLBACK, NULL);
   device.rebootToUpdate = 1;
 }
+#endif
 
 /* Команда 19 (E122): ответ 0 принято, 1 неверные поля, 2 сейчас нельзя. Номер с установленным
  * не сверяется: что ставить, решает сервер. Тот же файл во время его загрузки - загрузка
  * продолжается. */
+#ifndef HYBRID_CARD
 static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
 {
   uint16_t number, blocks;
@@ -2764,8 +3156,10 @@ static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
   }
   return CMD_SUCCESS;
 }
+#endif
 
 /* Блок читается обратно: оборванная или неудачная запись видна здесь (код 254). */
+#ifndef HYBRID_CARD
 static uint8_t fw_block_written(uint32_t adr, const uint8_t *data)
 {
   uint8_t b[64];
@@ -2776,9 +3170,11 @@ static uint8_t fw_block_written(uint32_t adr, const uint8_t *data)
   }
   return 1;
 }
+#endif
 
 /* Все блоки приняты. Исправный образ - перезапуск в загрузчик на установку (событие 3 перед
  * перезапуском); неверная CRC заканчивает загрузку. Бит 11 снимается в обоих случаях. */
+#ifndef HYBRID_CARD
 static uint8_t fw_blocks_done(uint8_t crc_ok)
 {
   device.FWinProgress = 0;
@@ -2789,12 +3185,14 @@ static uint8_t fw_blocks_done(uint8_t crc_ok)
   if (device.cchFWupdate != CH_USB) user_saveindex();
   return crc_ok ? FW_BLOCK_OK : FW_BLOCK_END;
 }
+#endif
 
 /* Команда 20 (E96, E123, E477): номер блока и 1024 байта. Возвращает код команды 4: 0 принят,
  * 254 не прошёл чтение после записи, 255 неверная длина или номер (оба сразу запрашиваются
  * заново), 253 загрузка окончена. Команда 4 подтверждает каждую команду 20 (сервер снимает
  * команду только по подтверждению): запоздавший повтор уже записанного блока получает 0,
  * повторно ничего не пишется. */
+#ifndef HYBRID_CARD
 static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
 {
   uint16_t block;
@@ -2836,18 +3234,22 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   }
   return fw_blocks_done(user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC));
 }
+#endif
 
 /* После отложенного стирания хвост содержит старый образ. Продолжаем с сохранённого
  * курсора: повтор уже записанных блоков безопасен для NOR, хвост стирается при записи. */
+#ifndef HYBRID_CARD
 static uint16_t fw_resume_block(void)
 {
   return device.FWblockIdx < device.FWblockCount ? device.FWblockIdx : UINT16_MAX;
 }
+#endif
 
 /* После сброса продолжить загрузку с сервера, если она шла (бит 11 переживает сброс, E440).
  * Подготовленный заголовок должен по-прежнему описывать обновление: стёртая метка, номер
  * прошивки от 2 и поля, которые приняла бы команда 19. Остаток времени сохраняется раз в
  * минуту. Без загрузки любой блок получает 253. */
+#ifndef HYBRID_CARD
 static void fw_resume_after_boot(void)
 {
   bootFWparam_s h;
@@ -2873,9 +3275,11 @@ static void fw_resume_after_boot(void)
   device.status.readyToUpdate = 1;
   device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
 }
+#endif
 
 /* Источник команды 8 (E184) -> событие журнала: 1 мобильное приложение 52, 2 API 50, 3 тест из
  * админки 49, 4 голосовой помощник 51. Источники, которых нет в таблице, пишутся как API. */
+#ifndef HYBRID_CARD
 static logControl_e cmd8_event(uint8_t source)
 {
   switch (source){
@@ -2885,11 +3289,17 @@ static logControl_e cmd8_event(uint8_t source)
   default: return LOG_CON_OUTONBYAPI;
   }
 }
+#endif
+#ifdef HYBRID_CARD
+extern logControl_e server_out_event;
+#else
 logControl_e server_out_event = LOG_CON_OUTONBYAPI;
+#endif
 
 // Разбор данных
 /* Все ячейки проверяются до выделения памяти, изменения таймштампа и записи Flash.
  * Ошибка в хвосте пакета не должна сохранять его начало и отправлять второй ответ. */
+#ifndef HYBRID_CARD
 static bool sync_cells_valid(const uint8_t *ptr, uint16_t len, memBlock_e mb, uint16_t cell_size)
 {
   uint16_t count, index;
@@ -2905,7 +3315,9 @@ static bool sync_cells_valid(const uint8_t *ptr, uint16_t len, memBlock_e mb, ui
   }
   return true;
 }
+#endif
 
+#ifndef HYBRID_CARD
 static bool command_args_valid(const uint8_t *ptr, uint16_t len)
 {
   // Проверяем обязательные аргументы до любых действий команды.
@@ -2920,6 +3332,7 @@ static bool command_args_valid(const uint8_t *ptr, uint16_t len)
     default: return true;
   }
 }
+#endif
 
 /* >>> Сборка таблиц страницами: исходный сектор читается до commit журнала. */
 typedef struct {
@@ -2930,6 +3343,7 @@ typedef struct {
 } sync_pages_s;
 
 #ifndef ASM_RUNTIME
+#ifndef HYBRID_CARD
 static uint8_t sync_page(const void *context, uint16_t off, uint8_t *page)
 {
   const sync_pages_s *s = context;
@@ -2956,13 +3370,19 @@ static uint8_t sync_page(const void *context, uint16_t off, uint8_t *page)
   return 1;
 }
 #endif
+#endif
 
 /* Номер последней записанной ячейки базы ID: граница поиска (user_findID). */
+#ifdef HYBRID_CARD
+extern uint16_t id_cells_end;
+#else
 uint16_t id_cells_end;
+#endif
 /* Сколько ID пакета команды 13 займут пустые ячейки (повторы номера считаются раз) и
  * наибольший номер. Читается по 2 байта на запись, а не вся база. UINT16_MAX - ошибка
  * чтения, тогда считаем по всей базе. */
 #ifndef ASM_RUNTIME
+#ifndef HYBRID_CARD
 static uint16_t sync_new_ids(const uint8_t *records, uint16_t count, uint16_t *last, uint32_t *delta)
 {
   uint16_t added = 0, index;
@@ -2986,8 +3406,10 @@ static uint16_t sync_new_ids(const uint8_t *records, uint16_t count, uint16_t *l
   return added;
 }
 #endif
+#endif
 
 #ifndef ASM_RUNTIME
+#ifndef HYBRID_CARD
 static bool sync_write_cells(const uint8_t *records, uint16_t count, memBlock_e mb, uint16_t size)
 {
   while (count) {
@@ -3009,11 +3431,13 @@ static bool sync_write_cells(const uint8_t *records, uint16_t count, memBlock_e 
   return true;
 }
 #endif
+#endif
 /* <<< Сборка таблиц страницами */
 
 /* >>> Праздники целиком: даты подряд с первой ячейки, остаток списка - 0xFF. */
 typedef struct { const uint8_t *dates; uint16_t bytes; } holiday_pages_s;
 #ifndef ASM_RUNTIME
+#ifndef HYBRID_CARD
 static uint8_t holiday_page(const void *context, uint16_t off, uint8_t *page)
 {
   const holiday_pages_s *h = context;
@@ -3023,19 +3447,25 @@ static uint8_t holiday_page(const void *context, uint16_t off, uint8_t *page)
   return 1;
 }
 #endif
+#endif
 #ifndef ASM_RUNTIME
+#ifndef HYBRID_CARD
 static bool holiday_write(const uint8_t *dates, uint8_t count)
 {
   holiday_pages_s h = {dates, (uint16_t)(count * sizeof(cellHoliday_s))};
   return mem_replace_pages(mem[MB_HOLIDAY].start, holiday_page, &h);
 }
 #endif
+#endif
 /* <<< Праздники целиком */
 
 #ifdef ASM_RUNTIME
+#ifndef HYBRID_CARD
 #include "table_runtime.inc"
 #endif
+#endif
 
+#ifndef HYBRID_CARD
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   
   uint16_t len, crc, i;
@@ -3302,7 +3732,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           memchr(config.countryCode, 0, sizeof(config.countryCode)) != NULL){
         uint16_t text_size = len - 13;
         char number[sizeof(config.countryCode) + 11];
-        char *text = malloc(text_size + 1u);
+        char *text = work_acquire(text_size + 1u, WORK_SMS);
         if (text == NULL){
           user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
           break;
@@ -3313,7 +3743,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         text[text_size] = 0;
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
         user_sendsms(text, number);
-        free(text);
+        work_release(text, WORK_SMS);
       }
       else{
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -3675,8 +4105,10 @@ if (cch != CH_USB && len >= 5){
       break;
   }
 }
+#endif
 
 // индикация
+#ifndef HYBRID_CARD
 void user_indication (void)
 {
   // NET LED: на сервере - горит, модем в сети - мигает, выходит на связь - мигает часто
@@ -3684,8 +4116,10 @@ void user_indication (void)
   else if (modem_slm336_ready()) led_load(NET_LED, LED_FL1);
   else led_load(NET_LED, LED_FL2);
 }
+#endif
 
 // опрос входов
+#ifndef HYBRID_CARD
 void user_readinputs (void){
   // при отказе АЦП сохраняем последние состояния входов
   if (!adc_startInjectedConvertion()) return;
@@ -3734,17 +4168,21 @@ void user_readinputs (void){
     device.laststatus.stateIn2 = device.status.stateIn2;
   }
 }
+#endif
 
 // вернуть указатель на 10ть последних цифр номера при номере более 10
+#ifndef HYBRID_CARD
 char* user_last10digitsnumber (char* num)
 {
   uint16_t l = strlen(num);
 
   return (l <= 10)?num:(num + (l-10));
 }
+#endif
 
 // узнать текущий день недели 
 // 0 - Пн, 1 - Вт ...
+#ifndef HYBRID_CARD
 uint8_t user_getweakday (uint32_t t)
 {
   // какой сейчас день по счету
@@ -3757,6 +4195,7 @@ uint8_t user_getweakday (uint32_t t)
 
   return wd;
 }
+#endif
 
 
 // ********************** Работа с ID **************************
@@ -3805,6 +4244,7 @@ uint8_t user_findID(char *id, cellID_s *cell){
 }
 
 // поиск ID во временном буфере
+#ifndef HYBRID_CARD
 bool user_findTempID(char *id){
   
   uint32_t adr;
@@ -3825,8 +4265,10 @@ bool user_findTempID(char *id){
   // не нашли  
   return false;
 }
+#endif
 
 // добавляет ID во временный буфер
+#ifndef HYBRID_CARD
 void user_addIdToTempBuffer(char *id, codeType_e tp){
   
   uint32_t adr;
@@ -3869,6 +4311,7 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
     }
   }
 }
+#endif
 
 /* Окно расписания в минутах суток: 08:30-17:15 включает 09:00, окно через полночь (22:00-06:00)
  * переходит через ноль. */
@@ -4242,6 +4685,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 }
 
 // считать параметры группы
+#ifndef HYBRID_CARD
 bool user_getGroup(uint16_t num, cellGroup_s *group){
 uint32_t offset;
   if(!num) return false;
@@ -4249,8 +4693,10 @@ uint32_t offset;
   if(offset+sizeof(cellGroup_s)>mem[MB_GROUP].size) return false;
   return mem_read(mem[MB_GROUP].start+offset,(uint8_t *)group,sizeof(cellGroup_s)) && *(uint8_t *)group==num;
 }
+#endif
 
 // считать параметры расписания
+#ifndef HYBRID_CARD
 bool user_getShedule(uint16_t num, cellShedule_s *shedule){
 uint32_t offset;
   if(!num) return false;
@@ -4258,8 +4704,10 @@ uint32_t offset;
   if(offset+sizeof(cellShedule_s)>mem[MB_SHEDULE].size) return false;
   return mem_read(mem[MB_SHEDULE].start+offset,(uint8_t *)shedule,sizeof(cellShedule_s)) && *(uint8_t *)shedule==num;
 }
+#endif
 
 // проверить праздничный день
+#ifndef HYBRID_CARD
 uint8_t user_dayIsHoliday(void){
 uint8_t data[64];
   uint32_t day=device.datetime/86400u;
@@ -4271,8 +4719,10 @@ uint8_t data[64];
   }
   return 0;
 }
+#endif
 
 // очистить буфер временных ID
+#ifndef HYBRID_CARD
 bool user_clearTempIdBuffer(void){
 
   uint32_t adr;
@@ -4290,9 +4740,11 @@ bool user_clearTempIdBuffer(void){
   device.newAddressTempID = mem[MB_TEMPID].start;
   return true;
 }
+#endif
 
 // сколько номеров в памяти
 /* Записанные ячейки по всей области, с пропусками; заодно находит конец базы для user_findID. */
+#ifndef HYBRID_CARD
 uint16_t user_getNumbersCount(void){
 
   uint32_t adr;
@@ -4327,15 +4779,19 @@ uint16_t user_getNumbersCount(void){
 
   return cnt;
 }
+#endif
 
 /* Окончание времени действия ID (Протокол2, строка 284): событие 138, если время вышло в сутки
  * первого прохода. Окончание прошлых суток (контроллер был выключен) не сообщается - такой ID
  * уже удаляет сервер. */
+#ifndef HYBRID_CARD
 void user_checkIdTimeEnd(void){
 expiry_runtime_begin();
 }
+#endif
 
 // получаем кол-во ID во временном буфере и тут же обновляем адрес записи
+#ifndef HYBRID_CARD
 uint16_t user_getTempIDRecordsCount(void){
   
   uint32_t adr;
@@ -4363,8 +4819,10 @@ uint16_t user_getTempIDRecordsCount(void){
   device.newAddressTempID = endAdr;
   return cnt;
 }
+#endif
 
 // проверить расписание
+#ifndef HYBRID_CARD
 bool user_checkShedule(uint8_t shd){
   if (!mem_tables_ready()) return false;
   cellShedule_s shedule;
@@ -4434,8 +4892,10 @@ bool user_checkShedule(uint8_t shd){
       
   return true;
 }
+#endif
 
 // обновить данные ID
+#ifndef HYBRID_CARD
 bool user_updateID(cellID_s *c){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint16_t index;
@@ -4456,10 +4916,12 @@ bool user_updateID(cellID_s *c){
   }
   return false;
 }
+#endif
 
 // ********************** Работа с log **************************
 
 // очистить буфер журнала
+#ifndef HYBRID_CARD
 bool log_clearLogBuffer(void){
 
   uint32_t adr;
@@ -4483,19 +4945,23 @@ bool log_clearLogBuffer(void){
   device.newAddressLog = mem[MB_LOG].start;
   return true;
 }
+#endif
 
 // Полностью стёртая ячейка; незавершённую запись повторно не используем.
+#ifndef HYBRID_CARD
 bool log_blank(const cellLog_s *cell){
   const uint8_t *p = (const uint8_t*)cell;
   for (uint16_t i = 0; i < sizeof(*cell); i++) if (p[i] != 0xFF) return false;
   return true;
 }
+#endif
 
 /* >>> номер записи журнала
  * Номер - время события, но два события в одну секунду получали одинаковый «уникальный»
  * номер. Теперь он всегда больше предыдущего: по последней записи во флешке (переживает
  * перезапуск) и по последнему выданному (переживает стирание журнала) (18.09.2026). */
 // Старые записи с нулевым резервом читаются без миграции.
+#ifndef HYBRID_CARD
 bool log_valid(const cellLog_s *cell){
   uint32_t mark;
   uint16_t crc, inverse;
@@ -4511,8 +4977,14 @@ bool log_valid(const cellLog_s *cell){
   return inverse == (uint16_t)~crc &&
     crc == crc16_calc((uint8_t*)cell, sizeof(*cell) - sizeof(cell->reserve));
 }
+#endif
 
+#ifdef HYBRID_CARD
+extern uint32_t log_lastIndex;
+#else
 uint32_t log_lastIndex;
+#endif
+#ifndef HYBRID_CARD
 static void log_uniqueIndex(cellLog_s *cl, uint32_t adr){
   cellLog_s prev;
   uint32_t last = log_lastIndex;
@@ -4522,9 +4994,11 @@ static void log_uniqueIndex(cellLog_s *cl, uint32_t adr){
   }
   if (last != 0 && cl->index <= last) cl->index = last + 1;
 }
+#endif
 /* <<< номер записи журнала */
 
 // добавить событие в буфер
+#ifndef HYBRID_CARD
 bool log_addEvent(cellLog_s *cl){
   if (store.clear == 10 || !user_storage_flash_ready()) return false;
   uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
@@ -4555,8 +5029,10 @@ bool log_addEvent(cellLog_s *cl){
   }
   return false;
 }
+#endif
 
 // получаем кол-во записей в журнале
+#ifndef HYBRID_CARD
 uint16_t log_getRecordsCount(void){
   uint32_t endAdr = mem[MB_LOG].start + mem[MB_LOG].size;
   uint8_t tbuffer[1024];
@@ -4580,8 +5056,10 @@ uint16_t log_getRecordsCount(void){
   device.newAddressLog = endAdr;
   return cnt;
 }
+#endif
 
 // Номер выгружаемой записи логический: оборванные ячейки пропускаются.
+#ifndef HYBRID_CARD
 static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count){
   cellLog_s cell;
   uint16_t index = 0, copied = 0;
@@ -4598,6 +5076,7 @@ static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count){
   }
   return copied == count;
 }
+#endif
 
 /* >>> отложенные события журнала
  * После запуска время платы неизвестно, пока сервер не пришлёт его в ответе на регистрацию
@@ -4607,43 +5086,75 @@ static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count){
  * перезагрузку, события пишутся как есть, чтобы не пропасть. */
 #define LOG_PENDING_MAX 16
 #define LOG_TIME_WAIT   600
+#ifdef HYBRID_CARD
+extern cellLog_s log_pending[LOG_PENDING_MAX];
+#else
 cellLog_s log_pending[LOG_PENDING_MAX];
+#endif
+#ifdef HYBRID_CARD
+extern uint8_t log_pendingCount;
+#else
 uint8_t log_pendingCount;
+#endif
+#ifdef HYBRID_CARD
+extern uint8_t log_timeKnown;
+#else
 uint8_t log_timeKnown;
+#endif
 #ifdef ASM_RUNTIME
 /* Pending foreground persistence runs before another photo background job. */
+#ifndef HYBRID_CARD
 bool user_storage_background_ready(void)
 {
   return user_storage_command_ready() && !store_save_requested &&
     !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
 }
 #endif
+#endif
 
 
 /* >>> Cooperative firmware block writer */
+#ifdef HYBRID_CARD
+extern struct {
+  uint8_t *data;
+  uint32_t address, position, remaining, crc, expected_crc, usb_epoch;
+  uint16_t offset, block;
+  uint8_t phase, waiting, channel, id, quiet, cancelled, code;
+} fw_job;
+#else
 struct {
   uint8_t *data;
   uint32_t address, position, remaining, crc, expected_crc, usb_epoch;
   uint16_t offset, block;
   uint8_t phase, waiting, channel, id, quiet, cancelled, code;
 } fw_job;
+#endif
 enum { FA_ERASE=1, FA_WRITE, FA_HEADER, FA_CRC, FA_REPLY };
+#ifndef HYBRID_CARD
 static bool fw_async_active(void) { return fw_job.phase != 0; }
+#endif
+#ifndef HYBRID_CARD
 static void fw_async_cancel(void)
 {
   if (fw_async_active()) fw_job.cancelled = fw_job.quiet = 1;
 }
+#endif
+#ifndef HYBRID_CARD
 static void fw_async_quiet(dataChanel_e channel)
 {
   if (fw_async_active() && fw_job.channel == channel) fw_job.quiet = 1;
 }
+#endif
+#ifndef HYBRID_CARD
 static void fw_async_reply(uint8_t id) { fw_job.id = id; }
+#endif
+#ifndef HYBRID_CARD
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel)
 {
   if (flash_owner || store.job || mem_config_result() || w25_async_active()) return false;
   if (address < mem[MB_FIRMWARE].start + FWBLOCK_OFFSET ||
       address > mem[MB_FIRMWARE].start + mem[MB_FIRMWARE].size - 1024u) return false;
-  fw_job.data = malloc(1024u);
+  fw_job.data = work_acquire(1024u, WORK_FW_BLOCK);
   if (!fw_job.data) return false;
   memcpy(fw_job.data, data, 1024u);
   fw_job.address = address; fw_job.block = device.FWblockIdx;
@@ -4653,11 +5164,15 @@ static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e c
   fw_job.phase = ((address + 4095u) & ~4095u) < address + 1024u ? FA_ERASE : FA_WRITE;
   return true;
 }
+#endif
+#ifndef HYBRID_CARD
 static void fw_async_complete(uint8_t code)
 {
-  free(fw_job.data); fw_job.data = NULL;
+  work_release(fw_job.data, WORK_FW_BLOCK); fw_job.data = NULL;
   fw_job.code = code; fw_job.phase = FA_REPLY;
 }
+#endif
+#ifndef HYBRID_CARD
 static void fw_storage_poll(uint32_t now)
 {
   uint8_t r;
@@ -4666,7 +5181,7 @@ static void fw_storage_poll(uint32_t now)
   if (fw_job.channel == CH_USB && fw_job.usb_epoch != usb_bus_resets) fw_job.quiet = 1;
   if (fw_job.cancelled) {
     if (fw_job.waiting && w25_async_poll(now) == 1) return;
-    free(fw_job.data); fw_job.data = NULL; fw_job.phase = fw_job.waiting = 0; flash_release(FO_FWBLOCK);
+    work_release(fw_job.data, WORK_FW_BLOCK); fw_job.data = NULL; fw_job.phase = fw_job.waiting = 0; flash_release(FO_FWBLOCK);
     return; /* A timed-out operation cannot publish progress or a late ACK. */
   }
   if (fw_job.phase == FA_REPLY) {
@@ -4736,20 +5251,32 @@ read_error:
   fw_async_complete(FW_BLOCK_END);
   fw_job.phase = 0; flash_release(FO_FWBLOCK); fw_abort("READ"); flash_claim(FO_FWBLOCK); fw_job.phase = FA_REPLY;
 }
+#endif
 /* <<< Cooperative firmware block writer */
 
 /* >>> Cooperative event writer */
 /* Snapshot owns both async program sources, never the caller or queue storage.
  * result: 1 pending, 2 verified, 3 failed (retained for delayed reconciliation).
  * Each step reads one 32-byte cell, starts one command, or polls one command. */
+#ifdef HYBRID_CARD
+extern struct {
+  cellLog_s cell;
+  uint32_t address, previous, retry_at;
+  uint8_t phase, waiting, result;
+} log_job;
+#else
 struct {
   cellLog_s cell;
   uint32_t address, previous, retry_at;
   uint8_t phase, waiting, result;
 } log_job;
+#endif
 enum { LA_PREVIOUS=1, LA_FIND, LA_BODY, LA_MARK, LA_VERIFY, LA_RECONCILE };
+#ifndef HYBRID_CARD
 static bool log_async_active(void) { return log_job.phase != 0; }
+#endif
 
+#ifndef HYBRID_CARD
 static void log_async_begin(const cellLog_s *cell)
 {
   log_job.cell = *cell;
@@ -4758,7 +5285,9 @@ static void log_async_begin(const cellLog_s *cell)
   log_job.previous = log_lastIndex;
   flash_claim(FO_LOG); log_job.phase = LA_PREVIOUS; log_job.waiting = 0; log_job.result = 1;
 }
+#endif
 
+#ifndef HYBRID_CARD
 static uint8_t log_async_step(uint32_t now)
 {
   cellLog_s actual;
@@ -4835,7 +5364,9 @@ failed:
   log_job.retry_at = now + 1000u;
   return log_job.result = 3;
 }
+#endif
 
+#ifndef HYBRID_CARD
 static void log_storage_poll(uint32_t now)
 {
   if (!log_async_active()) {
@@ -4847,9 +5378,11 @@ static void log_storage_poll(uint32_t now)
   --log_pendingCount;
   memmove(log_pending, log_pending + 1, log_pendingCount * sizeof(log_pending[0]));
 }
+#endif
 /* <<< Cooperative event writer */
 
 // записать отложенные события как есть
+#ifndef HYBRID_CARD
 void log_flushPending(void){
   if (store_runtime) return; /* Only user_storage_poll advances runtime writes. */
   while (log_pendingCount) {
@@ -4858,7 +5391,9 @@ void log_flushPending(void){
     memmove(log_pending, log_pending + 1, log_pendingCount * sizeof(log_pending[0]));
   }
 }
+#endif
 
+#ifndef HYBRID_CARD
 void log_setTime(uint32_t now){
   device.datetime = now;
   id_endScan = true;
@@ -4871,11 +5406,15 @@ void log_setTime(uint32_t now){
   log_timeKnown = 1;
   log_flushPending();
 }
+#endif
 
+#ifndef HYBRID_CARD
 void log_checkPending(void){
   if (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)) log_flushPending();
 }
+#endif
 
+#ifndef HYBRID_CARD
 static bool log_put(cellLog_s *cell){
   if (!store_runtime && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)){
     log_flushPending();
@@ -4889,9 +5428,11 @@ static bool log_put(cellLog_s *cell){
   log_pendingCount++;
   return true;
 }
+#endif
 /* <<< отложенные события журнала */
 
 // добавить системное событие
+#ifndef HYBRID_CARD
 bool log_addSystemEvent(logSystem_e num){
   cellLog_s cell;
   
@@ -4903,16 +5444,20 @@ bool log_addSystemEvent(logSystem_e num){
   
   return log_put(&cell);
 }
+#endif
 
 /* Событие с числом текстом в поле ID (37 - баланс, 38 - сигнал), остаток поля нули. */
+#ifndef HYBRID_CARD
 static bool log_addSystemValue(logSystem_e num, int32_t value)
 {
   char id[12] = {0};
-  sprintf(id, "%d", (int)value);
+  format_i32(id, NULL, value);
   return log_addSystemEventID(num, id);
 }
+#endif
 
 // добавить системное событие
+#ifndef HYBRID_CARD
 bool log_addSystemEventID(logSystem_e num, char *id){
   cellLog_s cell;
   
@@ -4927,8 +5472,10 @@ bool log_addSystemEventID(logSystem_e num, char *id){
     
   return log_put(&cell);
 }
+#endif
 
 // добавить событие доступа
+#ifndef HYBRID_CARD
 bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt){
   cellLog_s cell;
   
@@ -4944,9 +5491,11 @@ bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt){
   
   return log_put(&cell);
 }
+#endif
 
 // обновление FW: в аргументе 1 текущая версия - HW 1 байт, FW 2 байта, билд 4 байта,
 // в аргументе 2 код причины (Протокол2 E533, E534)
+#ifndef HYBRID_CARD
 bool log_addUpdateEvent(logUpdate_e num, uint32_t reason){
   cellLog_s cell;
   uint16_t fw = device.firmwareVersion; // device упакована: копируем через переменные
@@ -4964,8 +5513,10 @@ bool log_addUpdateEvent(logUpdate_e num, uint32_t reason){
   
   return log_put(&cell);
 }
+#endif
 
 // фотофиксация: номер фото в первых 4 байтах аргумента 1 (Протокол2 E533)
+#ifndef HYBRID_CARD
 bool log_addPhotoEvent(uint32_t number){
   cellLog_s cell;
   
@@ -4978,11 +5529,13 @@ bool log_addPhotoEvent(uint32_t number){
   
   return log_put(&cell);
 }
+#endif
 
 
 // ********************** Память фото **************
 
 // получаем кол-во фото в памяти
+#ifndef HYBRID_CARD
 uint16_t user_getPhotoCount(void)
 {
   uint32_t adr = mem[MB_PHOTO].start;
@@ -5009,9 +5562,11 @@ uint16_t user_getPhotoCount(void)
   device.countPhoto = count; device.status.readyPhoto = count != 0;
   return count;
 }
+#endif
 
 
 // ************************ Прошивка ***********************
+#ifndef HYBRID_CARD
 bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
 
   if (!size || (size & 3u)) return false;
@@ -5052,8 +5607,10 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
   else 
     return true;
 }
+#endif
 
 #ifndef ASM_CRC
+#ifndef HYBRID_CARD
 uint32_t CRC32(uint32_t crc, uint32_t data){
   crc = crc ^ data;
   for (uint8_t i = 0; i < 32; i++){
@@ -5064,6 +5621,7 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
   }
   return crc;
 }
+#endif
 #endif /* !ASM_CRC */
 
 /* Команда 111, раскладка версии 4: 57 значений uint32, младшим байтом вперёд.
@@ -5081,6 +5639,7 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
  *  53 DADDR и 54 EP0R на момент последнего восстановления, 55 DADDR и 56 EP0R сейчас,
  *  57 минимальный запас стека за работу, байт (версия 5, 01.10.2026).
  */
+#ifndef HYBRID_CARD
 static void user_send_usbDiag(uint8_t uniqId)
 {
   uint32_t v[58];
@@ -5118,6 +5677,7 @@ static void user_send_usbDiag(uint8_t uniqId)
   send_buffer[len + 7] = (crc >> 8) & 0xff;
   usb_send(send_buffer, len + 8);
 }
+#endif
 
 /* Команда 112, версия 1: uint32 младшим байтом вперёд.
  *  0 версия, 1 мс,
@@ -5127,6 +5687,7 @@ static void user_send_usbDiag(uint8_t uniqId)
  *  14 сбоев всего | следующий<<8 | последний код<<16,
  *  15..24 кольцо сбоев: шаг | причина<<8 | секунды<<16,
  *  25.. длительности шагов последней попытки, 10 мс (SLM_STEP_COUNT значений). */
+#ifndef HYBRID_CARD
 static void user_send_commDiag(uint8_t uniqId)
 {
   uint32_t v[25 + SLM_STEP_COUNT];
@@ -5154,23 +5715,35 @@ static void user_send_commDiag(uint8_t uniqId)
   send_buffer[len + 6] = crc & 0xff; send_buffer[len + 7] = (crc >> 8) & 0xff;
   usb_send(send_buffer, len + 8);
 }
+#endif
 
 /* Часы прошивки - местное время (как у суток ID); до установки - недостоверно. */
+#ifndef HYBRID_CARD
 uint32_t user_comm_local_time(void)
 { return device.datetime >= ID_TIME_VALID ? device.datetime : UINT32_MAX; }
+#endif
 /* Ночной перезапуск модема не рвёт обновление прошивки. */
 /* Баланс SIM (статус 2): USSD из настроек (команда 12) и разобранный ответ, рубли. */
+#ifndef HYBRID_CARD
 const char *user_comm_ussd(void) { return config.ussdBalance; }
+#endif
+#ifndef HYBRID_CARD
 uint8_t user_comm_volte(void) { return config.useVoLTE; }
+#endif
+#ifndef HYBRID_CARD
 void user_comm_balance(int32_t rubles)
 {
   device.balance = rubles < 1 ? 1u : rubles > 65000 ? 65000u : (uint16_t)rubles; /* статус 2: 0 - не определён */
   /* 37 «Баланс ниже нормы»: после каждого запроса, порог 100 р (триггер «баланс менее 100»). */
   if (rubles < 100) log_addSystemValue(LOG_SYS_LOWBALANCE, rubles);
 }
+#endif
+#ifndef HYBRID_CARD
 void user_comm_low_signal(uint8_t csq) { log_addSystemValue(LOG_SYS_LOWSIGNAL, csq); }
+#endif
 /* Журнал связи: 14/15 подключён, 16/17 ошибка соединения, 18/19 потеря связи с сервером 1/2;
    11 нет регистрации в сети, 12 нет интернета. */
+#ifndef HYBRID_CARD
 bool user_comm_link(uint8_t kind, uint8_t address)
 {
   static const uint8_t first[] = {LOG_SYS_CONNECT1, LOG_SYS_ERRCONNECT1, LOG_SYS_FAILCONNECT1, LOG_SYS_NOTGSMREG, LOG_SYS_NOTGPRSREG};
@@ -5179,13 +5752,29 @@ bool user_comm_link(uint8_t kind, uint8_t address)
   if (kind <= COMM_LINK_LOST) event = (uint8_t)(event + user_comm_server(address));
   return log_addSystemEvent((logSystem_e)event);
 }
+#endif
 /* Ночной перезапуск модема ждёт конца загрузки FW и вызова. */
+#ifndef HYBRID_CARD
 bool user_comm_busy(void) { return device.FWinProgress != 0 || comm_call_active(); }
+#endif
 
 /* Адрес сервера в настройках - "домен:порт" (как у старой связи). */
+#ifdef HYBRID_CARD
+extern char comm_host[2][32];
+#else
 char comm_host[2][32];
+#endif
+#ifdef HYBRID_CARD
+extern uint16_t comm_port[2];
+#else
 uint16_t comm_port[2];
+#endif
+#ifdef HYBRID_CARD
+extern char comm_credential[sizeof(config.netOperator)];
+#else
 char comm_credential[sizeof(config.netOperator)];
+#endif
+#ifndef HYBRID_CARD
 static void comm_split(uint8_t n, const char *server)
 {
   const char *colon = strrchr(server, ':');
@@ -5194,14 +5783,20 @@ static void comm_split(uint8_t n, const char *server)
   memcpy(comm_host[n], server, len); comm_host[n][len] = 0;
   comm_port[n] = colon ? (uint16_t)atoi(colon + 1) : 0;
 }
+#endif
 /* Адрес 0 - сервер 1, если он включён или выключены оба (как в comm_endpoint); адрес 1 - сервер 2. */
+#ifndef HYBRID_CARD
 uint8_t user_comm_server(uint8_t address) { return address || (!config.useServer1 && config.useServer2); }
+#endif
 /* Читаем текущие настройки: команда 12 применяется без перезагрузки платы.
    Указатель живёт до следующего запроса поля; сборщик AT копирует его сразу. */
+#ifndef HYBRID_CARD
 static void comm_endpoint(uint8_t n)
 {
   comm_split(n, n || (!config.useServer1 && config.useServer2) ? config.server2 : config.server1);
 }
+#endif
+#ifndef HYBRID_CARD
 static const char *comm_text(uint8_t field, uint16_t *capacity)
 {
   static const char empty[1] = "";
@@ -5219,6 +5814,8 @@ static const char *comm_text(uint8_t field, uint16_t *capacity)
   default: *capacity = 0; return NULL;
   }
 }
+#endif
+#ifndef HYBRID_CARD
 static uint16_t comm_number(uint8_t field)
 {
   switch (field) {
@@ -5235,16 +5832,26 @@ static uint16_t comm_number(uint8_t field)
   default: return 0;
   }
 }
+#endif
+#ifndef HYBRID_CARD
 const slm_settings_t comm_settings = {comm_text, comm_number};
+#endif
 /* v5: PC13 - питание модема, PC14 - ключ включения; high - физический уровень. */
+#ifndef HYBRID_CARD
 static void comm_gpio(uint8_t pin, bool high)
 {
   uint16_t bit = (uint16_t)(1u << pin);
   if (high) GPIOC->BSRR = bit; else GPIOC->BRR = bit;
 }
+#endif
+#ifndef HYBRID_CARD
 static void comm_type(uint8_t type) { device.moduleType = type; }
+#endif
+#ifndef HYBRID_CARD
 static void comm_imei(const char *imei) { memcpy(device.IMEIGSM, imei, 16); }
+#endif
 /* Старт и повторный старт (заводские настройки) новой связи. */
+#ifndef HYBRID_CARD
 void user_comm_boot(void)
 {
   static const slm_handlers_t handlers = {comm_gpio, comm_type, comm_imei};
@@ -5253,9 +5860,11 @@ void user_comm_boot(void)
   if (!user_comm_start(&comm_settings, &handlers, timers_getMillis()))
     (void)comm_modem_restart(true, timers_getMillis());
 }
+#endif
 
 /* >>> Cooperative storage implementation */
 #define STORE_CLEAR_MARK 0x31434C00u
+#ifndef HYBRID_CARD
 static void store_usb_session(void)
 {
   if (store.usb_epoch == usb_bus_resets) return;
@@ -5266,19 +5875,25 @@ static void store_usb_session(void)
   log_unacked[0] = temp_unacked[0] = 0; store.seen &= 10u;
   if (store.job && store.channel == CH_USB) store.quiet = 1;
 }
+#endif
 /* device.reserv[0..7] is the existing upload checkpoint. Bytes 8..15 hold
  * a cleanup intent and its exclusive end. The CRC of device covers both. */
+#ifndef HYBRID_CARD
 static void store_marker(uint8_t cmd, uint32_t end)
 {
   uint32_t mark = cmd ? STORE_CLEAR_MARK | cmd : 0;
   memcpy(device.reserv + 8, &mark, 4); memcpy(device.reserv + 12, &end, 4);
 }
+#endif
+#ifndef HYBRID_CARD
 bool store_snapshot(void)
 {
   config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
   device.crc = crc16_calc((uint8_t*)&device, sizeof(device) - 2);
   return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
 }
+#endif
+#ifndef HYBRID_CARD
 static void store_restore(const device_s *saved)
 {
   uint32_t mark, end, start, limit;
@@ -5293,6 +5908,8 @@ static void store_restore(const device_s *saved)
   store.job = US_RECOVER; store.waiting = 0; store.quiet = 1;
   store.erase = start;
 }
+#endif
+#ifndef HYBRID_CARD
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 {
   uint8_t slot = (cmd == 10 ? 0 : 2) + (cch == CH_USB ? 0 : 1);
@@ -5302,6 +5919,8 @@ bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
   store.last_id[slot] = uniq; store.seen |= 1u << slot;
   return true;
 }
+#endif
+#ifndef HYBRID_CARD
 static bool store_ack(uint8_t cmd, dataChanel_e cch)
 {
   uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
@@ -5316,6 +5935,8 @@ static bool store_ack(uint8_t cmd, dataChanel_e cch)
   else store.seen &= ~(1u << ((cmd == 10 ? 0 : 2) + channel));
   return false;
 }
+#endif
+#ifndef HYBRID_CARD
 static bool store_finish(uint8_t cmd)
 {
   bool active = cmd == 10 ? device.status.readyLogData || device.logsCount : device.status.readyID || device.tempIDsCount;
@@ -5331,12 +5952,16 @@ static bool store_finish(uint8_t cmd)
   if (!store_snapshot()) store.retry_at = timers_getMillis() + 1000u;
   return false;
 }
+#endif
+#ifndef HYBRID_CARD
 static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 {
   store.cmd = cmd; store.channel = cch; store.uniq = uniq; store.quiet = 0;
   if (store_snapshot()) { store.job = US_COMMAND; store_save_requested = 0; }
   else user_send_answer_comand(cmd, CMD_RUNERROR, cch, uniq);
 }
+#endif
+#ifndef HYBRID_CARD
 static void store_config_complete(void)
 {
   rs485_set_config(mem_config_snapshot());
@@ -5344,11 +5969,15 @@ static void store_config_complete(void)
   sync_packet(SYNC_CONFIG);
   if (comm_modem_state() == SLM_IDLE) user_comm_boot();
 }
+#endif
+#ifndef HYBRID_CARD
 static bool store_config_start(void)
 {
   if (store.job || !store_snapshot()) return false;
   store.job = US_CONFIG; return true;
 }
+#endif
+#ifndef HYBRID_CARD
 static void store_reply(void)
 {
 uint8_t cmd=store.cmd,id=store.uniq,quiet=store.quiet;
@@ -5360,6 +5989,8 @@ uint8_t cmd=store.cmd,id=store.uniq,quiet=store.quiet;
   else if(cmd==9) user_send_tempIDs(cch,id);
   else user_send_answer_comand(cmd,CMD_SUCCESS,cch,id);
 }
+#endif
+#ifndef HYBRID_CARD
 void user_storage_poll(void)
 {
   store_usb_session();
@@ -5479,4 +6110,5 @@ void user_storage_poll(void)
     if (store_snapshot()) { store_save_requested = 0; store.job = US_SAVE; }
   }
 }
+#endif
 /* <<< Cooperative storage implementation */

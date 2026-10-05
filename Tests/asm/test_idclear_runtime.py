@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Bounded USB cmd103 on final IAR ELF; no hardware. Bulk erase is not atomic."""
 import hashlib,json,struct
 from storage_machine import *
@@ -49,22 +50,22 @@ def wire(error=False,uniq=7):
     return b'SLDN'+b+struct.pack('<H',crc16(b))
 
 def success_and_heap():
-    m=ClearMachine();live=[m.checked('__basic_malloc',n) for n in (180,1040,534)]
+    m=ClearMachine();live=[(slot,take(m,slot)) for slot in (PHOTO,PHOTO_PACKET)]
     m.parse();assert m.clear_active() and not m.answers and not m.wires
     assert m.counts=={'read':0,'start':0,'poll':0}
     p=int.from_bytes(m.u.mem_read(m.addr('idclear_job'),4),'little')
-    chunk=int.from_bytes(m.u.mem_read(p-8,4),'little');assert chunk==64
+    assert owned(m)&(1<<6)
     peak=heap_stats(m);m.busy=3
     while m.clear_active():
         m.clear_tick()
         if m.counts['poll']<6:assert m.counters()==(7,129,8192)
     assert m.counters()==(0,0,0) and m.flash[BASE:BASE+8192]==b'\xff'*8192
     assert m.wires==[wire()]*4 and m.io is None
-    for p in live:m.checked('__basic_free',p)
-    assert heap_stats(m)['largest_request']==4088
+    for slot,p in live:drop(m,slot,p)
+    assert owned(m)==0
     small={'passes':len(m.passes),'maximum_instructions':max(m.passes),
-           'total_instructions':sum(m.passes),'stack':m.stack_peak,'context_chunk':chunk,
-           'synthetic_heap_chunks':[192,1048,544,64],'synthetic_heap_peak':1848,'free':peak}
+           'total_instructions':sum(m.passes),'stack':m.stack_peak,'context_bytes':56,
+           'live_workspace_payload':180+534+56,'free':peak}
     m=ClearMachine();m.write(m.addr('mem')+20,1601536)
     m.flash[BASE:BASE+1601536]=b'\x5a'*1601536
     assert m.start_clear();m.clear_drain()
@@ -113,7 +114,7 @@ def guards():
     for base,size in ((BASE+1,8192),(BASE,8193),(0,8192),(0x1c8000,4096),(BASE,0xfffff000)):
         m=ClearMachine();m.write(m.addr('mem')+16,base);m.write(m.addr('mem')+20,size)
         before=bytes(m.flash);assert not m.start_clear();assert bytes(m.flash)==before and not any(m.counts.values());count+=1
-    m=ClearMachine();p=m.checked('__basic_malloc',4032);assert p
+    m=ClearMachine();p=take(m,REPLY);assert p
     old=bytes(m.u.mem_read(m.addr('ix'),16));m.parse()
     assert not m.clear_active() and not any(m.counts.values()) and m.answers[-1]==(103,2,0,7)
     assert bytes(m.u.mem_read(m.addr('ix'),16))==old;count+=1

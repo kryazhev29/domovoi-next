@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Commands 13/14/15/16 -> main-loop -> real ASM journal, no hardware."""
 import argparse,json,struct,hashlib,random
 from storage_machine import *
@@ -67,7 +68,7 @@ def test_faults():
             assert not m.timestamps and m.answers[-1][1]==2,(kind,point,m.timestamps,m.answers)
             assert m.io is None
             count+=1
-    m=StorageMachine();m.stubs[m.addr('__basic_malloc')]=lambda:m.ret(0)
+    m=StorageMachine();m.stubs[m.addr('work_acquire')]=lambda:m.ret(0)
     m.command(13,rows([1]),1);assert not m.active() and m.answers[-1][1]==2 and not any(m.counts.values())
     return count+1
 
@@ -84,22 +85,22 @@ def test_corrupt():
     return 1
 
 def test_interaction_and_heap():
-    m=StorageMachine();live=[m.checked('__basic_malloc',n) for n in (180,1040,534)]
-    assert all(live)
+    m=StorageMachine();live=[(PHOTO,take(m,PHOTO))]
+    assert all(p for slot,p in live)
     m.command(13,rows(range(1,64)),63);assert m.active()
     assert m.checked('user_storage_command_ready')==0 and m.checked('user_storage_flash_ready')==0
     assert m.checked('mem_tables_ready')==0
     m.command(19,b'',0);assert m.answers[-1][1]==2 and m.active()
     m.checked('user_savereset');m.drain();assert not m.timestamps
     assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1'
-    for p in live:m.checked('__basic_free',p)
+    for slot,p in live:drop(m,slot,p)
     m=StorageMachine();m.write(m.addr('mem')+2*8+4,1601536)
     m.command(13,rows([1,50048]),2);m.drain(30000)
     assert len(m.timestamps)==1 and m.flash[0x1c7fe0:0x1c7fe2]==struct.pack('<H',50048)
     assert m.timestamps[0][2]==crc16(m.flash[0x41000:0x1c8000])
     return {'full_id_passes':len(m.costs),'full_id_max_poll':max(m.costs[1:]),
             'full_id_total_instructions':sum(m.costs),'full_id_stack':m.stack_peak,
-            'simultaneous_heap_payload':180+1040+534+2016}
+            'simultaneous_workspace_payload':180+2016}
 
 def test_power():
     m=StorageMachine();m.record_changes=True;initial=bytes(m.flash);m.command(13,rows([1]),1);m.drain()

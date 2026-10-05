@@ -45,7 +45,8 @@
 
 #ifndef BOOTLOADER
 /* Largest application reply: 32 log records, 1038 bytes including framing. */
-#define USART_RX_DATA_SIZE   1280
+#include "../../User/usb_ring_size.h"
+#define USART_RX_DATA_SIZE   USB_TX_RING_BYTES
 #else
 #define USART_RX_DATA_SIZE   512
 #endif

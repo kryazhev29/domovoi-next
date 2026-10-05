@@ -1,5 +1,5 @@
 """Свежий ELF IAR; IRQ вызывается на границе инструкции с учётом PRIMASK."""
-import pathlib, struct, sys, re, os
+import pathlib, struct, sys, re, os, atexit, json
 from iar_image import image_paths
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 for deps in (ROOT/'Release/photo_test_deps',ROOT.parents[1]/'СофтЭксперт/Для новой системы/Domovoi Next_IAR95/Domovoi Next_IAR95/Release/photo_test_deps'):
@@ -10,6 +10,15 @@ from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_
 from unicorn.arm_const import *
 
 _IMAGE_METADATA = {}
+
+_STACK_AUDIT = {}
+_STACK_PATTERN = bytes.fromhex('a5a55a5a')
+def _write_stack_audit():
+    folder=os.environ.get('DOMOVOI_STACK_AUDIT')
+    if folder and _STACK_AUDIT:
+        target=pathlib.Path(folder);target.mkdir(parents=True,exist_ok=True)
+        (target/('stack-%s.json'%os.getpid())).write_text(json.dumps(_STACK_AUDIT,indent=2),encoding='utf-8')
+atexit.register(_write_stack_audit)
 
 class Machine:
     def __init__(self, boot=False):
@@ -105,6 +114,8 @@ class Machine:
         assert self.u.reg_read(UC_ARM_REG_PC)==self.stop-4,name
         self.u.context_restore(saved);self.in_irq=False
     def call(self,name,*args,inject_at=None,irq=None,budget=500000):
+        audit=bool(os.environ.get('DOMOVOI_STACK_AUDIT'))
+        if audit:self.u.mem_write(self.bottom,_STACK_PATTERN*((self.top-self.bottom)//4))
         self.steps=0;self.minimum=self.top;self.inject_at=inject_at;self.irq=irq;self.pending=False;self.paused=False
         self.u.reg_write(UC_ARM_REG_SP,self.top);self.u.reg_write(UC_ARM_REG_LR,self.stop|1)
         for r,v in zip((UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3),args):self.u.reg_write(r,v)
@@ -116,6 +127,18 @@ class Machine:
         assert self.u.reg_read(UC_ARM_REG_PC)==self.stop,(name,hex(self.u.reg_read(UC_ARM_REG_PC)))
         # IRQ, отложенное последней инструкцией восстановления PRIMASK.
         if self.pending and not self.u.reg_read(UC_ARM_REG_PRIMASK):self.pending=False;self.invoke_irq()
+        if audit:
+            raw=bytes(self.u.mem_read(self.bottom,self.top-self.bottom))
+            untouched=0
+            for start in range(0,len(raw),4):
+                if raw[start:start+4]!=_STACK_PATTERN:break
+                untouched+=4
+            image=str(image_paths()[0])
+            entry=_STACK_AUDIT.setdefault(image,{'calls':0,'size':self.top-self.bottom,'bottom':self.bottom,'top':self.top,'sp_peak':0,'paint_peak':0,'functions':{}})
+            entry['calls']+=1
+            peak=self.top-self.minimum;paint=len(raw)-untouched
+            entry['sp_peak']=max(entry['sp_peak'],peak);entry['paint_peak']=max(entry['paint_peak'],paint)
+            entry['functions'][name]=max(entry['functions'].get(name,0),peak,paint)
         return self.u.reg_read(UC_ARM_REG_R0)
     def init(self):
         self.u.reg_write(UC_ARM_REG_PRIMASK,0);self.call('__iar_data_init3')

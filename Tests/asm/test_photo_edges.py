@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Faults, cancellation and ownership in the linked Thumb-2 photo callers."""
 import hashlib,json
 from test_photo_runtime import *
@@ -87,9 +88,9 @@ def transport_and_heap():
     assert not m.sent and m.pget('offset',2)==0 and not m.rget('tx',4)
     m.transport_busy=False;m.port();reach(m,41);m.checked('user_comm_session',0);m.drain()
     assert not m.sent and not m.pget('pending') and not m.rget('tx',4)
-    m.packet(21,b'');m.drain();held=m.checked('__basic_malloc',3400);assert held
+    m.packet(21,b'');m.drain();held=take(m,REPLY);assert held
     m.port();m.drain();assert not m.sent and not m.rget('tx',4)
-    m.checked('__basic_free',held);m.port();m.drain();assert len(m.sent)==1
+    drop(m,REPLY,held);m.port();m.drain();assert len(m.sent)==1
     return 6
 
 def ownership():

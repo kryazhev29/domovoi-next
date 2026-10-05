@@ -1,5 +1,6 @@
 // Доработка: Кряжев А., 2026
 #include "usb_stm32f10x.h"
+#include "../usb_ring_size.h"
 
 #define USBBUFFERSIZE                   (uint16_t)2048
 
@@ -402,15 +403,15 @@ extern uint8_t USART_Rx_Buffer[];
 uint8_t usb_try_send(const uint8_t *ptr,uint16_t len)
 {
   uint32_t mask,in,out,space,epoch; uint8_t result=0;
-  if(len>=1280 || (len && !ptr) || !usb_enabled || !(GPIOB->IDR & (1u<<15))) return 0;
+  if(len>=USB_TX_RING_BYTES || (len && !ptr) || !usb_enabled || !(GPIOB->IDR & (1u<<15))) return 0;
   mask=__get_PRIMASK(); __disable_irq();
   memcpy(&epoch,store+12,4);
   if(bDeviceState!=CONFIGURED || epoch!=usb_bus_resets) goto done;
-  out=USART_Rx_ptr_out; if(out==1280) out=0; else if(out>1280) goto done;
-  in=USART_Rx_ptr_in; if(in>=1280) goto done;
-  space=out+1279-in; if(space>=1280) space-=1280;
+  out=USART_Rx_ptr_out; if(out==USB_TX_RING_BYTES) out=0; else if(out>USB_TX_RING_BYTES) goto done;
+  in=USART_Rx_ptr_in; if(in>=USB_TX_RING_BYTES) goto done;
+  space=out+(USB_TX_RING_BYTES-1)-in; if(space>=USB_TX_RING_BYTES) space-=USB_TX_RING_BYTES;
   if(space<len) goto done;
-  while(len--) { USART_Rx_Buffer[in++]=*ptr++; if(in==1280) in=0; }
+  while(len--) { USART_Rx_Buffer[in++]=*ptr++; if(in==USB_TX_RING_BYTES) in=0; }
   __DMB(); USART_Rx_ptr_in=in; result=1;
 done: __set_PRIMASK(mask); return result;
 }

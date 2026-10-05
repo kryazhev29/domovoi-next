@@ -1,3 +1,6 @@
+#include "../work_slots.h"
+        EXTERN work_acquire
+        EXTERN work_release
 ; Hand-written Cortex-M3 / IAR Thumb-2 service CRC continuations.
 ; One owner, one heap snapshot. No caller/DMA input pointer is retained.
 ; NOR/data CRC: <=4 x 64 bytes and one millisecond per poll.
@@ -33,9 +36,6 @@
         CFI R12 Undefined
         CFI R14 SameValue
         CFI EndCommon sc_frame
-
-        EXTERN malloc
-        EXTERN free
         EXTERN __aeabi_memclr4
         EXTERN __aeabi_memcpy
         EXTERN mem
@@ -157,8 +157,9 @@ sc_begin:
         CMP R7,#100
         BHI sc_begin_bad
         MOVW R0,#312
-        CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_SERVICE
+        CFI FunCall work_acquire
+        BL work_acquire
         MOVS R8,R0
         BEQ sc_begin_bad
         MOVW R1,#312
@@ -254,8 +255,9 @@ service_crc_cancel:
         LDR R0,[R1]
         MOVS R2,#0
         STR R2,[R1]
-        CFI FunCall free
-        B.W free
+        MOVS R1,#WORK_SERVICE
+        CFI FunCall work_release
+        B.W work_release
         CFI EndBlock sc_cancel_block
 
 ; Only sc_poll calls setup, after acquiring the read owner. No NOR I/O here.

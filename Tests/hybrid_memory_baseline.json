@@ -1,0 +1,2100 @@
+{
+  "base": "51e207a",
+  "date": "2026-10-06",
+  "build_method": "Every unmodified IarBuild -jsondb Release command executed directly; -build wrapper failed weakly_canonical",
+  "fresh_model_checks": true,
+  "variants": {
+    "ASM": {
+      "bin": 92717,
+      "bin_sha256": "9fb51b99163ea5d910338ef0f54d890a8a73469766dc9dc189fdf34a36a5c776",
+      "elf_sha256": "e3c7a4ba88e01d4c8e634c3e4ab2554ecf848cfced2e1ca3a5ee9254e19fa978",
+      "totals": {
+        "ro_code": 85391,
+        "rw_code": 516,
+        "ro_data": 7326,
+        "rw_data": 19881
+      },
+      "modules": {
+        "app_update.o": {
+          "ro_code": 1094,
+          "rw_code": 516,
+          "ro_data": 519,
+          "rw_data": 1,
+          "flash": 1613,
+          "ram": 517
+        },
+        "board.o": {
+          "ro_code": 408,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 408,
+          "ram": 0
+        },
+        "boot_manual.o": {
+          "ro_code": 832,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 11,
+          "flash": 832,
+          "ram": 11
+        },
+        "main.o": {
+          "ro_code": 324,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 8,
+          "flash": 324,
+          "ram": 8
+        },
+        "stm32_it.o": {
+          "ro_code": 292,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 48,
+          "flash": 292,
+          "ram": 48
+        },
+        "startup_stm32f10x_md.o": {
+          "ro_code": 384,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 384,
+          "ram": 0
+        },
+        "system_stm32f10x.o": {
+          "ro_code": 340,
+          "rw_code": 0,
+          "ro_data": 3,
+          "rw_data": 4,
+          "flash": 343,
+          "ram": 4
+        },
+        "adc_stm32f10x.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 488,
+          "ram": 0
+        },
+        "comm_at.o": {
+          "ro_code": 3350,
+          "rw_code": 0,
+          "ro_data": 232,
+          "rw_data": 358,
+          "flash": 3582,
+          "ram": 358
+        },
+        "comm_balance.o": {
+          "ro_code": 1022,
+          "rw_code": 0,
+          "ro_data": 80,
+          "rw_data": 128,
+          "flash": 1102,
+          "ram": 128
+        },
+        "comm_call.o": {
+          "ro_code": 712,
+          "rw_code": 0,
+          "ro_data": 148,
+          "rw_data": 52,
+          "flash": 860,
+          "ram": 52
+        },
+        "comm_channel.o": {
+          "ro_code": 2912,
+          "rw_code": 0,
+          "ro_data": 240,
+          "rw_data": 1108,
+          "flash": 3152,
+          "ram": 1108
+        },
+        "comm_info.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 187,
+          "rw_data": 20,
+          "flash": 675,
+          "ram": 20
+        },
+        "comm_modem.o": {
+          "ro_code": 3090,
+          "rw_code": 0,
+          "ro_data": 208,
+          "rw_data": 212,
+          "flash": 3298,
+          "ram": 212
+        },
+        "comm_power_v5.o": {
+          "ro_code": 156,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 9,
+          "flash": 156,
+          "ram": 9
+        },
+        "comm_recover.o": {
+          "ro_code": 1068,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 72,
+          "flash": 1068,
+          "ram": 72
+        },
+        "comm_server.o": {
+          "ro_code": 1160,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 57,
+          "flash": 1160,
+          "ram": 57
+        },
+        "comm_sms.o": {
+          "ro_code": 2404,
+          "rw_code": 0,
+          "ro_data": 160,
+          "rw_data": 524,
+          "flash": 2564,
+          "ram": 524
+        },
+        "comm_uart.o": {
+          "ro_code": 1132,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 540,
+          "flash": 1132,
+          "ram": 540
+        },
+        "modem_slm336.o": {
+          "ro_code": 16,
+          "rw_code": 0,
+          "ro_data": 608,
+          "rw_data": 0,
+          "flash": 624,
+          "ram": 0
+        },
+        "spi_stm32f10x_runtime.o": {
+          "ro_code": 516,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 516,
+          "ram": 0
+        },
+        "timers.o": {
+          "ro_code": 300,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 44,
+          "flash": 300,
+          "ram": 44
+        },
+        "uart_stm32f10x.o": {
+          "ro_code": 1012,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 48,
+          "flash": 1012,
+          "ram": 48
+        },
+        "usb_stm32f10x_runtime.o": {
+          "ro_code": 2076,
+          "rw_code": 0,
+          "ro_data": 14,
+          "rw_data": 2199,
+          "flash": 2090,
+          "ram": 2199
+        },
+        "wdt_stm32f10x.o": {
+          "ro_code": 48,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 48,
+          "ram": 0
+        },
+        "misc.o": {
+          "ro_code": 132,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 132,
+          "ram": 0
+        },
+        "stm32f10x_adc.o": {
+          "ro_code": 538,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 538,
+          "ram": 0
+        },
+        "stm32f10x_exti.o": {
+          "ro_code": 168,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 168,
+          "ram": 0
+        },
+        "stm32f10x_gpio.o": {
+          "ro_code": 198,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 198,
+          "ram": 0
+        },
+        "stm32f10x_iwdg.o": {
+          "ro_code": 48,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 48,
+          "ram": 0
+        },
+        "stm32f10x_pwr.o": {
+          "ro_code": 60,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 60,
+          "ram": 0
+        },
+        "stm32f10x_rcc.o": {
+          "ro_code": 292,
+          "rw_code": 0,
+          "ro_data": 19,
+          "rw_data": 20,
+          "flash": 311,
+          "ram": 20
+        },
+        "stm32f10x_spi.o": {
+          "ro_code": 226,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 226,
+          "ram": 0
+        },
+        "stm32f10x_usart.o": {
+          "ro_code": 456,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 456,
+          "ram": 0
+        },
+        "usb_core.o": {
+          "ro_code": 2250,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 3,
+          "flash": 2250,
+          "ram": 3
+        },
+        "usb_init.o": {
+          "ro_code": 52,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 43,
+          "flash": 52,
+          "ram": 43
+        },
+        "usb_int.o": {
+          "ro_code": 346,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 346,
+          "ram": 4
+        },
+        "usb_mem.o": {
+          "ro_code": 88,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 88,
+          "ram": 0
+        },
+        "usb_regs.o": {
+          "ro_code": 512,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 512,
+          "ram": 0
+        },
+        "usb_sil.o": {
+          "ro_code": 74,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 74,
+          "ram": 0
+        },
+        "hw_config.o": {
+          "ro_code": 710,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 1309,
+          "flash": 710,
+          "ram": 1309
+        },
+        "usb_desc.o": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 211,
+          "rw_data": 28,
+          "flash": 211,
+          "ram": 28
+        },
+        "usb_endp.o": {
+          "ro_code": 112,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 68,
+          "flash": 112,
+          "ram": 68
+        },
+        "usb_istr.o": {
+          "ro_code": 340,
+          "rw_code": 0,
+          "ro_data": 56,
+          "rw_data": 11,
+          "flash": 396,
+          "ram": 11
+        },
+        "usb_prop.o": {
+          "ro_code": 536,
+          "rw_code": 0,
+          "ro_data": 142,
+          "rw_data": 9,
+          "flash": 678,
+          "ram": 9
+        },
+        "usb_pwr.o": {
+          "ro_code": 52,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 52,
+          "ram": 4
+        },
+        "comm_timeouts.o": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 196,
+          "rw_data": 0,
+          "flash": 196,
+          "ram": 0
+        },
+        "crc_asm.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 488,
+          "ram": 0
+        },
+        "crc_runtime.o": {
+          "ro_code": 60,
+          "rw_code": 0,
+          "ro_data": 540,
+          "rw_data": 0,
+          "flash": 600,
+          "ram": 0
+        },
+        "expiry_runtime.o": {
+          "ro_code": 824,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 824,
+          "ram": 4
+        },
+        "fast_kernels.o": {
+          "ro_code": 220,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 220,
+          "ram": 0
+        },
+        "flash_w25_runtime.o": {
+          "ro_code": 1160,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 20,
+          "flash": 1160,
+          "ram": 20
+        },
+        "fw_service_runtime.o": {
+          "ro_code": 1808,
+          "rw_code": 0,
+          "ro_data": 48,
+          "rw_data": 4,
+          "flash": 1856,
+          "ram": 4
+        },
+        "id_hash_asm.o": {
+          "ro_code": 92,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 92,
+          "ram": 0
+        },
+        "idclear_runtime.o": {
+          "ro_code": 508,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 508,
+          "ram": 4
+        },
+        "idindex_runtime.o": {
+          "ro_code": 900,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 24,
+          "flash": 900,
+          "ram": 24
+        },
+        "indication.o": {
+          "ro_code": 192,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 11,
+          "flash": 192,
+          "ram": 11
+        },
+        "memory_runtime.o": {
+          "ro_code": 3354,
+          "rw_code": 0,
+          "ro_data": 4,
+          "rw_data": 55,
+          "flash": 3358,
+          "ram": 55
+        },
+        "outs.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 2,
+          "rw_data": 19,
+          "flash": 490,
+          "ram": 19
+        },
+        "photo_runtime.o": {
+          "ro_code": 7560,
+          "rw_code": 0,
+          "ro_data": 352,
+          "rw_data": 132,
+          "flash": 7912,
+          "ram": 132
+        },
+        "prof.o": {
+          "ro_code": 248,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 100,
+          "flash": 248,
+          "ram": 100
+        },
+        "runtime_layout.o": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 44,
+          "rw_data": 0,
+          "flash": 44,
+          "ram": 0
+        },
+        "sector_journal_runtime.o": {
+          "ro_code": 1176,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 1176,
+          "ram": 0
+        },
+        "sector_runtime_runtime.o": {
+          "ro_code": 1036,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 128,
+          "flash": 1036,
+          "ram": 128
+        },
+        "service_runtime.o": {
+          "ro_code": 980,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 980,
+          "ram": 4
+        },
+        "upload_runtime.o": {
+          "ro_code": 1040,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 1040,
+          "ram": 4
+        },
+        "user_comm_runtime.o": {
+          "ro_code": 256,
+          "rw_code": 0,
+          "ro_data": 32,
+          "rw_data": 0,
+          "flash": 288,
+          "ram": 0
+        },
+        "user_fun_runtime.o": {
+          "ro_code": 26228,
+          "rw_code": 0,
+          "ro_data": 3163,
+          "rw_data": 4208,
+          "flash": 29391,
+          "ram": 4208
+        },
+        "user_str_fun.o": {
+          "ro_code": 86,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 86,
+          "ram": 0
+        },
+        "wiegand.o": {
+          "ro_code": 312,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 14,
+          "flash": 312,
+          "ram": 14
+        },
+        "abort.o": {
+          "ro_code": 6,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 6,
+          "ram": 0
+        },
+        "exit.o": {
+          "ro_code": 4,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 4,
+          "ram": 0
+        },
+        "heap0.o": {
+          "ro_code": 368,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 8,
+          "flash": 368,
+          "ram": 8
+        },
+        "heaptramp0.o": {
+          "ro_code": 4,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 4,
+          "ram": 0
+        },
+        "iar_Stoulx.o": {
+          "ro_code": 342,
+          "rw_code": 0,
+          "ro_data": 80,
+          "rw_data": 0,
+          "flash": 422,
+          "ram": 0
+        },
+        "sprintf.o": {
+          "ro_code": 64,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 64,
+          "ram": 0
+        },
+        "strcat.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "strncat.o": {
+          "ro_code": 40,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 40,
+          "ram": 0
+        },
+        "strncmp.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "strrchr.o": {
+          "ro_code": 28,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 28,
+          "ram": 0
+        },
+        "strstr.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "xfail_s.o": {
+          "ro_code": 64,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 64,
+          "ram": 4
+        },
+        "xgetmemchunk.o": {
+          "ro_code": 44,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 44,
+          "ram": 4
+        },
+        "xprintfsmall_nomb.o": {
+          "ro_code": 1261,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 1261,
+          "ram": 0
+        },
+        "xsprout.o": {
+          "ro_code": 10,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 10,
+          "ram": 0
+        },
+        "xxmemxmemzero.o": {
+          "ro_code": 18,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 18,
+          "ram": 0
+        },
+        "ABImemclr.o": {
+          "ro_code": 6,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 6,
+          "ram": 0
+        },
+        "ABImemclr4.o": {
+          "ro_code": 6,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 6,
+          "ram": 0
+        },
+        "ABImemcpy.o": {
+          "ro_code": 166,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 166,
+          "ram": 0
+        },
+        "ABImemmove.o": {
+          "ro_code": 150,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 150,
+          "ram": 0
+        },
+        "ABImemset.o": {
+          "ro_code": 94,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 94,
+          "ram": 0
+        },
+        "ABImemset48.o": {
+          "ro_code": 58,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 58,
+          "ram": 0
+        },
+        "XXexit.o": {
+          "ro_code": 12,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 12,
+          "ram": 0
+        },
+        "cexit.o": {
+          "ro_code": 10,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 10,
+          "ram": 0
+        },
+        "cmain.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "cstartup_M.o": {
+          "ro_code": 28,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 28,
+          "ram": 0
+        },
+        "data_init.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "memchr.o": {
+          "ro_code": 88,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 88,
+          "ram": 0
+        },
+        "memcmp.o": {
+          "ro_code": 104,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 104,
+          "ram": 0
+        },
+        "packbits_init_single.o": {
+          "ro_code": 58,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 58,
+          "ram": 0
+        },
+        "strchr.o": {
+          "ro_code": 22,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 22,
+          "ram": 0
+        },
+        "strcmp.o": {
+          "ro_code": 18,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 18,
+          "ram": 0
+        },
+        "strcpy.o": {
+          "ro_code": 24,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 24,
+          "ram": 0
+        },
+        "strlen.o": {
+          "ro_code": 54,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 54,
+          "ram": 0
+        },
+        "strncpy.o": {
+          "ro_code": 112,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 112,
+          "ram": 0
+        },
+        "zero_init3.o": {
+          "ro_code": 56,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 56,
+          "ram": 0
+        },
+        "Gaps": {
+          "ro_code": 48,
+          "rw_code": 0,
+          "ro_data": 6,
+          "rw_data": 0,
+          "flash": 54,
+          "ram": 0
+        },
+        "Linker created": {
+          "ro_code": 8,
+          "rw_code": 0,
+          "ro_data": 32,
+          "rw_data": 8192,
+          "flash": 40,
+          "ram": 8192
+        }
+      }
+    },
+    "C": {
+      "bin": 91729,
+      "bin_sha256": "418c96ad7eaf7dff7ec946446757276e5f4d58d801743efd80e4811b0451cbde",
+      "elf_sha256": "bf5da609f64e13ad04fa66d35fd377bdccfb44ac3d2ffc441de12f734fb044bd",
+      "totals": {
+        "ro_code": 84235,
+        "rw_code": 516,
+        "ro_data": 7494,
+        "rw_data": 19881
+      },
+      "modules": {
+        "app_update.o": {
+          "ro_code": 1094,
+          "rw_code": 516,
+          "ro_data": 519,
+          "rw_data": 1,
+          "flash": 1613,
+          "ram": 517
+        },
+        "board.o": {
+          "ro_code": 408,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 408,
+          "ram": 0
+        },
+        "boot_manual.o": {
+          "ro_code": 832,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 11,
+          "flash": 832,
+          "ram": 11
+        },
+        "main.o": {
+          "ro_code": 324,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 8,
+          "flash": 324,
+          "ram": 8
+        },
+        "stm32_it.o": {
+          "ro_code": 292,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 48,
+          "flash": 292,
+          "ram": 48
+        },
+        "startup_stm32f10x_md.o": {
+          "ro_code": 384,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 384,
+          "ram": 0
+        },
+        "system_stm32f10x.o": {
+          "ro_code": 340,
+          "rw_code": 0,
+          "ro_data": 3,
+          "rw_data": 4,
+          "flash": 343,
+          "ram": 4
+        },
+        "adc_stm32f10x.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 488,
+          "ram": 0
+        },
+        "comm_at.o": {
+          "ro_code": 3350,
+          "rw_code": 0,
+          "ro_data": 232,
+          "rw_data": 358,
+          "flash": 3582,
+          "ram": 358
+        },
+        "comm_balance.o": {
+          "ro_code": 1022,
+          "rw_code": 0,
+          "ro_data": 80,
+          "rw_data": 128,
+          "flash": 1102,
+          "ram": 128
+        },
+        "comm_call.o": {
+          "ro_code": 712,
+          "rw_code": 0,
+          "ro_data": 148,
+          "rw_data": 52,
+          "flash": 860,
+          "ram": 52
+        },
+        "comm_channel.o": {
+          "ro_code": 2912,
+          "rw_code": 0,
+          "ro_data": 240,
+          "rw_data": 1108,
+          "flash": 3152,
+          "ram": 1108
+        },
+        "comm_info.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 187,
+          "rw_data": 20,
+          "flash": 675,
+          "ram": 20
+        },
+        "comm_modem.o": {
+          "ro_code": 3090,
+          "rw_code": 0,
+          "ro_data": 208,
+          "rw_data": 212,
+          "flash": 3298,
+          "ram": 212
+        },
+        "comm_power_v5.o": {
+          "ro_code": 156,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 9,
+          "flash": 156,
+          "ram": 9
+        },
+        "comm_recover.o": {
+          "ro_code": 1068,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 72,
+          "flash": 1068,
+          "ram": 72
+        },
+        "comm_server.o": {
+          "ro_code": 1160,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 57,
+          "flash": 1160,
+          "ram": 57
+        },
+        "comm_sms.o": {
+          "ro_code": 2404,
+          "rw_code": 0,
+          "ro_data": 160,
+          "rw_data": 524,
+          "flash": 2564,
+          "ram": 524
+        },
+        "comm_uart.o": {
+          "ro_code": 1132,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 540,
+          "flash": 1132,
+          "ram": 540
+        },
+        "modem_slm336.o": {
+          "ro_code": 16,
+          "rw_code": 0,
+          "ro_data": 608,
+          "rw_data": 0,
+          "flash": 624,
+          "ram": 0
+        },
+        "spi_stm32f10x_runtime.o": {
+          "ro_code": 516,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 516,
+          "ram": 0
+        },
+        "timers.o": {
+          "ro_code": 300,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 44,
+          "flash": 300,
+          "ram": 44
+        },
+        "uart_stm32f10x.o": {
+          "ro_code": 1012,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 48,
+          "flash": 1012,
+          "ram": 48
+        },
+        "usb_stm32f10x_runtime.o": {
+          "ro_code": 2084,
+          "rw_code": 0,
+          "ro_data": 14,
+          "rw_data": 2199,
+          "flash": 2098,
+          "ram": 2199
+        },
+        "wdt_stm32f10x.o": {
+          "ro_code": 48,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 48,
+          "ram": 0
+        },
+        "misc.o": {
+          "ro_code": 132,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 132,
+          "ram": 0
+        },
+        "stm32f10x_adc.o": {
+          "ro_code": 538,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 538,
+          "ram": 0
+        },
+        "stm32f10x_exti.o": {
+          "ro_code": 168,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 168,
+          "ram": 0
+        },
+        "stm32f10x_gpio.o": {
+          "ro_code": 198,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 198,
+          "ram": 0
+        },
+        "stm32f10x_iwdg.o": {
+          "ro_code": 48,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 48,
+          "ram": 0
+        },
+        "stm32f10x_pwr.o": {
+          "ro_code": 60,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 60,
+          "ram": 0
+        },
+        "stm32f10x_rcc.o": {
+          "ro_code": 292,
+          "rw_code": 0,
+          "ro_data": 19,
+          "rw_data": 20,
+          "flash": 311,
+          "ram": 20
+        },
+        "stm32f10x_spi.o": {
+          "ro_code": 226,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 226,
+          "ram": 0
+        },
+        "stm32f10x_usart.o": {
+          "ro_code": 456,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 456,
+          "ram": 0
+        },
+        "usb_core.o": {
+          "ro_code": 2250,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 3,
+          "flash": 2250,
+          "ram": 3
+        },
+        "usb_init.o": {
+          "ro_code": 52,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 43,
+          "flash": 52,
+          "ram": 43
+        },
+        "usb_int.o": {
+          "ro_code": 346,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 346,
+          "ram": 4
+        },
+        "usb_mem.o": {
+          "ro_code": 88,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 88,
+          "ram": 0
+        },
+        "usb_regs.o": {
+          "ro_code": 512,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 512,
+          "ram": 0
+        },
+        "usb_sil.o": {
+          "ro_code": 74,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 74,
+          "ram": 0
+        },
+        "hw_config.o": {
+          "ro_code": 710,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 1309,
+          "flash": 710,
+          "ram": 1309
+        },
+        "usb_desc.o": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 211,
+          "rw_data": 28,
+          "flash": 211,
+          "ram": 28
+        },
+        "usb_endp.o": {
+          "ro_code": 112,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 68,
+          "flash": 112,
+          "ram": 68
+        },
+        "usb_istr.o": {
+          "ro_code": 340,
+          "rw_code": 0,
+          "ro_data": 56,
+          "rw_data": 11,
+          "flash": 396,
+          "ram": 11
+        },
+        "usb_prop.o": {
+          "ro_code": 536,
+          "rw_code": 0,
+          "ro_data": 142,
+          "rw_data": 9,
+          "flash": 678,
+          "ram": 9
+        },
+        "usb_pwr.o": {
+          "ro_code": 52,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 52,
+          "ram": 4
+        },
+        "comm_timeouts.o": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 196,
+          "rw_data": 0,
+          "flash": 196,
+          "ram": 0
+        },
+        "crc_asm.o": {
+          "ro_code": 204,
+          "rw_code": 0,
+          "ro_data": 160,
+          "rw_data": 0,
+          "flash": 364,
+          "ram": 0
+        },
+        "crc_runtime.o": {
+          "ro_code": 60,
+          "rw_code": 0,
+          "ro_data": 540,
+          "rw_data": 0,
+          "flash": 600,
+          "ram": 0
+        },
+        "expiry_runtime.o": {
+          "ro_code": 854,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 854,
+          "ram": 4
+        },
+        "fast_kernels.o": {
+          "ro_code": 244,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 244,
+          "ram": 0
+        },
+        "flash_w25_runtime.o": {
+          "ro_code": 1160,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 20,
+          "flash": 1160,
+          "ram": 20
+        },
+        "fw_service_runtime.o": {
+          "ro_code": 1820,
+          "rw_code": 0,
+          "ro_data": 48,
+          "rw_data": 4,
+          "flash": 1868,
+          "ram": 4
+        },
+        "id_hash_asm.o": {
+          "ro_code": 92,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 92,
+          "ram": 0
+        },
+        "idclear_runtime.o": {
+          "ro_code": 508,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 508,
+          "ram": 4
+        },
+        "idindex_runtime.o": {
+          "ro_code": 812,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 24,
+          "flash": 812,
+          "ram": 24
+        },
+        "indication.o": {
+          "ro_code": 192,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 11,
+          "flash": 192,
+          "ram": 11
+        },
+        "memory_runtime.o": {
+          "ro_code": 3364,
+          "rw_code": 0,
+          "ro_data": 4,
+          "rw_data": 55,
+          "flash": 3368,
+          "ram": 55
+        },
+        "outs.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 2,
+          "rw_data": 19,
+          "flash": 490,
+          "ram": 19
+        },
+        "photo_runtime.o": {
+          "ro_code": 7608,
+          "rw_code": 0,
+          "ro_data": 352,
+          "rw_data": 132,
+          "flash": 7960,
+          "ram": 132
+        },
+        "prof.o": {
+          "ro_code": 248,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 100,
+          "flash": 248,
+          "ram": 100
+        },
+        "runtime_layout.o": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 44,
+          "rw_data": 0,
+          "flash": 44,
+          "ram": 0
+        },
+        "sector_journal_runtime.o": {
+          "ro_code": 1176,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 1176,
+          "ram": 0
+        },
+        "sector_runtime_runtime.o": {
+          "ro_code": 1028,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 128,
+          "flash": 1028,
+          "ram": 128
+        },
+        "service_runtime.o": {
+          "ro_code": 1008,
+          "rw_code": 0,
+          "ro_data": 8,
+          "rw_data": 4,
+          "flash": 1016,
+          "ram": 4
+        },
+        "upload_runtime.o": {
+          "ro_code": 1062,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 1062,
+          "ram": 4
+        },
+        "user_comm_runtime.o": {
+          "ro_code": 256,
+          "rw_code": 0,
+          "ro_data": 32,
+          "rw_data": 0,
+          "flash": 288,
+          "ram": 0
+        },
+        "user_fun_runtime.o": {
+          "ro_code": 25864,
+          "rw_code": 0,
+          "ro_data": 3163,
+          "rw_data": 4208,
+          "flash": 29027,
+          "ram": 4208
+        },
+        "user_str_fun.o": {
+          "ro_code": 86,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 86,
+          "ram": 0
+        },
+        "wiegand.o": {
+          "ro_code": 312,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 14,
+          "flash": 312,
+          "ram": 14
+        },
+        "abort.o": {
+          "ro_code": 6,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 6,
+          "ram": 0
+        },
+        "exit.o": {
+          "ro_code": 4,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 4,
+          "ram": 0
+        },
+        "heap0.o": {
+          "ro_code": 368,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 8,
+          "flash": 368,
+          "ram": 8
+        },
+        "heaptramp0.o": {
+          "ro_code": 4,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 4,
+          "ram": 0
+        },
+        "iar_Stoulx.o": {
+          "ro_code": 342,
+          "rw_code": 0,
+          "ro_data": 80,
+          "rw_data": 0,
+          "flash": 422,
+          "ram": 0
+        },
+        "sprintf.o": {
+          "ro_code": 64,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 64,
+          "ram": 0
+        },
+        "strcat.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "strncat.o": {
+          "ro_code": 40,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 40,
+          "ram": 0
+        },
+        "strncmp.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "strrchr.o": {
+          "ro_code": 28,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 28,
+          "ram": 0
+        },
+        "strstr.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "xfail_s.o": {
+          "ro_code": 64,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 64,
+          "ram": 4
+        },
+        "xgetmemchunk.o": {
+          "ro_code": 44,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 44,
+          "ram": 4
+        },
+        "xprintfsmall_nomb.o": {
+          "ro_code": 1261,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 1261,
+          "ram": 0
+        },
+        "xsprout.o": {
+          "ro_code": 10,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 10,
+          "ram": 0
+        },
+        "xxmemxmemzero.o": {
+          "ro_code": 18,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 18,
+          "ram": 0
+        },
+        "ABImemclr.o": {
+          "ro_code": 6,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 6,
+          "ram": 0
+        },
+        "ABImemclr4.o": {
+          "ro_code": 6,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 6,
+          "ram": 0
+        },
+        "ABImemcpy_small.o": {
+          "ro_code": 24,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 24,
+          "ram": 0
+        },
+        "ABImemmove_small.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "ABImemset48.o": {
+          "ro_code": 58,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 58,
+          "ram": 0
+        },
+        "ABImemset_small.o": {
+          "ro_code": 18,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 18,
+          "ram": 0
+        },
+        "XXexit.o": {
+          "ro_code": 12,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 12,
+          "ram": 0
+        },
+        "cexit.o": {
+          "ro_code": 10,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 10,
+          "ram": 0
+        },
+        "cmain.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "cstartup_M.o": {
+          "ro_code": 28,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 28,
+          "ram": 0
+        },
+        "data_init.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "memchr_small.o": {
+          "ro_code": 24,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 24,
+          "ram": 0
+        },
+        "memcmp_small.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "packbits_init_single.o": {
+          "ro_code": 58,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 58,
+          "ram": 0
+        },
+        "strchr.o": {
+          "ro_code": 22,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 22,
+          "ram": 0
+        },
+        "strcmp.o": {
+          "ro_code": 18,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 18,
+          "ram": 0
+        },
+        "strcpy.o": {
+          "ro_code": 24,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 24,
+          "ram": 0
+        },
+        "strlen_small.o": {
+          "ro_code": 20,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 20,
+          "ram": 0
+        },
+        "strncpy_small.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "zero_init3.o": {
+          "ro_code": 56,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 56,
+          "ram": 0
+        },
+        "Gaps": {
+          "ro_code": 46,
+          "rw_code": 0,
+          "ro_data": 6,
+          "rw_data": 0,
+          "flash": 52,
+          "ram": 0
+        },
+        "Linker created": {
+          "ro_code": 8,
+          "rw_code": 0,
+          "ro_data": 32,
+          "rw_data": 8192,
+          "flash": 40,
+          "ram": 8192
+        }
+      }
+    },
+    "BOOT": {
+      "bin": 32768,
+      "bin_sha256": "5cfb20767699cd1b9481d49e4a1eaa78715687bb3de4577aae5e3475e0b16f0c",
+      "elf_sha256": "56f1343626810789dda4fae3c37e2967a62be0c9d20dffa2aacdd23895867df5",
+      "totals": {
+        "ro_code": 15892,
+        "rw_code": 0,
+        "ro_data": 484,
+        "rw_data": 5951
+      },
+      "modules": {
+        "boot_core.o": {
+          "ro_code": 2256,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 512,
+          "flash": 2256,
+          "ram": 512
+        },
+        "boot_main.o": {
+          "ro_code": 1320,
+          "rw_code": 0,
+          "ro_data": 32,
+          "rw_data": 2669,
+          "flash": 1352,
+          "ram": 2669
+        },
+        "boot_platform.o": {
+          "ro_code": 2344,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 15,
+          "flash": 2344,
+          "ram": 15
+        },
+        "hw_config.o": {
+          "ro_code": 686,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 533,
+          "flash": 686,
+          "ram": 533
+        },
+        "misc.o": {
+          "ro_code": 132,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 132,
+          "ram": 0
+        },
+        "sector_journal.o": {
+          "ro_code": 912,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 912,
+          "ram": 0
+        },
+        "startup_stm32f10x_md.o": {
+          "ro_code": 448,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 448,
+          "ram": 0
+        },
+        "stm32f10x_exti.o": {
+          "ro_code": 152,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 152,
+          "ram": 0
+        },
+        "stm32f10x_flash.o": {
+          "ro_code": 340,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 340,
+          "ram": 0
+        },
+        "stm32f10x_gpio.o": {
+          "ro_code": 420,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 420,
+          "ram": 0
+        },
+        "stm32f10x_rcc.o": {
+          "ro_code": 108,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 108,
+          "ram": 0
+        },
+        "system_stm32f10x.o": {
+          "ro_code": 372,
+          "rw_code": 0,
+          "ro_data": 4,
+          "rw_data": 4,
+          "flash": 376,
+          "ram": 4
+        },
+        "usb_core.o": {
+          "ro_code": 2962,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 3,
+          "flash": 2962,
+          "ram": 3
+        },
+        "usb_desc.o": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 212,
+          "rw_data": 28,
+          "flash": 212,
+          "ram": 28
+        },
+        "usb_endp.o": {
+          "ro_code": 188,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 68,
+          "flash": 188,
+          "ram": 68
+        },
+        "usb_init.o": {
+          "ro_code": 60,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 43,
+          "flash": 60,
+          "ram": 43
+        },
+        "usb_int.o": {
+          "ro_code": 488,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 488,
+          "ram": 4
+        },
+        "usb_istr.o": {
+          "ro_code": 304,
+          "rw_code": 0,
+          "ro_data": 56,
+          "rw_data": 11,
+          "flash": 360,
+          "ram": 11
+        },
+        "usb_mem.o": {
+          "ro_code": 116,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 116,
+          "ram": 0
+        },
+        "usb_prop.o": {
+          "ro_code": 644,
+          "rw_code": 0,
+          "ro_data": 142,
+          "rw_data": 9,
+          "flash": 786,
+          "ram": 9
+        },
+        "usb_pwr.o": {
+          "ro_code": 128,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 4,
+          "flash": 128,
+          "ram": 4
+        },
+        "usb_regs.o": {
+          "ro_code": 718,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 718,
+          "ram": 0
+        },
+        "usb_sil.o": {
+          "ro_code": 80,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 80,
+          "ram": 0
+        },
+        "exit.o": {
+          "ro_code": 4,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 4,
+          "ram": 0
+        },
+        "ABImemcpy.o": {
+          "ro_code": 166,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 166,
+          "ram": 0
+        },
+        "ABImemset.o": {
+          "ro_code": 102,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 102,
+          "ram": 0
+        },
+        "XXexit.o": {
+          "ro_code": 12,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 12,
+          "ram": 0
+        },
+        "cexit.o": {
+          "ro_code": 10,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 10,
+          "ram": 0
+        },
+        "cmain.o": {
+          "ro_code": 30,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 30,
+          "ram": 0
+        },
+        "copy_init3.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "cstartup_M.o": {
+          "ro_code": 28,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 28,
+          "ram": 0
+        },
+        "data_init.o": {
+          "ro_code": 42,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 42,
+          "ram": 0
+        },
+        "memchr.o": {
+          "ro_code": 88,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 88,
+          "ram": 0
+        },
+        "memcmp.o": {
+          "ro_code": 104,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 104,
+          "ram": 0
+        },
+        "strcmp.o": {
+          "ro_code": 18,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 18,
+          "ram": 0
+        },
+        "zero_init3.o": {
+          "ro_code": 56,
+          "rw_code": 0,
+          "ro_data": 0,
+          "rw_data": 0,
+          "flash": 56,
+          "ram": 0
+        },
+        "Gaps": {
+          "ro_code": 12,
+          "rw_code": 0,
+          "ro_data": 2,
+          "rw_data": 0,
+          "flash": 14,
+          "ram": 0
+        },
+        "Linker created": {
+          "ro_code": 0,
+          "rw_code": 0,
+          "ro_data": 36,
+          "rw_data": 2048,
+          "flash": 36,
+          "ram": 2048
+        }
+      }
+    }
+  },
+  "function_measurement_source": "Archived Tests/asm/c_vs_asm_speed.json; not a fresh model run",
+  "runtime_functions": 231,
+  "debug_source_unique_string_bytes": 2444,
+  "logic_base": "d9e3dd5a0f656b1a5b9905531b66fde5e18ec9d9",
+  "fresh_validation": {
+    "variants": {
+      "ASM": {
+        "cases": 67,
+        "status": "PASS",
+        "bin_sha256": "9fb51b99163ea5d910338ef0f54d890a8a73469766dc9dc189fdf34a36a5c776"
+      },
+      "C": {
+        "cases": 67,
+        "status": "PASS",
+        "bin_sha256": "418c96ad7eaf7dff7ec946446757276e5f4d58d801743efd80e4811b0451cbde"
+      }
+    },
+    "paired_scenarios": 198,
+    "mismatches": 0,
+    "note": "Fresh images validated after sandbox environment repair; archived per-function table remains separately identified."
+  }
+}

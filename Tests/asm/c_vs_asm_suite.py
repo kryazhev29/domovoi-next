@@ -16,8 +16,10 @@ sys.path.insert(0, str(ROOT / 'Tests'))
 import iar_irq_support  # Existing dependency discovery and selected ELF support.
 
 CASES = {
+    'format ABI': [('test_user_format_runtime','run')],
+    'workspace': [('test_work_memory', 'run')],
     'id_sync_fast': [('test_id_sync_fast', 'contracts'), ('test_id_sync_fast', 'mutations')],
-    **{n:[('c_vs_asm_extra',n)] for n in ('event_append','fw_blocks','fw_bridge','usb_queue')},
+    **{n:[('c_vs_asm_extra',n)] for n in ('event_append','fw_blocks','fw_bridge','usb_queue','owner_lifetimes')},
     'access': [('test_access_reads', n) for n in ('table_cells','holidays','find_id','access')],
     'config': [('test_memory_runtime', n) for n in ('allocator','cached_reads','config_ownership','config_faults')],
     'index': [('test_idindex_runtime', n) for n in ('test_normal','test_faults','test_cancel_restart','test_boundaries','test_real_w25')],
@@ -41,14 +43,14 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CORE = ('id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','usb_replies','storage_boundary')
+CORE = ('format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 
 
 def select_image(variant, build_root=None):
     base = Path(build_root or os.environ.get('DOMOVOI_COMPARE_BUILD', Path(tempfile.gettempdir()) / 'domovoi-c-asm'))
     folder = base / ('C-ReleaseSpeed' if variant == 'C_SPEED' else variant + '-Release')
-    stem = 'DomovoiNext_C' if variant.startswith('C') else 'DomovoiNext_ASM'
+    stem = 'DomovoiNext_C' if variant.startswith('C') else 'DomovoiNext_' + variant
     os.environ.update(DOMOVOI_ELF=str(folder/'ExePath/DomovoiNext.out'),
                       DOMOVOI_BIN=str(folder/'ExePath'/f'{stem}.bin'),
                       DOMOVOI_MAP=str(folder/'ListPath/DomovoiNext.map'))
@@ -95,7 +97,7 @@ def run_cases(cases):
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument('--variant',choices=('ASM','C','C_SPEED'),required=True)
+    p.add_argument('--variant',choices=('ASM','C','C_SPEED','HYBRID'),required=True)
     p.add_argument('--build-root',type=Path)
     p.add_argument('--case',action='append',choices=tuple(CASES))
     p.add_argument('--power',action='store_true')

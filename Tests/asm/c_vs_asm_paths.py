@@ -50,6 +50,6 @@ def run():
     return {'functions':totals,'scenarios':out,'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('ASM','C','C_SPEED'),required=True);p.add_argument('--output',type=Path,required=True)
+    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('ASM','C','C_SPEED','HYBRID'),required=True);p.add_argument('--output',type=Path,required=True)
     a=p.parse_args();select_image(a.variant);result=run();result['variant']=a.variant
     a.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8');print('PASS decoded card/GPIO and server-stream paths')

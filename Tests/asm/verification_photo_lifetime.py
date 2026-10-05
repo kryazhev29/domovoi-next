@@ -5,28 +5,19 @@ from test_photo_runtime import *
 from test_photo_edges import reach
 
 
-def free_chunks(m):
-    p = int.from_bytes(m.u.mem_read(m.addr('Aldata')+4,4), 'little')
-    out = []; visited = set()
-    while p:
-        assert p not in visited; visited.add(p)
-        size, following = struct.unpack('<II', m.u.mem_read(p,8))
-        assert m.addr('HEAP$$Base') <= p < p+size <= m.addr('HEAP$$Limit')
-        out.append(size); p = following
-    return out
 
 
 def run():
     m = PhotoMachine(); m.boot_media(); m.capture(b'x'*768)
     m.packet(21, b'', 1); m.drain(); m.port(); reach(m,39)
     m.tick() # allocate TX534 and fill the first <=64 bytes
-    # Optional synthetic allocator pressure, not a USB driver allocation.
-    reserve = m.checked('__basic_malloc',1040); assert reserve
+    from test_work_memory import take,drop,owned,UP_PACKET,PHOTO,PHOTO_PACKET
+    reserve=take(m,UP_PACKET);assert reserve
     tested = []
     for phase in (39,40,41):
         reach(m, phase)
         pointer = m.rget('tx',4); assert pointer
-        assert int.from_bytes(m.u.mem_read(pointer-8,4),'little') == 544
+        assert owned(m)==(1<<(PHOTO-1))|(1<<(PHOTO_PACKET-1))|(1<<(UP_PACKET-1))
         assert m.checked('photo_storage_busy')
         assert not m.checked('user_storage_command_ready')
         assert not m.checked('user_storage_background_ready')
@@ -37,19 +28,16 @@ def run():
             assert m.answers[-1][0:2] == (cmd,2)
             assert m.rget('tx',4) == pointer and m.rget('phase') == phase
         assert m.counts == before and bytes(m.u.mem_read(pointer,534)) == saved
-        chunks = free_chunks(m)
-        tested.append({'phase':phase,'live_photo_tx_chunk':544,
-                       'heap_used_with_synthetic_reserve':m.heap_bytes-sum(chunks),
-                       'free_chunks':chunks,'new_storage_commands':'rejected before allocation/I/O'})
+        tested.append({'phase':phase,'live_photo_tx_bytes':534,'owned_slots':owned(m),'new_storage_commands':'rejected before allocation/I/O'})
     m.tick()
     assert not m.checked('photo_storage_busy') and m.rget('tx',4) == 0
-    chunks = free_chunks(m)
-    assert m.heap_bytes-sum(chunks) == 192+1048
-    m.checked('__basic_free',reserve)
-    return {'elf_sha256':hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest(),
-            'phases':tested,'phase_zero_photo_tx':0,
-            'idle_with_synthetic_reserve_heap_used':192+1048,
-            'conclusion':'Photo TX544 is mutually exclusive with accepted command9/10/13 and config snapshots; photo_s192 can coexist.'}
+    assert owned(m)==(1<<(PHOTO-1))|(1<<(UP_PACKET-1))
+    drop(m,UP_PACKET,reserve)
+    from iar_image import image_paths
+    return {'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest(),
+            'phases':tested,'phase_zero_photo_tx':0,'workspace_bytes':2224,
+            'conclusion':'Photo TX is guarded from accepted command9/10/13 and config snapshots; idle photo context can coexist.'}
+
 
 
 if __name__ == '__main__':

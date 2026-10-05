@@ -20,7 +20,7 @@ def review_unit():
 
 
 def run():
-    out = ROOT / 'Release/comm-review'
+    out = Path(tempfile.gettempdir()) / 'domovoi-comm-review'
     out.mkdir(parents=True, exist_ok=True)
     os.environ['ZIG_GLOBAL_CACHE_DIR'] = str(out / 'zig-global')
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out / 'zig-local')

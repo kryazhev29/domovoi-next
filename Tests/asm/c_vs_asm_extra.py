@@ -24,16 +24,31 @@ def usb_queue():
         instruction_limit=None
     m=PortableQueue();cases=0;maximum=0
     for mask in (0,1):
-        for inp in (0,1,639,1278,1279):
-            for out in (0,1,639,1278,1279,1280):
-                for length in (0,1,64,1278,1279,1280,65535):
+        for inp in (0,1,m.size//2,m.size-2,m.size-1):
+            for out in (0,1,m.size//2,m.size-2,m.size-1,m.size):
+                for length in (0,1,64,m.size-2,m.size-1,m.size,65535):
                     result,steps=m.run(inp,out,length,mask)
-                    free=((0 if out==1280 else out)+1279-inp)%1280
-                    assert result==int(length<1280 and length<=free)
+                    free=((0 if out==m.size else out)+(m.size-1)-inp)%m.size
+                    assert result==int(length<m.size and length<=free)
                     maximum=max(maximum,steps);cases+=1
-    for options in (dict(enabled=0),dict(configured=0),dict(configured=4),dict(epoch=8),dict(stored_epoch=6),dict(connected=False),dict(null=True),dict(inp=1280),dict(out=1281)):
+    for options in (dict(enabled=0),dict(configured=0),dict(configured=4),dict(epoch=8),dict(stored_epoch=6),dict(connected=False),dict(null=True),dict(inp=m.size),dict(out=(m.size+1))):
         for mask in (0,1):assert m.run(mask=mask,**options)[0]==0
     for mask in (0,1):assert m.run(length=0,null=True,mask=mask)[0]==1
-    points=m.run(1277,1277,8)[1]
-    for point in range(points+1):m.run(1277,1277,8,irq=(point,'reset'))
-    return {'queue_cases':cases,'irq_cases':points+1,'maximum_instructions':maximum,'stack':m.top-m.minimum}
+    points=m.run((m.size-3),(m.size-3),8)[1]
+    for point in range(points+1):m.run((m.size-3),(m.size-3),8,irq=(point,'reset'))
+    # Maximum framed configurator reply: refuse one byte short, then retry
+    # after the host consumes queued bytes. Publication and payload stay atomic.
+    assert m.size==1040
+    assert m.run(0,m.size-2,1038)[0]==0
+    assert m.run(0,m.size-1,1038)[0]==1
+    return {'backpressure_retry_bytes':1038,'queue_cases':cases,'irq_cases':points+1,'maximum_instructions':maximum,'stack':m.top-m.minimum}
+
+
+def owner_lifetimes():
+    before=sys.argv;sys.argv=[before[0]]
+    try:
+        upload=importlib.import_module('verification_upload_lifetime')
+        photo=importlib.import_module('verification_photo_lifetime')
+    finally:sys.argv=before
+    return {'upload_ack':upload.reachable_ack(),'photo_tx':photo.run(),
+            'empty_cleanup':upload.durable_empty(),'recovery_gate':upload.recovery_gate()}

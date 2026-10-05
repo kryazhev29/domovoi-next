@@ -1,13 +1,13 @@
 # Доработка: Кряжев А., 2026
 import os, pathlib, subprocess, sys, tempfile, re
-from source_select import source_path
+from source_select import source_path, source_text, host_adapters
 # DOMOVOI_ROOT runs the tests against a copy, e.g. with a deliberate fault.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
 ZIG=__import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
 ref=sys.argv[1] if len(sys.argv)>1 and sys.argv[1]!='work' else None
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
-    return (subprocess.check_output(['git','show',ref+':'+name.removeprefix('Tests/asm/reference/')],cwd=ROOT) if ref else source_path(ROOT,name).read_bytes()).decode('cp1251')
+    return subprocess.check_output(['git','show',ref+':'+name.removeprefix('Tests/asm/reference/')],cwd=ROOT).decode('cp1251') if ref else source_text(ROOT,name)
 def function(text,name):
     m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|int|RESULT|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
@@ -500,7 +500,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
         globals=hw[hw.index('uint8_t  USART_Rx_Buffer'):hw.index('static void IntToUnicode')]
         # The first definition is the application's; the #else branch is the bootloader's.
-        code=[x for x in header.splitlines() if x.startswith('#define USART_RX_DATA_SIZE')][0]+'\n'
+        code=source('User/usb_ring_size.h')+'\n'+[x for x in header.splitlines() if x.startswith('#define USART_RX_DATA_SIZE')][0]+'\n'
         if 'uint8_t USART_To_USB_Send_Data' in hw:code+='#define HOST_FIXED 1\n'
         code+=globals+'\n'
         for name in ['USB_Tx_Reset','usb_tx_space','usb_tx_enqueue','USART_To_USB_Send_Data','USB_Send_Debug','Handle_USBAsynchXfer']:
@@ -579,7 +579,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     if 'fast_' in unit:
         (d/'fast_kernels.h').write_text(source('User/fast_kernels.h'), encoding='ascii')
         unit='#include "fast_kernels.h"\n'+unit.replace('#include "fast_kernels.h"','')
-    (d/'test.c').write_text(unit.replace('\r\n','\n'))
+    (d/'test.c').write_text(host_adapters(ROOT)+unit.replace('\r\n','\n'))
     subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)
     sys.exit(result.returncode)

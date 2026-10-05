@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Independent command/wire oracle for cooperative service CRC in linked ASM."""
 import argparse
 import hashlib
@@ -86,9 +87,9 @@ class ServiceMachine(StorageMachine):
         assert self.io_budget == 0 and self.steps < 100000
 
     def restored_heap(self):
-        p = self.checked('__basic_malloc', 4088)
-        assert p, 'service context leaked or fragmented heap'
-        self.checked('__basic_free', p)
+        assert owned(self)==0, 'service workspace leaked'
+        p=take(self,REPLY);assert p
+        drop(self,REPLY,p)
 
     def expected(self, cmd, idx=0, uniq=73):
         def crc_region(mb, off=0, n=None):
@@ -149,12 +150,12 @@ def faults_and_lifetime():
             assert m.sent == [m.expected_error(cmd)] and not m.answers
             assert not m.counts['start']; m.restored_heap(); checks += 1
         m = ServiceMachine()
-        p = m.checked('__basic_malloc', 3900); assert p
+        p = take(m,REPLY); assert p
         before = bytes(m.flash)
         m.packet(cmd, idx)
         assert not m.active() and not m.sent and not m.read_ranges
         assert bytes(m.flash) == before and m.answers[-1] == (cmd, 2, 0, 73)
-        m.checked('__basic_free', p); m.restored_heap(); checks += 1
+        drop(m,REPLY,p); m.restored_heap(); checks += 1
 
     for action, channel in (('cancel', 0), ('quiet', 0), ('reconnect', 1),
                             ('usb_reset', 0), ('reset', 0)):
@@ -180,15 +181,11 @@ def faults_and_lifetime():
     m.commit_fail = False; m.drain(); assert m.sent == [m.expected(17)]
     m.restored_heap(); checks += 1
 
-    # Sufficient total free bytes do not imply a contiguous context allocation.
+    # A held table owner rejects service before I/O; release restores admission.
     m = ServiceMachine()
-    holes = [m.checked('__basic_malloc', 128) for _ in range(15)]
-    tail = m.checked('__basic_malloc', 2048); assert all(holes) and tail
-    for p in holes[::2]: m.checked('__basic_free', p)
-    m.packet(17)
-    assert not m.active() and not m.read_ranges and m.answers[-1] == (17, 2, 0, 73)
-    for p in holes[1::2]: m.checked('__basic_free', p)
-    m.checked('__basic_free', tail); m.restored_heap(); checks += 1
+    held=take(m,TABLE);assert held
+    m.packet(17);assert not m.active() and not m.sent
+    drop(m,TABLE,held);m.restored_heap();checks += 1
 
     m = ServiceMachine(); m.packet(17)
     m.checked('service_crc_quiet', 1)
@@ -212,10 +209,10 @@ def config_reply():
     for name, value in (('job', 8), ('cmd', 12), ('channel', 0), ('uniq', 37)):
         m.write(base + s[name], value, 1)
     m.write(m.addr('config') + fields('config_s')['datetime'], 123456789)
-    held = m.checked('__basic_malloc', 3900); assert held
+    held = take(m,REPLY); assert held
     m.tick(); assert not m.active() and not m.sent
     assert int.from_bytes(m.u.mem_read(base+s['job'], 1), 'little') == 8
-    m.checked('__basic_free', held)
+    drop(m,REPLY,held)
     m.tick(); assert m.active() and not m.timestamps
     m.busy = True
     for _ in range(50): m.tick()

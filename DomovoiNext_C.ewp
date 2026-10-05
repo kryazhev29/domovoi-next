@@ -2422,7 +2422,7 @@
                     <state>ASM_FAST_KERNELS</state>
                     <state>STM32F10X_MD</state>
                     <state>USE_STDPERIPH_DRIVER</state>
-                <state>C_RUNTIME</state><state>ASM_RUNTIME</state></option>
+                <state>C_RUNTIME</state><state>ASM_RUNTIME</state><state>RELEASE_BUILD</state></option>
                 <option>
                     <name>CCPreprocFile</name>
                     <state>0</state>
@@ -2730,7 +2730,7 @@
                 <option>
                     <name>ADefines</name>
                     <state>DOMOVOI_APP_HW=139</state>
-                </option>
+                <state>RELEASE_BUILD</state></option>
                 <option>
                     <name>AList</name>
                     <state>0</state>
@@ -3133,7 +3133,7 @@
                 </option>
                 <option>
                     <name>IlinkOptMergeDuplSections</name>
-                    <state>0</state>
+                    <state>1</state>
                 </option>
                 <option>
                     <name>IlinkOptUseVfe</name>
@@ -3294,7 +3294,7 @@
         <file>
             <name>$PROJ_DIR$\CMSIS\STM32F10x\system_stm32f10x.c</name>
         </file>
-    </group>
+    <file><name>$PROJ_DIR$\User\work_memory.c</name></file><file><name>$PROJ_DIR$\User\user_format.c</name></file></group>
     <group>
         <name>Modules</name>
         <file>

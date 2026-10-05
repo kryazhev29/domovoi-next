@@ -130,7 +130,7 @@ def run(variant):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('ASM','C'),required=True);p.add_argument('--output',type=Path,required=True)
+    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('ASM','C','HYBRID'),required=True);p.add_argument('--output',type=Path,required=True)
     a=p.parse_args();select_image(a.variant);result=run(a.variant)
     result.update(variant=a.variant,elf_sha256=__import__('hashlib').sha256(image_paths()[0].read_bytes()).hexdigest())
     a.output.write_text(json.dumps(result,indent=2,default=str)+'\n',encoding='utf-8');print('PASS mutations',flush=True)

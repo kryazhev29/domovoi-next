@@ -87,9 +87,9 @@ int main(int argc,char**argv){uint8_t data[523];unsigned i;CHECK(argc>1);for(i=0
 #endif
  }
  else CHECK(0);
- /* Самый большой ответ: пакет фото 14, 1024 + 11 + 11 = 1046 байт. */
+ /* Largest current reply: log records, 1024 payload + 14 framing = 1038. Photo blocks are 512 + 22. */
  if(!strcmp(argv[1],"large")){
-  uint8_t largest[1046];for(i=0;i<sizeof(largest);i++)largest[i]=(uint8_t)(i*7u);
+  uint8_t largest[1038];for(i=0;i<sizeof(largest);i++)largest[i]=(uint8_t)(i*7u);
   USB_Tx_Reset();wirelen=0;CHECK(USART_To_USB_Send_Data(largest,sizeof(largest)));
   for(i=0;i<100;i++){if(USB_Tx_State)EP1_IN_Callback();else Handle_USBAsynchXfer();}
   CHECK(wirelen==sizeof(largest)&&!memcmp(wire,largest,sizeof(largest)));

@@ -19,7 +19,7 @@ void upload_runtime_cancel(void)
 {
   upload_s *p=upload_runtime_context; if(!p) return;
   upload_runtime_context=NULL; flash_release(FO_UPLOAD);
-  if(p->packet) free(p->packet); free(p);
+  if(p->packet) work_release(p->packet, WORK_UPLOAD_PACKET); work_release(p, WORK_UPLOAD_CONTEXT);
 }
 void upload_runtime_quiet(uint8_t channel)
 { if(upload_runtime_context && upload_runtime_context->channel==channel) upload_runtime_cancel(); }
@@ -28,11 +28,12 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   upload_s *p; unsigned part=command==10?7:8;
   if(!store_runtime) return false;
   if(upload_runtime_context || !mem_tables_ready()) return true;
-  p=malloc(sizeof *p); if(!p) return true;
-  p->packet=malloc(1040); if(!p->packet) { free(p); return true; }
-  if(!store_upload_request(command,channel,uniq) || !upload_ack(command,channel)) {
-    free(p->packet); free(p); return true;
+  p=work_acquire(sizeof *p, WORK_UPLOAD_CONTEXT); if(!p) return true;
+  p->packet=work_acquire(1040, WORK_UPLOAD_PACKET); if(!p->packet) { work_release(p, WORK_UPLOAD_CONTEXT); return true; }
+  if(!store_upload_request(command,channel,uniq)) {
+    work_release(p->packet, WORK_UPLOAD_PACKET); work_release(p, WORK_UPLOAD_CONTEXT); return true;
   }
+  if(!work_upload_ack(command,(uint8_t)channel,p)) return true;
   p->first=upload_index(command,channel); p->total=p->wanted=p->copied=p->seen=p->crc=p->offset=p->length=0;
   p->command=command; p->channel=channel; p->uniq=uniq; p->phase=1; p->epoch=usb_bus_resets;
   p->pos=mem[part].start; p->limit=p->pos+mem[part].size;

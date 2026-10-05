@@ -355,12 +355,12 @@ uint8_t mem_config_result(void) { return cfg_job.result; }
 const uint8_t *mem_config_snapshot(void) { return cfg_job.snapshot; }
 void mem_config_reset(void) {
   if (cfg_job.result == 1) return; /* A live NOR verification still owns the snapshot. */
-  free(cfg_job.snapshot); cfg_job.snapshot = NULL; cfg_job.result = 0; cfg_job.waiting = 0;
+  work_release(cfg_job.snapshot, WORK_CONFIG); cfg_job.snapshot = NULL; cfg_job.result = 0; cfg_job.waiting = 0;
 }
 bool mem_config_begin(const uint8_t *first, const uint8_t *second)
 {
   if (flash_owner || table_fault || sj_runtime_blocked() || cfg_job.result || w25_async_active() || !cfg_legacy_checked || !first || !second) return false;
-  cfg_job.snapshot = malloc(1024);
+  cfg_job.snapshot = work_acquire(1024, WORK_CONFIG);
   if (!cfg_job.snapshot) return false;
   memcpy(cfg_job.snapshot, first, 512); memcpy(cfg_job.snapshot + 512, second, 512);
   cfg_job.source = cfg_cached_active;

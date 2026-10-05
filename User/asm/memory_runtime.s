@@ -1,3 +1,6 @@
+#include "../work_slots.h"
+        EXTERN work_acquire
+        EXTERN work_release
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/User/memory.c
         PUBLIC cfg_cached_active
@@ -25,8 +28,6 @@
         EXTERN fast_all_ff
         EXTERN sjr
         EXTERN table_fault
-        EXTERN free
-        EXTERN malloc
         EXTERN memcmp
         EXTERN sj_destination
         EXTERN sj_recover
@@ -2233,8 +2234,9 @@ mem_config_reset:
 ??CrossCallReturnLabel_32:
         BEQ.N    ??mem_config_reset_0
         LDR      R0,[R4, #+0]
-          CFI FunCall free
-        BL       free
+        MOVS R1,#WORK_CONFIG
+          CFI FunCall work_release
+        BL       work_release
         MOVS     R0,#+0
         STR      R0,[R4, #+0]
         STRB     R0,[R4, #+35]
@@ -2278,8 +2280,9 @@ mem_config_begin:
         BEQ.N    ??mem_config_begin_0
         CBZ.N    R5,??mem_config_begin_0
         MOV      R0,#+1024
-          CFI FunCall malloc
-        BL       malloc
+        MOVS R1,#WORK_CONFIG
+          CFI FunCall work_acquire
+        BL       work_acquire
         STR      R0,[R6, #+0]
         CBNZ.N   R0,??mem_config_begin_1
 ??mem_config_begin_0:

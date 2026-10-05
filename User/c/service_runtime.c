@@ -18,7 +18,7 @@ void *service_crc_active(void) { return service_crc_job; }
 void service_crc_cancel(void)
 {
   service_crc_s *p;
-  flash_release(FO_CRC); p=service_crc_job; service_crc_job=NULL; free(p);
+  flash_release(FO_CRC); p=service_crc_job; service_crc_job=NULL; work_release(p, WORK_SERVICE);
 }
 void service_crc_quiet(uint8_t channel)
 { if(service_crc_job && service_crc_job->channel==channel) service_crc_cancel(); }
@@ -26,7 +26,7 @@ static uint8_t sc_begin(uint8_t kind,uint8_t channel,uint8_t uniq,uint8_t index)
 {
   service_crc_s *p;
   if(channel>1 || service_crc_job || !user_storage_flash_ready() || mem_config_result()==1) return 0;
-  if(!mem_tables_ready() || index>100 || !(p=malloc(sizeof *p))) {
+  if(!mem_tables_ready() || index>100 || !(p=work_acquire(sizeof *p, WORK_SERVICE))) {
     if(kind!=4) user_send_answer_comand(kind==5?17:18,(cmdCode_e)2,(dataChanel_e)channel,uniq);
     return 0;
   }

@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Handwritten index rebuild in the linked IAR ELF; no physical hardware.
 
 NOR operations use StorageMachine's delayed verified/error boundary. All index
@@ -198,7 +199,7 @@ def test_boundaries():
     m.tick_index(); assert m.state() == 7
     # OOM cannot affect the index: no allocation is requested at any point.
     m = IndexMachine(); expected, total, _ = m.setup((1,))
-    m.stubs[m.addr('__basic_malloc')] = lambda: (_ for _ in ()).throw(AssertionError('index allocated'))
+    m.stubs[m.addr('work_acquire')] = lambda: (_ for _ in ()).throw(AssertionError('index allocated'))
     m.drain_index(); m.verify(expected, total)
     return 4
 

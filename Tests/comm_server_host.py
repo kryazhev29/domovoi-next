@@ -1,6 +1,6 @@
 """Доработка: Кряжев А., 2026. Канал/сервер на настоящих UART, AT и SLM."""
 from pathlib import Path
-from source_select import source_path
+from source_select import source_path, source_text, host_adapters
 import argparse, os, subprocess, tempfile
 from comm_slm_host import unit as slm_unit, memory, ROOT, ZIG, HEADERS, MODULES
 
@@ -8,7 +8,7 @@ NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.
 NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h', 'Modules/comm_info.h', 'Modules/comm_call.h', 'Modules/comm_sms.h', 'Modules/comm_balance.h')
 
 def source(name):
-    return source_path(ROOT,name).read_bytes().decode('cp1251')
+    return source_text(ROOT,name)
 
 def function(text, name):
     import re
@@ -22,7 +22,7 @@ def function(text, name):
     return text[m.start():i]
 
 def unit():
-    old = source('User/fast_kernels.h').replace('static inline ', 'static inline __attribute__((unused)) ')+'\n#define COMM_CHANNEL_MODEL 1\n' + slm_unit().replace('int main(void)', 'static int slm_regressions(void)')
+    old = host_adapters(ROOT)+source('User/fast_kernels.h').replace('static inline ', 'static inline __attribute__((unused)) ')+'\n#define COMM_CHANNEL_MODEL 1\n' + slm_unit().replace('int main(void)', 'static int slm_regressions(void)')
     old = old.replace('static void sim_tx(void)', 'static void legacy_sim_tx(void)')
     old = old.replace('  sim_tx();', '  legacy_sim_tx();')
     headers = '\n'.join(line for n in NEW_HEADERS for line in source(n).splitlines() if not line.startswith('#include "'))

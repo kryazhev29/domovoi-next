@@ -1,3 +1,6 @@
+#include "../work_slots.h"
+        EXTERN work_acquire
+        EXTERN work_release
 ; Hand-written Cortex-M3 Thumb-2. Owns a historical 1024-byte scan block and a
 ; separate 32-byte update record, never an RX/DMA pointer. Fill/lookup <=64.
         PRESERVE8
@@ -6,8 +9,6 @@
         #include "flash_owner.h"
         EXTERN flash_claim
         EXTERN flash_release
-        EXTERN malloc
-        EXTERN free
         EXTERN __aeabi_memcpy
         EXTERN device
         EXTERN mem
@@ -109,8 +110,9 @@ expiry_release:
         BL flash_release
         LDR R4,=expiry_job
         LDR R0,[R4]
-        CFI FunCall free
-        BL free
+        MOVS R1,#WORK_EXPIRY
+        CFI FunCall work_release
+        BL work_release
         MOVS R0,#0
         STR R0,[R4]
         POP {R4,PC}
@@ -173,8 +175,9 @@ ex_begin_needed:
         BHI ex_begin_no
         ADD R6,R6,R4
         MOVW R0,#1092
-        CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_EXPIRY
+        CFI FunCall work_acquire
+        BL work_acquire
         CBZ R0,ex_begin_oom
         STR R4,[R0]
         STR R6,[R0,#4]

@@ -47,7 +47,7 @@ enum { P_IDLE, P_SYNC, P_INIT, P_SIZE, P_SNAP, P_GET, P_DATA, P_PREP };
 
 static uint8_t photo_alloc(void)
 {
-  if (!photo) photo = calloc(1, sizeof(*photo));
+  if (!photo) photo = work_acquire(sizeof(*photo), WORK_PHOTO_CONTEXT);
   return photo != NULL;
 }
 static void photo_stop(void)
@@ -630,7 +630,7 @@ static void photo_send(void)
   count = photo_next(&address, &offset, &h);
   if (count == 2) return;
   uint16_t capacity;
-  p = photo->channel == CH_SERVER ? comm_tx_acquire(&capacity) : malloc(PHOTO_BLOCK + 22u);
+  p = photo->channel == CH_SERVER ? comm_tx_acquire(&capacity) : work_acquire(PHOTO_BLOCK + 22u, WORK_PHOTO_PACKET);
   if (p && photo->channel == CH_SERVER && PHOTO_BLOCK + 22u > capacity) { comm_tx_release(); return; }
   if (!p) return;
   if (count) n = h.size - offset > PHOTO_BLOCK ? PHOTO_BLOCK : (uint16_t)(h.size - offset);
@@ -642,14 +642,14 @@ static void photo_send(void)
     memcpy(p + 10, (uint8_t*)&h, 4); memcpy(p + 14, ((uint8_t*)&h) + 4, 4);
     p[18] = (uint8_t)offset; p[19] = (uint8_t)(offset >> 8);
     if (!mem_read(address + PHOTO_RECORD_HEAD + offset, p + 20, n)) {
-      if (photo->channel == CH_USB) free(p); else comm_tx_release();
+      if (photo->channel == CH_USB) work_release(p, WORK_PHOTO_PACKET); else comm_tx_release();
       return;
     }
   }
   crc = crc16_calc(p + 4, len + 2u);
   p[len+6] = (uint8_t)crc; p[len+7] = (uint8_t)(crc >> 8);
   ok = photo->channel == CH_USB ? usb_send(p, len + 8u) : comm_tx_commit(len + 8u);
-  if (photo->channel == CH_USB) free(p); else comm_tx_release();
+  if (photo->channel == CH_USB) work_release(p, WORK_PHOTO_PACKET); else comm_tx_release();
   if (!ok) return;
   if (n) {
     offset += n;
@@ -729,7 +729,7 @@ void photo_poll(void)
           photo_send();
       }
     }
-    if (!photo->stage && !photo->pending) { free(photo); photo = NULL; }
+    if (!photo->stage && !photo->pending) { work_release(photo, WORK_PHOTO_CONTEXT); photo = NULL; }
   }
   if (!erased && photo_cleanup_active()) photo_cleanup_step();
 #endif

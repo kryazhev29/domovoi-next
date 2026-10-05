@@ -1,3 +1,4 @@
+from test_work_memory import owned
 """Independent command19 ownership bridge, reply order and abort audit in ELF."""
 import argparse,hashlib,json,sys
 from pathlib import Path
@@ -32,7 +33,7 @@ def ack_order():
                 assert m.ptr()==pointer and bytes(m.u.mem_read(pointer,19))==wire and not m.sent
                 if number==1:assert m.flash[0x1000:0x1020]==b'\x5a'*32
             m.busy=m.commit_fail=False;m.drain()
-            assert m.sent==[wire] and not m.ptr() and largest_free(m)==4088
+            assert m.sent==[wire] and not m.ptr() and owned(m)==0
             out.append(dict(number=number,channel=ch,setup_phases=sorted(phases),config_wait_excluded_from_flash_owner=True))
     return out
 
@@ -50,7 +51,7 @@ def config_failure():
         assert not m.read_word(m.addr('fw_rollback_end'))
         assert_no_early_fetch(m);m.drain()
         assert len(m.sent)==1 and m.sent[0][9:11]==bytes((19,2))
-        assert largest_free(m)==4088
+        assert owned(m)==0
         out.append(dict(channel=ch,FWinProgress=0,blocks=0,index=0,timeout=0,answer='RUNERROR'))
     return out
 
@@ -69,7 +70,7 @@ def quiet_cases():
                 if number==1:
                     assert m.flash[0x1200:0x1200+len(m.image)]==m.image
                     assert m.read_word(m.device+171,1)==1
-                assert largest_free(m)==4088;count+=1
+                assert owned(m)==0;count+=1
     return count
 
 

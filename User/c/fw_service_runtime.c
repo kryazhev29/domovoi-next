@@ -35,7 +35,7 @@ void fw_service_cancel(void)
 {
   fw_service_s *p=fw_service_context; if(!p) return;
   p->cancel=p->quiet=1; if(p->pending) return;
-  fw_service_context=NULL; flash_release(FO_FWSERVICE); free(p->reserve); free(p);
+  fw_service_context=NULL; flash_release(FO_FWSERVICE); work_release(p->reserve, WORK_FW_DATA); work_release(p, WORK_FW_CONTEXT);
 }
 bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
 {
@@ -44,19 +44,19 @@ bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
   if(fw_service_context || !user_storage_command_ready() || !mem_tables_ready()) return true;
   if(fw_start_rejected(rt_get16(data),rt_get32(data+2),rt_get32(data+6),rt_get32(data+10),rt_get16(data+14))) {
     fw_log((logUpdate_e)133,"PARAM");
-    p=malloc(sizeof *p); if(!p) return true;
+    p=work_acquire(sizeof *p, WORK_FW_CONTEXT); if(!p) return true;
     p->reserve=NULL; memset(&p->phase,0,8); p->channel=channel; p->uniq=uniq;
     p->config_result=1; phase=18; goto publish;
   }
-  p=malloc(sizeof *p); if(!p) return true;
-  p->reserve=malloc(1024); if(!p->reserve) { free(p); return true; }
+  p=work_acquire(sizeof *p, WORK_FW_CONTEXT); if(!p) return true;
+  p->reserve=work_acquire(1024, WORK_FW_DATA); if(!p->reserve) { work_release(p, WORK_FW_CONTEXT); return true; }
   memset(&p->phase,0,8); p->channel=channel; p->uniq=uniq; p->blocks=rt_get16(data+14);
   if(rt_get16(data)!=1 && fw_same_download(rt_get16(data),rt_get32(data+2),rt_get32(data+6),rt_get32(data+10),rt_get16(data+14),channel)) {
     device.startWaitFWtime=0; phase=6; goto publish;
   }
   reason=fw_start_refused();
   if(reason) {
-    fw_log((logUpdate_e)133,reason); free(p->reserve); p->reserve=NULL;
+    fw_log((logUpdate_e)133,reason); work_release(p->reserve, WORK_FW_DATA); p->reserve=NULL;
     p->config_result=2; phase=18; goto publish;
   }
   if(rt_get16(data)==1) { p->mode=1; phase=1; }
@@ -124,7 +124,7 @@ start:
       if(p->channel) { device.FWinProgress=1; device.updateTimeout=600; device.status.readyToUpdate=1; }
     }
 handoff:
-    fw_service_context=NULL; source=p->reserve; p->reserve=NULL; free(source);
+    fw_service_context=NULL; source=p->reserve; p->reserve=NULL; work_release(source, WORK_FW_DATA);
     flash_release(FO_FWSERVICE); saved=store_snapshot(); fw_service_context=p;
     if(!saved) { flash_claim(FO_FWSERVICE); goto io_error; }
     store[21]=19; store[22]=p->channel; store[23]=p->uniq; store[24]=1; store[18]=9;

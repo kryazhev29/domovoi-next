@@ -24,7 +24,7 @@ def main():
     if '--project' in sys.argv:
         sys.exit(subprocess.call([PY,str(ROOT/'Tests/asm/c_vs_asm_project.py'),*sys.argv[1:]],cwd=ROOT))
     fast = "--fast" in sys.argv
-    results = [run("sources", ["Tests/check_comm_sources.py"])]
+    results = [run("sources", ["Tests/check_comm_sources.py"]), run("format oracle", ["Tests/test_user_format.py"])]
     results += [run(g, ["Tests/run_host.py", "work", g]) for g in GROUPS]
     results += [run("tx " + s, ["Tests/run_host.py", "work", "tx", s]) for s in TX]
     results += [run("async config", ["Tests/test_store_async.py"]), run("async callers", ["Tests/test_store_callers.py"]), run("async events", ["Tests/test_event_async.py"]), run("async FW", ["Tests/test_fw_async.py"])]

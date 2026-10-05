@@ -41,7 +41,7 @@ def mirror(destination):
 
 def main():
     sys.stdout.reconfigure(encoding='utf-8',errors='replace')
-    p=argparse.ArgumentParser();p.add_argument('--project',choices=('ASM','C'),required=True)
+    p=argparse.ArgumentParser();p.add_argument('--project',choices=('ASM','C','HYBRID'),required=True)
     p.add_argument('--fast',action='store_true');p.add_argument('--output',type=Path)
     args=p.parse_args();select_image(args.project)
     base=Path(os.environ.get('DOMOVOI_COMPARE_BUILD',Path(tempfile.gettempdir())/'domovoi-c-asm'))
@@ -60,6 +60,7 @@ def main():
         print(results[name]['status'],name,flush=True)
         if not ok:print((r.stdout+r.stderr)[-1600:].decode('utf-8',errors='replace'),flush=True)
     run('sources',['Tests/check_comm_sources.py'])
+    run('format oracle',['Tests/test_user_format.py'])
     for group in run_all.GROUPS:
         if group not in REPLACEMENTS:run(group,['Tests/run_host.py','work',group])
     for scenario in run_all.TX:run('tx '+scenario,['Tests/run_host.py','work','tx',scenario])

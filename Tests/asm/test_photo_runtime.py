@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Actual camera/command/main-loop paths in final IAR ASM, with modeled UART/NOR."""
 import argparse,json,hashlib,struct
 from storage_machine import *
@@ -143,7 +144,7 @@ def uploads():
 def errors():
     m=PhotoMachine();m.boot_media();m.begin_camera(116);m.data(b'A'*58,True);m.data(b'B'*58)
     assert len(m.events)==1 and m.flash[0x200000+1033:0x200000+1033+116]==b'A'*58+b'B'*58
-    m=PhotoMachine();m.boot_media();assert m.checked('__basic_malloc',4000)
+    m=PhotoMachine();m.boot_media();assert take(m,PHOTO)
     m.packet(7,b'\5');assert m.answers[-1][1]==2 and not m.active() and not m.counts['start']
     m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request()
     frame=struct.pack('<HH',0,58)+b'x'*58;frame+=bytes([sum(frame)&255,0]);m.feed(frame)

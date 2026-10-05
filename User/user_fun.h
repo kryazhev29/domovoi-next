@@ -107,7 +107,7 @@ char* user_last10digitsnumber (char* num);
 uint8_t user_getweakday (uint32_t t);
 
 // поиск ID в памяти, если есть то возвращаются параметры ячейки
-#ifdef C_RUNTIME
+#if defined(C_RUNTIME) || defined(HYBRID_CARD)
 uint8_t user_findID(char *id, cellID_s *cell);
 #else
 bool user_findID(char *id, cellID_s *cell);
@@ -125,7 +125,7 @@ bool user_getGroup(uint16_t num, cellGroup_s *group);
 // считать параметры расписания
 bool user_getShedule(uint16_t num, cellShedule_s *shedule);
 // проверить праздничный день
-#ifdef C_RUNTIME
+#if defined(C_RUNTIME) || defined(HYBRID_CARD)
 uint8_t user_dayIsHoliday(void);
 #else
 bool user_dayIsHoliday(void);

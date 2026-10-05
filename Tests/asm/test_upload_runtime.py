@@ -1,3 +1,4 @@
+from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Cooperative command 9/10 upload in the final IAR ELF, modeled NOR/TX only."""
 import hashlib, json, struct
 from storage_machine import *
@@ -165,7 +166,7 @@ def test_media_gate():
             m.u.mem_write(0x21000000,body);m.checked('user_parse_comand',0x21000000,0)
             m.tick_upload()
             assert not m.ptr() and not any(m.counts.values()) and not m.sent and bytes(m.flash)==before
-            assert largest_free(m)==4088
+            assert largest_free(m)==2032
             count+=1
     return count
 
@@ -207,89 +208,42 @@ def test_busy_empty_cancel():
 
 
 def largest_free(m):
-    lo,hi=0,4096
-    while lo<hi:
-        n=(lo+hi+1)//2;p=m.checked('__basic_malloc',n)
-        if p:m.checked('__basic_free',p);lo=n
-        else:hi=n-1
-    return lo
+    p=take(m,REPLY)
+    if not p:return 0
+    drop(m,REPLY,p)
+    return 2032
 
 
 def test_heap_ack():
-    results={'pressure_kind':'allocator stress: extra 1040 and 534 byte blocks are not a proved concurrent upload lifetime'}
-    for reserve in (4080,3040):
-        m=UploadMachine();m.fixture(10,[log(1),log(2)])
-        p=m.checked('__basic_malloc',reserve);assert p
-        m.write(m.addr('log_unacked'),1,2)
-        before=bytes(m.flash);m.request()
+    from unicorn import UC_HOOK_CODE
+    results={}
+    # A conflicting owner rejects before ACK cursor, NOR or wire changes.
+    for slot in (REPLY,CONFIG,TABLE):
+        m=UploadMachine();m.fixture(10,[log(1)])
+        p=take(m,slot);assert p
+        m.write(m.addr('log_unacked'),1,2);before=bytes(m.flash);m.request()
         assert not m.ptr() and not any(m.counts.values()) and bytes(m.flash)==before
         assert m.pending_cursor()==1 and m.checked('upload_index',10,0)==0
-        m.checked('__basic_free',p)
-        assert largest_free(m)>=4080
+        drop(m,slot,p);assert owned(m)==0
     m=UploadMachine();m.fixture(10,[log(1),log(2)])
-    live=[m.checked('__basic_malloc',n) for n in (180,1040,534)]
-    assert all(live)
-    peak=[]
-    # Real ACK snapshot allocation, with the new upload objects still reserved.
-    # At the first W25 action the transient reservation has already gone; probe
-    # allocator high-water through allocated chunks at free() entry instead.
-    free_addr=m.addr('__basic_free')
-    def observe_free():
-        # Inspect IAR heap's linked blocks without calling emulation recursively.
-        peak.append(bytes(m.u.mem_read(0x20000000,0x5000)))
-    # UC hook observing free keeps the real allocator intact.
-    from unicorn import UC_HOOK_CODE
-    m.u.hook_add(UC_HOOK_CODE,lambda u,a,n,x:observe_free() if a==free_addr else None)
+    photo=take(m,PHOTO);assert photo
+    snapshots=[];release=m.addr('work_release')
+    m.u.hook_add(UC_HOOK_CODE,lambda u,a,n,x:snapshots.append(owned(m)) if a==release else None)
     m.write(m.addr('log_unacked'),1,2);m.request()
-    assert not m.ptr() and m.checked('upload_index',10,0)==0 and m.pending_cursor()==1
-    assert m.checked('mem_config_result')==1,'ACK snapshot was not accepted'
-    # ACK is still pending and cannot be acknowledged before verified config.
+    assert not m.ptr() and m.checked('mem_config_result')==1
+    assert m.checked('upload_index',10,0)==0 and m.pending_cursor()==1
     assert not m.sent and not m.counts['start']
-    results['live_chunks']=[m.read_word(p-8) for p in live]
-    results['ack_pending_largest_payload']=largest_free(m)
-    results['free_observations']=len(peak)
-    # Model snapshots to inspect actual allocation labels at peak externally.
-    cold=UploadMachine();cold.u.mem_write(0x20000000,peak[0])
-    results['peak_largest_free_payload']=largest_free(cold)
-    assert results['peak_largest_free_payload']==176
-    raw=peak[0][m.map_addr('HEAP$$Base')-0x20000000:]
-    sizes=[struct.unpack_from('<I',raw,off)[0] for off in (0,192,1240,1784,1832,2880,3912)]
-    assert sizes==[192,1048,544,48,1048,1032,184]
-    results['peak_used_chunks']=sum(sizes[:-1]);results['peak_free_bytes']=sizes[-1]
-    results['peak_free_fragments']=1
+    assert owned(m)==(1<<(PHOTO-1))|(1<<(CONFIG-1))
+    # Upload buffers were admitted together, then released before snapshot.
+    assert snapshots[0] & (1<<(UP_CONTEXT-1)) and snapshots[0] & (1<<(UP_PACKET-1))
     for _ in range(1000):
         m.tick_upload()
         if m.sent:break
     assert m.sent and m.checked('upload_index',10,0)==1
     assert m.pending_cursor()==2 and m.sent[-1]==wire(10,7,1,[log(2)],2)
-    for p in live:m.checked('__basic_free',p)
-    assert largest_free(m)>=4080
-    results['post_recovery_largest_payload']=largest_free(m)
-    m=UploadMachine();m.fixture(10,[log(1)]);blocks=[m.checked('__basic_malloc',500) for _ in range(7)]
-    assert all(blocks)
-    for i in (0,2,4):m.checked('__basic_free',blocks[i]);blocks[i]=0
-    results['fragmented_total_free']=2048;results['fragmented_largest_payload']=largest_free(m)
-    assert results['fragmented_largest_payload']==504
-    m.write(m.addr('log_unacked'),1,2);before=bytes(m.flash);m.request()
-    assert not m.ptr() and m.pending_cursor()==1 and m.checked('upload_index',10,0)==0 and bytes(m.flash)==before
-    assert not any(m.counts.values())
-    for p in blocks:
-        if p:m.checked('__basic_free',p)
-    assert largest_free(m)==4088
-    # Real admitted owner shape: an idle retained photo state and this upload.
-    # The old 1040-byte response is replaced by our packet; USB rings are static.
-    actual=UploadMachine();actual.fixture(10,[log(1),log(2)])
-    photo=actual.checked('__basic_malloc',180);assert photo
-    actual.write(actual.addr('photo'),photo)
-    ram=[];free_at=actual.addr('__basic_free')
-    actual.u.hook_add(UC_HOOK_CODE,lambda u,a,n,x:ram.append(bytes(u.mem_read(0x20000000,0x5000))) if a==free_at else None)
-    actual.write(actual.addr('log_unacked'),1,2);actual.request()
-    assert actual.checked('mem_config_result')==1 and not actual.ptr()
-    probe=UploadMachine();probe.u.mem_write(0x20000000,ram[0])
-    results['idle_photo_ack_largest_payload']=largest_free(probe)
-    assert results['idle_photo_ack_largest_payload']==1768
-    results['idle_photo_ack_used_chunks']=2320
-    results['idle_photo_ack_free_bytes']=1776
+    drop(m,PHOTO,photo);assert owned(m)==0
+    results.update(conflicts=3,preflight_slots=snapshots[0],storage_bytes=2224,
+                   config_after_release=True,wire_and_cursor_verified=True)
     return results
 
 

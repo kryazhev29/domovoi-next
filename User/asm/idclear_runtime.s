@@ -1,3 +1,6 @@
+#include "../work_slots.h"
+        EXTERN work_acquire
+        EXTERN work_release
 ; Hand-written Thumb-2 / Cortex-M3. Bulk MB_ID erase is deliberately not
 ; journal atomic. The old operation had the same partial-erase power outcome.
 ; Owns its replies before the first erase; no receiver or DMA pointers survive.
@@ -7,8 +10,6 @@
         #include "flash_owner.h"
         EXTERN flash_claim
         EXTERN flash_release
-        EXTERN malloc
-        EXTERN free
         EXTERN device
         EXTERN mem
         EXTERN mem_storage_ready
@@ -119,8 +120,9 @@ idclear_release:
         LDR R0,[R1]
         MOVS R2,#0
         STR R2,[R1]
-        CFI FunCall free
-        B.W free
+        MOVS R1,#WORK_IDCLEAR
+        CFI FunCall work_release
+        B.W work_release
         CFI EndBlock ic_release
 
         SECTION .text:CODE:NOROOT(2)
@@ -170,8 +172,9 @@ idclear_runtime_begin:
         CMP R5,R0
         BHI ic_begin_no
         MOVS R0,#56
-        CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_IDCLEAR
+        CFI FunCall work_acquire
+        BL work_acquire
         CMP R0,#0
         BEQ ic_begin_no
         MOV R7,R0

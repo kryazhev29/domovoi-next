@@ -1,3 +1,6 @@
+#include "../work_slots.h"
+        EXTERN work_acquire
+        EXTERN work_release
 ; Handwritten Cortex-M3 IAR cooperative command19 / rollback.
 ; Heap context128: data64, header32, reserve96, pos100, end104,
 ; CRC108, expected112, blocks116H, ch118, uniq119, phase120,
@@ -10,8 +13,6 @@
         EXTERN flash_release
         PRESERVE8
         REQUIRE8
-        EXTERN malloc
-        EXTERN free
         EXTERN mem
         EXTERN device
         EXTERN store_runtime
@@ -187,11 +188,13 @@ fw_service_cancel:
         CFI FunCall flash_release
         BL flash_release
         LDR R0,[R4,#96]
-        CFI FunCall free
-        BL free
+        MOVS R1,#WORK_FW_DATA
+        CFI FunCall work_release
+        BL work_release
         MOV R0,R4
-        CFI FunCall free
-        BL free
+        MOVS R1,#WORK_FW_CONTEXT
+        CFI FunCall work_release
+        BL work_release
 fsc_return:
         ADD SP,SP,#4
         CFI CFA R13+20
@@ -251,13 +254,15 @@ fw_service_begin:
         B fsb_error
 fsb_params_ok:
         MOVS R0,#128
-        CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_FW_CONTEXT
+        CFI FunCall work_acquire
+        BL work_acquire
         MOVS R7,R0
         BEQ fsb_handled
         MOVW R0,#1024
-        CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_FW_DATA
+        CFI FunCall work_acquire
+        BL work_acquire
         CMP R0,#0
         BEQ fsb_free
         STR R0,[R7,#96]
@@ -299,8 +304,9 @@ fsb_refused:
         LDR R0,[R7,#96]
         MOVS R1,#0
         STR R1,[R7,#96]
-        CFI FunCall free
-        BL free
+        MOVS R1,#WORK_FW_DATA
+        CFI FunCall work_release
+        BL work_release
         MOVS R0,#2
         STRB R0,[R7,#127]
         MOVS R0,#18
@@ -344,15 +350,17 @@ fsb_publish:
         B fsb_handled
 fsb_free:
         MOV R0,R7
-        CFI FunCall free
-        BL free
+        MOVS R1,#WORK_FW_CONTEXT
+        CFI FunCall work_release
+        BL work_release
         B fsb_handled
 fsb_error:
         ; Parameter failures also use an owned, retryable bounded response.
         STR R1,[SP]
         MOVS R0,#128
-        CFI FunCall malloc
-        BL malloc
+        MOVS R1,#WORK_FW_CONTEXT
+        CFI FunCall work_acquire
+        BL work_acquire
         MOVS R7,R0
         BEQ fsb_handled
         MOVS R0,#0
@@ -673,8 +681,9 @@ fsp_handoff:
         STR R1,[R0]
         LDR R0,[R4,#96]
         STR R1,[R4,#96]
-        CFI FunCall free
-        BL free
+        MOVS R1,#WORK_FW_DATA
+        CFI FunCall work_release
+        BL work_release
         MOVS R0,#FO_FWSERVICE
         CFI FunCall flash_release
         BL flash_release
