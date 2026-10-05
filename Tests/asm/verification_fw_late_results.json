@@ -1,0 +1,52 @@
+{
+  "status": "PASS",
+  "late_errors": [
+    {
+      "channel": 0,
+      "registered": true,
+      "quiet": false,
+      "crc_mismatch": "no reboot",
+      "wire_matches_legacy_helper": true,
+      "owned_reply_bytes": 13,
+      "busy_passes": 4
+    },
+    {
+      "channel": 1,
+      "registered": true,
+      "quiet": false,
+      "crc_mismatch": "no reboot",
+      "wire_matches_legacy_helper": true,
+      "owned_reply_bytes": 13,
+      "busy_passes": 4
+    },
+    {
+      "channel": 1,
+      "registered": false,
+      "status_reply": "suppressed"
+    },
+    {
+      "channel": 1,
+      "registered": true,
+      "quiet": true,
+      "crc_mismatch": "no reboot",
+      "wire_matches_legacy_helper": true,
+      "owned_reply_bytes": 13,
+      "busy_passes": 4
+    }
+  ],
+  "copy_header": {
+    "header_marker": "FFFFFFFF before final verification",
+    "rollback_power_cut": "current app remains; explicit rollback retry required, as before",
+    "verified_copy_reboots": true
+  },
+  "download_resume": {
+    "config_verified_before_ack": true,
+    "power_cut": "actual cfg_select + fw_resume_after_boot",
+    "download_resumes": true,
+    "block_index": 0,
+    "blocks": 2,
+    "no_automatic_apply": true
+  },
+  "elf_sha256": "2645c7547f6d8d86ce7ed6ad5959576c38d1c914063dc74fe9566b52c800f29a",
+  "scope": "Linked final firmware code, modeled NOR and transport; no board timing"
+}
