@@ -536,6 +536,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     # Runtime continuations have their own real-code harness (test_store_callers.py).
     if ('store.' in unit or 'store_runtime' in unit or 'store_restore(' in unit or 'store_command_start(' in unit) and 'static uint8_t store_runtime' not in unit and 'unsigned job,channel,quiet,seen' not in unit:
         unit='#include <stdint.h>\n#include <stdbool.h>\n#define store_runtime 0\nstatic uint8_t store_save_requested __attribute__((unused)), store_reset_requested __attribute__((unused));\nstatic struct {uint8_t job,clear,channel,uniq,cmd,quiet,seen;} store __attribute__((unused));\n#define store_ack(a,b) false\n#define store_finish(a) false\n#define store_restore(a) ((void)0)\n#define store_upload_request(a,b,c) true\n#define store_command_start(a,b,c) user_send_answer_comand(a,CMD_SUCCESS,b,c)\n'+unit
+    # Legacy queue tests remain synchronous; the real runtime writer is tested separately.
+    if kind == 'log':
+        unit=re.sub(r'/\* >>> Cooperative event writer \*/.*?/\* <<< Cooperative event writer \*/', '', unit, flags=re.S)
+    if 'log_async_active(' in unit and 'bool log_async_active(void) {' not in unit:
+        unit='#define log_async_active() false\n'+unit
     if 'server_rx_verified(' in unit and 'bool server_rx_verified(' not in unit:
         unit='#define server_rx_verified(p) 0\n'+unit
     if 'store_command_allowed(' in unit and 'bool store_command_allowed(' not in unit:

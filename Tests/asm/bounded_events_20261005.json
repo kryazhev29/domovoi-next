@@ -1,0 +1,41 @@
+{
+  "units": "Unicorn instructions, modeled memory calls; not hardware time",
+  "cases": {
+    "0": {
+      "before": {
+        "max_instructions": 1117,
+        "total_instructions": 1117,
+        "passes": 1,
+        "stack_bytes": 128,
+        "record": "640000006400000000000000000000000000000000000000dbb2244d4c4f4732"
+      },
+      "after": {
+        "max_instructions": 606,
+        "total_instructions": 1887,
+        "passes": 14,
+        "stack_bytes": 88,
+        "record": "640000006400000000000000000000000000000000000000dbb2244d4c4f4732"
+      }
+    },
+    "3071": {
+      "before": {
+        "max_instructions": 77983,
+        "total_instructions": 77983,
+        "passes": 1,
+        "stack_bytes": 144,
+        "record": "640000006400000000000000000000000000000000000000dbb2244d4c4f4732"
+      },
+      "after": {
+        "max_instructions": 606,
+        "total_instructions": 499389,
+        "passes": 3085,
+        "stack_bytes": 88,
+        "record": "640000006400000000000000000000000000000000000000dbb2244d4c4f4732"
+      }
+    }
+  },
+  "sha256": {
+    "Release\\task-bounded\\baseline.out": "323ac9db52c1a77667370fc82db94dde39863452eb67113f6d078d8ccff6a9ba",
+    "Release\\Exe\\DomovoiNext.out": "936d71cbe36a236b6eb1160fb0a09462b8916d8f1b673092b76508500c3b4481"
+  }
+}

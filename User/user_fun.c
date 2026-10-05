@@ -52,6 +52,8 @@ config_s config;
 device_s device;
 
 /* >>> Cooperative storage callers */
+static bool log_async_active(void);
+static void log_storage_poll(uint32_t now);
 static uint8_t store_runtime, store_save_requested, store_reset_requested;
 static struct {
   uint32_t erase, end, retry_at, usb_epoch;
@@ -68,9 +70,9 @@ static bool store_config_start(void);
 static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
 static void store_restore(const device_s *saved);
 void user_storage_poll(void);
-bool user_storage_command_ready(void) { store_usb_session(); return !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
+bool user_storage_command_ready(void) { store_usb_session(); return !log_async_active() && !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
 static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || user_storage_command_ready(); }
-bool user_storage_flash_ready(void) { return store.clear != 9 && !w25_async_active() && w25_read_available(); }
+bool user_storage_flash_ready(void) { return !log_async_active() && store.clear != 9 && !w25_async_active() && w25_read_available(); }
 /* <<< Cooperative storage callers */
 
 /* >>> подтверждение выгрузки */
@@ -4573,8 +4575,120 @@ static cellLog_s log_pending[LOG_PENDING_MAX];
 static uint8_t log_pendingCount;
 static uint8_t log_timeKnown;
 
+/* >>> Cooperative event writer */
+/* Snapshot owns both async program sources, never the caller or queue storage.
+ * result: 1 pending, 2 verified, 3 failed (retained for delayed reconciliation).
+ * Each step reads one 32-byte cell, starts one command, or polls one command. */
+static struct {
+  cellLog_s cell;
+  uint32_t address, previous, retry_at;
+  uint8_t phase, waiting, result;
+} log_job;
+enum { LA_PREVIOUS=1, LA_FIND, LA_BODY, LA_MARK, LA_VERIFY, LA_RECONCILE };
+static bool log_async_active(void) { return log_job.phase != 0; }
+
+static void log_async_begin(const cellLog_s *cell)
+{
+  log_job.cell = *cell;
+  log_job.address = device.newAddressLog;
+  if (log_job.address < mem[MB_LOG].start) log_job.address = mem[MB_LOG].start;
+  log_job.previous = log_lastIndex;
+  log_job.phase = LA_PREVIOUS; log_job.waiting = 0; log_job.result = 1;
+}
+
+static uint8_t log_async_step(uint32_t now)
+{
+  cellLog_s actual;
+  uint8_t r;
+  uint16_t crc, inverse;
+  uint32_t mark = 0x32474f4cu;
+  if (!log_job.phase) return log_job.result;
+  if (log_job.result == 3 && (int32_t)(now - log_job.retry_at) < 0) return 3;
+  if (log_job.waiting) {
+    r = w25_async_poll(now);
+    if (r == 1) return 1;
+    log_job.waiting = 0;
+    if (r != 2) { log_job.phase = LA_RECONCILE; goto failed; }
+    ++log_job.phase; /* BODY -> MARK -> VERIFY */
+    return log_job.result = 1;
+  }
+  if (!w25_read_available()) return log_job.result;
+  if (log_job.address < mem[MB_LOG].start ||
+      log_job.address > mem[MB_LOG].start + mem[MB_LOG].size - sizeof(actual)) {
+    log_job.phase = 0; goto failed; /* Full: allow upload/clear to make room. */
+  }
+  switch (log_job.phase) {
+  case LA_PREVIOUS:
+    if (log_job.address >= mem[MB_LOG].start + sizeof(actual)) {
+      if (!mem_read(log_job.address - sizeof(actual), (uint8_t*)&actual, sizeof(actual))) goto failed;
+      if (log_valid(&actual) && actual.index > log_job.previous) log_job.previous = actual.index;
+    }
+    log_job.phase = LA_FIND; break;
+  case LA_FIND:
+    if (!mem_read(log_job.address, (uint8_t*)&actual, sizeof(actual))) goto failed;
+    if (!log_blank(&actual)) {
+      if (log_valid(&actual) && actual.index > log_job.previous) log_job.previous = actual.index;
+      log_job.address += sizeof(actual); break;
+    }
+    if (log_job.previous && log_job.cell.index <= log_job.previous) log_job.cell.index = log_job.previous + 1u;
+    crc = crc16_calc((uint8_t*)&log_job.cell, sizeof(actual) - sizeof(actual.reserve));
+    inverse = (uint16_t)~crc;
+    memcpy(log_job.cell.reserve, &crc, 2); memcpy(log_job.cell.reserve + 2, &inverse, 2);
+    memcpy(log_job.cell.reserve + 4, &mark, 4);
+    log_job.phase = LA_BODY; break;
+  case LA_BODY:
+  case LA_MARK:
+    r = log_job.phase == LA_BODY;
+    log_job.waiting = w25_async_start(log_job.address + (r ? 0u : sizeof(actual) - 4u),
+      (uint8_t*)&log_job.cell + (r ? 0u : sizeof(actual) - 4u), r ? sizeof(actual) - 4u : 4u, now);
+    if (!log_job.waiting) { log_job.phase = LA_RECONCILE; goto failed; }
+    break;
+  case LA_VERIFY:
+  case LA_RECONCILE:
+    if (!mem_read(log_job.address, (uint8_t*)&actual, sizeof(actual))) goto failed;
+    if (!memcmp(&actual, &log_job.cell, sizeof(actual)) && log_valid(&actual)) {
+      /* Only this verified path publishes the cursor and releases the queue. */
+      log_lastIndex = log_job.cell.index;
+      device.newAddressLog = log_job.address + sizeof(actual);
+      device.status.readyLogData = 1;
+      log_job.phase = 0; return log_job.result = 2;
+    }
+    if (log_job.phase == LA_VERIFY) { log_job.phase = LA_RECONCILE; goto failed; }
+    /* A failed write may have reached NOR. Re-read before retrying: acknowledge
+     * the exact committed record once, or finish compatible torn bytes in place.
+     * Never overwrite an unrelated/over-cleared cell. */
+    for (uint16_t i = 0; i < sizeof(actual); ++i) {
+      if ((((uint8_t*)&actual)[i] & ((uint8_t*)&log_job.cell)[i]) != ((uint8_t*)&log_job.cell)[i]) {
+        if (log_valid(&actual) && actual.index > log_job.previous) log_job.previous = actual.index;
+        log_job.address += sizeof(actual); log_job.phase = LA_FIND;
+        return log_job.result = 1;
+      }
+    }
+    log_job.phase = LA_BODY; break;
+  }
+  return log_job.result = 1;
+failed:
+  if (log_job.phase == LA_PREVIOUS || log_job.phase == LA_FIND) log_job.phase = 0;
+  log_job.retry_at = now + 1000u;
+  return log_job.result = 3;
+}
+
+static void log_storage_poll(uint32_t now)
+{
+  if (!log_async_active()) {
+    if (log_pendingCount && (log_job.result != 3 || (int32_t)(now - log_job.retry_at) >= 0))
+      log_async_begin(&log_pending[0]);
+    return;
+  }
+  if (log_async_step(now) != 2) return;
+  --log_pendingCount;
+  memmove(log_pending, log_pending + 1, log_pendingCount * sizeof(log_pending[0]));
+}
+/* <<< Cooperative event writer */
+
 // записать отложенные события как есть
 void log_flushPending(void){
+  if (store_runtime) return; /* Only user_storage_poll advances runtime writes. */
   while (log_pendingCount) {
     if (!log_addEvent(&log_pending[0])) return;
     log_pendingCount--;
@@ -4586,7 +4700,7 @@ void log_setTime(uint32_t now){
   device.datetime = now;
   id_endScan = true;
   if (!log_timeKnown) {
-    for (uint8_t i = 0; i < log_pendingCount; i++){
+    for (uint8_t i = log_async_active() ? 1u : 0u; i < log_pendingCount; i++){
       log_pending[i].datetime = now - (device.worktime - log_pending[i].datetime);
       log_pending[i].index = log_pending[i].datetime;
     }
@@ -4600,11 +4714,11 @@ void log_checkPending(void){
 }
 
 static bool log_put(cellLog_s *cell){
-  if (log_timeKnown || device.worktime >= LOG_TIME_WAIT){
+  if (!store_runtime && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)){
     log_flushPending();
     if (!log_pendingCount && log_addEvent(cell)) return true;
   }
-  if (log_pendingCount == LOG_PENDING_MAX) log_flushPending();
+  if (!store_runtime && log_pendingCount == LOG_PENDING_MAX) log_flushPending();
   if (log_pendingCount == LOG_PENDING_MAX) return false;
   log_pending[log_pendingCount] = *cell;
   // до времени сервера datetime хранит uptime, затем переводится один раз
@@ -4995,6 +5109,7 @@ static void store_marker(uint8_t cmd, uint32_t end)
 }
 static bool store_snapshot(void)
 {
+  if (log_async_active()) return false;
   config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
   device.crc = crc16_calc((uint8_t*)&device, sizeof(device) - 2);
   return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
@@ -5087,6 +5202,7 @@ void user_storage_poll(void)
   store_usb_session();
   uint32_t now = timers_getMillis();
   uint8_t result = mem_config_result();
+  if (log_async_active()) { log_storage_poll(now); return; }
   if (result == 1) { mem_config_poll(now); return; }
   if (store.job == US_REPLY) { store_reply(); return; }
   if (store.job == US_RECOVER) {
@@ -5177,6 +5293,10 @@ void user_storage_poll(void)
     return;
   }
   if (store.job || !w25_read_available()) return;
+  if (log_pendingCount && store.clear != 10 &&
+      (store_reset_requested || (!store_save_requested && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)))) {
+    log_storage_poll(now); return;
+  }
   if (store_reset_requested) {
     log_flushPending();
     if (log_pendingCount) return;

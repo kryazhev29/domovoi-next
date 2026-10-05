@@ -1,6 +1,6 @@
 
 static void setup(void){
- host_boot(); memset(&cfg_job,0,sizeof(cfg_job)); held=0; memset(&store,0,sizeof(store));
+ memset(&log_job,0,sizeof(log_job)); log_timeKnown=1; host_boot(); memset(&cfg_job,0,sizeof(cfg_job)); held=0; memset(&store,0,sizeof(store));
  cfg_legacy_checked=0; memset(&config,0,sizeof(config)); memset(&device,0,sizeof(device));
  memset(flash,255,sizeof(flash));memset(mem,0,sizeof(mem));
  mem[MB_CONFIG].start=MEM_CONFIG_LEGACY;mem[MB_CONFIG].size=4096;
@@ -78,5 +78,9 @@ int main(void){
  setup();user_send_logRecords(CH_SERVER,1);void *held_heap=malloc(0x1400);CHECK(held_heap);
  user_send_logRecords(CH_SERVER,2);CHECK(!store.job&&!device.readLogIDIndex&&frames==1);free(held_heap);
  user_send_logRecords(CH_SERVER,2);CHECK(store.job==US_ACK);drain();CHECK(device.readLogIDIndex==32&&frames==2);
+ setup();memset(&log_pending[0],0,sizeof(log_pending[0]));log_pending[0].index=999;log_pendingCount=1;
+ user_storage_poll();CHECK(log_async_active()&&!user_storage_command_ready()&&!store_snapshot());
+ CHECK(store_command_allowed(24)&&store_command_allowed(27));
+ while(log_pendingCount){user_storage_poll();now++;}CHECK(log_getRecordsCount()==41);
  puts("PASS storage callers: delayed ACK/config/reset, duplicate, reconnect, busy slot, immutable checkpoint, partial-clear reboot/resume");return 0;
 }

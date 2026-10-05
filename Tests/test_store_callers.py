@@ -21,7 +21,8 @@ decls=u[u.index("/* >>> Cooperative storage callers */"):u.index("/* <<< Coopera
 upload=u[u.index("/* >>> подтверждение выгрузки */"):u.index("/* <<< подтверждение выгрузки */")]
 impl=u[u.index("/* >>> Cooperative storage implementation */"):]
 names=("log_blank","log_valid","log_uniqueIndex","log_getRecordsCount","log_readRecords","user_getTempIDRecordsCount","log_addEvent","log_flushPending","user_send_logRecords","user_send_tempIDs","user_comm_session","user_writeConfigAndDevice")
-unit=base+src("Tests/store_async_model.inc")+header+shared+mem+decls+upload+"\n".join(fun(u,n) for n in names)+impl+src("Tests/store_callers_cases.inc")
+events=u[u.index("/* >>> Cooperative event writer */"):u.index("/* <<< Cooperative event writer */")]
+unit=base+src("Tests/store_async_model.inc")+header+shared+mem+decls+upload+"\n".join(fun(u,n) for n in names)+events+impl+src("Tests/store_callers_cases.inc")
 unit=src("User/fast_kernels.h")+"\n"+unit.replace('#include "fast_kernels.h"','')
 with tempfile.TemporaryDirectory() as d:
  p=pathlib.Path(d); (p/"test.c").write_text(unit,encoding="utf-8")

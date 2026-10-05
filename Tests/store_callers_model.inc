@@ -3,7 +3,7 @@ static config_s config;
 static device_s device;
 static struct {uint32_t start,size;} mem[10];
 static uint32_t now, log_lastIndex, usb_bus_resets;
-static uint8_t log_pendingCount, sync_pending, sync_quiet;
+static uint8_t log_pendingCount, log_timeKnown, sync_pending, sync_quiet;
 static cellLog_s log_pending[16];
 static unsigned frames, empty_frames, resets, acks, stamps, syncs;
 static uint8_t frame[1200];
