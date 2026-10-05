@@ -1,0 +1,73 @@
+{
+  "status": "PASS",
+  "ack_order": [
+    {
+      "number": 1,
+      "channel": 0,
+      "setup_phases": [
+        1,
+        2,
+        8,
+        16
+      ],
+      "config_wait_excluded_from_flash_owner": true
+    },
+    {
+      "number": 1,
+      "channel": 1,
+      "setup_phases": [
+        1,
+        2,
+        8,
+        16
+      ],
+      "config_wait_excluded_from_flash_owner": true
+    },
+    {
+      "number": 4,
+      "channel": 0,
+      "setup_phases": [
+        4,
+        5,
+        6,
+        8,
+        16
+      ],
+      "config_wait_excluded_from_flash_owner": true
+    },
+    {
+      "number": 4,
+      "channel": 1,
+      "setup_phases": [
+        4,
+        5,
+        6,
+        8,
+        16
+      ],
+      "config_wait_excluded_from_flash_owner": true
+    }
+  ],
+  "config_failure": [
+    {
+      "channel": 0,
+      "FWinProgress": 0,
+      "blocks": 0,
+      "index": 0,
+      "timeout": 0,
+      "answer": "RUNERROR"
+    },
+    {
+      "channel": 1,
+      "FWinProgress": 0,
+      "blocks": 0,
+      "index": 0,
+      "timeout": 0,
+      "answer": "RUNERROR"
+    }
+  ],
+  "quiet_reconnect_usb": 8,
+  "abort_reset": 16,
+  "elf_sha256": "70d6b82f181b12f67dc28c9fd02da6b39f2240493543d9e6f0bdf3d2fa952cd0",
+  "scope": "Real linked callers and storage scheduler; modeled NOR/transport. No board timing."
+}
