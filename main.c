@@ -7,6 +7,7 @@
 
 #include "main.h"
 #include "Bootloader/app_update.h"
+#include "User/prof.h"
 
 unsigned int loop_max_ms = 0, loop_stalls = 0;
 
@@ -69,21 +70,23 @@ void main()
   // включаем питание gsm модуля
 
   unsigned int loop_mark = timers_getMillis();
+  prof_init();
+  uint32_t prof_loop = PROF_NOW();
 
   // Входим в основной цикл работы
   while (true)
   {
     // порт - gsm
-    gsm_check_data();
+    PROF_STEP(PROF_GSM, gsm_check_data());
 
     // порт - 485
-    port_check_data();
+    PROF_STEP(PROF_PORT, port_check_data());
 
     // порт - USB
-    usb_check_data();
+    PROF_STEP(PROF_USB, usb_check_data());
 
     // циклический обработчик
-    user_loop();
+    PROF_STEP(PROF_USER, user_loop());
 
     /* Команда 111: самый долгий проход главного цикла и проходы от 1 с. */
     {
@@ -91,6 +94,11 @@ void main()
       loop_mark = now;
       if (took > loop_max_ms) loop_max_ms = took;
       if (took >= 1000u) loop_stalls++;
+    }
+    {
+      uint32_t t = PROF_NOW();
+      prof_add(PROF_LOOP, t - prof_loop);
+      prof_loop = t;
     }
   } // while
 } // main

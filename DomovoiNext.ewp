@@ -2368,6 +2368,9 @@
             <name>$PROJ_DIR$\User\outs.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\prof.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\user_fun.c</name>
         </file>
         <file>

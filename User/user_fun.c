@@ -3,6 +3,7 @@
 // Пользовательские функции
 
 #include "user_fun.h"
+#include "prof.h"
 #include "../Modules/comm_channel.h"
 #include "../Modules/comm_server.h"
 #include "photo.h"
@@ -3417,7 +3418,7 @@ if (cch != CH_USB && len >= 5){
         user_send_usbDiag(uniqId);
       break;
     case USB_COMM_DIAG_COMMAND:
-      if (cch == CH_USB) user_send_commDiag(uniqId);
+      if (cch == CH_USB) { user_send_commDiag(uniqId); prof_send(uniqId); }
       break;
 
     case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */

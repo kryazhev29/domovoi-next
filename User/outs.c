@@ -2,6 +2,7 @@
 // Автор: Корякин Сергей
 
 #include "outs.h"
+#include "prof.h"
 
 Int16U out_timeactiv[OUTSCOUNT] = {0};
 Int16U out_timepause[OUTSCOUNT] = {0};
@@ -38,6 +39,7 @@ static void out_set (Int8U out, Int8U set)
   default: break;
   }
   
+  if (set && !(out_st & (1<<out))) prof_relay_on();
   if (set)
     out_st |= (1<<out);
   else
