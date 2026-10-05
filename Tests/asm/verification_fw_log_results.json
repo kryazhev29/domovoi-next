@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "elf_sha256": "a2f8fc120e127eab44256e0629f751c480d62ca8557a112a0030cb42d5a3abb8",
+  "late_crc_log": [
+    133,
+    8
+  ],
+  "reply": "534c444e0500ff000400fdda54",
+  "rebootToUpdate": 0,
+  "largest_free": 4088
+}
