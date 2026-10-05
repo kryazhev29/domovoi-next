@@ -4,7 +4,7 @@ import argparse, os, subprocess
 from comm_uart_budget import arm_sections
 
 p=argparse.ArgumentParser()
-p.add_argument('--cc', default=r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
+p.add_argument('--cc', default=__import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe'))
 p.add_argument('--out', type=Path, default=Path('Release/comm-stage4_6/final'))
 a=p.parse_args()
 root=Path(__file__).resolve().parents[1]

@@ -3,7 +3,7 @@ import os, pathlib, subprocess, sys, tempfile, re
 from source_select import source_path
 # DOMOVOI_ROOT runs the tests against a copy, e.g. with a deliberate fault.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
-ZIG=r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe'
+ZIG=__import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
 ref=sys.argv[1] if len(sys.argv)>1 and sys.argv[1]!='work' else None
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):

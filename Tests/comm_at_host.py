@@ -8,7 +8,7 @@ import tempfile
 from modem_sim import c_header
 
 ROOT = Path(__file__).resolve().parents[1]
-ZIG = r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe'
+ZIG = __import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
 
 
 def unit(root=ROOT):

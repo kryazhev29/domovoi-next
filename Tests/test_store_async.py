@@ -2,7 +2,7 @@
 import pathlib, subprocess, tempfile, re
 from source_select import source_path
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-ZIG = r"C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe"
+ZIG = __import__('os').environ.get('DOMOVOI_ZIG', r"C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe")
 def src(p): return source_path(ROOT,p).read_bytes().decode("cp1251")
 base = src("Tests/test_storage.c").split("/* PRODUCTION */")[0]
 # Original harness supplies NOR 1->0, partial operations, legacy CRC, heap checks.
