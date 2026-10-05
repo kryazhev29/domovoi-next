@@ -504,7 +504,7 @@ user_storage_command_ready:
         POP      {R1,PC}
           CFI EndBlock cfiBlock1
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiStorageIdle Using cfiCommon0
           CFI Function storage_idle
         THUMB
@@ -14092,7 +14092,7 @@ user_findID:
         BCS.N    ??user_findID_1
         BL       ?Subroutine33
 ??CrossCallReturnLabel_111:
-        CBZ.N    R0,??user_findID_1
+        CBZ.N    R0,??user_findID_9
         MOVS     R7,#+0
 ??user_findID_6:
         ADDS     R0,R7,R6
@@ -14117,6 +14117,9 @@ user_findID:
         BL       __aeabi_memcpy
 ??user_findID_3:
         MOVS     R0,#+1
+        B.N      ??user_findID_8
+??user_findID_9:
+        MOVS     R0,#+2                  ; read error, not "absent" (no event 65)
         B.N      ??user_findID_8
 ??user_findID_1:
         MOVS     R0,#+0
@@ -14658,6 +14661,8 @@ user_checkIdAndControl:
         MOV      R0,R6
           CFI FunCall user_findID
         BL       user_findID
+        CMP      R0,#+1
+        BHI.W    ??user_checkIdAndControl_3
         CMP      R0,#+0
         BEQ.W    ??user_checkIdAndControl_34
         LDR      R0,[SP, #+65]
@@ -14778,7 +14783,8 @@ user_checkIdAndControl:
         IT       CC
         BLCC     user_dayIsHoliday
 ??user_checkIdAndControl_53:
-        CBNZ.N   R0,??user_checkIdAndControl_32
+        CMP      R0,#+1
+        BEQ.N    ??user_checkIdAndControl_32
 ??user_checkIdAndControl_55:
         LDR.W    R0,??DataTable149_5
         B.N      ??user_checkIdAndControl_13
@@ -14955,6 +14961,8 @@ user_activateOut:
         MOV      R0,R9
           CFI FunCall user_findID
         BL       user_findID
+        CMP      R0,#+1
+        BHI.N    ??user_activateOut_7
         CMP      R0,#+0
         BEQ.N    ??user_activateOut_8
         MOVS     R4,#+0
@@ -15150,50 +15158,53 @@ user_activateOut:
           CFI Block cfiBlock364 Using cfiCommon0
           CFI Function user_getGroup
         THUMB
+; R0 = group number, R1 = 16-byte destination. Command 15 stores a group at its
+; number's cell: one read at that cell. 1 - group present; 0 - absent or read error.
 user_getGroup:
-        PUSH     {R3-R7,LR}
+        MOVS     R2,#+16
+        LDR.W    R3,??DataTable138
+        ADDS     R3,R3,#+24
+          CFI FunCall table_cell
+        B.W      table_cell
+          CFI EndBlock cfiBlock364
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiTableCell Using cfiCommon0
+          CFI Function table_cell
+        THUMB
+; R0 = number 1..N, R1 = destination, R2 = record size, R3 = &mem[area] (start, size).
+; 1 - the record with this number was read; 0 - outside the area, read error, other record.
+table_cell:
+        PUSH     {R4-R6,LR}
           CFI R14 Frame(CFA, -4)
-          CFI R7 Frame(CFA, -8)
-          CFI R6 Frame(CFA, -12)
-          CFI R5 Frame(CFA, -16)
-          CFI R4 Frame(CFA, -20)
-          CFI CFA R13+24
-        SUB      SP,SP,#+1024
-          CFI CFA R13+1048
+          CFI R6 Frame(CFA, -8)
+          CFI R5 Frame(CFA, -12)
+          CFI R4 Frame(CFA, -16)
+          CFI CFA R13+16
         MOV      R4,R0
         MOV      R5,R1
-        LDR.W    R1,??DataTable138
-        LDR      R0,[R1, #+24]
-        LDR      R6,[R1, #+28]
-        ADDS     R6,R6,R0
-        MOV      R7,R0
-        B.N      ??user_getGroup_0
-??user_getGroup_1:
-        ADDS     R2,R2,#+16
-        CMP      R2,#+1024
-        BLT.N    ??user_getGroup_2
-        ADD      R7,R7,#+1024
-??user_getGroup_0:
-        CMP      R7,R6
-        BCS.N    ??user_getGroup_3
-        BL       ?Subroutine50
-??CrossCallReturnLabel_180:
-        MOVS     R2,#+0
-??user_getGroup_2:
-        ADD      R1,SP,R2
-        LDRB     R3,[R1, #+0]
-        CMP      R3,R4
-        BNE.N    ??user_getGroup_1
-        MOVS     R2,#+16
-        MOV      R0,R5
-          CFI FunCall __aeabi_memcpy
-        BL       __aeabi_memcpy
-        MOVS     R0,#+1
-        B.N      ??user_getGroup_4
-??user_getGroup_3:
+        SUBS     R0,R0,#+1
+        BMI.N    ??table_cell_0
+        MULS     R0,R2,R0
+        LDR      R6,[R3, #+0]
+        LDR      R3,[R3, #+4]
+        ADDS     R1,R0,R2
+        CMP      R1,R3
+        BHI.N    ??table_cell_0
+        ADD      R0,R0,R6
+        MOV      R1,R5
+          CFI FunCall mem_read
+        BL       mem_read
+        CBZ.N    R0,??table_cell_0
+        LDRB     R0,[R5, #+0]
+        SUBS     R0,R0,R4
+        CLZ      R0,R0
+        LSRS     R0,R0,#+5
+        POP      {R4-R6,PC}
+??table_cell_0:
         MOVS     R0,#+0
-??user_getGroup_4:
-          CFI EndBlock cfiBlock364
+        POP      {R4-R6,PC}
+          CFI EndBlock cfiTableCell
         REQUIRE ?Subroutine2
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -15218,50 +15229,13 @@ user_getGroup:
           CFI Block cfiBlock366 Using cfiCommon0
           CFI Function user_getShedule
         THUMB
+; R0 = schedule number, R1 = 32-byte destination (command 14: at its number, as groups).
 user_getShedule:
-        PUSH     {R3-R7,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R7 Frame(CFA, -8)
-          CFI R6 Frame(CFA, -12)
-          CFI R5 Frame(CFA, -16)
-          CFI R4 Frame(CFA, -20)
-          CFI CFA R13+24
-        SUB      SP,SP,#+1024
-          CFI CFA R13+1048
-        MOV      R4,R0
-        MOV      R5,R1
-        LDR.W    R1,??DataTable138
-        LDR      R0,[R1, #+32]
-        LDR      R6,[R1, #+36]
-        ADDS     R6,R6,R0
-        MOV      R7,R0
-        B.N      ??user_getShedule_0
-??user_getShedule_1:
-        ADDS     R2,R2,#+32
-        CMP      R2,#+1024
-        BLT.N    ??user_getShedule_2
-        ADD      R7,R7,#+1024
-??user_getShedule_0:
-        CMP      R7,R6
-        BCS.N    ??user_getShedule_3
-        BL       ?Subroutine50
-??CrossCallReturnLabel_179:
-        MOVS     R2,#+0
-??user_getShedule_2:
-        ADD      R1,SP,R2
-        LDRB     R3,[R1, #+0]
-        CMP      R3,R4
-        BNE.N    ??user_getShedule_1
         MOVS     R2,#+32
-        MOV      R0,R5
-          CFI FunCall __aeabi_memcpy
-        BL       __aeabi_memcpy
-        MOVS     R0,#+1
-        B.N      ??user_getShedule_4
-??user_getShedule_3:
-        MOVS     R0,#+0
-??user_getShedule_4:
-        B.N      ?Subroutine2
+        LDR.W    R3,??DataTable138
+        ADDS     R3,R3,#+32
+          CFI FunCall table_cell
+        B.W      table_cell
           CFI EndBlock cfiBlock366
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -15286,35 +15260,17 @@ user_getShedule:
         DC32     ?_94
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond367 Using cfiCommon0
-          CFI Function user_getGroup
-          CFI Conditional ??CrossCallReturnLabel_180
-          CFI R4 Frame(CFA, -20)
-          CFI R5 Frame(CFA, -16)
-          CFI R6 Frame(CFA, -12)
-          CFI R7 Frame(CFA, -8)
-          CFI R14 Frame(CFA, -4)
-          CFI CFA R13+1048
-          CFI Block cfiCond368 Using cfiCommon0
-          CFI (cfiCond368) Function user_getShedule
-          CFI (cfiCond368) Conditional ??CrossCallReturnLabel_179
-          CFI (cfiCond368) R4 Frame(CFA, -20)
-          CFI (cfiCond368) R5 Frame(CFA, -16)
-          CFI (cfiCond368) R6 Frame(CFA, -12)
-          CFI (cfiCond368) R7 Frame(CFA, -8)
-          CFI (cfiCond368) R14 Frame(CFA, -4)
-          CFI (cfiCond368) CFA R13+1048
           CFI Block cfiCond369 Using cfiCommon0
-          CFI (cfiCond369) Function user_checkIdTimeEnd
-          CFI (cfiCond369) Conditional ??CrossCallReturnLabel_178
-          CFI (cfiCond369) R4 Frame(CFA, -28)
-          CFI (cfiCond369) R5 Frame(CFA, -24)
-          CFI (cfiCond369) R6 Frame(CFA, -20)
-          CFI (cfiCond369) R7 Frame(CFA, -16)
-          CFI (cfiCond369) R8 Frame(CFA, -12)
-          CFI (cfiCond369) R9 Frame(CFA, -8)
-          CFI (cfiCond369) R14 Frame(CFA, -4)
-          CFI (cfiCond369) CFA R13+1056
+          CFI Function user_checkIdTimeEnd
+          CFI Conditional ??CrossCallReturnLabel_178
+          CFI R4 Frame(CFA, -28)
+          CFI R5 Frame(CFA, -24)
+          CFI R6 Frame(CFA, -20)
+          CFI R7 Frame(CFA, -16)
+          CFI R8 Frame(CFA, -12)
+          CFI R9 Frame(CFA, -8)
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+1056
           CFI Block cfiPicker370 Using cfiCommon1
           CFI (cfiPicker370) NoFunction
           CFI (cfiPicker370) Picker
@@ -15323,12 +15279,8 @@ user_getShedule:
         MOV      R2,#+1024
         MOV      R1,SP
         MOV      R0,R7
-          CFI (cfiCond367) FunCall user_getGroup mem_read
-          CFI (cfiCond368) FunCall user_getShedule mem_read
           CFI (cfiCond369) FunCall user_checkIdTimeEnd mem_read
         B.W      mem_read
-          CFI EndBlock cfiCond367
-          CFI EndBlock cfiCond368
           CFI EndBlock cfiCond369
           CFI EndBlock cfiPicker370
 
@@ -15336,45 +15288,55 @@ user_getShedule:
           CFI Block cfiBlock371 Using cfiCommon0
           CFI Function user_dayIsHoliday
         THUMB
+; Today is a holiday: 1 - yes, 0 - no, 2 - read error (access refused under any holiday
+; rule). The 1024-byte list is read in 64-byte steps: 64 bytes of stack, not 1024.
 user_dayIsHoliday:
-        PUSH     {R7,LR}
+        PUSH     {R4-R6,LR}
           CFI R14 Frame(CFA, -4)
-          CFI CFA R13+8
-        SUB      SP,SP,#+1024
-          CFI CFA R13+1032
-        MOV      R2,#+1024
+          CFI R6 Frame(CFA, -8)
+          CFI R5 Frame(CFA, -12)
+          CFI R4 Frame(CFA, -16)
+          CFI CFA R13+16
+        SUB      SP,SP,#+64
+          CFI CFA R13+80
+        LDR.W    R4,??DataTable138
+        LDR      R4,[R4, #+40]
+        ADD      R5,R4,#+1024
+        LDR.W    R0,??DataTable139_1
+        LDR      R6,[R0, #+47]
+        LDR.W    R0,??DataTable139
+        UDIV     R6,R6,R0
+??user_dayIsHoliday_0:
+        MOVS     R2,#+64
         MOV      R1,SP
-        LDR.W    R0,??DataTable138
-        LDR      R0,[R0, #+40]
+        MOV      R0,R4
           CFI FunCall mem_read
         BL       mem_read
+        CBZ.N    R0,??user_dayIsHoliday_3
         MOVS     R2,#+0
-??user_dayIsHoliday_0:
+??user_dayIsHoliday_1:
         LDR      R1,[SP, R2]
         LDR.W    R0,??DataTable139
         UDIV     R1,R1,R0
-        LDR.W    R0,??DataTable139_1
-        LDR      R3,[R0, #+47]
-        LDR.W    R0,??DataTable139
-        UDIV     R0,R3,R0
-        CMP      R1,R0
-        BEQ.N    ??user_dayIsHoliday_1
+        CMP      R1,R6
+        BEQ.N    ??user_dayIsHoliday_2
         ADDS     R2,R2,#+4
-        CMP      R2,#+1024
-        BLT.N    ??user_dayIsHoliday_0
-        B.N      ??user_dayIsHoliday_2
-??user_dayIsHoliday_1:
-        MOVS     R0,#+1
-??user_dayIsHoliday_3:
-        ADD      SP,SP,#+1024
-          CFI CFA R13+8
-        ADD      SP,SP,#+4
-          CFI CFA R13+4
-        POP      {PC}
-          CFI CFA R13+1032
-??user_dayIsHoliday_2:
+        CMP      R2,#+64
+        BLT.N    ??user_dayIsHoliday_1
+        ADDS     R4,R4,#+64
+        CMP      R4,R5
+        BCC.N    ??user_dayIsHoliday_0
         MOVS     R0,#+0
-        B.N      ??user_dayIsHoliday_3
+        B.N      ??user_dayIsHoliday_4
+??user_dayIsHoliday_2:
+        MOVS     R0,#+1
+        B.N      ??user_dayIsHoliday_4
+??user_dayIsHoliday_3:
+        MOVS     R0,#+2
+??user_dayIsHoliday_4:
+        ADD      SP,SP,#+64
+          CFI CFA R13+16
+        POP      {R4-R6,PC}
           CFI EndBlock cfiBlock371
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -15817,7 +15779,8 @@ user_checkShedule:
         IT       CC
         BLCC     user_dayIsHoliday
 ??user_checkShedule_7:
-        CBNZ.N   R0,??user_checkShedule_6
+        CMP      R0,#+1
+        BEQ.N    ??user_checkShedule_6
 ??user_checkShedule_9:
         LDR.W    R0,??DataTable160
 ??user_checkShedule_2:
@@ -16833,7 +16796,7 @@ fw_async_reply:
         DATA32
         DC32     ?_121
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock404 Using cfiCommon0
           CFI Function fw_async_begin
         THUMB
