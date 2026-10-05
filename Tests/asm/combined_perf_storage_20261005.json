@@ -1,0 +1,403 @@
+{
+  "units": "Unicorn executed instructions, not hardware cycles; photo I/O stubbed",
+  "hash_checks": 20480,
+  "hash": {
+    "idindex_hash": {
+      "instructions": 40,
+      "result": 4199191369,
+      "stack_bytes": 0
+    },
+    "size_idindex_hash": {
+      "instructions": 135,
+      "result": 4199191369,
+      "stack_bytes": 16
+    },
+    "speed_idindex_hash": {
+      "instructions": 56,
+      "result": 4199191369,
+      "stack_bytes": 8
+    },
+    "size_unrolled_hash": {
+      "instructions": 49,
+      "result": 4199191369,
+      "stack_bytes": 12
+    },
+    "speed_unrolled_hash": {
+      "instructions": 41,
+      "result": 4199191369,
+      "stack_bytes": 8
+    }
+  },
+  "blank": {
+    "size_blank_bytes": {
+      "instructions": 1798,
+      "result": 1,
+      "stack_bytes": 0
+    },
+    "speed_blank_bytes": {
+      "instructions": 1540,
+      "result": 1,
+      "stack_bytes": 0
+    },
+    "size_blank_words": {
+      "instructions": 907,
+      "result": 1,
+      "stack_bytes": 8
+    },
+    "speed_blank_words": {
+      "instructions": 718,
+      "result": 1,
+      "stack_bytes": 8
+    }
+  },
+  "blank_dirty_first": {
+    "size_blank_bytes": {
+      "instructions": 9,
+      "result": 0,
+      "stack_bytes": 0
+    },
+    "speed_blank_bytes": {
+      "instructions": 8,
+      "result": 0,
+      "stack_bytes": 0
+    },
+    "size_blank_words": {
+      "instructions": 16,
+      "result": 0,
+      "stack_bytes": 8
+    },
+    "speed_blank_words": {
+      "instructions": 21,
+      "result": 0,
+      "stack_bytes": 8
+    }
+  },
+  "id_equal": {
+    "size_": {
+      "instructions": 75,
+      "result": 1,
+      "stack_bytes": 8
+    },
+    "speed_": {
+      "instructions": 68,
+      "result": 1,
+      "stack_bytes": 0
+    }
+  },
+  "hash_mutations_detected": [
+    "prime",
+    "index_byte_order",
+    "last_id_byte"
+  ],
+  "linked_hash_checks": 4096,
+  "baseline": {
+    "photo": {
+      "0": {
+        "instructions": 13,
+        "reads": 0,
+        "read_bytes": 0,
+        "watchdog": 0
+      },
+      "1": {
+        "instructions": 89,
+        "reads": 1,
+        "read_bytes": 1,
+        "watchdog": 1
+      },
+      "64": {
+        "instructions": 3617,
+        "reads": 1,
+        "read_bytes": 64,
+        "watchdog": 1
+      },
+      "65": {
+        "instructions": 3693,
+        "reads": 2,
+        "read_bytes": 65,
+        "watchdog": 2
+      },
+      "4095": {
+        "instructions": 230613,
+        "reads": 64,
+        "read_bytes": 4095,
+        "watchdog": 64
+      }
+    },
+    "elf_sha256": "bfd0aea42a32b913188e9f7bd4b069c1a7fe02bb6aa3d3269f20f7944ed5dbe4",
+    "hash": {
+      "instructions": 135,
+      "result": 4199191369,
+      "stack_bytes": 16
+    },
+    "ff_checks": 200,
+    "ff": {
+      "0": {
+        "instructions": 639,
+        "result": 65535,
+        "stack_bytes": 144
+      },
+      "1": {
+        "instructions": 3691,
+        "result": 255,
+        "stack_bytes": 144
+      },
+      "16000": {
+        "instructions": 41717,
+        "result": 8147,
+        "stack_bytes": 144
+      },
+      "1601536": {
+        "instructions": 52299,
+        "result": 51273,
+        "stack_bytes": 144
+      },
+      "4294967295": {
+        "instructions": 128801,
+        "result": 16448,
+        "stack_bytes": 144
+      }
+    },
+    "scan": {
+      "bad_full": {
+        "instructions": 10599427,
+        "move_calls": 2048,
+        "move_bytes": 2096128,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "bad_partial_tail": {
+        "instructions": 10599316,
+        "move_calls": 2045,
+        "move_bytes": 2096125,
+        "left": 3,
+        "ready": 0,
+        "tail_hex": "534c44"
+      },
+      "garbage": {
+        "instructions": 10578951,
+        "move_calls": 2048,
+        "move_bytes": 2096128,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "valid": {
+        "instructions": 242,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 20,
+        "ready": 20,
+        "tail_hex": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      },
+      "partial": {
+        "instructions": 61,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 5,
+        "ready": 0,
+        "tail_hex": "534c444e0c"
+      },
+      "nested_bad_crc": {
+        "instructions": 14082991,
+        "move_calls": 2048,
+        "move_bytes": 2096128,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      }
+    },
+    "lib_id_equal": {
+      "instructions": 69,
+      "result": 0,
+      "stack_bytes": 0
+    },
+    "find_id": {
+      "32/-1": {
+        "instructions": 3920,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/-1": {
+        "instructions": 122278,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/0": {
+        "instructions": 449,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/511": {
+        "instructions": 61408,
+        "reads": 16,
+        "read_bytes": 16384
+      },
+      "1024/1023": {
+        "instructions": 122496,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/-1/common_prefix": {
+        "instructions": 177574,
+        "reads": 32,
+        "read_bytes": 32768
+      }
+    }
+  },
+  "current": {
+    "photo": {
+      "0": {
+        "instructions": 14,
+        "reads": 0,
+        "read_bytes": 0,
+        "watchdog": 0
+      },
+      "1": {
+        "instructions": 53,
+        "reads": 1,
+        "read_bytes": 1,
+        "watchdog": 1
+      },
+      "64": {
+        "instructions": 587,
+        "reads": 1,
+        "read_bytes": 64,
+        "watchdog": 1
+      },
+      "65": {
+        "instructions": 626,
+        "reads": 2,
+        "read_bytes": 65,
+        "watchdog": 2
+      },
+      "4095": {
+        "instructions": 36682,
+        "reads": 64,
+        "read_bytes": 4095,
+        "watchdog": 64
+      }
+    },
+    "elf_sha256": "39ce7392b8023f078b31ee21028c90dd3c6d042866cedca7e03a455fae768b22",
+    "hash": {
+      "instructions": 40,
+      "result": 4199191369,
+      "stack_bytes": 0
+    },
+    "ff_checks": 200,
+    "ff": {
+      "0": {
+        "instructions": 10,
+        "result": 65535,
+        "stack_bytes": 96
+      },
+      "1": {
+        "instructions": 610,
+        "result": 255,
+        "stack_bytes": 104
+      },
+      "16000": {
+        "instructions": 27898,
+        "result": 8147,
+        "stack_bytes": 104
+      },
+      "1601536": {
+        "instructions": 41194,
+        "result": 51273,
+        "stack_bytes": 104
+      },
+      "4294967295": {
+        "instructions": 65098,
+        "result": 16448,
+        "stack_bytes": 104
+      }
+    },
+    "scan": {
+      "bad_full": {
+        "instructions": 83993,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "bad_partial_tail": {
+        "instructions": 83960,
+        "move_calls": 1,
+        "move_bytes": 3,
+        "left": 3,
+        "ready": 0,
+        "tail_hex": "534c44"
+      },
+      "garbage": {
+        "instructions": 63519,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      },
+      "valid": {
+        "instructions": 237,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 20,
+        "ready": 20,
+        "tail_hex": "534c444e0c00a5a5a5a5a5a5a5a5a5a5a5a508ae"
+      },
+      "partial": {
+        "instructions": 66,
+        "move_calls": 0,
+        "move_bytes": 0,
+        "left": 5,
+        "ready": 0,
+        "tail_hex": "534c444e0c"
+      },
+      "nested_bad_crc": {
+        "instructions": 3566879,
+        "move_calls": 1,
+        "move_bytes": 0,
+        "left": 0,
+        "ready": 0,
+        "tail_hex": ""
+      }
+    },
+    "lib_id_equal": {
+      "instructions": 69,
+      "result": 0,
+      "stack_bytes": 0
+    },
+    "find_id": {
+      "32/-1": {
+        "instructions": 1107,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/-1": {
+        "instructions": 32200,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/0": {
+        "instructions": 364,
+        "reads": 1,
+        "read_bytes": 1024
+      },
+      "1024/511": {
+        "instructions": 16370,
+        "reads": 16,
+        "read_bytes": 16384
+      },
+      "1024/1023": {
+        "instructions": 32418,
+        "reads": 32,
+        "read_bytes": 32768
+      },
+      "1024/-1/common_prefix": {
+        "instructions": 87496,
+        "reads": 32,
+        "read_bytes": 32768
+      }
+    }
+  }
+}

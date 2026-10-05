@@ -61,7 +61,7 @@ subprocess.run([sys.executable,str(ROOT/"Tests/run_host.py"),"work","photo"],che
 reports=[]
 with tempfile.TemporaryDirectory(prefix='photo-mutations-') as tmp:
  copy=pathlib.Path(tmp)
- for name in ['Tests/run_host.py','Tests/test_photo.c','Tests/comm_photo_slot.c','User/user_fun.c','User/photo.c']:
+ for name in ['Tests/run_host.py','Tests/test_photo.c','Tests/comm_photo_slot.c','User/user_fun.c','User/photo.c','User/sector_journal.c']:
   dest=copy/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,dest)
  original=(copy/'User/photo.c').read_text(encoding='cp1251')
  for name,old,new in mutations:

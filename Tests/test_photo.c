@@ -209,7 +209,22 @@ static void storage_fault_tests(void) {
  puts("photo: read/write/erase faults preserve stored images, reject missing metadata and retain upload position");
 }
 
+/* Independent legacy CRC32 answers generated with zlib; internal CRC has no final XOR. */
+static void backup_crc_vectors(void) {
+ const struct { uint16_t n; uint32_t crc; } cases[] = {{0u,0xFFFFFFFFu}, {1u,0xBA2FC9FAu}, {3u,0xC8AC5A84u}, {63u,0x4519F626u}, {64u,0x004519F6u}, {65u,0xB5D08A28u}, {255u,0x99D926A2u}, {256u,0x71285CAFu}, {257u,0xD1CA4FADu}, {4095u,0xE9DEF125u}};
+ uint32_t crc, a;
+ clean();a=photo_storage_end();
+ for(unsigned i=0;i<4095;i++)flash[a+i]=(uint8_t)(i*37u+11u);
+ for(unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++) {
+  crc=0;assert(photo_backup_crc(a,cases[i].n,&crc));assert(crc==cases[i].crc);
+ }
+ failed_header_read=a+64u;crc=0x12345678u;
+ assert(!photo_backup_crc(a,65,&crc) && crc==0x12345678u);
+ failed_header_read=UINT32_MAX;clean();
+}
+
 int main(int argc,char **argv) {
+ backup_crc_vectors();
  storage_fault_tests();
  if(argc>2 && !strcmp(argv[1],"bridge")) {
    clean();FILE *f=fopen(argv[2],"rb");assert(f);fseek(f,0,SEEK_END);image_size=(uint32_t)ftell(f);rewind(f);

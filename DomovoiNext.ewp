@@ -228,6 +228,7 @@
                 <option>
                     <name>CCDefines</name>
                     <state>ASM_CRC</state>
+                    <state>ASM_ID_HASH</state>
                     <state>STM32F10X_MD</state>
                     <state>USE_STDPERIPH_DRIVER</state>
                 </option>
@@ -1321,6 +1322,7 @@
                 <option>
                     <name>CCDefines</name>
                     <state>ASM_CRC</state>
+                    <state>ASM_ID_HASH</state>
                     <state>STM32F10X_MD</state>
                     <state>USE_STDPERIPH_DRIVER</state>
                 </option>
@@ -2356,6 +2358,9 @@
         </file>
         <file>
             <name>$PROJ_DIR$\User\asm\crc_asm.s</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\asm\id_hash_asm.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\flash_w25.c</name>

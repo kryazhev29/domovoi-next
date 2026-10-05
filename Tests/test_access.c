@@ -75,6 +75,20 @@ int main(void)
   memset(flash, 0xff, sizeof(flash)); CHECK(user_getNumbersCount() == 0 && !user_findID("7900000001", &found));
   put(128, "7900000128", 255, 0); CHECK(user_getNumbersCount() == 1 && user_findID("7900000128", &found));
 
+  /* Empty stored IDs cannot equal an already validated query; check both boundaries. */
+  { char zero[10]={0}, low[10]={1}, ff[10], high[10];
+    memset(ff,255,10);memset(high,255,10);high[9]=(char)254;
+    memset(flash,255,sizeof(flash));
+    put(1,zero,255,0);put(2,ff,255,0);put(33,low,255,0);put(34,high,255,0);
+    user_getNumbersCount();
+    memset(&found,0x5A,sizeof(found));
+    CHECK(!user_findID(zero,&found) && found.index==0x5A5A);
+    CHECK(!user_findID(ff,&found) && found.index==0x5A5A);
+    CHECK(user_findID(low,&found) && found.index==33);
+    CHECK(user_findID(high,&found) && found.index==34);
+    low[1]=1;CHECK(!user_findID(low,&found) && found.index==34);
+  }
+
   /* Outputs: only the requested relays, counter and journal once per pass. */
   memset(flash, 0xff, sizeof(flash)); put(7, "7900000007", 5, 3); user_getNumbersCount();
   config.rele[0].mode = 0; config.rele[1].mode = 1;

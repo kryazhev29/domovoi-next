@@ -38,4 +38,14 @@ int main(void){
     }}
    id_used_bytes=0xFFFFFFFFu;read_bytes=0;CHECK(id_crc16(0,16000)==crc16_calcInit(flash+4096,16000,0xFFFF)&&read_bytes==16000);
   }
+  /* Full uint32_t count range: composition, including the top bit and zero. */
+  { uint32_t seed=0x20261005u;
+    for(unsigned i=0;i<128;i++) {
+      seed=seed*1664525u+1013904223u; uint32_t a=seed;
+      seed=seed*1664525u+1013904223u; uint32_t b=seed%(0xffffffffu-a+1ull);
+      unsigned short init=(unsigned short)seed;
+      CHECK(crc16_ffInit((unsigned long)a+b,init)==crc16_ffInit(b,crc16_ffInit(a,init)));
+    }
+    CHECK(crc16_ffInit(0xffffffffu,0x1234)==crc16_ffInit(0x80000000u,crc16_ffInit(0x7fffffffu,0x1234)));
+  }
   puts("crcff: base CRC with unread erased tail equals full read for 9 fill levels; 0xFF tail CRC matches bytewise CRC for 15 lengths and 5 initial values passed");return 0;}

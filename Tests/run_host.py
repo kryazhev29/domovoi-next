@@ -102,7 +102,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'photo_poll();' in function(user,'port_check_data')
         assert 'photo_connection_lost();' in function(user,'user_comm_session')
         assert '(cmd == 7 || cmd == 21) ? 5 : 255' in function(user,'user_send_answer_comand')
-        code=source('User/photo.c').replace('#include "photo.h"','')
+        code=source('User/photo.c').replace('#include "photo.h"','').replace('#include "sector_journal.h"','')
+        code=function(source('User/sector_journal.c'),'crc32_update')+'\n'+code
         code=code.replace('#include "../Modules/comm_channel.h"','')
         code=source('Tests/comm_photo_slot.c')+'\n'+code
         code += '\n'+function(user,'user_send_Photos')+'\nstatic void command(uint8_t cmd,uint16_t len,uint8_t address,uint8_t uniqId){ uint8_t data[11]={0}; uint8_t *ptr=data; dataChanel_e cch=CH_SERVER; ptr[5]=address; switch(cmd){'+case(7)+case(21)+'default: break;}}'

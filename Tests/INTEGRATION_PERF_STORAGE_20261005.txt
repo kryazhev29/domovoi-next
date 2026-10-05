@@ -1,0 +1,108 @@
+ДОМОВОЙ NEXT: объединение хранения и оптимизаций, 05.10.2026
+
+Результат
+
+В codex/comm-core объединены 835bd8f и codex/perf-cortex-m3 (2b66886).
+Общая исходная точка — 33dbf55. Рабочее дерево:
+C:\Users\kryaz\Desktop\мк\_worktrees\domovoi-comm.
+Обе ветки перед объединением были чистыми, изменения хранения завершены
+коммитами 63440f8/835bd8f. Слияние сохраняет исходные коммиты оптимизаций
+233244a, cbcf73f, 73d0855, 4b5f943, 3cc3149 и их тесты/документацию.
+
+User/user_fun.c и Tests/run_host.py объединены автоматически. Единственный
+конфликт — начало PROJECT_STATUS.md; сохранены обе записи и добавлен итог.
+Проверено совпадение 22 файлов только хранения и 13 файлов только
+оптимизаций с соответствующими родительскими ветками. Новых изменений
+производственной логики сверх обеих серий при объединении не потребовалось.
+
+Проверки общего кода
+
+- Tests/run_all.py: 61/61, включая мутации связи, восстановления, индекса
+  и асинхронного хранения (6/6). Config: 24725 точек обрыва питания,
+  336 отказов чтения; отложенные ACK, повтор, reconnect, очистка и reboot.
+- Tests/test_photo_mutations.py: 51/51.
+- Tests/comm_server_host.py --arm: PASS, Cortex-M3 с -Werror.
+- После мутаций git diff --exit-code подтвердил восстановление исходников.
+  Затем полная IAR Release -build: 0 ошибок, 1 прежнее предупреждение
+  Ls016 о косвенных вызовах при анализе стека.
+- На свежем ELF: test_iar_store_async, peripheral_waits (spi и healthy),
+  persistence, storage_faults — PASS. W25: максимум 983 инструкции модели
+  на poll, не более 64 байт readback и двух чтений статуса за шаг.
+- ASM CRC: 9216 сравнений ядер, 1000 из итогового ELF, 3/3 мутации;
+  эталоны, потоковый CRC, ABI, границы чтения и отсутствие записей — PASS.
+- Хеш: 20480 сравнений вариантов, 4096 из итогового ELF, 3/3 мутации.
+- Сравнение с ELF чистой 33dbf55: фото, поиск ID, сборщик, CRC хвоста FF;
+  по 200 проверок CRC FF каждого ELF, в том числе полные 32-битные длины.
+  Остаток/готовность сборщика и количество/объём чтений совпадают.
+- git diff --check: PASS.
+
+Повторённые замеры (инструкции Unicorn, НЕ такты или время устройства)
+
+Участок                                  33dbf55       Объединённый ELF
+Хеш index + 10 байт ID                    135           40
+CRC резервного префикса фото 4095 байт    230613        36682
+Полный плохой кадр 2048 байт              10599427      83993
+Вложенные ложные заголовки, 2048 байт     14082991      3566879
+Корректный кадр 20 байт                   242           237
+Неполный заголовок 5 байт                 61            66
+Поиск 1024 ID, отличие с первого байта    122278        32200
+Поиск 1024 ID, отличие с десятого байта   177574        87496
+CRC хвоста FF, 16000 байт                 41717         27898
+CRC хвоста FF, 1601536 байт               52299         41194
+CRC хвоста FF, длина 0                   639           10
+
+Замеры оптимизированных участков совпали с отдельной perf-веткой.
+В фото и резервном поиске периферийный ввод/вывод заменён моделью;
+время SPI/Flash сюда не входит. Полные результаты и SHA-256 обоих ELF:
+Tests/asm/combined_perf_storage_20261005.json.
+
+Размеры и адресация
+
+                               33dbf55       835bd8f       Общий код
+BIN                            75980         79497         79453
+readonly code                  69045         72557         72513
+readwrite code                 516           516           516
+readonly data                  6935          6940          6940
+readwrite data                 19239         19406         19406
+
+Снижение относительно хранения — 44 байта BIN, статическая RAM прежняя.
+Относительно исходной 33dbf55: BIN +3473, статическая RAM +167 байт.
+Размеры heap/stack в linker script не менялись (по 4096 байт).
+Адрес заголовка 0x08008000, векторов 0x08008200 сохранён. Bootloader не менялся.
+
+Release/Exe/DomovoiNext.bin SHA-256:
+43a8bdf313c5c5f33930d6b2dff60a28241e25f144e50a959f9eab60db637731
+Release/Exe/DomovoiNext.out SHA-256:
+39ce7392b8023f078b31ee21028c90dd3c6d042866cedca7e03a455fae768b22
+
+Ограничения
+
+Плата, COM, сервер, SMS и реле не использовались. Прошивка устройства,
+установочный пакет и обновление передаточной папки не выполнялись.
+Это локальная проверенная интеграция, а не аппаратная приёмка.
+
+Сохраняются ограничения ASYNC_STORAGE_20261005.txt: синхронные startup,
+миграция, sector journal, FW/фото/таблицы и запись событий; конечная очередь
+16 событий и временный снимок 1024 байта в существующем heap.
+Не доказаны 50 мс при занятой NOR/повреждённом индексе и отсутствие потерь
+при переполнении RAM-очереди или мгновенном снятии питания.
+Повторная CRC вложенных ложных кадров всё ещё требует 3,57 млн инструкций
+за проход. Поэтапный CRC/сканирование и аппаратный DWT — отдельные задачи.
+
+Воспроизведение (PowerShell, из domovoi-comm)
+
+python Tests/run_all.py
+python Tests/test_photo_mutations.py
+python Tests/comm_server_host.py --arm
+& 'C:\Program Files\IAR Systems\Embedded Workbench 9.2\common\bin\iarbuild.exe' DomovoiNext.ewp -build Release -log warnings
+& 'Release/test-venv/Scripts/python.exe' Tests/test_iar_store_async.py
+& 'Release/test-venv/Scripts/python.exe' Tests/test_iar_peripheral_waits.py spi
+& 'Release/test-venv/Scripts/python.exe' Tests/test_iar_peripheral_waits.py healthy
+& 'Release/test-venv/Scripts/python.exe' Tests/test_iar_persistence.py
+& 'Release/test-venv/Scripts/python.exe' Tests/test_iar_storage_faults.py
+& 'Release/test-venv/Scripts/python.exe' Tests/asm/test_asm_crc.py --firmware Release/Exe/DomovoiNext.out --json Release/combined-crc-model.json
+& 'Release/test-venv/Scripts/python.exe' Tests/asm/test_perf_scan.py --baseline ../domovoi-perf/Release/perf-baseline/DomovoiNext.out --firmware Release/Exe/DomovoiNext.out --json Release/combined-perf-recheck.json
+
+Мутационные прогоны и полную сборку выполнять последовательно.
+Эталон ELF — локальная чистая сборка 33dbf55 в domovoi-perf; на другой
+машине собрать этот коммит отдельно. Зависимости: Tests/requirements.txt.
