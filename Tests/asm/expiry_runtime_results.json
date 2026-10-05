@@ -1,0 +1,119 @@
+{
+  "differential": [
+    {
+      "records": 1,
+      "positions": null,
+      "passes": 865,
+      "max_instructions": 1038,
+      "total_instructions": 204679,
+      "max_reads": 128,
+      "stack": 192,
+      "legacy_instructions": 394496,
+      "legacy_stack": 2136
+    },
+    {
+      "records": 1,
+      "positions": null,
+      "passes": 3,
+      "max_instructions": 85,
+      "total_instructions": 203,
+      "max_reads": 32,
+      "stack": 116,
+      "legacy_instructions": 213,
+      "legacy_stack": 1088
+    },
+    {
+      "records": 2,
+      "positions": null,
+      "passes": 4,
+      "max_instructions": 82,
+      "total_instructions": 262,
+      "max_reads": 64,
+      "stack": 116,
+      "legacy_instructions": 253,
+      "legacy_stack": 1088
+    },
+    {
+      "records": 1,
+      "positions": [
+        4
+      ],
+      "passes": 874,
+      "max_instructions": 1038,
+      "total_instructions": 205038,
+      "max_reads": 128,
+      "stack": 192,
+      "legacy_instructions": 395030,
+      "legacy_stack": 2136
+    },
+    {
+      "records": 2,
+      "positions": [
+        0,
+        1
+      ],
+      "passes": 1728,
+      "max_instructions": 1038,
+      "total_instructions": 409312,
+      "max_reads": 128,
+      "stack": 192,
+      "legacy_instructions": 788766,
+      "legacy_stack": 2136
+    },
+    {
+      "records": 2,
+      "positions": [
+        1,
+        4
+      ],
+      "passes": 1735,
+      "max_instructions": 1038,
+      "total_instructions": 409759,
+      "max_reads": 128,
+      "stack": 192,
+      "legacy_instructions": 789230,
+      "legacy_stack": 2136
+    },
+    {
+      "records": 1,
+      "positions": [
+        3
+      ],
+      "passes": 871,
+      "max_instructions": 1038,
+      "total_instructions": 205091,
+      "max_reads": 128,
+      "stack": 192,
+      "legacy_instructions": 394822,
+      "legacy_stack": 2136
+    },
+    {
+      "records": 2,
+      "positions": null,
+      "passes": 4,
+      "max_instructions": 70,
+      "total_instructions": 235,
+      "max_reads": 64,
+      "stack": 116,
+      "legacy_instructions": 225,
+      "legacy_stack": 1088
+    },
+    {
+      "records": 2,
+      "positions": [
+        127,
+        128
+      ],
+      "passes": 1923,
+      "max_instructions": 1038,
+      "total_instructions": 416763,
+      "max_reads": 128,
+      "stack": 192,
+      "legacy_instructions": 790987,
+      "legacy_stack": 2136
+    }
+  ],
+  "cancel_reset_sessions": 16,
+  "faults_oom": 20,
+  "elf_sha256": "f1594cddd2ab4e476a1707a29a18ae608072764de6463bce7f80c93d9452036b"
+}
