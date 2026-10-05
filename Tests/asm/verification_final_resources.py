@@ -8,6 +8,36 @@ import argparse,hashlib,json,re,sys
 from pathlib import Path
 
 
+def camera_table_reset_case(m,step):
+    """Admission and pre-journal cancel on the small fixture, no full-ID scan."""
+    from test_table_runtime import rows
+    from test_memory_runtime import free_blocks
+    step(m.boot_media);step(m.begin_camera,58)
+    assert m.photo_ptr() and not m.active()
+    free_before=sum(free_blocks(m));flash_before=bytes(m.flash)
+    io_before=dict(m.counts);answers_before=len(m.answers);timestamps_before=len(m.timestamps)
+    step(m.command,13,rows(range(1,64)),63)
+    assert m.checked('table_runtime_active') and not m.checked('user_storage_command_ready')
+    assert not m.checked('mem_tables_ready') and bytes(m.flash)==flash_before
+    admitted={'heap_used':m.heap_bytes-sum(free_blocks(m)),
+              'photo_pointer_retained':bool(m.photo_ptr()),'rows':63}
+    step(m.checked,'user_savereset')
+    for _ in range(512):
+        if not m.checked('table_runtime_active'):break
+        m.now+=1;step(m.checked,'user_storage_poll')
+        assert m.read_budget<=64 and m.io_budget==0
+    assert not m.checked('table_runtime_active') and m.io is None
+    assert m.counts['start']==io_before['start'] and m.counts['poll']==io_before['poll']
+    assert bytes(m.flash)==flash_before
+    assert len(m.answers)==answers_before and len(m.timestamps)==timestamps_before
+    assert sum(free_blocks(m))>=free_before,'cancel leaked the owned table rows'
+    assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1'
+    admitted['table_freed_before_reset']=True
+    admitted['flash_and_async_write_calls_unchanged_after_admission']=True
+    admitted['read_calls_during_cancel']=m.counts['read']-io_before['read']
+    return admitted
+
+
 def collect(root):
     sys.path.insert(0,str(root/'Tests'/'asm'))
     from storage_machine import StorageMachine,UC_HOOK_CODE,UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_LR,UC_ARM_REG_PRIMASK
@@ -147,6 +177,11 @@ def collect(root):
         m.now+=1;t.step(m.checked,'user_storage_poll')
     assert m.sent and not int.from_bytes(m.u.mem_read(m.addr('upload_runtime_context'),4),'little')
     traces['actual_camera_waiting_log_ack_then_response']=t.result()
+
+    m=PhotoMachine();t=Trace(m)
+    admission=camera_table_reset_case(m,t.step)
+    traces['actual_camera_waiting_table63_reset']=t.result()
+    traces['actual_camera_waiting_table63_reset']['admission_reset']=admission
 
     m=ExpiryMachine();t=Trace(m);m.install([record()]);assert t.step(m.start_expiry)
     for _ in range(10000):
