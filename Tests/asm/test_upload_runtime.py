@@ -148,6 +148,25 @@ def test_parser():
     return 2
 
 
+def test_media_gate():
+    count=0
+    for blocked in ('not-ready','journal-fault'):
+        for reply in (9,10):
+            m=UploadMachine();m.fixture(reply,[temp(1) if reply==9 else log(1)])
+            if blocked=='not-ready':m.write(m.addr('mem_storage_ready'),0,1)
+            else:m.stubs[m.addr('sj_runtime_blocked')]=lambda:m.ret(1)
+            assert not m.checked('mem_tables_ready')
+            before=bytes(m.flash);m.request()
+            assert not m.ptr() and not any(m.counts.values()) and not m.sent
+            body=struct.pack('<HBBB',3,0,7,19-reply);body+=struct.pack('<H',crc16(body))
+            m.u.mem_write(0x21000000,body);m.checked('user_parse_comand',0x21000000,0)
+            m.tick_upload()
+            assert not m.ptr() and not any(m.counts.values()) and not m.sent and bytes(m.flash)==before
+            assert largest_free(m)==4088
+            count+=1
+    return count
+
+
 def test_busy_empty_cancel():
     count=0
     for cmd in (9,10):
@@ -304,7 +323,7 @@ def test_ack_power():
 
 
 if __name__=='__main__':
-    r=dict(normal=test_normal(),parser=test_parser(),faults_and_gaps=test_gaps_and_faults(),busy_empty_cancel=test_busy_empty_cancel(),
+    r=dict(normal=test_normal(),parser=test_parser(),media_gate=test_media_gate(),faults_and_gaps=test_gaps_and_faults(),busy_empty_cancel=test_busy_empty_cancel(),
            heap_ack=test_heap_ack(),ack_power_cuts=test_ack_power())
     r['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest();r['status']='PASS'
     (ROOT/'Tests/asm/upload_runtime_results.json').write_text(json.dumps(r,indent=2)+'\n')
