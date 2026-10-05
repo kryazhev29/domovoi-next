@@ -18,12 +18,19 @@
         EXTERN mem_read
         EXTERN mem_write
         EXTERN memcmp
+        EXTERN w25_async_start
+        EXTERN w25_async_poll
+        EXTERN w25_async_active
+        EXTERN w25_read_available
+        EXTERN w25_read_data
+        EXTERN timers_getMillis
 
         PUBLIC idindex_commit
         PUBLIC idindex_find
         PUBLIC idindex_poll
         PUBLIC idindex_put
         PUBLIC idindex_runtime_suspend
+        PUBLIC idindex_runtime_active
         PUBLIC idindex_scanned
 
           CFI Names cfiNames0
@@ -56,7 +63,10 @@
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
 ix:
-        DS8 12
+        ; Existing sum/step/end/mark/state at 0/4/6/8/10 retain their ABI.
+        ; Byte 11 owns the W25 operation. Bytes 12..19 remain live until
+        ; verified/error, including cancellation; word 20 is the bucket.
+        DS8 24
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock0 Using cfiCommon0
@@ -70,7 +80,7 @@ ix_bucket:
         BL       fast_fnv10
         EOR      R1,R0,R0, LSR #+12
         EOR      R1,R1,R0, LSR #+24
-        LDR.N    R0,??DataTable9
+        LDR.W    R0,??DataTable9
         AND      R0,R0,R1, LSL #+6
         ADD      R0,R0,#+3145728
         POP      {R1,PC}
@@ -90,11 +100,11 @@ ix_mark:
         CBZ.N    R0,??ix_mark_0
         STR      R1,[SP, #+0]
         MVNS     R1,R1
-        LDR.N    R0,??DataTable9_1
+        LDR.W    R0,??DataTable9_1
         EORS     R1,R0,R1
         STR      R1,[SP, #+4]
 ??ix_mark_0:
-        LDR.N    R4,??DataTable9_2
+        LDR.W    R4,??DataTable9_2
         LDRH     R0,[R4, #+8]
         CMP      R0,#+512
         BCC.N    ??ix_mark_1
@@ -119,30 +129,21 @@ ix_mark:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock2 Using cfiCommon0
           CFI Function ix_rebuild
+          CFI NoCalls
         THUMB
 ix_rebuild:
-        PUSH     {R4,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R4 Frame(CFA, -8)
-          CFI CFA R13+8
-        LDR.N    R4,??DataTable9_2
-        LDRB     R0,[R4, #+10]
-        CMP      R0,#+3
-        BNE.N    ??ix_rebuild_0
-        MOVS     R1,#+0
-        MOVS     R0,#+0
-          CFI FunCall ix_mark
-        BL       ix_mark
-        CBNZ.N   R0,??ix_rebuild_0
-        MOVS     R0,#+4
-        STRB     R0,[R4, #+10]
-        POP      {R4,PC}
-??ix_rebuild_0:
+        ; Invalidate durably in poll BEFORE the first destructive erase.
+        ; A restart while W25 owns source cannot overwrite that source.
+        LDR.W    R2,??DataTable9_2
+        LDRB     R1,[R2, #+11]
         MOVS     R0,#+1
-        STRB     R0,[R4, #+10]
+        CMP      R1,#+0
+        IT       NE
+        MOVNE    R0,#+8
+        STRB     R0,[R2, #+10]
         MOVS     R0,#+0
-        STRH     R0,[R4, #+4]
-        POP      {R4,PC}
+        STRH     R0,[R2, #+4]
+        BX       LR
           CFI EndBlock cfiBlock2
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -161,7 +162,7 @@ ix_last:
           CFI CFA R13+88
         MOV      R4,R0
         MOVS     R5,#+0
-        LDR.N    R6,??DataTable9_2
+        LDR.W    R6,??DataTable9_2
         MOV      R0,#+512
         STRH     R0,[R6, #+8]
         MOVS     R7,#+0
@@ -174,7 +175,7 @@ ix_last:
         BL       mem_read
         CBZ.N    R0,??ix_last_1
         MOVS     R1,#+0
-        LDR.N    R3,??DataTable9_1
+        LDR.W    R3,??DataTable9_1
 ??ix_last_2:
         LDR      R2,[SP, R1, LSL #+3]
         CMN      R2,#+1
@@ -229,7 +230,7 @@ idindex_scanned:
         MOV      R4,R0
         MOVS     R0,#+0
         STR      R0,[SP, #+0]
-        LDR.N    R5,??DataTable9_2
+        LDR.W    R5,??DataTable9_2
         STR      R4,[R5, #+0]
         STRH     R1,[R5, #+6]
         LDRB     R0,[R5, #+10]
@@ -272,7 +273,7 @@ idindex_find:
         MOV      R4,R0
         MOV      R6,R1
         MOV      R5,R2
-        LDR.N    R0,??DataTable9_2
+        LDR.W    R0,??DataTable9_2
         LDRB     R0,[R0, #+10]
         CMP      R0,#+3
         BNE.N    ??idindex_find_0
@@ -409,7 +410,7 @@ idindex_put:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.N    R4,??DataTable9_2
+        LDR.W    R4,??DataTable9_2
         LDRB     R2,[R4, #+10]
         CMP      R2,#+3
         BEQ.N    ??idindex_put_0
@@ -449,7 +450,7 @@ idindex_commit:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.N    R4,??DataTable9_2
+        LDR.W    R4,??DataTable9_2
         LDR      R2,[R4, #+0]
         EORS     R0,R0,R2
         STR      R0,[R4, #+0]
@@ -472,94 +473,262 @@ idindex_commit:
         POP      {R4,PC}
           CFI EndBlock cfiBlock8
 
+        ; Handwritten bounded rebuild, one W25 action OR a bounded read per
+        ; invocation. No heap. The 8-byte persistent source has a single owner.
+        ; state: 1 invalidate, 2 cell, 3 ready, 4 off, 5 erase, 6 bucket,
+        ;        7 final mark, 8 restart after an outstanding operation drains.
+        ; pending: 1 log erase, 2 invalid mark, 3 index erase, 4 bucket write,
+        ;          5 final log erase, 6 final mark. Only verified advances.
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock9 Using cfiCommon0
           CFI Function idindex_poll
         THUMB
 idindex_poll:
-        PUSH     {R0-R6,LR}
+        PUSH     {R4-R7,LR}
           CFI R14 Frame(CFA, -4)
-          CFI R6 Frame(CFA, -8)
-          CFI R5 Frame(CFA, -12)
-          CFI R4 Frame(CFA, -16)
-          CFI CFA R13+32
+          CFI R7 Frame(CFA, -8)
+          CFI R6 Frame(CFA, -12)
+          CFI R5 Frame(CFA, -16)
+          CFI R4 Frame(CFA, -20)
+          CFI CFA R13+20
+        SUB      SP,SP,#+68
+          CFI CFA R13+88
         MOV      R6,R0
-        LDR.N    R5,??DataTable9_2
-        LDRB     R0,[R5, #+10]
+        LDR.W    R4,ix_async_data
+        LDRB     R7,[R4, #+11]
+        CMP      R7,#+0
+        BEQ.W    ix_poll_dispatch
+          CFI FunCall timers_getMillis
+        BL       timers_getMillis
+          CFI FunCall w25_async_poll
+        BL       w25_async_poll
         CMP      R0,#+1
-        BNE.N    ??idindex_poll_0
-        LDRH     R0,[R5, #+4]
-        LSLS     R0,R0,#+12
-        ADD      R0,R0,#+3145728
-          CFI FunCall mem_erase_sector
-        BL       mem_erase_sector
-        CBZ.N    R0,??idindex_poll_1
-        LDRH     R1,[R5, #+4]
-        ADDS     R1,R1,#+1
-        UXTH     R0,R1
-        CMP      R0,#+64
-        BCC.N    ??idindex_poll_2
-        MOVS     R0,#+2
-        STRB     R0,[R5, #+10]
-        MOVS     R1,#+1
-??idindex_poll_2:
-        STRH     R1,[R5, #+4]
-        POP      {R0-R6,PC}
-??idindex_poll_0:
+        BEQ.W    ix_poll_return
+        MOVS     R1,#+0
+        STRB     R1,[R4, #+11]
         CMP      R0,#+2
-        BNE.N    ??idindex_poll_3
-        MOVS     R4,#+8
-??idindex_poll_4:
-        LDRH     R1,[R5, #+6]
-        LDRH     R0,[R5, #+4]
-        CMP      R1,R0
-        BCC.N    ??idindex_poll_5
-        MOVS     R2,#+12
-        MOV      R1,SP
+        BNE.W    ix_poll_error
+        LDRB     R0,[R4, #+10]
+        CMP      R0,#+4
+        BEQ.W    ix_poll_return
+        CMP      R0,#+8
+        BEQ.W    ix_poll_restart
+        CMP      R7,#+1
+        BEQ.W    ix_poll_log_erased
+        CMP      R7,#+5
+        BEQ.W    ix_poll_log_erased
+        CMP      R7,#+2
+        BEQ.W    ix_poll_invalidated
+        CMP      R7,#+3
+        BEQ.W    ix_poll_erased
+        CMP      R7,#+4
+        BEQ.W    ix_poll_advance
+        CMP      R7,#+6
+        BNE.W    ix_poll_error
+        LDRH     R0,[R4, #+8]
+        ADDS     R0,R0,#+1
+        STRH     R0,[R4, #+8]
+        MOVS     R0,#+3
+        B.W      ix_poll_state
+ix_poll_restart:
+        MOVS     R0,#+1
+        B.W      ix_poll_state
+ix_poll_log_erased:
+        MOVS     R0,#+0
+        STRH     R0,[R4, #+8]
+        B.W      ix_poll_return
+ix_poll_invalidated:
+        LDRH     R0,[R4, #+8]
+        ADDS     R0,R0,#+1
+        STRH     R0,[R4, #+8]
+        MOVS     R0,#+5
+        B.W      ix_poll_state
+ix_poll_erased:
+        LDRH     R0,[R4, #+4]
+        ADDS     R0,R0,#+1
+        CMP      R0,#+64
+        BCC.N    ix_poll_erase_cursor
+        MOVS     R0,#+2
+        STRB     R0,[R4, #+10]
+        MOVS     R0,#+1
+ix_poll_erase_cursor:
+        STRH     R0,[R4, #+4]
+        B.W      ix_poll_return
+ix_poll_dispatch:
+        LDRB     R0,[R4, #+10]
+        CMP      R0,#+1
+        BEQ.N    ix_poll_available
+        CMP      R0,#+2
+        BEQ.N    ix_poll_available
+        CMP      R0,#+5
+        BCC.W    ix_poll_return
+        CMP      R0,#+7
+        BHI.W    ix_poll_return
+ix_poll_available:
+          CFI FunCall w25_async_active
+        BL       w25_async_active
+        CMP      R0,#+0
+        BNE.W    ix_poll_return
+          CFI FunCall w25_read_available
+        BL       w25_read_available
+        CMP      R0,#+0
+        BEQ.W    ix_poll_return
+        LDRB     R0,[R4, #+10]
+        CMP      R0,#+1
+        BEQ.W    ix_poll_mark
+        CMP      R0,#+7
+        BEQ.W    ix_poll_mark
+        CMP      R0,#+5
+        BEQ.W    ix_poll_erase
+        CMP      R0,#+6
+        BEQ.W    ix_poll_bucket
+        ; One 12-byte row per pass. The only retained value is its bucket.
+        LDRH     R0,[R4, #+4]
+        LDRH     R1,[R4, #+6]
+        CMP      R0,R1
+        BHI.W    ix_poll_finish
         SUBS     R0,R0,#+1
         ADD      R0,R6,R0, LSL #+5
-          CFI FunCall mem_read
-        BL       mem_read
-        CBZ.N    R0,??idindex_poll_1
-        LDRB     R0,[SP, #+0]
-        CMP      R0,#+255
-        ITT      EQ
-        LDRBEQ   R0,[SP, #+1]
-        CMPEQ    R0,#+255
-        BEQ.N    ??idindex_poll_6
-        ADD      R1,SP,#+2
-        LDRH     R0,[R5, #+4]
-          CFI FunCall ix_add
-        BL       ix_add
-        CBZ.N    R0,??idindex_poll_1
-??idindex_poll_6:
-        LDRH     R0,[R5, #+4]
-        ADDS     R0,R0,#+1
-        STRH     R0,[R5, #+4]
-        SUBS     R4,R4,#+1
-        BNE.N    ??idindex_poll_4
-        B.N      ??idindex_poll_5
-??idindex_poll_1:
-        MOVS     R0,#+4
-        B.N      ??idindex_poll_7
-??idindex_poll_5:
-        LDRH     R1,[R5, #+6]
-        LDRH     R0,[R5, #+4]
-        CMP      R1,R0
-        BCS.N    ??idindex_poll_3
-        LDR      R1,[R5, #+0]
-        MOVS     R0,#+1
-          CFI FunCall ix_mark
-        BL       ix_mark
+        MOV      R1,SP
+        MOVS     R2,#+12
+          CFI FunCall w25_read_data
+        BL       w25_read_data
         CMP      R0,#+0
-        ITE      NE
-        MOVNE    R0,#+3
-        MOVEQ    R0,#+4
-??idindex_poll_7:
-        STRB     R0,[R5, #+10]
-??idindex_poll_3:
-        POP      {R0-R6,PC}
+        BEQ.W    ix_poll_error
+        LDRH     R0,[SP, #+0]
+        MOVW     R1,#+65535
+        CMP      R0,R1
+        BEQ.W    ix_poll_advance
+        ADD      R0,SP,#+2
+          CFI FunCall ix_bucket
+        BL       ix_bucket
+        STR      R0,[R4, #+20]
+        MOVS     R0,#+6
+        B.W      ix_poll_state
+ix_poll_bucket:
+        LDR      R0,[R4, #+20]
+        MOV      R1,SP
+        MOVS     R2,#+64
+          CFI FunCall w25_read_data
+        BL       w25_read_data
+        CMP      R0,#+0
+        BEQ.W    ix_poll_error
+        LDRH     R2,[R4, #+4]
+        MOVS     R3,#+0
+        MOVW     R1,#+65535
+ix_poll_slot:
+        LDRH     R0,[SP,R3]
+        CMP      R0,R2
+        BEQ.N    ix_poll_advance
+        CMP      R0,R1
+        BEQ.N    ix_poll_slot_free
+        ADDS     R3,R3,#+2
+        CMP      R3,#+64
+        BCC.N    ix_poll_slot
+        B.W      ix_poll_error
+ix_poll_slot_free:
+        LDR      R0,[R4, #+20]
+        ADD      R6,R0,R3
+        STRH     R2,[R4, #+12]
+        ADD      R5,R4,#+12
+        MOVS     R7,#+4
+        MOVS     R2,#+2
+        B.N      ix_poll_start
+ix_poll_advance:
+        LDRH     R0,[R4, #+4]
+        LDRH     R1,[R4, #+6]
+        CMP      R0,R1
+        BCS.N    ix_poll_finish
+        ADDS     R0,R0,#+1
+        STRH     R0,[R4, #+4]
+        MOVS     R0,#+2
+        B.N      ix_poll_state
+ix_poll_finish:
+        MOVS     R0,#+7
+        B.N      ix_poll_state
+ix_poll_erase:
+        LDRH     R0,[R4, #+4]
+        LSLS     R0,R0,#+12
+        ADD      R6,R0,#+3145728
+        MOVS     R7,#+3
+        B.N      ix_poll_start_erase
+ix_poll_mark:
+        ; Reserve a durable invalid marker even after boot with a mismatched
+        ; checksum. This prevents accepting a partially rebuilt equal-sum cache.
+        MOVS     R7,#+2
+        CMP      R0,#+7
+        IT       EQ
+        MOVEQ    R7,#+6
+        LDRH     R0,[R4, #+8]
+        CMP      R0,#+512
+        BCC.N    ix_poll_mark_write
+        SUBS     R7,R7,#+1
+        MOV      R6,#+3407872
+ix_poll_start_erase:
+        MOVS     R5,#+0
+        MOVS     R2,#+0
+        B.N      ix_poll_start
+ix_poll_mark_write:
+        LSLS     R0,R0,#+3
+        ADD      R6,R0,#+3407872
+        MOVS     R0,#+0
+        MOVS     R1,#+0
+        CMP      R7,#+6
+        BNE.N    ix_poll_mark_source
+        LDR      R0,[R4, #+0]
+        LDR.W    R1,ix_async_magic
+        MVN      R3,R0
+        EOR      R1,R1,R3
+ix_poll_mark_source:
+        STR      R0,[R4, #+12]
+        STR      R1,[R4, #+16]
+        ADD      R5,R4,#+12
+        MOVS     R2,#+8
+ix_poll_start:
+        ; R2 is caller-saved; keep length in an otherwise unused stack word.
+        STR      R2,[SP, #+64]
+          CFI FunCall timers_getMillis
+        BL       timers_getMillis
+        MOV      R3,R0
+        MOV      R0,R6
+        MOV      R1,R5
+        LDR      R2,[SP, #+64]
+          CFI FunCall w25_async_start
+        BL       w25_async_start
+        CMP      R0,#+0
+        BEQ.N    ix_poll_error
+        STRB     R7,[R4, #+11]
+        B.N      ix_poll_return
+ix_poll_error:
+        MOVS     R0,#+4
+ix_poll_state:
+        STRB     R0,[R4, #+10]
+ix_poll_return:
+        ADD      SP,SP,#+68
+          CFI CFA R13+20
+        POP      {R4-R7,PC}
           CFI EndBlock cfiBlock9
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiBlock11 Using cfiCommon0
+          CFI Function idindex_runtime_active
+          CFI NoCalls
+        THUMB
+idindex_runtime_active:
+        LDR.W    R0,ix_async_data
+        LDRB     R0,[R0, #+11]
+        CMP      R0,#+0
+        IT       NE
+        MOVNE    R0,#+1
+        BX       LR
+          CFI EndBlock cfiBlock11
+
+        SECTION `.text`:CODE:NOROOT(2)
+        DATA
+ix_async_data:
+        DC32 ix
+ix_async_magic:
+        DC32 0x58444931
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock10 Using cfiCommon0
@@ -568,7 +737,7 @@ idindex_poll:
         THUMB
 idindex_runtime_suspend:
         MOVS     R1,#+4
-        LDR.N    R0,??DataTable9_2
+        LDR.W    R0,??DataTable9_2
         STRB     R1,[R0, #+10]
         BX       LR
           CFI EndBlock cfiBlock10
