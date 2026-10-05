@@ -4,32 +4,33 @@
     {
       "phase": 39,
       "live_photo_tx_chunk": 544,
-      "heap_used_with_usb": 1784,
       "free_chunks": [
         2312
       ],
-      "new_storage_commands": "rejected before allocation/I/O"
+      "new_storage_commands": "rejected before allocation/I/O",
+      "heap_used_with_synthetic_reserve": 1784
     },
     {
       "phase": 40,
       "live_photo_tx_chunk": 544,
-      "heap_used_with_usb": 1784,
       "free_chunks": [
         2312
       ],
-      "new_storage_commands": "rejected before allocation/I/O"
+      "new_storage_commands": "rejected before allocation/I/O",
+      "heap_used_with_synthetic_reserve": 1784
     },
     {
       "phase": 41,
       "live_photo_tx_chunk": 544,
-      "heap_used_with_usb": 1784,
       "free_chunks": [
         2312
       ],
-      "new_storage_commands": "rejected before allocation/I/O"
+      "new_storage_commands": "rejected before allocation/I/O",
+      "heap_used_with_synthetic_reserve": 1784
     }
   ],
   "phase_zero_photo_tx": 0,
-  "idle_with_usb_heap_used": 1240,
-  "conclusion": "Photo TX544 is mutually exclusive with accepted command9/10/13 and config snapshots; photo_s192 can coexist."
+  "conclusion": "Photo TX544 is mutually exclusive with accepted command9/10/13 and config snapshots; photo_s192 can coexist.",
+  "idle_with_synthetic_reserve_heap_used": 1240,
+  "synthetic_reserve_note": "Additional1040 is explicit allocator pressure; USB driver itself uses static rings, and new upload packet replaces the old USB response allocation."
 }

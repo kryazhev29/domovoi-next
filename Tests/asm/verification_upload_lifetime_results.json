@@ -1,0 +1,286 @@
+{
+  "status": "PASS",
+  "elf_sha256": "a4874e0b9a2d104e570d9974b122216bece326b97877448c364fa870a312de0b",
+  "durable_empty": [
+    {
+      "command": 9,
+      "channel": 0,
+      "cleanup_polls": 1331,
+      "maximum_model_instructions": 10902,
+      "stack": 216,
+      "largest_after": 4088,
+      "transitions": [
+        [
+          0,
+          [
+            1,
+            0,
+            0
+          ]
+        ],
+        [
+          1,
+          [
+            0,
+            3,
+            1
+          ]
+        ],
+        [
+          662,
+          [
+            0,
+            3,
+            2
+          ]
+        ],
+        [
+          663,
+          [
+            0,
+            4,
+            0
+          ]
+        ],
+        [
+          668,
+          [
+            0,
+            5,
+            1
+          ]
+        ],
+        [
+          1329,
+          [
+            0,
+            5,
+            2
+          ]
+        ],
+        [
+          1330,
+          [
+            0,
+            8,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "command": 9,
+      "channel": 1,
+      "cleanup_polls": 1331,
+      "maximum_model_instructions": 10897,
+      "stack": 216,
+      "largest_after": 4088,
+      "transitions": [
+        [
+          0,
+          [
+            1,
+            0,
+            0
+          ]
+        ],
+        [
+          1,
+          [
+            0,
+            3,
+            1
+          ]
+        ],
+        [
+          662,
+          [
+            0,
+            3,
+            2
+          ]
+        ],
+        [
+          663,
+          [
+            0,
+            4,
+            0
+          ]
+        ],
+        [
+          668,
+          [
+            0,
+            5,
+            1
+          ]
+        ],
+        [
+          1329,
+          [
+            0,
+            5,
+            2
+          ]
+        ],
+        [
+          1330,
+          [
+            0,
+            8,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "command": 10,
+      "channel": 0,
+      "cleanup_polls": 1331,
+      "maximum_model_instructions": 11163,
+      "stack": 216,
+      "largest_after": 4088,
+      "transitions": [
+        [
+          0,
+          [
+            1,
+            0,
+            0
+          ]
+        ],
+        [
+          1,
+          [
+            0,
+            3,
+            1
+          ]
+        ],
+        [
+          662,
+          [
+            0,
+            3,
+            2
+          ]
+        ],
+        [
+          663,
+          [
+            0,
+            4,
+            0
+          ]
+        ],
+        [
+          668,
+          [
+            0,
+            5,
+            1
+          ]
+        ],
+        [
+          1329,
+          [
+            0,
+            5,
+            2
+          ]
+        ],
+        [
+          1330,
+          [
+            0,
+            8,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "command": 10,
+      "channel": 1,
+      "cleanup_polls": 1331,
+      "maximum_model_instructions": 11158,
+      "stack": 216,
+      "largest_after": 4088,
+      "transitions": [
+        [
+          0,
+          [
+            1,
+            0,
+            0
+          ]
+        ],
+        [
+          1,
+          [
+            0,
+            3,
+            1
+          ]
+        ],
+        [
+          662,
+          [
+            0,
+            3,
+            2
+          ]
+        ],
+        [
+          663,
+          [
+            0,
+            4,
+            0
+          ]
+        ],
+        [
+          668,
+          [
+            0,
+            5,
+            1
+          ]
+        ],
+        [
+          1329,
+          [
+            0,
+            5,
+            2
+          ]
+        ],
+        [
+          1330,
+          [
+            0,
+            8,
+            0
+          ]
+        ]
+      ]
+    }
+  ],
+  "reachable_ack": {
+    "reachable_live_chunks": [
+      192,
+      48,
+      1048,
+      1032
+    ],
+    "peak_used": 2320,
+    "total_free": 1776,
+    "largest_free_payload": 1768,
+    "external_fragmentation": 0,
+    "photo_s_allocation": "actual camera capture, retained idle photo_s; no synthetic transport heap",
+    "only_idle_photo_remaining": 192,
+    "largest_after": 3896
+  },
+  "units": "Unicorn instructions with modeled NOR/transport; not board cycles or time"
+}
