@@ -1125,19 +1125,20 @@ photo_storage_poll:
         TBH      [PC, R0, LSL #+1]
         DATA
 ??photo_storage_poll_0:
-        DC16     0x2B,0x62,0xD9,0x116
-        DC16     0x12C,0x180,0x1FD,0x26C
-        DC16     0x292,0x294,0x299,0x2B9
-        DC16     0x2CE,0x2F5,0x2FC,0x307
-        DC16     0x320,0x325,0x338,0x348
-        DC16     0x366,0x368,0x389,0x390
-        DC16     0x3B7,0x3C0,0x3E4,0x3ED
-        DC16     0x416,0x45A,0x462,0x3F6
-        DC16     0x470,0x484,0x4B1,0x4D3
-        DC16     0x4E0,0x4EC,0x522,0x599
-        DC16     0x5C7,0xB1,0xD5
+        DC16     (??jt0_0-??photo_storage_poll_0)/2,(??jt0_1-??photo_storage_poll_0)/2,(??jt0_2-??photo_storage_poll_0)/2,(??jt0_3-??photo_storage_poll_0)/2
+        DC16     (??jt0_4-??photo_storage_poll_0)/2,(??jt0_5-??photo_storage_poll_0)/2,(??jt0_6-??photo_storage_poll_0)/2,(??jt0_7-??photo_storage_poll_0)/2
+        DC16     (??jt0_8-??photo_storage_poll_0)/2,(??jt0_9-??photo_storage_poll_0)/2,(??jt0_10-??photo_storage_poll_0)/2,(??jt0_11-??photo_storage_poll_0)/2
+        DC16     (??jt0_12-??photo_storage_poll_0)/2,(??jt0_13-??photo_storage_poll_0)/2,(??jt0_14-??photo_storage_poll_0)/2,(??jt0_15-??photo_storage_poll_0)/2
+        DC16     (??jt0_16-??photo_storage_poll_0)/2,(??jt0_17-??photo_storage_poll_0)/2,(??jt0_18-??photo_storage_poll_0)/2,(??jt0_19-??photo_storage_poll_0)/2
+        DC16     (??jt0_20-??photo_storage_poll_0)/2,(??jt0_21-??photo_storage_poll_0)/2,(??jt0_22-??photo_storage_poll_0)/2,(??jt0_23-??photo_storage_poll_0)/2
+        DC16     (??jt0_24-??photo_storage_poll_0)/2,(??jt0_25-??photo_storage_poll_0)/2,(??jt0_26-??photo_storage_poll_0)/2,(??jt0_27-??photo_storage_poll_0)/2
+        DC16     (??jt0_28-??photo_storage_poll_0)/2,(??jt0_29-??photo_storage_poll_0)/2,(??jt0_30-??photo_storage_poll_0)/2,(??jt0_31-??photo_storage_poll_0)/2
+        DC16     (??jt0_32-??photo_storage_poll_0)/2,(??jt0_33-??photo_storage_poll_0)/2,(??jt0_34-??photo_storage_poll_0)/2,(??jt0_35-??photo_storage_poll_0)/2
+        DC16     (??jt0_36-??photo_storage_poll_0)/2,(??jt0_37-??photo_storage_poll_0)/2,(??jt0_38-??photo_storage_poll_0)/2,(??jt0_39-??photo_storage_poll_0)/2
+        DC16     (??jt0_40-??photo_storage_poll_0)/2,(??jt0_41-??photo_storage_poll_0)/2,(??jt0_42-??photo_storage_poll_0)/2
         THUMB
 ??photo_storage_poll_12:
+??jt0_0:
         LDRH     R2,[R7, #+74]
         LDRH     R0,[R7, #+76]
         SUBS     R2,R2,R0
@@ -1181,6 +1182,7 @@ photo_storage_poll:
         STRB     R0,[R7, #+108]
         B.N      ??photo_storage_poll_11
 ??photo_storage_poll_16:
+??jt0_1:
         MOVS     R2,#+12
         ADD      R1,R7,#+24
         ADD      R0,R6,#+4128
@@ -1253,6 +1255,7 @@ photo_storage_poll:
         STRB     R0,[R7, #+106]
         B.N      ??photo_storage_poll_11
 ??photo_storage_poll_20:
+??jt0_41:
         BL       ?Subroutine16
 ??CrossCallReturnLabel_46:
         BL       ?Subroutine17
@@ -1292,12 +1295,14 @@ photo_storage_poll:
 ??photo_storage_poll_11:
         POP      {R0,R4-R9,PC}
 ??photo_storage_poll_27:
+??jt0_42:
         MOVS     R0,#+0
 ??photo_storage_poll_28:
           CFI FunCall pr_scan_begin
         BL       pr_scan_begin
         B.N      ??photo_storage_poll_11
 ??photo_storage_poll_29:
+??jt0_2:
         LDR      R0,[R7, #+8]
         ADDS     R0,R0,#+8
         CMP      R6,R0
@@ -1355,6 +1360,7 @@ photo_storage_poll:
         MOVS     R0,#+4
         B.N      ??photo_storage_poll_8
 ??photo_storage_poll_35:
+??jt0_3:
         LDR.W    R4,??DataTable20
         MOVS     R2,#+1
         ADD      R1,R4,#+61
@@ -1374,6 +1380,7 @@ photo_storage_poll:
         MOVEQ    R0,#+6
         B.N      ??photo_storage_poll_8
 ??photo_storage_poll_37:
+??jt0_4:
         BL       ?Subroutine16
 ??CrossCallReturnLabel_47:
         LDR      R0,[R7, #+8]
@@ -1444,6 +1451,7 @@ photo_storage_poll:
         STRH     R0,[R7, #+84]
         B.N      ??photo_storage_poll_11
 ??photo_storage_poll_42:
+??jt0_5:
         LDRH     R1,[R7, #+82]
         LDR      R0,[R7, #+28]
         CMP      R1,R0
@@ -1558,6 +1566,7 @@ photo_storage_poll:
         MOVS     R0,#+39
         B.N      ??photo_storage_poll_8
 ??photo_storage_poll_52:
+??jt0_6:
         LDRB     R0,[R7, #+115]
         CMP      R0,#+0
         BNE.W    ??photo_storage_poll_6
@@ -1653,6 +1662,7 @@ photo_storage_poll:
         MOVS     R0,#+0
         B.N      ??photo_storage_poll_8
 ??photo_storage_poll_58:
+??jt0_7:
         LDR      R4,[R7, #+12]
         LDR      R0,[R7, #+8]
         SUBS     R4,R4,R0
@@ -1691,15 +1701,18 @@ photo_storage_poll:
         STR      R4,[R7, #+8]
         B.N      ??photo_storage_poll_11
 ??photo_storage_poll_61:
+??jt0_8:
         MOVS     R1,#+10
         B.N      ??photo_storage_poll_23
 ??photo_storage_poll_62:
+??jt0_9:
         BL       ?Subroutine1
 ??CrossCallReturnLabel_3:
         MOVS     R1,#+11
         MOV      R0,R6
         B.N      ??photo_storage_poll_24
 ??photo_storage_poll_63:
+??jt0_10:
         BL       ?Subroutine18
 ??CrossCallReturnLabel_50:
         IT       GE
@@ -1729,6 +1742,7 @@ photo_storage_poll:
         BL       pr_write
         B.N      ??photo_storage_poll_11
 ??photo_storage_poll_66:
+??jt0_11:
         BL       ?Subroutine26
 ??CrossCallReturnLabel_67:
         LDRH     R1,[R7, #+80]
@@ -1750,6 +1764,7 @@ photo_storage_poll:
         MOVS     R1,#+11
         B.N      ??photo_storage_poll_68
 ??photo_storage_poll_70:
+??jt0_12:
         BL       ?Subroutine18
 ??CrossCallReturnLabel_51:
         IT       GE
@@ -1786,12 +1801,14 @@ photo_storage_poll:
         MOVS     R0,#+14
         B.N      ??photo_storage_poll_8
 ??photo_storage_poll_72:
+??jt0_13:
         MOVS     R3,#+15
         MOVS     R2,#+12
         ADD      R1,R7,#+24
         ADD      R0,R6,#+4096
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_73:
+??jt0_14:
         BL       ?Subroutine2
 ??CrossCallReturnLabel_5:
         MOVS     R3,#+17
@@ -1801,6 +1818,7 @@ photo_storage_poll:
         ADD      R0,R6,#+12
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_74:
+??jt0_15:
         BL       ?Subroutine14
 ??CrossCallReturnLabel_38:
         IT       GE
@@ -1826,12 +1844,14 @@ photo_storage_poll:
         MOVS     R0,#+17
         B.N      ??photo_storage_poll_8
 ??photo_storage_poll_75:
+??jt0_16:
         BL       ?Subroutine4
 ??CrossCallReturnLabel_13:
         MOVS     R1,#+18
         LDR      R0,[R7, #+24]
         B.N      ??photo_storage_poll_24
 ??photo_storage_poll_76:
+??jt0_17:
         BL       ?Subroutine14
 ??CrossCallReturnLabel_39:
         IT       GE
@@ -1849,6 +1869,7 @@ photo_storage_poll:
         ADDS     R0,R4,R0
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_77:
+??jt0_18:
         BL       ?Subroutine26
 ??CrossCallReturnLabel_68:
         STRH     R0,[R7, #+72]
@@ -1865,6 +1886,7 @@ photo_storage_poll:
         MOVS     R1,#+18
         B.N      ??photo_storage_poll_68
 ??photo_storage_poll_79:
+??jt0_19:
         BL       ?Subroutine14
 ??CrossCallReturnLabel_40:
         IT       GE
@@ -1894,9 +1916,11 @@ photo_storage_poll:
 ??photo_storage_poll_80:
         B.N      ??photo_storage_poll_8
 ??photo_storage_poll_81:
+??jt0_20:
         MOVS     R1,#+22
         B.N      ??photo_storage_poll_23
 ??photo_storage_poll_82:
+??jt0_21:
         LDRB     R0,[R7, #+113]
         CBZ.N    R0,??photo_storage_poll_83
         LDR      R0,[R7, #+24]
@@ -1925,12 +1949,14 @@ photo_storage_poll:
 ??photo_storage_poll_85:
         B.N      ??photo_storage_poll_10
 ??photo_storage_poll_86:
+??jt0_22:
         LDR.W    R1,??DataTable27
         LDR      R0,[R1, #+0]
         ADD      R0,R0,#+4096
         STR      R0,[R1, #+0]
         B.N      ??photo_storage_poll_57
 ??photo_storage_poll_87:
+??jt0_23:
         LDR      R0,[R4, #+0]
         LDRH     R1,[R0, #+26]
         LDRH     R0,[R7, #+104]
@@ -1969,6 +1995,7 @@ photo_storage_poll:
         ADDS     R0,R0,#+4
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_89:
+??jt0_24:
         BL       ?Subroutine2
 ??CrossCallReturnLabel_6:
         MOVS     R3,#+26
@@ -1978,6 +2005,7 @@ photo_storage_poll:
         LDR      R0,[R0, #+4]
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_90:
+??jt0_25:
         LDRH     R0,[R9, #+155]
         ADDS     R0,R0,#+1
         STRH     R0,[R9, #+155]
@@ -2009,6 +2037,7 @@ photo_storage_poll:
         BL       photo_stop
         B.N      ??photo_storage_poll_85
 ??photo_storage_poll_91:
+??jt0_26:
         MOVS     R3,#+28
         MOVS     R2,#+8
         ADD      R1,R7,#+28
@@ -2016,6 +2045,7 @@ photo_storage_poll:
         ADD      R0,R6,#+36
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_92:
+??jt0_27:
         BL       ?Subroutine2
 ??CrossCallReturnLabel_7:
         MOVS     R3,#+32
@@ -2024,6 +2054,7 @@ photo_storage_poll:
         ADD      R0,R6,#+4128
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_93:
+??jt0_31:
         MOVS     R0,#+1
         STRB     R0,[R7, #+115]
         MOVS     R0,#+0
@@ -2049,6 +2080,7 @@ photo_storage_poll:
         STRH     R0,[R1, #+28]
         B.N      ??photo_storage_poll_85
 ??photo_storage_poll_94:
+??jt0_28:
         LDR.W    R4,??DataTable20_1
         LDR      R1,[R7, #+12]
         LDR      R0,[R4, #+72]
@@ -2111,6 +2143,7 @@ photo_storage_poll:
         MOVS     R1,#+33
         B.N      ??photo_storage_poll_23
 ??photo_storage_poll_101:
+??jt0_29:
         MOVS     R1,#+31
         BL       ?Subroutine9
 ??CrossCallReturnLabel_27:
@@ -2118,6 +2151,7 @@ photo_storage_poll:
         ADD      R0,R0,R2, LSL #+12
         B.N      ??photo_storage_poll_24
 ??photo_storage_poll_102:
+??jt0_30:
         BL       ?Subroutine8
 ??CrossCallReturnLabel_24:
         MOVS     R3,#+32
@@ -2129,6 +2163,7 @@ photo_storage_poll:
         ADD      R0,R6,#+44
         B.N      ??photo_storage_poll_65
 ??photo_storage_poll_103:
+??jt0_32:
         MOVS     R0,#+0
         STRB     R0,[R7, #+115]
         MOVS     R0,#+1
@@ -2145,6 +2180,7 @@ photo_storage_poll:
         STRH     R1,[R9, #+129]
         B.N      ??photo_storage_poll_85
 ??photo_storage_poll_104:
+??jt0_33:
         BL       ?Subroutine11
 ??CrossCallReturnLabel_32:
         CMP      R0,#+0
@@ -2185,6 +2221,7 @@ photo_storage_poll:
         MOVS     R0,#+35
         B.N      ??photo_storage_poll_100
 ??photo_storage_poll_107:
+??jt0_34:
         LDR      R0,[R7, #+8]
         LDR      R1,[R7, #+40]
         CMP      R0,R1
@@ -2215,6 +2252,7 @@ photo_storage_poll:
         BL       pr_write
         B.N      ??photo_storage_poll_69
 ??photo_storage_poll_110:
+??jt0_35:
         LDR.W    R4,??DataTable20
         MOVS     R1,#+4
         ADD      R0,R4,#+61
@@ -2226,6 +2264,7 @@ photo_storage_poll:
         LDR      R0,[R7, #+44]
         B.N      ??photo_storage_poll_88
 ??photo_storage_poll_111:
+??jt0_36:
         LDR      R0,[R7, #+8]
         LDR      R1,[R7, #+40]
         CMP      R0,R1
@@ -2238,6 +2277,7 @@ photo_storage_poll:
         STR      R1,[R7, #+8]
         B.N      ??photo_storage_poll_50
 ??photo_storage_poll_112:
+??jt0_37:
         LDRB     R0,[R7, #+111]
         CBNZ.N   R0,??photo_storage_poll_113
         LDR      R0,[R4, #+0]
@@ -2287,6 +2327,7 @@ photo_storage_poll:
         STR      R5,[R0, #+0]
         B.N      ??photo_storage_poll_85
 ??photo_storage_poll_118:
+??jt0_38:
         LDR      R0,[R7, #+0]
         CMP      R0,#+0
         BNE.N    ??CrossCallReturnLabel_14
@@ -2387,6 +2428,7 @@ photo_storage_poll:
         MOVS     R0,#+40
         B.W      ??photo_storage_poll_26
 ??photo_storage_poll_124:
+??jt0_39:
         BL       ?Subroutine28
 ??CrossCallReturnLabel_72:
         ITE      NE
@@ -2425,6 +2467,7 @@ photo_storage_poll:
         MOVS     R0,#+41
         B.N      ??photo_storage_poll_100
 ??photo_storage_poll_125:
+??jt0_40:
         LDRB     R0,[R7, #+111]
         CMP      R0,#+0
         BNE.W    ??photo_storage_poll_10
@@ -4190,18 +4233,22 @@ rs485_baud:
         TBB      [PC, R0]
         DATA
 ??rs485_baud_0:
-        DC8      0x2,0x5,0x8,0xB
+        DC8     (??jt1_0-??rs485_baud_0)/2,(??jt1_1-??rs485_baud_0)/2,(??jt1_2-??rs485_baud_0)/2,(??jt1_3-??rs485_baud_0)/2
         THUMB
 ??rs485_baud_2:
+??jt1_0:
         MOV      R0,#+57600
         BX       LR
 ??rs485_baud_3:
+??jt1_1:
         MOV      R0,#+38400
         BX       LR
 ??rs485_baud_4:
+??jt1_2:
         MOV      R0,#+19200
         BX       LR
 ??rs485_baud_5:
+??jt1_3:
         MOV      R0,#+9600
         BX       LR
 ??rs485_baud_1:
@@ -4763,15 +4810,17 @@ photo_issue:
         TBB      [PC, R0]
         DATA
 ??photo_issue_0:
-        DC8      0x3,0x7,0xE,0x15
-        DC8      0x19,0x20
+        DC8     (??jt2_0-??photo_issue_0)/2,(??jt2_1-??photo_issue_0)/2,(??jt2_2-??photo_issue_0)/2,(??jt2_3-??photo_issue_0)/2
+        DC8     (??jt2_4-??photo_issue_0)/2,(??jt2_5-??photo_issue_0)/2
         THUMB
 ??photo_issue_2:
+??jt2_0:
         BL       ?Subroutine5
 ??CrossCallReturnLabel_15:
         MOVS     R0,#+13
         B.N      ??photo_issue_3
 ??photo_issue_4:
+??jt2_1:
         MOVS     R0,#+7
         STR      R0,[SP, #+0]
         MOVS     R3,#+0
@@ -4780,6 +4829,7 @@ photo_issue:
         MOVS     R0,#+1
         B.N      ??photo_issue_3
 ??photo_issue_5:
+??jt2_2:
         MOVS     R0,#+0
         STR      R0,[SP, #+0]
         MOVS     R3,#+0
@@ -4788,11 +4838,13 @@ photo_issue:
         MOVS     R0,#+6
         B.N      ??photo_issue_3
 ??photo_issue_6:
+??jt2_3:
         BL       ?Subroutine5
 ??CrossCallReturnLabel_16:
         MOVS     R0,#+5
         B.N      ??photo_issue_3
 ??photo_issue_7:
+??jt2_4:
         MOVS     R0,#+0
         STR      R0,[SP, #+0]
         MOVS     R3,#+0
@@ -4801,6 +4853,7 @@ photo_issue:
         MOVS     R0,#+4
         B.N      ??photo_issue_3
 ??photo_issue_8:
+??jt2_5:
         LDR      R0,[R4, #+0]
         LDRH     R0,[R0, #+30]
         LSRS     R0,R0,#+8

@@ -1460,23 +1460,28 @@ user_timeToInt:
         TBB      [PC, R2]
         DATA
 ??user_timeToInt_0:
-        DC8      0x5,0x5,0x8,0x8
-        DC8      0xB,0xB,0xB,0xE
-        DC8      0xE,0x11
+        DC8     (??jt0_0-??user_timeToInt_0)/2,(??jt0_0-??user_timeToInt_0)/2,(??jt0_2-??user_timeToInt_0)/2,(??jt0_2-??user_timeToInt_0)/2
+        DC8     (??jt0_4-??user_timeToInt_0)/2,(??jt0_4-??user_timeToInt_0)/2,(??jt0_4-??user_timeToInt_0)/2,(??jt0_7-??user_timeToInt_0)/2
+        DC8     (??jt0_7-??user_timeToInt_0)/2,(??jt0_9-??user_timeToInt_0)/2
         THUMB
 ??user_timeToInt_2:
+??jt0_0:
         LDR.W    R2,??DataTable44_7
         B.N      ??user_timeToInt_3
 ??user_timeToInt_4:
+??jt0_2:
         LDR.W    R2,??DataTable44_8
         B.N      ??user_timeToInt_3
 ??user_timeToInt_5:
+??jt0_4:
         LDR.W    R2,??DataTable44_9
         B.N      ??user_timeToInt_3
 ??user_timeToInt_6:
+??jt0_7:
         LDR.W    R2,??DataTable44_10
         B.N      ??user_timeToInt_3
 ??user_timeToInt_7:
+??jt0_9:
         LDR.W    R2,??DataTable44_11
 ??user_timeToInt_3:
         ADDS     R6,R2,R6
@@ -12714,10 +12719,11 @@ user_parse_comand:
         TBH      [PC, R0, LSL #+1]
         DATA
 ??user_parse_comand_0:
-        DC16     0x6,0x4B,0x4B,0x4B
-        DC16     0x46,0x46
+        DC16     (??jt1_0-??user_parse_comand_0)/2,(??jt1_1-??user_parse_comand_0)/2,(??jt1_1-??user_parse_comand_0)/2,(??jt1_1-??user_parse_comand_0)/2
+        DC16     (??jt1_4-??user_parse_comand_0)/2,(??jt1_4-??user_parse_comand_0)/2
         THUMB
 ??user_parse_comand_47:
+??jt1_0:
         ADDS     R3,R7,#+6
         ADD      R0,SP,#+4
         LDR      R2,[R3, #+0]
@@ -12779,11 +12785,13 @@ user_parse_comand:
         B.N      ??user_parse_comand_1
 ??user_parse_comand_50:
           CFI FunCall app_trial_active
+??jt1_4:
         BL       app_trial_active
         CBNZ.N   R0,??user_parse_comand_51
           CFI FunCall user_factoryReset
         BL       user_factoryReset
 ??user_parse_comand_51:
+??jt1_1:
         MOVS     R0,#+0
         STRB     R0,[R4, #+133]
           CFI FunCall comm_channel_reopen
@@ -14322,26 +14330,31 @@ user_addIdToTempBuffer:
         TBB      [PC, R6]
         DATA
 ??user_addIdToTempBuffer_0:
-        DC8      0x3,0x17,0x12,0x8
-        DC8      0xD,0x0
+        DC8     (??jt2_0-??user_addIdToTempBuffer_0)/2,(??jt2_1-??user_addIdToTempBuffer_0)/2,(??jt2_2-??user_addIdToTempBuffer_0)/2,(??jt2_3-??user_addIdToTempBuffer_0)/2
+        DC8     (??jt2_4-??user_addIdToTempBuffer_0)/2,0
         THUMB
 ??user_addIdToTempBuffer_8:
+??jt2_0:
         LDRB     R0,[SP, #+19]
         ORR      R0,R0,#0x1
         B.N      ??user_addIdToTempBuffer_9
 ??user_addIdToTempBuffer_10:
+??jt2_3:
         LDRB     R0,[SP, #+19]
         ORR      R0,R0,#0x2
         B.N      ??user_addIdToTempBuffer_9
 ??user_addIdToTempBuffer_11:
+??jt2_4:
         LDRB     R0,[SP, #+19]
         ORR      R0,R0,#0x4
         B.N      ??user_addIdToTempBuffer_9
 ??user_addIdToTempBuffer_12:
+??jt2_2:
         LDRB     R0,[SP, #+19]
         ORR      R0,R0,#0x8
         B.N      ??user_addIdToTempBuffer_9
 ??user_addIdToTempBuffer_13:
+??jt2_1:
         LDRB     R0,[SP, #+19]
         ORR      R0,R0,#0x10
 ??user_addIdToTempBuffer_9:
@@ -14550,25 +14563,31 @@ user_checkIdAndControl:
         TBB      [PC, R0]
         DATA
 ??user_checkIdAndControl_0:
-        DC8      0x3,0x6,0x9,0xC
-        DC8      0xF,0x12
+        DC8     (??jt3_0-??user_checkIdAndControl_0)/2,(??jt3_1-??user_checkIdAndControl_0)/2,(??jt3_2-??user_checkIdAndControl_0)/2,(??jt3_3-??user_checkIdAndControl_0)/2
+        DC8     (??jt3_4-??user_checkIdAndControl_0)/2,(??jt3_5-??user_checkIdAndControl_0)/2
         THUMB
 ??user_checkIdAndControl_5:
+??jt3_0:
         LDR.W    R0,??DataTable142
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_7:
+??jt3_1:
         LDR.W    R0,??DataTable142_1
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_8:
+??jt3_2:
         LDR.W    R0,??DataTable142_2
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_9:
+??jt3_3:
         LDR.W    R0,??DataTable142_3
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_10:
+??jt3_4:
         LDR.W    R0,??DataTable142_4
         B.N      ??user_checkIdAndControl_6
 ??user_checkIdAndControl_11:
+??jt3_5:
         LDR.W    R0,??DataTable142_5
 ??user_checkIdAndControl_6:
           CFI FunCall user_debug
@@ -14603,35 +14622,41 @@ user_checkIdAndControl:
         TBB      [PC, R0]
         DATA
 ??user_checkIdAndControl_1:
-        DC8      0x12,0x3,0x8,0xD
-        DC8      0x16,0x1B
+        DC8     (??jt4_0-??user_checkIdAndControl_1)/2,(??jt4_1-??user_checkIdAndControl_1)/2,(??jt4_2-??user_checkIdAndControl_1)/2,(??jt4_3-??user_checkIdAndControl_1)/2
+        DC8     (??jt4_4-??user_checkIdAndControl_1)/2,(??jt4_5-??user_checkIdAndControl_1)/2
         THUMB
 ??user_checkIdAndControl_18:
+??jt4_1:
         MULS     R2,R2,R1
         ADDS     R0,R3,R2
         LDRB     R0,[R0, #+198]
         B.N      ??user_checkIdAndControl_19
 ??user_checkIdAndControl_20:
+??jt4_2:
         MULS     R2,R2,R1
         ADDS     R0,R3,R2
         LDRB     R0,[R0, #+202]
         B.N      ??user_checkIdAndControl_19
 ??user_checkIdAndControl_21:
+??jt4_3:
         MULS     R2,R2,R1
         ADDS     R0,R3,R2
         LDRB     R0,[R0, #+200]
 ??user_checkIdAndControl_19:
         CBZ.N    R0,??user_checkIdAndControl_16
 ??user_checkIdAndControl_22:
+??jt4_0:
         MOVS     R2,#+1
         STRB     R2,[SP, R1]
         B.N      ??user_checkIdAndControl_16
 ??user_checkIdAndControl_23:
+??jt4_4:
         MULS     R2,R2,R1
         ADDS     R0,R3,R2
         LDRB     R0,[R0, #+199]
         B.N      ??user_checkIdAndControl_24
 ??user_checkIdAndControl_25:
+??jt4_5:
         MULS     R2,R2,R1
         ADDS     R0,R3,R2
         LDRB     R0,[R0, #+197]
@@ -14734,25 +14759,30 @@ user_checkIdAndControl:
         TBB      [PC, R0]
         DATA
 ??user_checkIdAndControl_2:
-        DC8      0x3,0x6,0x9,0xC
-        DC8      0x10,0x0
+        DC8     (??jt5_0-??user_checkIdAndControl_2)/2,(??jt5_1-??user_checkIdAndControl_2)/2,(??jt5_2-??user_checkIdAndControl_2)/2,(??jt5_3-??user_checkIdAndControl_2)/2
+        DC8     (??jt5_4-??user_checkIdAndControl_2)/2,0
         THUMB
 ??user_checkIdAndControl_42:
+??jt5_0:
         LDRB     R0,[SP, #+7]
         B.N      ??user_checkIdAndControl_43
 ??user_checkIdAndControl_44:
+??jt5_1:
         LDRB     R0,[SP, #+10]
         B.N      ??user_checkIdAndControl_43
 ??user_checkIdAndControl_45:
+??jt5_2:
         LDRB     R0,[SP, #+8]
         B.N      ??user_checkIdAndControl_43
 ??user_checkIdAndControl_46:
+??jt5_3:
         LDRB     R0,[SP, #+9]
 ??user_checkIdAndControl_43:
         CBNZ.N   R0,??user_checkIdAndControl_41
 ??user_checkIdAndControl_31:
         B.N      ??user_checkIdAndControl_3
 ??user_checkIdAndControl_47:
+??jt5_4:
         LDRB     R0,[SP, #+11]
         CMP      R0,#+0
         BEQ.N    ??user_checkIdAndControl_3
@@ -15101,35 +15131,41 @@ user_activateOut:
         TBB      [PC, R0]
         DATA
 ??user_activateOut_0:
-        DC8      0x3,0x7,0xB,0xF
-        DC8      0x13,0x17
+        DC8     (??jt6_0-??user_activateOut_0)/2,(??jt6_1-??user_activateOut_0)/2,(??jt6_2-??user_activateOut_0)/2,(??jt6_3-??user_activateOut_0)/2
+        DC8     (??jt6_4-??user_activateOut_0)/2,(??jt6_5-??user_activateOut_0)/2
         THUMB
 ??user_activateOut_20:
+??jt6_0:
         MOV      R2,R6
         MOV      R1,R9
         MOVS     R0,#+69
         B.N      ??user_activateOut_21
 ??user_activateOut_22:
+??jt6_1:
         MOV      R2,R6
         MOV      R1,R9
         MOVS     R0,#+71
         B.N      ??user_activateOut_21
 ??user_activateOut_23:
+??jt6_2:
         MOV      R2,R6
         MOV      R1,R9
         MOVS     R0,#+72
         B.N      ??user_activateOut_21
 ??user_activateOut_24:
+??jt6_3:
         MOV      R2,R6
         MOV      R1,R9
         MOVS     R0,#+70
         B.N      ??user_activateOut_21
 ??user_activateOut_25:
+??jt6_4:
         MOV      R2,R6
         MOV      R1,R9
         MOVS     R0,#+73
         B.N      ??user_activateOut_21
 ??user_activateOut_26:
+??jt6_5:
         MOV      R2,R6
         MOV      R1,R9
         LDR.W    R0,??DataTable154
@@ -17481,12 +17517,13 @@ log_async_step:
         TBB      [PC, R0]
         DATA
 ??log_async_step_0:
-        DC8      0x4,0x1B,0x4A,0x4A
-        DC8      0x5E,0x5E
+        DC8     (??jt7_0-??log_async_step_0)/2,(??jt7_1-??log_async_step_0)/2,(??jt7_2-??log_async_step_0)/2,(??jt7_2-??log_async_step_0)/2
+        DC8     (??jt7_4-??log_async_step_0)/2,(??jt7_4-??log_async_step_0)/2
         THUMB
 ??log_async_step_12:
         B.N      ??log_async_step_7
 ??log_async_step_13:
+??jt7_0:
         LDR      R0,[R4, #+32]
         LDR      R1,[R1, #+56]
         ADDS     R1,R1,#+32
@@ -17512,6 +17549,7 @@ log_async_step:
         MOVS     R0,#+2
         B.N      ??log_async_step_16
 ??log_async_step_17:
+??jt7_1:
         BL       ?Subroutine45
 ??CrossCallReturnLabel_157:
         CMP      R0,#+0
@@ -17561,6 +17599,7 @@ log_async_step:
         STR      R1,[R0, #+0]
         B.N      ??log_async_step_22
 ??log_async_step_23:
+??jt7_2:
         LDRB     R0,[R4, #+44]
         CMP      R0,#+3
         ITTEE    EQ
@@ -17580,6 +17619,7 @@ log_async_step:
         BNE.N    ??log_async_step_20
         B.N      ??log_async_step_5
 ??log_async_step_24:
+??jt7_4:
         BL       ?Subroutine45
 ??CrossCallReturnLabel_156:
         CMP      R0,#+0
@@ -19386,10 +19426,11 @@ comm_number:
         TBB      [PC, R0]
         DATA
 ??comm_number_0:
-        DC8      0x3,0x35,0x11,0x3A
-        DC8      0xA,0x1D
+        DC8     (??jt8_0-??comm_number_0)/2,(??jt8_1-??comm_number_0)/2,(??jt8_2-??comm_number_0)/2,(??jt8_3-??comm_number_0)/2
+        DC8     (??jt8_4-??comm_number_0)/2,(??jt8_5-??comm_number_0)/2
         THUMB
 ??comm_number_2:
+??jt8_0:
         MOVS     R0,#+0
           CFI FunCall comm_endpoint
         BL       comm_endpoint
@@ -19397,6 +19438,7 @@ comm_number:
         LDRH     R0,[R0, #+0]
         POP      {R1,PC}
 ??comm_number_3:
+??jt8_4:
         MOVS     R0,#+1
           CFI FunCall comm_endpoint
         BL       comm_endpoint
@@ -19404,6 +19446,7 @@ comm_number:
         LDRH     R0,[R0, #+2]
         POP      {R1,PC}
 ??comm_number_4:
+??jt8_2:
         LDR.W    R1,??DataTable197_4
         LDRB     R0,[R1, #+136]
         CMP      R0,#+5
@@ -19413,6 +19456,7 @@ comm_number:
         LDRB     R0,[R0, R1]
         POP      {R1,PC}
 ??comm_number_5:
+??jt8_5:
         MOVS     R0,#+1
           CFI FunCall comm_endpoint
         BL       comm_endpoint
@@ -19435,10 +19479,12 @@ comm_number:
         UXTB     R0,R0
         POP      {R1,PC}
 ??comm_number_8:
+??jt8_1:
         LDR.W    R0,??DataTable197
         LDRB     R0,[R0, #+169]
         POP      {R1,PC}
 ??comm_number_1:
+??jt8_3:
         MOVS     R0,#+0
         POP      {R1,PC}
           CFI EndBlock cfiBlock480
