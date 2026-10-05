@@ -2,51 +2,51 @@
   "units": "Unicorn instructions, modeled NOR, NOT cycles or milliseconds",
   "normal": {
     "13/1": {
-      "max_instructions": 1028,
-      "total_instructions": 315829,
+      "max_instructions": 1040,
+      "total_instructions": 315841,
       "passes": 991,
       "stack": 228,
-      "begin_instructions": 1028,
+      "begin_instructions": 1040,
       "max_poll_instructions": 945
     },
     "13/63": {
-      "max_instructions": 25456,
-      "total_instructions": 563538,
+      "max_instructions": 25468,
+      "total_instructions": 563550,
       "passes": 991,
       "stack": 228,
-      "begin_instructions": 25456,
+      "begin_instructions": 25468,
       "max_poll_instructions": 2806
     },
     "13/6": {
-      "max_instructions": 2998,
-      "total_instructions": 922204,
+      "max_instructions": 3010,
+      "total_instructions": 922216,
       "passes": 3574,
       "stack": 228,
-      "begin_instructions": 2998,
+      "begin_instructions": 3010,
       "max_poll_instructions": 945
     },
     "14/3": {
-      "max_instructions": 1803,
-      "total_instructions": 231228,
+      "max_instructions": 1815,
+      "total_instructions": 231240,
       "passes": 895,
       "stack": 224,
-      "begin_instructions": 1803,
+      "begin_instructions": 1815,
       "max_poll_instructions": 877
     },
     "15/3": {
-      "max_instructions": 1255,
-      "total_instructions": 229577,
+      "max_instructions": 1267,
+      "total_instructions": 229589,
       "passes": 895,
       "stack": 224,
-      "begin_instructions": 1255,
+      "begin_instructions": 1267,
       "max_poll_instructions": 877
     },
     "16/2": {
       "max_instructions": 1649,
-      "total_instructions": 238437,
+      "total_instructions": 238449,
       "passes": 879,
       "stack": 224,
-      "begin_instructions": 714,
+      "begin_instructions": 726,
       "max_poll_instructions": 1649
     }
   },
@@ -56,11 +56,10 @@
   "interaction_heap": {
     "full_id_passes": 26748,
     "full_id_max_poll": 962,
-    "full_id_total_instructions": 23021837,
+    "full_id_total_instructions": 23021849,
     "full_id_stack": 228,
     "simultaneous_heap_payload": 3770
   },
   "power_cuts": 670,
-  "power_elf_sha256": "2d888fcf7857b8ce9e877842f5cc79cae3341fb961fe1831300ea41a43b4b9e1",
-  "elf_sha256": "11adb4706c07a51d774e600d21697ded39918122a5547e9f7d4b61cf25891239"
+  "elf_sha256": "d7b95246300f37b92a6d0d24dd350e08495103acb9d7c5e50253b306f3036416"
 }

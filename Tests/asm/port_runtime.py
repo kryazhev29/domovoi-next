@@ -5,10 +5,12 @@ is the only operation that reads the independent C specifications. No hardware.
 """
 import argparse, hashlib, json, re, subprocess
 from pathlib import Path
+from elftools.elf.elffile import ELFFile
 
 ROOT = Path(__file__).resolve().parents[2]
 IAR = Path(r'C:\Program Files\IAR Systems\Embedded Workbench 9.2\arm')
-MODULES = ['user_fun', 'flash_w25', 'memory', 'photo', 'crc', 'idindex', 'user_comm', 'sector_runtime']
+MODULES = ['user_fun', 'flash_w25', 'memory', 'photo', 'crc', 'idindex', 'user_comm', 'sector_runtime',
+           'spi_stm32f10x', 'usb_stm32f10x', 'sector_journal']
 INCLUDES = ['CMSIS/Include', 'CMSIS/STM32F10x/Include', 'Modules',
             'STM32F10x_StdPeriph_Driver/inc', 'User', '.',
             'STM32_USB-FS-Device_Driver/inc', 'USB-FS-CDC_User/Inc', 'Tests/asm/reference/User']
@@ -27,10 +29,11 @@ def run(args):
 
 def export(name):
     out = ROOT/'Release/task-asm-storage/export'; out.mkdir(parents=True,exist_ok=True)
-    ref = ROOT/'Tests/asm/reference/User'/f'{name}.c'
-    source = ref if ref.exists() else ROOT/'User'/f'{name}.c'
+    folder = 'Modules' if name in ('spi_stm32f10x','usb_stm32f10x') else 'User'
+    ref = ROOT/'Tests/asm/reference'/folder/f'{name}.c'
+    source = ref if ref.exists() else ROOT/folder/f'{name}.c'
     # Preserve include search and original relative include semantics.
-    temp = ROOT/'User'/f'_asm_export_{name}.c'
+    temp = ROOT/folder/f'_asm_export_{name}.c'
     obj, listing = out/f'{name}.o', out/f'{name}.s'
     try:
         temp.write_bytes(source.read_bytes())
@@ -38,6 +41,13 @@ def export(name):
     finally:
         temp.unlink(missing_ok=True)
     asm = listing.read_text(encoding='utf-8-sig')
+    # IAR's C listing prints PUBLIC even for __weak definitions. Carry the
+    # binding from its object so the real callback overrides the weak default.
+    with obj.open('rb') as f:
+        weak=[s.name for s in ELFFile(f).get_section_by_name('.symtab').iter_symbols()
+              if s['st_info']['bind']=='STB_WEAK' and s['st_shndx']!='SHN_UNDEF']
+    for symbol in weak:
+        asm=re.sub(r'(?m)^(\s*)PUBLIC\s+'+re.escape(symbol)+r'\s*$',r'\1PUBWEAK '+symbol,asm)
     # Drop timestamp/source-path comments; keep instructions, data and all CFI.
     asm = '\n'.join(l.rstrip() for l in asm.splitlines() if not l.lstrip().startswith((';','//')))+'\n'
     # IAR's listing puts FunCall inside an IT block; its standalone assembler
@@ -69,7 +79,7 @@ def export(name):
     asm = re.sub(r'\n{3,}', '\n\n', asm)
     target = ROOT/'User/asm'/f'{name}_runtime.s'
     target.write_text('; Cortex-M3 / IAR. Executable production module.\n'
-                      '; Reference: Tests/asm/reference/User/'+name+'.c\n'+asm,encoding='utf-8')
+                      '; Reference: Tests/asm/reference/'+folder+'/'+name+'.c\n'+asm,encoding='utf-8')
     # Keep the reference object (DWARF/type and independent machine-code oracle).
     run([IAR/'bin/iasmarm.exe',target,'--cpu','Cortex-M3','-o',out/f'{name}_asm.o'])
     return {'reference_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),

@@ -13,6 +13,8 @@ typedef struct {
   uint8_t phase, after, waiting, committed, cancelled, fault, changed;
   uint8_t data[64], check[64];
 } sj_runtime_state_s;
+/* Shared 64-byte payload storage. Table/photo owners are mutually exclusive. */
+extern sj_runtime_state_s sjr;
 uint8_t sj_runtime_begin(uint32_t address, sj_chunk_reader reader, const void *context);
 uint8_t sj_runtime_poll(uint32_t now); /* 0 idle, 1 pending, 2 verified, 3 error */
 void sj_runtime_cancel(void);

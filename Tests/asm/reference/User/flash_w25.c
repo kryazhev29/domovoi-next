@@ -64,7 +64,14 @@ failed:
 // Чтение данных с памяти -----------------------------------------------------
 bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
 {
+#ifdef ASM_RUNTIME
+  /* Startup may wait synchronously. Runtime samples BUSY exactly once, even
+   * after an uncertain I/O failure; no read may inherit the legacy spin loop. */
+  extern uint8_t store_runtime;
+  if (store_runtime ? !w25_read_available() : (w25_busy() & 1u)) return false;
+#else
   if (w25_busy() & 1u) return false;
+#endif
 
   w25_chip_ON();
   w25_delay_ON();

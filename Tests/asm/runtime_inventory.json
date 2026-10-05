@@ -197,6 +197,7 @@
       "user_setdefault",
       "user_smsreceived",
       "user_smssended",
+      "user_storage_background_ready",
       "user_storage_command_ready",
       "user_storage_flash_ready",
       "user_storage_poll",
@@ -207,8 +208,8 @@
       "user_writeConfigAndDevice",
       "user_writeconfig"
     ],
-    "instruction_data_bytes": 33705,
-    "assembly_sha256": "e77479f14d93b3ea061dc1702d280f91409a10cd048199c668173506bdc6b28a"
+    "instruction_data_bytes": 33809,
+    "assembly_sha256": "b286369c6955d6abbd0fbe1be1b16570334ebeccabaa4caa6232efd1a748e0ce"
   },
   "flash_w25": {
     "functions": [
@@ -231,8 +232,8 @@
       "w25_verify",
       "w25_write_data"
     ],
-    "instruction_data_bytes": 1224,
-    "assembly_sha256": "d4d933a6f13144ecbd51eec1e1adfdeeffa58ba4f4257c8e04195ee1c1787804"
+    "instruction_data_bytes": 1240,
+    "assembly_sha256": "4bce9b5c7454d323ab813a3bc9fcc3a35a684a6802348129899cd5a53a9af3ea"
   },
   "memory": {
     "functions": [
@@ -281,40 +282,46 @@
   },
   "photo": {
     "functions": [
-      "photo_ack_request",
-      "photo_ack_slot",
-      "photo_ack_write",
       "photo_alloc",
       "photo_backup_crc",
       "photo_cleanup_active",
-      "photo_cleanup_step",
-      "photo_clear_confirmed",
       "photo_command",
       "photo_confirmed_offset",
       "photo_connection_lost",
-      "photo_data_ready",
       "photo_fail",
-      "photo_first_pending",
       "photo_frame",
       "photo_issue",
-      "photo_next",
       "photo_poll",
       "photo_prepare",
-      "photo_prepare_step",
       "photo_recover",
       "photo_request",
-      "photo_restore_step",
-      "photo_send",
+      "photo_request_answer",
       "photo_start",
       "photo_stop",
+      "photo_storage_busy",
+      "photo_storage_cancel",
       "photo_storage_end",
-      "photo_write",
+      "photo_storage_poll",
+      "pr_cleanup_begin",
+      "pr_data_ready",
+      "pr_erase",
+      "pr_fail",
+      "pr_frame",
+      "pr_poll",
+      "pr_prepare",
+      "pr_release",
+      "pr_request",
+      "pr_scan_begin",
+      "pr_scan_finish",
+      "pr_send_begin",
+      "pr_start",
+      "pr_write",
       "rs485_baud",
       "rs485_init",
       "rs485_set_config"
     ],
-    "instruction_data_bytes": 6214,
-    "assembly_sha256": "6f1338270d030a9971ce6d61d01adf1832f375b4239692e8ab9f06f4e638ccf8"
+    "instruction_data_bytes": 8037,
+    "assembly_sha256": "1305f7b6c1fabbf795063ac85a1782dd5582077c4e77f2515970b4a6c819b721"
   },
   "crc": {
     "functions": [
@@ -366,6 +373,64 @@
       "sjr_start"
     ],
     "instruction_data_bytes": 1226,
-    "assembly_sha256": "8964780267b7aa98088d54c1568a6dd0668b0bc2f4c7653f69208f038799beef"
+    "assembly_sha256": "9cc820ea4e3ba2bd5b323a8f3f487c47f148499addf595aca9dfcfd46bcb5707"
+  },
+  "spi_stm32f10x": {
+    "functions": [
+      "spi_init",
+      "spi_initCS",
+      "spi_read",
+      "spi_read_byte",
+      "spi_ready",
+      "spi_send",
+      "spi_send_byte",
+      "spi_wait_busy",
+      "spi_wait_flag"
+    ],
+    "instruction_data_bytes": 522,
+    "assembly_sha256": "5109e8ea845fd260410b382cf50dc81ecd2484e15d67947446eb629948eab9ed"
+  },
+  "usb_stm32f10x": {
+    "functions": [
+      "usb_bus_error_seen",
+      "usb_check_data",
+      "usb_clear_buffer",
+      "usb_data_reading",
+      "usb_datareceived",
+      "usb_diag_fill",
+      "usb_diag_fill_addr",
+      "usb_diag_fill_errors",
+      "usb_diag_fill_regs",
+      "usb_get_state",
+      "usb_in_done",
+      "usb_init",
+      "usb_regs_read",
+      "usb_request_recovery",
+      "usb_rx_consume",
+      "usb_send",
+      "usb_sendstr",
+      "usb_sof_seen",
+      "usb_timer1ms"
+    ],
+    "instruction_data_bytes": 4089,
+    "assembly_sha256": "07c9fe50a8d8b5228fd3705ee1bebac8604d69d3cc5451668397e50a08d9ba10"
+  },
+  "sector_journal": {
+    "functions": [
+      "sj_blank",
+      "sj_destination",
+      "sj_flash_crc",
+      "sj_flash_equal",
+      "sj_header",
+      "sj_page_equal",
+      "sj_pages_equal",
+      "sj_ram_page",
+      "sj_recover",
+      "sj_replace",
+      "sj_replace_pages",
+      "sj_span"
+    ],
+    "instruction_data_bytes": 1224,
+    "assembly_sha256": "ec6d0f5d9b25f8dbc753ee16d4a14b7cf04e65bf5e0ad5ee11114c52a593eced"
   }
 }

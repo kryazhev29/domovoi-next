@@ -2206,7 +2206,7 @@
             <name>$PROJ_DIR$\Modules\adc_stm32f10x.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\Modules\spi_stm32f10x.c</name>
+            <name>$PROJ_DIR$\User\asm\spi_stm32f10x_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\Modules\timers.c</name>
@@ -2215,7 +2215,7 @@
             <name>$PROJ_DIR$\Modules\uart_stm32f10x.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\Modules\usb_stm32f10x.c</name>
+            <name>$PROJ_DIR$\User\asm\usb_stm32f10x_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\Modules\wdt_stm32f10x.c</name>
@@ -2379,7 +2379,7 @@
             <name>$PROJ_DIR$\User\asm\memory_runtime.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\sector_journal.c</name>
+            <name>$PROJ_DIR$\User\asm\sector_journal_runtime.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\outs.c</name>

@@ -1,0 +1,83 @@
+{
+  "units": "Unicorn instructions with NOR/UART models; NOT cycles/time",
+  "normal": {
+    "1": {
+      "max_instructions": 1280,
+      "max_passes": 107,
+      "max_storage_poll": 216,
+      "max_port_poll": 728,
+      "total_instructions": 23969,
+      "stack": 144
+    },
+    "58": {
+      "max_instructions": 4875,
+      "max_passes": 107,
+      "max_storage_poll": 216,
+      "max_port_poll": 4875,
+      "total_instructions": 28116,
+      "stack": 144
+    },
+    "59": {
+      "max_instructions": 4875,
+      "max_passes": 115,
+      "max_storage_poll": 216,
+      "max_port_poll": 4875,
+      "total_instructions": 29595,
+      "stack": 144
+    },
+    "255": {
+      "max_instructions": 4875,
+      "max_passes": 143,
+      "max_storage_poll": 216,
+      "max_port_poll": 4875,
+      "total_instructions": 48474,
+      "stack": 144
+    },
+    "256": {
+      "max_instructions": 4875,
+      "max_passes": 143,
+      "max_storage_poll": 216,
+      "max_port_poll": 4875,
+      "total_instructions": 48550,
+      "stack": 144
+    },
+    "4095": {
+      "max_instructions": 4875,
+      "max_passes": 737,
+      "max_storage_poll": 216,
+      "max_port_poll": 4875,
+      "total_instructions": 427383,
+      "stack": 144
+    },
+    "4096": {
+      "max_instructions": 4875,
+      "max_passes": 737,
+      "max_storage_poll": 216,
+      "max_port_poll": 4875,
+      "total_instructions": 427459,
+      "stack": 144
+    },
+    "65535": {
+      "max_instructions": 4875,
+      "max_passes": 10259,
+      "max_storage_poll": 216,
+      "max_port_poll": 4875,
+      "total_instructions": 6473123,
+      "stack": 144
+    },
+    "prefix4087": {
+      "max_instructions": 4875,
+      "max_storage_poll": 686,
+      "passes": 1058,
+      "total_instructions": 233049,
+      "stack": 144
+    }
+  },
+  "upload": {
+    "max_instructions": 4875,
+    "passes": 420,
+    "stack": 144
+  },
+  "errors": 6,
+  "elf_sha256": "d7b95246300f37b92a6d0d24dd350e08495103acb9d7c5e50253b306f3036416"
+}

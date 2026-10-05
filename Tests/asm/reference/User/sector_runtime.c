@@ -5,7 +5,7 @@
 #include "flash_w25.h"
 #include <string.h>
 
-static sj_runtime_state_s sjr;
+sj_runtime_state_s sjr;
 
 uint8_t sj_runtime_blocked(void) { return sjr.fault || (sjr.phase && sjr.phase < 30); }
 void sj_runtime_cancel(void) { sjr.cancelled = 1; }

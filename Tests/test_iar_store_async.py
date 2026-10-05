@@ -42,6 +42,7 @@ def read():
 m.u.hook_add(UC_HOOK_MEM_WRITE,cs)
 for name,fn in (("spi_send_byte",send_byte),("spi_read_byte",read_byte),("spi_send",send),("spi_read",read)):
  m.stubs[m.addr(name)]=fn
+m.write(m.addr('store_runtime'),1,1)
 p=0x21000000;m.u.mem_write(p,b"Z"*64)
 assert m.call("w25_async_start",16,p,64,100)
 assert not m.call("w25_async_start",4096,0,0,100)
@@ -59,5 +60,10 @@ assert m.call("w25_async_start",0,p,64,0xfffffff0)
 busy=999
 assert m.call("w25_async_poll",3)==1
 assert m.call("w25_async_poll",4)==3
+reads=status_reads=0
+assert not m.call('w25_read_data',0,p,64,budget=5000)
+assert status_reads==1 and reads==0 and not m.call('w25_async_active')
+busy=0;reads=status_reads=0
+assert m.call('w25_read_data',0,p,64) and reads==64 and status_reads==1
 assert maximum<2000,maximum
 print(f"IAR W25 async PASS: BUSY, ownership, write/erase, readback <=64 bytes, status <=2, timeout/wrap; maximum {maximum} modeled instructions per poll, NOT board time")

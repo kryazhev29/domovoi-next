@@ -35,6 +35,10 @@ static uint8_t photo_prep_phase, photo_restore_phase;
 static uint8_t photo_clear_confirmed(void);
 uint8_t photo_cleanup_active(void);
 enum { P_IDLE, P_SYNC, P_INIT, P_SIZE, P_SNAP, P_GET, P_DATA, P_PREP };
+#ifdef ASM_RUNTIME
+#include "../photo_runtime.inc"
+#endif
+
 
 static uint8_t photo_alloc(void)
 {
@@ -133,6 +137,9 @@ static void photo_issue(void)
 }
 cmdCode_e photo_start(uint8_t address)
 {
+#ifdef ASM_RUNTIME
+  return pr_start(address);
+#else
   uint8_t i, found = 0;
   uint32_t scan;
   photoParam_s previous;
@@ -178,6 +185,7 @@ cmdCode_e photo_start(uint8_t address)
   uart_init(PHOTO_PORT, PHOTO_BAUD, 0, photo->rx, sizeof(photo->rx));
   device.getPhoto = address;
   return CMD_SUCCESS;
+#endif
 }
 static uint8_t photo_write(uint32_t address, uint8_t *data, uint16_t n)
 {
@@ -259,6 +267,9 @@ static uint8_t photo_restore_step(void)
 }
 static uint8_t photo_prepare(uint32_t size)
 {
+#ifdef ASM_RUNTIME
+  return pr_prepare(size);
+#else
   uint32_t a, end = photo_storage_end();
   uint16_t prefix = photo->address & (MEMSECTORSIZE - 1u);
   uint8_t b[64], dirty = 0;
@@ -290,6 +301,7 @@ static uint8_t photo_prepare(uint32_t size)
     photo->stage = P_DATA;
   }
   return 1;
+#endif
 }
 static uint8_t photo_prepare_step(void)
 {
@@ -347,6 +359,9 @@ static void photo_frame(uint8_t *p, uint16_t n)
   uint16_t i, length, id;
   uint8_t sum = 0;
   if (photo->stage == P_DATA) {
+#ifdef ASM_RUNTIME
+    pr_frame(p,n); return;
+#else
     id = p[0] | ((uint16_t)p[1] << 8);
     length = p[2] | ((uint16_t)p[3] << 8);
     for (i = 0; i < n - 2u; i++) sum += p[i];
@@ -370,6 +385,7 @@ static void photo_frame(uint8_t *p, uint16_t n)
       photo_command(0x0E,0,0,0xF0,0xF0);
       photo_stop(); return;
     }
+#endif
   } else {
     if (p[0] != 0xAA) return;
     if (p[1] == 0x0F) { photo_stop(); return; }
@@ -534,6 +550,9 @@ static cmdCode_e photo_ack_request(uint32_t number, uint16_t offset)
 }
 cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
+#ifdef ASM_RUNTIME
+  return pr_request(channel,id,args,size);
+#else
   uint32_t number, address, offset;
   uint16_t requested;
   cmdCode_e result;
@@ -554,6 +573,7 @@ cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, u
   photo->channel = channel; photo->requestId = id; photo->pending = 1;
   photo_pending_since = timers_getMillis();
   return CMD_SUCCESS;
+#endif
 }
 static uint8_t photo_next(uint32_t *address, uint32_t *offset, photoParam_s *head)
 {
@@ -611,9 +631,15 @@ static void photo_send(void)
 void photo_connection_lost(void)
 {
   if (photo && photo->channel == CH_SERVER) photo->pending = 0;
+#ifdef ASM_RUNTIME
+  if (photo && photo->channel==CH_SERVER) pr.quiet=1;
+#endif
 }
 void photo_poll(void)
 {
+#ifdef ASM_RUNTIME
+  pr_poll();
+#else
   uint32_t now;
   uint16_t i, n, want;
   uint8_t erased = 0;
@@ -675,5 +701,6 @@ void photo_poll(void)
     if (!photo->stage && !photo->pending) { free(photo); photo = NULL; }
   }
   if (!erased && photo_cleanup_active()) photo_cleanup_step();
+#endif
 }
 

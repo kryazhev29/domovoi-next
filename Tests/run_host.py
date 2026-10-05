@@ -436,12 +436,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=(function(user,'command_args_valid')+'\n' if 'static bool command_args_valid(' in user else '')+code[:code.index('  /* ПИН (команда 102)')]+'  (void)tmp32;\n}\n'
         unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='recovery':
-        code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
+        code=source('Tests/asm/reference/Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         code+=function(source('USB-FS-CDC_User/Src/usb_istr.c'),'USB_Istr')
         unit=(ROOT/'Tests/test_usb_recovery.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='rx':
-        code=source('Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
+        code=source('Tests/asm/reference/Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         user=function(source('Tests/asm/reference/User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
         unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)
@@ -544,7 +544,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#define log_async_active() false\n'+unit
     if 'fw_async_active(' in unit and 'bool fw_async_active(void) {' not in unit:
         unit='#define fw_async_active() false\n'+unit
-    for helper,args,value in [('table_runtime_active','','false'),('table_runtime_quiet','ch','((void)(ch))'),('table_runtime_cancel','','((void)0)'),('fw_async_begin','a,b,c','false'),('fw_async_reply','id','((void)(id))'),('fw_async_quiet','ch','((void)(ch))'),('fw_async_cancel','','((void)0)')]:
+    for helper,args,value in [('photo_storage_busy','','false'),('photo_storage_cancel','','((void)0)'),('table_runtime_active','','false'),('table_runtime_quiet','ch','((void)(ch))'),('table_runtime_cancel','','((void)0)'),('fw_async_begin','a,b,c','false'),('fw_async_reply','id','((void)(id))'),('fw_async_quiet','ch','((void)(ch))'),('fw_async_cancel','','((void)0)')]:
         if helper+'(' in unit and 'static void '+helper+'(' not in unit and 'static bool '+helper+'(' not in unit:
             unit='#define '+helper+'('+args+') '+value+'\n'+unit
     if 'server_rx_verified(' in unit and 'bool server_rx_verified(' not in unit:

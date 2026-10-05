@@ -18,6 +18,11 @@ map_path=root/'Release/List/DomovoiNext.map'
 map_text=map_path.read_text(errors='replace')
 def mapped_size(n):
     m=re.search(r'^(?:_A_)?'+re.escape(n)+r'\s+0x[0-9a-f\']+\s+(0x[0-9a-f]+)\s+Data',map_text,re.M|re.I)
+    if not m:
+        addr(n)  # Confirm this allocation is actually present in the linked ELF.
+        for asm in (root/'User/asm').glob('*_runtime.s'):
+            size=re.search(r'^'+re.escape(n)+r':\s*\n\s*DS8\s+(\d+)',asm.read_text(),re.M)
+            if size:return int(size[1])
     assert m,n
     return int(m[1],16)
 

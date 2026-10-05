@@ -30,6 +30,10 @@ def crc16(b,c=65535):
     return c
 
 class StorageMachine(Machine):
+    def hook(self,u,a,n,unused):
+        if a in self.stubs:
+            assert not u.reg_read(UC_ARM_REG_SP)&7,('AAPCS call alignment',hex(a))
+        super().hook(u,a,n,unused)
     def __init__(self,flash=None):
         super().__init__();self.init()
         self.flash=bytearray(b'\xff'*0x400000) if flash is None else bytearray(flash)

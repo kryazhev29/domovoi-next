@@ -18,6 +18,7 @@
         EXTERN spi_ready
         EXTERN spi_send
         EXTERN spi_send_byte
+        EXTERN store_runtime
         EXTERN wdt_reload
 
         PUBLIC w25_async_active
@@ -91,7 +92,7 @@ w25_job:
           CFI NoCalls
         THUMB
 w25_async_active:
-        LDR.W    R0,??DataTable14
+        LDR.W    R0,??DataTable15
         LDRB     R0,[R0, #+16]
         CBZ.N    R0,??w25_async_active_0
         MOVS     R0,#+1
@@ -148,7 +149,7 @@ w25_async_start:
         RSB      R1,R5,#+16777216
         CMP      R1,R6
         BCC.N    ??w25_async_start_0
-        LDR.W    R7,??DataTable14
+        LDR.W    R7,??DataTable15
         LDRB     R0,[R7, #+16]
         CMP      R0,#+0
         BNE.N    ??w25_async_start_0
@@ -181,7 +182,7 @@ w25_async_start:
         BL       spi_ready
         CBZ.N    R0,??w25_async_start_0
         MOV      R9,#+4096
-        LDR.W    R0,??DataTable14_1
+        LDR.W    R0,??DataTable15_1
         STR      R9,[R0, #+0]
           CFI FunCall w25_delay_ON
         BL       w25_delay_ON
@@ -206,7 +207,7 @@ w25_async_start:
           CFI FunCall spi_send
         BL       spi_send
 ??w25_async_start_3:
-        LDR.W    R0,??DataTable14_2
+        LDR.W    R0,??DataTable15_2
         STR      R9,[R0, #+0]
           CFI FunCall w25_delay_OFF
         BL       w25_delay_OFF
@@ -246,7 +247,7 @@ w25_async_poll:
         SUB      SP,SP,#+64
           CFI CFA R13+80
         MOV      R5,R0
-        LDR.W    R4,??DataTable14
+        LDR.W    R4,??DataTable15
         LDRB     R0,[R4, #+16]
         CMP      R0,#+0
         BEQ.N    ??w25_async_poll_0
@@ -345,17 +346,16 @@ w25_read_data:
           CFI CFA R13+24
         MOV      R4,R0
         MOV      R5,R1
-        MOV      R7,R2
-          CFI FunCall w25_busy
-        BL       w25_busy
-        LSLS     R0,R0,#+31
-        BPL.N    ??w25_read_data_0
-        MOVS     R0,#+0
-        POP      {R1,R4-R7,PC}
-??w25_read_data_0:
-        MOV      R6,#+4096
-        LDR.N    R0,??DataTable14_1
-        STR      R6,[R0, #+0]
+        MOV      R6,R2
+        LDR.N    R0,??DataTable15_3
+        LDRB     R0,[R0, #+0]
+        CBZ.N    R0,??w25_read_data_0
+          CFI FunCall w25_read_available
+        BL       w25_read_available
+        CBZ.N    R0,??w25_read_data_1
+??w25_read_data_2:
+        BL       ?Subroutine7
+??CrossCallReturnLabel_21:
           CFI FunCall w25_delay_ON
         BL       w25_delay_ON
         MOVS     R0,#+3
@@ -369,19 +369,27 @@ w25_read_data:
         UXTB     R0,R4
           CFI FunCall spi_send_byte
         BL       spi_send_byte
-        MOV      R1,R7
+        MOV      R1,R6
         MOV      R0,R5
           CFI FunCall spi_read
         BL       spi_read
-        LDR.N    R0,??DataTable14_2
-        STR      R6,[R0, #+0]
+        LDR.N    R0,??DataTable15_2
+        STR      R7,[R0, #+0]
           CFI FunCall w25_delay_OFF
         BL       w25_delay_OFF
           CFI FunCall spi_ready
         BL       spi_ready
-        CBZ.N    R0,??w25_read_data_1
+        CBZ.N    R0,??w25_read_data_3
         MOVS     R0,#+1
+??w25_read_data_3:
+        POP      {R1,R4-R7,PC}
+??w25_read_data_0:
+          CFI FunCall w25_busy
+        BL       w25_busy
+        LSLS     R0,R0,#+31
+        BPL.N    ??w25_read_data_2
 ??w25_read_data_1:
+        MOVS     R0,#+0
         POP      {R1,R4-R7,PC}
           CFI EndBlock cfiBlock4
 
@@ -400,7 +408,7 @@ w25_write_data:
         MOV      R5,R0
         MOV      R6,R1
         MOV      R7,R2
-        LDR.N    R0,??DataTable14
+        LDR.N    R0,??DataTable15
         LDRB     R0,[R0, #+16]
         CBNZ.N   R0,??w25_write_data_0
         ASRS     R0,R5,#+7
@@ -459,7 +467,7 @@ w25_erase_sector:
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
         MOV      R4,R0
-        LDR.N    R0,??DataTable14
+        LDR.N    R0,??DataTable15
         LDRB     R0,[R0, #+16]
         CBNZ.N   R0,??w25_erase_sector_0
           CFI FunCall w25_busy
@@ -472,8 +480,8 @@ w25_erase_sector:
         BL       w25_read_status
         LSLS     R0,R0,#+30
         BPL.N    ??w25_erase_sector_0
-        BL       ?Subroutine4
-??CrossCallReturnLabel_16:
+        BL       ?Subroutine3
+??CrossCallReturnLabel_13:
         MOVS     R0,#+32
           CFI FunCall spi_send_byte
         BL       spi_send_byte
@@ -643,8 +651,8 @@ w25_read_devID:
         MOV      R0,SP
           CFI FunCall spi_read
         BL       spi_read
-        BL       ?Subroutine3
-??CrossCallReturnLabel_14:
+        BL       ?Subroutine5
+??CrossCallReturnLabel_18:
         LDRH     R0,[SP, #+0]
         POP      {R1,R2,R4,PC}
           CFI EndBlock cfiBlock16
@@ -659,8 +667,8 @@ w25_read_status:
           CFI R5 Frame(CFA, -8)
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
-        BL       ?Subroutine4
-??CrossCallReturnLabel_15:
+        BL       ?Subroutine3
+??CrossCallReturnLabel_12:
         MOVS     R0,#+5
           CFI FunCall spi_send_byte
         BL       spi_send_byte
@@ -693,7 +701,7 @@ w25_read_status:
           CFI (cfiPicker20) Picker
         THUMB
 ?Subroutine6:
-        LDR.N    R0,??DataTable14_2
+        LDR.N    R0,??DataTable15_2
         STR      R5,[R0, #+0]
           CFI (cfiCond18) FunCall w25_erase_sector w25_delay_OFF
           CFI (cfiCond19) FunCall w25_read_status w25_delay_OFF
@@ -705,14 +713,14 @@ w25_read_status:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond21 Using cfiCommon0
           CFI Function w25_erase_sector
-          CFI Conditional ??CrossCallReturnLabel_16
+          CFI Conditional ??CrossCallReturnLabel_13
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
           CFI Block cfiCond22 Using cfiCommon0
           CFI (cfiCond22) Function w25_read_status
-          CFI (cfiCond22) Conditional ??CrossCallReturnLabel_15
+          CFI (cfiCond22) Conditional ??CrossCallReturnLabel_12
           CFI (cfiCond22) R4 Frame(CFA, -12)
           CFI (cfiCond22) R5 Frame(CFA, -8)
           CFI (cfiCond22) R14 Frame(CFA, -4)
@@ -721,9 +729,9 @@ w25_read_status:
           CFI (cfiPicker23) NoFunction
           CFI (cfiPicker23) Picker
         THUMB
-?Subroutine4:
+?Subroutine3:
         MOV      R5,#+4096
-        LDR.N    R0,??DataTable14_1
+        LDR.N    R0,??DataTable15_1
         STR      R5,[R0, #+0]
           CFI (cfiCond21) FunCall w25_erase_sector w25_delay_ON
           CFI (cfiCond22) FunCall w25_read_status w25_delay_ON
@@ -748,7 +756,7 @@ w25_clear_status:
         MOVS     R0,#+48
           CFI FunCall spi_send_byte
         BL       spi_send_byte
-        LDR.N    R0,??DataTable14_2
+        LDR.N    R0,??DataTable15_2
         STR      R4,[R0, #+0]
         POP      {R4,LR}
           CFI R4 SameValue
@@ -776,8 +784,8 @@ w25_erase_chip:
         MOVS     R0,#+96
           CFI FunCall spi_send_byte
         BL       spi_send_byte
-        BL       ?Subroutine3
-??CrossCallReturnLabel_13:
+        BL       ?Subroutine5
+??CrossCallReturnLabel_17:
           CFI FunCall w25_clear_status
         BL       w25_clear_status
         POP      {R4,LR}
@@ -791,19 +799,19 @@ w25_erase_chip:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond26 Using cfiCommon0
           CFI Function w25_read_devID
-          CFI Conditional ??CrossCallReturnLabel_14
+          CFI Conditional ??CrossCallReturnLabel_18
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
           CFI Block cfiCond27 Using cfiCommon0
           CFI (cfiCond27) Function w25_erase_chip
-          CFI (cfiCond27) Conditional ??CrossCallReturnLabel_13
+          CFI (cfiCond27) Conditional ??CrossCallReturnLabel_17
           CFI (cfiCond27) R4 Frame(CFA, -8)
           CFI (cfiCond27) R14 Frame(CFA, -4)
           CFI (cfiCond27) CFA R13+8
           CFI Block cfiCond28 Using cfiCommon0
           CFI (cfiCond28) Function w25_busy
-          CFI (cfiCond28) Conditional ??CrossCallReturnLabel_12
+          CFI (cfiCond28) Conditional ??CrossCallReturnLabel_16
           CFI (cfiCond28) R4 Frame(CFA, -16)
           CFI (cfiCond28) R5 Frame(CFA, -12)
           CFI (cfiCond28) R6 Frame(CFA, -8)
@@ -813,8 +821,8 @@ w25_erase_chip:
           CFI (cfiPicker29) NoFunction
           CFI (cfiPicker29) Picker
         THUMB
-?Subroutine3:
-        LDR.N    R0,??DataTable14_2
+?Subroutine5:
+        LDR.N    R0,??DataTable15_2
         STR      R4,[R0, #+0]
           CFI (cfiCond26) FunCall w25_read_devID w25_delay_OFF
           CFI (cfiCond27) FunCall w25_erase_chip w25_delay_OFF
@@ -858,7 +866,7 @@ w25_erase_chip:
         THUMB
 ?Subroutine1:
         MOV      R4,#+4096
-        LDR.N    R0,??DataTable14_1
+        LDR.N    R0,??DataTable15_1
         STR      R4,[R0, #+0]
           CFI (cfiCond30) FunCall w25_read_devID w25_delay_ON
           CFI (cfiCond31) FunCall w25_clear_status w25_delay_ON
@@ -882,7 +890,7 @@ w25_busy:
           CFI R5 Frame(CFA, -12)
           CFI R4 Frame(CFA, -16)
           CFI CFA R13+16
-        LDR.N    R0,??DataTable14
+        LDR.N    R0,??DataTable15
         LDRB     R0,[R0, #+16]
         CBZ.N    R0,??w25_busy_0
         POP      {R4-R6,LR}
@@ -899,7 +907,7 @@ w25_busy:
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
 ??w25_busy_0:
-        LDR.N    R6,??DataTable14_3
+        LDR.N    R6,??DataTable15_4
         BL       ?Subroutine1
 ??CrossCallReturnLabel_0:
         MOVS     R0,#+5
@@ -924,8 +932,8 @@ w25_busy:
 ??w25_busy_2:
         MOVS     R5,#+255
 ??w25_busy_3:
-        BL       ?Subroutine3
-??CrossCallReturnLabel_12:
+        BL       ?Subroutine5
+??CrossCallReturnLabel_16:
         MOV      R0,R5
         POP      {R4-R6,PC}
           CFI EndBlock cfiBlock35
@@ -964,8 +972,8 @@ w25_WREN:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        BL       ?Subroutine5
-??CrossCallReturnLabel_18:
+        BL       ?Subroutine4
+??CrossCallReturnLabel_15:
         MOVS     R0,#+6
         B.N      ?Subroutine0
           CFI EndBlock cfiBlock38
@@ -980,8 +988,8 @@ w25_WRDI:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        BL       ?Subroutine5
-??CrossCallReturnLabel_17:
+        BL       ?Subroutine4
+??CrossCallReturnLabel_14:
         MOVS     R0,#+4
           CFI EndBlock cfiBlock39
         REQUIRE ?Subroutine0
@@ -997,7 +1005,7 @@ w25_WRDI:
         THUMB
 ?Subroutine0:
         BL       spi_send_byte
-        LDR.N    R0,??DataTable14_2
+        LDR.N    R0,??DataTable15_2
         STR      R4,[R0, #+0]
         POP      {R4,LR}
           CFI CFA R13+0
@@ -1011,13 +1019,13 @@ w25_WRDI:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond41 Using cfiCommon0
           CFI Function w25_WREN
-          CFI Conditional ??CrossCallReturnLabel_18
+          CFI Conditional ??CrossCallReturnLabel_15
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
           CFI Block cfiCond42 Using cfiCommon0
           CFI (cfiCond42) Function w25_WRDI
-          CFI (cfiCond42) Conditional ??CrossCallReturnLabel_17
+          CFI (cfiCond42) Conditional ??CrossCallReturnLabel_14
           CFI (cfiCond42) R4 Frame(CFA, -8)
           CFI (cfiCond42) R14 Frame(CFA, -4)
           CFI (cfiCond42) CFA R13+8
@@ -1025,9 +1033,9 @@ w25_WRDI:
           CFI (cfiPicker43) NoFunction
           CFI (cfiPicker43) Picker
         THUMB
-?Subroutine5:
+?Subroutine4:
         MOV      R4,#+4096
-        LDR.N    R0,??DataTable14_1
+        LDR.N    R0,??DataTable15_1
         STR      R4,[R0, #+0]
           CFI (cfiCond41) FunCall w25_WREN w25_delay_ON
           CFI (cfiCond42) FunCall w25_WRDI w25_delay_ON
@@ -1061,9 +1069,8 @@ w25_page_program:
         BL       w25_read_status
         LSLS     R0,R0,#+30
         BPL.N    ??w25_page_program_0
-        MOV      R7,#+4096
-        LDR.N    R0,??DataTable14_1
-        STR      R7,[R0, #+0]
+        BL       ?Subroutine7
+??CrossCallReturnLabel_22:
           CFI FunCall w25_delay_ON
         BL       w25_delay_ON
         MOVS     R0,#+2
@@ -1081,7 +1088,7 @@ w25_page_program:
         MOV      R0,R5
           CFI FunCall spi_send
         BL       spi_send
-        LDR.N    R0,??DataTable14_2
+        LDR.N    R0,??DataTable15_2
         STR      R7,[R0, #+0]
           CFI FunCall w25_delay_OFF
         BL       w25_delay_OFF
@@ -1106,36 +1113,75 @@ w25_page_program:
         POP      {R1,R4-R7,PC}
           CFI EndBlock cfiBlock44
 
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiCond45 Using cfiCommon0
+          CFI Function w25_read_data
+          CFI Conditional ??CrossCallReturnLabel_21
+          CFI R4 Frame(CFA, -20)
+          CFI R5 Frame(CFA, -16)
+          CFI R6 Frame(CFA, -12)
+          CFI R7 Frame(CFA, -8)
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+24
+          CFI Block cfiCond46 Using cfiCommon0
+          CFI (cfiCond46) Function w25_page_program
+          CFI (cfiCond46) Conditional ??CrossCallReturnLabel_22
+          CFI (cfiCond46) R4 Frame(CFA, -20)
+          CFI (cfiCond46) R5 Frame(CFA, -16)
+          CFI (cfiCond46) R6 Frame(CFA, -12)
+          CFI (cfiCond46) R7 Frame(CFA, -8)
+          CFI (cfiCond46) R14 Frame(CFA, -4)
+          CFI (cfiCond46) CFA R13+24
+          CFI Block cfiPicker47 Using cfiCommon1
+          CFI (cfiPicker47) NoFunction
+          CFI (cfiPicker47) Picker
+        THUMB
+?Subroutine7:
+        MOV      R7,#+4096
+        LDR.N    R0,??DataTable15_1
+        STR      R7,[R0, #+0]
+        BX       LR
+          CFI EndBlock cfiCond45
+          CFI EndBlock cfiCond46
+          CFI EndBlock cfiPicker47
+
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable14:
+??DataTable15:
         DATA32
         DC32     w25_job
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable14_1:
+??DataTable15_1:
         DATA32
         DC32     0x40010c14
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable14_2:
+??DataTable15_2:
         DATA32
         DC32     0x40010c10
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable14_3:
+??DataTable15_3:
+        DATA32
+        DC32     store_runtime
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable15_4:
         DATA32
         DC32     0xf4240
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock45 Using cfiCommon0
+          CFI Block cfiBlock48 Using cfiCommon0
           CFI Function w25_verify
         THUMB
 w25_verify:
@@ -1196,7 +1242,7 @@ w25_verify:
         ADD      SP,SP,#+68
           CFI CFA R13+20
         POP      {R4-R7,PC}
-          CFI EndBlock cfiBlock45
+          CFI EndBlock cfiBlock48
 
         SECTION `.iar_vfe_header`:DATA:NOALLOC:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0

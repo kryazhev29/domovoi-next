@@ -160,6 +160,7 @@ uint32_t CRC32(uint32_t crc, uint32_t data);
 
 void user_storage_poll(void);
 bool user_storage_command_ready(void);
+bool user_storage_background_ready(void);
 bool user_storage_flash_ready(void);
 
 #endif

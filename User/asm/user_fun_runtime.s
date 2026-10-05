@@ -153,9 +153,12 @@
         EXTERN photo_connection_lost
         EXTERN photo_poll
         EXTERN photo_recover
-        EXTERN photo_request
+        EXTERN photo_request_answer
         EXTERN photo_start
+        EXTERN photo_storage_busy
+        EXTERN photo_storage_cancel
         EXTERN photo_storage_end
+        EXTERN photo_storage_poll
         EXTERN rs485_init
         EXTERN rs485_set_config
         EXTERN sj_runtime_begin
@@ -306,6 +309,7 @@
         PUBLIC user_setdefault
         PUBLIC user_smsreceived
         PUBLIC user_smssended
+        PUBLIC user_storage_background_ready
         PUBLIC user_storage_command_ready
         PUBLIC user_storage_flash_ready
         PUBLIC user_storage_poll
@@ -427,6 +431,9 @@ user_storage_command_ready:
           CFI CFA R13+8
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall photo_storage_busy
+        BL       photo_storage_busy
+        CBNZ.N   R0,??user_storage_command_ready_0
           CFI FunCall table_runtime_active
         BL       table_runtime_active
         CBNZ.N   R0,??user_storage_command_ready_0
@@ -438,7 +445,7 @@ user_storage_command_ready:
         CBNZ.N   R0,??user_storage_command_ready_0
         LDR.W    R0,??DataTable32_1
         LDRB     R1,[R0, #+18]
-        LDR.W    R0,??DataTable39
+        LDR.W    R0,??DataTable38
         LDRB     R0,[R0, #+0]
         ORRS     R1,R0,R1
         BNE.N    ??user_storage_command_ready_0
@@ -488,6 +495,9 @@ user_storage_flash_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall photo_storage_busy
+        BL       photo_storage_busy
+        CBNZ.N   R0,??user_storage_flash_ready_0
           CFI FunCall table_runtime_active
         BL       table_runtime_active
         CBNZ.N   R0,??user_storage_flash_ready_0
@@ -607,8 +617,8 @@ upload_store:
         STR      R3,[R1, #+0]
         LDR.W    R4,??DataTable32_2
         ADD      R1,R0,#+185
-        BL       ?Subroutine12
-??CrossCallReturnLabel_18:
+        BL       ?Subroutine13
+??CrossCallReturnLabel_20:
         LDR.W    R1,??DataTable32_4
         ADD      R3,R0,#+187
         LDRB     R0,[R1, #+0]
@@ -640,12 +650,12 @@ upload_restore:
         STRH     R2,[R1, #+153]
         ADD      R4,R0,#+185
         LDR.W    R1,??DataTable32_2
-        BL       ?Subroutine12
-??CrossCallReturnLabel_19:
-        ADD      R3,R0,#+187
-        LDR.W    R0,??DataTable32_4
         BL       ?Subroutine13
 ??CrossCallReturnLabel_21:
+        ADD      R3,R0,#+187
+        LDR.W    R0,??DataTable32_4
+        BL       ?Subroutine14
+??CrossCallReturnLabel_23:
           CFI FunCall upload_store
         BL       upload_store
 ??upload_restore_0:
@@ -655,19 +665,19 @@ upload_restore:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond8 Using cfiCommon0
           CFI Function upload_store
-          CFI Conditional ??CrossCallReturnLabel_18
+          CFI Conditional ??CrossCallReturnLabel_20
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+12
           CFI Block cfiCond9 Using cfiCommon0
           CFI (cfiCond9) Function upload_restore
-          CFI (cfiCond9) Conditional ??CrossCallReturnLabel_19
+          CFI (cfiCond9) Conditional ??CrossCallReturnLabel_21
           CFI (cfiCond9) R4 Frame(CFA, -8)
           CFI (cfiCond9) R14 Frame(CFA, -4)
           CFI (cfiCond9) CFA R13+16
           CFI Block cfiCond10 Using cfiCommon0
           CFI (cfiCond10) Function log_valid
-          CFI (cfiCond10) Conditional ??CrossCallReturnLabel_20
+          CFI (cfiCond10) Conditional ??CrossCallReturnLabel_22
           CFI (cfiCond10) R4 Frame(CFA, -8)
           CFI (cfiCond10) R14 Frame(CFA, -4)
           CFI (cfiCond10) CFA R13+16
@@ -675,7 +685,7 @@ upload_restore:
           CFI (cfiPicker11) NoFunction
           CFI (cfiPicker11) Picker
         THUMB
-?Subroutine12:
+?Subroutine13:
         LDRB     R3,[R4, #+0]
         STRB     R3,[R1, #+0]
         LDRB     R3,[R4, #+1]
@@ -701,8 +711,8 @@ upload_reset:
           CFI FunCall upload_setIndex
         BL       upload_setIndex
         MOVS     R2,#+0
-        BL       ?Subroutine20
-??CrossCallReturnLabel_52:
+        BL       ?Subroutine21
+??CrossCallReturnLabel_54:
         CMP      R4,#+10
         ITE      EQ
         LDREQ.W  R0,??DataTable35
@@ -733,8 +743,8 @@ upload_ack:
           CFI CFA R13+24
         MOV      R4,R0
         MOV      R5,R1
-        BL       ?Subroutine24
-??CrossCallReturnLabel_74:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_76:
         CBZ.N    R0,??upload_ack_0
         MOV      R0,R4
         POP      {R4-R8,LR}
@@ -764,13 +774,13 @@ upload_ack:
         MOVNE    R7,#+1
         LDRH     R0,[R6, R7, LSL #+1]
         CBZ.N    R0,??upload_ack_1
-        BL       ??Subroutine22_0
-??CrossCallReturnLabel_71:
+        BL       ??Subroutine23_0
+??CrossCallReturnLabel_73:
         MOV      R8,R0
         LDRH     R2,[R6, R7, LSL #+1]
         MOV      R1,R5
-        BL       ??Subroutine20_0
-??CrossCallReturnLabel_50:
+        BL       ??Subroutine21_0
+??CrossCallReturnLabel_52:
           CFI FunCall upload_store
         BL       upload_store
           CFI FunCall user_writeConfigAndDevice
@@ -778,8 +788,8 @@ upload_ack:
         CBNZ.N   R0,??upload_ack_2
         MOV      R2,R8
         MOV      R1,R5
-        BL       ??Subroutine20_0
-??CrossCallReturnLabel_49:
+        BL       ??Subroutine21_0
+??CrossCallReturnLabel_51:
           CFI FunCall upload_store
         BL       upload_store
         MOVS     R0,#+0
@@ -806,8 +816,8 @@ upload_finish:
           CFI R4 Frame(CFA, -20)
           CFI CFA R13+24
         MOV      R4,R0
-        BL       ?Subroutine24
-??CrossCallReturnLabel_75:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_77:
         CBZ.N    R0,??upload_finish_0
         MOV      R0,R4
         POP      {R1,R4-R7,LR}
@@ -826,12 +836,12 @@ upload_finish:
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+24
 ??upload_finish_0:
-        BL       ?Subroutine22
-??CrossCallReturnLabel_73:
+        BL       ?Subroutine23
+??CrossCallReturnLabel_75:
         MOV      R5,R0
         MOVS     R1,#+0
-        BL       ??Subroutine22_0
-??CrossCallReturnLabel_70:
+        BL       ??Subroutine23_0
+??CrossCallReturnLabel_72:
         MOV      R6,R0
         CMP      R4,#+10
         LDR.W    R0,??DataTable32_3
@@ -855,12 +865,12 @@ upload_finish:
         BL       user_writeConfigAndDevice
         CBNZ.N   R0,??upload_finish_6
         MOV      R2,R5
-        BL       ?Subroutine20
-??CrossCallReturnLabel_51:
+        BL       ?Subroutine21
+??CrossCallReturnLabel_53:
         MOV      R2,R6
         MOVS     R1,#+0
-        BL       ??Subroutine20_0
-??CrossCallReturnLabel_48:
+        BL       ??Subroutine21_0
+??CrossCallReturnLabel_50:
           CFI FunCall upload_store
         BL       upload_store
         MOVS     R0,#+0
@@ -1074,8 +1084,8 @@ WG_readedID:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+24
-        BL       ?Subroutine28
-??CrossCallReturnLabel_91:
+        BL       ?Subroutine29
+??CrossCallReturnLabel_93:
         LDR.W    R4,??DataTable43_1
         MOV      R2,SP
         LDR.W    R1,??DataTable44_2
@@ -1094,13 +1104,13 @@ WG_readedID:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond21 Using cfiCommon0
           CFI Function WG_readedID
-          CFI Conditional ??CrossCallReturnLabel_91
+          CFI Conditional ??CrossCallReturnLabel_93
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+24
           CFI Block cfiCond22 Using cfiCommon0
           CFI (cfiCond22) Function RF433_readedID
-          CFI (cfiCond22) Conditional ??CrossCallReturnLabel_90
+          CFI (cfiCond22) Conditional ??CrossCallReturnLabel_92
           CFI (cfiCond22) R4 Frame(CFA, -8)
           CFI (cfiCond22) R14 Frame(CFA, -4)
           CFI (cfiCond22) CFA R13+24
@@ -1108,16 +1118,16 @@ WG_readedID:
           CFI (cfiPicker23) NoFunction
           CFI (cfiPicker23) Picker
         THUMB
-?Subroutine28:
+?Subroutine29:
         MOV      R2,R0
           CFI Block cfiCond24 Using cfiCommon0
           CFI (cfiCond24) Function RFID_readedID
-          CFI (cfiCond24) Conditional ??CrossCallReturnLabel_89
+          CFI (cfiCond24) Conditional ??CrossCallReturnLabel_91
           CFI (cfiCond24) R4 Frame(CFA, -12)
           CFI (cfiCond24) R5 Frame(CFA, -8)
           CFI (cfiCond24) R14 Frame(CFA, -4)
           CFI (cfiCond24) CFA R13+24
-??Subroutine28_0:
+??Subroutine29_0:
         LDR.W    R1,??DataTable44_3
         MOV      R0,SP
           CFI (cfiCond21) FunCall WG_readedID sprintf
@@ -1138,8 +1148,8 @@ RF433_readedID:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+24
-        BL       ?Subroutine28
-??CrossCallReturnLabel_90:
+        BL       ?Subroutine29
+??CrossCallReturnLabel_92:
         LDR.W    R4,??DataTable43_1
         MOV      R2,SP
         LDR.W    R1,??DataTable43_2
@@ -1182,8 +1192,8 @@ RFID_readedID:
           CFI CFA R13+24
         MOV      R2,R0
         MOV      R5,R1
-        BL       ??Subroutine28_0
-??CrossCallReturnLabel_89:
+        BL       ??Subroutine29_0
+??CrossCallReturnLabel_91:
         LDR.W    R4,??DataTable43_1
         MOV      R2,SP
         LDR.W    R1,??DataTable44_4
@@ -1250,8 +1260,8 @@ user_unipassword:
         ADDS     R0,R0,#+1
         CMP      R0,#+3
         BLT.N    ??user_unipassword_1
-        BL       ?Subroutine18
-??CrossCallReturnLabel_42:
+        BL       ?Subroutine19
+??CrossCallReturnLabel_44:
         MOV      R4,R0
         MOVS     R0,#+0
 ??user_unipassword_2:
@@ -1260,8 +1270,8 @@ user_unipassword:
         ADDS     R0,R0,#+1
         CMP      R0,#+3
         BLT.N    ??user_unipassword_2
-        BL       ?Subroutine18
-??CrossCallReturnLabel_41:
+        BL       ?Subroutine19
+??CrossCallReturnLabel_43:
         MOVS     R1,#+0
 ??user_unipassword_3:
         ADDS     R2,R5,R1
@@ -1287,7 +1297,7 @@ user_unipassword:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond30 Using cfiCommon0
           CFI Function user_unipassword
-          CFI Conditional ??CrossCallReturnLabel_42
+          CFI Conditional ??CrossCallReturnLabel_44
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -1295,7 +1305,7 @@ user_unipassword:
           CFI CFA R13+24
           CFI Block cfiCond31 Using cfiCommon0
           CFI (cfiCond31) Function user_unipassword
-          CFI (cfiCond31) Conditional ??CrossCallReturnLabel_41
+          CFI (cfiCond31) Conditional ??CrossCallReturnLabel_43
           CFI (cfiCond31) R4 Frame(CFA, -16)
           CFI (cfiCond31) R5 Frame(CFA, -12)
           CFI (cfiCond31) R6 Frame(CFA, -8)
@@ -1305,7 +1315,7 @@ user_unipassword:
           CFI (cfiPicker32) NoFunction
           CFI (cfiPicker32) Picker
         THUMB
-?Subroutine18:
+?Subroutine19:
         MOVS     R1,#+0
         STRB     R1,[SP, R0]
         MOV      R0,SP
@@ -2284,27 +2294,27 @@ user_smsreceived:
         BL       fw_update_quiet
         CBZ.N    R0,??user_smsreceived_9
         ADR.N    R1,??DataTable40
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_164:
-        CBZ.N    R0,??user_smsreceived_10
-        BL       ?Subroutine45
+        BL       ??Subroutine46_0
 ??CrossCallReturnLabel_166:
         CBZ.N    R0,??user_smsreceived_10
+        BL       ?Subroutine46
+??CrossCallReturnLabel_168:
+        CBZ.N    R0,??user_smsreceived_10
         LDR.W    R1,??DataTable55
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_163:
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_165:
         CBZ.N    R0,??user_smsreceived_10
         LDR.W    R1,??DataTable56_1
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_162:
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_164:
         CBNZ.N   R0,??user_smsreceived_9
 ??user_smsreceived_10:
         LDR.W    R1,??DataTable55_1
         B.N      ??user_smsreceived_11
 ??user_smsreceived_9:
         ADR.N    R1,??DataTable40
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_161:
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_163:
         CBNZ.N   R0,??user_smsreceived_12
         CMP      R7,#+0
         BEQ.N    ??user_smsreceived_13
@@ -2324,8 +2334,8 @@ user_smsreceived:
         MOVS     R0,#+67
           CFI FunCall log_addControlEvent
         BL       log_addControlEvent
-        BL       ?Subroutine34
-??CrossCallReturnLabel_115:
+        BL       ?Subroutine35
+??CrossCallReturnLabel_117:
         ADD      R1,R6,#+96
           CFI FunCall strcat
         BL       strcat
@@ -2333,17 +2343,17 @@ user_smsreceived:
         B.N      ??user_smsreceived_11
 ??user_smsreceived_12:
         LDR.W    R1,??DataTable57
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_160:
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_162:
         CBNZ.N   R0,??user_smsreceived_14
-        BL       ?Subroutine34
-??CrossCallReturnLabel_114:
+        BL       ?Subroutine35
+??CrossCallReturnLabel_116:
         MOV      R1,R9
         B.N      ??user_smsreceived_15
 ??user_smsreceived_14:
         LDR.W    R1,??DataTable57_1
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_159:
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_161:
         CBNZ.N   R0,??user_smsreceived_16
           CFI FunCall comm_server_address
         BL       comm_server_address
@@ -2371,18 +2381,18 @@ user_smsreceived:
         LDR.W    R0,??DataTable58
         LDR      R3,[R0, R1]
         LDRB     R2,[R9, #+74]
-        LDR.W    R1,??DataTable59_1
+        LDR.W    R1,??DataTable58_1
         MOV      R0,R6
           CFI FunCall sprintf
         BL       sprintf
         B.N      ??user_smsreceived_17
 ??user_smsreceived_16:
-        BL       ?Subroutine45
-??CrossCallReturnLabel_165:
+        BL       ?Subroutine46
+??CrossCallReturnLabel_167:
         CBNZ.N   R0,??user_smsreceived_18
-        LDR.W    R1,??DataTable59_2
-        BL       ??Subroutine34_0
-??CrossCallReturnLabel_113:
+        LDR.W    R1,??DataTable59_1
+        BL       ??Subroutine35_0
+??CrossCallReturnLabel_115:
         MOV      R1,R8
           CFI FunCall user_sendsms
         BL       user_sendsms
@@ -2391,8 +2401,8 @@ user_smsreceived:
         B.N      ??user_smsreceived_2
 ??user_smsreceived_18:
         LDR.W    R1,??DataTable55
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_158:
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_160:
         CMP      R0,#+0
         BNE.N    ??user_smsreceived_19
         CMP      R7,#+0
@@ -2425,14 +2435,14 @@ user_smsreceived:
         BL       out_load
         CMP      R4,#+1
         ITE      NE
-        LDRNE.W  R1,??DataTable59_3
-        LDREQ.W  R1,??DataTable59_4
+        LDRNE.W  R1,??DataTable59_2
+        LDREQ.W  R1,??DataTable59_3
         B.N      ??user_smsreceived_23
 ??user_smsreceived_22:
-        LDR.W    R1,??DataTable59_5
+        LDR.W    R1,??DataTable59_4
         B.N      ??user_smsreceived_23
 ??user_smsreceived_21:
-        LDR.W    R1,??DataTable60
+        LDR.W    R1,??DataTable59_5
 ??user_smsreceived_23:
         MOV      R0,R6
 ??user_smsreceived_15:
@@ -2443,26 +2453,26 @@ user_smsreceived:
         MOV      R0,R6
         B.N      ??user_smsreceived_24
 ??user_smsreceived_20:
-        LDR.W    R1,??DataTable60
+        LDR.W    R1,??DataTable59_5
         B.N      ??user_smsreceived_11
 ??user_smsreceived_19:
-        LDR.W    R1,??DataTable60_1
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_157:
+        LDR.W    R1,??DataTable60
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_159:
         CBZ.N    R0,??user_smsreceived_2
         LDR.W    R1,??DataTable56_1
-        BL       ??Subroutine45_0
-??CrossCallReturnLabel_156:
+        BL       ??Subroutine46_0
+??CrossCallReturnLabel_158:
         CBNZ.N   R0,??user_smsreceived_2
           CFI FunCall user_factoryReset
         BL       user_factoryReset
-        LDR.W    R1,??DataTable60_2
+        LDR.W    R1,??DataTable60_1
         B.N      ??user_smsreceived_11
 ??user_smsreceived_8:
         LDR.W    R1,??DataTable61
 ??user_smsreceived_11:
-        BL       ??Subroutine34_0
-??CrossCallReturnLabel_112:
+        BL       ??Subroutine35_0
+??CrossCallReturnLabel_114:
         MOV      R1,R8
 ??user_smsreceived_24:
           CFI FunCall user_sendsms
@@ -2478,7 +2488,7 @@ user_smsreceived:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond48 Using cfiCommon0
           CFI Function user_smsreceived
-          CFI Conditional ??CrossCallReturnLabel_166
+          CFI Conditional ??CrossCallReturnLabel_168
           CFI R4 Frame(CFA, -32)
           CFI R5 Frame(CFA, -28)
           CFI R6 Frame(CFA, -24)
@@ -2490,7 +2500,7 @@ user_smsreceived:
           CFI CFA R13+72
           CFI Block cfiCond49 Using cfiCommon0
           CFI (cfiCond49) Function user_smsreceived
-          CFI (cfiCond49) Conditional ??CrossCallReturnLabel_165
+          CFI (cfiCond49) Conditional ??CrossCallReturnLabel_167
           CFI (cfiCond49) R4 Frame(CFA, -32)
           CFI (cfiCond49) R5 Frame(CFA, -28)
           CFI (cfiCond49) R6 Frame(CFA, -24)
@@ -2504,11 +2514,11 @@ user_smsreceived:
           CFI (cfiPicker50) NoFunction
           CFI (cfiPicker50) Picker
         THUMB
-?Subroutine45:
+?Subroutine46:
         LDR.W    R1,??DataTable61_1
           CFI Block cfiCond51 Using cfiCommon0
           CFI (cfiCond51) Function user_smsreceived
-          CFI (cfiCond51) Conditional ??CrossCallReturnLabel_164
+          CFI (cfiCond51) Conditional ??CrossCallReturnLabel_166
           CFI (cfiCond51) R4 Frame(CFA, -32)
           CFI (cfiCond51) R5 Frame(CFA, -28)
           CFI (cfiCond51) R6 Frame(CFA, -24)
@@ -2520,7 +2530,7 @@ user_smsreceived:
           CFI (cfiCond51) CFA R13+72
           CFI Block cfiCond52 Using cfiCommon0
           CFI (cfiCond52) Function user_smsreceived
-          CFI (cfiCond52) Conditional ??CrossCallReturnLabel_163
+          CFI (cfiCond52) Conditional ??CrossCallReturnLabel_165
           CFI (cfiCond52) R4 Frame(CFA, -32)
           CFI (cfiCond52) R5 Frame(CFA, -28)
           CFI (cfiCond52) R6 Frame(CFA, -24)
@@ -2532,7 +2542,7 @@ user_smsreceived:
           CFI (cfiCond52) CFA R13+72
           CFI Block cfiCond53 Using cfiCommon0
           CFI (cfiCond53) Function user_smsreceived
-          CFI (cfiCond53) Conditional ??CrossCallReturnLabel_162
+          CFI (cfiCond53) Conditional ??CrossCallReturnLabel_164
           CFI (cfiCond53) R4 Frame(CFA, -32)
           CFI (cfiCond53) R5 Frame(CFA, -28)
           CFI (cfiCond53) R6 Frame(CFA, -24)
@@ -2544,7 +2554,7 @@ user_smsreceived:
           CFI (cfiCond53) CFA R13+72
           CFI Block cfiCond54 Using cfiCommon0
           CFI (cfiCond54) Function user_smsreceived
-          CFI (cfiCond54) Conditional ??CrossCallReturnLabel_161
+          CFI (cfiCond54) Conditional ??CrossCallReturnLabel_163
           CFI (cfiCond54) R4 Frame(CFA, -32)
           CFI (cfiCond54) R5 Frame(CFA, -28)
           CFI (cfiCond54) R6 Frame(CFA, -24)
@@ -2556,7 +2566,7 @@ user_smsreceived:
           CFI (cfiCond54) CFA R13+72
           CFI Block cfiCond55 Using cfiCommon0
           CFI (cfiCond55) Function user_smsreceived
-          CFI (cfiCond55) Conditional ??CrossCallReturnLabel_160
+          CFI (cfiCond55) Conditional ??CrossCallReturnLabel_162
           CFI (cfiCond55) R4 Frame(CFA, -32)
           CFI (cfiCond55) R5 Frame(CFA, -28)
           CFI (cfiCond55) R6 Frame(CFA, -24)
@@ -2568,7 +2578,7 @@ user_smsreceived:
           CFI (cfiCond55) CFA R13+72
           CFI Block cfiCond56 Using cfiCommon0
           CFI (cfiCond56) Function user_smsreceived
-          CFI (cfiCond56) Conditional ??CrossCallReturnLabel_159
+          CFI (cfiCond56) Conditional ??CrossCallReturnLabel_161
           CFI (cfiCond56) R4 Frame(CFA, -32)
           CFI (cfiCond56) R5 Frame(CFA, -28)
           CFI (cfiCond56) R6 Frame(CFA, -24)
@@ -2580,7 +2590,7 @@ user_smsreceived:
           CFI (cfiCond56) CFA R13+72
           CFI Block cfiCond57 Using cfiCommon0
           CFI (cfiCond57) Function user_smsreceived
-          CFI (cfiCond57) Conditional ??CrossCallReturnLabel_158
+          CFI (cfiCond57) Conditional ??CrossCallReturnLabel_160
           CFI (cfiCond57) R4 Frame(CFA, -32)
           CFI (cfiCond57) R5 Frame(CFA, -28)
           CFI (cfiCond57) R6 Frame(CFA, -24)
@@ -2592,7 +2602,7 @@ user_smsreceived:
           CFI (cfiCond57) CFA R13+72
           CFI Block cfiCond58 Using cfiCommon0
           CFI (cfiCond58) Function user_smsreceived
-          CFI (cfiCond58) Conditional ??CrossCallReturnLabel_157
+          CFI (cfiCond58) Conditional ??CrossCallReturnLabel_159
           CFI (cfiCond58) R4 Frame(CFA, -32)
           CFI (cfiCond58) R5 Frame(CFA, -28)
           CFI (cfiCond58) R6 Frame(CFA, -24)
@@ -2604,7 +2614,7 @@ user_smsreceived:
           CFI (cfiCond58) CFA R13+72
           CFI Block cfiCond59 Using cfiCommon0
           CFI (cfiCond59) Function user_smsreceived
-          CFI (cfiCond59) Conditional ??CrossCallReturnLabel_156
+          CFI (cfiCond59) Conditional ??CrossCallReturnLabel_158
           CFI (cfiCond59) R4 Frame(CFA, -32)
           CFI (cfiCond59) R5 Frame(CFA, -28)
           CFI (cfiCond59) R6 Frame(CFA, -24)
@@ -2614,7 +2624,7 @@ user_smsreceived:
           CFI (cfiCond59) R10 Frame(CFA, -8)
           CFI (cfiCond59) R14 Frame(CFA, -4)
           CFI (cfiCond59) CFA R13+72
-??Subroutine45_0:
+??Subroutine46_0:
         ADD      R0,SP,#+28
           CFI (cfiCond48) FunCall user_smsreceived strcmp
           CFI (cfiCond48) FunCall user_smsreceived strcmp
@@ -2644,7 +2654,7 @@ user_smsreceived:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond60 Using cfiCommon0
           CFI Function user_smsreceived
-          CFI Conditional ??CrossCallReturnLabel_115
+          CFI Conditional ??CrossCallReturnLabel_117
           CFI R4 Frame(CFA, -32)
           CFI R5 Frame(CFA, -28)
           CFI R6 Frame(CFA, -24)
@@ -2656,7 +2666,7 @@ user_smsreceived:
           CFI CFA R13+72
           CFI Block cfiCond61 Using cfiCommon0
           CFI (cfiCond61) Function user_smsreceived
-          CFI (cfiCond61) Conditional ??CrossCallReturnLabel_114
+          CFI (cfiCond61) Conditional ??CrossCallReturnLabel_116
           CFI (cfiCond61) R4 Frame(CFA, -32)
           CFI (cfiCond61) R5 Frame(CFA, -28)
           CFI (cfiCond61) R6 Frame(CFA, -24)
@@ -2670,11 +2680,11 @@ user_smsreceived:
           CFI (cfiPicker62) NoFunction
           CFI (cfiPicker62) Picker
         THUMB
-?Subroutine34:
+?Subroutine35:
         ADR.N    R1,??DataTable44
           CFI Block cfiCond63 Using cfiCommon0
           CFI (cfiCond63) Function user_smsreceived
-          CFI (cfiCond63) Conditional ??CrossCallReturnLabel_113
+          CFI (cfiCond63) Conditional ??CrossCallReturnLabel_115
           CFI (cfiCond63) R4 Frame(CFA, -32)
           CFI (cfiCond63) R5 Frame(CFA, -28)
           CFI (cfiCond63) R6 Frame(CFA, -24)
@@ -2686,7 +2696,7 @@ user_smsreceived:
           CFI (cfiCond63) CFA R13+72
           CFI Block cfiCond64 Using cfiCommon0
           CFI (cfiCond64) Function user_smsreceived
-          CFI (cfiCond64) Conditional ??CrossCallReturnLabel_112
+          CFI (cfiCond64) Conditional ??CrossCallReturnLabel_114
           CFI (cfiCond64) R4 Frame(CFA, -32)
           CFI (cfiCond64) R5 Frame(CFA, -28)
           CFI (cfiCond64) R6 Frame(CFA, -24)
@@ -2696,7 +2706,7 @@ user_smsreceived:
           CFI (cfiCond64) R10 Frame(CFA, -8)
           CFI (cfiCond64) R14 Frame(CFA, -4)
           CFI (cfiCond64) CFA R13+72
-??Subroutine34_0:
+??Subroutine35_0:
         MOV      R0,R6
           CFI (cfiCond60) FunCall user_smsreceived strcat
           CFI (cfiCond60) FunCall user_smsreceived strcat
@@ -3776,7 +3786,7 @@ user_incomingcall:
         MOV      R5,R1
         LDR.N    R6,??DataTable43_1
         MOV      R2,R4
-        LDR.W    R1,??DataTable60_3
+        LDR.W    R1,??DataTable60_2
         MOV      R0,R6
           CFI FunCall sprintf
         BL       sprintf
@@ -3804,6 +3814,13 @@ user_incomingcall:
         POP      {R4-R6,PC}
           CFI EndBlock cfiBlock67
 
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable38:
+        DATA32
+        DC32     store_reset_requested
+
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock68 Using cfiCommon0
           CFI Function user_comanderror
@@ -3814,19 +3831,12 @@ user_comanderror:
         B.W      user_debug
           CFI EndBlock cfiBlock68
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable39:
-        DATA32
-        DC32     store_reset_requested
-
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock69 Using cfiCommon0
           CFI Function user_parseUSSD
         THUMB
 user_parseUSSD:
-        LDR.W    R0,??DataTable63
+        LDR.W    R0,??DataTable62_1
           CFI FunCall user_debug
         B.W      user_debug
           CFI EndBlock cfiBlock69
@@ -3849,7 +3859,7 @@ user_init:
           CFI CFA R13+8
           CFI FunCall w25_read_devID
         BL       w25_read_devID
-        LDR.W    R1,??DataTable63_1
+        LDR.W    R1,??DataTable63
         MOVS     R2,#+0
         STR      R2,[R1, #+0]
         MOV      R3,#+131072
@@ -3904,7 +3914,7 @@ user_init:
         BL       user_readconfig
           CFI FunCall user_initvariables
         BL       user_initvariables
-        LDR.W    R4,??DataTable63_2
+        LDR.W    R4,??DataTable63_1
         LDRH     R1,[R4, #+0]
         MOVW     R0,#+20566
         CMP      R1,R0
@@ -3948,7 +3958,7 @@ user_clearMemBlock:
           CFI R4 Frame(CFA, -16)
           CFI CFA R13+16
         MOV      R4,R0
-        LDR.W    R5,??DataTable63_1
+        LDR.W    R5,??DataTable63
         ADD      R0,R5,R0, LSL #+3
         LDR      R0,[R0, #+4]
         CBZ.N    R0,??user_clearMemBlock_0
@@ -4004,7 +4014,7 @@ sync_quiet:
           CFI NoCalls
         THUMB
 sync_packet:
-        LDR.W    R2,??DataTable63_3
+        LDR.W    R2,??DataTable63_2
         LDRB     R1,[R2, #+0]
         ORRS     R0,R0,R1
         STRB     R0,[R2, #+0]
@@ -4055,7 +4065,7 @@ sync_end_tick:
         LDRB     R0,[R4, #+0]
         CBNZ.N   R0,??sync_end_tick_0
         MOVS     R7,#+0
-        LDR.W    R5,??DataTable63_3
+        LDR.W    R5,??DataTable63_2
 ??sync_end_tick_1:
         MOVS     R6,#+1
         LDRB     R0,[R5, #+0]
@@ -4312,7 +4322,7 @@ user_loop:
           CFI FunCall user_storage_flash_ready
         BL       user_storage_flash_ready
         CBZ.N    R0,??user_loop_1
-        LDR.W    R0,??DataTable63_1
+        LDR.W    R0,??DataTable63
         LDR      R0,[R0, #+16]
           CFI FunCall idindex_poll
         BL       idindex_poll
@@ -4401,8 +4411,8 @@ user_loop:
         LDRB     R0,[R4, #+133]
         CBZ.N    R0,??user_loop_7
         ADD      R3,R4,#+129
-        BL       ?Subroutine14
-??CrossCallReturnLabel_27:
+        BL       ?Subroutine15
+??CrossCallReturnLabel_29:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R1,R0
@@ -4645,8 +4655,8 @@ user_loop:
         BL       user_savereset
         B.N      ??user_loop_26
 ??user_loop_27:
-        BL       ?Subroutine52
-??CrossCallReturnLabel_183:
+        BL       ?Subroutine53
+??CrossCallReturnLabel_185:
         LDR.W    R0,??DataTable71
           CFI FunCall fw_end
         BL       fw_end
@@ -4659,8 +4669,8 @@ user_loop:
         LDRH     R0,[R6, #+179]
         CMP      R0,#+0
         BNE.W    ??user_loop_12
-        BL       ?Subroutine52
-??CrossCallReturnLabel_184:
+        BL       ?Subroutine53
+??CrossCallReturnLabel_186:
         LDR.W    R0,??DataTable72
           CFI FunCall fw_end
         BL       fw_end
@@ -4711,7 +4721,7 @@ user_loop:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond75 Using cfiCommon0
           CFI Function user_loop
-          CFI Conditional ??CrossCallReturnLabel_183
+          CFI Conditional ??CrossCallReturnLabel_185
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -4719,7 +4729,7 @@ user_loop:
           CFI CFA R13+24
           CFI Block cfiCond76 Using cfiCommon0
           CFI (cfiCond76) Function user_loop
-          CFI (cfiCond76) Conditional ??CrossCallReturnLabel_184
+          CFI (cfiCond76) Conditional ??CrossCallReturnLabel_186
           CFI (cfiCond76) R4 Frame(CFA, -16)
           CFI (cfiCond76) R5 Frame(CFA, -12)
           CFI (cfiCond76) R6 Frame(CFA, -8)
@@ -4729,7 +4739,7 @@ user_loop:
           CFI (cfiPicker77) NoFunction
           CFI (cfiPicker77) Picker
         THUMB
-?Subroutine52:
+?Subroutine53:
         LDR.W    R0,??DataTable75
         LDRB     R1,[R0, #+0]
         ADDS     R2,R1,#+1
@@ -4749,8 +4759,8 @@ user_initvariables:
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
         LDR.W    R4,??DataTable56
-        BL       ?Subroutine53
-??CrossCallReturnLabel_185:
+        BL       ?Subroutine54
+??CrossCallReturnLabel_187:
         MOV      R0,#+4294967295
         STRB     R0,[R4, #+127]
           CFI FunCall w25_read_devID
@@ -4908,8 +4918,8 @@ config_terminate_strings:
 ??config_terminate_strings_6:
         CBZ.N    R5,??config_terminate_strings_8
 ??config_terminate_strings_7:
-        BL       ??Subroutine23_0
-??CrossCallReturnLabel_258:
+        BL       ??Subroutine24_0
+??CrossCallReturnLabel_260:
         STRH     R0,[R4, #+510]
 ??config_terminate_strings_8:
         POP      {R0,R4,R5,PC}
@@ -4933,12 +4943,12 @@ user_readconfig:
 ??user_readconfig_0:
           CFI FunCall wdt_reload
         BL       wdt_reload
-        BL       ?Subroutine26
-??CrossCallReturnLabel_84:
+        BL       ?Subroutine27
+??CrossCallReturnLabel_86:
           CFI FunCall mem_read
         BL       mem_read
-        BL       ??Subroutine23_0
-??CrossCallReturnLabel_257:
+        BL       ??Subroutine24_0
+??CrossCallReturnLabel_259:
         LDRH     R1,[R4, #+510]
         CMP      R1,R0
         BEQ.N    ??user_readconfig_1
@@ -4980,14 +4990,14 @@ user_readconfig:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond82 Using cfiCommon0
           CFI Function user_readconfig
-          CFI Conditional ??CrossCallReturnLabel_84
+          CFI Conditional ??CrossCallReturnLabel_86
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
           CFI Block cfiCond83 Using cfiCommon0
           CFI (cfiCond83) Function user_writeconfig
-          CFI (cfiCond83) Conditional ??CrossCallReturnLabel_85
+          CFI (cfiCond83) Conditional ??CrossCallReturnLabel_87
           CFI (cfiCond83) R4 Frame(CFA, -8)
           CFI (cfiCond83) R14 Frame(CFA, -4)
           CFI (cfiCond83) CFA R13+8
@@ -4995,18 +5005,18 @@ user_readconfig:
           CFI (cfiPicker84) NoFunction
           CFI (cfiPicker84) Picker
         THUMB
-?Subroutine26:
+?Subroutine27:
         MOV      R2,#+512
           CFI Block cfiCond85 Using cfiCommon0
           CFI (cfiCond85) Function user_writeConfigAndDevice
-          CFI (cfiCond85) Conditional ??CrossCallReturnLabel_86
+          CFI (cfiCond85) Conditional ??CrossCallReturnLabel_88
           CFI (cfiCond85) R4 Frame(CFA, -12)
           CFI (cfiCond85) R5 Frame(CFA, -8)
           CFI (cfiCond85) R14 Frame(CFA, -4)
           CFI (cfiCond85) CFA R13+16
-??Subroutine26_0:
+??Subroutine27_0:
         MOV      R1,R4
-        LDR.W    R0,??DataTable63_1
+        LDR.W    R0,??DataTable63
         LDR      R0,[R0, #+48]
         BX       LR
           CFI EndBlock cfiCond82
@@ -5023,8 +5033,8 @@ user_writeconfig:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        BL       ?Subroutine24
-??CrossCallReturnLabel_76:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_78:
         CBZ.N    R0,??user_writeconfig_0
         MOVS     R1,#+1
         LDR.W    R0,??DataTable77
@@ -5033,11 +5043,11 @@ user_writeconfig:
 ??user_writeconfig_0:
           CFI FunCall wdt_reload
         BL       wdt_reload
-        BL       ?Subroutine23
-??CrossCallReturnLabel_260:
+        BL       ?Subroutine24
+??CrossCallReturnLabel_262:
         STRH     R0,[R4, #+510]
-        BL       ?Subroutine26
-??CrossCallReturnLabel_85:
+        BL       ?Subroutine27
+??CrossCallReturnLabel_87:
           CFI FunCall mem_patch
         BL       mem_patch
         POP      {R4,LR}
@@ -5063,8 +5073,8 @@ user_setdefault:
           CFI FunCall user_debug
         BL       user_debug
         LDR.N    R4,??DataTable54_2
-        BL       ?Subroutine53
-??CrossCallReturnLabel_186:
+        BL       ?Subroutine54
+??CrossCallReturnLabel_188:
         LDR.W    R0,??DataTable77_2
         STR      R0,[R4, #+4]
         MOVS     R2,#+22
@@ -5123,13 +5133,13 @@ user_setdefault:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond88 Using cfiCommon0
           CFI Function user_initvariables
-          CFI Conditional ??CrossCallReturnLabel_185
+          CFI Conditional ??CrossCallReturnLabel_187
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
           CFI Block cfiCond89 Using cfiCommon0
           CFI (cfiCond89) Function user_setdefault
-          CFI (cfiCond89) Conditional ??CrossCallReturnLabel_186
+          CFI (cfiCond89) Conditional ??CrossCallReturnLabel_188
           CFI (cfiCond89) R4 Frame(CFA, -8)
           CFI (cfiCond89) R14 Frame(CFA, -4)
           CFI (cfiCond89) CFA R13+8
@@ -5137,7 +5147,7 @@ user_setdefault:
           CFI (cfiPicker90) NoFunction
           CFI (cfiPicker90) Picker
         THUMB
-?Subroutine53:
+?Subroutine54:
         MOV      R1,#+512
         MOV      R0,R4
           CFI (cfiCond88) FunCall user_initvariables __aeabi_memclr4
@@ -5262,7 +5272,7 @@ user_readsavedinformation:
         BL       wdt_reload
         MOV      R2,#+512
         MOV      R1,SP
-        LDR.W    R0,??DataTable63_1
+        LDR.W    R0,??DataTable63
         LDR      R0,[R0, #+48]
         ADD      R0,R0,#+512
           CFI FunCall mem_read
@@ -5358,11 +5368,13 @@ user_savereset:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
-        BL       ?Subroutine24
-??CrossCallReturnLabel_77:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_79:
         CBZ.N    R0,??user_savereset_0
           CFI FunCall table_runtime_cancel
         BL       table_runtime_cancel
+          CFI FunCall photo_storage_cancel
+        BL       photo_storage_cancel
         MOVS     R1,#+1
         LDR.W    R0,??DataTable80
         STRB     R1,[R0, #+0]
@@ -5374,8 +5386,8 @@ user_savereset:
         BL       user_saveindex
           CFI FunCall wdt_reload
         BL       wdt_reload
-        BL       ?Subroutine33
-??CrossCallReturnLabel_111:
+        BL       ?Subroutine34
+??CrossCallReturnLabel_113:
         POP      {R0,LR}
           CFI R14 SameValue
           CFI CFA R13+0
@@ -5447,19 +5459,19 @@ user_writeConfigAndDevice:
           CFI CFA R13+16
           CFI FunCall wdt_reload
         BL       wdt_reload
-        BL       ?Subroutine23
-??CrossCallReturnLabel_259:
+        BL       ?Subroutine24
+??CrossCallReturnLabel_261:
         STRH     R0,[R4, #+510]
         LDR.N    R5,??DataTable61_10
-        BL       ?Subroutine54
-??CrossCallReturnLabel_188:
+        BL       ?Subroutine55
+??CrossCallReturnLabel_190:
         STRH     R0,[R5, #+510]
         MOV      R0,#+512
         STR      R0,[SP, #+0]
         MOV      R3,R5
         MOV      R2,R0
-        BL       ??Subroutine26_0
-??CrossCallReturnLabel_86:
+        BL       ??Subroutine27_0
+??CrossCallReturnLabel_88:
           CFI FunCall mem_patch2
         BL       mem_patch2
         MOV      R4,R0
@@ -5475,6 +5487,13 @@ user_writeConfigAndDevice:
 ??DataTable58:
         DATA32
         DC32     `user_smsreceived{2}{3}{11}{12}{13}{15}{16}{20}{21}{23}{24}{25}::net`
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable58_1:
+        DATA32
+        DC32     ?_17
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock96 Using cfiCommon0
@@ -5522,35 +5541,35 @@ port_check_data:
         DATA
 ??DataTable59_1:
         DATA32
-        DC32     ?_17
+        DC32     ?_24
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable59_2:
         DATA32
-        DC32     ?_24
+        DC32     ?_26
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable59_3:
         DATA32
-        DC32     ?_26
+        DC32     ?_25
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable59_4:
         DATA32
-        DC32     ?_25
+        DC32     ?_27
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable59_5:
         DATA32
-        DC32     ?_27
+        DC32     ?_14
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock97 Using cfiCommon0
@@ -5594,8 +5613,8 @@ user_calcCRC16InFlash:
         MOVCC    R6,R4
         MOVCS    R6,#+1024
         UXTH     R2,R6
-        BL       ?Subroutine56
-??CrossCallReturnLabel_203:
+        BL       ?Subroutine59
+??CrossCallReturnLabel_209:
         MOV      R2,R7
         UXTH     R1,R6
         MOV      R0,SP
@@ -5641,7 +5660,7 @@ id_crc16:
         MOVHI    R4,R5
         CBZ.N    R4,??id_crc16_0
         MOV      R1,R4
-        LDR.N    R2,??DataTable63_1
+        LDR.N    R2,??DataTable63
         LDR      R2,[R2, #+16]
         ADDS     R0,R0,R2
           CFI FunCall user_calcCRC16InFlash
@@ -5666,26 +5685,19 @@ id_crc16:
         DATA
 ??DataTable60:
         DATA32
-        DC32     ?_14
+        DC32     ?_28
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable60_1:
         DATA32
-        DC32     ?_28
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable60_2:
-        DATA32
         DC32     ?_29
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable60_3:
+??DataTable60_2:
         DATA32
         DC32     ?_33
 
@@ -5745,8 +5757,8 @@ user_send_anyData:
         CMP      R11,#+1
         ADD      R0,R5,#+8
         BNE.N    ??user_send_anyData_2
-        BL       ??Subroutine62_0
-??CrossCallReturnLabel_217:
+        BL       ??Subroutine63_0
+??CrossCallReturnLabel_219:
         B.N      ??user_send_anyData_3
 ??user_send_anyData_2:
           CFI FunCall malloc
@@ -5764,8 +5776,8 @@ user_send_anyData:
         MOV      R0,R10
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_121:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_123:
         STRB     R5,[R4, #+4]
         LSRS     R0,R5,#+8
         STRB     R0,[R4, #+5]
@@ -5773,17 +5785,17 @@ user_send_anyData:
         STRB     R0,[R4, #+6]
         STRB     R6,[R4, #+7]
         STRB     R9,[R4, #+8]
-        CBZ.N    R7,??CrossCallReturnLabel_137
+        CBZ.N    R7,??CrossCallReturnLabel_139
         MOV      R2,R7
         MOV      R1,R8
-        BL       ?Subroutine39
-??CrossCallReturnLabel_137:
+        BL       ?Subroutine40
+??CrossCallReturnLabel_139:
         ADDS     R1,R5,#+2
-        BL       ?Subroutine35
-??CrossCallReturnLabel_118:
+        BL       ?Subroutine36
+??CrossCallReturnLabel_120:
         ADDS     R1,R4,R5
-        BL       ??Subroutine63_0
-??CrossCallReturnLabel_222:
+        BL       ??Subroutine64_0
+??CrossCallReturnLabel_224:
         MOVS     R0,R11
         BEQ.N    ??user_send_anyData_4
         CMP      R11,#+1
@@ -5792,8 +5804,8 @@ user_send_anyData:
 ??user_send_anyData_4:
         ADDS     R5,R5,#+8
         UXTH     R1,R5
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_65:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_67:
         MOV      R0,R4
         POP      {R1,R4-R11,LR}
           CFI R4 SameValue
@@ -5827,7 +5839,7 @@ user_send_anyData:
         BL       comm_tx_commit
         B.N      ??user_send_anyData_7
 ??user_send_anyData_6:
-        BNE.N    ??CrossCallReturnLabel_65
+        BNE.N    ??CrossCallReturnLabel_67
 ??user_send_anyData_7:
         POP      {R0,R4-R11,LR}
           CFI R4 SameValue
@@ -5950,21 +5962,21 @@ user_send_registrationData:
         LDR.W    R0,??DataTable82_3
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_122:
-        MOVS     R0,#+40
-        BL       ?Subroutine64
-??CrossCallReturnLabel_225:
-        MOVS     R0,#+5
         BL       ?Subroutine38
-??CrossCallReturnLabel_134:
+??CrossCallReturnLabel_124:
+        MOVS     R0,#+40
+        BL       ?Subroutine65
+??CrossCallReturnLabel_227:
+        MOVS     R0,#+5
+        BL       ?Subroutine39
+??CrossCallReturnLabel_136:
         MOVS     R0,#+1
         STRB     R0,[R4, #+8]
         LDR.W    R5,??DataTable83
         MOVS     R2,#+15
         MOV      R1,R5
-        BL       ?Subroutine39
-??CrossCallReturnLabel_138:
+        BL       ?Subroutine40
+??CrossCallReturnLabel_140:
         LDRB     R0,[R5, #+18]
         STRB     R0,[R4, #+24]
         LDRB     R0,[R5, #+19]
@@ -5994,8 +6006,8 @@ user_send_registrationData:
         LDR      R2,[SP, #+0]
         STR      R2,[R0, #+0]
         MOVS     R1,#+42
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_198:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_200:
         STRB     R0,[R4, #+46]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+47]
@@ -6005,8 +6017,8 @@ user_send_registrationData:
         B.N      ??user_send_registrationData_2
 ??user_send_registrationData_3:
         MOVS     R1,#+48
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_64:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_66:
         B.N      ??user_send_registrationData_2
 ??user_send_registrationData_4:
         MOVS     R0,#+1
@@ -6029,10 +6041,17 @@ user_send_registrationData:
         DATA32
         DC32     ?_34
 
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable62_1:
+        DATA32
+        DC32     ?_35
+
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond103 Using cfiCommon0
           CFI Function user_send_registrationData
-          CFI Conditional ??CrossCallReturnLabel_134
+          CFI Conditional ??CrossCallReturnLabel_136
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -6040,7 +6059,7 @@ user_send_registrationData:
           CFI CFA R13+72
           CFI Block cfiCond104 Using cfiCommon0
           CFI (cfiCond104) Function user_send_statusPack
-          CFI (cfiCond104) Conditional ??CrossCallReturnLabel_135
+          CFI (cfiCond104) Conditional ??CrossCallReturnLabel_137
           CFI (cfiCond104) R4 Frame(CFA, -16)
           CFI (cfiCond104) R5 Frame(CFA, -12)
           CFI (cfiCond104) R6 Frame(CFA, -8)
@@ -6050,17 +6069,17 @@ user_send_registrationData:
           CFI (cfiPicker105) NoFunction
           CFI (cfiPicker105) Picker
         THUMB
-?Subroutine38:
+?Subroutine39:
         STRB     R0,[R4, #+6]
           CFI Block cfiCond106 Using cfiCommon0
           CFI (cfiCond106) Function user_send_smsToServer
-          CFI (cfiCond106) Conditional ??CrossCallReturnLabel_136
+          CFI (cfiCond106) Conditional ??CrossCallReturnLabel_138
           CFI (cfiCond106) R4 Frame(CFA, -16)
           CFI (cfiCond106) R5 Frame(CFA, -12)
           CFI (cfiCond106) R6 Frame(CFA, -8)
           CFI (cfiCond106) R14 Frame(CFA, -4)
           CFI (cfiCond106) CFA R13+24
-??Subroutine38_0:
+??Subroutine39_0:
         LDR.W    R0,??DataTable75
         LDRB     R1,[R0, #+0]
         STRB     R1,[R4, #+7]
@@ -6078,26 +6097,19 @@ user_send_registrationData:
         DATA
 ??DataTable63:
         DATA32
-        DC32     ?_35
+        DC32     mem
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable63_1:
         DATA32
-        DC32     mem
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable63_2:
-        DATA32
         DC32     0x40006c04
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable63_3:
+??DataTable63_2:
         DATA32
         DC32     sync_pending
 
@@ -6130,14 +6142,14 @@ user_send_statusPack:
         LDR.W    R0,??DataTable84
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_123:
-        MOVS     R0,#+18
-        BL       ?Subroutine64
-??CrossCallReturnLabel_226:
-        MOVS     R0,#+15
         BL       ?Subroutine38
-??CrossCallReturnLabel_135:
+??CrossCallReturnLabel_125:
+        MOVS     R0,#+18
+        BL       ?Subroutine65
+??CrossCallReturnLabel_228:
+        MOVS     R0,#+15
+        BL       ?Subroutine39
+??CrossCallReturnLabel_137:
         MOVS     R0,#+2
         STRB     R0,[R4, #+8]
         LDR.W    R5,??DataTable83
@@ -6148,8 +6160,8 @@ user_send_statusPack:
         STR      R1,[R0, #+0]
         ADD      R3,R5,#+129
         ADD      R0,R4,#+13
-        BL       ?Subroutine13
-??CrossCallReturnLabel_22:
+        BL       ?Subroutine14
+??CrossCallReturnLabel_24:
         LDRH     R0,[R5, #+165]
         BL       ?Subroutine8
 ??CrossCallReturnLabel_8:
@@ -6158,8 +6170,8 @@ user_send_statusPack:
           CFI FunCall __aeabi_memclr
         BL       __aeabi_memclr
         MOVS     R1,#+20
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_197:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_199:
         STRB     R0,[R4, #+24]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+25]
@@ -6169,8 +6181,8 @@ user_send_statusPack:
         B.N      ??user_send_statusPack_2
 ??user_send_statusPack_3:
         MOVS     R1,#+26
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_63:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_65:
         B.N      ??user_send_statusPack_2
 ??user_send_statusPack_4:
         LDRB     R0,[R5, #+136]
@@ -6251,12 +6263,12 @@ user_send_statusPackSecond:
         ADD      R4,SP,#+4
 ??user_send_statusPackSecond_1:
         CMP      R4,#+0
-        BEQ.N    ??CrossCallReturnLabel_62
-        LDR.W    R0,??DataTable89
+        BEQ.N    ??CrossCallReturnLabel_64
+        LDR.W    R0,??DataTable90
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_124:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_126:
         MOVS     R0,#+24
         BL       ?Subroutine6
 ??CrossCallReturnLabel_2:
@@ -6290,8 +6302,8 @@ user_send_statusPackSecond:
         LDR      R2,[R3, #+4]
         STR      R2,[R0, #+4]
         MOVS     R1,#+26
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_196:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_198:
         STRB     R0,[R4, #+30]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+31]
@@ -6301,11 +6313,11 @@ user_send_statusPackSecond:
         ITT      EQ
         MOVEQ    R0,#+32
         BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_62
+        B.N      ??CrossCallReturnLabel_64
 ??user_send_statusPackSecond_2:
         MOVS     R1,#+32
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_62:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_64:
         ADD      SP,SP,#+40
           CFI CFA R13+16
         POP      {R4-R6,PC}
@@ -6326,7 +6338,7 @@ fw_status_poll:
           CFI R5 Frame(CFA, -8)
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
-        LDR.W    R5,??DataTable90
+        LDR.W    R5,??DataTable90_1
         LDRB     R0,[R5, #+0]
         CBZ.N    R0,??fw_status_poll_0
           CFI FunCall comm_server_online
@@ -6337,7 +6349,7 @@ fw_status_poll:
         BL       comm_tx_acquire
         MOVS     R4,R0
         BEQ.N    ??fw_status_poll_0
-        LDR.W    R2,??DataTable90_1
+        LDR.W    R2,??DataTable90_2
         LDR      R1,[R2, #+0]
         STR      R1,[R4, #+0]
         BL       ?Subroutine7
@@ -6350,8 +6362,8 @@ fw_status_poll:
         STRB     R0,[R4, #+9]
         LDRB     R0,[R5, #+2]
         STRB     R0,[R4, #+10]
-        BL       ?Subroutine46
-??CrossCallReturnLabel_169:
+        BL       ?Subroutine47
+??CrossCallReturnLabel_171:
         STRB     R0,[R4, #+11]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+12]
@@ -6452,8 +6464,8 @@ user_send_statusUpdateFW:
 ??user_send_statusUpdateFW_1:
         CBNZ.N   R4,??user_send_statusUpdateFW_2
         CMP      R6,#+1
-        BNE.N    ??CrossCallReturnLabel_61
-        LDR.W    R0,??DataTable90
+        BNE.N    ??CrossCallReturnLabel_63
+        LDR.W    R0,??DataTable90_1
         MOVS     R1,#+1
         STRB     R1,[R0, #+0]
         LDR.W    R1,??DataTable83
@@ -6461,13 +6473,13 @@ user_send_statusUpdateFW:
         STRB     R1,[R0, #+1]
         STRB     R5,[R0, #+2]
         STRB     R7,[R0, #+3]
-        B.N      ??CrossCallReturnLabel_61
+        B.N      ??CrossCallReturnLabel_63
 ??user_send_statusUpdateFW_2:
         LDR.W    R0,??DataTable91
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_125:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_127:
         BL       ?Subroutine7
 ??CrossCallReturnLabel_5:
         STRB     R7,[R4, #+7]
@@ -6477,8 +6489,8 @@ user_send_statusUpdateFW:
         LDRB     R0,[R0, #+150]
         STRB     R0,[R4, #+9]
         STRB     R5,[R4, #+10]
-        BL       ?Subroutine46
-??CrossCallReturnLabel_168:
+        BL       ?Subroutine47
+??CrossCallReturnLabel_170:
         STRB     R0,[R4, #+11]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+12]
@@ -6488,11 +6500,11 @@ user_send_statusUpdateFW:
         ITT      EQ
         MOVEQ    R0,#+13
         BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_61
+        B.N      ??CrossCallReturnLabel_63
 ??user_send_statusUpdateFW_3:
         MOVS     R1,#+13
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_61:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_63:
         ADD      SP,SP,#+20
           CFI CFA R13+20
         POP      {R4-R7,PC}
@@ -6529,14 +6541,14 @@ user_send_statusUpdateFW:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond116 Using cfiCommon0
           CFI Function fw_status_poll
-          CFI Conditional ??CrossCallReturnLabel_169
+          CFI Conditional ??CrossCallReturnLabel_171
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
           CFI Block cfiCond117 Using cfiCommon0
           CFI (cfiCond117) Function user_send_statusUpdateFW
-          CFI (cfiCond117) Conditional ??CrossCallReturnLabel_168
+          CFI (cfiCond117) Conditional ??CrossCallReturnLabel_170
           CFI (cfiCond117) R4 Frame(CFA, -20)
           CFI (cfiCond117) R5 Frame(CFA, -16)
           CFI (cfiCond117) R6 Frame(CFA, -12)
@@ -6545,7 +6557,7 @@ user_send_statusUpdateFW:
           CFI (cfiCond117) CFA R13+40
           CFI Block cfiCond118 Using cfiCommon0
           CFI (cfiCond118) Function user_getFWblockFromServer
-          CFI (cfiCond118) Conditional ??CrossCallReturnLabel_167
+          CFI (cfiCond118) Conditional ??CrossCallReturnLabel_169
           CFI (cfiCond118) R4 Frame(CFA, -20)
           CFI (cfiCond118) R5 Frame(CFA, -16)
           CFI (cfiCond118) R6 Frame(CFA, -12)
@@ -6556,7 +6568,7 @@ user_send_statusUpdateFW:
           CFI (cfiPicker119) NoFunction
           CFI (cfiPicker119) Picker
         THUMB
-?Subroutine46:
+?Subroutine47:
         MOVS     R1,#+7
         ADDS     R0,R4,#+4
           CFI (cfiCond116) FunCall fw_status_poll crc16_calc
@@ -6594,50 +6606,50 @@ user_send_crcPack:
         ADD      R4,SP,#+4
 ??user_send_crcPack_1:
         CMP      R4,#+0
-        BEQ.N    ??CrossCallReturnLabel_60
-        LDR.W    R0,??DataTable93
+        BEQ.N    ??CrossCallReturnLabel_62
+        LDR.W    R0,??DataTable94
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_126:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_128:
         MOVS     R0,#+13
         BL       ?Subroutine6
 ??CrossCallReturnLabel_3:
         MOVS     R0,#+5
         STRB     R0,[R4, #+8]
-        LDR.W    R6,??DataTable94
+        LDR.W    R6,??DataTable95
         LDR      R1,[R6, #+20]
         MOVS     R0,#+0
           CFI FunCall id_crc16
         BL       id_crc16
         STRH     R0,[SP, #+0]
         ADD      R0,R4,#+9
-        BL       ?Subroutine16
-??CrossCallReturnLabel_31:
+        BL       ?Subroutine17
+??CrossCallReturnLabel_33:
         LDR      R1,[R6, #+28]
         LDR      R0,[R6, #+24]
           CFI FunCall user_calcCRC16InFlash
         BL       user_calcCRC16InFlash
         STRH     R0,[SP, #+0]
         ADD      R0,R4,#+11
-        BL       ?Subroutine16
-??CrossCallReturnLabel_32:
+        BL       ?Subroutine17
+??CrossCallReturnLabel_34:
         LDR      R1,[R6, #+36]
         LDR      R0,[R6, #+32]
           CFI FunCall user_calcCRC16InFlash
         BL       user_calcCRC16InFlash
         STRH     R0,[SP, #+0]
         ADD      R0,R4,#+13
-        BL       ?Subroutine16
-??CrossCallReturnLabel_33:
+        BL       ?Subroutine17
+??CrossCallReturnLabel_35:
         LDR      R1,[R6, #+52]
         LDR      R0,[R6, #+48]
           CFI FunCall user_calcCRC16InFlash
         BL       user_calcCRC16InFlash
         STRH     R0,[SP, #+0]
         ADD      R0,R4,#+15
-        BL       ?Subroutine16
-??CrossCallReturnLabel_34:
+        BL       ?Subroutine17
+??CrossCallReturnLabel_36:
         LDR      R1,[R6, #+44]
         LDR      R0,[R6, #+40]
           CFI FunCall user_calcCRC16InFlash
@@ -6649,8 +6661,8 @@ user_send_crcPack:
         LDRB     R1,[SP, #+1]
         STRB     R1,[R0, #+1]
         MOVS     R1,#+15
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_195:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_197:
         STRB     R0,[R4, #+19]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+20]
@@ -6660,11 +6672,11 @@ user_send_crcPack:
         ITT      EQ
         MOVEQ    R0,#+21
         BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_60
+        B.N      ??CrossCallReturnLabel_62
 ??user_send_crcPack_2:
         MOVS     R1,#+21
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_60:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_62:
         ADD      SP,SP,#+32
           CFI CFA R13+16
         POP      {R4-R6,PC}
@@ -6741,7 +6753,7 @@ user_send_crcMemoryID:
           CFI CFA R13+40
         MOV      R5,R0
         MOV      R10,R2
-        LDR.W    R8,??DataTable94
+        LDR.W    R8,??DataTable95
         LDR      R9,[R8, #+16]
         CMP      R0,#+0
         ITE      EQ
@@ -6760,8 +6772,8 @@ user_send_crcMemoryID:
 ??user_send_crcMemoryID_1:
         MOVS     R4,R0
         BEQ.N    ??user_send_crcMemoryID_2
-        BL       ?Subroutine36
-??CrossCallReturnLabel_119:
+        BL       ?Subroutine37
+??CrossCallReturnLabel_121:
         BL       ??Subroutine7_1
 ??CrossCallReturnLabel_7:
         STRB     R10,[R4, #+7]
@@ -6790,11 +6802,11 @@ user_send_crcMemoryID:
         UXTH     R0,R5
         CMP      R0,#+100
         BLT.N    ??user_send_crcMemoryID_4
-        B.N      ??CrossCallReturnLabel_35
+        B.N      ??CrossCallReturnLabel_37
 ??user_send_crcMemoryID_3:
         MOVS     R0,#+15
         STRB     R0,[R4, #+8]
-        LDR.W    R0,??DataTable98
+        LDR.W    R0,??DataTable99
           CFI FunCall user_debug
         BL       user_debug
         MOV      R1,#+16000
@@ -6805,13 +6817,13 @@ user_send_crcMemoryID:
         STRH     R0,[SP, #+0]
         STRB     R5,[R4, #+9]
         ADD      R0,R4,#+10
-        BL       ?Subroutine16
-??CrossCallReturnLabel_35:
+        BL       ?Subroutine17
+??CrossCallReturnLabel_37:
         ADDS     R1,R7,#+2
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_194:
-        BL       ?Subroutine63
-??CrossCallReturnLabel_220:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_196:
+        BL       ?Subroutine64
+??CrossCallReturnLabel_222:
         MOVS     R0,R6
         BEQ.N    ??user_send_crcMemoryID_5
         CMP      R6,#+1
@@ -6819,8 +6831,8 @@ user_send_crcMemoryID:
         B.N      ??user_send_crcMemoryID_7
 ??user_send_crcMemoryID_5:
         ADD      R1,R7,#+8
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_59:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_61:
         MOV      R0,R4
           CFI FunCall free
         BL       free
@@ -6832,7 +6844,7 @@ user_send_crcMemoryID:
         BL       comm_tx_commit
         B.N      ??user_send_crcMemoryID_8
 ??user_send_crcMemoryID_7:
-        BNE.N    ??CrossCallReturnLabel_59
+        BNE.N    ??CrossCallReturnLabel_61
 ??user_send_crcMemoryID_8:
           CFI FunCall comm_tx_release
         BL       comm_tx_release
@@ -6856,7 +6868,7 @@ user_send_crcMemoryID:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond125 Using cfiCommon0
           CFI Function user_send_crcPack
-          CFI Conditional ??CrossCallReturnLabel_31
+          CFI Conditional ??CrossCallReturnLabel_33
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -6864,7 +6876,7 @@ user_send_crcMemoryID:
           CFI CFA R13+48
           CFI Block cfiCond126 Using cfiCommon0
           CFI (cfiCond126) Function user_send_crcPack
-          CFI (cfiCond126) Conditional ??CrossCallReturnLabel_32
+          CFI (cfiCond126) Conditional ??CrossCallReturnLabel_34
           CFI (cfiCond126) R4 Frame(CFA, -16)
           CFI (cfiCond126) R5 Frame(CFA, -12)
           CFI (cfiCond126) R6 Frame(CFA, -8)
@@ -6872,7 +6884,7 @@ user_send_crcMemoryID:
           CFI (cfiCond126) CFA R13+48
           CFI Block cfiCond127 Using cfiCommon0
           CFI (cfiCond127) Function user_send_crcPack
-          CFI (cfiCond127) Conditional ??CrossCallReturnLabel_33
+          CFI (cfiCond127) Conditional ??CrossCallReturnLabel_35
           CFI (cfiCond127) R4 Frame(CFA, -16)
           CFI (cfiCond127) R5 Frame(CFA, -12)
           CFI (cfiCond127) R6 Frame(CFA, -8)
@@ -6880,7 +6892,7 @@ user_send_crcMemoryID:
           CFI (cfiCond127) CFA R13+48
           CFI Block cfiCond128 Using cfiCommon0
           CFI (cfiCond128) Function user_send_crcPack
-          CFI (cfiCond128) Conditional ??CrossCallReturnLabel_34
+          CFI (cfiCond128) Conditional ??CrossCallReturnLabel_36
           CFI (cfiCond128) R4 Frame(CFA, -16)
           CFI (cfiCond128) R5 Frame(CFA, -12)
           CFI (cfiCond128) R6 Frame(CFA, -8)
@@ -6888,7 +6900,7 @@ user_send_crcMemoryID:
           CFI (cfiCond128) CFA R13+48
           CFI Block cfiCond129 Using cfiCommon0
           CFI (cfiCond129) Function user_send_crcMemoryID
-          CFI (cfiCond129) Conditional ??CrossCallReturnLabel_35
+          CFI (cfiCond129) Conditional ??CrossCallReturnLabel_37
           CFI (cfiCond129) R4 Frame(CFA, -32)
           CFI (cfiCond129) R5 Frame(CFA, -28)
           CFI (cfiCond129) R6 Frame(CFA, -24)
@@ -6900,7 +6912,7 @@ user_send_crcMemoryID:
           CFI (cfiCond129) CFA R13+40
           CFI Block cfiCond130 Using cfiCommon0
           CFI (cfiCond130) Function log_addUpdateEvent
-          CFI (cfiCond130) Conditional ??CrossCallReturnLabel_36
+          CFI (cfiCond130) Conditional ??CrossCallReturnLabel_38
           CFI (cfiCond130) R4 Frame(CFA, -16)
           CFI (cfiCond130) R5 Frame(CFA, -12)
           CFI (cfiCond130) R6 Frame(CFA, -8)
@@ -6910,7 +6922,7 @@ user_send_crcMemoryID:
           CFI (cfiPicker131) NoFunction
           CFI (cfiPicker131) Picker
         THUMB
-?Subroutine16:
+?Subroutine17:
         LDRB     R2,[SP, #+0]
         STRB     R2,[R0, #+0]
         LDRB     R2,[SP, #+1]
@@ -6968,10 +6980,10 @@ user_send_smsToServer:
         LDR.W    R0,??DataTable100
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine29
-??CrossCallReturnLabel_92:
-        BL       ??Subroutine38_0
-??CrossCallReturnLabel_136:
+        BL       ?Subroutine30
+??CrossCallReturnLabel_94:
+        BL       ??Subroutine39_0
+??CrossCallReturnLabel_138:
         MOVS     R0,#+7
         STRB     R0,[R4, #+8]
         MOV      R1,R5
@@ -6979,11 +6991,11 @@ user_send_smsToServer:
           CFI FunCall strcpy
         BL       strcpy
         ADDS     R1,R6,#+2
-        BL       ?Subroutine35
-??CrossCallReturnLabel_117:
+        BL       ?Subroutine36
+??CrossCallReturnLabel_119:
         ADDS     R1,R4,R6
-        BL       ??Subroutine63_0
-??CrossCallReturnLabel_223:
+        BL       ??Subroutine64_0
+??CrossCallReturnLabel_225:
         ADDS     R6,R6,#+8
         UXTH     R0,R6
           CFI FunCall comm_tx_commit
@@ -6997,7 +7009,7 @@ user_send_smsToServer:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond133 Using cfiCommon0
           CFI Function user_send_anyData
-          CFI Conditional ??CrossCallReturnLabel_118
+          CFI Conditional ??CrossCallReturnLabel_120
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -7010,7 +7022,7 @@ user_send_smsToServer:
           CFI CFA R13+40
           CFI Block cfiCond134 Using cfiCommon0
           CFI (cfiCond134) Function user_send_smsToServer
-          CFI (cfiCond134) Conditional ??CrossCallReturnLabel_117
+          CFI (cfiCond134) Conditional ??CrossCallReturnLabel_119
           CFI (cfiCond134) R4 Frame(CFA, -16)
           CFI (cfiCond134) R5 Frame(CFA, -12)
           CFI (cfiCond134) R6 Frame(CFA, -8)
@@ -7018,7 +7030,7 @@ user_send_smsToServer:
           CFI (cfiCond134) CFA R13+24
           CFI Block cfiCond135 Using cfiCommon0
           CFI (cfiCond135) Function user_send_tempIDs
-          CFI (cfiCond135) Conditional ??CrossCallReturnLabel_116
+          CFI (cfiCond135) Conditional ??CrossCallReturnLabel_118
           CFI (cfiCond135) R4 Frame(CFA, -36)
           CFI (cfiCond135) R5 Frame(CFA, -32)
           CFI (cfiCond135) R6 Frame(CFA, -28)
@@ -7033,7 +7045,7 @@ user_send_smsToServer:
           CFI (cfiPicker136) NoFunction
           CFI (cfiPicker136) Picker
         THUMB
-?Subroutine35:
+?Subroutine36:
         UXTH     R1,R1
         ADDS     R0,R4,#+4
           CFI (cfiCond133) FunCall user_send_anyData crc16_calc
@@ -7163,8 +7175,8 @@ reader_reply_poll:
         BL       user_comm_acquire
         MOVS     R4,R0
         BEQ.N    ??reader_reply_poll_0
-        BL       ?Subroutine37
-??CrossCallReturnLabel_127:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_129:
         MOVS     R0,#+14
         BL       ?Subroutine5
 ??CrossCallReturnLabel_0:
@@ -7178,8 +7190,8 @@ reader_reply_poll:
           CFI FunCall __aeabi_memcpy
         BL       __aeabi_memcpy
         MOVS     R1,#+16
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_193:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_195:
         STRB     R0,[R4, #+20]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+21]
@@ -7203,7 +7215,7 @@ reader_reply_poll:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond141 Using cfiCommon0
           CFI Function user_send_anyData
-          CFI Conditional ??CrossCallReturnLabel_121
+          CFI Conditional ??CrossCallReturnLabel_123
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -7216,7 +7228,7 @@ reader_reply_poll:
           CFI CFA R13+40
           CFI Block cfiCond142 Using cfiCommon0
           CFI (cfiCond142) Function user_send_registrationData
-          CFI (cfiCond142) Conditional ??CrossCallReturnLabel_122
+          CFI (cfiCond142) Conditional ??CrossCallReturnLabel_124
           CFI (cfiCond142) R4 Frame(CFA, -16)
           CFI (cfiCond142) R5 Frame(CFA, -12)
           CFI (cfiCond142) R6 Frame(CFA, -8)
@@ -7224,7 +7236,7 @@ reader_reply_poll:
           CFI (cfiCond142) CFA R13+72
           CFI Block cfiCond143 Using cfiCommon0
           CFI (cfiCond143) Function user_send_statusPack
-          CFI (cfiCond143) Conditional ??CrossCallReturnLabel_123
+          CFI (cfiCond143) Conditional ??CrossCallReturnLabel_125
           CFI (cfiCond143) R4 Frame(CFA, -16)
           CFI (cfiCond143) R5 Frame(CFA, -12)
           CFI (cfiCond143) R6 Frame(CFA, -8)
@@ -7232,7 +7244,7 @@ reader_reply_poll:
           CFI (cfiCond143) CFA R13+48
           CFI Block cfiCond144 Using cfiCommon0
           CFI (cfiCond144) Function user_send_statusPackSecond
-          CFI (cfiCond144) Conditional ??CrossCallReturnLabel_124
+          CFI (cfiCond144) Conditional ??CrossCallReturnLabel_126
           CFI (cfiCond144) R4 Frame(CFA, -16)
           CFI (cfiCond144) R5 Frame(CFA, -12)
           CFI (cfiCond144) R6 Frame(CFA, -8)
@@ -7240,7 +7252,7 @@ reader_reply_poll:
           CFI (cfiCond144) CFA R13+56
           CFI Block cfiCond145 Using cfiCommon0
           CFI (cfiCond145) Function user_send_statusUpdateFW
-          CFI (cfiCond145) Conditional ??CrossCallReturnLabel_125
+          CFI (cfiCond145) Conditional ??CrossCallReturnLabel_127
           CFI (cfiCond145) R4 Frame(CFA, -20)
           CFI (cfiCond145) R5 Frame(CFA, -16)
           CFI (cfiCond145) R6 Frame(CFA, -12)
@@ -7249,7 +7261,7 @@ reader_reply_poll:
           CFI (cfiCond145) CFA R13+40
           CFI Block cfiCond146 Using cfiCommon0
           CFI (cfiCond146) Function user_send_crcPack
-          CFI (cfiCond146) Conditional ??CrossCallReturnLabel_126
+          CFI (cfiCond146) Conditional ??CrossCallReturnLabel_128
           CFI (cfiCond146) R4 Frame(CFA, -16)
           CFI (cfiCond146) R5 Frame(CFA, -12)
           CFI (cfiCond146) R6 Frame(CFA, -8)
@@ -7257,14 +7269,14 @@ reader_reply_poll:
           CFI (cfiCond146) CFA R13+48
           CFI Block cfiCond147 Using cfiCommon0
           CFI (cfiCond147) Function reader_reply_poll
-          CFI (cfiCond147) Conditional ??CrossCallReturnLabel_127
+          CFI (cfiCond147) Conditional ??CrossCallReturnLabel_129
           CFI (cfiCond147) R4 Frame(CFA, -12)
           CFI (cfiCond147) R5 Frame(CFA, -8)
           CFI (cfiCond147) R14 Frame(CFA, -4)
           CFI (cfiCond147) CFA R13+16
           CFI Block cfiCond148 Using cfiCommon0
           CFI (cfiCond148) Function user_send_answer_comand
-          CFI (cfiCond148) Conditional ??CrossCallReturnLabel_128
+          CFI (cfiCond148) Conditional ??CrossCallReturnLabel_130
           CFI (cfiCond148) R4 Frame(CFA, -24)
           CFI (cfiCond148) R5 Frame(CFA, -20)
           CFI (cfiCond148) R6 Frame(CFA, -16)
@@ -7274,7 +7286,7 @@ reader_reply_poll:
           CFI (cfiCond148) CFA R13+48
           CFI Block cfiCond149 Using cfiCommon0
           CFI (cfiCond149) Function user_send_timeshtamp
-          CFI (cfiCond149) Conditional ??CrossCallReturnLabel_129
+          CFI (cfiCond149) Conditional ??CrossCallReturnLabel_131
           CFI (cfiCond149) R4 Frame(CFA, -20)
           CFI (cfiCond149) R5 Frame(CFA, -16)
           CFI (cfiCond149) R6 Frame(CFA, -12)
@@ -7283,14 +7295,14 @@ reader_reply_poll:
           CFI (cfiCond149) CFA R13+48
           CFI Block cfiCond150 Using cfiCommon0
           CFI (cfiCond150) Function user_send_identPackToConfigurator
-          CFI (cfiCond150) Conditional ??CrossCallReturnLabel_130
+          CFI (cfiCond150) Conditional ??CrossCallReturnLabel_132
           CFI (cfiCond150) R4 Frame(CFA, -12)
           CFI (cfiCond150) R5 Frame(CFA, -8)
           CFI (cfiCond150) R14 Frame(CFA, -4)
           CFI (cfiCond150) CFA R13+40
           CFI Block cfiCond151 Using cfiCommon0
           CFI (cfiCond151) Function user_send_statusPackToConfigurator
-          CFI (cfiCond151) Conditional ??CrossCallReturnLabel_131
+          CFI (cfiCond151) Conditional ??CrossCallReturnLabel_133
           CFI (cfiCond151) R4 Frame(CFA, -20)
           CFI (cfiCond151) R5 Frame(CFA, -16)
           CFI (cfiCond151) R6 Frame(CFA, -12)
@@ -7299,14 +7311,14 @@ reader_reply_poll:
           CFI (cfiCond151) CFA R13+120
           CFI Block cfiCond152 Using cfiCommon0
           CFI (cfiCond152) Function user_send_configToConfigurator
-          CFI (cfiCond152) Conditional ??CrossCallReturnLabel_132
+          CFI (cfiCond152) Conditional ??CrossCallReturnLabel_134
           CFI (cfiCond152) R4 Frame(CFA, -12)
           CFI (cfiCond152) R5 Frame(CFA, -8)
           CFI (cfiCond152) R14 Frame(CFA, -4)
           CFI (cfiCond152) CFA R13+16
           CFI Block cfiCond153 Using cfiCommon0
           CFI (cfiCond153) Function user_getFWblockFromServer
-          CFI (cfiCond153) Conditional ??CrossCallReturnLabel_133
+          CFI (cfiCond153) Conditional ??CrossCallReturnLabel_135
           CFI (cfiCond153) R4 Frame(CFA, -20)
           CFI (cfiCond153) R5 Frame(CFA, -16)
           CFI (cfiCond153) R6 Frame(CFA, -12)
@@ -7317,7 +7329,7 @@ reader_reply_poll:
           CFI (cfiPicker154) NoFunction
           CFI (cfiPicker154) Picker
         THUMB
-?Subroutine37:
+?Subroutine38:
         MOVS     R0,#+83
         STRB     R0,[R4, #+0]
         MOVS     R0,#+76
@@ -7372,15 +7384,15 @@ user_send_answer_comand:
         ADD      R4,SP,#+4
 ??user_send_answer_comand_1:
         CMP      R4,#+0
-        BEQ.N    ??CrossCallReturnLabel_58
+        BEQ.N    ??CrossCallReturnLabel_60
         LDR.W    R0,??DataTable101_2
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_128:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_130:
         MOVS     R0,#+11
-        BL       ?Subroutine64
-??CrossCallReturnLabel_227:
+        BL       ?Subroutine65
+??CrossCallReturnLabel_229:
         CMP      R7,#+7
         ITET     NE
         CMPNE    R7,#+21
@@ -7402,8 +7414,8 @@ user_send_answer_comand:
         BL       ?Subroutine8
 ??CrossCallReturnLabel_9:
         MOVS     R1,#+13
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_192:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_194:
         STRB     R0,[R4, #+17]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+18]
@@ -7413,11 +7425,11 @@ user_send_answer_comand:
         ITT      EQ
         MOVEQ    R0,#+19
         BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_58
+        B.N      ??CrossCallReturnLabel_60
 ??user_send_answer_comand_2:
         MOVS     R1,#+19
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_58:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_60:
         ADD      SP,SP,#+24
           CFI CFA R13+24
         POP      {R4-R8,PC}
@@ -7433,7 +7445,7 @@ user_send_answer_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond156 Using cfiCommon0
           CFI Function user_send_registrationData
-          CFI Conditional ??CrossCallReturnLabel_225
+          CFI Conditional ??CrossCallReturnLabel_227
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -7441,7 +7453,7 @@ user_send_answer_comand:
           CFI CFA R13+72
           CFI Block cfiCond157 Using cfiCommon0
           CFI (cfiCond157) Function user_send_statusPack
-          CFI (cfiCond157) Conditional ??CrossCallReturnLabel_226
+          CFI (cfiCond157) Conditional ??CrossCallReturnLabel_228
           CFI (cfiCond157) R4 Frame(CFA, -16)
           CFI (cfiCond157) R5 Frame(CFA, -12)
           CFI (cfiCond157) R6 Frame(CFA, -8)
@@ -7449,7 +7461,7 @@ user_send_answer_comand:
           CFI (cfiCond157) CFA R13+48
           CFI Block cfiCond158 Using cfiCommon0
           CFI (cfiCond158) Function user_send_answer_comand
-          CFI (cfiCond158) Conditional ??CrossCallReturnLabel_227
+          CFI (cfiCond158) Conditional ??CrossCallReturnLabel_229
           CFI (cfiCond158) R4 Frame(CFA, -24)
           CFI (cfiCond158) R5 Frame(CFA, -20)
           CFI (cfiCond158) R6 Frame(CFA, -16)
@@ -7459,7 +7471,7 @@ user_send_answer_comand:
           CFI (cfiCond158) CFA R13+48
           CFI Block cfiCond159 Using cfiCommon0
           CFI (cfiCond159) Function user_send_identPackToConfigurator
-          CFI (cfiCond159) Conditional ??CrossCallReturnLabel_228
+          CFI (cfiCond159) Conditional ??CrossCallReturnLabel_230
           CFI (cfiCond159) R4 Frame(CFA, -12)
           CFI (cfiCond159) R5 Frame(CFA, -8)
           CFI (cfiCond159) R14 Frame(CFA, -4)
@@ -7468,7 +7480,7 @@ user_send_answer_comand:
           CFI (cfiPicker160) NoFunction
           CFI (cfiPicker160) Picker
         THUMB
-?Subroutine64:
+?Subroutine65:
         STRB     R0,[R4, #+4]
         MOVS     R0,#+0
         STRB     R0,[R4, #+5]
@@ -7482,7 +7494,7 @@ user_send_answer_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond161 Using cfiCommon0
           CFI Function user_send_statusPackToConfigurator
-          CFI Conditional ??CrossCallReturnLabel_200
+          CFI Conditional ??CrossCallReturnLabel_202
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
@@ -7491,7 +7503,7 @@ user_send_answer_comand:
           CFI CFA R13+120
           CFI Block cfiCond162 Using cfiCommon0
           CFI (cfiCond162) Function user_send_logRecords
-          CFI (cfiCond162) Conditional ??CrossCallReturnLabel_199
+          CFI (cfiCond162) Conditional ??CrossCallReturnLabel_201
           CFI (cfiCond162) R4 Frame(CFA, -36)
           CFI (cfiCond162) R5 Frame(CFA, -32)
           CFI (cfiCond162) R6 Frame(CFA, -28)
@@ -7506,11 +7518,11 @@ user_send_answer_comand:
           CFI (cfiPicker163) NoFunction
           CFI (cfiPicker163) Picker
         THUMB
-?Subroutine55:
+?Subroutine56:
         ADDS     R1,R6,#+2
           CFI Block cfiCond164 Using cfiCommon0
           CFI (cfiCond164) Function user_send_registrationData
-          CFI (cfiCond164) Conditional ??CrossCallReturnLabel_198
+          CFI (cfiCond164) Conditional ??CrossCallReturnLabel_200
           CFI (cfiCond164) R4 Frame(CFA, -16)
           CFI (cfiCond164) R5 Frame(CFA, -12)
           CFI (cfiCond164) R6 Frame(CFA, -8)
@@ -7518,7 +7530,7 @@ user_send_answer_comand:
           CFI (cfiCond164) CFA R13+72
           CFI Block cfiCond165 Using cfiCommon0
           CFI (cfiCond165) Function user_send_statusPack
-          CFI (cfiCond165) Conditional ??CrossCallReturnLabel_197
+          CFI (cfiCond165) Conditional ??CrossCallReturnLabel_199
           CFI (cfiCond165) R4 Frame(CFA, -16)
           CFI (cfiCond165) R5 Frame(CFA, -12)
           CFI (cfiCond165) R6 Frame(CFA, -8)
@@ -7526,7 +7538,7 @@ user_send_answer_comand:
           CFI (cfiCond165) CFA R13+48
           CFI Block cfiCond166 Using cfiCommon0
           CFI (cfiCond166) Function user_send_statusPackSecond
-          CFI (cfiCond166) Conditional ??CrossCallReturnLabel_196
+          CFI (cfiCond166) Conditional ??CrossCallReturnLabel_198
           CFI (cfiCond166) R4 Frame(CFA, -16)
           CFI (cfiCond166) R5 Frame(CFA, -12)
           CFI (cfiCond166) R6 Frame(CFA, -8)
@@ -7534,7 +7546,7 @@ user_send_answer_comand:
           CFI (cfiCond166) CFA R13+56
           CFI Block cfiCond167 Using cfiCommon0
           CFI (cfiCond167) Function user_send_crcPack
-          CFI (cfiCond167) Conditional ??CrossCallReturnLabel_195
+          CFI (cfiCond167) Conditional ??CrossCallReturnLabel_197
           CFI (cfiCond167) R4 Frame(CFA, -16)
           CFI (cfiCond167) R5 Frame(CFA, -12)
           CFI (cfiCond167) R6 Frame(CFA, -8)
@@ -7542,7 +7554,7 @@ user_send_answer_comand:
           CFI (cfiCond167) CFA R13+48
           CFI Block cfiCond168 Using cfiCommon0
           CFI (cfiCond168) Function user_send_crcMemoryID
-          CFI (cfiCond168) Conditional ??CrossCallReturnLabel_194
+          CFI (cfiCond168) Conditional ??CrossCallReturnLabel_196
           CFI (cfiCond168) R4 Frame(CFA, -32)
           CFI (cfiCond168) R5 Frame(CFA, -28)
           CFI (cfiCond168) R6 Frame(CFA, -24)
@@ -7554,14 +7566,14 @@ user_send_answer_comand:
           CFI (cfiCond168) CFA R13+40
           CFI Block cfiCond169 Using cfiCommon0
           CFI (cfiCond169) Function reader_reply_poll
-          CFI (cfiCond169) Conditional ??CrossCallReturnLabel_193
+          CFI (cfiCond169) Conditional ??CrossCallReturnLabel_195
           CFI (cfiCond169) R4 Frame(CFA, -12)
           CFI (cfiCond169) R5 Frame(CFA, -8)
           CFI (cfiCond169) R14 Frame(CFA, -4)
           CFI (cfiCond169) CFA R13+16
           CFI Block cfiCond170 Using cfiCommon0
           CFI (cfiCond170) Function user_send_answer_comand
-          CFI (cfiCond170) Conditional ??CrossCallReturnLabel_192
+          CFI (cfiCond170) Conditional ??CrossCallReturnLabel_194
           CFI (cfiCond170) R4 Frame(CFA, -24)
           CFI (cfiCond170) R5 Frame(CFA, -20)
           CFI (cfiCond170) R6 Frame(CFA, -16)
@@ -7571,7 +7583,7 @@ user_send_answer_comand:
           CFI (cfiCond170) CFA R13+48
           CFI Block cfiCond171 Using cfiCommon0
           CFI (cfiCond171) Function user_send_timeshtamp
-          CFI (cfiCond171) Conditional ??CrossCallReturnLabel_191
+          CFI (cfiCond171) Conditional ??CrossCallReturnLabel_193
           CFI (cfiCond171) R4 Frame(CFA, -20)
           CFI (cfiCond171) R5 Frame(CFA, -16)
           CFI (cfiCond171) R6 Frame(CFA, -12)
@@ -7580,19 +7592,19 @@ user_send_answer_comand:
           CFI (cfiCond171) CFA R13+48
           CFI Block cfiCond172 Using cfiCommon0
           CFI (cfiCond172) Function user_send_identPackToConfigurator
-          CFI (cfiCond172) Conditional ??CrossCallReturnLabel_190
+          CFI (cfiCond172) Conditional ??CrossCallReturnLabel_192
           CFI (cfiCond172) R4 Frame(CFA, -12)
           CFI (cfiCond172) R5 Frame(CFA, -8)
           CFI (cfiCond172) R14 Frame(CFA, -4)
           CFI (cfiCond172) CFA R13+40
           CFI Block cfiCond173 Using cfiCommon0
           CFI (cfiCond173) Function user_send_configToConfigurator
-          CFI (cfiCond173) Conditional ??CrossCallReturnLabel_189
+          CFI (cfiCond173) Conditional ??CrossCallReturnLabel_191
           CFI (cfiCond173) R4 Frame(CFA, -12)
           CFI (cfiCond173) R5 Frame(CFA, -8)
           CFI (cfiCond173) R14 Frame(CFA, -4)
           CFI (cfiCond173) CFA R13+16
-??Subroutine55_0:
+??Subroutine56_0:
         ADDS     R0,R4,#+4
           CFI (cfiCond161) FunCall user_send_statusPackToConfigurator crc16_calc
           CFI (cfiCond162) FunCall user_send_logRecords crc16_calc
@@ -7624,7 +7636,7 @@ user_send_answer_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond174 Using cfiCommon0
           CFI Function user_send_statusPackToConfigurator
-          CFI Conditional ??CrossCallReturnLabel_67
+          CFI Conditional ??CrossCallReturnLabel_69
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
@@ -7633,7 +7645,7 @@ user_send_answer_comand:
           CFI CFA R13+120
           CFI Block cfiCond175 Using cfiCommon0
           CFI (cfiCond175) Function user_send_logRecords
-          CFI (cfiCond175) Conditional ??CrossCallReturnLabel_66
+          CFI (cfiCond175) Conditional ??CrossCallReturnLabel_68
           CFI (cfiCond175) R4 Frame(CFA, -36)
           CFI (cfiCond175) R5 Frame(CFA, -32)
           CFI (cfiCond175) R6 Frame(CFA, -28)
@@ -7648,11 +7660,11 @@ user_send_answer_comand:
           CFI (cfiPicker176) NoFunction
           CFI (cfiPicker176) Picker
         THUMB
-?Subroutine21:
+?Subroutine22:
         ADD      R1,R6,#+8
           CFI Block cfiCond177 Using cfiCommon0
           CFI (cfiCond177) Function user_send_anyData
-          CFI (cfiCond177) Conditional ??CrossCallReturnLabel_65
+          CFI (cfiCond177) Conditional ??CrossCallReturnLabel_67
           CFI (cfiCond177) R4 Frame(CFA, -36)
           CFI (cfiCond177) R5 Frame(CFA, -32)
           CFI (cfiCond177) R6 Frame(CFA, -28)
@@ -7665,7 +7677,7 @@ user_send_answer_comand:
           CFI (cfiCond177) CFA R13+40
           CFI Block cfiCond178 Using cfiCommon0
           CFI (cfiCond178) Function user_send_registrationData
-          CFI (cfiCond178) Conditional ??CrossCallReturnLabel_64
+          CFI (cfiCond178) Conditional ??CrossCallReturnLabel_66
           CFI (cfiCond178) R4 Frame(CFA, -16)
           CFI (cfiCond178) R5 Frame(CFA, -12)
           CFI (cfiCond178) R6 Frame(CFA, -8)
@@ -7673,7 +7685,7 @@ user_send_answer_comand:
           CFI (cfiCond178) CFA R13+72
           CFI Block cfiCond179 Using cfiCommon0
           CFI (cfiCond179) Function user_send_statusPack
-          CFI (cfiCond179) Conditional ??CrossCallReturnLabel_63
+          CFI (cfiCond179) Conditional ??CrossCallReturnLabel_65
           CFI (cfiCond179) R4 Frame(CFA, -16)
           CFI (cfiCond179) R5 Frame(CFA, -12)
           CFI (cfiCond179) R6 Frame(CFA, -8)
@@ -7681,7 +7693,7 @@ user_send_answer_comand:
           CFI (cfiCond179) CFA R13+48
           CFI Block cfiCond180 Using cfiCommon0
           CFI (cfiCond180) Function user_send_statusPackSecond
-          CFI (cfiCond180) Conditional ??CrossCallReturnLabel_62
+          CFI (cfiCond180) Conditional ??CrossCallReturnLabel_64
           CFI (cfiCond180) R4 Frame(CFA, -16)
           CFI (cfiCond180) R5 Frame(CFA, -12)
           CFI (cfiCond180) R6 Frame(CFA, -8)
@@ -7689,7 +7701,7 @@ user_send_answer_comand:
           CFI (cfiCond180) CFA R13+56
           CFI Block cfiCond181 Using cfiCommon0
           CFI (cfiCond181) Function user_send_statusUpdateFW
-          CFI (cfiCond181) Conditional ??CrossCallReturnLabel_61
+          CFI (cfiCond181) Conditional ??CrossCallReturnLabel_63
           CFI (cfiCond181) R4 Frame(CFA, -20)
           CFI (cfiCond181) R5 Frame(CFA, -16)
           CFI (cfiCond181) R6 Frame(CFA, -12)
@@ -7698,7 +7710,7 @@ user_send_answer_comand:
           CFI (cfiCond181) CFA R13+40
           CFI Block cfiCond182 Using cfiCommon0
           CFI (cfiCond182) Function user_send_crcPack
-          CFI (cfiCond182) Conditional ??CrossCallReturnLabel_60
+          CFI (cfiCond182) Conditional ??CrossCallReturnLabel_62
           CFI (cfiCond182) R4 Frame(CFA, -16)
           CFI (cfiCond182) R5 Frame(CFA, -12)
           CFI (cfiCond182) R6 Frame(CFA, -8)
@@ -7706,7 +7718,7 @@ user_send_answer_comand:
           CFI (cfiCond182) CFA R13+48
           CFI Block cfiCond183 Using cfiCommon0
           CFI (cfiCond183) Function user_send_crcMemoryID
-          CFI (cfiCond183) Conditional ??CrossCallReturnLabel_59
+          CFI (cfiCond183) Conditional ??CrossCallReturnLabel_61
           CFI (cfiCond183) R4 Frame(CFA, -32)
           CFI (cfiCond183) R5 Frame(CFA, -28)
           CFI (cfiCond183) R6 Frame(CFA, -24)
@@ -7718,7 +7730,7 @@ user_send_answer_comand:
           CFI (cfiCond183) CFA R13+40
           CFI Block cfiCond184 Using cfiCommon0
           CFI (cfiCond184) Function user_send_answer_comand
-          CFI (cfiCond184) Conditional ??CrossCallReturnLabel_58
+          CFI (cfiCond184) Conditional ??CrossCallReturnLabel_60
           CFI (cfiCond184) R4 Frame(CFA, -24)
           CFI (cfiCond184) R5 Frame(CFA, -20)
           CFI (cfiCond184) R6 Frame(CFA, -16)
@@ -7728,7 +7740,7 @@ user_send_answer_comand:
           CFI (cfiCond184) CFA R13+48
           CFI Block cfiCond185 Using cfiCommon0
           CFI (cfiCond185) Function user_send_timeshtamp
-          CFI (cfiCond185) Conditional ??CrossCallReturnLabel_57
+          CFI (cfiCond185) Conditional ??CrossCallReturnLabel_59
           CFI (cfiCond185) R4 Frame(CFA, -20)
           CFI (cfiCond185) R5 Frame(CFA, -16)
           CFI (cfiCond185) R6 Frame(CFA, -12)
@@ -7737,21 +7749,21 @@ user_send_answer_comand:
           CFI (cfiCond185) CFA R13+48
           CFI Block cfiCond186 Using cfiCommon0
           CFI (cfiCond186) Function user_send_identPackToConfigurator
-          CFI (cfiCond186) Conditional ??CrossCallReturnLabel_56
+          CFI (cfiCond186) Conditional ??CrossCallReturnLabel_58
           CFI (cfiCond186) R4 Frame(CFA, -12)
           CFI (cfiCond186) R5 Frame(CFA, -8)
           CFI (cfiCond186) R14 Frame(CFA, -4)
           CFI (cfiCond186) CFA R13+40
           CFI Block cfiCond187 Using cfiCommon0
           CFI (cfiCond187) Function user_send_configToConfigurator
-          CFI (cfiCond187) Conditional ??CrossCallReturnLabel_55
+          CFI (cfiCond187) Conditional ??CrossCallReturnLabel_57
           CFI (cfiCond187) R4 Frame(CFA, -12)
           CFI (cfiCond187) R5 Frame(CFA, -8)
           CFI (cfiCond187) R14 Frame(CFA, -4)
           CFI (cfiCond187) CFA R13+16
           CFI Block cfiCond188 Using cfiCommon0
           CFI (cfiCond188) Function user_send_tempIDs
-          CFI (cfiCond188) Conditional ??CrossCallReturnLabel_54
+          CFI (cfiCond188) Conditional ??CrossCallReturnLabel_56
           CFI (cfiCond188) R4 Frame(CFA, -36)
           CFI (cfiCond188) R5 Frame(CFA, -32)
           CFI (cfiCond188) R6 Frame(CFA, -28)
@@ -7764,14 +7776,14 @@ user_send_answer_comand:
           CFI (cfiCond188) CFA R13+48
           CFI Block cfiCond189 Using cfiCommon0
           CFI (cfiCond189) Function user_getFWblockFromServer
-          CFI (cfiCond189) Conditional ??CrossCallReturnLabel_53
+          CFI (cfiCond189) Conditional ??CrossCallReturnLabel_55
           CFI (cfiCond189) R4 Frame(CFA, -20)
           CFI (cfiCond189) R5 Frame(CFA, -16)
           CFI (cfiCond189) R6 Frame(CFA, -12)
           CFI (cfiCond189) R7 Frame(CFA, -8)
           CFI (cfiCond189) R14 Frame(CFA, -4)
           CFI (cfiCond189) CFA R13+40
-??Subroutine21_0:
+??Subroutine22_0:
         MOV      R0,R4
           CFI (cfiCond174) FunCall user_send_statusPackToConfigurator usb_send
           CFI (cfiCond175) FunCall user_send_logRecords usb_send
@@ -7867,13 +7879,13 @@ user_send_timeshtamp:
 ??user_send_timeshtamp_0:
         MOV      R4,SP
 ??user_send_timeshtamp_1:
-        CBZ.N    R4,??CrossCallReturnLabel_57
+        CBZ.N    R4,??CrossCallReturnLabel_59
         LDR      R5,[SP, #+48]
         LDR.W    R0,??DataTable102_1
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_129:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_131:
         MOVS     R0,#+10
         BL       ??Subroutine7_0
 ??CrossCallReturnLabel_6:
@@ -7887,11 +7899,11 @@ user_send_timeshtamp:
         STR      R2,[R0, #+0]
         ADD      R3,SP,#+24
         ADD      R0,R4,#+14
-        BL       ?Subroutine13
-??CrossCallReturnLabel_23:
+        BL       ?Subroutine14
+??CrossCallReturnLabel_25:
         MOVS     R1,#+12
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_191:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_193:
         STRB     R0,[R4, #+16]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+17]
@@ -7901,11 +7913,11 @@ user_send_timeshtamp:
         ITT      EQ
         MOVEQ    R0,#+18
         BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_57
+        B.N      ??CrossCallReturnLabel_59
 ??user_send_timeshtamp_2:
         MOVS     R1,#+18
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_57:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_59:
         ADD      SP,SP,#+28
           CFI CFA R13+20
         POP      {R4-R7,PC}
@@ -7941,20 +7953,20 @@ user_send_identPackToConfigurator:
 ??user_send_identPackToConfigurator_0:
         MOV      R4,SP
 ??user_send_identPackToConfigurator_1:
-        CBZ.N    R4,??CrossCallReturnLabel_56
-        BL       ?Subroutine37
-??CrossCallReturnLabel_130:
+        CBZ.N    R4,??CrossCallReturnLabel_58
+        BL       ?Subroutine38
+??CrossCallReturnLabel_132:
         MOVS     R0,#+19
-        BL       ?Subroutine64
-??CrossCallReturnLabel_228:
+        BL       ?Subroutine65
+??CrossCallReturnLabel_230:
         STRB     R0,[R4, #+6]
         STRB     R0,[R4, #+7]
         MOVS     R0,#+100
         STRB     R0,[R4, #+8]
         MOVS     R2,#+15
         LDR.W    R1,??DataTable83
-        BL       ?Subroutine39
-??CrossCallReturnLabel_139:
+        BL       ?Subroutine40
+??CrossCallReturnLabel_141:
         LDR.W    R0,??DataTable102_2
         LDR      R1,[R0, #+4]
         LDR.N    R0,??DataTable77_2
@@ -7964,8 +7976,8 @@ user_send_identPackToConfigurator:
         MOVNE    R0,#+0
         STRB     R0,[R4, #+24]
         MOVS     R1,#+21
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_190:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_192:
         STRB     R0,[R4, #+25]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+26]
@@ -7975,11 +7987,11 @@ user_send_identPackToConfigurator:
         ITT      EQ
         MOVEQ    R0,#+27
         BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_56
+        B.N      ??CrossCallReturnLabel_58
 ??user_send_identPackToConfigurator_2:
         MOVS     R1,#+27
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_56:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_58:
         ADD      SP,SP,#+28
           CFI CFA R13+12
         POP      {R4,R5,PC}
@@ -8037,7 +8049,7 @@ user_send_identPackToConfigurator:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond195 Using cfiCommon0
           CFI Function user_send_anyData
-          CFI Conditional ??CrossCallReturnLabel_137
+          CFI Conditional ??CrossCallReturnLabel_139
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -8050,7 +8062,7 @@ user_send_identPackToConfigurator:
           CFI CFA R13+40
           CFI Block cfiCond196 Using cfiCommon0
           CFI (cfiCond196) Function user_send_registrationData
-          CFI (cfiCond196) Conditional ??CrossCallReturnLabel_138
+          CFI (cfiCond196) Conditional ??CrossCallReturnLabel_140
           CFI (cfiCond196) R4 Frame(CFA, -16)
           CFI (cfiCond196) R5 Frame(CFA, -12)
           CFI (cfiCond196) R6 Frame(CFA, -8)
@@ -8058,14 +8070,14 @@ user_send_identPackToConfigurator:
           CFI (cfiCond196) CFA R13+72
           CFI Block cfiCond197 Using cfiCommon0
           CFI (cfiCond197) Function user_send_identPackToConfigurator
-          CFI (cfiCond197) Conditional ??CrossCallReturnLabel_139
+          CFI (cfiCond197) Conditional ??CrossCallReturnLabel_141
           CFI (cfiCond197) R4 Frame(CFA, -12)
           CFI (cfiCond197) R5 Frame(CFA, -8)
           CFI (cfiCond197) R14 Frame(CFA, -4)
           CFI (cfiCond197) CFA R13+40
           CFI Block cfiCond198 Using cfiCommon0
           CFI (cfiCond198) Function user_send_configToConfigurator
-          CFI (cfiCond198) Conditional ??CrossCallReturnLabel_140
+          CFI (cfiCond198) Conditional ??CrossCallReturnLabel_142
           CFI (cfiCond198) R4 Frame(CFA, -12)
           CFI (cfiCond198) R5 Frame(CFA, -8)
           CFI (cfiCond198) R14 Frame(CFA, -4)
@@ -8074,7 +8086,7 @@ user_send_identPackToConfigurator:
           CFI (cfiPicker199) NoFunction
           CFI (cfiPicker199) Picker
         THUMB
-?Subroutine39:
+?Subroutine40:
         ADD      R0,R4,#+9
           CFI (cfiCond195) FunCall user_send_anyData __aeabi_memcpy
           CFI (cfiCond196) FunCall user_send_registrationData __aeabi_memcpy
@@ -8114,9 +8126,9 @@ user_send_statusPackToConfigurator:
         ADD      R4,SP,#+4
 ??user_send_statusPackToConfigurator_1:
         CMP      R4,#+0
-        BEQ.N    ??CrossCallReturnLabel_67
-        BL       ?Subroutine37
-??CrossCallReturnLabel_131:
+        BEQ.N    ??CrossCallReturnLabel_69
+        BL       ?Subroutine38
+??CrossCallReturnLabel_133:
         STRB     R6,[R4, #+4]
         MOVS     R0,#+0
         STRB     R0,[R4, #+5]
@@ -8174,9 +8186,9 @@ user_send_statusPackToConfigurator:
         STRB     R1,[R4, #+38]
         LDRB     R0,[R0, #+169]
         STRB     R0,[R4, #+39]
-        LDR.W    R0,??DataTable103
+        LDR.W    R0,??DataTable105
         LDR      R2,[R0, #+0]
-        LDR.W    R1,??DataTable105
+        LDR.W    R1,??DataTable105_1
         CMP      R2,R1
         BNE.N    ??user_send_statusPackToConfigurator_2
         MOVS     R3,#+0
@@ -8192,8 +8204,8 @@ user_send_statusPackToConfigurator:
         MOVS     R0,#+0
         STRB     R0,[R4, #+5]
 ??user_send_statusPackToConfigurator_2:
-        BL       ?Subroutine55
-??CrossCallReturnLabel_200:
+        BL       ?Subroutine56
+??CrossCallReturnLabel_202:
         ADDS     R1,R4,R6
         STRB     R0,[R1, #+6]
         LSRS     R0,R0,#+8
@@ -8204,10 +8216,10 @@ user_send_statusPackToConfigurator:
         ITT      EQ
         ADDEQ    R0,R6,#+8
         BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_67
+        B.N      ??CrossCallReturnLabel_69
 ??user_send_statusPackToConfigurator_4:
-        BL       ?Subroutine21
-??CrossCallReturnLabel_67:
+        BL       ?Subroutine22
+??CrossCallReturnLabel_69:
         ADD      SP,SP,#+100
           CFI CFA R13+20
         POP      {R4-R7,PC}
@@ -8272,8 +8284,8 @@ user_send_configToConfigurator:
         LDR.W    R0,??DataTable100
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine37
-??CrossCallReturnLabel_132:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_134:
         MOVS     R0,#+3
         STRB     R0,[R4, #+4]
         MOVS     R0,#+2
@@ -8286,11 +8298,11 @@ user_send_configToConfigurator:
         STRB     R0,[R4, #+8]
         MOV      R2,#+512
         LDR.W    R1,??DataTable102_2
-        BL       ?Subroutine39
-??CrossCallReturnLabel_140:
+        BL       ?Subroutine40
+??CrossCallReturnLabel_142:
         MOVW     R1,#+517
-        BL       ??Subroutine55_0
-??CrossCallReturnLabel_189:
+        BL       ??Subroutine56_0
+??CrossCallReturnLabel_191:
         STRB     R0,[R4, #+521]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+522]
@@ -8301,8 +8313,8 @@ user_send_configToConfigurator:
         B.N      ??user_send_configToConfigurator_5
 ??user_send_configToConfigurator_3:
         MOVW     R1,#+523
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_55:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_57:
         MOV      R0,R4
         POP      {R1,R4,R5,LR}
           CFI R4 SameValue
@@ -8323,7 +8335,7 @@ user_send_configToConfigurator:
         BL       comm_tx_commit
         B.N      ??user_send_configToConfigurator_6
 ??user_send_configToConfigurator_5:
-        BNE.N    ??CrossCallReturnLabel_55
+        BNE.N    ??CrossCallReturnLabel_57
 ??user_send_configToConfigurator_6:
         POP      {R0,R4,R5,LR}
           CFI R4 SameValue
@@ -8362,8 +8374,8 @@ user_send_logRecords:
         IT       NE
         CMPNE    R0,#+1
         BNE.N    ??user_send_logRecords_0
-        BL       ?Subroutine24
-??CrossCallReturnLabel_78:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_80:
         CBZ.N    R0,??user_send_logRecords_1
         MOV      R2,R8
         MOV      R1,R9
@@ -8388,8 +8400,8 @@ user_send_logRecords:
           CFI FunCall log_getRecordsCount
         BL       log_getRecordsCount
         STRH     R0,[R10, #+89]
-        BL       ?Subroutine41
-??CrossCallReturnLabel_145:
+        BL       ?Subroutine42
+??CrossCallReturnLabel_147:
         BEQ.N    ??user_send_logRecords_2
         MOVS     R1,#+3
         ADD      R0,SP,#+4
@@ -8424,8 +8436,8 @@ user_send_logRecords:
         CMP      R9,#+1
         BNE.N    ??user_send_logRecords_6
         LSLS     R0,R5,#+5
-        BL       ?Subroutine62
-??CrossCallReturnLabel_219:
+        BL       ?Subroutine63
+??CrossCallReturnLabel_221:
         B.N      ??user_send_logRecords_7
 ??user_send_logRecords_6:
         LSLS     R0,R5,#+5
@@ -8445,8 +8457,8 @@ user_send_logRecords:
         LDR.W    R0,??DataTable108
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine29
-??CrossCallReturnLabel_93:
+        BL       ?Subroutine30
+??CrossCallReturnLabel_95:
         STRB     R8,[R4, #+7]
         MOVS     R0,#+10
         STRB     R0,[R4, #+8]
@@ -8465,19 +8477,19 @@ user_send_logRecords:
         BNE.N    ??user_send_logRecords_9
         B.N      ??user_send_logRecords_10
 ??user_send_logRecords_8:
-        BL       ?Subroutine55
-??CrossCallReturnLabel_199:
+        BL       ?Subroutine56
+??CrossCallReturnLabel_201:
         ADDS     R1,R4,R6
-        BL       ??Subroutine63_0
-??CrossCallReturnLabel_224:
+        BL       ??Subroutine64_0
+??CrossCallReturnLabel_226:
         MOVS     R0,R9
         BEQ.N    ??user_send_logRecords_11
         CMP      R9,#+1
         BEQ.N    ??user_send_logRecords_12
         B.N      ??user_send_logRecords_13
 ??user_send_logRecords_11:
-        BL       ?Subroutine21
-??CrossCallReturnLabel_66:
+        BL       ?Subroutine22
+??CrossCallReturnLabel_68:
         CBNZ.N   R0,??user_send_logRecords_14
 ??user_send_logRecords_15:
         MOVS     R1,#+0
@@ -8526,7 +8538,7 @@ user_send_logRecords:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond206 Using cfiCommon0
           CFI Function user_send_crcMemoryID
-          CFI Conditional ??CrossCallReturnLabel_220
+          CFI Conditional ??CrossCallReturnLabel_222
           CFI R4 Frame(CFA, -32)
           CFI R5 Frame(CFA, -28)
           CFI R6 Frame(CFA, -24)
@@ -8538,7 +8550,7 @@ user_send_logRecords:
           CFI CFA R13+40
           CFI Block cfiCond207 Using cfiCommon0
           CFI (cfiCond207) Function user_send_tempIDs
-          CFI (cfiCond207) Conditional ??CrossCallReturnLabel_221
+          CFI (cfiCond207) Conditional ??CrossCallReturnLabel_223
           CFI (cfiCond207) R4 Frame(CFA, -36)
           CFI (cfiCond207) R5 Frame(CFA, -32)
           CFI (cfiCond207) R6 Frame(CFA, -28)
@@ -8553,11 +8565,11 @@ user_send_logRecords:
           CFI (cfiPicker208) NoFunction
           CFI (cfiPicker208) Picker
         THUMB
-?Subroutine63:
+?Subroutine64:
         ADDS     R1,R4,R7
           CFI Block cfiCond209 Using cfiCommon0
           CFI (cfiCond209) Function user_send_anyData
-          CFI (cfiCond209) Conditional ??CrossCallReturnLabel_222
+          CFI (cfiCond209) Conditional ??CrossCallReturnLabel_224
           CFI (cfiCond209) R4 Frame(CFA, -36)
           CFI (cfiCond209) R5 Frame(CFA, -32)
           CFI (cfiCond209) R6 Frame(CFA, -28)
@@ -8570,7 +8582,7 @@ user_send_logRecords:
           CFI (cfiCond209) CFA R13+40
           CFI Block cfiCond210 Using cfiCommon0
           CFI (cfiCond210) Function user_send_smsToServer
-          CFI (cfiCond210) Conditional ??CrossCallReturnLabel_223
+          CFI (cfiCond210) Conditional ??CrossCallReturnLabel_225
           CFI (cfiCond210) R4 Frame(CFA, -16)
           CFI (cfiCond210) R5 Frame(CFA, -12)
           CFI (cfiCond210) R6 Frame(CFA, -8)
@@ -8578,7 +8590,7 @@ user_send_logRecords:
           CFI (cfiCond210) CFA R13+24
           CFI Block cfiCond211 Using cfiCommon0
           CFI (cfiCond211) Function user_send_logRecords
-          CFI (cfiCond211) Conditional ??CrossCallReturnLabel_224
+          CFI (cfiCond211) Conditional ??CrossCallReturnLabel_226
           CFI (cfiCond211) R4 Frame(CFA, -36)
           CFI (cfiCond211) R5 Frame(CFA, -32)
           CFI (cfiCond211) R6 Frame(CFA, -28)
@@ -8589,7 +8601,7 @@ user_send_logRecords:
           CFI (cfiCond211) R11 Frame(CFA, -8)
           CFI (cfiCond211) R14 Frame(CFA, -4)
           CFI (cfiCond211) CFA R13+48
-??Subroutine63_0:
+??Subroutine64_0:
         STRB     R0,[R1, #+6]
         LSRS     R0,R0,#+8
         STRB     R0,[R1, #+7]
@@ -8604,7 +8616,7 @@ user_send_logRecords:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond212 Using cfiCommon0
           CFI Function user_send_logRecords
-          CFI Conditional ??CrossCallReturnLabel_219
+          CFI Conditional ??CrossCallReturnLabel_221
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -8617,7 +8629,7 @@ user_send_logRecords:
           CFI CFA R13+48
           CFI Block cfiCond213 Using cfiCommon0
           CFI (cfiCond213) Function user_send_tempIDs
-          CFI (cfiCond213) Conditional ??CrossCallReturnLabel_218
+          CFI (cfiCond213) Conditional ??CrossCallReturnLabel_220
           CFI (cfiCond213) R4 Frame(CFA, -36)
           CFI (cfiCond213) R5 Frame(CFA, -32)
           CFI (cfiCond213) R6 Frame(CFA, -28)
@@ -8632,11 +8644,11 @@ user_send_logRecords:
           CFI (cfiPicker214) NoFunction
           CFI (cfiPicker214) Picker
         THUMB
-?Subroutine62:
+?Subroutine63:
         ADDS     R0,R0,#+16
           CFI Block cfiCond215 Using cfiCommon0
           CFI (cfiCond215) Function user_send_anyData
-          CFI (cfiCond215) Conditional ??CrossCallReturnLabel_217
+          CFI (cfiCond215) Conditional ??CrossCallReturnLabel_219
           CFI (cfiCond215) R4 Frame(CFA, -36)
           CFI (cfiCond215) R5 Frame(CFA, -32)
           CFI (cfiCond215) R6 Frame(CFA, -28)
@@ -8647,7 +8659,7 @@ user_send_logRecords:
           CFI (cfiCond215) R11 Frame(CFA, -8)
           CFI (cfiCond215) R14 Frame(CFA, -4)
           CFI (cfiCond215) CFA R13+40
-??Subroutine62_0:
+??Subroutine63_0:
         UXTH     R0,R0
           CFI (cfiCond212) FunCall user_send_logRecords user_comm_acquire
           CFI (cfiCond213) FunCall user_send_tempIDs user_comm_acquire
@@ -8661,7 +8673,7 @@ user_send_logRecords:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond216 Using cfiCommon0
           CFI Function user_send_smsToServer
-          CFI Conditional ??CrossCallReturnLabel_92
+          CFI Conditional ??CrossCallReturnLabel_94
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -8669,7 +8681,7 @@ user_send_logRecords:
           CFI CFA R13+24
           CFI Block cfiCond217 Using cfiCommon0
           CFI (cfiCond217) Function user_send_logRecords
-          CFI (cfiCond217) Conditional ??CrossCallReturnLabel_93
+          CFI (cfiCond217) Conditional ??CrossCallReturnLabel_95
           CFI (cfiCond217) R4 Frame(CFA, -36)
           CFI (cfiCond217) R5 Frame(CFA, -32)
           CFI (cfiCond217) R6 Frame(CFA, -28)
@@ -8684,7 +8696,7 @@ user_send_logRecords:
           CFI (cfiPicker218) NoFunction
           CFI (cfiPicker218) Picker
         THUMB
-?Subroutine29:
+?Subroutine30:
         MOVS     R0,#+83
         STRB     R0,[R4, #+0]
         MOVS     R0,#+76
@@ -8706,7 +8718,7 @@ user_send_logRecords:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond219 Using cfiCommon0
           CFI Function upload_ack
-          CFI Conditional ??CrossCallReturnLabel_74
+          CFI Conditional ??CrossCallReturnLabel_76
           CFI R4 Frame(CFA, -24)
           CFI R5 Frame(CFA, -20)
           CFI R6 Frame(CFA, -16)
@@ -8716,7 +8728,7 @@ user_send_logRecords:
           CFI CFA R13+24
           CFI Block cfiCond220 Using cfiCommon0
           CFI (cfiCond220) Function upload_finish
-          CFI (cfiCond220) Conditional ??CrossCallReturnLabel_75
+          CFI (cfiCond220) Conditional ??CrossCallReturnLabel_77
           CFI (cfiCond220) R4 Frame(CFA, -20)
           CFI (cfiCond220) R5 Frame(CFA, -16)
           CFI (cfiCond220) R6 Frame(CFA, -12)
@@ -8725,18 +8737,18 @@ user_send_logRecords:
           CFI (cfiCond220) CFA R13+24
           CFI Block cfiCond221 Using cfiCommon0
           CFI (cfiCond221) Function user_writeconfig
-          CFI (cfiCond221) Conditional ??CrossCallReturnLabel_76
+          CFI (cfiCond221) Conditional ??CrossCallReturnLabel_78
           CFI (cfiCond221) R4 Frame(CFA, -8)
           CFI (cfiCond221) R14 Frame(CFA, -4)
           CFI (cfiCond221) CFA R13+8
           CFI Block cfiCond222 Using cfiCommon0
           CFI (cfiCond222) Function user_savereset
-          CFI (cfiCond222) Conditional ??CrossCallReturnLabel_77
+          CFI (cfiCond222) Conditional ??CrossCallReturnLabel_79
           CFI (cfiCond222) R14 Frame(CFA, -4)
           CFI (cfiCond222) CFA R13+8
           CFI Block cfiCond223 Using cfiCommon0
           CFI (cfiCond223) Function user_send_logRecords
-          CFI (cfiCond223) Conditional ??CrossCallReturnLabel_78
+          CFI (cfiCond223) Conditional ??CrossCallReturnLabel_80
           CFI (cfiCond223) R4 Frame(CFA, -36)
           CFI (cfiCond223) R5 Frame(CFA, -32)
           CFI (cfiCond223) R6 Frame(CFA, -28)
@@ -8749,7 +8761,7 @@ user_send_logRecords:
           CFI (cfiCond223) CFA R13+48
           CFI Block cfiCond224 Using cfiCommon0
           CFI (cfiCond224) Function user_send_tempIDs
-          CFI (cfiCond224) Conditional ??CrossCallReturnLabel_79
+          CFI (cfiCond224) Conditional ??CrossCallReturnLabel_81
           CFI (cfiCond224) R4 Frame(CFA, -36)
           CFI (cfiCond224) R5 Frame(CFA, -32)
           CFI (cfiCond224) R6 Frame(CFA, -28)
@@ -8762,7 +8774,7 @@ user_send_logRecords:
           CFI (cfiCond224) CFA R13+48
           CFI Block cfiCond225 Using cfiCommon0
           CFI (cfiCond225) Function fw_take_block
-          CFI (cfiCond225) Conditional ??CrossCallReturnLabel_80
+          CFI (cfiCond225) Conditional ??CrossCallReturnLabel_82
           CFI (cfiCond225) R4 Frame(CFA, -24)
           CFI (cfiCond225) R5 Frame(CFA, -20)
           CFI (cfiCond225) R6 Frame(CFA, -16)
@@ -8772,7 +8784,7 @@ user_send_logRecords:
           CFI (cfiCond225) CFA R13+64
           CFI Block cfiCond226 Using cfiCommon0
           CFI (cfiCond226) Function log_flushPending
-          CFI (cfiCond226) Conditional ??CrossCallReturnLabel_81
+          CFI (cfiCond226) Conditional ??CrossCallReturnLabel_83
           CFI (cfiCond226) R4 Frame(CFA, -12)
           CFI (cfiCond226) R5 Frame(CFA, -8)
           CFI (cfiCond226) R14 Frame(CFA, -4)
@@ -8781,7 +8793,7 @@ user_send_logRecords:
           CFI (cfiPicker227) NoFunction
           CFI (cfiPicker227) Picker
         THUMB
-?Subroutine24:
+?Subroutine25:
         LDR.W    R0,??DataTable110
         LDRB     R0,[R0, #+0]
         BX       LR
@@ -8845,8 +8857,8 @@ user_send_tempIDs:
         IT       NE
         CMPNE    R0,#+1
         BNE.N    ??user_send_tempIDs_0
-        BL       ?Subroutine24
-??CrossCallReturnLabel_79:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_81:
         CBZ.N    R0,??user_send_tempIDs_1
         MOV      R2,R8
         MOV      R1,R10
@@ -8871,8 +8883,8 @@ user_send_tempIDs:
           CFI FunCall user_getTempIDRecordsCount
         BL       user_getTempIDRecordsCount
         STRH     R0,[R11, #+83]
-        BL       ?Subroutine41
-??CrossCallReturnLabel_146:
+        BL       ?Subroutine42
+??CrossCallReturnLabel_148:
         BEQ.N    ??user_send_tempIDs_0
         CBZ.N    R1,??user_send_tempIDs_2
         CMP      R9,R1
@@ -8895,7 +8907,7 @@ user_send_tempIDs:
 ??user_send_tempIDs_0:
         B.N      ??user_send_tempIDs_4
 ??user_send_tempIDs_3:
-        LDR.W    R0,??DataTable94
+        LDR.W    R0,??DataTable95
         LDR      R0,[R0, #+64]
         ADD      R0,R0,R9, LSL #+5
         STR      R0,[SP, #+0]
@@ -8909,8 +8921,8 @@ user_send_tempIDs:
         BNE.N    ??user_send_tempIDs_5
         MOVS     R0,#+10
         MULS     R0,R0,R5
-        BL       ?Subroutine62
-??CrossCallReturnLabel_218:
+        BL       ?Subroutine63
+??CrossCallReturnLabel_220:
         B.N      ??user_send_tempIDs_6
 ??user_send_tempIDs_5:
         MOVS     R0,#+10
@@ -8932,8 +8944,8 @@ user_send_tempIDs:
         LDR.W    R0,??DataTable111
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine36
-??CrossCallReturnLabel_120:
+        BL       ?Subroutine37
+??CrossCallReturnLabel_122:
         LSRS     R0,R7,#+8
         STRB     R0,[R4, #+5]
         MOVS     R0,#+255
@@ -8971,10 +8983,10 @@ user_send_tempIDs:
         B.N      ??user_send_tempIDs_11
 ??user_send_tempIDs_9:
         ADDS     R1,R7,#+2
-        BL       ?Subroutine35
-??CrossCallReturnLabel_116:
-        BL       ?Subroutine63
-??CrossCallReturnLabel_221:
+        BL       ?Subroutine36
+??CrossCallReturnLabel_118:
+        BL       ?Subroutine64
+??CrossCallReturnLabel_223:
         CMP      R10,#+0
         BEQ.N    ??user_send_tempIDs_12
         CMP      R10,#+1
@@ -8983,8 +8995,8 @@ user_send_tempIDs:
 ??user_send_tempIDs_12:
         ADDS     R7,R7,#+8
         UXTH     R1,R7
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_54:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_56:
         CBNZ.N   R0,??user_send_tempIDs_15
 ??user_send_tempIDs_16:
         MOVS     R1,#+0
@@ -9039,7 +9051,7 @@ user_send_tempIDs:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond229 Using cfiCommon0
           CFI Function user_send_logRecords
-          CFI Conditional ??CrossCallReturnLabel_145
+          CFI Conditional ??CrossCallReturnLabel_147
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -9052,7 +9064,7 @@ user_send_tempIDs:
           CFI CFA R13+48
           CFI Block cfiCond230 Using cfiCommon0
           CFI (cfiCond230) Function user_send_tempIDs
-          CFI (cfiCond230) Conditional ??CrossCallReturnLabel_146
+          CFI (cfiCond230) Conditional ??CrossCallReturnLabel_148
           CFI (cfiCond230) R4 Frame(CFA, -36)
           CFI (cfiCond230) R5 Frame(CFA, -32)
           CFI (cfiCond230) R6 Frame(CFA, -28)
@@ -9065,7 +9077,7 @@ user_send_tempIDs:
           CFI (cfiCond230) CFA R13+48
           CFI Block cfiCond231 Using cfiCommon0
           CFI (cfiCond231) Function fw_resume_after_boot
-          CFI (cfiCond231) Conditional ??CrossCallReturnLabel_147
+          CFI (cfiCond231) Conditional ??CrossCallReturnLabel_149
           CFI (cfiCond231) R4 Frame(CFA, -8)
           CFI (cfiCond231) R14 Frame(CFA, -4)
           CFI (cfiCond231) CFA R13+48
@@ -9073,7 +9085,7 @@ user_send_tempIDs:
           CFI (cfiPicker232) NoFunction
           CFI (cfiPicker232) Picker
         THUMB
-?Subroutine41:
+?Subroutine42:
         MOV      R1,R0
         MOVW     R0,#+65535
         CMP      R1,R0
@@ -9086,7 +9098,7 @@ user_send_tempIDs:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond233 Using cfiCommon0
           CFI Function user_send_crcMemoryID
-          CFI Conditional ??CrossCallReturnLabel_119
+          CFI Conditional ??CrossCallReturnLabel_121
           CFI R4 Frame(CFA, -32)
           CFI R5 Frame(CFA, -28)
           CFI R6 Frame(CFA, -24)
@@ -9098,7 +9110,7 @@ user_send_tempIDs:
           CFI CFA R13+40
           CFI Block cfiCond234 Using cfiCommon0
           CFI (cfiCond234) Function user_send_tempIDs
-          CFI (cfiCond234) Conditional ??CrossCallReturnLabel_120
+          CFI (cfiCond234) Conditional ??CrossCallReturnLabel_122
           CFI (cfiCond234) R4 Frame(CFA, -36)
           CFI (cfiCond234) R5 Frame(CFA, -32)
           CFI (cfiCond234) R6 Frame(CFA, -28)
@@ -9113,7 +9125,7 @@ user_send_tempIDs:
           CFI (cfiPicker235) NoFunction
           CFI (cfiPicker235) Picker
         THUMB
-?Subroutine36:
+?Subroutine37:
         MOVS     R0,#+83
         STRB     R0,[R4, #+0]
         MOVS     R0,#+76
@@ -9174,8 +9186,8 @@ user_getFWblockFromServer:
           CFI FunCall user_debug
         BL       user_debug
 ??user_getFWblockFromServer_5:
-        BL       ?Subroutine37
-??CrossCallReturnLabel_133:
+        BL       ?Subroutine38
+??CrossCallReturnLabel_135:
         MOVS     R0,#+5
         BL       ?Subroutine5
 ??CrossCallReturnLabel_1:
@@ -9184,8 +9196,8 @@ user_getFWblockFromServer:
         STRB     R6,[R4, #+9]
         LSRS     R6,R6,#+8
         STRB     R6,[R4, #+10]
-        BL       ?Subroutine46
-??CrossCallReturnLabel_167:
+        BL       ?Subroutine47
+??CrossCallReturnLabel_169:
         STRB     R0,[R4, #+11]
         LSRS     R0,R0,#+8
         STRB     R0,[R4, #+12]
@@ -9196,10 +9208,10 @@ user_getFWblockFromServer:
         BL       comm_tx_commit
         B.N      ??user_getFWblockFromServer_4
 ??user_getFWblockFromServer_6:
-        CBNZ.N   R5,??CrossCallReturnLabel_53
+        CBNZ.N   R5,??CrossCallReturnLabel_55
         MOVS     R1,#+13
-        BL       ??Subroutine21_0
-??CrossCallReturnLabel_53:
+        BL       ??Subroutine22_0
+??CrossCallReturnLabel_55:
         MOVS     R0,#+1
 ??user_getFWblockFromServer_4:
         ADD      SP,SP,#+20
@@ -9257,30 +9269,10 @@ user_getFWblockFromServer:
           CFI Function user_send_Photos
         THUMB
 user_send_Photos:
-        PUSH     {R3-R5,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R5 Frame(CFA, -8)
-          CFI R4 Frame(CFA, -12)
-          CFI CFA R13+16
-        MOV      R5,R0
-        MOV      R4,R1
         MOVS     R3,#+0
         MOVS     R2,#+0
-          CFI FunCall photo_request
-        BL       photo_request
-        MOV      R1,R0
-        MOV      R3,R4
-        MOV      R2,R5
-        MOVS     R0,#+21
-        ADD      SP,SP,#+4
-          CFI CFA R13+12
-        POP      {R4,R5,LR}
-          CFI R4 SameValue
-          CFI R5 SameValue
-          CFI R14 SameValue
-          CFI CFA R13+0
-          CFI FunCall user_send_answer_comand
-        B.N      user_send_answer_comand
+          CFI FunCall photo_request_answer
+        B.W      photo_request_answer
           CFI EndBlock cfiBlock240
 
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
@@ -9430,13 +9422,6 @@ id_watch_end:
         BX       LR
           CFI EndBlock cfiBlock245
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable89:
-        DATA32
-        DC32     ?_55
-
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock246 Using cfiCommon0
           CFI Function id_today
@@ -9461,12 +9446,19 @@ id_today:
         DATA
 ??DataTable90:
         DATA32
-        DC32     fw_status_pending
+        DC32     ?_55
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable90_1:
+        DATA32
+        DC32     fw_status_pending
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable90_2:
         DATA32
         DC32     ?_0
 
@@ -9638,13 +9630,6 @@ fw_update_quiet:
         BX       LR
           CFI EndBlock cfiBlock253
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable93:
-        DATA32
-        DC32     ?_57
-
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock254 Using cfiCommon0
           CFI Function fw_reason_code
@@ -9702,7 +9687,7 @@ fw_reason_code:
         DATA
 ??DataTable94:
         DATA32
-        DC32     mem
+        DC32     ?_57
 
         SECTION `.rodata`:CONST:REORDER:NOROOT(2)
         DATA
@@ -9767,12 +9752,12 @@ fw_abort:
         STR      R1,[R0, #+0]
         LDR.N    R5,??DataTable102
         STRB     R1,[R5, #+164]
-        BL       ?Subroutine25
-??CrossCallReturnLabel_82:
+        BL       ?Subroutine26
+??CrossCallReturnLabel_84:
         STRH     R0,[R5, #+148]
         STRH     R0,[R5, #+172]
-        BL       ?Subroutine19
-??CrossCallReturnLabel_43:
+        BL       ?Subroutine20
+??CrossCallReturnLabel_45:
         CBZ.N    R4,??fw_abort_0
         LDR.W    R1,??DataTable119_4
         MOV      R0,R4
@@ -9802,6 +9787,13 @@ fw_abort:
 ??fw_abort_1:
         POP      {R0,R4,R5,PC}
           CFI EndBlock cfiBlock256
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable95:
+        DATA32
+        DC32     mem
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock257 Using cfiCommon0
@@ -9922,13 +9914,6 @@ fw_start_rejected:
         POP      {R4,R5,PC}
           CFI EndBlock cfiBlock259
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable98:
-        DATA32
-        DC32     ?_59
-
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock260 Using cfiCommon0
           CFI Function fw_start_refused
@@ -9972,6 +9957,13 @@ fw_start_refused:
         POP      {R1,PC}
           CFI EndBlock cfiBlock260
 
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable99:
+        DATA32
+        DC32     ?_59
+
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock261 Using cfiCommon0
           CFI Function fw_same_download
@@ -10004,8 +9996,8 @@ fw_same_download:
         BNE.N    ??fw_same_download_0
         MOVS     R2,#+32
         MOV      R1,SP
-        BL       ?Subroutine50
-??CrossCallReturnLabel_180:
+        BL       ?Subroutine51
+??CrossCallReturnLabel_182:
         CBZ.N    R0,??fw_same_download_0
         LDRH     R0,[SP, #+5]
         CMP      R0,R4
@@ -10061,7 +10053,7 @@ fw_rollback:
         LDR      R0,[R5, #+8]
           CFI FunCall mem_read
         BL       mem_read
-        CBZ.N    R0,??CrossCallReturnLabel_238
+        CBZ.N    R0,??CrossCallReturnLabel_240
         LDR      R0,[SP, #+20]
         CMN      R0,#+1
         ITT      NE
@@ -10085,14 +10077,14 @@ fw_rollback:
         BCS.N    ??fw_rollback_3
         LDR      R2,[SP, #+12]
         LDR      R0,[R5, #+8]
-        BL       ?Subroutine59
-??CrossCallReturnLabel_210:
+        BL       ?Subroutine60
+??CrossCallReturnLabel_212:
         CBNZ.N   R0,??fw_rollback_4
 ??fw_rollback_3:
         LDR.W    R1,??DataTable120_1
 ??fw_rollback_2:
-        BL       ??Subroutine67_0
-??CrossCallReturnLabel_238:
+        BL       ??Subroutine68_0
+??CrossCallReturnLabel_240:
         MOVS     R0,#+2
         B.N      ??fw_rollback_5
 ??fw_rollback_4:
@@ -10230,12 +10222,12 @@ fw_rollback_poll:
         LDR      R2,[SP, #+12]
         LDR      R1,[SP, #+8]
         LDR      R0,[R7, #+0]
-        BL       ?Subroutine59
-??CrossCallReturnLabel_209:
+        BL       ?Subroutine60
+??CrossCallReturnLabel_211:
         CBNZ.N   R0,??fw_rollback_poll_8
 ??fw_rollback_poll_7:
         MOVS     R1,#+0
-        ADR.N    R0,??DataTable105_1
+        ADR.N    R0,??DataTable105_2
 ??fw_rollback_poll_4:
           CFI FunCall fw_end
         BL       fw_end
@@ -10278,14 +10270,14 @@ fw_rollback_poll:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond264 Using cfiCommon0
           CFI Function fw_rollback
-          CFI Conditional ??CrossCallReturnLabel_210
+          CFI Conditional ??CrossCallReturnLabel_212
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+48
           CFI Block cfiCond265 Using cfiCommon0
           CFI (cfiCond265) Function fw_rollback_poll
-          CFI (cfiCond265) Conditional ??CrossCallReturnLabel_209
+          CFI (cfiCond265) Conditional ??CrossCallReturnLabel_211
           CFI (cfiCond265) R4 Frame(CFA, -24)
           CFI (cfiCond265) R5 Frame(CFA, -20)
           CFI (cfiCond265) R6 Frame(CFA, -16)
@@ -10295,7 +10287,7 @@ fw_rollback_poll:
           CFI (cfiCond265) CFA R13+56
           CFI Block cfiCond266 Using cfiCommon0
           CFI (cfiCond266) Function fw_take_block
-          CFI (cfiCond266) Conditional ??CrossCallReturnLabel_208
+          CFI (cfiCond266) Conditional ??CrossCallReturnLabel_210
           CFI (cfiCond266) R4 Frame(CFA, -24)
           CFI (cfiCond266) R5 Frame(CFA, -20)
           CFI (cfiCond266) R6 Frame(CFA, -16)
@@ -10307,7 +10299,7 @@ fw_rollback_poll:
           CFI (cfiPicker267) NoFunction
           CFI (cfiPicker267) Picker
         THUMB
-?Subroutine59:
+?Subroutine60:
         ADD      R0,R0,#+512
           CFI (cfiCond264) FunCall fw_rollback user_checkFirmware
           CFI (cfiCond265) FunCall fw_rollback_poll user_checkFirmware
@@ -10351,15 +10343,15 @@ fw_start:
         STR      R2,[R1, #+0]
         ADD      R3,R0,#+14
         ADD      R0,SP,#+10
-        BL       ?Subroutine13
-??CrossCallReturnLabel_24:
+        BL       ?Subroutine14
+??CrossCallReturnLabel_26:
         BL       ?Subroutine11
 ??CrossCallReturnLabel_16:
           CFI FunCall fw_start_rejected
         BL       fw_start_rejected
         CBZ.N    R0,??fw_start_0
-        BL       ?Subroutine67
-??CrossCallReturnLabel_240:
+        BL       ?Subroutine68
+??CrossCallReturnLabel_242:
         MOVS     R0,#+1
         B.N      ??fw_start_1
 ??fw_start_0:
@@ -10381,8 +10373,8 @@ fw_start:
         BL       fw_start_refused
         CBZ.N    R0,??fw_start_3
         MOV      R1,R0
-        BL       ??Subroutine67_0
-??CrossCallReturnLabel_237:
+        BL       ??Subroutine68_0
+??CrossCallReturnLabel_239:
         B.N      ??fw_start_4
 ??fw_start_3:
         LDRH     R0,[SP, #+8]
@@ -10457,23 +10449,16 @@ fw_start:
         POP      {R4-R6,PC}
           CFI EndBlock cfiBlock268
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable103:
-        DATA32
-        DC32     fault_record
-
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond269 Using cfiCommon0
           CFI Function upload_restore
-          CFI Conditional ??CrossCallReturnLabel_21
+          CFI Conditional ??CrossCallReturnLabel_23
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
           CFI Block cfiCond270 Using cfiCommon0
           CFI (cfiCond270) Function user_send_statusPack
-          CFI (cfiCond270) Conditional ??CrossCallReturnLabel_22
+          CFI (cfiCond270) Conditional ??CrossCallReturnLabel_24
           CFI (cfiCond270) R4 Frame(CFA, -16)
           CFI (cfiCond270) R5 Frame(CFA, -12)
           CFI (cfiCond270) R6 Frame(CFA, -8)
@@ -10481,7 +10466,7 @@ fw_start:
           CFI (cfiCond270) CFA R13+48
           CFI Block cfiCond271 Using cfiCommon0
           CFI (cfiCond271) Function user_send_timeshtamp
-          CFI (cfiCond271) Conditional ??CrossCallReturnLabel_23
+          CFI (cfiCond271) Conditional ??CrossCallReturnLabel_25
           CFI (cfiCond271) R4 Frame(CFA, -20)
           CFI (cfiCond271) R5 Frame(CFA, -16)
           CFI (cfiCond271) R6 Frame(CFA, -12)
@@ -10490,7 +10475,7 @@ fw_start:
           CFI (cfiCond271) CFA R13+48
           CFI Block cfiCond272 Using cfiCommon0
           CFI (cfiCond272) Function fw_start
-          CFI (cfiCond272) Conditional ??CrossCallReturnLabel_24
+          CFI (cfiCond272) Conditional ??CrossCallReturnLabel_26
           CFI (cfiCond272) R4 Frame(CFA, -16)
           CFI (cfiCond272) R5 Frame(CFA, -12)
           CFI (cfiCond272) R6 Frame(CFA, -8)
@@ -10498,7 +10483,7 @@ fw_start:
           CFI (cfiCond272) CFA R13+72
           CFI Block cfiCond273 Using cfiCommon0
           CFI (cfiCond273) Function log_addEvent
-          CFI (cfiCond273) Conditional ??CrossCallReturnLabel_25
+          CFI (cfiCond273) Conditional ??CrossCallReturnLabel_27
           CFI (cfiCond273) R4 Frame(CFA, -20)
           CFI (cfiCond273) R5 Frame(CFA, -16)
           CFI (cfiCond273) R6 Frame(CFA, -12)
@@ -10507,7 +10492,7 @@ fw_start:
           CFI (cfiCond273) CFA R13+64
           CFI Block cfiCond274 Using cfiCommon0
           CFI (cfiCond274) Function log_async_step
-          CFI (cfiCond274) Conditional ??CrossCallReturnLabel_26
+          CFI (cfiCond274) Conditional ??CrossCallReturnLabel_28
           CFI (cfiCond274) R4 Frame(CFA, -16)
           CFI (cfiCond274) R5 Frame(CFA, -12)
           CFI (cfiCond274) R6 Frame(CFA, -8)
@@ -10517,7 +10502,7 @@ fw_start:
           CFI (cfiPicker275) NoFunction
           CFI (cfiPicker275) Picker
         THUMB
-?Subroutine13:
+?Subroutine14:
         LDRB     R2,[R3, #+0]
         STRB     R2,[R0, #+0]
         LDRB     R2,[R3, #+1]
@@ -10623,17 +10608,17 @@ fw_blocks_done:
         LDR.W    R5,??DataTable120_5
         MOVS     R0,#+0
         STRB     R0,[R5, #+164]
-        BL       ?Subroutine25
-??CrossCallReturnLabel_83:
+        BL       ?Subroutine26
+??CrossCallReturnLabel_85:
         MOVS     R0,R4
         BEQ.N    ??fw_blocks_done_0
         MOVS     R0,#+1
         STRB     R0,[R5, #+171]
-        B.N      ??CrossCallReturnLabel_236
+        B.N      ??CrossCallReturnLabel_238
 ??fw_blocks_done_0:
-        ADR.N    R1,??DataTable105_1
-        BL       ??Subroutine67_0
-??CrossCallReturnLabel_236:
+        ADR.N    R1,??DataTable105_2
+        BL       ??Subroutine68_0
+??CrossCallReturnLabel_238:
         LDRB     R0,[R5, #+178]
         CBZ.N    R0,??fw_blocks_done_1
           CFI FunCall user_saveindex
@@ -10650,7 +10635,7 @@ fw_blocks_done:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond281 Using cfiCommon0
           CFI Function fw_start
-          CFI Conditional ??CrossCallReturnLabel_240
+          CFI Conditional ??CrossCallReturnLabel_242
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -10658,7 +10643,7 @@ fw_blocks_done:
           CFI CFA R13+72
           CFI Block cfiCond282 Using cfiCommon0
           CFI (cfiCond282) Function user_parse_comand
-          CFI (cfiCond282) Conditional ??CrossCallReturnLabel_239
+          CFI (cfiCond282) Conditional ??CrossCallReturnLabel_241
           CFI (cfiCond282) R4 Frame(CFA, -36)
           CFI (cfiCond282) R5 Frame(CFA, -32)
           CFI (cfiCond282) R6 Frame(CFA, -28)
@@ -10673,18 +10658,18 @@ fw_blocks_done:
           CFI (cfiPicker283) NoFunction
           CFI (cfiPicker283) Picker
         THUMB
-?Subroutine67:
+?Subroutine68:
         LDR.W    R1,??DataTable120_7
           CFI Block cfiCond284 Using cfiCommon0
           CFI (cfiCond284) Function fw_rollback
-          CFI (cfiCond284) Conditional ??CrossCallReturnLabel_238
+          CFI (cfiCond284) Conditional ??CrossCallReturnLabel_240
           CFI (cfiCond284) R4 Frame(CFA, -12)
           CFI (cfiCond284) R5 Frame(CFA, -8)
           CFI (cfiCond284) R14 Frame(CFA, -4)
           CFI (cfiCond284) CFA R13+48
           CFI Block cfiCond285 Using cfiCommon0
           CFI (cfiCond285) Function fw_start
-          CFI (cfiCond285) Conditional ??CrossCallReturnLabel_237
+          CFI (cfiCond285) Conditional ??CrossCallReturnLabel_239
           CFI (cfiCond285) R4 Frame(CFA, -16)
           CFI (cfiCond285) R5 Frame(CFA, -12)
           CFI (cfiCond285) R6 Frame(CFA, -8)
@@ -10692,14 +10677,14 @@ fw_blocks_done:
           CFI (cfiCond285) CFA R13+72
           CFI Block cfiCond286 Using cfiCommon0
           CFI (cfiCond286) Function fw_blocks_done
-          CFI (cfiCond286) Conditional ??CrossCallReturnLabel_236
+          CFI (cfiCond286) Conditional ??CrossCallReturnLabel_238
           CFI (cfiCond286) R4 Frame(CFA, -12)
           CFI (cfiCond286) R5 Frame(CFA, -8)
           CFI (cfiCond286) R14 Frame(CFA, -4)
           CFI (cfiCond286) CFA R13+16
           CFI Block cfiCond287 Using cfiCommon0
           CFI (cfiCond287) Function fw_take_block
-          CFI (cfiCond287) Conditional ??CrossCallReturnLabel_235
+          CFI (cfiCond287) Conditional ??CrossCallReturnLabel_237
           CFI (cfiCond287) R4 Frame(CFA, -24)
           CFI (cfiCond287) R5 Frame(CFA, -20)
           CFI (cfiCond287) R6 Frame(CFA, -16)
@@ -10707,7 +10692,7 @@ fw_blocks_done:
           CFI (cfiCond287) R8 Frame(CFA, -8)
           CFI (cfiCond287) R14 Frame(CFA, -4)
           CFI (cfiCond287) CFA R13+64
-??Subroutine67_0:
+??Subroutine68_0:
         MOVS     R0,#+133
           CFI (cfiCond281) FunCall fw_start fw_log
           CFI (cfiCond282) FunCall user_parse_comand fw_log
@@ -10729,26 +10714,33 @@ fw_blocks_done:
         DATA
 ??DataTable105:
         DATA32
-        DC32     0x31544c46
+        DC32     fault_record
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable105_1:
+        DATA32
+        DC32     0x31544c46
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable105_2:
         DATA8
         DC8      "CRC"
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond288 Using cfiCommon0
           CFI Function fw_abort
-          CFI Conditional ??CrossCallReturnLabel_82
+          CFI Conditional ??CrossCallReturnLabel_84
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
           CFI Block cfiCond289 Using cfiCommon0
           CFI (cfiCond289) Function fw_blocks_done
-          CFI (cfiCond289) Conditional ??CrossCallReturnLabel_83
+          CFI (cfiCond289) Conditional ??CrossCallReturnLabel_85
           CFI (cfiCond289) R4 Frame(CFA, -12)
           CFI (cfiCond289) R5 Frame(CFA, -8)
           CFI (cfiCond289) R14 Frame(CFA, -4)
@@ -10757,7 +10749,7 @@ fw_blocks_done:
           CFI (cfiPicker290) NoFunction
           CFI (cfiPicker290) Picker
         THUMB
-?Subroutine25:
+?Subroutine26:
         LDRH     R1,[R5, #+129]
         MOVW     R0,#+63487
         ANDS     R1,R0,R1
@@ -10798,8 +10790,8 @@ fw_take_block:
         MOVW     R0,#+1026
         CMP      R5,R0
         BEQ.N    ??fw_take_block_1
-        BL       ?Subroutine68
-??CrossCallReturnLabel_241:
+        BL       ?Subroutine69
+??CrossCallReturnLabel_243:
         BCC.N    ??fw_take_block_2
 ??fw_take_block_0:
         B.N      ??fw_take_block_3
@@ -10833,8 +10825,8 @@ fw_take_block:
           CFI FunCall fw_abort
         BL       fw_abort
         ADR.N    R1,??DataTable112
-        BL       ??Subroutine67_0
-??CrossCallReturnLabel_235:
+        BL       ??Subroutine68_0
+??CrossCallReturnLabel_237:
         B.N      ??fw_take_block_3
 ??fw_take_block_7:
         LDR.W    R5,??DataTable119_7
@@ -10842,8 +10834,8 @@ fw_take_block:
         LDRH     R0,[SP, #+0]
         ADD      R0,R1,R0, LSL #+10
         ADD      R8,R0,#+512
-        BL       ?Subroutine24
-??CrossCallReturnLabel_80:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_82:
         CBZ.N    R0,??fw_take_block_8
         MOV      R2,R7
         MOV      R1,R8
@@ -10899,25 +10891,25 @@ fw_take_block:
         LDR.W    R0,??DataTable120_4
         B.N      ??fw_take_block_16
 ??fw_take_block_14:
-        BL       ?Subroutine19
-??CrossCallReturnLabel_44:
+        BL       ?Subroutine20
+??CrossCallReturnLabel_46:
         STR      R1,[R4, #+174]
         LDRH     R0,[R4, #+172]
         ADDS     R0,R0,#+1
         STRH     R0,[R4, #+172]
-        BL       ?Subroutine51
-??CrossCallReturnLabel_181:
+        BL       ?Subroutine52
+??CrossCallReturnLabel_183:
         UDIV     R0,R1,R0
         STRB     R0,[R4, #+150]
-        BL       ?Subroutine68
-??CrossCallReturnLabel_242:
+        BL       ?Subroutine69
+??CrossCallReturnLabel_244:
         BCS.N    ??fw_take_block_17
 ??fw_take_block_4:
         MOVS     R0,#+0
         B.N      ??fw_take_block_6
 ??fw_take_block_17:
-        BL       ?Subroutine43
-??CrossCallReturnLabel_153:
+        BL       ?Subroutine44
+??CrossCallReturnLabel_155:
         CBNZ.N   R0,??fw_take_block_18
         LDR.W    R0,??DataTable120_3
 ??fw_take_block_16:
@@ -10930,8 +10922,8 @@ fw_take_block:
         LDR      R2,[SP, #+16]
         LDR      R1,[SP, #+12]
         LDR      R0,[R5, #+0]
-        BL       ?Subroutine59
-??CrossCallReturnLabel_208:
+        BL       ?Subroutine60
+??CrossCallReturnLabel_210:
           CFI FunCall fw_blocks_done
         BL       fw_blocks_done
 ??fw_take_block_6:
@@ -10943,7 +10935,7 @@ fw_take_block:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond292 Using cfiCommon0
           CFI Function fw_take_block
-          CFI Conditional ??CrossCallReturnLabel_241
+          CFI Conditional ??CrossCallReturnLabel_243
           CFI R4 Frame(CFA, -24)
           CFI R5 Frame(CFA, -20)
           CFI R6 Frame(CFA, -16)
@@ -10953,7 +10945,7 @@ fw_take_block:
           CFI CFA R13+64
           CFI Block cfiCond293 Using cfiCommon0
           CFI (cfiCond293) Function fw_take_block
-          CFI (cfiCond293) Conditional ??CrossCallReturnLabel_242
+          CFI (cfiCond293) Conditional ??CrossCallReturnLabel_244
           CFI (cfiCond293) R4 Frame(CFA, -24)
           CFI (cfiCond293) R5 Frame(CFA, -20)
           CFI (cfiCond293) R6 Frame(CFA, -16)
@@ -10965,7 +10957,7 @@ fw_take_block:
           CFI (cfiPicker294) NoFunction
           CFI (cfiPicker294) Picker
         THUMB
-?Subroutine68:
+?Subroutine69:
         LDRH     R0,[R4, #+172]
         LDRH     R1,[R4, #+148]
         CMP      R0,R1
@@ -10977,14 +10969,14 @@ fw_take_block:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond295 Using cfiCommon0
           CFI Function fw_abort
-          CFI Conditional ??CrossCallReturnLabel_43
+          CFI Conditional ??CrossCallReturnLabel_45
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
           CFI Block cfiCond296 Using cfiCommon0
           CFI (cfiCond296) Function fw_take_block
-          CFI (cfiCond296) Conditional ??CrossCallReturnLabel_44
+          CFI (cfiCond296) Conditional ??CrossCallReturnLabel_46
           CFI (cfiCond296) R4 Frame(CFA, -24)
           CFI (cfiCond296) R5 Frame(CFA, -20)
           CFI (cfiCond296) R6 Frame(CFA, -16)
@@ -10994,7 +10986,7 @@ fw_take_block:
           CFI (cfiCond296) CFA R13+64
           CFI Block cfiCond297 Using cfiCommon0
           CFI (cfiCond297) Function fw_storage_poll
-          CFI (cfiCond297) Conditional ??CrossCallReturnLabel_45
+          CFI (cfiCond297) Conditional ??CrossCallReturnLabel_47
           CFI (cfiCond297) R4 Frame(CFA, -16)
           CFI (cfiCond297) R5 Frame(CFA, -12)
           CFI (cfiCond297) R6 Frame(CFA, -8)
@@ -11004,7 +10996,7 @@ fw_take_block:
           CFI (cfiPicker298) NoFunction
           CFI (cfiPicker298) Picker
         THUMB
-?Subroutine19:
+?Subroutine20:
         MOVS     R1,#+0
         LDR.W    R0,??DataTable120_6
         STRB     R1,[R0, #+0]
@@ -11050,14 +11042,14 @@ fw_resume_after_boot:
         LDR.W    R4,??DataTable120_5
         LDRB     R0,[R4, #+164]
         CBNZ.N   R0,??fw_resume_after_boot_0
-        BL       ?Subroutine60
-??CrossCallReturnLabel_211:
+        BL       ?Subroutine61
+??CrossCallReturnLabel_213:
         B.N      ??fw_resume_after_boot_1
 ??fw_resume_after_boot_0:
         MOVS     R2,#+32
         ADD      R1,SP,#+4
-        BL       ?Subroutine50
-??CrossCallReturnLabel_179:
+        BL       ?Subroutine51
+??CrossCallReturnLabel_181:
         CBZ.N    R0,??fw_resume_after_boot_2
         LDR.W    R0,??DataTable119_8
         LDRB     R0,[R0, #+0]
@@ -11086,8 +11078,8 @@ fw_resume_after_boot:
         ANDS     R1,R0,R1
         STRH     R1,[R4, #+129]
         MOVS     R0,#+0
-        BL       ?Subroutine60
-??CrossCallReturnLabel_212:
+        BL       ?Subroutine61
+??CrossCallReturnLabel_214:
           CFI FunCall user_saveindex
         BL       user_saveindex
         B.N      ??fw_resume_after_boot_1
@@ -11097,8 +11089,8 @@ fw_resume_after_boot:
           CFI FunCall fw_resume_block
         BL       fw_resume_block
         STRH     R0,[R4, #+172]
-        BL       ?Subroutine41
-??CrossCallReturnLabel_147:
+        BL       ?Subroutine42
+??CrossCallReturnLabel_149:
         BNE.N    ??fw_resume_after_boot_4
         LDR.W    R0,??DataTable120_3
           CFI FunCall fw_abort
@@ -11120,8 +11112,8 @@ fw_resume_after_boot:
         LDRH     R0,[R4, #+129]
         ORR      R0,R0,#0x800
         STRH     R0,[R4, #+129]
-        BL       ?Subroutine51
-??CrossCallReturnLabel_182:
+        BL       ?Subroutine52
+??CrossCallReturnLabel_184:
         SDIV     R0,R1,R0
         STRB     R0,[R4, #+150]
 ??fw_resume_after_boot_1:
@@ -11140,13 +11132,13 @@ fw_resume_after_boot:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond301 Using cfiCommon0
           CFI Function fw_resume_after_boot
-          CFI Conditional ??CrossCallReturnLabel_211
+          CFI Conditional ??CrossCallReturnLabel_213
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+48
           CFI Block cfiCond302 Using cfiCommon0
           CFI (cfiCond302) Function fw_resume_after_boot
-          CFI (cfiCond302) Conditional ??CrossCallReturnLabel_212
+          CFI (cfiCond302) Conditional ??CrossCallReturnLabel_214
           CFI (cfiCond302) R4 Frame(CFA, -8)
           CFI (cfiCond302) R14 Frame(CFA, -4)
           CFI (cfiCond302) CFA R13+48
@@ -11154,7 +11146,7 @@ fw_resume_after_boot:
           CFI (cfiPicker303) NoFunction
           CFI (cfiPicker303) Picker
         THUMB
-?Subroutine60:
+?Subroutine61:
         STRH     R0,[R4, #+179]
         STRH     R0,[R4, #+148]
         STRH     R0,[R4, #+172]
@@ -11166,7 +11158,7 @@ fw_resume_after_boot:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond304 Using cfiCommon0
           CFI Function fw_take_block
-          CFI Conditional ??CrossCallReturnLabel_181
+          CFI Conditional ??CrossCallReturnLabel_183
           CFI R4 Frame(CFA, -24)
           CFI R5 Frame(CFA, -20)
           CFI R6 Frame(CFA, -16)
@@ -11176,7 +11168,7 @@ fw_resume_after_boot:
           CFI CFA R13+64
           CFI Block cfiCond305 Using cfiCommon0
           CFI (cfiCond305) Function fw_resume_after_boot
-          CFI (cfiCond305) Conditional ??CrossCallReturnLabel_182
+          CFI (cfiCond305) Conditional ??CrossCallReturnLabel_184
           CFI (cfiCond305) R4 Frame(CFA, -8)
           CFI (cfiCond305) R14 Frame(CFA, -4)
           CFI (cfiCond305) CFA R13+48
@@ -11184,7 +11176,7 @@ fw_resume_after_boot:
           CFI (cfiPicker306) NoFunction
           CFI (cfiPicker306) Picker
         THUMB
-?Subroutine51:
+?Subroutine52:
         LDRH     R1,[R4, #+172]
         MOVS     R0,#+100
         MULS     R1,R0,R1
@@ -11197,7 +11189,7 @@ fw_resume_after_boot:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond307 Using cfiCommon0
           CFI Function fw_same_download
-          CFI Conditional ??CrossCallReturnLabel_180
+          CFI Conditional ??CrossCallReturnLabel_182
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
@@ -11206,7 +11198,7 @@ fw_resume_after_boot:
           CFI CFA R13+56
           CFI Block cfiCond308 Using cfiCommon0
           CFI (cfiCond308) Function fw_resume_after_boot
-          CFI (cfiCond308) Conditional ??CrossCallReturnLabel_179
+          CFI (cfiCond308) Conditional ??CrossCallReturnLabel_181
           CFI (cfiCond308) R4 Frame(CFA, -8)
           CFI (cfiCond308) R14 Frame(CFA, -4)
           CFI (cfiCond308) CFA R13+48
@@ -11214,7 +11206,7 @@ fw_resume_after_boot:
           CFI (cfiPicker309) NoFunction
           CFI (cfiPicker309) Picker
         THUMB
-?Subroutine50:
+?Subroutine51:
         LDR.W    R0,??DataTable119_7
         LDR      R0,[R0, #+0]
           CFI (cfiCond307) FunCall fw_same_download mem_read
@@ -11561,8 +11553,8 @@ table_chunk:
         ADD      R8,R10,R3
         LDRB     R9,[R8, #+28]
         LDRH     R1,[R8, #+0]
-        BL       ?Subroutine61
-??CrossCallReturnLabel_213:
+        BL       ?Subroutine62
+??CrossCallReturnLabel_215:
         BEQ.N    ??table_chunk_9
         MOVS     R2,#+10
         ADDS     R1,R6,#+2
@@ -12019,8 +12011,8 @@ table_runtime_poll:
         LDRH     R0,[R4, #+38]
         MULS     R2,R0,R2
         ADDS     R3,R1,R2
-        BL       ?Subroutine14
-??CrossCallReturnLabel_28:
+        BL       ?Subroutine15
+??CrossCallReturnLabel_30:
         LDR      R1,[R4, #+12]
         LDRH     R2,[SP, #+0]
         SUBS     R2,R2,#+1
@@ -12040,7 +12032,7 @@ table_runtime_poll:
         B.N      ??table_runtime_poll_5
 ??table_runtime_poll_2:
         CMP      R0,#+16
-        BNE.N    ??CrossCallReturnLabel_28
+        BNE.N    ??CrossCallReturnLabel_30
         LDR      R1,[R4, #+12]
         B.N      ??table_runtime_poll_3
 ??table_runtime_poll_6:
@@ -12357,7 +12349,7 @@ table_runtime_poll:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond322 Using cfiCommon0
           CFI Function user_loop
-          CFI Conditional ??CrossCallReturnLabel_27
+          CFI Conditional ??CrossCallReturnLabel_29
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
@@ -12365,7 +12357,7 @@ table_runtime_poll:
           CFI CFA R13+24
           CFI Block cfiCond323 Using cfiCommon0
           CFI (cfiCond323) Function table_runtime_poll
-          CFI (cfiCond323) Conditional ??CrossCallReturnLabel_28
+          CFI (cfiCond323) Conditional ??CrossCallReturnLabel_30
           CFI (cfiCond323) R4 Frame(CFA, -24)
           CFI (cfiCond323) R5 Frame(CFA, -20)
           CFI (cfiCond323) R6 Frame(CFA, -16)
@@ -12377,7 +12369,7 @@ table_runtime_poll:
           CFI (cfiPicker324) NoFunction
           CFI (cfiPicker324) Picker
         THUMB
-?Subroutine14:
+?Subroutine15:
         LDRB     R2,[R3, #+0]
         STRB     R2,[SP, #+0]
         LDRB     R2,[R3, #+1]
@@ -12448,8 +12440,8 @@ user_parse_comand:
           CFI FunCall command_args_valid
         BL       command_args_valid
         CBNZ.N   R0,??user_parse_comand_6
-        BL       ?Subroutine69
-??CrossCallReturnLabel_243:
+        BL       ?Subroutine70
+??CrossCallReturnLabel_245:
         B.N      ??user_parse_comand_5
 ??user_parse_comand_6:
         MOVS     R0,R5
@@ -12475,8 +12467,8 @@ user_parse_comand:
           CFI FunCall store_command_allowed
         BL       store_command_allowed
         CBNZ.N   R0,??user_parse_comand_9
-        BL       ?Subroutine70
-??CrossCallReturnLabel_247:
+        BL       ?Subroutine71
+??CrossCallReturnLabel_249:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_9:
         LDRB     R0,[R7, #+4]
@@ -12576,11 +12568,11 @@ user_parse_comand:
         DC16     0x46,0x46
         THUMB
 ??user_parse_comand_47:
-        ADDS     R2,R7,#+6
+        ADDS     R3,R7,#+6
         ADD      R0,SP,#+4
-        LDR      R1,[R2, #+0]
-        STR      R1,[R0, #+0]
-        MOV      R0,R1
+        LDR      R2,[R3, #+0]
+        STR      R2,[R0, #+0]
+        MOV      R0,R2
           CFI FunCall log_setTime
         BL       log_setTime
         MOVS     R0,#+1
@@ -12666,8 +12658,8 @@ user_parse_comand:
         MOV      R3,R6
         MOV      R2,R5
         BNE.N    ??user_parse_comand_54
-        BL       ??Subroutine17_0
-??CrossCallReturnLabel_38:
+        BL       ??Subroutine18_0
+??CrossCallReturnLabel_40:
         MOVS     R0,#+33
           CFI FunCall log_addSystemEvent
         BL       log_addSystemEvent
@@ -12676,8 +12668,8 @@ user_parse_comand:
         BL       timers_pause
         B.N      ??user_parse_comand_55
 ??user_parse_comand_54:
-        BL       ??Subroutine17_0
-??CrossCallReturnLabel_37:
+        BL       ??Subroutine18_0
+??CrossCallReturnLabel_39:
         LDRB     R0,[R7, #+5]
         STRB     R0,[R4, #+111]
         B.N      ??user_parse_comand_1
@@ -12689,12 +12681,12 @@ user_parse_comand:
         CBNZ.N   R0,??user_parse_comand_56
           CFI FunCall user_factoryReset
         BL       user_factoryReset
-        BL       ?Subroutine71
-??CrossCallReturnLabel_251:
+        BL       ?Subroutine72
+??CrossCallReturnLabel_253:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_56:
-        BL       ?Subroutine17
-??CrossCallReturnLabel_40:
+        BL       ?Subroutine18
+??CrossCallReturnLabel_42:
         LDRB     R0,[R7, #+5]
         LDR.W    R1,??DataTable127
         STRB     R0,[R1, #+112]
@@ -12759,19 +12751,19 @@ user_parse_comand:
           CFI FunCall log_addSystemEvent
         BL       log_addSystemEvent
 ??user_parse_comand_61:
-        LDRB     R0,[R4, #+95]
-        LDRH     R1,[R4, #+129]
-        BFI      R1,R0,#+7,#+1
-        STRH     R1,[R4, #+129]
-        LDRB     R0,[R4, #+96]
-        BFI      R1,R0,#+6,#+1
-        STRH     R1,[R4, #+129]
-        LDRB     R0,[R4, #+97]
-        BFI      R1,R0,#+5,#+1
-        STRH     R1,[R4, #+129]
-        LDRB     R0,[R4, #+98]
-        BFI      R1,R0,#+4,#+1
-        STRH     R1,[R4, #+129]
+        LDRB     R1,[R4, #+95]
+        LDRH     R0,[R4, #+129]
+        BFI      R0,R1,#+7,#+1
+        STRH     R0,[R4, #+129]
+        LDRB     R1,[R4, #+96]
+        BFI      R0,R1,#+6,#+1
+        STRH     R0,[R4, #+129]
+        LDRB     R1,[R4, #+97]
+        BFI      R0,R1,#+5,#+1
+        STRH     R0,[R4, #+129]
+        LDRB     R1,[R4, #+98]
+        BFI      R0,R1,#+4,#+1
+        STRH     R0,[R4, #+129]
         MOV      R2,R6
         MOV      R1,R5
         MOVS     R0,#+5
@@ -12798,8 +12790,8 @@ user_parse_comand:
         STRB     R1,[R0, #+114]
         LDRB     R1,[R7, #+7]
         STRB     R1,[R0, #+115]
-        BL       ?Subroutine71
-??CrossCallReturnLabel_252:
+        BL       ?Subroutine72
+??CrossCallReturnLabel_254:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_15:
         CMP      R4,#+4
@@ -12865,8 +12857,8 @@ user_parse_comand:
         CBZ.N    R0,??user_parse_comand_70
         MOVS     R0,#+0
         STR      R0,[SP, #+0]
-        BL       ??Subroutine48_0
-??CrossCallReturnLabel_172:
+        BL       ??Subroutine49_0
+??CrossCallReturnLabel_174:
           CFI FunCall out_load
         BL       out_load
 ??user_parse_comand_70:
@@ -12876,8 +12868,8 @@ user_parse_comand:
         LDRB     R0,[R0, #+208]
         CBZ.N    R0,??user_parse_comand_71
         STR      R8,[SP, #+0]
-        BL       ??Subroutine48_0
-??CrossCallReturnLabel_173:
+        BL       ??Subroutine49_0
+??CrossCallReturnLabel_175:
         MOVS     R0,#+1
           CFI FunCall out_load
         BL       out_load
@@ -12969,8 +12961,8 @@ user_parse_comand:
         BL       malloc
         MOVS     R9,R0
         BNE.N    ??user_parse_comand_79
-        BL       ?Subroutine70
-??CrossCallReturnLabel_248:
+        BL       ?Subroutine71
+??CrossCallReturnLabel_250:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_79:
         MOV      R1,R10
@@ -12988,8 +12980,8 @@ user_parse_comand:
         BL       __aeabi_memcpy
         MOVS     R0,#+0
         STRB     R0,[R9, R4]
-        BL       ?Subroutine17
-??CrossCallReturnLabel_39:
+        BL       ?Subroutine18
+??CrossCallReturnLabel_41:
         ADD      R1,SP,#+8
         MOV      R0,R9
           CFI FunCall user_sendsms
@@ -13114,8 +13106,8 @@ user_parse_comand:
         CMP      R0,#+101
         BLT.N    ??user_parse_comand_85
 ??user_parse_comand_57:
-        BL       ?Subroutine69
-??CrossCallReturnLabel_244:
+        BL       ?Subroutine70
+??CrossCallReturnLabel_246:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_85:
         MOV      R2,R6
@@ -13153,8 +13145,8 @@ user_parse_comand:
         MOV      R1,R0
         B.N      ??user_parse_comand_8
 ??user_parse_comand_86:
-        BL       ?Subroutine67
-??CrossCallReturnLabel_239:
+        BL       ?Subroutine68
+??CrossCallReturnLabel_241:
         B.N      ??user_parse_comand_57
 ??user_parse_comand_28:
         MOVS     R0,R5
@@ -13165,7 +13157,7 @@ user_parse_comand:
         LDRB     R2,[R7, #+5]
         LDRB     R0,[R7, #+6]
         ORR      R2,R2,R0, LSL #+8
-        LDR.W    R1,??DataTable132_1
+        LDR.W    R1,??DataTable133
         MOV      R0,R9
           CFI FunCall sprintf
         BL       sprintf
@@ -13194,7 +13186,7 @@ user_parse_comand:
         BL       user_send_statusUpdateFW
         B.N      ??user_parse_comand_1
 ??user_parse_comand_29:
-        LDR.W    R0,??DataTable133
+        LDR.W    R0,??DataTable133_1
           CFI FunCall user_debug
         BL       user_debug
         CMP      R4,#+3
@@ -13206,19 +13198,16 @@ user_parse_comand:
         ADDS     R2,R7,#+5
         MOV      R1,R6
         MOV      R0,R5
-          CFI FunCall photo_request
-        BL       photo_request
-        MOV      R3,R6
-        MOV      R2,R5
-        MOV      R1,R0
-        B.N      ??CrossCallReturnLabel_245
+          CFI FunCall photo_request_answer
+        BL       photo_request_answer
+        B.N      ??user_parse_comand_1
 ??user_parse_comand_90:
-        BL       ?Subroutine69
-??CrossCallReturnLabel_245:
+        BL       ?Subroutine70
+??CrossCallReturnLabel_247:
         MOVS     R0,#+21
         B.N      ??user_parse_comand_66
 ??user_parse_comand_30:
-        LDR.W    R0,??DataTable133_1
+        LDR.W    R0,??DataTable133_2
           CFI FunCall user_debug
         BL       user_debug
         MOV      R1,R6
@@ -13227,21 +13216,21 @@ user_parse_comand:
         BL       user_send_statusPackSecond
         B.N      ??user_parse_comand_1
 ??user_parse_comand_31:
-        LDR.W    R0,??DataTable133_2
+        LDR.W    R0,??DataTable133_3
           CFI FunCall user_debug
         BL       user_debug
-        ADDS     R3,R7,#+5
-        ADD      R0,SP,#+4
-        LDR      R2,[R3, #+0]
-        STR      R2,[R0, #+0]
-        MOV      R0,R2
+        ADDS     R2,R7,#+5
+        ADD      R3,SP,#+4
+        LDR      R1,[R2, #+0]
+        STR      R1,[R3, #+0]
+        MOV      R0,R1
           CFI FunCall log_setTime
         BL       log_setTime
-        BL       ?Subroutine71
-??CrossCallReturnLabel_253:
+        BL       ?Subroutine72
+??CrossCallReturnLabel_255:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_32:
-        LDR.W    R0,??DataTable133_3
+        LDR.W    R0,??DataTable133_4
           CFI FunCall user_debug
         BL       user_debug
         CMP      R5,#+1
@@ -13262,8 +13251,8 @@ user_parse_comand:
         LDR.W    R0,??DataTable134
           CFI FunCall user_debug
         BL       user_debug
-        BL       ?Subroutine71
-??CrossCallReturnLabel_254:
+        BL       ?Subroutine72
+??CrossCallReturnLabel_256:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_34:
         CMP      R5,#+0
@@ -13298,7 +13287,7 @@ user_parse_comand:
         MOVS     R2,#+1
         ADD      R1,R0,#+138
         MOVS     R0,#+102
-        B.N      ??CrossCallReturnLabel_148
+        B.N      ??CrossCallReturnLabel_150
 ??user_parse_comand_37:
         MOVS     R0,R5
         BNE.N    ??user_parse_comand_1
@@ -13307,28 +13296,28 @@ user_parse_comand:
         BL       user_clearMemBlock
         CBNZ.N   R0,??user_parse_comand_94
 ??user_parse_comand_52:
-        BL       ?Subroutine70
-??CrossCallReturnLabel_249:
+        BL       ?Subroutine71
+??CrossCallReturnLabel_251:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_94:
           CFI FunCall user_getNumbersCount
         BL       user_getNumbersCount
         LDR.W    R1,??DataTable127
         STRH     R0,[R1, #+81]
-        BL       ?Subroutine48
-??CrossCallReturnLabel_174:
+        BL       ?Subroutine49
+??CrossCallReturnLabel_176:
         MOVS     R0,#+103
-        B.N      ??CrossCallReturnLabel_148
+        B.N      ??CrossCallReturnLabel_150
 ??user_parse_comand_38:
         CMP      R5,#+0
         BNE.N    ??user_parse_comand_1
-        BL       ?Subroutine48
-??CrossCallReturnLabel_175:
+        BL       ?Subroutine49
+??CrossCallReturnLabel_177:
           CFI FunCall user_send_anyData
         BL       user_send_anyData
-        LDRB     R0,[R7, #+5]
-        LDR.W    R1,??DataTable127
-        STRB     R0,[R1, #+169]
+        LDRB     R1,[R7, #+5]
+        LDR.W    R0,??DataTable127
+        STRB     R1,[R0, #+169]
 ??user_parse_comand_55:
           CFI FunCall user_savereset
         BL       user_savereset
@@ -13341,8 +13330,8 @@ user_parse_comand:
         BL       user_send_configToConfigurator
         B.N      ??user_parse_comand_1
 ??user_parse_comand_40:
-        BL       ?Subroutine42
-??CrossCallReturnLabel_148:
+        BL       ?Subroutine43
+??CrossCallReturnLabel_150:
           CFI FunCall user_send_anyData
         BL       user_send_anyData
         B.N      ??user_parse_comand_1
@@ -13366,8 +13355,8 @@ user_parse_comand:
         CMP      R4,#+4
         BGE.N    ??user_parse_comand_96
 ??user_parse_comand_95:
-        BL       ?Subroutine69
-??CrossCallReturnLabel_246:
+        BL       ?Subroutine70
+??CrossCallReturnLabel_248:
         B.N      ??user_parse_comand_8
 ??user_parse_comand_96:
         LDR.W    R1,??DataTable127
@@ -13395,8 +13384,8 @@ user_parse_comand:
         MOVS     R0,#+1
           CFI FunCall boot_manual_command
         BL       boot_manual_command
-        BL       ?Subroutine47
-??CrossCallReturnLabel_171:
+        BL       ?Subroutine48
+??CrossCallReturnLabel_173:
         LDRB     R0,[SP, #+8]
         CMP      R0,#+2
         ITTT     EQ
@@ -13410,12 +13399,12 @@ user_parse_comand:
           CFI FunCall boot_manual_apply
         BL       boot_manual_apply
         STRB     R0,[R4, #+1]
-        BL       ?Subroutine47
-??CrossCallReturnLabel_170:
+        BL       ?Subroutine48
+??CrossCallReturnLabel_172:
         B.N      ??user_parse_comand_1
 ??user_parse_comand_41:
-        BL       ?Subroutine42
-??CrossCallReturnLabel_149:
+        BL       ?Subroutine43
+??CrossCallReturnLabel_151:
           CFI FunCall user_send_anyData
         BL       user_send_anyData
         CBNZ.N   R5,??user_parse_comand_1
@@ -13439,7 +13428,7 @@ user_parse_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond326 Using cfiCommon0
           CFI Function user_parse_comand
-          CFI Conditional ??CrossCallReturnLabel_251
+          CFI Conditional ??CrossCallReturnLabel_253
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -13452,7 +13441,7 @@ user_parse_comand:
           CFI CFA R13+64
           CFI Block cfiCond327 Using cfiCommon0
           CFI (cfiCond327) Function user_parse_comand
-          CFI (cfiCond327) Conditional ??CrossCallReturnLabel_252
+          CFI (cfiCond327) Conditional ??CrossCallReturnLabel_254
           CFI (cfiCond327) R4 Frame(CFA, -36)
           CFI (cfiCond327) R5 Frame(CFA, -32)
           CFI (cfiCond327) R6 Frame(CFA, -28)
@@ -13465,7 +13454,7 @@ user_parse_comand:
           CFI (cfiCond327) CFA R13+64
           CFI Block cfiCond328 Using cfiCommon0
           CFI (cfiCond328) Function user_parse_comand
-          CFI (cfiCond328) Conditional ??CrossCallReturnLabel_253
+          CFI (cfiCond328) Conditional ??CrossCallReturnLabel_255
           CFI (cfiCond328) R4 Frame(CFA, -36)
           CFI (cfiCond328) R5 Frame(CFA, -32)
           CFI (cfiCond328) R6 Frame(CFA, -28)
@@ -13478,7 +13467,7 @@ user_parse_comand:
           CFI (cfiCond328) CFA R13+64
           CFI Block cfiCond329 Using cfiCommon0
           CFI (cfiCond329) Function user_parse_comand
-          CFI (cfiCond329) Conditional ??CrossCallReturnLabel_254
+          CFI (cfiCond329) Conditional ??CrossCallReturnLabel_256
           CFI (cfiCond329) R4 Frame(CFA, -36)
           CFI (cfiCond329) R5 Frame(CFA, -32)
           CFI (cfiCond329) R6 Frame(CFA, -28)
@@ -13493,7 +13482,7 @@ user_parse_comand:
           CFI (cfiPicker330) NoFunction
           CFI (cfiPicker330) Picker
         THUMB
-?Subroutine71:
+?Subroutine72:
         MOV      R3,R6
         MOV      R2,R5
         MOVS     R1,#+0
@@ -13507,7 +13496,7 @@ user_parse_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond331 Using cfiCommon0
           CFI Function user_parse_comand
-          CFI Conditional ??CrossCallReturnLabel_243
+          CFI Conditional ??CrossCallReturnLabel_245
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -13520,7 +13509,7 @@ user_parse_comand:
           CFI CFA R13+64
           CFI Block cfiCond332 Using cfiCommon0
           CFI (cfiCond332) Function user_parse_comand
-          CFI (cfiCond332) Conditional ??CrossCallReturnLabel_244
+          CFI (cfiCond332) Conditional ??CrossCallReturnLabel_246
           CFI (cfiCond332) R4 Frame(CFA, -36)
           CFI (cfiCond332) R5 Frame(CFA, -32)
           CFI (cfiCond332) R6 Frame(CFA, -28)
@@ -13533,7 +13522,7 @@ user_parse_comand:
           CFI (cfiCond332) CFA R13+64
           CFI Block cfiCond333 Using cfiCommon0
           CFI (cfiCond333) Function user_parse_comand
-          CFI (cfiCond333) Conditional ??CrossCallReturnLabel_245
+          CFI (cfiCond333) Conditional ??CrossCallReturnLabel_247
           CFI (cfiCond333) R4 Frame(CFA, -36)
           CFI (cfiCond333) R5 Frame(CFA, -32)
           CFI (cfiCond333) R6 Frame(CFA, -28)
@@ -13546,7 +13535,7 @@ user_parse_comand:
           CFI (cfiCond333) CFA R13+64
           CFI Block cfiCond334 Using cfiCommon0
           CFI (cfiCond334) Function user_parse_comand
-          CFI (cfiCond334) Conditional ??CrossCallReturnLabel_246
+          CFI (cfiCond334) Conditional ??CrossCallReturnLabel_248
           CFI (cfiCond334) R4 Frame(CFA, -36)
           CFI (cfiCond334) R5 Frame(CFA, -32)
           CFI (cfiCond334) R6 Frame(CFA, -28)
@@ -13561,7 +13550,7 @@ user_parse_comand:
           CFI (cfiPicker335) NoFunction
           CFI (cfiPicker335) Picker
         THUMB
-?Subroutine69:
+?Subroutine70:
         MOV      R3,R6
         MOV      R2,R5
         MOVS     R1,#+1
@@ -13575,7 +13564,7 @@ user_parse_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond336 Using cfiCommon0
           CFI Function user_parse_comand
-          CFI Conditional ??CrossCallReturnLabel_174
+          CFI Conditional ??CrossCallReturnLabel_176
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -13588,7 +13577,7 @@ user_parse_comand:
           CFI CFA R13+64
           CFI Block cfiCond337 Using cfiCommon0
           CFI (cfiCond337) Function user_parse_comand
-          CFI (cfiCond337) Conditional ??CrossCallReturnLabel_175
+          CFI (cfiCond337) Conditional ??CrossCallReturnLabel_177
           CFI (cfiCond337) R4 Frame(CFA, -36)
           CFI (cfiCond337) R5 Frame(CFA, -32)
           CFI (cfiCond337) R6 Frame(CFA, -28)
@@ -13603,11 +13592,11 @@ user_parse_comand:
           CFI (cfiPicker338) NoFunction
           CFI (cfiPicker338) Picker
         THUMB
-?Subroutine48:
+?Subroutine49:
         STR      R6,[SP, #+0]
           CFI Block cfiCond339 Using cfiCommon0
           CFI (cfiCond339) Function user_parse_comand
-          CFI (cfiCond339) Conditional ??CrossCallReturnLabel_172
+          CFI (cfiCond339) Conditional ??CrossCallReturnLabel_174
           CFI (cfiCond339) R4 Frame(CFA, -36)
           CFI (cfiCond339) R5 Frame(CFA, -32)
           CFI (cfiCond339) R6 Frame(CFA, -28)
@@ -13620,7 +13609,7 @@ user_parse_comand:
           CFI (cfiCond339) CFA R13+64
           CFI Block cfiCond340 Using cfiCommon0
           CFI (cfiCond340) Function user_parse_comand
-          CFI (cfiCond340) Conditional ??CrossCallReturnLabel_173
+          CFI (cfiCond340) Conditional ??CrossCallReturnLabel_175
           CFI (cfiCond340) R4 Frame(CFA, -36)
           CFI (cfiCond340) R5 Frame(CFA, -32)
           CFI (cfiCond340) R6 Frame(CFA, -28)
@@ -13631,7 +13620,7 @@ user_parse_comand:
           CFI (cfiCond340) R11 Frame(CFA, -8)
           CFI (cfiCond340) R14 Frame(CFA, -4)
           CFI (cfiCond340) CFA R13+64
-??Subroutine48_0:
+??Subroutine49_0:
         MOVS     R3,#+0
         MOVS     R2,#+0
         MOVS     R1,#+0
@@ -13645,7 +13634,7 @@ user_parse_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond341 Using cfiCommon0
           CFI Function user_parse_comand
-          CFI Conditional ??CrossCallReturnLabel_171
+          CFI Conditional ??CrossCallReturnLabel_173
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -13658,7 +13647,7 @@ user_parse_comand:
           CFI CFA R13+64
           CFI Block cfiCond342 Using cfiCommon0
           CFI (cfiCond342) Function user_parse_comand
-          CFI (cfiCond342) Conditional ??CrossCallReturnLabel_170
+          CFI (cfiCond342) Conditional ??CrossCallReturnLabel_172
           CFI (cfiCond342) R4 Frame(CFA, -36)
           CFI (cfiCond342) R5 Frame(CFA, -32)
           CFI (cfiCond342) R6 Frame(CFA, -28)
@@ -13673,7 +13662,7 @@ user_parse_comand:
           CFI (cfiPicker343) NoFunction
           CFI (cfiPicker343) Picker
         THUMB
-?Subroutine47:
+?Subroutine48:
         STR      R6,[SP, #+0]
         MOVS     R3,#+0
         MOVS     R2,#+8
@@ -13689,7 +13678,7 @@ user_parse_comand:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond344 Using cfiCommon0
           CFI Function user_parse_comand
-          CFI Conditional ??CrossCallReturnLabel_40
+          CFI Conditional ??CrossCallReturnLabel_42
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -13702,7 +13691,7 @@ user_parse_comand:
           CFI CFA R13+64
           CFI Block cfiCond345 Using cfiCommon0
           CFI (cfiCond345) Function user_parse_comand
-          CFI (cfiCond345) Conditional ??CrossCallReturnLabel_39
+          CFI (cfiCond345) Conditional ??CrossCallReturnLabel_41
           CFI (cfiCond345) R4 Frame(CFA, -36)
           CFI (cfiCond345) R5 Frame(CFA, -32)
           CFI (cfiCond345) R6 Frame(CFA, -28)
@@ -13717,12 +13706,12 @@ user_parse_comand:
           CFI (cfiPicker346) NoFunction
           CFI (cfiPicker346) Picker
         THUMB
-?Subroutine17:
+?Subroutine18:
         MOV      R3,R6
         MOV      R2,R5
           CFI Block cfiCond347 Using cfiCommon0
           CFI (cfiCond347) Function user_parse_comand
-          CFI (cfiCond347) Conditional ??CrossCallReturnLabel_38
+          CFI (cfiCond347) Conditional ??CrossCallReturnLabel_40
           CFI (cfiCond347) R4 Frame(CFA, -36)
           CFI (cfiCond347) R5 Frame(CFA, -32)
           CFI (cfiCond347) R6 Frame(CFA, -28)
@@ -13735,7 +13724,7 @@ user_parse_comand:
           CFI (cfiCond347) CFA R13+64
           CFI Block cfiCond348 Using cfiCommon0
           CFI (cfiCond348) Function user_parse_comand
-          CFI (cfiCond348) Conditional ??CrossCallReturnLabel_37
+          CFI (cfiCond348) Conditional ??CrossCallReturnLabel_39
           CFI (cfiCond348) R4 Frame(CFA, -36)
           CFI (cfiCond348) R5 Frame(CFA, -32)
           CFI (cfiCond348) R6 Frame(CFA, -28)
@@ -13746,7 +13735,7 @@ user_parse_comand:
           CFI (cfiCond348) R11 Frame(CFA, -8)
           CFI (cfiCond348) R14 Frame(CFA, -4)
           CFI (cfiCond348) CFA R13+64
-??Subroutine17_0:
+??Subroutine18_0:
         MOVS     R1,#+0
         LDRB     R0,[R7, #+4]
           CFI (cfiCond344) FunCall user_parse_comand user_send_answer_comand
@@ -13997,8 +13986,8 @@ user_findID:
 ??user_findID_4:
         CMP      R6,R8
         BCS.N    ??user_findID_1
-        BL       ?Subroutine32
-??CrossCallReturnLabel_109:
+        BL       ?Subroutine33
+??CrossCallReturnLabel_111:
         CBZ.N    R0,??user_findID_1
         MOVS     R7,#+0
 ??user_findID_6:
@@ -14007,8 +13996,8 @@ user_findID:
         BCS.N    ??user_findID_7
         ADD      R5,SP,R7
         LDRH     R1,[R5, #+0]
-        BL       ?Subroutine61
-??CrossCallReturnLabel_214:
+        BL       ?Subroutine62
+??CrossCallReturnLabel_216:
         BEQ.N    ??user_findID_5
         MOVS     R2,#+10
         MOV      R1,R4
@@ -14028,7 +14017,7 @@ user_findID:
 ??user_findID_1:
         MOVS     R0,#+0
 ??user_findID_8:
-        B.W      ?Subroutine4
+        B.W      ?Subroutine3
           CFI EndBlock cfiBlock353
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -14060,8 +14049,8 @@ user_findTempID:
         CMP      R6,R5
         BCS.N    ??user_findTempID_2
         MOVS     R2,#+32
-        BL       ??Subroutine32_0
-??CrossCallReturnLabel_107:
+        BL       ??Subroutine33_0
+??CrossCallReturnLabel_109:
         CBZ.N    R0,??user_findTempID_2
         MOVS     R2,#+10
         MOV      R1,R4
@@ -14142,8 +14131,8 @@ user_addIdToTempBuffer:
           CFI CFA R13+64
 ??user_addIdToTempBuffer_5:
         LDRH     R1,[SP, #+0]
-        BL       ?Subroutine61
-??CrossCallReturnLabel_215:
+        BL       ?Subroutine62
+??CrossCallReturnLabel_217:
         BEQ.N    ??user_addIdToTempBuffer_6
         ADDS     R4,R4,#+32
 ??user_addIdToTempBuffer_4:
@@ -14158,8 +14147,8 @@ user_addIdToTempBuffer:
         BNE.N    ??user_addIdToTempBuffer_5
         B.N      ??user_addIdToTempBuffer_3
 ??user_addIdToTempBuffer_6:
-        BL       ?Subroutine30
-??CrossCallReturnLabel_94:
+        BL       ?Subroutine31
+??CrossCallReturnLabel_96:
         MOVS     R2,#+10
         MOV      R1,R9
         ADD      R0,SP,#+2
@@ -14224,7 +14213,7 @@ user_addIdToTempBuffer:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond356 Using cfiCommon0
           CFI Function table_chunk
-          CFI Conditional ??CrossCallReturnLabel_213
+          CFI Conditional ??CrossCallReturnLabel_215
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -14237,7 +14226,7 @@ user_addIdToTempBuffer:
           CFI CFA R13+40
           CFI Block cfiCond357 Using cfiCommon0
           CFI (cfiCond357) Function user_findID
-          CFI (cfiCond357) Conditional ??CrossCallReturnLabel_214
+          CFI (cfiCond357) Conditional ??CrossCallReturnLabel_216
           CFI (cfiCond357) R4 Frame(CFA, -28)
           CFI (cfiCond357) R5 Frame(CFA, -24)
           CFI (cfiCond357) R6 Frame(CFA, -20)
@@ -14248,7 +14237,7 @@ user_addIdToTempBuffer:
           CFI (cfiCond357) CFA R13+1056
           CFI Block cfiCond358 Using cfiCommon0
           CFI (cfiCond358) Function user_addIdToTempBuffer
-          CFI (cfiCond358) Conditional ??CrossCallReturnLabel_215
+          CFI (cfiCond358) Conditional ??CrossCallReturnLabel_217
           CFI (cfiCond358) R4 Frame(CFA, -28)
           CFI (cfiCond358) R5 Frame(CFA, -24)
           CFI (cfiCond358) R6 Frame(CFA, -20)
@@ -14259,7 +14248,7 @@ user_addIdToTempBuffer:
           CFI (cfiCond358) CFA R13+64
           CFI Block cfiCond359 Using cfiCommon0
           CFI (cfiCond359) Function user_checkIdTimeEnd
-          CFI (cfiCond359) Conditional ??CrossCallReturnLabel_216
+          CFI (cfiCond359) Conditional ??CrossCallReturnLabel_218
           CFI (cfiCond359) R4 Frame(CFA, -28)
           CFI (cfiCond359) R5 Frame(CFA, -24)
           CFI (cfiCond359) R6 Frame(CFA, -20)
@@ -14272,7 +14261,7 @@ user_addIdToTempBuffer:
           CFI (cfiPicker360) NoFunction
           CFI (cfiPicker360) Picker
         THUMB
-?Subroutine61:
+?Subroutine62:
         MOVW     R0,#+65535
         CMP      R1,R0
         BX       LR
@@ -14556,14 +14545,14 @@ user_checkIdAndControl:
         LDR      R0,[R5, #+47]
         CMP      R1,R0
         IT       CC
-        LDRCC.W  R0,??DataTable146
+        LDRCC.W  R0,??DataTable145
         BCC.N    ??user_checkIdAndControl_36
 ??user_checkIdAndControl_35:
         ADD      R0,SP,#+52
           CFI FunCall id_expired
         BL       id_expired
         CBZ.N    R0,??user_checkIdAndControl_37
-        LDR.W    R0,??DataTable148
+        LDR.W    R0,??DataTable146
 ??user_checkIdAndControl_36:
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_37:
@@ -14572,12 +14561,12 @@ user_checkIdAndControl:
           CFI FunCall user_getGroup
         BL       user_getGroup
         CBNZ.N   R0,??user_checkIdAndControl_38
-        LDR.W    R0,??DataTable148_1
+        LDR.W    R0,??DataTable146_1
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_38:
         LDRB     R0,[SP, #+6]
         CBZ.N    R0,??user_checkIdAndControl_39
-        LDR.W    R0,??DataTable148_2
+        LDR.W    R0,??DataTable147
         B.N      ??user_checkIdAndControl_40
 ??user_checkIdAndControl_39:
         SUBS     R0,R4,#+1
@@ -14611,7 +14600,7 @@ user_checkIdAndControl:
 ??user_checkIdAndControl_41:
         LDRB     R0,[SP, #+5]
         CBNZ.N   R0,??user_checkIdAndControl_48
-        LDR.W    R0,??DataTable148_3
+        LDR.W    R0,??DataTable149
 ??user_checkIdAndControl_27:
           CFI FunCall user_debug
         BL       user_debug
@@ -14621,12 +14610,12 @@ user_checkIdAndControl:
           CFI FunCall user_getShedule
         BL       user_getShedule
         CBNZ.N   R0,??user_checkIdAndControl_49
-        LDR.W    R0,??DataTable148_4
+        LDR.W    R0,??DataTable149_1
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_49:
         LDRB     R0,[SP, #+25]
         CBZ.N    R0,??user_checkIdAndControl_50
-        LDR.W    R0,??DataTable148_5
+        LDR.W    R0,??DataTable149_2
 ??user_checkIdAndControl_40:
           CFI FunCall user_debug
         BL       user_debug
@@ -14642,14 +14631,14 @@ user_checkIdAndControl:
         ADD      R0,R0,R1
         LDRB     R0,[R0, #+6]
         CBNZ.N   R0,??user_checkIdAndControl_51
-        LDR.W    R0,??DataTable149
+        LDR.W    R0,??DataTable149_3
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_51:
         ADD      R0,SP,#+20
           CFI FunCall shedule_time_ok
         BL       shedule_time_ok
         CBNZ.N   R0,??user_checkIdAndControl_52
-        LDR.W    R0,??DataTable150
+        LDR.W    R0,??DataTable149_4
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_52:
         MOVS     R0,#+0
@@ -14665,7 +14654,7 @@ user_checkIdAndControl:
 ??user_checkIdAndControl_53:
         CBNZ.N   R0,??user_checkIdAndControl_32
 ??user_checkIdAndControl_55:
-        LDR.W    R0,??DataTable150_1
+        LDR.W    R0,??DataTable149_5
         B.N      ??user_checkIdAndControl_13
 ??user_checkIdAndControl_54:
           CFI FunCall user_dayIsHoliday
@@ -14681,7 +14670,7 @@ user_checkIdAndControl:
         BL       user_activateOut
         B.N      ??user_checkIdAndControl_3
 ??user_checkIdAndControl_34:
-        LDR.W    R0,??DataTable150_2
+        LDR.W    R0,??DataTable150
           CFI FunCall user_debug
         BL       user_debug
         MOVS     R2,#+0
@@ -14696,7 +14685,7 @@ user_checkIdAndControl:
         BL       unreg_sms_note
         B.N      ??user_checkIdAndControl_3
 ??user_checkIdAndControl_33:
-        LDR.W    R0,??DataTable150_3
+        LDR.W    R0,??DataTable151
 ??user_checkIdAndControl_13:
           CFI FunCall user_debug
         BL       user_debug
@@ -14824,7 +14813,7 @@ user_activateOut:
         LDRBEQ   R0,[R5, #+1]
         CMPEQ    R0,#+0
         BNE.N    ??user_activateOut_6
-        LDR.W    R0,??DataTable150_4
+        LDR.W    R0,??DataTable151_1
           CFI FunCall user_debug
         BL       user_debug
         B.N      ??user_activateOut_7
@@ -14867,7 +14856,7 @@ user_activateOut:
         CBNZ.N   R0,??user_activateOut_12
         LDR.W    R2,??DataTable139_1
         LDR      R0,[R2, #+47]
-        LDR.W    R1,??DataTable150_5
+        LDR.W    R1,??DataTable151_2
         CMP      R0,R1
         BCC.N    ??user_activateOut_12
         MOV      R1,R0
@@ -14904,8 +14893,8 @@ user_activateOut:
         CBZ.N    R0,??user_activateOut_16
         CMP      R4,#+0
         ITE      EQ
-        LDREQ.W  R0,??DataTable150_6
-        LDRNE.W  R0,??DataTable150_7
+        LDREQ.W  R0,??DataTable151_3
+        LDRNE.W  R0,??DataTable151_4
           CFI FunCall user_debug
         BL       user_debug
         MOVS     R1,#+11
@@ -14984,7 +14973,7 @@ user_activateOut:
 ??user_activateOut_26:
         MOV      R2,R6
         MOV      R1,R9
-        LDR.W    R0,??DataTable153
+        LDR.W    R0,??DataTable154
         LDRB     R0,[R0, #+0]
 ??user_activateOut_21:
           CFI FunCall log_addControlEvent
@@ -15055,8 +15044,8 @@ user_getGroup:
 ??user_getGroup_0:
         CMP      R7,R6
         BCS.N    ??user_getGroup_3
-        BL       ?Subroutine49
-??CrossCallReturnLabel_178:
+        BL       ?Subroutine50
+??CrossCallReturnLabel_180:
         MOVS     R2,#+0
 ??user_getGroup_2:
         ADD      R1,SP,R2
@@ -15123,8 +15112,8 @@ user_getShedule:
 ??user_getShedule_0:
         CMP      R7,R6
         BCS.N    ??user_getShedule_3
-        BL       ?Subroutine49
-??CrossCallReturnLabel_177:
+        BL       ?Subroutine50
+??CrossCallReturnLabel_179:
         MOVS     R2,#+0
 ??user_getShedule_2:
         ADD      R1,SP,R2
@@ -15167,7 +15156,7 @@ user_getShedule:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond367 Using cfiCommon0
           CFI Function user_getGroup
-          CFI Conditional ??CrossCallReturnLabel_178
+          CFI Conditional ??CrossCallReturnLabel_180
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
@@ -15176,7 +15165,7 @@ user_getShedule:
           CFI CFA R13+1048
           CFI Block cfiCond368 Using cfiCommon0
           CFI (cfiCond368) Function user_getShedule
-          CFI (cfiCond368) Conditional ??CrossCallReturnLabel_177
+          CFI (cfiCond368) Conditional ??CrossCallReturnLabel_179
           CFI (cfiCond368) R4 Frame(CFA, -20)
           CFI (cfiCond368) R5 Frame(CFA, -16)
           CFI (cfiCond368) R6 Frame(CFA, -12)
@@ -15185,7 +15174,7 @@ user_getShedule:
           CFI (cfiCond368) CFA R13+1048
           CFI Block cfiCond369 Using cfiCommon0
           CFI (cfiCond369) Function user_checkIdTimeEnd
-          CFI (cfiCond369) Conditional ??CrossCallReturnLabel_176
+          CFI (cfiCond369) Conditional ??CrossCallReturnLabel_178
           CFI (cfiCond369) R4 Frame(CFA, -28)
           CFI (cfiCond369) R5 Frame(CFA, -24)
           CFI (cfiCond369) R6 Frame(CFA, -20)
@@ -15198,7 +15187,7 @@ user_getShedule:
           CFI (cfiPicker370) NoFunction
           CFI (cfiPicker370) Picker
         THUMB
-?Subroutine49:
+?Subroutine50:
         MOV      R2,#+1024
         MOV      R1,SP
         MOV      R0,R7
@@ -15263,13 +15252,6 @@ user_dayIsHoliday:
         DATA32
         DC32     store_save_requested
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable132_1:
-        DATA32
-        DC32     ?_95
-
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock372 Using cfiCommon0
           CFI Function user_clearTempIdBuffer
@@ -15322,26 +15304,33 @@ user_clearTempIdBuffer:
         DATA
 ??DataTable133:
         DATA32
-        DC32     ?_96
+        DC32     ?_95
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable133_1:
         DATA32
-        DC32     ?_97
+        DC32     ?_96
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable133_2:
         DATA32
-        DC32     ?_98
+        DC32     ?_97
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
 ??DataTable133_3:
+        DATA32
+        DC32     ?_98
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable133_4:
         DATA32
         DC32     ?_99
 
@@ -15371,7 +15360,7 @@ user_getNumbersCount:
         MOVS     R5,#+0
         MOVS     R6,#+0
         MOV      R9,R4
-        LDR.W    R7,??DataTable153_1
+        LDR.W    R7,??DataTable154_1
         STRH     R4,[R7, #+0]
         LDR      R8,[R0, #+16]
         B.N      ??user_getNumbersCount_0
@@ -15425,7 +15414,7 @@ user_getNumbersCount:
 ??user_getNumbersCount_2:
         LSLS     R6,R6,#+16
         LSRS     R6,R6,#+11
-        LDR.W    R0,??DataTable154
+        LDR.W    R0,??DataTable155
         STR      R6,[R0, #+0]
         LDRH     R1,[R7, #+0]
         MOV      R0,R9
@@ -15468,18 +15457,18 @@ user_checkIdTimeEnd:
         BEQ.N    ??user_checkIdTimeEnd_0
         LDR.N    R1,??DataTable138
         LDR      R2,[R1, #+16]
-        LDR.W    R0,??DataTable153_1
+        LDR.W    R0,??DataTable154_1
         LDRH     R0,[R0, #+0]
         ADD      R8,R2,R0, LSL #+5
         LDR.W    R9,??DataTable139_1
         LDR      R2,[R9, #+47]
-        LDR.W    R0,??DataTable150_5
+        LDR.W    R0,??DataTable151_2
         CMP      R2,R0
         BCC.N    ??user_checkIdTimeEnd_0
-        LDR.W    R6,??DataTable154_1
+        LDR.W    R6,??DataTable154_2
         LDRB     R0,[R6, #+0]
         CBNZ.N   R0,??user_checkIdTimeEnd_1
-        LDR.W    R2,??DataTable154_2
+        LDR.W    R2,??DataTable154_3
         LDR      R0,[R2, #+0]
         CMP      R0,#+0
         BEQ.N    ??user_checkIdTimeEnd_0
@@ -15491,7 +15480,7 @@ user_checkIdTimeEnd:
         MOVS     R0,#+0
         STRB     R0,[R6, #+0]
         MOVS     R2,#+0
-        LDR.W    R0,??DataTable154_2
+        LDR.W    R0,??DataTable154_3
         STR      R2,[R0, #+0]
         LDR      R7,[R1, #+16]
         B.N      ??user_checkIdTimeEnd_2
@@ -15506,8 +15495,8 @@ user_checkIdTimeEnd:
 ??user_checkIdTimeEnd_2:
         CMP      R7,R8
         BCS.N    ??user_checkIdTimeEnd_0
-        BL       ?Subroutine49
-??CrossCallReturnLabel_176:
+        BL       ?Subroutine50
+??CrossCallReturnLabel_178:
         MOVS     R5,#+0
 ??user_checkIdTimeEnd_6:
         ADDS     R0,R5,R7
@@ -15515,8 +15504,8 @@ user_checkIdTimeEnd:
         BCS.N    ??user_checkIdTimeEnd_5
         ADD      R4,SP,R5
         LDRH     R1,[R4, #+0]
-        BL       ?Subroutine61
-??CrossCallReturnLabel_216:
+        BL       ?Subroutine62
+??CrossCallReturnLabel_218:
         BEQ.N    ??user_checkIdTimeEnd_4
         MOV      R0,R4
           CFI FunCall id_time_end
@@ -15555,7 +15544,7 @@ user_checkIdTimeEnd:
         B.N      ??user_checkIdTimeEnd_5
 ??user_checkIdTimeEnd_0:
           CFI EndBlock cfiBlock374
-        REQUIRE ?Subroutine4
+        REQUIRE ?Subroutine3
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock375 Using cfiCommon0
@@ -15569,7 +15558,7 @@ user_checkIdTimeEnd:
           CFI R9 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
         THUMB
-?Subroutine4:
+?Subroutine3:
         ADD      SP,SP,#+1024
           CFI CFA R13+32
         ADD      SP,SP,#+4
@@ -15604,8 +15593,8 @@ user_getTempIDRecordsCount:
 ??user_getTempIDRecordsCount_0:
         CMP      R6,R4
         BCS.N    ??user_getTempIDRecordsCount_2
-        BL       ?Subroutine32
-??CrossCallReturnLabel_108:
+        BL       ?Subroutine33
+??CrossCallReturnLabel_110:
         CBZ.N    R0,??user_getTempIDRecordsCount_3
         MOVS     R1,#+0
         MOV      R0,R5
@@ -15659,12 +15648,12 @@ user_checkShedule:
           CFI FunCall user_getShedule
         BL       user_getShedule
         CBNZ.N   R0,??user_checkShedule_1
-        LDR.W    R0,??DataTable158
+        LDR.W    R0,??DataTable157
         B.N      ??user_checkShedule_2
 ??user_checkShedule_1:
         LDRB     R0,[SP, #+5]
         CBZ.N    R0,??user_checkShedule_3
-        LDR.W    R0,??DataTable158_1
+        LDR.W    R0,??DataTable157_1
         B.N      ??user_checkShedule_2
 ??user_checkShedule_3:
         LDR.N    R1,??DataTable139_1
@@ -15672,14 +15661,14 @@ user_checkShedule:
         ADD      R0,SP,R1
         LDRB     R0,[R0, #+6]
         CBNZ.N   R0,??user_checkShedule_4
-        LDR.W    R0,??DataTable158_2
+        LDR.W    R0,??DataTable158
         B.N      ??user_checkShedule_2
 ??user_checkShedule_4:
         MOV      R0,SP
           CFI FunCall shedule_time_ok
         BL       shedule_time_ok
         CBNZ.N   R0,??user_checkShedule_5
-        LDR.W    R0,??DataTable158_3
+        LDR.W    R0,??DataTable158_1
         B.N      ??user_checkShedule_2
 ??user_checkShedule_5:
         MOVS     R0,#+0
@@ -15768,8 +15757,8 @@ user_updateID:
         CMP      R6,R0
         BCC.N    ??user_updateID_1
         MOVS     R2,#+2
-        BL       ?Subroutine56
-??CrossCallReturnLabel_202:
+        BL       ?Subroutine59
+??CrossCallReturnLabel_208:
         CBZ.N    R0,??user_updateID_1
         LDRH     R1,[SP, #+0]
         LDRH     R0,[R4, #+0]
@@ -15797,7 +15786,7 @@ user_updateID:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond379 Using cfiCommon0
           CFI Function user_calcCRC16InFlash
-          CFI Conditional ??CrossCallReturnLabel_203
+          CFI Conditional ??CrossCallReturnLabel_209
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
@@ -15806,7 +15795,7 @@ user_updateID:
           CFI CFA R13+1048
           CFI Block cfiCond380 Using cfiCommon0
           CFI (cfiCond380) Function user_updateID
-          CFI (cfiCond380) Conditional ??CrossCallReturnLabel_202
+          CFI (cfiCond380) Conditional ??CrossCallReturnLabel_208
           CFI (cfiCond380) R4 Frame(CFA, -20)
           CFI (cfiCond380) R5 Frame(CFA, -16)
           CFI (cfiCond380) R6 Frame(CFA, -12)
@@ -15815,7 +15804,7 @@ user_updateID:
           CFI (cfiCond380) CFA R13+24
           CFI Block cfiCond381 Using cfiCommon0
           CFI (cfiCond381) Function user_getPhotoCount
-          CFI (cfiCond381) Conditional ??CrossCallReturnLabel_201
+          CFI (cfiCond381) Conditional ??CrossCallReturnLabel_207
           CFI (cfiCond381) R4 Frame(CFA, -16)
           CFI (cfiCond381) R5 Frame(CFA, -12)
           CFI (cfiCond381) R6 Frame(CFA, -8)
@@ -15825,7 +15814,7 @@ user_updateID:
           CFI (cfiPicker382) NoFunction
           CFI (cfiPicker382) Picker
         THUMB
-?Subroutine56:
+?Subroutine59:
         MOV      R1,SP
         MOV      R0,R5
           CFI (cfiCond379) FunCall user_calcCRC16InFlash mem_read
@@ -15976,8 +15965,8 @@ log_valid:
         STRB     R3,[SP, #+1]
         ADD      R4,R0,#+26
         ADD      R1,SP,#+2
-        BL       ?Subroutine12
-??CrossCallReturnLabel_20:
+        BL       ?Subroutine13
+??CrossCallReturnLabel_22:
         LDRH     R2,[SP, #+2]
         LDRH     R1,[SP, #+0]
         MVNS     R1,R1
@@ -16017,7 +16006,7 @@ log_uniqueIndex:
           CFI CFA R13+48
         MOV      R5,R0
         MOV      R0,R1
-        LDR.W    R1,??DataTable163_1
+        LDR.W    R1,??DataTable164
         LDR      R4,[R1, #+0]
         LDR.W    R1,??DataTable160_1
         LDR      R1,[R1, #+56]
@@ -16066,7 +16055,7 @@ log_addEvent:
         SUB      SP,SP,#+40
           CFI CFA R13+64
         MOV      R4,R0
-        LDR.W    R0,??DataTable162
+        LDR.W    R0,??DataTable163_1
         LDRB     R0,[R0, #+19]
         CMP      R0,#+10
         BEQ.N    ??log_addEvent_0
@@ -16095,8 +16084,8 @@ log_addEvent:
         BL       wdt_reload
         MOVS     R2,#+32
         ADD      R1,SP,#+8
-        BL       ??Subroutine32_1
-??CrossCallReturnLabel_104:
+        BL       ??Subroutine33_1
+??CrossCallReturnLabel_106:
         CMP      R0,#+0
         BEQ.N    ??log_addEvent_0
         ADD      R0,SP,#+8
@@ -16117,16 +16106,16 @@ log_addEvent:
         ADD      R0,SP,#+8
           CFI FunCall crc16_calc
         BL       crc16_calc
-        BL       ?Subroutine65
-??CrossCallReturnLabel_229:
+        BL       ?Subroutine66
+??CrossCallReturnLabel_231:
         LDR.W    R0,??DataTable163
         STR      R0,[SP, #+4]
         ADD      R0,SP,#+32
-        BL       ?Subroutine15
-??CrossCallReturnLabel_29:
+        BL       ?Subroutine16
+??CrossCallReturnLabel_31:
         ADD      R0,SP,#+34
-        BL       ?Subroutine13
-??CrossCallReturnLabel_25:
+        BL       ?Subroutine14
+??CrossCallReturnLabel_27:
         MOVS     R2,#+255
         MOVS     R1,#+4
         ADD      R0,SP,#+36
@@ -16146,15 +16135,15 @@ log_addEvent:
         CBZ.N    R0,??log_addEvent_0
         MOVS     R2,#+32
         ADD      R1,SP,#+8
-        BL       ??Subroutine32_1
-??CrossCallReturnLabel_103:
+        BL       ??Subroutine33_1
+??CrossCallReturnLabel_105:
         CBZ.N    R0,??log_addEvent_0
         ADD      R0,SP,#+8
           CFI FunCall log_valid
         BL       log_valid
         CBZ.N    R0,??log_addEvent_0
         LDR      R1,[R4, #+0]
-        LDR.W    R0,??DataTable163_1
+        LDR.W    R0,??DataTable164
         STR      R1,[R0, #+0]
         ADDS     R6,R6,#+32
         STR      R6,[R5, #+91]
@@ -16265,8 +16254,8 @@ log_getRecordsCount:
           CFI FunCall wdt_reload
         BL       wdt_reload
         MOV      R2,R9
-        BL       ??Subroutine32_0
-??CrossCallReturnLabel_106:
+        BL       ??Subroutine33_0
+??CrossCallReturnLabel_108:
         CBZ.N    R0,??log_getRecordsCount_3
         MOVS     R7,#+0
         B.N      ??log_getRecordsCount_4
@@ -16279,7 +16268,7 @@ log_getRecordsCount:
         BL       log_valid
         CBZ.N    R0,??log_getRecordsCount_7
         ADDS     R5,R5,#+1
-        LDR.W    R0,??DataTable163_1
+        LDR.W    R0,??DataTable164
         LDR      R2,[R0, #+0]
         LDR      R1,[R8, #+0]
         CMP      R2,R1
@@ -16308,7 +16297,7 @@ log_getRecordsCount:
 ??log_getRecordsCount_8:
         UXTH     R0,R5
 ??log_getRecordsCount_5:
-        B.N      ?Subroutine4
+        B.N      ?Subroutine3
           CFI EndBlock cfiBlock388
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -16382,8 +16371,8 @@ log_readRecords:
           CFI FunCall wdt_reload
         BL       wdt_reload
         MOVS     R2,#+32
-        BL       ??Subroutine32_0
-??CrossCallReturnLabel_105:
+        BL       ??Subroutine33_0
+??CrossCallReturnLabel_107:
         CMP      R0,#+0
         BNE.N    ??log_readRecords_1
         B.N      ??log_readRecords_5
@@ -16418,7 +16407,7 @@ log_readRecords:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond390 Using cfiCommon0
           CFI Function user_findID
-          CFI Conditional ??CrossCallReturnLabel_109
+          CFI Conditional ??CrossCallReturnLabel_111
           CFI R4 Frame(CFA, -28)
           CFI R5 Frame(CFA, -24)
           CFI R6 Frame(CFA, -20)
@@ -16429,7 +16418,7 @@ log_readRecords:
           CFI CFA R13+1056
           CFI Block cfiCond391 Using cfiCommon0
           CFI (cfiCond391) Function user_getTempIDRecordsCount
-          CFI (cfiCond391) Conditional ??CrossCallReturnLabel_108
+          CFI (cfiCond391) Conditional ??CrossCallReturnLabel_110
           CFI (cfiCond391) R4 Frame(CFA, -16)
           CFI (cfiCond391) R5 Frame(CFA, -12)
           CFI (cfiCond391) R6 Frame(CFA, -8)
@@ -16439,11 +16428,11 @@ log_readRecords:
           CFI (cfiPicker392) NoFunction
           CFI (cfiPicker392) Picker
         THUMB
-?Subroutine32:
+?Subroutine33:
         MOV      R2,#+1024
           CFI Block cfiCond393 Using cfiCommon0
           CFI (cfiCond393) Function user_findTempID
-          CFI (cfiCond393) Conditional ??CrossCallReturnLabel_107
+          CFI (cfiCond393) Conditional ??CrossCallReturnLabel_109
           CFI (cfiCond393) R4 Frame(CFA, -16)
           CFI (cfiCond393) R5 Frame(CFA, -12)
           CFI (cfiCond393) R6 Frame(CFA, -8)
@@ -16451,7 +16440,7 @@ log_readRecords:
           CFI (cfiCond393) CFA R13+48
           CFI Block cfiCond394 Using cfiCommon0
           CFI (cfiCond394) Function log_getRecordsCount
-          CFI (cfiCond394) Conditional ??CrossCallReturnLabel_106
+          CFI (cfiCond394) Conditional ??CrossCallReturnLabel_108
           CFI (cfiCond394) R4 Frame(CFA, -28)
           CFI (cfiCond394) R5 Frame(CFA, -24)
           CFI (cfiCond394) R6 Frame(CFA, -20)
@@ -16462,7 +16451,7 @@ log_readRecords:
           CFI (cfiCond394) CFA R13+1056
           CFI Block cfiCond395 Using cfiCommon0
           CFI (cfiCond395) Function log_readRecords
-          CFI (cfiCond395) Conditional ??CrossCallReturnLabel_105
+          CFI (cfiCond395) Conditional ??CrossCallReturnLabel_107
           CFI (cfiCond395) R4 Frame(CFA, -32)
           CFI (cfiCond395) R5 Frame(CFA, -28)
           CFI (cfiCond395) R6 Frame(CFA, -24)
@@ -16472,11 +16461,11 @@ log_readRecords:
           CFI (cfiCond395) R10 Frame(CFA, -8)
           CFI (cfiCond395) R14 Frame(CFA, -4)
           CFI (cfiCond395) CFA R13+64
-??Subroutine32_0:
+??Subroutine33_0:
         MOV      R1,SP
           CFI Block cfiCond396 Using cfiCommon0
           CFI (cfiCond396) Function log_addEvent
-          CFI (cfiCond396) Conditional ??CrossCallReturnLabel_104
+          CFI (cfiCond396) Conditional ??CrossCallReturnLabel_106
           CFI (cfiCond396) R4 Frame(CFA, -20)
           CFI (cfiCond396) R5 Frame(CFA, -16)
           CFI (cfiCond396) R6 Frame(CFA, -12)
@@ -16485,14 +16474,14 @@ log_readRecords:
           CFI (cfiCond396) CFA R13+64
           CFI Block cfiCond397 Using cfiCommon0
           CFI (cfiCond397) Function log_addEvent
-          CFI (cfiCond397) Conditional ??CrossCallReturnLabel_103
+          CFI (cfiCond397) Conditional ??CrossCallReturnLabel_105
           CFI (cfiCond397) R4 Frame(CFA, -20)
           CFI (cfiCond397) R5 Frame(CFA, -16)
           CFI (cfiCond397) R6 Frame(CFA, -12)
           CFI (cfiCond397) R7 Frame(CFA, -8)
           CFI (cfiCond397) R14 Frame(CFA, -4)
           CFI (cfiCond397) CFA R13+64
-??Subroutine32_1:
+??Subroutine33_1:
         MOV      R0,R6
           CFI (cfiCond390) FunCall user_findID mem_read
           CFI (cfiCond391) FunCall user_getTempIDRecordsCount mem_read
@@ -16526,24 +16515,64 @@ log_pendingCount:
 log_timeKnown:
         DS8 1
 
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiBlock398 Using cfiCommon0
+          CFI Function user_storage_background_ready
+        THUMB
+user_storage_background_ready:
+        PUSH     {R7,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+8
+          CFI FunCall user_storage_command_ready
+        BL       user_storage_command_ready
+        CBZ.N    R0,??user_storage_background_ready_0
+        LDR.W    R0,??DataTable166_1
+        LDRB     R0,[R0, #+0]
+        CBNZ.N   R0,??user_storage_background_ready_0
+        LDR.W    R0,??DataTable166_2
+        LDRB     R0,[R0, #+0]
+        CBZ.N    R0,??user_storage_background_ready_1
+        LDR.W    R0,??DataTable170
+        LDRB     R0,[R0, #+0]
+        CBNZ.N   R0,??user_storage_background_ready_0
+        BL       ?Subroutine12
+??CrossCallReturnLabel_18:
+        SBCS     R0,R0,R0
+        LSRS     R0,R0,#+31
+        POP      {R1,PC}
+??user_storage_background_ready_1:
+        MOVS     R0,#+1
+        POP      {R1,PC}
+??user_storage_background_ready_0:
+        MOVS     R0,#+0
+        POP      {R1,PC}
+          CFI EndBlock cfiBlock398
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable145:
+        DATA32
+        DC32     ?_112
+
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
 fw_job:
         DS8 40
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock398 Using cfiCommon0
+          CFI Block cfiBlock399 Using cfiCommon0
           CFI Function fw_async_active
           CFI NoCalls
         THUMB
 fw_async_active:
-        LDR.W    R0,??DataTable165_1
+        LDR.W    R0,??DataTable166_3
         LDRB     R0,[R0, #+32]
-          CFI EndBlock cfiBlock398
+          CFI EndBlock cfiBlock399
         REQUIRE ?Subroutine0
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock399 Using cfiCommon0
+          CFI Block cfiBlock400 Using cfiCommon0
           CFI NoFunction
         THUMB
 ?Subroutine0:
@@ -16551,10 +16580,24 @@ fw_async_active:
         MOVS     R0,#+1
 ??Subroutine0_0:
         BX       LR
-          CFI EndBlock cfiBlock399
+          CFI EndBlock cfiBlock400
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable146:
+        DATA32
+        DC32     ?_113
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable146_1:
+        DATA32
+        DC32     ?_114
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock400 Using cfiCommon0
+          CFI Block cfiBlock401 Using cfiCommon0
           CFI Function fw_async_cancel
         THUMB
 fw_async_cancel:
@@ -16564,23 +16607,23 @@ fw_async_cancel:
           CFI FunCall fw_async_active
         BL       fw_async_active
         CBZ.N    R0,??fw_async_cancel_0
-        LDR.W    R0,??DataTable165_1
+        LDR.W    R0,??DataTable166_3
         MOVS     R1,#+1
         STRB     R1,[R0, #+36]
         STRB     R1,[R0, #+37]
 ??fw_async_cancel_0:
         POP      {R0,PC}
-          CFI EndBlock cfiBlock400
+          CFI EndBlock cfiBlock401
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable146:
+??DataTable147:
         DATA32
-        DC32     ?_112
+        DC32     ?_115
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock401 Using cfiCommon0
+          CFI Block cfiBlock402 Using cfiCommon0
           CFI Function fw_async_quiet
         THUMB
 fw_async_quiet:
@@ -16592,7 +16635,7 @@ fw_async_quiet:
           CFI FunCall fw_async_active
         BL       fw_async_active
         CBZ.N    R0,??fw_async_quiet_0
-        LDR.W    R0,??DataTable165_1
+        LDR.W    R0,??DataTable166_3
         LDRB     R1,[R0, #+34]
         CMP      R1,R4
         ITT      EQ
@@ -16600,63 +16643,63 @@ fw_async_quiet:
         STRBEQ   R1,[R0, #+36]
 ??fw_async_quiet_0:
         POP      {R4,PC}
-          CFI EndBlock cfiBlock401
+          CFI EndBlock cfiBlock402
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock402 Using cfiCommon0
+          CFI Block cfiBlock403 Using cfiCommon0
           CFI Function fw_async_reply
           CFI NoCalls
         THUMB
 fw_async_reply:
-        LDR.W    R1,??DataTable165_1
+        LDR.W    R1,??DataTable166_3
         STRB     R0,[R1, #+35]
         BX       LR
-          CFI EndBlock cfiBlock402
+          CFI EndBlock cfiBlock403
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable148:
-        DATA32
-        DC32     ?_113
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable148_1:
-        DATA32
-        DC32     ?_114
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable148_2:
-        DATA32
-        DC32     ?_115
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable148_3:
+??DataTable149:
         DATA32
         DC32     ?_116
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable148_4:
+??DataTable149_1:
         DATA32
         DC32     ?_117
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable148_5:
+??DataTable149_2:
         DATA32
         DC32     ?_118
 
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable149_3:
+        DATA32
+        DC32     ?_119
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable149_4:
+        DATA32
+        DC32     ?_120
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable149_5:
+        DATA32
+        DC32     ?_121
+
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock403 Using cfiCommon0
+          CFI Block cfiBlock404 Using cfiCommon0
           CFI Function fw_async_begin
         THUMB
 fw_async_begin:
@@ -16670,6 +16713,12 @@ fw_async_begin:
         MOV      R4,R0
         MOV      R6,R1
         MOV      R5,R2
+          CFI FunCall photo_storage_busy
+        BL       photo_storage_busy
+        CBNZ.N   R0,??fw_async_begin_0
+          CFI FunCall table_runtime_active
+        BL       table_runtime_active
+        CBNZ.N   R0,??fw_async_begin_0
           CFI FunCall fw_async_active
         BL       fw_async_active
         CBNZ.N   R0,??fw_async_begin_0
@@ -16677,7 +16726,7 @@ fw_async_begin:
         BL       log_async_active
         CMP      R0,#+0
         ITTT     EQ
-        LDREQ.W  R0,??DataTable162
+        LDREQ.W  R0,??DataTable163_1
         LDRBEQ   R0,[R0, #+18]
         CMPEQ    R0,#+0
         BNE.N    ??fw_async_begin_0
@@ -16698,7 +16747,7 @@ fw_async_begin:
         SUB      R1,R1,#+1024
         CMP      R1,R6
         BCC.N    ??fw_async_begin_0
-        LDR.W    R7,??DataTable165_1
+        LDR.W    R7,??DataTable166_3
         MOV      R0,#+1024
           CFI FunCall malloc
         BL       malloc
@@ -16721,7 +16770,7 @@ fw_async_begin:
         STRH     R0,[R7, #+36]
         STRB     R0,[R7, #+33]
         STRB     R5,[R7, #+34]
-        LDR.W    R0,??DataTable174
+        LDR.W    R0,??DataTable175
         LDR      R0,[R0, #+0]
         STR      R0,[R7, #+24]
         ADDW     R0,R6,#+4095
@@ -16735,17 +16784,17 @@ fw_async_begin:
         STRB     R0,[R7, #+32]
         MOVS     R0,#+1
         POP      {R1,R4-R7,PC}
-          CFI EndBlock cfiBlock403
+          CFI EndBlock cfiBlock404
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable149:
+??DataTable150:
         DATA32
-        DC32     ?_119
+        DC32     ?_122
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock404 Using cfiCommon0
+          CFI Block cfiBlock405 Using cfiCommon0
           CFI Function fw_async_complete
         THUMB
 fw_async_complete:
@@ -16755,7 +16804,7 @@ fw_async_complete:
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
         MOV      R4,R0
-        LDR.W    R5,??DataTable165_1
+        LDR.W    R5,??DataTable166_3
         LDR      R0,[R5, #+0]
           CFI FunCall free
         BL       free
@@ -16765,66 +16814,45 @@ fw_async_complete:
         MOVS     R0,#+5
         STRB     R0,[R5, #+32]
         POP      {R0,R4,R5,PC}
-          CFI EndBlock cfiBlock404
+          CFI EndBlock cfiBlock405
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable150:
-        DATA32
-        DC32     ?_120
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable150_1:
-        DATA32
-        DC32     ?_121
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable150_2:
-        DATA32
-        DC32     ?_122
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable150_3:
+??DataTable151:
         DATA32
         DC32     ?_123
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable150_4:
+??DataTable151_1:
         DATA32
         DC32     ?_124
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable150_5:
+??DataTable151_2:
         DATA32
         DC32     0x5f5e1000
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable150_6:
+??DataTable151_3:
         DATA32
         DC32     ?_125
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable150_7:
+??DataTable151_4:
         DATA32
         DC32     ?_126
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock405 Using cfiCommon0
+          CFI Block cfiBlock406 Using cfiCommon0
           CFI Function fw_storage_poll
         THUMB
 fw_storage_poll:
@@ -16837,11 +16865,11 @@ fw_storage_poll:
         SUB      SP,SP,#+36
           CFI CFA R13+56
         MOV      R5,R0
-        LDR.W    R4,??DataTable165_1
+        LDR.W    R4,??DataTable166_3
         LDRB     R0,[R4, #+34]
         CBNZ.N   R0,??fw_storage_poll_0
         LDR      R0,[R4, #+24]
-        LDR.W    R1,??DataTable174
+        LDR.W    R1,??DataTable175
         LDR      R1,[R1, #+0]
         CMP      R0,R1
         ITT      NE
@@ -16852,8 +16880,8 @@ fw_storage_poll:
         CBZ.N    R0,??fw_storage_poll_1
         LDRB     R0,[R4, #+33]
         CBZ.N    R0,??fw_storage_poll_2
-        BL       ?Subroutine40
-??CrossCallReturnLabel_144:
+        BL       ?Subroutine41
+??CrossCallReturnLabel_146:
         CMP      R0,#+1
         BEQ.N    ??fw_storage_poll_3
 ??fw_storage_poll_2:
@@ -16896,8 +16924,8 @@ fw_storage_poll:
 ??fw_storage_poll_5:
         LDRB     R0,[R4, #+33]
         CBZ.N    R0,??fw_storage_poll_8
-        BL       ?Subroutine40
-??CrossCallReturnLabel_143:
+        BL       ?Subroutine41
+??CrossCallReturnLabel_145:
         CMP      R0,#+1
         BEQ.N    ??fw_storage_poll_7
         MOVS     R1,#+0
@@ -16922,8 +16950,8 @@ fw_storage_poll:
         LDRB     R0,[R4, #+32]
         CMP      R0,#+1
         BNE.N    ??fw_storage_poll_12
-        BL       ??Subroutine42_0
-??CrossCallReturnLabel_150:
+        BL       ??Subroutine43_0
+??CrossCallReturnLabel_152:
         LDR      R0,[R4, #+4]
         ADDW     R0,R0,#+4095
         LSRS     R0,R0,#+12
@@ -16950,8 +16978,8 @@ fw_storage_poll:
         BEQ.N    ??fw_storage_poll_9
         B.N      ??fw_storage_poll_4
 ??fw_storage_poll_15:
-        BL       ?Subroutine19
-??CrossCallReturnLabel_45:
+        BL       ?Subroutine20
+??CrossCallReturnLabel_47:
         LDR.W    R1,??DataTable163_2
         MOVS     R0,#+0
         STR      R0,[R1, #+174]
@@ -16977,8 +17005,8 @@ fw_storage_poll:
         CMP      R0,#+3
         BNE.N    ??fw_storage_poll_18
         LDR.W    R5,??DataTable160_1
-        BL       ?Subroutine43
-??CrossCallReturnLabel_152:
+        BL       ?Subroutine44
+??CrossCallReturnLabel_154:
         CMP      R0,#+0
         BEQ.N    ??fw_storage_poll_19
         LDR      R0,[SP, #+12]
@@ -17063,7 +17091,7 @@ fw_storage_poll:
         BL       fw_async_complete
         B.N      ??fw_storage_poll_4
 ??fw_storage_poll_9:
-        LDR.W    R0,??DataTable179
+        LDR.W    R0,??DataTable180
         LDRB     R1,[R0, #+0]
         ADDS     R1,R1,#+1
         UXTB     R2,R1
@@ -17079,7 +17107,7 @@ fw_storage_poll:
         BNE.N    ??fw_storage_poll_4
         MOVS     R0,#+0
         STRB     R0,[R4, #+32]
-        LDR.W    R0,??DataTable180
+        LDR.W    R0,??DataTable181
         B.N      ??fw_storage_poll_25
 ??fw_storage_poll_19:
         MOVS     R0,#+253
@@ -17087,7 +17115,7 @@ fw_storage_poll:
         BL       fw_async_complete
         MOVS     R0,#+0
         STRB     R0,[R4, #+32]
-        LDR.W    R0,??DataTable184
+        LDR.W    R0,??DataTable185
 ??fw_storage_poll_25:
           CFI FunCall fw_abort
         BL       fw_abort
@@ -17098,12 +17126,12 @@ fw_storage_poll:
         ADD      SP,SP,#+40
           CFI CFA R13+16
         POP      {R4-R6,PC}
-          CFI EndBlock cfiBlock405
+          CFI EndBlock cfiBlock406
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond406 Using cfiCommon0
+          CFI Block cfiCond407 Using cfiCommon0
           CFI Function fw_take_block
-          CFI Conditional ??CrossCallReturnLabel_153
+          CFI Conditional ??CrossCallReturnLabel_155
           CFI R4 Frame(CFA, -24)
           CFI R5 Frame(CFA, -20)
           CFI R6 Frame(CFA, -16)
@@ -17111,28 +17139,28 @@ fw_storage_poll:
           CFI R8 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+64
-          CFI Block cfiCond407 Using cfiCommon0
-          CFI (cfiCond407) Function fw_storage_poll
-          CFI (cfiCond407) Conditional ??CrossCallReturnLabel_152
-          CFI (cfiCond407) R4 Frame(CFA, -16)
-          CFI (cfiCond407) R5 Frame(CFA, -12)
-          CFI (cfiCond407) R6 Frame(CFA, -8)
-          CFI (cfiCond407) R14 Frame(CFA, -4)
-          CFI (cfiCond407) CFA R13+56
-          CFI Block cfiPicker408 Using cfiCommon1
-          CFI (cfiPicker408) NoFunction
-          CFI (cfiPicker408) Picker
+          CFI Block cfiCond408 Using cfiCommon0
+          CFI (cfiCond408) Function fw_storage_poll
+          CFI (cfiCond408) Conditional ??CrossCallReturnLabel_154
+          CFI (cfiCond408) R4 Frame(CFA, -16)
+          CFI (cfiCond408) R5 Frame(CFA, -12)
+          CFI (cfiCond408) R6 Frame(CFA, -8)
+          CFI (cfiCond408) R14 Frame(CFA, -4)
+          CFI (cfiCond408) CFA R13+56
+          CFI Block cfiPicker409 Using cfiCommon1
+          CFI (cfiPicker409) NoFunction
+          CFI (cfiPicker409) Picker
         THUMB
-?Subroutine43:
+?Subroutine44:
         MOVS     R2,#+32
         ADD      R1,SP,#+4
         LDR      R0,[R5, #+0]
-          CFI (cfiCond406) FunCall fw_take_block mem_read
-          CFI (cfiCond407) FunCall fw_storage_poll mem_read
+          CFI (cfiCond407) FunCall fw_take_block mem_read
+          CFI (cfiCond408) FunCall fw_storage_poll mem_read
         B.W      mem_read
-          CFI EndBlock cfiCond406
           CFI EndBlock cfiCond407
-          CFI EndBlock cfiPicker408
+          CFI EndBlock cfiCond408
+          CFI EndBlock cfiPicker409
 
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
@@ -17140,18 +17168,18 @@ log_job:
         DS8 48
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock409 Using cfiCommon0
+          CFI Block cfiBlock410 Using cfiCommon0
           CFI Function log_async_active
           CFI NoCalls
         THUMB
 log_async_active:
-        LDR.W    R0,??DataTable181
+        LDR.W    R0,??DataTable182
         LDRB     R0,[R0, #+44]
         B.N      ?Subroutine0
-          CFI EndBlock cfiBlock409
+          CFI EndBlock cfiBlock410
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock410 Using cfiCommon0
+          CFI Block cfiBlock411 Using cfiCommon0
           CFI Function log_async_begin
         THUMB
 log_async_begin:
@@ -17160,7 +17188,7 @@ log_async_begin:
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
         MOV      R1,R0
-        LDR.W    R4,??DataTable181
+        LDR.W    R4,??DataTable182
         MOV      R0,R4
         MOVS     R2,#+32
           CFI FunCall __aeabi_memcpy
@@ -17173,7 +17201,7 @@ log_async_begin:
         IT       CC
         MOVCC    R1,R0
         STR      R1,[R4, #+32]
-        LDR.W    R0,??DataTable165_2
+        LDR.W    R0,??DataTable165
         LDR      R0,[R0, #+0]
         STR      R0,[R4, #+36]
         MOVS     R0,#+1
@@ -17183,24 +17211,38 @@ log_async_begin:
         MOVS     R0,#+1
         STRB     R0,[R4, #+46]
         POP      {R4,PC}
-          CFI EndBlock cfiBlock410
+          CFI EndBlock cfiBlock411
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable153:
+??DataTable154:
         DATA32
         DC32     server_out_event
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable153_1:
+??DataTable154_1:
         DATA32
         DC32     id_cells_end
 
         SECTION `.text`:CODE:NOROOT(2)
-          CFI Block cfiBlock411 Using cfiCommon0
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable154_2:
+        DATA32
+        DC32     id_endScan
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable154_3:
+        DATA32
+        DC32     id_nextEnd
+
+        SECTION `.text`:CODE:NOROOT(2)
+          CFI Block cfiBlock412 Using cfiCommon0
           CFI Function log_async_step
         THUMB
 log_async_step:
@@ -17215,7 +17257,7 @@ log_async_step:
         MOV      R5,R0
         LDR.W    R0,??DataTable163
         STR      R0,[SP, #+36]
-        LDR.W    R4,??DataTable181
+        LDR.W    R4,??DataTable182
         LDRB     R0,[R4, #+44]
         CBZ.N    R0,??log_async_step_1
         LDRB     R0,[R4, #+46]
@@ -17233,8 +17275,8 @@ log_async_step:
 ??log_async_step_2:
         LDRB     R0,[R4, #+45]
         CBZ.N    R0,??log_async_step_4
-        BL       ?Subroutine40
-??CrossCallReturnLabel_142:
+        BL       ?Subroutine41
+??CrossCallReturnLabel_144:
         CMP      R0,#+1
         BEQ.N    ??log_async_step_3
         MOVS     R1,#+0
@@ -17295,8 +17337,8 @@ log_async_step:
         BL       mem_read
         CMP      R0,#+0
         BEQ.N    ??log_async_step_15
-        BL       ?Subroutine66
-??CrossCallReturnLabel_234:
+        BL       ?Subroutine67
+??CrossCallReturnLabel_236:
         CBZ.N    R0,??log_async_step_14
         LDR      R0,[SP, #+4]
         LDR      R1,[R4, #+36]
@@ -17308,16 +17350,16 @@ log_async_step:
         MOVS     R0,#+2
         B.N      ??log_async_step_16
 ??log_async_step_17:
-        BL       ?Subroutine44
-??CrossCallReturnLabel_155:
+        BL       ?Subroutine45
+??CrossCallReturnLabel_157:
         CMP      R0,#+0
         BEQ.N    ??log_async_step_15
         ADD      R0,SP,#+4
           CFI FunCall log_blank
         BL       log_blank
         CBNZ.N   R0,??log_async_step_18
-        BL       ?Subroutine66
-??CrossCallReturnLabel_233:
+        BL       ?Subroutine67
+??CrossCallReturnLabel_235:
         CBZ.N    R0,??log_async_step_19
         LDR      R0,[SP, #+4]
         LDR      R1,[R4, #+36]
@@ -17341,16 +17383,16 @@ log_async_step:
         STRCS    R0,[R4, #+0]
 ??log_async_step_21:
         MOVS     R1,#+24
-        BL       ??Subroutine72_0
-??CrossCallReturnLabel_255:
-        BL       ?Subroutine65
-??CrossCallReturnLabel_230:
+        BL       ??Subroutine73_0
+??CrossCallReturnLabel_257:
+        BL       ?Subroutine66
+??CrossCallReturnLabel_232:
         ADD      R0,R4,#+24
-        BL       ?Subroutine15
-??CrossCallReturnLabel_30:
+        BL       ?Subroutine16
+??CrossCallReturnLabel_32:
         ADD      R0,R4,#+26
-        BL       ?Subroutine13
-??CrossCallReturnLabel_26:
+        BL       ?Subroutine14
+??CrossCallReturnLabel_28:
         ADD      R2,SP,#+36
         ADD      R0,R4,#+28
         LDR      R1,[R2, #+0]
@@ -17376,8 +17418,8 @@ log_async_step:
         BNE.N    ??log_async_step_20
         B.N      ??log_async_step_5
 ??log_async_step_24:
-        BL       ?Subroutine44
-??CrossCallReturnLabel_154:
+        BL       ?Subroutine45
+??CrossCallReturnLabel_156:
         CMP      R0,#+0
 ??log_async_step_15:
         BEQ.N    ??log_async_step_25
@@ -17387,11 +17429,11 @@ log_async_step:
           CFI FunCall memcmp
         BL       memcmp
         CBNZ.N   R0,??log_async_step_26
-        BL       ?Subroutine66
-??CrossCallReturnLabel_232:
+        BL       ?Subroutine67
+??CrossCallReturnLabel_234:
         CBZ.N    R0,??log_async_step_26
         LDR      R0,[R4, #+0]
-        LDR.W    R1,??DataTable163_1
+        LDR.W    R1,??DataTable164
         STR      R0,[R1, #+0]
         LDR.W    R0,??DataTable163_2
         LDR      R1,[R4, #+32]
@@ -17425,8 +17467,8 @@ log_async_step:
         BCC.N    ??log_async_step_29
         B.N      ??log_async_step_22
 ??log_async_step_30:
-        BL       ?Subroutine66
-??CrossCallReturnLabel_231:
+        BL       ?Subroutine67
+??CrossCallReturnLabel_233:
         CBZ.N    R0,??log_async_step_31
         LDR      R0,[SP, #+4]
         LDR      R1,[R4, #+36]
@@ -17460,49 +17502,27 @@ log_async_step:
         STR      R5,[R4, #+40]
         MOVS     R0,#+3
         B.N      ??log_async_step_8
-          CFI EndBlock cfiBlock411
+          CFI EndBlock cfiBlock412
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable154:
+??DataTable155:
         DATA32
         DC32     id_used_bytes
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable154_1:
-        DATA32
-        DC32     id_endScan
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable154_2:
-        DATA32
-        DC32     id_nextEnd
-
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond412 Using cfiCommon0
+          CFI Block cfiCond413 Using cfiCommon0
           CFI Function log_async_step
-          CFI Conditional ??CrossCallReturnLabel_234
+          CFI Conditional ??CrossCallReturnLabel_236
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+56
-          CFI Block cfiCond413 Using cfiCommon0
-          CFI (cfiCond413) Function log_async_step
-          CFI (cfiCond413) Conditional ??CrossCallReturnLabel_233
-          CFI (cfiCond413) R4 Frame(CFA, -16)
-          CFI (cfiCond413) R5 Frame(CFA, -12)
-          CFI (cfiCond413) R6 Frame(CFA, -8)
-          CFI (cfiCond413) R14 Frame(CFA, -4)
-          CFI (cfiCond413) CFA R13+56
           CFI Block cfiCond414 Using cfiCommon0
           CFI (cfiCond414) Function log_async_step
-          CFI (cfiCond414) Conditional ??CrossCallReturnLabel_232
+          CFI (cfiCond414) Conditional ??CrossCallReturnLabel_235
           CFI (cfiCond414) R4 Frame(CFA, -16)
           CFI (cfiCond414) R5 Frame(CFA, -12)
           CFI (cfiCond414) R6 Frame(CFA, -8)
@@ -17510,177 +17530,185 @@ log_async_step:
           CFI (cfiCond414) CFA R13+56
           CFI Block cfiCond415 Using cfiCommon0
           CFI (cfiCond415) Function log_async_step
-          CFI (cfiCond415) Conditional ??CrossCallReturnLabel_231
+          CFI (cfiCond415) Conditional ??CrossCallReturnLabel_234
           CFI (cfiCond415) R4 Frame(CFA, -16)
           CFI (cfiCond415) R5 Frame(CFA, -12)
           CFI (cfiCond415) R6 Frame(CFA, -8)
           CFI (cfiCond415) R14 Frame(CFA, -4)
           CFI (cfiCond415) CFA R13+56
-          CFI Block cfiPicker416 Using cfiCommon1
-          CFI (cfiPicker416) NoFunction
-          CFI (cfiPicker416) Picker
+          CFI Block cfiCond416 Using cfiCommon0
+          CFI (cfiCond416) Function log_async_step
+          CFI (cfiCond416) Conditional ??CrossCallReturnLabel_233
+          CFI (cfiCond416) R4 Frame(CFA, -16)
+          CFI (cfiCond416) R5 Frame(CFA, -12)
+          CFI (cfiCond416) R6 Frame(CFA, -8)
+          CFI (cfiCond416) R14 Frame(CFA, -4)
+          CFI (cfiCond416) CFA R13+56
+          CFI Block cfiPicker417 Using cfiCommon1
+          CFI (cfiPicker417) NoFunction
+          CFI (cfiPicker417) Picker
         THUMB
-?Subroutine66:
+?Subroutine67:
         ADD      R0,SP,#+4
-          CFI (cfiCond412) FunCall log_async_step log_valid
-          CFI (cfiCond412) FunCall log_async_step log_valid
-          CFI (cfiCond412) FunCall log_async_step log_valid
-          CFI (cfiCond412) FunCall log_async_step log_valid
+          CFI (cfiCond413) FunCall log_async_step log_valid
+          CFI (cfiCond413) FunCall log_async_step log_valid
+          CFI (cfiCond413) FunCall log_async_step log_valid
+          CFI (cfiCond413) FunCall log_async_step log_valid
         B.W      log_valid
-          CFI EndBlock cfiCond412
           CFI EndBlock cfiCond413
           CFI EndBlock cfiCond414
           CFI EndBlock cfiCond415
-          CFI EndBlock cfiPicker416
+          CFI EndBlock cfiCond416
+          CFI EndBlock cfiPicker417
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond417 Using cfiCommon0
+          CFI Block cfiCond418 Using cfiCommon0
           CFI Function log_addEvent
-          CFI Conditional ??CrossCallReturnLabel_229
+          CFI Conditional ??CrossCallReturnLabel_231
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
           CFI R7 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+64
-          CFI Block cfiCond418 Using cfiCommon0
-          CFI (cfiCond418) Function log_async_step
-          CFI (cfiCond418) Conditional ??CrossCallReturnLabel_230
-          CFI (cfiCond418) R4 Frame(CFA, -16)
-          CFI (cfiCond418) R5 Frame(CFA, -12)
-          CFI (cfiCond418) R6 Frame(CFA, -8)
-          CFI (cfiCond418) R14 Frame(CFA, -4)
-          CFI (cfiCond418) CFA R13+56
-          CFI Block cfiPicker419 Using cfiCommon1
-          CFI (cfiPicker419) NoFunction
-          CFI (cfiPicker419) Picker
+          CFI Block cfiCond419 Using cfiCommon0
+          CFI (cfiCond419) Function log_async_step
+          CFI (cfiCond419) Conditional ??CrossCallReturnLabel_232
+          CFI (cfiCond419) R4 Frame(CFA, -16)
+          CFI (cfiCond419) R5 Frame(CFA, -12)
+          CFI (cfiCond419) R6 Frame(CFA, -8)
+          CFI (cfiCond419) R14 Frame(CFA, -4)
+          CFI (cfiCond419) CFA R13+56
+          CFI Block cfiPicker420 Using cfiCommon1
+          CFI (cfiPicker420) NoFunction
+          CFI (cfiPicker420) Picker
         THUMB
-?Subroutine65:
+?Subroutine66:
         STRH     R0,[SP, #+0]
         MVNS     R0,R0
         STRH     R0,[SP, #+2]
         BX       LR
-          CFI EndBlock cfiCond417
           CFI EndBlock cfiCond418
-          CFI EndBlock cfiPicker419
+          CFI EndBlock cfiCond419
+          CFI EndBlock cfiPicker420
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond420 Using cfiCommon0
+          CFI Block cfiCond421 Using cfiCommon0
           CFI Function log_async_step
-          CFI Conditional ??CrossCallReturnLabel_155
+          CFI Conditional ??CrossCallReturnLabel_157
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+56
-          CFI Block cfiCond421 Using cfiCommon0
-          CFI (cfiCond421) Function log_async_step
-          CFI (cfiCond421) Conditional ??CrossCallReturnLabel_154
-          CFI (cfiCond421) R4 Frame(CFA, -16)
-          CFI (cfiCond421) R5 Frame(CFA, -12)
-          CFI (cfiCond421) R6 Frame(CFA, -8)
-          CFI (cfiCond421) R14 Frame(CFA, -4)
-          CFI (cfiCond421) CFA R13+56
-          CFI Block cfiPicker422 Using cfiCommon1
-          CFI (cfiPicker422) NoFunction
-          CFI (cfiPicker422) Picker
+          CFI Block cfiCond422 Using cfiCommon0
+          CFI (cfiCond422) Function log_async_step
+          CFI (cfiCond422) Conditional ??CrossCallReturnLabel_156
+          CFI (cfiCond422) R4 Frame(CFA, -16)
+          CFI (cfiCond422) R5 Frame(CFA, -12)
+          CFI (cfiCond422) R6 Frame(CFA, -8)
+          CFI (cfiCond422) R14 Frame(CFA, -4)
+          CFI (cfiCond422) CFA R13+56
+          CFI Block cfiPicker423 Using cfiCommon1
+          CFI (cfiPicker423) NoFunction
+          CFI (cfiPicker423) Picker
         THUMB
-?Subroutine44:
+?Subroutine45:
         MOVS     R2,#+32
         ADD      R1,SP,#+4
         LDR      R0,[R4, #+32]
-          CFI (cfiCond420) FunCall log_async_step mem_read
-          CFI (cfiCond420) FunCall log_async_step mem_read
+          CFI (cfiCond421) FunCall log_async_step mem_read
+          CFI (cfiCond421) FunCall log_async_step mem_read
         B.W      mem_read
-          CFI EndBlock cfiCond420
           CFI EndBlock cfiCond421
-          CFI EndBlock cfiPicker422
+          CFI EndBlock cfiCond422
+          CFI EndBlock cfiPicker423
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond423 Using cfiCommon0
+          CFI Block cfiCond424 Using cfiCommon0
           CFI Function fw_storage_poll
-          CFI Conditional ??CrossCallReturnLabel_144
+          CFI Conditional ??CrossCallReturnLabel_146
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+56
-          CFI Block cfiCond424 Using cfiCommon0
-          CFI (cfiCond424) Function fw_storage_poll
-          CFI (cfiCond424) Conditional ??CrossCallReturnLabel_143
-          CFI (cfiCond424) R4 Frame(CFA, -16)
-          CFI (cfiCond424) R5 Frame(CFA, -12)
-          CFI (cfiCond424) R6 Frame(CFA, -8)
-          CFI (cfiCond424) R14 Frame(CFA, -4)
-          CFI (cfiCond424) CFA R13+56
           CFI Block cfiCond425 Using cfiCommon0
-          CFI (cfiCond425) Function log_async_step
-          CFI (cfiCond425) Conditional ??CrossCallReturnLabel_142
+          CFI (cfiCond425) Function fw_storage_poll
+          CFI (cfiCond425) Conditional ??CrossCallReturnLabel_145
           CFI (cfiCond425) R4 Frame(CFA, -16)
           CFI (cfiCond425) R5 Frame(CFA, -12)
           CFI (cfiCond425) R6 Frame(CFA, -8)
           CFI (cfiCond425) R14 Frame(CFA, -4)
           CFI (cfiCond425) CFA R13+56
           CFI Block cfiCond426 Using cfiCommon0
-          CFI (cfiCond426) Function user_storage_poll
-          CFI (cfiCond426) Conditional ??CrossCallReturnLabel_141
+          CFI (cfiCond426) Function log_async_step
+          CFI (cfiCond426) Conditional ??CrossCallReturnLabel_144
           CFI (cfiCond426) R4 Frame(CFA, -16)
           CFI (cfiCond426) R5 Frame(CFA, -12)
           CFI (cfiCond426) R6 Frame(CFA, -8)
           CFI (cfiCond426) R14 Frame(CFA, -4)
-          CFI (cfiCond426) CFA R13+80
-          CFI Block cfiPicker427 Using cfiCommon1
-          CFI (cfiPicker427) NoFunction
-          CFI (cfiPicker427) Picker
+          CFI (cfiCond426) CFA R13+56
+          CFI Block cfiCond427 Using cfiCommon0
+          CFI (cfiCond427) Function user_storage_poll
+          CFI (cfiCond427) Conditional ??CrossCallReturnLabel_143
+          CFI (cfiCond427) R4 Frame(CFA, -16)
+          CFI (cfiCond427) R5 Frame(CFA, -12)
+          CFI (cfiCond427) R6 Frame(CFA, -8)
+          CFI (cfiCond427) R14 Frame(CFA, -4)
+          CFI (cfiCond427) CFA R13+80
+          CFI Block cfiPicker428 Using cfiCommon1
+          CFI (cfiPicker428) NoFunction
+          CFI (cfiPicker428) Picker
         THUMB
-?Subroutine40:
+?Subroutine41:
         MOV      R0,R5
-          CFI (cfiCond423) FunCall fw_storage_poll w25_async_poll
-          CFI (cfiCond423) FunCall fw_storage_poll w25_async_poll
-          CFI (cfiCond425) FunCall log_async_step w25_async_poll
-          CFI (cfiCond426) FunCall user_storage_poll w25_async_poll
+          CFI (cfiCond424) FunCall fw_storage_poll w25_async_poll
+          CFI (cfiCond424) FunCall fw_storage_poll w25_async_poll
+          CFI (cfiCond426) FunCall log_async_step w25_async_poll
+          CFI (cfiCond427) FunCall user_storage_poll w25_async_poll
         B.W      w25_async_poll
-          CFI EndBlock cfiCond423
           CFI EndBlock cfiCond424
           CFI EndBlock cfiCond425
           CFI EndBlock cfiCond426
-          CFI EndBlock cfiPicker427
+          CFI EndBlock cfiCond427
+          CFI EndBlock cfiPicker428
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond428 Using cfiCommon0
+          CFI Block cfiCond429 Using cfiCommon0
           CFI Function log_addEvent
-          CFI Conditional ??CrossCallReturnLabel_29
+          CFI Conditional ??CrossCallReturnLabel_31
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
           CFI R7 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+64
-          CFI Block cfiCond429 Using cfiCommon0
-          CFI (cfiCond429) Function log_async_step
-          CFI (cfiCond429) Conditional ??CrossCallReturnLabel_30
-          CFI (cfiCond429) R4 Frame(CFA, -16)
-          CFI (cfiCond429) R5 Frame(CFA, -12)
-          CFI (cfiCond429) R6 Frame(CFA, -8)
-          CFI (cfiCond429) R14 Frame(CFA, -4)
-          CFI (cfiCond429) CFA R13+56
-          CFI Block cfiPicker430 Using cfiCommon1
-          CFI (cfiPicker430) NoFunction
-          CFI (cfiPicker430) Picker
+          CFI Block cfiCond430 Using cfiCommon0
+          CFI (cfiCond430) Function log_async_step
+          CFI (cfiCond430) Conditional ??CrossCallReturnLabel_32
+          CFI (cfiCond430) R4 Frame(CFA, -16)
+          CFI (cfiCond430) R5 Frame(CFA, -12)
+          CFI (cfiCond430) R6 Frame(CFA, -8)
+          CFI (cfiCond430) R14 Frame(CFA, -4)
+          CFI (cfiCond430) CFA R13+56
+          CFI Block cfiPicker431 Using cfiCommon1
+          CFI (cfiPicker431) NoFunction
+          CFI (cfiPicker431) Picker
         THUMB
-?Subroutine15:
+?Subroutine16:
         LDRB     R2,[SP, #+0]
         STRB     R2,[R0, #+0]
         LDRB     R2,[SP, #+1]
         STRB     R2,[R0, #+1]
         ADD      R3,SP,#+2
         BX       LR
-          CFI EndBlock cfiCond428
           CFI EndBlock cfiCond429
-          CFI EndBlock cfiPicker430
+          CFI EndBlock cfiCond430
+          CFI EndBlock cfiPicker431
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock431 Using cfiCommon0
+          CFI Block cfiBlock432 Using cfiCommon0
           CFI Function log_storage_poll
         THUMB
 log_storage_poll:
@@ -17693,10 +17721,10 @@ log_storage_poll:
           CFI FunCall log_async_active
         BL       log_async_active
         CBNZ.N   R0,??log_storage_poll_0
-        LDR.W    R0,??DataTable188
+        LDR.W    R0,??DataTable166_2
         LDRB     R0,[R0, #+0]
         CBZ.N    R0,??log_storage_poll_1
-        LDR.W    R1,??DataTable181
+        LDR.W    R1,??DataTable182
         LDRB     R0,[R1, #+46]
         CMP      R0,#+3
         BNE.N    ??log_storage_poll_2
@@ -17722,7 +17750,7 @@ log_storage_poll:
         BL       log_async_step
         CMP      R0,#+2
         BNE.N    ??log_storage_poll_1
-        LDR.W    R4,??DataTable188
+        LDR.W    R4,??DataTable166_2
         LDRB     R0,[R4, #+0]
         SUBS     R5,R0,#+1
         LDR.W    R0,??DataTable191
@@ -17734,10 +17762,10 @@ log_storage_poll:
         STRB     R5,[R4, #+0]
 ??log_storage_poll_1:
         POP      {R0,R4,R5,PC}
-          CFI EndBlock cfiBlock431
+          CFI EndBlock cfiBlock432
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock432 Using cfiCommon0
+          CFI Block cfiBlock433 Using cfiCommon0
           CFI Function log_flushPending
         THUMB
 log_flushPending:
@@ -17746,10 +17774,10 @@ log_flushPending:
           CFI R5 Frame(CFA, -8)
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
-        BL       ?Subroutine24
-??CrossCallReturnLabel_81:
+        BL       ?Subroutine25
+??CrossCallReturnLabel_83:
         CMP      R0,#+0
-        LDR.W    R4,??DataTable188
+        LDR.W    R4,??DataTable166_2
         LDR.W    R5,??DataTable191
         BEQ.N    ??log_flushPending_0
 ??log_flushPending_1:
@@ -17774,10 +17802,24 @@ log_flushPending:
         CMP      R0,#+0
         BNE.N    ??log_flushPending_2
         POP      {R0,R4,R5,PC}
-          CFI EndBlock cfiBlock432
+          CFI EndBlock cfiBlock433
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable157:
+        DATA32
+        DC32     ?_127
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable157_1:
+        DATA32
+        DC32     ?_128
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock433 Using cfiCommon0
+          CFI Block cfiBlock434 Using cfiCommon0
           CFI Function log_setTime
         THUMB
 log_setTime:
@@ -17793,7 +17835,7 @@ log_setTime:
         MOVS     R1,#+1
         LDR.W    R0,??DataTable190
         STRB     R1,[R0, #+0]
-        LDR.W    R5,??DataTable190_1
+        LDR.W    R5,??DataTable170
         LDRB     R0,[R5, #+0]
         CBNZ.N   R0,??log_setTime_0
           CFI FunCall log_async_active
@@ -17816,7 +17858,7 @@ log_setTime:
         ADDS     R2,R2,#+1
         UXTB     R2,R2
 ??log_setTime_1:
-        LDR.W    R0,??DataTable188
+        LDR.W    R0,??DataTable166_2
         LDRB     R0,[R0, #+0]
         CMP      R2,R0
         BLT.N    ??log_setTime_2
@@ -17831,17 +17873,31 @@ log_setTime:
           CFI CFA R13+0
           CFI FunCall log_flushPending
         B.N      log_flushPending
-          CFI EndBlock cfiBlock433
+          CFI EndBlock cfiBlock434
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable158:
+        DATA32
+        DC32     ?_129
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable158_1:
+        DATA32
+        DC32     ?_130
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock434 Using cfiCommon0
+          CFI Block cfiBlock435 Using cfiCommon0
           CFI Function log_checkPending
         THUMB
 log_checkPending:
-        LDR.W    R0,??DataTable188
+        LDR.W    R0,??DataTable166_2
         LDRB     R0,[R0, #+0]
         CBZ.N    R0,??log_checkPending_0
-        LDR.W    R0,??DataTable190_1
+        LDR.W    R0,??DataTable170
         LDRB     R0,[R0, #+0]
         CBNZ.N   R0,??log_checkPending_1
         LDR.N    R0,??DataTable163_2
@@ -17853,38 +17909,10 @@ log_checkPending:
         B.N      log_flushPending
 ??log_checkPending_0:
         BX       LR
-          CFI EndBlock cfiBlock434
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable158:
-        DATA32
-        DC32     ?_127
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable158_1:
-        DATA32
-        DC32     ?_128
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable158_2:
-        DATA32
-        DC32     ?_129
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable158_3:
-        DATA32
-        DC32     ?_130
+          CFI EndBlock cfiBlock435
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock435 Using cfiCommon0
+          CFI Block cfiBlock436 Using cfiCommon0
           CFI Function log_put
         THUMB
 log_put:
@@ -17898,7 +17926,7 @@ log_put:
         LDR.W    R5,??DataTable192
         LDRB     R0,[R5, #+0]
         CBNZ.N   R0,??log_put_0
-        LDR.W    R0,??DataTable190_1
+        LDR.W    R0,??DataTable170
         LDRB     R0,[R0, #+0]
         CBNZ.N   R0,??log_put_1
         LDR.N    R0,??DataTable163_2
@@ -17908,7 +17936,7 @@ log_put:
 ??log_put_1:
           CFI FunCall log_flushPending
         BL       log_flushPending
-        LDR.W    R0,??DataTable188
+        LDR.W    R0,??DataTable166_2
         LDRB     R0,[R0, #+0]
         CBNZ.N   R0,??log_put_0
         MOV      R0,R4
@@ -17919,14 +17947,14 @@ log_put:
         LDRB     R0,[R5, #+0]
         CBNZ.N   R0,??log_put_4
 ??log_put_2:
-        LDR.W    R0,??DataTable188
+        LDR.W    R0,??DataTable166_2
         LDRB     R0,[R0, #+0]
         CMP      R0,#+16
           CFI FunCall log_flushPending
         IT       EQ
         BLEQ     log_flushPending
 ??log_put_4:
-        LDR.W    R5,??DataTable188
+        LDR.N    R5,??DataTable166_2
         LDRB     R0,[R5, #+0]
         CMP      R0,#+16
         BNE.N    ??log_put_5
@@ -17939,7 +17967,7 @@ log_put:
         MOVS     R2,#+32
           CFI FunCall __aeabi_memcpy
         BL       __aeabi_memcpy
-        LDR.W    R0,??DataTable190_1
+        LDR.W    R0,??DataTable170
         LDRB     R0,[R0, #+0]
         CBNZ.N   R0,??log_put_6
         LDRB     R0,[R5, #+0]
@@ -17954,60 +17982,7 @@ log_put:
 ??log_put_3:
         MOVS     R0,#+1
         POP      {R4-R6,PC}
-          CFI EndBlock cfiBlock435
-
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock436 Using cfiCommon0
-          CFI Function log_addSystemEvent
-          CFI NoCalls
-        THUMB
-log_addSystemEvent:
-        PUSH     {R4,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R4 Frame(CFA, -8)
-          CFI CFA R13+8
-        SUB      SP,SP,#+32
-          CFI CFA R13+40
-        MOV      R4,R0
-        BL       ?Subroutine30
-??CrossCallReturnLabel_95:
-        BL       ?Subroutine9
-??CrossCallReturnLabel_10:
-        STRB     R4,[SP, #+8]
-        BL       ?Subroutine31
-??CrossCallReturnLabel_102:
-        ADD      SP,SP,#+32
-          CFI CFA R13+8
-        POP      {R4,PC}
           CFI EndBlock cfiBlock436
-
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock437 Using cfiCommon0
-          CFI Function log_addSystemValue
-        THUMB
-log_addSystemValue:
-        PUSH     {R1-R5,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R5 Frame(CFA, -8)
-          CFI R4 Frame(CFA, -12)
-          CFI CFA R13+24
-        MOV      R4,R0
-        MOV      R2,R1
-        MOV      R5,SP
-        MOVS     R0,#+0
-        MOVS     R1,#+0
-        MOVS     R3,#+0
-        STM      R5,{R0,R1,R3}
-        ADR.N    R1,??DataTable165
-        MOV      R0,SP
-          CFI FunCall sprintf
-        BL       sprintf
-        MOV      R1,SP
-        MOV      R0,R4
-          CFI FunCall log_addSystemEventID
-        BL       log_addSystemEventID
-        POP      {R1-R5,PC}
-          CFI EndBlock cfiBlock437
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -18024,7 +17999,60 @@ log_addSystemValue:
         DC32     mem
 
         SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiBlock437 Using cfiCommon0
+          CFI Function log_addSystemEvent
+          CFI NoCalls
+        THUMB
+log_addSystemEvent:
+        PUSH     {R4,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI R4 Frame(CFA, -8)
+          CFI CFA R13+8
+        SUB      SP,SP,#+32
+          CFI CFA R13+40
+        MOV      R4,R0
+        BL       ?Subroutine31
+??CrossCallReturnLabel_97:
+        BL       ?Subroutine9
+??CrossCallReturnLabel_10:
+        STRB     R4,[SP, #+8]
+        BL       ?Subroutine32
+??CrossCallReturnLabel_104:
+        ADD      SP,SP,#+32
+          CFI CFA R13+8
+        POP      {R4,PC}
+          CFI EndBlock cfiBlock437
+
+        SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock438 Using cfiCommon0
+          CFI Function log_addSystemValue
+        THUMB
+log_addSystemValue:
+        PUSH     {R1-R5,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI R5 Frame(CFA, -8)
+          CFI R4 Frame(CFA, -12)
+          CFI CFA R13+24
+        MOV      R4,R0
+        MOV      R2,R1
+        MOV      R5,SP
+        MOVS     R0,#+0
+        MOVS     R1,#+0
+        MOVS     R3,#+0
+        STM      R5,{R0,R1,R3}
+        ADR.N    R1,??DataTable166
+        MOV      R0,SP
+          CFI FunCall sprintf
+        BL       sprintf
+        MOV      R1,SP
+        MOV      R0,R4
+          CFI FunCall log_addSystemEventID
+        BL       log_addSystemEventID
+        POP      {R1-R5,PC}
+          CFI EndBlock cfiBlock438
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiBlock439 Using cfiCommon0
           CFI Function log_addSystemEventID
           CFI NoCalls
         THUMB
@@ -18038,25 +18066,25 @@ log_addSystemEventID:
           CFI CFA R13+48
         MOV      R5,R0
         MOV      R4,R1
-        BL       ?Subroutine30
-??CrossCallReturnLabel_96:
+        BL       ?Subroutine31
+??CrossCallReturnLabel_98:
         BL       ?Subroutine9
 ??CrossCallReturnLabel_11:
         STRB     R5,[SP, #+8]
-        CBZ.N    R4,??CrossCallReturnLabel_87
-        BL       ?Subroutine27
-??CrossCallReturnLabel_87:
-        BL       ?Subroutine31
-??CrossCallReturnLabel_101:
+        CBZ.N    R4,??CrossCallReturnLabel_89
+        BL       ?Subroutine28
+??CrossCallReturnLabel_89:
+        BL       ?Subroutine32
+??CrossCallReturnLabel_103:
         ADD      SP,SP,#+36
           CFI CFA R13+12
         POP      {R4,R5,PC}
-          CFI EndBlock cfiBlock438
+          CFI EndBlock cfiBlock439
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond439 Using cfiCommon0
+          CFI Block cfiCond440 Using cfiCommon0
           CFI Function user_addIdToTempBuffer
-          CFI Conditional ??CrossCallReturnLabel_94
+          CFI Conditional ??CrossCallReturnLabel_96
           CFI R4 Frame(CFA, -28)
           CFI R5 Frame(CFA, -24)
           CFI R6 Frame(CFA, -20)
@@ -18065,54 +18093,54 @@ log_addSystemEventID:
           CFI R9 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+64
-          CFI Block cfiCond440 Using cfiCommon0
-          CFI (cfiCond440) Function log_addSystemEvent
-          CFI (cfiCond440) Conditional ??CrossCallReturnLabel_95
-          CFI (cfiCond440) R4 Frame(CFA, -8)
-          CFI (cfiCond440) R14 Frame(CFA, -4)
-          CFI (cfiCond440) CFA R13+40
           CFI Block cfiCond441 Using cfiCommon0
-          CFI (cfiCond441) Function log_addSystemEventID
-          CFI (cfiCond441) Conditional ??CrossCallReturnLabel_96
-          CFI (cfiCond441) R4 Frame(CFA, -12)
-          CFI (cfiCond441) R5 Frame(CFA, -8)
+          CFI (cfiCond441) Function log_addSystemEvent
+          CFI (cfiCond441) Conditional ??CrossCallReturnLabel_97
+          CFI (cfiCond441) R4 Frame(CFA, -8)
           CFI (cfiCond441) R14 Frame(CFA, -4)
-          CFI (cfiCond441) CFA R13+48
+          CFI (cfiCond441) CFA R13+40
           CFI Block cfiCond442 Using cfiCommon0
-          CFI (cfiCond442) Function log_addControlEvent
-          CFI (cfiCond442) Conditional ??CrossCallReturnLabel_97
-          CFI (cfiCond442) R4 Frame(CFA, -16)
-          CFI (cfiCond442) R5 Frame(CFA, -12)
-          CFI (cfiCond442) R6 Frame(CFA, -8)
+          CFI (cfiCond442) Function log_addSystemEventID
+          CFI (cfiCond442) Conditional ??CrossCallReturnLabel_98
+          CFI (cfiCond442) R4 Frame(CFA, -12)
+          CFI (cfiCond442) R5 Frame(CFA, -8)
           CFI (cfiCond442) R14 Frame(CFA, -4)
           CFI (cfiCond442) CFA R13+48
           CFI Block cfiCond443 Using cfiCommon0
-          CFI (cfiCond443) Function log_addPhotoEvent
-          CFI (cfiCond443) Conditional ??CrossCallReturnLabel_98
+          CFI (cfiCond443) Function log_addControlEvent
+          CFI (cfiCond443) Conditional ??CrossCallReturnLabel_99
+          CFI (cfiCond443) R4 Frame(CFA, -16)
+          CFI (cfiCond443) R5 Frame(CFA, -12)
+          CFI (cfiCond443) R6 Frame(CFA, -8)
           CFI (cfiCond443) R14 Frame(CFA, -4)
-          CFI (cfiCond443) CFA R13+40
-          CFI Block cfiPicker444 Using cfiCommon1
-          CFI (cfiPicker444) NoFunction
-          CFI (cfiPicker444) Picker
+          CFI (cfiCond443) CFA R13+48
+          CFI Block cfiCond444 Using cfiCommon0
+          CFI (cfiCond444) Function log_addPhotoEvent
+          CFI (cfiCond444) Conditional ??CrossCallReturnLabel_100
+          CFI (cfiCond444) R14 Frame(CFA, -4)
+          CFI (cfiCond444) CFA R13+40
+          CFI Block cfiPicker445 Using cfiCommon1
+          CFI (cfiPicker445) NoFunction
+          CFI (cfiPicker445) Picker
         THUMB
-?Subroutine30:
+?Subroutine31:
         MOVS     R1,#+32
         MOV      R0,SP
-          CFI (cfiCond439) FunCall user_addIdToTempBuffer __aeabi_memclr4
-          CFI (cfiCond440) FunCall log_addSystemEvent __aeabi_memclr4
-          CFI (cfiCond441) FunCall log_addSystemEventID __aeabi_memclr4
-          CFI (cfiCond442) FunCall log_addControlEvent __aeabi_memclr4
-          CFI (cfiCond443) FunCall log_addPhotoEvent __aeabi_memclr4
+          CFI (cfiCond440) FunCall user_addIdToTempBuffer __aeabi_memclr4
+          CFI (cfiCond441) FunCall log_addSystemEvent __aeabi_memclr4
+          CFI (cfiCond442) FunCall log_addSystemEventID __aeabi_memclr4
+          CFI (cfiCond443) FunCall log_addControlEvent __aeabi_memclr4
+          CFI (cfiCond444) FunCall log_addPhotoEvent __aeabi_memclr4
         B.W      __aeabi_memclr4
-          CFI EndBlock cfiCond439
           CFI EndBlock cfiCond440
           CFI EndBlock cfiCond441
           CFI EndBlock cfiCond442
           CFI EndBlock cfiCond443
-          CFI EndBlock cfiPicker444
+          CFI EndBlock cfiCond444
+          CFI EndBlock cfiPicker445
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock445 Using cfiCommon0
+          CFI Block cfiBlock446 Using cfiCommon0
           CFI Function log_addControlEvent
           CFI NoCalls
         THUMB
@@ -18128,127 +18156,127 @@ log_addControlEvent:
         MOV      R6,R0
         MOV      R4,R1
         MOV      R5,R2
-        BL       ?Subroutine30
-??CrossCallReturnLabel_97:
+        BL       ?Subroutine31
+??CrossCallReturnLabel_99:
         BL       ?Subroutine9
 ??CrossCallReturnLabel_12:
         STRB     R6,[SP, #+8]
         STRB     R5,[SP, #+23]
-        CBZ.N    R4,??CrossCallReturnLabel_88
-        BL       ?Subroutine27
-??CrossCallReturnLabel_88:
-        BL       ?Subroutine31
-??CrossCallReturnLabel_100:
+        CBZ.N    R4,??CrossCallReturnLabel_90
+        BL       ?Subroutine28
+??CrossCallReturnLabel_90:
+        BL       ?Subroutine32
+??CrossCallReturnLabel_102:
         ADD      SP,SP,#+32
           CFI CFA R13+16
         POP      {R4-R6,PC}
-          CFI EndBlock cfiBlock445
+          CFI EndBlock cfiBlock446
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond446 Using cfiCommon0
+          CFI Block cfiCond447 Using cfiCommon0
           CFI Function log_addSystemEvent
-          CFI Conditional ??CrossCallReturnLabel_102
+          CFI Conditional ??CrossCallReturnLabel_104
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+40
-          CFI Block cfiCond447 Using cfiCommon0
-          CFI (cfiCond447) Function log_addSystemEventID
-          CFI (cfiCond447) Conditional ??CrossCallReturnLabel_101
-          CFI (cfiCond447) R4 Frame(CFA, -12)
-          CFI (cfiCond447) R5 Frame(CFA, -8)
-          CFI (cfiCond447) R14 Frame(CFA, -4)
-          CFI (cfiCond447) CFA R13+48
           CFI Block cfiCond448 Using cfiCommon0
-          CFI (cfiCond448) Function log_addControlEvent
-          CFI (cfiCond448) Conditional ??CrossCallReturnLabel_100
-          CFI (cfiCond448) R4 Frame(CFA, -16)
-          CFI (cfiCond448) R5 Frame(CFA, -12)
-          CFI (cfiCond448) R6 Frame(CFA, -8)
+          CFI (cfiCond448) Function log_addSystemEventID
+          CFI (cfiCond448) Conditional ??CrossCallReturnLabel_103
+          CFI (cfiCond448) R4 Frame(CFA, -12)
+          CFI (cfiCond448) R5 Frame(CFA, -8)
           CFI (cfiCond448) R14 Frame(CFA, -4)
           CFI (cfiCond448) CFA R13+48
           CFI Block cfiCond449 Using cfiCommon0
-          CFI (cfiCond449) Function log_addPhotoEvent
-          CFI (cfiCond449) Conditional ??CrossCallReturnLabel_99
+          CFI (cfiCond449) Function log_addControlEvent
+          CFI (cfiCond449) Conditional ??CrossCallReturnLabel_102
+          CFI (cfiCond449) R4 Frame(CFA, -16)
+          CFI (cfiCond449) R5 Frame(CFA, -12)
+          CFI (cfiCond449) R6 Frame(CFA, -8)
           CFI (cfiCond449) R14 Frame(CFA, -4)
-          CFI (cfiCond449) CFA R13+40
-          CFI Block cfiPicker450 Using cfiCommon1
-          CFI (cfiPicker450) NoFunction
-          CFI (cfiPicker450) Picker
+          CFI (cfiCond449) CFA R13+48
+          CFI Block cfiCond450 Using cfiCommon0
+          CFI (cfiCond450) Function log_addPhotoEvent
+          CFI (cfiCond450) Conditional ??CrossCallReturnLabel_101
+          CFI (cfiCond450) R14 Frame(CFA, -4)
+          CFI (cfiCond450) CFA R13+40
+          CFI Block cfiPicker451 Using cfiCommon1
+          CFI (cfiPicker451) NoFunction
+          CFI (cfiPicker451) Picker
         THUMB
-?Subroutine31:
+?Subroutine32:
         MOV      R0,SP
-          CFI (cfiCond446) FunCall log_addSystemEvent log_put
-          CFI (cfiCond447) FunCall log_addSystemEventID log_put
-          CFI (cfiCond448) FunCall log_addControlEvent log_put
-          CFI (cfiCond449) FunCall log_addPhotoEvent log_put
+          CFI (cfiCond447) FunCall log_addSystemEvent log_put
+          CFI (cfiCond448) FunCall log_addSystemEventID log_put
+          CFI (cfiCond449) FunCall log_addControlEvent log_put
+          CFI (cfiCond450) FunCall log_addPhotoEvent log_put
         B.N      log_put
-          CFI EndBlock cfiCond446
           CFI EndBlock cfiCond447
           CFI EndBlock cfiCond448
           CFI EndBlock cfiCond449
-          CFI EndBlock cfiPicker450
+          CFI EndBlock cfiCond450
+          CFI EndBlock cfiPicker451
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond451 Using cfiCommon0
+          CFI Block cfiCond452 Using cfiCommon0
           CFI Function log_addSystemEventID
-          CFI Conditional ??CrossCallReturnLabel_87
+          CFI Conditional ??CrossCallReturnLabel_89
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+48
-          CFI Block cfiCond452 Using cfiCommon0
-          CFI (cfiCond452) Function log_addControlEvent
-          CFI (cfiCond452) Conditional ??CrossCallReturnLabel_88
-          CFI (cfiCond452) R4 Frame(CFA, -16)
-          CFI (cfiCond452) R5 Frame(CFA, -12)
-          CFI (cfiCond452) R6 Frame(CFA, -8)
-          CFI (cfiCond452) R14 Frame(CFA, -4)
-          CFI (cfiCond452) CFA R13+48
-          CFI Block cfiPicker453 Using cfiCommon1
-          CFI (cfiPicker453) NoFunction
-          CFI (cfiPicker453) Picker
+          CFI Block cfiCond453 Using cfiCommon0
+          CFI (cfiCond453) Function log_addControlEvent
+          CFI (cfiCond453) Conditional ??CrossCallReturnLabel_90
+          CFI (cfiCond453) R4 Frame(CFA, -16)
+          CFI (cfiCond453) R5 Frame(CFA, -12)
+          CFI (cfiCond453) R6 Frame(CFA, -8)
+          CFI (cfiCond453) R14 Frame(CFA, -4)
+          CFI (cfiCond453) CFA R13+48
+          CFI Block cfiPicker454 Using cfiCommon1
+          CFI (cfiPicker454) NoFunction
+          CFI (cfiPicker454) Picker
         THUMB
-?Subroutine27:
+?Subroutine28:
         MOVS     R2,#+10
         MOV      R1,R4
         ADD      R0,SP,#+9
-          CFI (cfiCond451) FunCall log_addSystemEventID __aeabi_memcpy
-          CFI (cfiCond452) FunCall log_addControlEvent __aeabi_memcpy
+          CFI (cfiCond452) FunCall log_addSystemEventID __aeabi_memcpy
+          CFI (cfiCond453) FunCall log_addControlEvent __aeabi_memcpy
         B.W      __aeabi_memcpy
-          CFI EndBlock cfiCond451
           CFI EndBlock cfiCond452
-          CFI EndBlock cfiPicker453
+          CFI EndBlock cfiCond453
+          CFI EndBlock cfiPicker454
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond454 Using cfiCommon0
+          CFI Block cfiCond455 Using cfiCommon0
           CFI Function log_addSystemEvent
           CFI Conditional ??CrossCallReturnLabel_10
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+40
-          CFI Block cfiCond455 Using cfiCommon0
-          CFI (cfiCond455) Function log_addSystemEventID
-          CFI (cfiCond455) Conditional ??CrossCallReturnLabel_11
-          CFI (cfiCond455) R4 Frame(CFA, -12)
-          CFI (cfiCond455) R5 Frame(CFA, -8)
-          CFI (cfiCond455) R14 Frame(CFA, -4)
-          CFI (cfiCond455) CFA R13+48
           CFI Block cfiCond456 Using cfiCommon0
-          CFI (cfiCond456) Function log_addControlEvent
-          CFI (cfiCond456) Conditional ??CrossCallReturnLabel_12
-          CFI (cfiCond456) R4 Frame(CFA, -16)
-          CFI (cfiCond456) R5 Frame(CFA, -12)
-          CFI (cfiCond456) R6 Frame(CFA, -8)
+          CFI (cfiCond456) Function log_addSystemEventID
+          CFI (cfiCond456) Conditional ??CrossCallReturnLabel_11
+          CFI (cfiCond456) R4 Frame(CFA, -12)
+          CFI (cfiCond456) R5 Frame(CFA, -8)
           CFI (cfiCond456) R14 Frame(CFA, -4)
           CFI (cfiCond456) CFA R13+48
           CFI Block cfiCond457 Using cfiCommon0
-          CFI (cfiCond457) Function log_addPhotoEvent
-          CFI (cfiCond457) Conditional ??CrossCallReturnLabel_13
+          CFI (cfiCond457) Function log_addControlEvent
+          CFI (cfiCond457) Conditional ??CrossCallReturnLabel_12
+          CFI (cfiCond457) R4 Frame(CFA, -16)
+          CFI (cfiCond457) R5 Frame(CFA, -12)
+          CFI (cfiCond457) R6 Frame(CFA, -8)
           CFI (cfiCond457) R14 Frame(CFA, -4)
-          CFI (cfiCond457) CFA R13+40
-          CFI Block cfiPicker458 Using cfiCommon1
-          CFI (cfiPicker458) NoFunction
-          CFI (cfiPicker458) Picker
+          CFI (cfiCond457) CFA R13+48
+          CFI Block cfiCond458 Using cfiCommon0
+          CFI (cfiCond458) Function log_addPhotoEvent
+          CFI (cfiCond458) Conditional ??CrossCallReturnLabel_13
+          CFI (cfiCond458) R14 Frame(CFA, -4)
+          CFI (cfiCond458) CFA R13+40
+          CFI Block cfiPicker459 Using cfiCommon1
+          CFI (cfiPicker459) NoFunction
+          CFI (cfiPicker459) Picker
         THUMB
 ?Subroutine9:
         LDR.N    R1,??DataTable163_2
@@ -18257,14 +18285,14 @@ log_addControlEvent:
         LDR      R0,[R1, #+47]
         STR      R0,[SP, #+4]
         BX       LR
-          CFI EndBlock cfiCond454
           CFI EndBlock cfiCond455
           CFI EndBlock cfiCond456
           CFI EndBlock cfiCond457
-          CFI EndBlock cfiPicker458
+          CFI EndBlock cfiCond458
+          CFI EndBlock cfiPicker459
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock459 Using cfiCommon0
+          CFI Block cfiBlock460 Using cfiCommon0
           CFI Function log_addUpdateEvent
         THUMB
 log_addUpdateEvent:
@@ -18295,8 +18323,8 @@ log_addUpdateEvent:
         LDRB     R0,[R5, #+19]
         STRB     R0,[SP, #+17]
         ADD      R0,SP,#+18
-        BL       ?Subroutine16
-??CrossCallReturnLabel_36:
+        BL       ?Subroutine17
+??CrossCallReturnLabel_38:
         ADD      R2,SP,#+4
         ADD      R0,SP,#+20
         LDR      R1,[R2, #+0]
@@ -18308,17 +18336,31 @@ log_addUpdateEvent:
         ADD      SP,SP,#+40
           CFI CFA R13+16
         POP      {R4-R6,PC}
-          CFI EndBlock cfiBlock459
+          CFI EndBlock cfiBlock460
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable162:
+??DataTable163:
+        DATA32
+        DC32     0x32474f4c
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable163_1:
         DATA32
         DC32     store
 
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable163_2:
+        DATA32
+        DC32     device
+
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock460 Using cfiCommon0
+          CFI Block cfiBlock461 Using cfiCommon0
           CFI Function log_addPhotoEvent
           CFI NoCalls
         THUMB
@@ -18328,8 +18370,8 @@ log_addPhotoEvent:
           CFI CFA R13+8
         SUB      SP,SP,#+32
           CFI CFA R13+40
-        BL       ?Subroutine30
-??CrossCallReturnLabel_98:
+        BL       ?Subroutine31
+??CrossCallReturnLabel_100:
         BL       ?Subroutine9
 ??CrossCallReturnLabel_13:
         MOVS     R0,#+129
@@ -18338,15 +18380,15 @@ log_addPhotoEvent:
         ADD      R0,SP,#+9
         LDR      R2,[R3, #+0]
         STR      R2,[R0, #+0]
-        BL       ?Subroutine31
-??CrossCallReturnLabel_99:
+        BL       ?Subroutine32
+??CrossCallReturnLabel_101:
         ADD      SP,SP,#+36
           CFI CFA R13+4
         POP      {PC}
-          CFI EndBlock cfiBlock460
+          CFI EndBlock cfiBlock461
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock461 Using cfiCommon0
+          CFI Block cfiBlock462 Using cfiCommon0
           CFI Function user_getPhotoCount
         THUMB
 user_getPhotoCount:
@@ -18356,7 +18398,7 @@ user_getPhotoCount:
           CFI R5 Frame(CFA, -12)
           CFI R4 Frame(CFA, -16)
           CFI CFA R13+24
-        LDR.W    R0,??DataTable192_1
+        LDR.W    R0,??DataTable193
         LDR      R5,[R0, #+72]
           CFI FunCall photo_storage_end
         BL       photo_storage_end
@@ -18368,20 +18410,20 @@ user_getPhotoCount:
         CMP      R0,#+1
         IT       NE
         MOVNE    R5,#+4294967295
-        LDR.N    R1,??DataTable163_2
+        LDR.W    R1,??DataTable193_1
         STR      R5,[R1, #+157]
         B.N      ??user_getPhotoCount_1
 ??user_getPhotoCount_0:
           CFI FunCall photo_recover
         BL       photo_recover
         CBNZ.N   R0,??user_getPhotoCount_2
-        LDR.N    R1,??DataTable163_2
+        LDR.W    R1,??DataTable193_1
         MOV      R0,#+4294967295
         STR      R0,[R1, #+157]
 ??user_getPhotoCount_1:
         STRH     R4,[R1, #+155]
         BL       ?Subroutine57
-??CrossCallReturnLabel_204:
+??CrossCallReturnLabel_203:
         STRH     R2,[R1, #+129]
         MOVS     R0,#+0
         POP      {R1,R2,R4-R6,PC}
@@ -18416,14 +18458,14 @@ user_getPhotoCount:
         CMP      R6,R0
         BCC.N    ??user_getPhotoCount_4
         MOVS     R2,#+8
-        BL       ?Subroutine56
-??CrossCallReturnLabel_201:
+        BL       ?Subroutine59
+??CrossCallReturnLabel_207:
         CMP      R0,#+0
         BNE.N    ??user_getPhotoCount_3
         MOV      R5,#+4294967295
         MOVS     R4,#+0
 ??user_getPhotoCount_4:
-        LDR.N    R1,??DataTable163_2
+        LDR.W    R1,??DataTable193_1
         STR      R5,[R1, #+157]
         STRH     R4,[R1, #+155]
         UXTH     R0,R4
@@ -18437,66 +18479,52 @@ user_getPhotoCount:
         B.N      ??user_getPhotoCount_4
 ??user_getPhotoCount_6:
         BL       ?Subroutine57
-??CrossCallReturnLabel_205:
+??CrossCallReturnLabel_204:
         ORRS     R3,R3,R2
         STRH     R3,[R1, #+129]
         UXTH     R0,R4
         POP      {R1,R2,R4-R6,PC}
-          CFI EndBlock cfiBlock461
+          CFI EndBlock cfiBlock462
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable163:
-        DATA32
-        DC32     0x32474f4c
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable163_1:
+??DataTable164:
         DATA32
         DC32     log_lastIndex
 
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable163_2:
-        DATA32
-        DC32     device
-
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond462 Using cfiCommon0
+          CFI Block cfiCond463 Using cfiCommon0
           CFI Function user_getPhotoCount
-          CFI Conditional ??CrossCallReturnLabel_204
+          CFI Conditional ??CrossCallReturnLabel_203
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+24
-          CFI Block cfiCond463 Using cfiCommon0
-          CFI (cfiCond463) Function user_getPhotoCount
-          CFI (cfiCond463) Conditional ??CrossCallReturnLabel_205
-          CFI (cfiCond463) R4 Frame(CFA, -16)
-          CFI (cfiCond463) R5 Frame(CFA, -12)
-          CFI (cfiCond463) R6 Frame(CFA, -8)
-          CFI (cfiCond463) R14 Frame(CFA, -4)
-          CFI (cfiCond463) CFA R13+24
-          CFI Block cfiPicker464 Using cfiCommon1
-          CFI (cfiPicker464) NoFunction
-          CFI (cfiPicker464) Picker
+          CFI Block cfiCond464 Using cfiCommon0
+          CFI (cfiCond464) Function user_getPhotoCount
+          CFI (cfiCond464) Conditional ??CrossCallReturnLabel_204
+          CFI (cfiCond464) R4 Frame(CFA, -16)
+          CFI (cfiCond464) R5 Frame(CFA, -12)
+          CFI (cfiCond464) R6 Frame(CFA, -8)
+          CFI (cfiCond464) R14 Frame(CFA, -4)
+          CFI (cfiCond464) CFA R13+24
+          CFI Block cfiPicker465 Using cfiCommon1
+          CFI (cfiPicker465) NoFunction
+          CFI (cfiPicker465) Picker
         THUMB
 ?Subroutine57:
         LDRH     R2,[R1, #+129]
         MOVW     R0,#+57343
         ANDS     R2,R0,R2
         BX       LR
-          CFI EndBlock cfiCond462
           CFI EndBlock cfiCond463
-          CFI EndBlock cfiPicker464
+          CFI EndBlock cfiCond464
+          CFI EndBlock cfiPicker465
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock465 Using cfiCommon0
+          CFI Block cfiBlock466 Using cfiCommon0
           CFI Function user_checkFirmware
         THUMB
 user_checkFirmware:
@@ -18517,7 +18545,7 @@ user_checkFirmware:
         TST      R4,#0x3
         BNE.N    ??user_checkFirmware_0
         MOV      R8,#+4294967295
-        LDR.W    R9,??DataTable194
+        LDR.W    R9,??DataTable195
 ??user_checkFirmware_1:
         CMP      R4,#+129
         ITE      CS
@@ -18553,10 +18581,17 @@ user_checkFirmware:
         MOVS     R0,#+1
 ??user_checkFirmware_2:
         POP      {R4-R10,PC}
-          CFI EndBlock cfiBlock465
+          CFI EndBlock cfiBlock466
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable165:
+        DATA32
+        DC32     log_lastIndex
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock466 Using cfiCommon0
+          CFI Block cfiBlock467 Using cfiCommon0
           CFI Function user_send_usbDiag
         THUMB
 user_send_usbDiag:
@@ -18571,7 +18606,7 @@ user_send_usbDiag:
         MOVS     R0,#+5
         STR      R0,[SP, #+244]
         ADD      R5,SP,#+244
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
         LDR      R0,[R0, #+51]
         STR      R0,[R5, #+4]
           CFI FunCall timers_getMillis
@@ -18580,22 +18615,22 @@ user_send_usbDiag:
         ADD      R0,SP,#+256
           CFI FunCall usb_diag_fill
         BL       usb_diag_fill
-        LDR.W    R0,??DataTable192_2
+        LDR.W    R0,??DataTable193_2
         LDR      R0,[R0, #+0]
         STR      R0,[SP, #+348]
-        LDR.W    R0,??DataTable192_3
+        LDR.W    R0,??DataTable193_3
         LDR      R0,[R0, #+0]
         STR      R0,[SP, #+352]
-        LDR.W    R0,??DataTable192_4
+        LDR.W    R0,??DataTable193_4
         LDR      R0,[R0, #+0]
         STR      R0,[SP, #+356]
         MOVS     R0,#+0
         STR      R0,[SP, #+360]
         STR      R0,[SP, #+364]
         STR      R0,[SP, #+368]
-        LDR.W    R0,??DataTable192_5
+        LDR.W    R0,??DataTable193_5
         LDR      R0,[R0, #+0]
-        LDR.W    R1,??DataTable195_1
+        LDR.W    R1,??DataTable197_1
         CMP      R0,R1
         ITE      EQ
         MOVEQ    R0,#+1
@@ -18648,31 +18683,38 @@ user_send_usbDiag:
         ADD      SP,SP,#+476
           CFI CFA R13+12
         POP      {R4,R5,PC}
-          CFI EndBlock cfiBlock466
+          CFI EndBlock cfiBlock467
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable165:
+??DataTable166:
         DATA8
         DC8      0x25, 0x64, 0x00, 0x00
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable165_1:
+??DataTable166_1:
         DATA32
-        DC32     fw_job
+        DC32     store_save_requested
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable165_2:
+??DataTable166_2:
         DATA32
-        DC32     log_lastIndex
+        DC32     log_pendingCount
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable166_3:
+        DATA32
+        DC32     fw_job
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock467 Using cfiCommon0
+          CFI Block cfiBlock468 Using cfiCommon0
           CFI Function user_send_commDiag
         THUMB
 user_send_commDiag:
@@ -18805,46 +18847,46 @@ user_send_commDiag:
         ADD      SP,SP,#+456
           CFI CFA R13+24
         POP      {R4-R8,PC}
-          CFI EndBlock cfiBlock467
-
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock468 Using cfiCommon0
-          CFI Function user_comm_local_time
-          CFI NoCalls
-        THUMB
-user_comm_local_time:
-        LDR.W    R2,??DataTable195
-        LDR      R0,[R2, #+47]
-        LDR.W    R1,??DataTable195_2
-        CMP      R0,R1
-        IT       CC
-        MOVCC    R0,#+4294967295
-        BX       LR
           CFI EndBlock cfiBlock468
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock469 Using cfiCommon0
-          CFI Function user_comm_ussd
+          CFI Function user_comm_local_time
           CFI NoCalls
         THUMB
-user_comm_ussd:
-        LDR.W    R0,??DataTable195_3
+user_comm_local_time:
+        LDR.W    R2,??DataTable193_1
+        LDR      R0,[R2, #+47]
+        LDR.W    R1,??DataTable197_2
+        CMP      R0,R1
+        IT       CC
+        MOVCC    R0,#+4294967295
         BX       LR
           CFI EndBlock cfiBlock469
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock470 Using cfiCommon0
-          CFI Function user_comm_volte
+          CFI Function user_comm_ussd
           CFI NoCalls
         THUMB
-user_comm_volte:
-        LDR.W    R0,??DataTable195_4
-        LDRB     R0,[R0, #+171]
+user_comm_ussd:
+        LDR.W    R0,??DataTable197_3
         BX       LR
           CFI EndBlock cfiBlock470
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock471 Using cfiCommon0
+          CFI Function user_comm_volte
+          CFI NoCalls
+        THUMB
+user_comm_volte:
+        LDR.W    R0,??DataTable197_4
+        LDRB     R0,[R0, #+171]
+        BX       LR
+          CFI EndBlock cfiBlock471
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiBlock472 Using cfiCommon0
           CFI Function user_comm_balance
         THUMB
 user_comm_balance:
@@ -18852,7 +18894,7 @@ user_comm_balance:
         CMP      R1,#+1
         BGE.N    ??user_comm_balance_0
         MOVS     R2,#+1
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
         STRH     R2,[R0, #+77]
         B.N      ??user_comm_balance_1
 ??user_comm_balance_0:
@@ -18860,11 +18902,11 @@ user_comm_balance:
         CMP      R1,R0
         BLT.N    ??user_comm_balance_2
         MOVW     R1,#+65000
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
         STRH     R1,[R0, #+77]
         BX       LR
 ??user_comm_balance_2:
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
         STRH     R1,[R0, #+77]
         CMP      R1,#+100
         BGE.N    ??user_comm_balance_3
@@ -18874,10 +18916,17 @@ user_comm_balance:
         B.N      log_addSystemValue
 ??user_comm_balance_3:
         BX       LR
-          CFI EndBlock cfiBlock471
+          CFI EndBlock cfiBlock472
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable170:
+        DATA32
+        DC32     log_timeKnown
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock472 Using cfiCommon0
+          CFI Block cfiBlock473 Using cfiCommon0
           CFI Function user_comm_low_signal
         THUMB
 user_comm_low_signal:
@@ -18885,10 +18934,10 @@ user_comm_low_signal:
         MOVS     R0,#+38
           CFI FunCall log_addSystemValue
         B.N      log_addSystemValue
-          CFI EndBlock cfiBlock472
+          CFI EndBlock cfiBlock473
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock473 Using cfiCommon0
+          CFI Block cfiBlock474 Using cfiCommon0
           CFI Function user_comm_link
         THUMB
 user_comm_link:
@@ -18901,7 +18950,7 @@ user_comm_link:
         MOVS     R0,#+1
         POP      {R4,PC}
 ??user_comm_link_0:
-        LDR.W    R3,??DataTable195_5
+        LDR.W    R3,??DataTable197_5
         LDRB     R4,[R3, R0]
         CMP      R0,#+3
         BGE.N    ??user_comm_link_1
@@ -18917,7 +18966,7 @@ user_comm_link:
           CFI CFA R13+0
           CFI FunCall log_addSystemEvent
         B.N      log_addSystemEvent
-          CFI EndBlock cfiBlock473
+          CFI EndBlock cfiBlock474
 
         SECTION `.rodata`:CONST:REORDER:NOROOT(2)
         DATA
@@ -18928,14 +18977,14 @@ user_comm_link:
         DS8 3
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock474 Using cfiCommon0
+          CFI Block cfiBlock475 Using cfiCommon0
           CFI Function user_comm_busy
         THUMB
 user_comm_busy:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
         LDRB     R0,[R0, #+164]
         CBNZ.N   R0,??user_comm_busy_0
           CFI FunCall comm_call_active
@@ -18945,7 +18994,7 @@ user_comm_busy:
         MOVS     R0,#+1
 ??user_comm_busy_1:
         POP      {R1,PC}
-          CFI EndBlock cfiBlock474
+          CFI EndBlock cfiBlock475
 
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
@@ -18963,7 +19012,7 @@ comm_credential:
         DS8 32
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock475 Using cfiCommon0
+          CFI Block cfiBlock476 Using cfiCommon0
           CFI Function comm_split
         THUMB
 comm_split:
@@ -18993,7 +19042,7 @@ comm_split:
         CMP      R6,#+32
         IT       CS
         MOVCS    R6,#+31
-        LDR.W    R8,??DataTable195_6
+        LDR.W    R8,??DataTable197_6
         MOV      R2,R6
         MOV      R1,R7
         ADD      R0,R8,R5, LSL #+5
@@ -19007,19 +19056,19 @@ comm_split:
           CFI FunCall atoi
         BL       atoi
 ??comm_split_1:
-        LDR.W    R1,??DataTable195_7
+        LDR.W    R1,??DataTable197_7
         STRH     R0,[R1, R5, LSL #+1]
         POP      {R4-R8,PC}
-          CFI EndBlock cfiBlock475
+          CFI EndBlock cfiBlock476
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock476 Using cfiCommon0
+          CFI Block cfiBlock477 Using cfiCommon0
           CFI Function user_comm_server
           CFI NoCalls
         THUMB
 user_comm_server:
         CBNZ.N   R0,??user_comm_server_0
-        LDR.W    R1,??DataTable195_4
+        LDR.W    R1,??DataTable197_4
         LDRB     R0,[R1, #+219]
         CBNZ.N   R0,??user_comm_server_1
         LDRB     R0,[R1, #+220]
@@ -19031,39 +19080,39 @@ user_comm_server:
         MOVS     R0,#+0
 ??user_comm_server_2:
         BX       LR
-          CFI EndBlock cfiBlock476
+          CFI EndBlock cfiBlock477
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock477 Using cfiCommon0
+          CFI Block cfiBlock478 Using cfiCommon0
           CFI Function comm_endpoint
         THUMB
 comm_endpoint:
         MOVS     R1,R0
         BNE.N    ??comm_endpoint_0
-        LDR.W    R2,??DataTable195_4
+        LDR.W    R2,??DataTable197_4
         LDRB     R1,[R2, #+219]
         CBNZ.N   R1,??comm_endpoint_1
         LDRB     R1,[R2, #+220]
         CBZ.N    R1,??comm_endpoint_1
 ??comm_endpoint_0:
-        LDR.W    R1,??DataTable195_8
+        LDR.W    R1,??DataTable197_8
         B.N      ??comm_endpoint_2
 ??comm_endpoint_1:
         ADD      R1,R2,#+8
 ??comm_endpoint_2:
           CFI FunCall comm_split
         B.N      comm_split
-          CFI EndBlock cfiBlock477
+          CFI EndBlock cfiBlock478
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable174:
+??DataTable175:
         DATA32
         DC32     usb_bus_resets
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock478 Using cfiCommon0
+          CFI Block cfiBlock479 Using cfiCommon0
           CFI Function comm_text
         THUMB
 comm_text:
@@ -19088,7 +19137,7 @@ comm_text:
         BL       comm_endpoint
         MOVS     R0,#+32
         STRH     R0,[R4, #+0]
-        LDR.W    R0,??DataTable195_6
+        LDR.W    R0,??DataTable197_6
         POP      {R4-R6,PC}
 ??comm_text_2:
         MOVS     R0,#+1
@@ -19096,10 +19145,10 @@ comm_text:
         BL       comm_endpoint
         MOVS     R0,#+32
         STRH     R0,[R4, #+0]
-        LDR.W    R0,??DataTable195_9
+        LDR.W    R0,??DataTable197_9
         POP      {R4-R6,PC}
 ??comm_text_1:
-        LDR.W    R1,??DataTable195_4
+        LDR.W    R1,??DataTable197_4
         ADD      R2,R1,#+104
         SUBS     R5,R0,#+1
         MOVS     R3,#+0
@@ -19121,11 +19170,11 @@ comm_text:
 ??comm_text_6:
         MOVS     R0,#+1
         STRH     R0,[R4, #+0]
-        LDR.W    R0,??DataTable195_10
+        LDR.W    R0,??DataTable197_10
         POP      {R4-R6,PC}
 ??comm_text_9:
         LDRB     R6,[R2], #+1
-        LDR.W    R5,??DataTable195_11
+        LDR.W    R5,??DataTable197_11
         UXTB     R0,R3
         STRB     R6,[R5, R0]
         ADDS     R3,R3,#+1
@@ -19142,7 +19191,7 @@ comm_text:
         CMP      R0,#+32
         BCC.N    ??comm_text_9
 ??comm_text_10:
-        LDR.W    R0,??DataTable195_11
+        LDR.W    R0,??DataTable197_11
         MOVS     R1,#+0
         UXTB     R3,R3
         STRB     R1,[R0, R3]
@@ -19153,7 +19202,7 @@ comm_text:
         MOVS     R0,#+0
         STRH     R0,[R4, #+0]
         POP      {R4-R6,PC}
-          CFI EndBlock cfiBlock478
+          CFI EndBlock cfiBlock479
 
         SECTION `.rodata`:CONST:REORDER:NOROOT(0)
         DATA
@@ -19162,7 +19211,7 @@ comm_text:
         DC8 ""
 
         SECTION `.text`:CODE:NOROOT(2)
-          CFI Block cfiBlock479 Using cfiCommon0
+          CFI Block cfiBlock480 Using cfiCommon0
           CFI Function comm_number
         THUMB
 comm_number:
@@ -19182,22 +19231,22 @@ comm_number:
         MOVS     R0,#+0
           CFI FunCall comm_endpoint
         BL       comm_endpoint
-        LDR.W    R0,??DataTable195_7
+        LDR.W    R0,??DataTable197_7
         LDRH     R0,[R0, #+0]
         POP      {R1,PC}
 ??comm_number_3:
         MOVS     R0,#+1
           CFI FunCall comm_endpoint
         BL       comm_endpoint
-        LDR.W    R0,??DataTable195_7
+        LDR.W    R0,??DataTable197_7
         LDRH     R0,[R0, #+2]
         POP      {R1,PC}
 ??comm_number_4:
-        LDR.W    R1,??DataTable195_4
+        LDR.W    R1,??DataTable197_4
         LDRB     R0,[R1, #+136]
         CMP      R0,#+5
         BCS.N    ??comm_number_1
-        LDR.W    R0,??DataTable195_12
+        LDR.W    R0,??DataTable197_12
         LDRB     R1,[R1, #+136]
         LDRB     R0,[R0, R1]
         POP      {R1,PC}
@@ -19205,15 +19254,15 @@ comm_number:
         MOVS     R0,#+1
           CFI FunCall comm_endpoint
         BL       comm_endpoint
-        LDR.W    R0,??DataTable195_4
+        LDR.W    R0,??DataTable197_4
         LDRB     R0,[R0, #+220]
         CMP      R0,#+0
         ITTT     NE
-        LDRNE.W  R0,??DataTable195_6
+        LDRNE.W  R0,??DataTable197_6
         LDRBNE   R0,[R0, #+32]
         CMPNE    R0,#+0
         BEQ.N    ??comm_number_6
-        LDR.W    R0,??DataTable195_7
+        LDR.W    R0,??DataTable197_7
         LDRH     R0,[R0, #+2]
         CBZ.N    R0,??comm_number_7
         MOVS     R0,#+1
@@ -19224,13 +19273,13 @@ comm_number:
         UXTB     R0,R0
         POP      {R1,PC}
 ??comm_number_8:
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
         LDRB     R0,[R0, #+169]
         POP      {R1,PC}
 ??comm_number_1:
         MOVS     R0,#+0
         POP      {R1,PC}
-          CFI EndBlock cfiBlock479
+          CFI EndBlock cfiBlock480
 
         SECTION `.rodata`:CONST:REORDER:NOROOT(2)
         DATA
@@ -19247,7 +19296,7 @@ comm_settings:
         DC32 comm_text, comm_number
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock480 Using cfiCommon0
+          CFI Block cfiBlock481 Using cfiCommon0
           CFI Function comm_gpio
           CFI NoCalls
         THUMB
@@ -19257,44 +19306,44 @@ comm_gpio:
         UXTH     R0,R0
         CMP      R1,#+0
         ITE      NE
-        LDRNE.W  R1,??DataTable195_13
-        LDREQ.W  R1,??DataTable195_14
+        LDRNE.W  R1,??DataTable197_13
+        LDREQ.W  R1,??DataTable197_14
         STR      R0,[R1, #+0]
-        BX       LR
-          CFI EndBlock cfiBlock480
-
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock481 Using cfiCommon0
-          CFI Function comm_type
-          CFI NoCalls
-        THUMB
-comm_type:
-        LDR.W    R1,??DataTable195
-        STRB     R0,[R1, #+169]
         BX       LR
           CFI EndBlock cfiBlock481
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock482 Using cfiCommon0
+          CFI Function comm_type
+          CFI NoCalls
+        THUMB
+comm_type:
+        LDR.W    R1,??DataTable197
+        STRB     R0,[R1, #+169]
+        BX       LR
+          CFI EndBlock cfiBlock482
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiBlock483 Using cfiCommon0
           CFI Function comm_imei
         THUMB
 comm_imei:
         MOV      R1,R0
         MOVS     R2,#+16
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
           CFI FunCall __aeabi_memcpy
         B.W      __aeabi_memcpy
-          CFI EndBlock cfiBlock482
+          CFI EndBlock cfiBlock483
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable179:
+??DataTable180:
         DATA32
         DC32     fw_write_errors
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock483 Using cfiCommon0
+          CFI Block cfiBlock484 Using cfiCommon0
           CFI Function user_comm_boot
         THUMB
 user_comm_boot:
@@ -19302,7 +19351,7 @@ user_comm_boot:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.W    R4,??DataTable195_4
+        LDR.W    R4,??DataTable197_4
         LDRB     R0,[R4, #+219]
         CBNZ.N   R0,??user_comm_boot_0
         LDRB     R0,[R4, #+220]
@@ -19323,8 +19372,8 @@ user_comm_boot:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R2,R0
-        LDR.W    R1,??DataTable195_15
-        LDR.W    R0,??DataTable195_16
+        LDR.W    R1,??DataTable197_15
+        LDR.W    R0,??DataTable197_16
           CFI FunCall user_comm_start
         BL       user_comm_start
         CBNZ.N   R0,??user_comm_boot_3
@@ -19343,12 +19392,12 @@ user_comm_boot:
           CFI CFA R13+8
 ??user_comm_boot_3:
         POP      {R4,PC}
-          CFI EndBlock cfiBlock483
+          CFI EndBlock cfiBlock484
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable180:
+??DataTable181:
         DATA32
         DC32     ?_76
 
@@ -19359,7 +19408,7 @@ user_comm_boot:
         DC32 comm_gpio, comm_type, comm_imei
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock484 Using cfiCommon0
+          CFI Block cfiBlock485 Using cfiCommon0
           CFI Function store_usb_session
         THUMB
 store_usb_session:
@@ -19367,8 +19416,8 @@ store_usb_session:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.W    R2,??DataTable195_17
-        LDR.W    R4,??DataTable195_18
+        LDR.W    R2,??DataTable197_17
+        LDR.W    R4,??DataTable197_18
         LDR      R0,[R4, #+12]
         LDR      R1,[R2, #+0]
         CMP      R0,R1
@@ -19382,9 +19431,9 @@ store_usb_session:
           CFI FunCall table_runtime_quiet
         BL       table_runtime_quiet
         MOVS     R1,#+0
-        LDR.W    R0,??DataTable195_19
+        LDR.W    R0,??DataTable197_19
         STRH     R1,[R0, #+0]
-        LDR.W    R0,??DataTable195_20
+        LDR.W    R0,??DataTable197_20
         STRH     R1,[R0, #+0]
         LDRB     R0,[R4, #+30]
         AND      R0,R0,#0xA
@@ -19397,17 +19446,17 @@ store_usb_session:
         STRB     R0,[R4, #+24]
 ??store_usb_session_0:
         POP      {R4,PC}
-          CFI EndBlock cfiBlock484
+          CFI EndBlock cfiBlock485
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable181:
+??DataTable182:
         DATA32
         DC32     log_job
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock485 Using cfiCommon0
+          CFI Block cfiBlock486 Using cfiCommon0
           CFI Function store_marker
           CFI NoCalls
         THUMB
@@ -19420,7 +19469,7 @@ store_marker:
         ORRNE    R0,R0,#0x34C00
         MOVEQ    R0,#+0
         STR      R0,[SP, #+0]
-        LDR.W    R0,??DataTable195
+        LDR.W    R0,??DataTable197
         ADD      R1,R0,#+189
         LDR      R3,[SP, #+0]
         STR      R3,[R1, #+0]
@@ -19431,10 +19480,10 @@ store_marker:
         ADD      SP,SP,#+8
           CFI CFA R13+0
         BX       LR
-          CFI EndBlock cfiBlock485
+          CFI EndBlock cfiBlock486
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock486 Using cfiCommon0
+          CFI Block cfiBlock487 Using cfiCommon0
           CFI Function store_snapshot
         THUMB
 store_snapshot:
@@ -19443,6 +19492,12 @@ store_snapshot:
           CFI R5 Frame(CFA, -8)
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
+          CFI FunCall photo_storage_busy
+        BL       photo_storage_busy
+        CBNZ.N   R0,??store_snapshot_0
+          CFI FunCall table_runtime_active
+        BL       table_runtime_active
+        CBNZ.N   R0,??store_snapshot_0
           CFI FunCall fw_async_active
         BL       fw_async_active
         CBNZ.N   R0,??store_snapshot_0
@@ -19453,13 +19508,13 @@ store_snapshot:
         MOVS     R0,#+0
         POP      {R1,R4,R5,PC}
 ??store_snapshot_1:
-        LDR.W    R5,??DataTable195_4
-        BL       ?Subroutine54
-??CrossCallReturnLabel_187:
+        LDR.W    R5,??DataTable197_4
+        BL       ?Subroutine55
+??CrossCallReturnLabel_189:
         STRH     R0,[R5, #+510]
-        LDR.W    R4,??DataTable195
-        BL       ??Subroutine23_0
-??CrossCallReturnLabel_256:
+        LDR.W    R4,??DataTable197
+        BL       ??Subroutine24_0
+??CrossCallReturnLabel_258:
         STRH     R0,[R4, #+510]
         MOV      R1,R4
         MOV      R0,R5
@@ -19470,161 +19525,161 @@ store_snapshot:
           CFI CFA R13+0
           CFI FunCall mem_config_begin
         B.W      mem_config_begin
-          CFI EndBlock cfiBlock486
+          CFI EndBlock cfiBlock487
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond487 Using cfiCommon0
+          CFI Block cfiCond488 Using cfiCommon0
           CFI Function user_writeConfigAndDevice
-          CFI Conditional ??CrossCallReturnLabel_188
+          CFI Conditional ??CrossCallReturnLabel_190
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+16
-          CFI Block cfiCond488 Using cfiCommon0
-          CFI (cfiCond488) Function store_snapshot
-          CFI (cfiCond488) Conditional ??CrossCallReturnLabel_187
-          CFI (cfiCond488) R4 Frame(CFA, -12)
-          CFI (cfiCond488) R5 Frame(CFA, -8)
-          CFI (cfiCond488) R14 Frame(CFA, -4)
-          CFI (cfiCond488) CFA R13+16
-          CFI Block cfiPicker489 Using cfiCommon1
-          CFI (cfiPicker489) NoFunction
-          CFI (cfiPicker489) Picker
+          CFI Block cfiCond489 Using cfiCommon0
+          CFI (cfiCond489) Function store_snapshot
+          CFI (cfiCond489) Conditional ??CrossCallReturnLabel_189
+          CFI (cfiCond489) R4 Frame(CFA, -12)
+          CFI (cfiCond489) R5 Frame(CFA, -8)
+          CFI (cfiCond489) R14 Frame(CFA, -4)
+          CFI (cfiCond489) CFA R13+16
+          CFI Block cfiPicker490 Using cfiCommon1
+          CFI (cfiPicker490) NoFunction
+          CFI (cfiPicker490) Picker
         THUMB
-?Subroutine54:
+?Subroutine55:
         MOV      R1,#+510
         MOV      R0,R5
-          CFI (cfiCond487) FunCall user_writeConfigAndDevice crc16_calc
-          CFI (cfiCond488) FunCall store_snapshot crc16_calc
+          CFI (cfiCond488) FunCall user_writeConfigAndDevice crc16_calc
+          CFI (cfiCond489) FunCall store_snapshot crc16_calc
         B.W      crc16_calc
-          CFI EndBlock cfiCond487
           CFI EndBlock cfiCond488
-          CFI EndBlock cfiPicker489
+          CFI EndBlock cfiCond489
+          CFI EndBlock cfiPicker490
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond490 Using cfiCommon0
+          CFI Block cfiCond491 Using cfiCommon0
           CFI Function user_writeconfig
-          CFI Conditional ??CrossCallReturnLabel_260
+          CFI Conditional ??CrossCallReturnLabel_262
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
-          CFI Block cfiCond491 Using cfiCommon0
-          CFI (cfiCond491) Function user_writeConfigAndDevice
-          CFI (cfiCond491) Conditional ??CrossCallReturnLabel_259
-          CFI (cfiCond491) R4 Frame(CFA, -12)
-          CFI (cfiCond491) R5 Frame(CFA, -8)
-          CFI (cfiCond491) R14 Frame(CFA, -4)
-          CFI (cfiCond491) CFA R13+16
-          CFI Block cfiPicker492 Using cfiCommon1
-          CFI (cfiPicker492) NoFunction
-          CFI (cfiPicker492) Picker
+          CFI Block cfiCond492 Using cfiCommon0
+          CFI (cfiCond492) Function user_writeConfigAndDevice
+          CFI (cfiCond492) Conditional ??CrossCallReturnLabel_261
+          CFI (cfiCond492) R4 Frame(CFA, -12)
+          CFI (cfiCond492) R5 Frame(CFA, -8)
+          CFI (cfiCond492) R14 Frame(CFA, -4)
+          CFI (cfiCond492) CFA R13+16
+          CFI Block cfiPicker493 Using cfiCommon1
+          CFI (cfiPicker493) NoFunction
+          CFI (cfiPicker493) Picker
         THUMB
-?Subroutine23:
-        LDR.W    R4,??DataTable195_4
-          CFI Block cfiCond493 Using cfiCommon0
-          CFI (cfiCond493) Function config_terminate_strings
-          CFI (cfiCond493) Conditional ??CrossCallReturnLabel_258
-          CFI (cfiCond493) R4 Frame(CFA, -12)
-          CFI (cfiCond493) R5 Frame(CFA, -8)
-          CFI (cfiCond493) R14 Frame(CFA, -4)
-          CFI (cfiCond493) CFA R13+16
+?Subroutine24:
+        LDR.W    R4,??DataTable197_4
           CFI Block cfiCond494 Using cfiCommon0
-          CFI (cfiCond494) Function user_readconfig
-          CFI (cfiCond494) Conditional ??CrossCallReturnLabel_257
+          CFI (cfiCond494) Function config_terminate_strings
+          CFI (cfiCond494) Conditional ??CrossCallReturnLabel_260
           CFI (cfiCond494) R4 Frame(CFA, -12)
           CFI (cfiCond494) R5 Frame(CFA, -8)
           CFI (cfiCond494) R14 Frame(CFA, -4)
           CFI (cfiCond494) CFA R13+16
           CFI Block cfiCond495 Using cfiCommon0
-          CFI (cfiCond495) Function store_snapshot
-          CFI (cfiCond495) Conditional ??CrossCallReturnLabel_256
+          CFI (cfiCond495) Function user_readconfig
+          CFI (cfiCond495) Conditional ??CrossCallReturnLabel_259
           CFI (cfiCond495) R4 Frame(CFA, -12)
           CFI (cfiCond495) R5 Frame(CFA, -8)
           CFI (cfiCond495) R14 Frame(CFA, -4)
           CFI (cfiCond495) CFA R13+16
-??Subroutine23_0:
+          CFI Block cfiCond496 Using cfiCommon0
+          CFI (cfiCond496) Function store_snapshot
+          CFI (cfiCond496) Conditional ??CrossCallReturnLabel_258
+          CFI (cfiCond496) R4 Frame(CFA, -12)
+          CFI (cfiCond496) R5 Frame(CFA, -8)
+          CFI (cfiCond496) R14 Frame(CFA, -4)
+          CFI (cfiCond496) CFA R13+16
+??Subroutine24_0:
         MOV      R1,#+510
-          CFI EndBlock cfiCond490
           CFI EndBlock cfiCond491
-          CFI EndBlock cfiPicker492
-          CFI EndBlock cfiCond493
+          CFI EndBlock cfiCond492
+          CFI EndBlock cfiPicker493
           CFI EndBlock cfiCond494
           CFI EndBlock cfiCond495
-        REQUIRE ??Subroutine72_0
+          CFI EndBlock cfiCond496
+        REQUIRE ??Subroutine73_0
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond496 Using cfiCommon0
+          CFI Block cfiCond497 Using cfiCommon0
           CFI Function log_async_step
-          CFI Conditional ??CrossCallReturnLabel_255
+          CFI Conditional ??CrossCallReturnLabel_257
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+56
-          CFI Block cfiCond497 Using cfiCommon0
-          CFI (cfiCond497) Function user_writeconfig
-          CFI (cfiCond497) Conditional ??CrossCallReturnLabel_260
-          CFI (cfiCond497) R4 Frame(CFA, -8)
-          CFI (cfiCond497) R14 Frame(CFA, -4)
-          CFI (cfiCond497) CFA R13+8
           CFI Block cfiCond498 Using cfiCommon0
-          CFI (cfiCond498) Function user_writeConfigAndDevice
-          CFI (cfiCond498) Conditional ??CrossCallReturnLabel_259
-          CFI (cfiCond498) R4 Frame(CFA, -12)
-          CFI (cfiCond498) R5 Frame(CFA, -8)
+          CFI (cfiCond498) Function user_writeconfig
+          CFI (cfiCond498) Conditional ??CrossCallReturnLabel_262
+          CFI (cfiCond498) R4 Frame(CFA, -8)
           CFI (cfiCond498) R14 Frame(CFA, -4)
-          CFI (cfiCond498) CFA R13+16
+          CFI (cfiCond498) CFA R13+8
           CFI Block cfiCond499 Using cfiCommon0
-          CFI (cfiCond499) Function config_terminate_strings
-          CFI (cfiCond499) Conditional ??CrossCallReturnLabel_258
+          CFI (cfiCond499) Function user_writeConfigAndDevice
+          CFI (cfiCond499) Conditional ??CrossCallReturnLabel_261
           CFI (cfiCond499) R4 Frame(CFA, -12)
           CFI (cfiCond499) R5 Frame(CFA, -8)
           CFI (cfiCond499) R14 Frame(CFA, -4)
           CFI (cfiCond499) CFA R13+16
           CFI Block cfiCond500 Using cfiCommon0
-          CFI (cfiCond500) Function user_readconfig
-          CFI (cfiCond500) Conditional ??CrossCallReturnLabel_257
+          CFI (cfiCond500) Function config_terminate_strings
+          CFI (cfiCond500) Conditional ??CrossCallReturnLabel_260
           CFI (cfiCond500) R4 Frame(CFA, -12)
           CFI (cfiCond500) R5 Frame(CFA, -8)
           CFI (cfiCond500) R14 Frame(CFA, -4)
           CFI (cfiCond500) CFA R13+16
           CFI Block cfiCond501 Using cfiCommon0
-          CFI (cfiCond501) Function store_snapshot
-          CFI (cfiCond501) Conditional ??CrossCallReturnLabel_256
+          CFI (cfiCond501) Function user_readconfig
+          CFI (cfiCond501) Conditional ??CrossCallReturnLabel_259
           CFI (cfiCond501) R4 Frame(CFA, -12)
           CFI (cfiCond501) R5 Frame(CFA, -8)
           CFI (cfiCond501) R14 Frame(CFA, -4)
           CFI (cfiCond501) CFA R13+16
-          CFI Block cfiPicker502 Using cfiCommon1
-          CFI (cfiPicker502) NoFunction
-          CFI (cfiPicker502) Picker
+          CFI Block cfiCond502 Using cfiCommon0
+          CFI (cfiCond502) Function store_snapshot
+          CFI (cfiCond502) Conditional ??CrossCallReturnLabel_258
+          CFI (cfiCond502) R4 Frame(CFA, -12)
+          CFI (cfiCond502) R5 Frame(CFA, -8)
+          CFI (cfiCond502) R14 Frame(CFA, -4)
+          CFI (cfiCond502) CFA R13+16
+          CFI Block cfiPicker503 Using cfiCommon1
+          CFI (cfiPicker503) NoFunction
+          CFI (cfiPicker503) Picker
         THUMB
-??Subroutine72_0:
+??Subroutine73_0:
         MOV      R0,R4
-          CFI (cfiCond496) FunCall log_async_step crc16_calc
-          CFI (cfiCond497) FunCall user_writeconfig crc16_calc
-          CFI (cfiCond498) FunCall user_writeConfigAndDevice crc16_calc
-          CFI (cfiCond499) FunCall config_terminate_strings crc16_calc
-          CFI (cfiCond500) FunCall user_readconfig crc16_calc
-          CFI (cfiCond501) FunCall store_snapshot crc16_calc
+          CFI (cfiCond497) FunCall log_async_step crc16_calc
+          CFI (cfiCond498) FunCall user_writeconfig crc16_calc
+          CFI (cfiCond499) FunCall user_writeConfigAndDevice crc16_calc
+          CFI (cfiCond500) FunCall config_terminate_strings crc16_calc
+          CFI (cfiCond501) FunCall user_readconfig crc16_calc
+          CFI (cfiCond502) FunCall store_snapshot crc16_calc
         B.W      crc16_calc
-          CFI EndBlock cfiCond496
           CFI EndBlock cfiCond497
           CFI EndBlock cfiCond498
           CFI EndBlock cfiCond499
           CFI EndBlock cfiCond500
           CFI EndBlock cfiCond501
-          CFI EndBlock cfiPicker502
+          CFI EndBlock cfiCond502
+          CFI EndBlock cfiPicker503
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable184:
+??DataTable185:
         DATA32
         DC32     ?_81
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock503 Using cfiCommon0
+          CFI Block cfiBlock504 Using cfiCommon0
           CFI Function store_restore
         THUMB
 store_restore:
@@ -19641,16 +19696,16 @@ store_restore:
         LDR      R2,[R3, #+0]
         STR      R2,[SP, #+0]
         LDR      R1,[SP, #+4]
-        LDR.W    R0,??DataTable195_21
+        LDR.W    R0,??DataTable197_21
         CMP      R1,R0
         ITT      NE
-        LDRNE.W  R0,??DataTable195_22
+        LDRNE.W  R0,??DataTable197_22
         CMPNE    R1,R0
         BNE.N    ??store_restore_0
         MOV      R4,R1
         UXTB     R0,R4
         CMP      R0,#+10
-        LDR.N    R0,??DataTable192_1
+        LDR.N    R0,??DataTable193
         ITTEE    EQ
         LDREQ    R5,[R0, #+56]
         MOVEQ    R0,#+56
@@ -19658,7 +19713,7 @@ store_restore:
         MOVNE    R0,#+64
         CMP      R2,R5
         BCC.N    ??store_restore_0
-        LDR.N    R1,??DataTable192_1
+        LDR.N    R1,??DataTable193
         ADD      R0,R1,R0
         LDR      R1,[R0, #+4]
         ADDS     R1,R1,R5
@@ -19668,7 +19723,7 @@ store_restore:
         UXTB     R0,R4
           CFI FunCall store_marker
         BL       store_marker
-        LDR.W    R0,??DataTable195_18
+        LDR.W    R0,??DataTable197_18
         STRB     R4,[R0, #+21]
         STRB     R4,[R0, #+19]
         LSRS     R1,R5,#+12
@@ -19685,10 +19740,10 @@ store_restore:
         STR      R5,[R0, #+0]
 ??store_restore_0:
         POP      {R0-R2,R4,R5,PC}
-          CFI EndBlock cfiBlock503
+          CFI EndBlock cfiBlock504
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock504 Using cfiCommon0
+          CFI Block cfiBlock505 Using cfiCommon0
           CFI Function store_upload_request
         THUMB
 store_upload_request:
@@ -19710,7 +19765,7 @@ store_upload_request:
         CBZ.N    R4,??store_upload_request_0
         ADDS     R6,R6,#+1
 ??store_upload_request_0:
-        LDR.W    R7,??DataTable195_18
+        LDR.W    R7,??DataTable197_18
         LDRB     R0,[R7, #+18]
         CBNZ.N   R0,??store_upload_request_1
           CFI FunCall mem_config_result
@@ -19747,10 +19802,10 @@ store_upload_request:
         STRB     R6,[R7, #+30]
 ??store_upload_request_3:
         POP      {R4-R8,PC}
-          CFI EndBlock cfiBlock504
+          CFI EndBlock cfiBlock505
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock505 Using cfiCommon0
+          CFI Block cfiBlock506 Using cfiCommon0
           CFI Function store_ack
         THUMB
 store_ack:
@@ -19767,28 +19822,28 @@ store_ack:
         MOV      R8,R1
         CMP      R0,#+10
         ITE      EQ
-        LDREQ.W  R5,??DataTable195_20
-        LDRNE.W  R5,??DataTable195_19
+        LDREQ.W  R5,??DataTable197_20
+        LDRNE.W  R5,??DataTable197_19
         MOVS     R6,R8
         IT       NE
         MOVNE    R6,#+1
         LDRH     R0,[R5, R6, LSL #+1]
         CBZ.N    R0,??store_ack_0
-        LDR.W    R7,??DataTable195_18
+        LDR.W    R7,??DataTable197_18
         LDRB     R0,[R7, #+25]
         CBZ.N    R0,??store_ack_1
 ??store_ack_0:
         MOVS     R0,#+1
         B.N      ??store_ack_2
 ??store_ack_1:
-        BL       ??Subroutine22_0
-??CrossCallReturnLabel_69:
+        BL       ??Subroutine23_0
+??CrossCallReturnLabel_71:
         MOV      R9,R0
         LDRH     R5,[R5, R6, LSL #+1]
         MOV      R2,R5
         MOV      R1,R8
-        BL       ??Subroutine20_0
-??CrossCallReturnLabel_47:
+        BL       ??Subroutine21_0
+??CrossCallReturnLabel_49:
         STRH     R5,[R7, #+16]
           CFI FunCall upload_store
         BL       upload_store
@@ -19797,8 +19852,8 @@ store_ack:
         MOV      R5,R0
         MOV      R2,R9
         MOV      R1,R8
-        BL       ??Subroutine20_0
-??CrossCallReturnLabel_46:
+        BL       ??Subroutine21_0
+??CrossCallReturnLabel_48:
           CFI FunCall upload_store
         BL       upload_store
         CBZ.N    R5,??store_ack_3
@@ -19818,120 +19873,110 @@ store_ack:
         MOVS     R0,#+0
 ??store_ack_2:
         POP      {R1,R4-R9,PC}
-          CFI EndBlock cfiBlock505
+          CFI EndBlock cfiBlock506
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond506 Using cfiCommon0
+          CFI Block cfiCond507 Using cfiCommon0
           CFI Function upload_finish
-          CFI Conditional ??CrossCallReturnLabel_73
+          CFI Conditional ??CrossCallReturnLabel_75
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
           CFI R6 Frame(CFA, -12)
           CFI R7 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+24
-          CFI Block cfiCond507 Using cfiCommon0
-          CFI (cfiCond507) Function store_finish
-          CFI (cfiCond507) Conditional ??CrossCallReturnLabel_72
-          CFI (cfiCond507) R4 Frame(CFA, -12)
-          CFI (cfiCond507) R5 Frame(CFA, -8)
-          CFI (cfiCond507) R14 Frame(CFA, -4)
-          CFI (cfiCond507) CFA R13+16
-          CFI Block cfiPicker508 Using cfiCommon1
-          CFI (cfiPicker508) NoFunction
-          CFI (cfiPicker508) Picker
+          CFI Block cfiCond508 Using cfiCommon0
+          CFI (cfiCond508) Function store_finish
+          CFI (cfiCond508) Conditional ??CrossCallReturnLabel_74
+          CFI (cfiCond508) R4 Frame(CFA, -12)
+          CFI (cfiCond508) R5 Frame(CFA, -8)
+          CFI (cfiCond508) R14 Frame(CFA, -4)
+          CFI (cfiCond508) CFA R13+16
+          CFI Block cfiPicker509 Using cfiCommon1
+          CFI (cfiPicker509) NoFunction
+          CFI (cfiPicker509) Picker
         THUMB
-?Subroutine22:
+?Subroutine23:
         MOVS     R1,#+1
-          CFI Block cfiCond509 Using cfiCommon0
-          CFI (cfiCond509) Function upload_ack
-          CFI (cfiCond509) Conditional ??CrossCallReturnLabel_71
-          CFI (cfiCond509) R4 Frame(CFA, -24)
-          CFI (cfiCond509) R5 Frame(CFA, -20)
-          CFI (cfiCond509) R6 Frame(CFA, -16)
-          CFI (cfiCond509) R7 Frame(CFA, -12)
-          CFI (cfiCond509) R8 Frame(CFA, -8)
-          CFI (cfiCond509) R14 Frame(CFA, -4)
-          CFI (cfiCond509) CFA R13+24
           CFI Block cfiCond510 Using cfiCommon0
-          CFI (cfiCond510) Function upload_finish
-          CFI (cfiCond510) Conditional ??CrossCallReturnLabel_70
-          CFI (cfiCond510) R4 Frame(CFA, -20)
-          CFI (cfiCond510) R5 Frame(CFA, -16)
-          CFI (cfiCond510) R6 Frame(CFA, -12)
-          CFI (cfiCond510) R7 Frame(CFA, -8)
+          CFI (cfiCond510) Function upload_ack
+          CFI (cfiCond510) Conditional ??CrossCallReturnLabel_73
+          CFI (cfiCond510) R4 Frame(CFA, -24)
+          CFI (cfiCond510) R5 Frame(CFA, -20)
+          CFI (cfiCond510) R6 Frame(CFA, -16)
+          CFI (cfiCond510) R7 Frame(CFA, -12)
+          CFI (cfiCond510) R8 Frame(CFA, -8)
           CFI (cfiCond510) R14 Frame(CFA, -4)
           CFI (cfiCond510) CFA R13+24
           CFI Block cfiCond511 Using cfiCommon0
-          CFI (cfiCond511) Function store_ack
-          CFI (cfiCond511) Conditional ??CrossCallReturnLabel_69
-          CFI (cfiCond511) R4 Frame(CFA, -28)
-          CFI (cfiCond511) R5 Frame(CFA, -24)
-          CFI (cfiCond511) R6 Frame(CFA, -20)
-          CFI (cfiCond511) R7 Frame(CFA, -16)
-          CFI (cfiCond511) R8 Frame(CFA, -12)
-          CFI (cfiCond511) R9 Frame(CFA, -8)
+          CFI (cfiCond511) Function upload_finish
+          CFI (cfiCond511) Conditional ??CrossCallReturnLabel_72
+          CFI (cfiCond511) R4 Frame(CFA, -20)
+          CFI (cfiCond511) R5 Frame(CFA, -16)
+          CFI (cfiCond511) R6 Frame(CFA, -12)
+          CFI (cfiCond511) R7 Frame(CFA, -8)
           CFI (cfiCond511) R14 Frame(CFA, -4)
-          CFI (cfiCond511) CFA R13+32
+          CFI (cfiCond511) CFA R13+24
           CFI Block cfiCond512 Using cfiCommon0
-          CFI (cfiCond512) Function store_finish
-          CFI (cfiCond512) Conditional ??CrossCallReturnLabel_68
-          CFI (cfiCond512) R4 Frame(CFA, -12)
-          CFI (cfiCond512) R5 Frame(CFA, -8)
+          CFI (cfiCond512) Function store_ack
+          CFI (cfiCond512) Conditional ??CrossCallReturnLabel_71
+          CFI (cfiCond512) R4 Frame(CFA, -28)
+          CFI (cfiCond512) R5 Frame(CFA, -24)
+          CFI (cfiCond512) R6 Frame(CFA, -20)
+          CFI (cfiCond512) R7 Frame(CFA, -16)
+          CFI (cfiCond512) R8 Frame(CFA, -12)
+          CFI (cfiCond512) R9 Frame(CFA, -8)
           CFI (cfiCond512) R14 Frame(CFA, -4)
-          CFI (cfiCond512) CFA R13+16
-??Subroutine22_0:
+          CFI (cfiCond512) CFA R13+32
+          CFI Block cfiCond513 Using cfiCommon0
+          CFI (cfiCond513) Function store_finish
+          CFI (cfiCond513) Conditional ??CrossCallReturnLabel_70
+          CFI (cfiCond513) R4 Frame(CFA, -12)
+          CFI (cfiCond513) R5 Frame(CFA, -8)
+          CFI (cfiCond513) R14 Frame(CFA, -4)
+          CFI (cfiCond513) CFA R13+16
+??Subroutine23_0:
         MOV      R0,R4
-          CFI (cfiCond506) FunCall upload_finish upload_index
-          CFI (cfiCond507) FunCall store_finish upload_index
-          CFI (cfiCond509) FunCall upload_ack upload_index
-          CFI (cfiCond506) FunCall upload_finish upload_index
-          CFI (cfiCond511) FunCall store_ack upload_index
-          CFI (cfiCond507) FunCall store_finish upload_index
+          CFI (cfiCond507) FunCall upload_finish upload_index
+          CFI (cfiCond508) FunCall store_finish upload_index
+          CFI (cfiCond510) FunCall upload_ack upload_index
+          CFI (cfiCond507) FunCall upload_finish upload_index
+          CFI (cfiCond512) FunCall store_ack upload_index
+          CFI (cfiCond508) FunCall store_finish upload_index
         B.W      upload_index
-          CFI EndBlock cfiCond506
           CFI EndBlock cfiCond507
-          CFI EndBlock cfiPicker508
-          CFI EndBlock cfiCond509
+          CFI EndBlock cfiCond508
+          CFI EndBlock cfiPicker509
           CFI EndBlock cfiCond510
           CFI EndBlock cfiCond511
           CFI EndBlock cfiCond512
+          CFI EndBlock cfiCond513
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond513 Using cfiCommon0
+          CFI Block cfiCond514 Using cfiCommon0
           CFI Function upload_reset
-          CFI Conditional ??CrossCallReturnLabel_52
+          CFI Conditional ??CrossCallReturnLabel_54
           CFI R4 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
-          CFI Block cfiCond514 Using cfiCommon0
-          CFI (cfiCond514) Function upload_finish
-          CFI (cfiCond514) Conditional ??CrossCallReturnLabel_51
-          CFI (cfiCond514) R4 Frame(CFA, -20)
-          CFI (cfiCond514) R5 Frame(CFA, -16)
-          CFI (cfiCond514) R6 Frame(CFA, -12)
-          CFI (cfiCond514) R7 Frame(CFA, -8)
-          CFI (cfiCond514) R14 Frame(CFA, -4)
-          CFI (cfiCond514) CFA R13+24
-          CFI Block cfiPicker515 Using cfiCommon1
-          CFI (cfiPicker515) NoFunction
-          CFI (cfiPicker515) Picker
+          CFI Block cfiCond515 Using cfiCommon0
+          CFI (cfiCond515) Function upload_finish
+          CFI (cfiCond515) Conditional ??CrossCallReturnLabel_53
+          CFI (cfiCond515) R4 Frame(CFA, -20)
+          CFI (cfiCond515) R5 Frame(CFA, -16)
+          CFI (cfiCond515) R6 Frame(CFA, -12)
+          CFI (cfiCond515) R7 Frame(CFA, -8)
+          CFI (cfiCond515) R14 Frame(CFA, -4)
+          CFI (cfiCond515) CFA R13+24
+          CFI Block cfiPicker516 Using cfiCommon1
+          CFI (cfiPicker516) NoFunction
+          CFI (cfiPicker516) Picker
         THUMB
-?Subroutine20:
+?Subroutine21:
         MOVS     R1,#+1
-          CFI Block cfiCond516 Using cfiCommon0
-          CFI (cfiCond516) Function upload_ack
-          CFI (cfiCond516) Conditional ??CrossCallReturnLabel_50
-          CFI (cfiCond516) R4 Frame(CFA, -24)
-          CFI (cfiCond516) R5 Frame(CFA, -20)
-          CFI (cfiCond516) R6 Frame(CFA, -16)
-          CFI (cfiCond516) R7 Frame(CFA, -12)
-          CFI (cfiCond516) R8 Frame(CFA, -8)
-          CFI (cfiCond516) R14 Frame(CFA, -4)
-          CFI (cfiCond516) CFA R13+24
           CFI Block cfiCond517 Using cfiCommon0
           CFI (cfiCond517) Function upload_ack
-          CFI (cfiCond517) Conditional ??CrossCallReturnLabel_49
+          CFI (cfiCond517) Conditional ??CrossCallReturnLabel_52
           CFI (cfiCond517) R4 Frame(CFA, -24)
           CFI (cfiCond517) R5 Frame(CFA, -20)
           CFI (cfiCond517) R6 Frame(CFA, -16)
@@ -19940,28 +19985,27 @@ store_ack:
           CFI (cfiCond517) R14 Frame(CFA, -4)
           CFI (cfiCond517) CFA R13+24
           CFI Block cfiCond518 Using cfiCommon0
-          CFI (cfiCond518) Function upload_finish
-          CFI (cfiCond518) Conditional ??CrossCallReturnLabel_48
-          CFI (cfiCond518) R4 Frame(CFA, -20)
-          CFI (cfiCond518) R5 Frame(CFA, -16)
-          CFI (cfiCond518) R6 Frame(CFA, -12)
-          CFI (cfiCond518) R7 Frame(CFA, -8)
+          CFI (cfiCond518) Function upload_ack
+          CFI (cfiCond518) Conditional ??CrossCallReturnLabel_51
+          CFI (cfiCond518) R4 Frame(CFA, -24)
+          CFI (cfiCond518) R5 Frame(CFA, -20)
+          CFI (cfiCond518) R6 Frame(CFA, -16)
+          CFI (cfiCond518) R7 Frame(CFA, -12)
+          CFI (cfiCond518) R8 Frame(CFA, -8)
           CFI (cfiCond518) R14 Frame(CFA, -4)
           CFI (cfiCond518) CFA R13+24
           CFI Block cfiCond519 Using cfiCommon0
-          CFI (cfiCond519) Function store_ack
-          CFI (cfiCond519) Conditional ??CrossCallReturnLabel_47
-          CFI (cfiCond519) R4 Frame(CFA, -28)
-          CFI (cfiCond519) R5 Frame(CFA, -24)
-          CFI (cfiCond519) R6 Frame(CFA, -20)
-          CFI (cfiCond519) R7 Frame(CFA, -16)
-          CFI (cfiCond519) R8 Frame(CFA, -12)
-          CFI (cfiCond519) R9 Frame(CFA, -8)
+          CFI (cfiCond519) Function upload_finish
+          CFI (cfiCond519) Conditional ??CrossCallReturnLabel_50
+          CFI (cfiCond519) R4 Frame(CFA, -20)
+          CFI (cfiCond519) R5 Frame(CFA, -16)
+          CFI (cfiCond519) R6 Frame(CFA, -12)
+          CFI (cfiCond519) R7 Frame(CFA, -8)
           CFI (cfiCond519) R14 Frame(CFA, -4)
-          CFI (cfiCond519) CFA R13+32
+          CFI (cfiCond519) CFA R13+24
           CFI Block cfiCond520 Using cfiCommon0
           CFI (cfiCond520) Function store_ack
-          CFI (cfiCond520) Conditional ??CrossCallReturnLabel_46
+          CFI (cfiCond520) Conditional ??CrossCallReturnLabel_49
           CFI (cfiCond520) R4 Frame(CFA, -28)
           CFI (cfiCond520) R5 Frame(CFA, -24)
           CFI (cfiCond520) R6 Frame(CFA, -20)
@@ -19970,27 +20014,38 @@ store_ack:
           CFI (cfiCond520) R9 Frame(CFA, -8)
           CFI (cfiCond520) R14 Frame(CFA, -4)
           CFI (cfiCond520) CFA R13+32
-??Subroutine20_0:
+          CFI Block cfiCond521 Using cfiCommon0
+          CFI (cfiCond521) Function store_ack
+          CFI (cfiCond521) Conditional ??CrossCallReturnLabel_48
+          CFI (cfiCond521) R4 Frame(CFA, -28)
+          CFI (cfiCond521) R5 Frame(CFA, -24)
+          CFI (cfiCond521) R6 Frame(CFA, -20)
+          CFI (cfiCond521) R7 Frame(CFA, -16)
+          CFI (cfiCond521) R8 Frame(CFA, -12)
+          CFI (cfiCond521) R9 Frame(CFA, -8)
+          CFI (cfiCond521) R14 Frame(CFA, -4)
+          CFI (cfiCond521) CFA R13+32
+??Subroutine21_0:
         MOV      R0,R4
-          CFI (cfiCond513) FunCall upload_reset upload_setIndex
-          CFI (cfiCond514) FunCall upload_finish upload_setIndex
-          CFI (cfiCond516) FunCall upload_ack upload_setIndex
-          CFI (cfiCond516) FunCall upload_ack upload_setIndex
-          CFI (cfiCond514) FunCall upload_finish upload_setIndex
-          CFI (cfiCond519) FunCall store_ack upload_setIndex
-          CFI (cfiCond519) FunCall store_ack upload_setIndex
+          CFI (cfiCond514) FunCall upload_reset upload_setIndex
+          CFI (cfiCond515) FunCall upload_finish upload_setIndex
+          CFI (cfiCond517) FunCall upload_ack upload_setIndex
+          CFI (cfiCond517) FunCall upload_ack upload_setIndex
+          CFI (cfiCond515) FunCall upload_finish upload_setIndex
+          CFI (cfiCond520) FunCall store_ack upload_setIndex
+          CFI (cfiCond520) FunCall store_ack upload_setIndex
         B.W      upload_setIndex
-          CFI EndBlock cfiCond513
           CFI EndBlock cfiCond514
-          CFI EndBlock cfiPicker515
-          CFI EndBlock cfiCond516
+          CFI EndBlock cfiCond515
+          CFI EndBlock cfiPicker516
           CFI EndBlock cfiCond517
           CFI EndBlock cfiCond518
           CFI EndBlock cfiCond519
           CFI EndBlock cfiCond520
+          CFI EndBlock cfiCond521
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock521 Using cfiCommon0
+          CFI Block cfiBlock522 Using cfiCommon0
           CFI Function store_finish
         THUMB
 store_finish:
@@ -20001,7 +20056,7 @@ store_finish:
           CFI CFA R13+16
         MOV      R4,R0
         CMP      R0,#+10
-        LDR.W    R0,??DataTable195
+        LDR.N    R0,??DataTable193_1
         LDRH     R1,[R0, #+129]
         BNE.N    ??store_finish_0
         UBFX     R1,R1,#+12,#+1
@@ -20019,12 +20074,12 @@ store_finish:
         CMPEQ    R0,#+0
         BNE.N    ??store_finish_3
 ??store_finish_2:
-        BL       ?Subroutine22
-??CrossCallReturnLabel_72:
+        BL       ?Subroutine23
+??CrossCallReturnLabel_74:
         CBNZ.N   R0,??store_finish_4
         MOVS     R1,#+0
-        BL       ??Subroutine22_0
-??CrossCallReturnLabel_68:
+        BL       ??Subroutine23_0
+??CrossCallReturnLabel_70:
         CBNZ.N   R0,??store_finish_4
         MOVS     R0,#+1
         POP      {R1,R4,R5,PC}
@@ -20032,21 +20087,21 @@ store_finish:
         CMP      R4,#+10
         BNE.N    ??store_finish_3
 ??store_finish_1:
-        LDR.N    R0,??DataTable192_1
+        LDR.N    R0,??DataTable193
         LDR      R0,[R0, #+56]
         MOVS     R2,#+56
         B.N      ??store_finish_5
 ??store_finish_3:
-        LDR.N    R0,??DataTable192_1
+        LDR.N    R0,??DataTable193
         LDR      R0,[R0, #+64]
         MOVS     R2,#+64
 ??store_finish_5:
-        LDR.N    R1,??DataTable192_1
+        LDR.N    R1,??DataTable193
         ADD      R1,R1,R2
         LDR      R1,[R1, #+4]
         ADDS     R1,R1,R0
         CMP      R4,#+10
-        LDR.W    R2,??DataTable195
+        LDR.N    R2,??DataTable193_1
         ITE      EQ
         LDREQ    R2,[R2, #+91]
         LDRNE    R2,[R2, #+85]
@@ -20056,7 +20111,7 @@ store_finish:
         IT       LS
         MOVLS    R1,R2
 ??store_finish_6:
-        LDR.W    R5,??DataTable195_18
+        LDR.W    R5,??DataTable197_18
         STRB     R4,[R5, #+19]
         LSRS     R0,R0,#+12
         LSLS     R0,R0,#+12
@@ -20077,17 +20132,10 @@ store_finish:
 ??store_finish_7:
         MOVS     R0,#+0
         POP      {R1,R4,R5,PC}
-          CFI EndBlock cfiBlock521
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable188:
-        DATA32
-        DC32     log_pendingCount
+          CFI EndBlock cfiBlock522
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock522 Using cfiCommon0
+          CFI Block cfiBlock523 Using cfiCommon0
           CFI Function store_command_start
         THUMB
 store_command_start:
@@ -20101,7 +20149,7 @@ store_command_start:
         MOV      R4,R0
         MOV      R5,R1
         MOV      R6,R2
-        LDR.W    R7,??DataTable195_18
+        LDR.W    R7,??DataTable197_18
         STRB     R4,[R7, #+21]
         STRB     R5,[R7, #+22]
         STRB     R6,[R7, #+23]
@@ -20113,20 +20161,27 @@ store_command_start:
         MOVS     R0,#+9
         STRB     R0,[R7, #+18]
         MOVS     R1,#+0
-        LDR.W    R0,??DataTable195_23
+        LDR.W    R0,??DataTable197_23
         STRB     R1,[R0, #+0]
         POP      {R0,R4-R7,PC}
 ??store_command_start_0:
-        BL       ?Subroutine70
-??CrossCallReturnLabel_250:
+        BL       ?Subroutine71
+??CrossCallReturnLabel_252:
         MOV      R0,R4
-        B.N      ?Subroutine3
-          CFI EndBlock cfiBlock522
+        B.N      ?Subroutine4
+          CFI EndBlock cfiBlock523
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable190:
+        DATA32
+        DC32     id_endScan
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond523 Using cfiCommon0
+          CFI Block cfiCond524 Using cfiCommon0
           CFI Function user_parse_comand
-          CFI Conditional ??CrossCallReturnLabel_247
+          CFI Conditional ??CrossCallReturnLabel_249
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -20137,22 +20192,9 @@ store_command_start:
           CFI R11 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+64
-          CFI Block cfiCond524 Using cfiCommon0
-          CFI (cfiCond524) Function user_parse_comand
-          CFI (cfiCond524) Conditional ??CrossCallReturnLabel_248
-          CFI (cfiCond524) R4 Frame(CFA, -36)
-          CFI (cfiCond524) R5 Frame(CFA, -32)
-          CFI (cfiCond524) R6 Frame(CFA, -28)
-          CFI (cfiCond524) R7 Frame(CFA, -24)
-          CFI (cfiCond524) R8 Frame(CFA, -20)
-          CFI (cfiCond524) R9 Frame(CFA, -16)
-          CFI (cfiCond524) R10 Frame(CFA, -12)
-          CFI (cfiCond524) R11 Frame(CFA, -8)
-          CFI (cfiCond524) R14 Frame(CFA, -4)
-          CFI (cfiCond524) CFA R13+64
           CFI Block cfiCond525 Using cfiCommon0
           CFI (cfiCond525) Function user_parse_comand
-          CFI (cfiCond525) Conditional ??CrossCallReturnLabel_249
+          CFI (cfiCond525) Conditional ??CrossCallReturnLabel_250
           CFI (cfiCond525) R4 Frame(CFA, -36)
           CFI (cfiCond525) R5 Frame(CFA, -32)
           CFI (cfiCond525) R6 Frame(CFA, -28)
@@ -20164,31 +20206,44 @@ store_command_start:
           CFI (cfiCond525) R14 Frame(CFA, -4)
           CFI (cfiCond525) CFA R13+64
           CFI Block cfiCond526 Using cfiCommon0
-          CFI (cfiCond526) Function store_command_start
-          CFI (cfiCond526) Conditional ??CrossCallReturnLabel_250
-          CFI (cfiCond526) R4 Frame(CFA, -20)
-          CFI (cfiCond526) R5 Frame(CFA, -16)
-          CFI (cfiCond526) R6 Frame(CFA, -12)
-          CFI (cfiCond526) R7 Frame(CFA, -8)
+          CFI (cfiCond526) Function user_parse_comand
+          CFI (cfiCond526) Conditional ??CrossCallReturnLabel_251
+          CFI (cfiCond526) R4 Frame(CFA, -36)
+          CFI (cfiCond526) R5 Frame(CFA, -32)
+          CFI (cfiCond526) R6 Frame(CFA, -28)
+          CFI (cfiCond526) R7 Frame(CFA, -24)
+          CFI (cfiCond526) R8 Frame(CFA, -20)
+          CFI (cfiCond526) R9 Frame(CFA, -16)
+          CFI (cfiCond526) R10 Frame(CFA, -12)
+          CFI (cfiCond526) R11 Frame(CFA, -8)
           CFI (cfiCond526) R14 Frame(CFA, -4)
-          CFI (cfiCond526) CFA R13+24
-          CFI Block cfiPicker527 Using cfiCommon1
-          CFI (cfiPicker527) NoFunction
-          CFI (cfiPicker527) Picker
+          CFI (cfiCond526) CFA R13+64
+          CFI Block cfiCond527 Using cfiCommon0
+          CFI (cfiCond527) Function store_command_start
+          CFI (cfiCond527) Conditional ??CrossCallReturnLabel_252
+          CFI (cfiCond527) R4 Frame(CFA, -20)
+          CFI (cfiCond527) R5 Frame(CFA, -16)
+          CFI (cfiCond527) R6 Frame(CFA, -12)
+          CFI (cfiCond527) R7 Frame(CFA, -8)
+          CFI (cfiCond527) R14 Frame(CFA, -4)
+          CFI (cfiCond527) CFA R13+24
+          CFI Block cfiPicker528 Using cfiCommon1
+          CFI (cfiPicker528) NoFunction
+          CFI (cfiPicker528) Picker
         THUMB
-?Subroutine70:
+?Subroutine71:
         MOV      R3,R6
         MOV      R2,R5
         MOVS     R1,#+2
         BX       LR
-          CFI EndBlock cfiCond523
           CFI EndBlock cfiCond524
           CFI EndBlock cfiCond525
           CFI EndBlock cfiCond526
-          CFI EndBlock cfiPicker527
+          CFI EndBlock cfiCond527
+          CFI EndBlock cfiPicker528
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock528 Using cfiCommon0
+          CFI Block cfiBlock529 Using cfiCommon0
           CFI Function store_config_complete
         THUMB
 store_config_complete:
@@ -20199,8 +20254,8 @@ store_config_complete:
         BL       mem_config_snapshot
           CFI FunCall rs485_set_config
         BL       rs485_set_config
-        LDR.W    R0,??DataTable195
-        LDR.W    R1,??DataTable195_4
+        LDR.N    R0,??DataTable193_1
+        LDR.W    R1,??DataTable197_4
         LDR      R1,[R1, #+0]
         STR      R1,[R0, #+27]
         LDRH     R1,[R0, #+129]
@@ -20221,24 +20276,17 @@ store_config_complete:
           CFI CFA R13+8
 ??store_config_complete_0:
         POP      {R0,PC}
-          CFI EndBlock cfiBlock528
+          CFI EndBlock cfiBlock529
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable190:
+??DataTable191:
         DATA32
-        DC32     id_endScan
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable190_1:
-        DATA32
-        DC32     log_timeKnown
+        DC32     log_pending
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock529 Using cfiCommon0
+          CFI Block cfiBlock530 Using cfiCommon0
           CFI Function store_config_start
         THUMB
 store_config_start:
@@ -20246,7 +20294,7 @@ store_config_start:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
-        LDR.W    R4,??DataTable195_18
+        LDR.W    R4,??DataTable197_18
         LDRB     R0,[R4, #+18]
         CBNZ.N   R0,??store_config_start_0
           CFI FunCall store_snapshot
@@ -20260,17 +20308,17 @@ store_config_start:
         STRB     R0,[R4, #+18]
         MOVS     R0,#+1
         POP      {R4,PC}
-          CFI EndBlock cfiBlock529
+          CFI EndBlock cfiBlock530
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable191:
+??DataTable192:
         DATA32
-        DC32     log_pending
+        DC32     store_runtime
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock530 Using cfiCommon0
+          CFI Block cfiBlock531 Using cfiCommon0
           CFI Function store_reply
         THUMB
 store_reply:
@@ -20281,7 +20329,7 @@ store_reply:
           CFI R5 Frame(CFA, -16)
           CFI R4 Frame(CFA, -20)
           CFI CFA R13+24
-        LDR.W    R4,??DataTable195_18
+        LDR.W    R4,??DataTable197_18
         LDRB     R5,[R4, #+21]
         LDRB     R6,[R4, #+23]
         LDRB     R7,[R4, #+22]
@@ -20344,7 +20392,7 @@ store_reply:
 ??store_reply_4:
         CMP      R5,#+12
         BNE.N    ??store_reply_5
-        LDR.N    R0,??DataTable192_1
+        LDR.N    R0,??DataTable193
         LDR      R1,[R0, #+52]
         LDR      R0,[R0, #+48]
           CFI FunCall user_calcCRC16InFlash
@@ -20352,7 +20400,7 @@ store_reply:
         STR      R6,[SP, #+0]
         MOV      R3,R7
         MOV      R2,R0
-        LDR.W    R0,??DataTable195_4
+        LDR.W    R0,??DataTable197_4
         LDR      R1,[R0, #+0]
         MOVS     R0,#+4
           CFI FunCall user_send_timeshtamp
@@ -20363,11 +20411,11 @@ store_reply:
         MOV      R2,R7
         MOVS     R1,#+0
         MOV      R0,R5
-          CFI EndBlock cfiBlock530
-        REQUIRE ?Subroutine3
+          CFI EndBlock cfiBlock531
+        REQUIRE ?Subroutine4
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock531 Using cfiCommon0
+          CFI Block cfiBlock532 Using cfiCommon0
           CFI NoFunction
           CFI CFA R13+24
           CFI R4 Frame(CFA, -20)
@@ -20376,7 +20424,7 @@ store_reply:
           CFI R7 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
         THUMB
-?Subroutine3:
+?Subroutine4:
         ADD      SP,SP,#+4
           CFI CFA R13+20
         POP      {R4-R7,LR}
@@ -20389,52 +20437,52 @@ store_reply:
           CFI FunCall store_command_start user_send_answer_comand
           CFI FunCall store_reply user_send_answer_comand
         B.W      user_send_answer_comand
-          CFI EndBlock cfiBlock531
+          CFI EndBlock cfiBlock532
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable192:
-        DATA32
-        DC32     store_runtime
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable192_1:
+??DataTable193:
         DATA32
         DC32     mem
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable192_2:
+??DataTable193_1:
+        DATA32
+        DC32     device
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable193_2:
         DATA32
         DC32     loop_max_ms
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable192_3:
+??DataTable193_3:
         DATA32
         DC32     loop_stalls
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable192_4:
+??DataTable193_4:
         DATA32
         DC32     mem_config_errors
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable192_5:
+??DataTable193_5:
         DATA32
         DC32     fault_record
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock532 Using cfiCommon0
+          CFI Block cfiBlock533 Using cfiCommon0
           CFI Function user_storage_poll
         THUMB
 user_storage_poll:
@@ -20462,65 +20510,73 @@ user_storage_poll:
         BL       table_runtime_poll
         B.N      ??user_storage_poll_1
 ??user_storage_poll_0:
+          CFI FunCall photo_storage_busy
+        BL       photo_storage_busy
+        CBZ.N    R0,??user_storage_poll_2
+        MOV      R0,R5
+          CFI FunCall photo_storage_poll
+        BL       photo_storage_poll
+        B.N      ??user_storage_poll_1
+??user_storage_poll_2:
           CFI FunCall fw_async_active
         BL       fw_async_active
-        CBZ.N    R0,??user_storage_poll_2
+        CBZ.N    R0,??user_storage_poll_3
         MOV      R0,R5
           CFI FunCall fw_storage_poll
         BL       fw_storage_poll
         B.N      ??user_storage_poll_1
-??user_storage_poll_2:
+??user_storage_poll_3:
           CFI FunCall log_async_active
         BL       log_async_active
         CMP      R0,#+0
-        BNE.W    ??user_storage_poll_3
+        BNE.W    ??user_storage_poll_4
         CMP      R6,#+1
-        BNE.N    ??user_storage_poll_4
+        BNE.N    ??user_storage_poll_5
         MOV      R0,R5
           CFI FunCall mem_config_poll
         BL       mem_config_poll
         B.N      ??user_storage_poll_1
-??user_storage_poll_4:
-        LDR.W    R4,??DataTable195_18
+??user_storage_poll_5:
+        LDR.W    R4,??DataTable197_18
         LDRB     R0,[R4, #+18]
         CMP      R0,#+8
-        BNE.N    ??user_storage_poll_5
+        BNE.N    ??user_storage_poll_6
           CFI FunCall store_reply
         BL       store_reply
-??user_storage_poll_6:
+??user_storage_poll_7:
         B.N      ??user_storage_poll_1
-??user_storage_poll_5:
+??user_storage_poll_6:
         CMP      R0,#+10
-        BNE.N    ??user_storage_poll_7
+        BNE.N    ??user_storage_poll_8
         LDRB     R0,[R4, #+19]
         CMP      R0,#+10
         ITE      EQ
         MOVEQ    R1,#+56
         MOVNE    R1,#+64
-        LDR.N    R0,??DataTable195_24
+        LDR.W    R0,??DataTable197_24
         LDR      R6,[R0, R1]
         LDR      R0,[R4, #+8]
         SUBS     R0,R5,R0
-        BMI.N    ??user_storage_poll_6
+        BMI.N    ??user_storage_poll_7
         MOVS     R2,#+64
         MOV      R1,SP
         LDR      R0,[R4, #+0]
           CFI FunCall w25_read_data
         BL       w25_read_data
         CMP      R0,#+0
-        BEQ.N    ??user_storage_poll_8
+        BEQ.N    ??user_storage_poll_9
         MOVS     R1,#+0
-??user_storage_poll_9:
+??user_storage_poll_10:
         UXTH     R2,R1
         LDRB     R0,[SP, R2]
         CMP      R0,#+255
-        BNE.N    ??user_storage_poll_10
+        BNE.N    ??user_storage_poll_11
         ADDS     R1,R1,#+1
         UXTH     R0,R1
         CMP      R0,#+64
-        BCC.N    ??user_storage_poll_9
-        B.N      ??user_storage_poll_11
-??user_storage_poll_10:
+        BCC.N    ??user_storage_poll_10
+        B.N      ??user_storage_poll_12
+??user_storage_poll_11:
         LDRB     R0,[R4, #+19]
           CFI FunCall upload_reset
         BL       upload_reset
@@ -20529,50 +20585,50 @@ user_storage_poll:
           CFI FunCall store_marker
         BL       store_marker
         MOVS     R0,#+11
-        B.N      ??user_storage_poll_12
-??user_storage_poll_11:
+        B.N      ??user_storage_poll_13
+??user_storage_poll_12:
         LDR      R0,[R4, #+0]
         ADDS     R0,R0,#+64
         LSLS     R1,R0,#+20
-        BEQ.N    ??user_storage_poll_13
+        BEQ.N    ??user_storage_poll_14
         LDR      R1,[R4, #+4]
         CMP      R0,R1
-        BCC.N    ??user_storage_poll_14
-??user_storage_poll_13:
+        BCC.N    ??user_storage_poll_15
+??user_storage_poll_14:
         LSRS     R6,R6,#+12
         LSLS     R0,R6,#+12
         MOVS     R1,#+4
         STRB     R1,[R4, #+18]
-        B.N      ??user_storage_poll_14
-??user_storage_poll_7:
+        B.N      ??user_storage_poll_15
+??user_storage_poll_8:
         CMP      R0,#+4
-        BNE.N    ??user_storage_poll_15
+        BNE.N    ??user_storage_poll_16
         LDR      R0,[R4, #+8]
         SUBS     R0,R5,R0
-        BMI.N    ??user_storage_poll_16
+        BMI.N    ??user_storage_poll_17
         LDRB     R0,[R4, #+20]
-        CBZ.N    R0,??user_storage_poll_17
-        BL       ?Subroutine40
-??CrossCallReturnLabel_141:
+        CBZ.N    R0,??user_storage_poll_18
+        BL       ?Subroutine41
+??CrossCallReturnLabel_143:
         CMP      R0,#+1
-        BEQ.N    ??user_storage_poll_16
+        BEQ.N    ??user_storage_poll_17
         MOVS     R1,#+0
         STRB     R1,[R4, #+20]
         CMP      R0,#+2
-        BNE.W    ??user_storage_poll_18
+        BNE.W    ??user_storage_poll_19
         LDR      R0,[R4, #+0]
         ADD      R0,R0,#+4096
-??user_storage_poll_14:
+??user_storage_poll_15:
         STR      R0,[R4, #+0]
-??user_storage_poll_16:
-        B.N      ??user_storage_poll_1
 ??user_storage_poll_17:
+        B.N      ??user_storage_poll_1
+??user_storage_poll_18:
         LDR      R1,[R4, #+0]
         LDR      R0,[R4, #+4]
         CMP      R1,R0
-        BCS.N    ??user_storage_poll_19
-        BL       ??Subroutine42_0
-??CrossCallReturnLabel_151:
+        BCS.N    ??user_storage_poll_20
+        BL       ??Subroutine43_0
+??CrossCallReturnLabel_153:
         LDR      R0,[R4, #+0]
           CFI FunCall w25_async_start
         BL       w25_async_start
@@ -20582,44 +20638,44 @@ user_storage_poll:
         STREQ    R5,[R4, #+8]
         STRB     R0,[R4, #+20]
         B.N      ??user_storage_poll_1
-??user_storage_poll_19:
+??user_storage_poll_20:
         LDRB     R0,[R4, #+19]
           CFI FunCall upload_reset
         BL       upload_reset
         LDRB     R0,[R4, #+19]
         CMP      R0,#+10
-        LDR.N    R1,??DataTable195
-        BNE.N    ??user_storage_poll_20
+        LDR.N    R1,??DataTable197
+        BNE.N    ??user_storage_poll_21
         MOVS     R0,#+0
         STRH     R0,[R1, #+89]
         LDRH     R2,[R1, #+129]
         MOVW     R0,#+61439
         BL       ?Subroutine58
-??CrossCallReturnLabel_206:
+??CrossCallReturnLabel_205:
         LDR      R0,[R0, #+56]
         STR      R0,[R1, #+91]
-        B.N      ??user_storage_poll_21
-??user_storage_poll_20:
+        B.N      ??user_storage_poll_22
+??user_storage_poll_21:
         MOVS     R0,#+0
         STRH     R0,[R1, #+83]
         LDRH     R2,[R1, #+129]
         MOVW     R0,#+49151
         BL       ?Subroutine58
-??CrossCallReturnLabel_207:
+??CrossCallReturnLabel_206:
         LDR      R0,[R0, #+64]
         STR      R0,[R1, #+85]
-??user_storage_poll_21:
+??user_storage_poll_22:
         MOVS     R1,#+0
         MOVS     R0,#+0
           CFI FunCall store_marker
         BL       store_marker
         MOVS     R0,#+5
-??user_storage_poll_12:
+??user_storage_poll_13:
         STRB     R0,[R4, #+18]
-        B.N      ??user_storage_poll_22
-??user_storage_poll_15:
+        B.N      ??user_storage_poll_23
+??user_storage_poll_16:
         CMP      R6,#+3
-        BNE.N    ??user_storage_poll_23
+        BNE.N    ??user_storage_poll_24
           CFI FunCall mem_config_reset
         BL       mem_config_reset
         LDRB     R0,[R4, #+18]
@@ -20627,41 +20683,41 @@ user_storage_poll:
         ITT      NE
         CMPNE    R0,#+5
         CMPNE    R0,#+11
-??user_storage_poll_8:
-        BEQ.N    ??user_storage_poll_18
+??user_storage_poll_9:
+        BEQ.N    ??user_storage_poll_19
         MOV      R1,R0
         MOVS     R0,#+0
         STRB     R0,[R4, #+18]
         CMP      R1,#+1
-        BNE.N    ??user_storage_poll_24
-        LDR.N    R0,??DataTable195_23
+        BNE.N    ??user_storage_poll_25
+        LDR.N    R0,??DataTable197_23
         STRB     R1,[R0, #+0]
         B.N      ??user_storage_poll_1
-??user_storage_poll_24:
+??user_storage_poll_25:
         CMP      R1,#+2
-        BNE.N    ??user_storage_poll_25
+        BNE.N    ??user_storage_poll_26
         LDRB     R0,[R4, #+21]
         CMP      R0,#+10
         IT       EQ
         MOVEQ    R1,#+0
         LDRB     R0,[R4, #+22]
-        CBZ.N    R0,??user_storage_poll_26
+        CBZ.N    R0,??user_storage_poll_27
         ADDS     R1,R1,#+1
-??user_storage_poll_26:
+??user_storage_poll_27:
         LDRB     R2,[R4, #+30]
         MOVS     R0,#+1
         LSL      R1,R0,R1
         BIC      R1,R2,R1
         STRB     R1,[R4, #+30]
-??user_storage_poll_27:
+??user_storage_poll_28:
         B.N      ??user_storage_poll_1
-??user_storage_poll_25:
+??user_storage_poll_26:
         CMP      R1,#+6
         ITEE     NE
         CMPNE    R1,#+9
         LDRBEQ   R0,[R4, #+24]
         CMPEQ    R0,#+0
-        BNE.N    ??user_storage_poll_27
+        BNE.N    ??user_storage_poll_28
         LDRB     R3,[R4, #+23]
         LDRB     R2,[R4, #+22]
         MOVS     R1,#+2
@@ -20669,9 +20725,9 @@ user_storage_poll:
           CFI FunCall user_send_answer_comand
         BL       user_send_answer_comand
         B.N      ??user_storage_poll_1
-??user_storage_poll_23:
+??user_storage_poll_24:
         CMP      R6,#+2
-        BNE.N    ??user_storage_poll_28
+        BNE.N    ??user_storage_poll_29
         MOV      R6,R0
         CMP      R6,#+6
           CFI FunCall store_config_complete
@@ -20680,12 +20736,12 @@ user_storage_poll:
           CFI FunCall mem_config_reset
         BL       mem_config_reset
         CMP      R6,#+2
-        BNE.N    ??user_storage_poll_29
+        BNE.N    ??user_storage_poll_30
         LDRB     R0,[R4, #+21]
         CMP      R0,#+10
         ITE      EQ
-        LDREQ.N  R5,??DataTable195_20
-        LDRNE.N  R5,??DataTable195_19
+        LDREQ.N  R5,??DataTable197_20
+        LDRNE.N  R5,??DataTable197_19
         LDRH     R2,[R4, #+16]
         LDRB     R1,[R4, #+22]
           CFI FunCall upload_setIndex
@@ -20693,118 +20749,117 @@ user_storage_poll:
           CFI FunCall upload_store
         BL       upload_store
         LDRB     R0,[R4, #+22]
-        CBZ.N    R0,??user_storage_poll_30
+        CBZ.N    R0,??user_storage_poll_31
         ADDS     R5,R5,#+2
-??user_storage_poll_30:
+??user_storage_poll_31:
         MOVS     R0,#+0
         STRH     R0,[R5, #+0]
-        B.N      ??user_storage_poll_31
-??user_storage_poll_29:
+        B.N      ??user_storage_poll_32
+??user_storage_poll_30:
         CMP      R6,#+3
-        BNE.N    ??user_storage_poll_32
+        BNE.N    ??user_storage_poll_33
         LDRB     R0,[R4, #+19]
           CFI FunCall upload_reset
         BL       upload_reset
         MOVS     R0,#+4
         STR      R5,[R4, #+8]
-        B.N      ??user_storage_poll_33
-??user_storage_poll_32:
+        B.N      ??user_storage_poll_34
+??user_storage_poll_33:
         CMP      R6,#+5
         IT       NE
         CMPNE    R6,#+11
-        BNE.N    ??user_storage_poll_34
+        BNE.N    ??user_storage_poll_35
         MOVS     R0,#+0
         STRB     R0,[R4, #+19]
-        B.N      ??user_storage_poll_31
-??user_storage_poll_34:
+        B.N      ??user_storage_poll_32
+??user_storage_poll_35:
         CMP      R6,#+6
         IT       NE
         CMPNE    R6,#+9
-        BNE.N    ??user_storage_poll_35
-??user_storage_poll_31:
-        MOVS     R0,#+8
-        B.N      ??user_storage_poll_33
-??user_storage_poll_35:
-        CMP      R6,#+7
         BNE.N    ??user_storage_poll_36
-        LDR.N    R1,??DataTable195_23
-        LDR.N    R0,??DataTable195_25
+??user_storage_poll_32:
+        MOVS     R0,#+8
+        B.N      ??user_storage_poll_34
+??user_storage_poll_36:
+        CMP      R6,#+7
+        BNE.N    ??user_storage_poll_37
+        LDR.N    R1,??DataTable197_23
+        LDR.N    R0,??DataTable197_25
         LDRB     R2,[R0, #+0]
         LDRB     R0,[R1, #+0]
         ORRS     R2,R0,R2
-        BEQ.N    ??user_storage_poll_37
+        BEQ.N    ??user_storage_poll_38
         MOVS     R0,#+0
         STRB     R0,[R4, #+18]
         STRB     R0,[R1, #+0]
         B.N      ??user_storage_poll_1
-??user_storage_poll_37:
+??user_storage_poll_38:
         MOVS     R1,#+0
-        LDR.N    R0,??DataTable195_26
+        LDR.N    R0,??DataTable197_26
         STRB     R1,[R0, #+0]
         STRB     R1,[R4, #+18]
-        BL       ?Subroutine33
-??CrossCallReturnLabel_110:
+        BL       ?Subroutine34
+??CrossCallReturnLabel_112:
           CFI FunCall NVIC_SystemReset
         BL       NVIC_SystemReset
         LDRB     R0,[R4, #+18]
-        B.N      ??user_storage_poll_33
-??user_storage_poll_36:
+        B.N      ??user_storage_poll_34
+??user_storage_poll_37:
         MOVS     R0,#+0
-        B.N      ??user_storage_poll_33
-??user_storage_poll_28:
+        B.N      ??user_storage_poll_34
+??user_storage_poll_29:
         CMP      R0,#+3
         ITT      NE
         CMPNE    R0,#+5
         CMPNE    R0,#+11
-        BNE.N    ??user_storage_poll_38
+        BNE.N    ??user_storage_poll_39
         LDR      R0,[R4, #+8]
         SUBS     R0,R5,R0
         BMI.N    ??user_storage_poll_1
-??user_storage_poll_22:
+??user_storage_poll_23:
           CFI FunCall store_snapshot
         BL       store_snapshot
         CMP      R0,#+0
         BNE.N    ??user_storage_poll_1
-??user_storage_poll_18:
+??user_storage_poll_19:
         ADD      R5,R5,#+1000
         STR      R5,[R4, #+8]
         B.N      ??user_storage_poll_1
-??user_storage_poll_38:
+??user_storage_poll_39:
         CMP      R0,#+0
         BNE.N    ??user_storage_poll_1
           CFI FunCall w25_read_available
         BL       w25_read_available
         CMP      R0,#+0
         BEQ.N    ??user_storage_poll_1
-        LDR.N    R6,??DataTable195_25
+        LDR.N    R6,??DataTable197_25
         LDRB     R0,[R6, #+0]
         CMP      R0,#+0
         ITT      NE
         LDRBNE   R0,[R4, #+19]
         CMPNE    R0,#+10
-        BEQ.N    ??user_storage_poll_39
-        LDR.N    R0,??DataTable195_26
+        BEQ.N    ??user_storage_poll_40
+        LDR.N    R0,??DataTable197_26
         LDRB     R0,[R0, #+0]
-        CBNZ.N   R0,??user_storage_poll_3
-        LDR.N    R0,??DataTable195_23
+        CBNZ.N   R0,??user_storage_poll_4
+        LDR.N    R0,??DataTable197_23
         LDRB     R0,[R0, #+0]
-        CBNZ.N   R0,??user_storage_poll_40
-        LDR.N    R0,??DataTable195_27
+        CBNZ.N   R0,??user_storage_poll_41
+        LDR.N    R0,??DataTable197_27
         LDRB     R0,[R0, #+0]
-        CBNZ.N   R0,??user_storage_poll_3
-        LDR.N    R0,??DataTable195
-        LDR      R0,[R0, #+51]
-        CMP      R0,#+600
+        CBNZ.N   R0,??user_storage_poll_4
+        BL       ?Subroutine12
+??CrossCallReturnLabel_19:
         BCC.N    ??user_storage_poll_1
-??user_storage_poll_3:
+??user_storage_poll_4:
         MOV      R0,R5
           CFI FunCall log_storage_poll
         BL       log_storage_poll
         B.N      ??user_storage_poll_1
-??user_storage_poll_39:
-        LDR.N    R0,??DataTable195_26
+??user_storage_poll_40:
+        LDR.N    R0,??DataTable197_26
         LDRB     R0,[R0, #+0]
-        CBZ.N    R0,??user_storage_poll_40
+        CBZ.N    R0,??user_storage_poll_41
           CFI FunCall log_flushPending
         BL       log_flushPending
         LDRB     R0,[R6, #+0]
@@ -20813,9 +20868,9 @@ user_storage_poll:
         BL       store_snapshot
         CBZ.N    R0,??user_storage_poll_1
         MOVS     R0,#+7
-        B.N      ??user_storage_poll_33
-??user_storage_poll_40:
-        LDR.N    R5,??DataTable195_23
+        B.N      ??user_storage_poll_34
+??user_storage_poll_41:
+        LDR.N    R5,??DataTable197_23
         LDRB     R0,[R5, #+0]
         CBZ.N    R0,??user_storage_poll_1
           CFI FunCall store_snapshot
@@ -20824,55 +20879,55 @@ user_storage_poll:
         MOVS     R0,#+0
         STRB     R0,[R5, #+0]
         MOVS     R0,#+1
-??user_storage_poll_33:
+??user_storage_poll_34:
         STRB     R0,[R4, #+18]
 ??user_storage_poll_1:
         ADD      SP,SP,#+64
           CFI CFA R13+16
         POP      {R4-R6,PC}
-          CFI EndBlock cfiBlock532
+          CFI EndBlock cfiBlock533
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond533 Using cfiCommon0
+          CFI Block cfiCond534 Using cfiCommon0
           CFI Function user_storage_poll
-          CFI Conditional ??CrossCallReturnLabel_206
+          CFI Conditional ??CrossCallReturnLabel_205
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
           CFI R6 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+80
-          CFI Block cfiCond534 Using cfiCommon0
-          CFI (cfiCond534) Function user_storage_poll
-          CFI (cfiCond534) Conditional ??CrossCallReturnLabel_207
-          CFI (cfiCond534) R4 Frame(CFA, -16)
-          CFI (cfiCond534) R5 Frame(CFA, -12)
-          CFI (cfiCond534) R6 Frame(CFA, -8)
-          CFI (cfiCond534) R14 Frame(CFA, -4)
-          CFI (cfiCond534) CFA R13+80
-          CFI Block cfiPicker535 Using cfiCommon1
-          CFI (cfiPicker535) NoFunction
-          CFI (cfiPicker535) Picker
+          CFI Block cfiCond535 Using cfiCommon0
+          CFI (cfiCond535) Function user_storage_poll
+          CFI (cfiCond535) Conditional ??CrossCallReturnLabel_206
+          CFI (cfiCond535) R4 Frame(CFA, -16)
+          CFI (cfiCond535) R5 Frame(CFA, -12)
+          CFI (cfiCond535) R6 Frame(CFA, -8)
+          CFI (cfiCond535) R14 Frame(CFA, -4)
+          CFI (cfiCond535) CFA R13+80
+          CFI Block cfiPicker536 Using cfiCommon1
+          CFI (cfiPicker536) NoFunction
+          CFI (cfiPicker536) Picker
         THUMB
 ?Subroutine58:
         ANDS     R2,R0,R2
         STRH     R2,[R1, #+129]
-        LDR.N    R0,??DataTable195_24
+        LDR.N    R0,??DataTable197_24
         BX       LR
-          CFI EndBlock cfiCond533
           CFI EndBlock cfiCond534
-          CFI EndBlock cfiPicker535
+          CFI EndBlock cfiCond535
+          CFI EndBlock cfiPicker536
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable194:
+??DataTable195:
         DATA32
         DC32     _A_tempStrBuffer
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond536 Using cfiCommon0
+          CFI Block cfiCond537 Using cfiCommon0
           CFI Function user_parse_comand
-          CFI Conditional ??CrossCallReturnLabel_148
+          CFI Conditional ??CrossCallReturnLabel_150
           CFI R4 Frame(CFA, -36)
           CFI R5 Frame(CFA, -32)
           CFI R6 Frame(CFA, -28)
@@ -20883,281 +20938,308 @@ user_storage_poll:
           CFI R11 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+64
-          CFI Block cfiCond537 Using cfiCommon0
-          CFI (cfiCond537) Function user_parse_comand
-          CFI (cfiCond537) Conditional ??CrossCallReturnLabel_149
-          CFI (cfiCond537) R4 Frame(CFA, -36)
-          CFI (cfiCond537) R5 Frame(CFA, -32)
-          CFI (cfiCond537) R6 Frame(CFA, -28)
-          CFI (cfiCond537) R7 Frame(CFA, -24)
-          CFI (cfiCond537) R8 Frame(CFA, -20)
-          CFI (cfiCond537) R9 Frame(CFA, -16)
-          CFI (cfiCond537) R10 Frame(CFA, -12)
-          CFI (cfiCond537) R11 Frame(CFA, -8)
-          CFI (cfiCond537) R14 Frame(CFA, -4)
-          CFI (cfiCond537) CFA R13+64
-          CFI Block cfiPicker538 Using cfiCommon1
-          CFI (cfiPicker538) NoFunction
-          CFI (cfiPicker538) Picker
+          CFI Block cfiCond538 Using cfiCommon0
+          CFI (cfiCond538) Function user_parse_comand
+          CFI (cfiCond538) Conditional ??CrossCallReturnLabel_151
+          CFI (cfiCond538) R4 Frame(CFA, -36)
+          CFI (cfiCond538) R5 Frame(CFA, -32)
+          CFI (cfiCond538) R6 Frame(CFA, -28)
+          CFI (cfiCond538) R7 Frame(CFA, -24)
+          CFI (cfiCond538) R8 Frame(CFA, -20)
+          CFI (cfiCond538) R9 Frame(CFA, -16)
+          CFI (cfiCond538) R10 Frame(CFA, -12)
+          CFI (cfiCond538) R11 Frame(CFA, -8)
+          CFI (cfiCond538) R14 Frame(CFA, -4)
+          CFI (cfiCond538) CFA R13+64
+          CFI Block cfiPicker539 Using cfiCommon1
+          CFI (cfiPicker539) NoFunction
+          CFI (cfiPicker539) Picker
         THUMB
-?Subroutine42:
+?Subroutine43:
         STR      R6,[SP, #+0]
-          CFI Block cfiCond539 Using cfiCommon0
-          CFI (cfiCond539) Function fw_storage_poll
-          CFI (cfiCond539) Conditional ??CrossCallReturnLabel_150
-          CFI (cfiCond539) R4 Frame(CFA, -16)
-          CFI (cfiCond539) R5 Frame(CFA, -12)
-          CFI (cfiCond539) R6 Frame(CFA, -8)
-          CFI (cfiCond539) R14 Frame(CFA, -4)
-          CFI (cfiCond539) CFA R13+56
           CFI Block cfiCond540 Using cfiCommon0
-          CFI (cfiCond540) Function user_storage_poll
-          CFI (cfiCond540) Conditional ??CrossCallReturnLabel_151
+          CFI (cfiCond540) Function fw_storage_poll
+          CFI (cfiCond540) Conditional ??CrossCallReturnLabel_152
           CFI (cfiCond540) R4 Frame(CFA, -16)
           CFI (cfiCond540) R5 Frame(CFA, -12)
           CFI (cfiCond540) R6 Frame(CFA, -8)
           CFI (cfiCond540) R14 Frame(CFA, -4)
-          CFI (cfiCond540) CFA R13+80
-??Subroutine42_0:
+          CFI (cfiCond540) CFA R13+56
+          CFI Block cfiCond541 Using cfiCommon0
+          CFI (cfiCond541) Function user_storage_poll
+          CFI (cfiCond541) Conditional ??CrossCallReturnLabel_153
+          CFI (cfiCond541) R4 Frame(CFA, -16)
+          CFI (cfiCond541) R5 Frame(CFA, -12)
+          CFI (cfiCond541) R6 Frame(CFA, -8)
+          CFI (cfiCond541) R14 Frame(CFA, -4)
+          CFI (cfiCond541) CFA R13+80
+??Subroutine43_0:
         MOV      R3,R5
         MOVS     R2,#+0
         MOVS     R1,#+0
         BX       LR
-          CFI EndBlock cfiCond536
           CFI EndBlock cfiCond537
-          CFI EndBlock cfiPicker538
-          CFI EndBlock cfiCond539
+          CFI EndBlock cfiCond538
+          CFI EndBlock cfiPicker539
           CFI EndBlock cfiCond540
+          CFI EndBlock cfiCond541
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond541 Using cfiCommon0
+          CFI Block cfiCond542 Using cfiCommon0
           CFI Function user_savereset
-          CFI Conditional ??CrossCallReturnLabel_111
+          CFI Conditional ??CrossCallReturnLabel_113
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
-          CFI Block cfiCond542 Using cfiCommon0
-          CFI (cfiCond542) Function user_storage_poll
-          CFI (cfiCond542) Conditional ??CrossCallReturnLabel_110
-          CFI (cfiCond542) R4 Frame(CFA, -16)
-          CFI (cfiCond542) R5 Frame(CFA, -12)
-          CFI (cfiCond542) R6 Frame(CFA, -8)
-          CFI (cfiCond542) R14 Frame(CFA, -4)
-          CFI (cfiCond542) CFA R13+80
-          CFI Block cfiPicker543 Using cfiCommon1
-          CFI (cfiPicker543) NoFunction
-          CFI (cfiPicker543) Picker
+          CFI Block cfiCond543 Using cfiCommon0
+          CFI (cfiCond543) Function user_storage_poll
+          CFI (cfiCond543) Conditional ??CrossCallReturnLabel_112
+          CFI (cfiCond543) R4 Frame(CFA, -16)
+          CFI (cfiCond543) R5 Frame(CFA, -12)
+          CFI (cfiCond543) R6 Frame(CFA, -8)
+          CFI (cfiCond543) R14 Frame(CFA, -4)
+          CFI (cfiCond543) CFA R13+80
+          CFI Block cfiPicker544 Using cfiCommon1
+          CFI (cfiPicker544) NoFunction
+          CFI (cfiPicker544) Picker
         THUMB
-?Subroutine33:
+?Subroutine34:
         MOV      R1,#+256
-        LDR.N    R0,??DataTable195_28
+        LDR.N    R0,??DataTable197_28
         STR      R1,[R0, #+0]
-          CFI (cfiCond541) FunCall user_savereset comm_modem_off
-          CFI (cfiCond542) FunCall user_storage_poll comm_modem_off
+          CFI (cfiCond542) FunCall user_savereset comm_modem_off
+          CFI (cfiCond543) FunCall user_storage_poll comm_modem_off
         B.W      comm_modem_off
-          CFI EndBlock cfiCond541
           CFI EndBlock cfiCond542
-          CFI EndBlock cfiPicker543
+          CFI EndBlock cfiCond543
+          CFI EndBlock cfiPicker544
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiCond545 Using cfiCommon0
+          CFI Function user_storage_background_ready
+          CFI Conditional ??CrossCallReturnLabel_18
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+8
+          CFI Block cfiCond546 Using cfiCommon0
+          CFI (cfiCond546) Function user_storage_poll
+          CFI (cfiCond546) Conditional ??CrossCallReturnLabel_19
+          CFI (cfiCond546) R4 Frame(CFA, -16)
+          CFI (cfiCond546) R5 Frame(CFA, -12)
+          CFI (cfiCond546) R6 Frame(CFA, -8)
+          CFI (cfiCond546) R14 Frame(CFA, -4)
+          CFI (cfiCond546) CFA R13+80
+          CFI Block cfiPicker547 Using cfiCommon1
+          CFI (cfiPicker547) NoFunction
+          CFI (cfiPicker547) Picker
+        THUMB
+?Subroutine12:
+        LDR.N    R0,??DataTable197
+        LDR      R0,[R0, #+51]
+        CMP      R0,#+600
+        BX       LR
+          CFI EndBlock cfiCond545
+          CFI EndBlock cfiCond546
+          CFI EndBlock cfiPicker547
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195:
+??DataTable197:
         DATA32
         DC32     device
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_1:
+??DataTable197_1:
         DATA32
         DC32     0x31544c46
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_2:
+??DataTable197_2:
         DATA32
         DC32     0x5f5e1000
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_3:
+??DataTable197_3:
         DATA32
         DC32     config+161
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_4:
+??DataTable197_4:
         DATA32
         DC32     config
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_5:
+??DataTable197_5:
         DATA32
         DC32     `user_comm_link::first`
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_6:
+??DataTable197_6:
         DATA32
         DC32     comm_host
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_7:
+??DataTable197_7:
         DATA32
         DC32     comm_port
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_8:
+??DataTable197_8:
         DATA32
         DC32     config+40
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_9:
+??DataTable197_9:
         DATA32
         DC32     comm_host+32
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_10:
+??DataTable197_10:
         DATA32
         DC32     `comm_text::empty`
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_11:
+??DataTable197_11:
         DATA32
         DC32     comm_credential
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_12:
+??DataTable197_12:
         DATA32
         DC32     `comm_number{1}{2}{3}::rat`
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_13:
+??DataTable197_13:
         DATA32
         DC32     0x40011010
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_14:
+??DataTable197_14:
         DATA32
         DC32     0x40011014
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_15:
+??DataTable197_15:
         DATA32
         DC32     `user_comm_boot::handlers`
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_16:
+??DataTable197_16:
         DATA32
         DC32     comm_settings
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_17:
+??DataTable197_17:
         DATA32
         DC32     usb_bus_resets
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_18:
+??DataTable197_18:
         DATA32
         DC32     store
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_19:
+??DataTable197_19:
         DATA32
         DC32     temp_unacked
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_20:
+??DataTable197_20:
         DATA32
         DC32     log_unacked
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_21:
+??DataTable197_21:
         DATA32
         DC32     0x31434c0a
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_22:
+??DataTable197_22:
         DATA32
         DC32     0x31434c09
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_23:
+??DataTable197_23:
         DATA32
         DC32     store_save_requested
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_24:
+??DataTable197_24:
         DATA32
         DC32     mem
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_25:
+??DataTable197_25:
         DATA32
         DC32     log_pendingCount
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_26:
+??DataTable197_26:
         DATA32
         DC32     store_reset_requested
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_27:
+??DataTable197_27:
         DATA32
         DC32     log_timeKnown
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable195_28:
+??DataTable197_28:
         DATA32
         DC32     0x40010814
 

@@ -54,6 +54,7 @@ device_s device;
 /* >>> Cooperative storage callers */
 #ifdef ASM_RUNTIME
 #include "sector_runtime.h"
+#include "photo_runtime.h"
 static bool table_runtime_active(void);
 bool table_runtime_blocks_reads(void);
 static void table_runtime_poll(uint32_t now);
@@ -61,6 +62,9 @@ static void table_runtime_cancel(void);
 static void table_runtime_quiet(dataChanel_e channel);
 void idindex_runtime_suspend(void);
 #else
+#define photo_storage_busy() 0
+#define photo_storage_cancel() ((void)0)
+#define photo_storage_poll(now) ((void)0)
 #define table_runtime_active() 0
 #define table_runtime_blocks_reads() 0
 #define table_runtime_poll(now) ((void)0)
@@ -91,9 +95,9 @@ static bool store_config_start(void);
 static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
 static void store_restore(const device_s *saved);
 void user_storage_poll(void);
-bool user_storage_command_ready(void) { store_usb_session(); return !table_runtime_active() && !fw_async_active() && !log_async_active() && !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
+bool user_storage_command_ready(void) { store_usb_session(); return !photo_storage_busy() && !table_runtime_active() && !fw_async_active() && !log_async_active() && !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
 static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || user_storage_command_ready(); }
-bool user_storage_flash_ready(void) { return !table_runtime_active() && !fw_async_active() && !log_async_active() && store.clear != 9 && !w25_async_active() && w25_read_available(); }
+bool user_storage_flash_ready(void) { return !photo_storage_busy() && !table_runtime_active() && !fw_async_active() && !log_async_active() && store.clear != 9 && !w25_async_active() && w25_read_available(); }
 /* <<< Cooperative storage callers */
 
 /* >>> подтверждение выгрузки */
@@ -1336,7 +1340,7 @@ void user_readsavedinformation (void)
 // Ѕезопастное завершение работы прибора
 void user_savereset (void)
 {
-  if (store_runtime) { table_runtime_cancel(); store_reset_requested = 1; return; }
+  if (store_runtime) { table_runtime_cancel(); photo_storage_cancel(); store_reset_requested = 1; return; }
   log_flushPending(); // событи€, не дождавшиес€ времени, - в журнал до перезагрузки
   user_saveindex(); // сохран€ем индексы и т.п.
   wdt_reload();
@@ -2437,7 +2441,12 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
 // ѕакет 14 - передача фотографии
 void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
 {
+
+#ifdef ASM_RUNTIME
+  photo_request_answer(cch,uniqId,NULL,0);
+#else
   user_send_answer_comand(21, photo_request(cch, uniqId, NULL, 0), cch, uniqId);
+#endif
 }
 
 /* >>> врем€ действи€ ID
@@ -3505,7 +3514,12 @@ if (cch != CH_USB && len >= 5){
   user_debug(">>U Recv cmd get photo (cmd 21)\r\n"); 
 #endif 
       if (len == 3 || len == 9)
+
+#ifdef ASM_RUNTIME
+        photo_request_answer(cch,uniqId,ptr+5,(uint8_t)(len-3));
+#else
         user_send_answer_comand(21, photo_request(cch, uniqId, ptr + 5, (uint8_t)(len - 3)), cch, uniqId);
+#endif
       else user_send_answer_comand(21, CMD_PARAMERROR, cch, uniqId);
       break;      
       
@@ -4636,6 +4650,15 @@ static bool log_readRecords(uint16_t first, uint8_t *data, uint16_t count){
 static cellLog_s log_pending[LOG_PENDING_MAX];
 static uint8_t log_pendingCount;
 static uint8_t log_timeKnown;
+#ifdef ASM_RUNTIME
+/* Pending foreground persistence runs before another photo background job. */
+bool user_storage_background_ready(void)
+{
+  return user_storage_command_ready() && !store_save_requested &&
+    !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
+}
+#endif
+
 
 /* >>> Cooperative firmware block writer */
 static struct {
@@ -4657,7 +4680,7 @@ static void fw_async_quiet(dataChanel_e channel)
 static void fw_async_reply(uint8_t id) { fw_job.id = id; }
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel)
 {
-  if (fw_async_active() || log_async_active() || store.job || mem_config_result() || w25_async_active()) return false;
+  if (photo_storage_busy() || table_runtime_active() || fw_async_active() || log_async_active() || store.job || mem_config_result() || w25_async_active()) return false;
   if (address < mem[MB_FIRMWARE].start + FWBLOCK_OFFSET ||
       address > mem[MB_FIRMWARE].start + mem[MB_FIRMWARE].size - 1024u) return false;
   fw_job.data = malloc(1024u);
@@ -5290,7 +5313,7 @@ static void store_marker(uint8_t cmd, uint32_t end)
 }
 static bool store_snapshot(void)
 {
-  if (fw_async_active() || log_async_active()) return false;
+  if (photo_storage_busy() || table_runtime_active() || fw_async_active() || log_async_active()) return false;
   config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
   device.crc = crc16_calc((uint8_t*)&device, sizeof(device) - 2);
   return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
@@ -5384,6 +5407,7 @@ void user_storage_poll(void)
   uint32_t now = timers_getMillis();
   uint8_t result = mem_config_result();
   if (table_runtime_active()) { table_runtime_poll(now); return; }
+  if (photo_storage_busy()) { photo_storage_poll(now); return; }
   if (fw_async_active()) { fw_storage_poll(now); return; }
   if (log_async_active()) { log_storage_poll(now); return; }
   if (result == 1) { mem_config_poll(now); return; }

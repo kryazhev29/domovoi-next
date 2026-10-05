@@ -5,7 +5,7 @@ ns={'__file__':str(ROOT/'Tests/run_host.py')}
 code=(ROOT/'Tests/run_host.py').read_text(encoding='utf-8');exec(code[:code.index('with tempfile.TemporaryDirectory')],ns)
 src,fun,types=ns['source'],ns['function'],ns['typedefs'];u=src('Tests/asm/reference/User/user_fun.c')
 defs='\n'.join(x for x in u.splitlines() if x.startswith('#define FW_'))
-defs+='\n#define table_runtime_active() 0\n'
+defs+='\n#define table_runtime_active() 0\n#define photo_storage_busy() 0\n'
 jobs=u[u.index('/* >>> Cooperative firmware block writer */'):u.index('/* <<< Cooperative firmware block writer */')]
 prod='\n'.join(fun(u,n) for n in ('CRC32','fw_abort','fw_blocks_done','fw_take_block','user_storage_command_ready','user_storage_flash_ready'))+'\n'+jobs
 prod+='\nstatic void command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){switch(ptr[4]){'+ns['cases'](u)(20)+'default:CHECK(0);}}\n'

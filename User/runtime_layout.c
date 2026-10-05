@@ -21,3 +21,5 @@ __root const photoParam_s * const asm_debug_photoParam_s = 0;
 __root const bootFWparam_s * const asm_debug_bootFWparam_s = 0;
 #include "sector_runtime.h"
 __root const sj_runtime_state_s * const asm_debug_sjr = 0;
+#include "photo_runtime.h"
+__root const photo_runtime_s * const asm_debug_photo_runtime = 0;

@@ -1,0 +1,14 @@
+{
+  "empty": {
+    "frames": 3,
+    "bytes": 768,
+    "flash_equal": true
+  },
+  "prefix4087": {
+    "frames": 8,
+    "bytes": 129,
+    "flash_equal": true
+  },
+  "baseline_elf_sha256": "621593cecd237a6075a6c31355dc74223c6584c666b0b38dd622761840c46fd4",
+  "final_elf_sha256": "d7b95246300f37b92a6d0d24dd350e08495103acb9d7c5e50253b306f3036416"
+}

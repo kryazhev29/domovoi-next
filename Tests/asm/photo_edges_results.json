@@ -1,0 +1,17 @@
+{
+  "cancellation": 13,
+  "corrupt": 2,
+  "failures": 30,
+  "stream": 6,
+  "transport_and_heap": 6,
+  "ownership": 9,
+  "full_cleanup": {
+    "sectors": 254,
+    "passes": 3945,
+    "max_instructions": 694,
+    "total_instructions": 666204,
+    "stack": 128
+  },
+  "headers_and_space": 7,
+  "elf_sha256": "d7b95246300f37b92a6d0d24dd350e08495103acb9d7c5e50253b306f3036416"
+}

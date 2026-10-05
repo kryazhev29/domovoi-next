@@ -1,6 +1,5 @@
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/User/sector_runtime.c
-        PUBLIC sjr
 
         RTMODEL "__CPP_Runtime", "1"
         RTMODEL "__SystemLibrary", "DLib"
@@ -26,6 +25,7 @@
         PUBLIC sj_runtime_cancel
         PUBLIC sj_runtime_poll
         PUBLIC sj_runtime_reset
+        PUBLIC sjr
 
           CFI Names cfiNames0
           CFI StackFrame CFA R13 DATA
