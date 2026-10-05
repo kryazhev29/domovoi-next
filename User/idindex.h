@@ -31,5 +31,8 @@ bool idindex_put(uint16_t index, const uint8_t *id);
 void idindex_commit(uint32_t delta, uint16_t cells_end);
 /* Фоновая пересборка, по одному короткому шагу за вызов. */
 void idindex_poll(uint32_t base);
+/* Outstanding W25 owner; suspend drains it without reusing its source. */
+bool idindex_runtime_active(void);
+void idindex_runtime_suspend(void);
 
 #endif
