@@ -22,6 +22,10 @@
         EXTERN crc16_calcInit
         EXTERN crc32_update
         EXTERN fast_all_ff
+        EXTERN sjr
+        EXTERN sj_runtime_blocked
+        EXTERN table_runtime_blocks_reads
+        EXTERN photo_storage_busy
         EXTERN free
         EXTERN malloc
         EXTERN memcmp
@@ -1650,7 +1654,7 @@ cfg_range:
         BX       LR
           CFI EndBlock cfiBlock52
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock53 Using cfiCommon0
           CFI Function cfg_read
         THUMB
@@ -1664,10 +1668,17 @@ cfg_read:
         MOV      R4,R0
         MOV      R5,R1
         MOV      R6,R2
+; Startup selects and validates the slot. Runtime reads use that verified cache;
+; only verified publication changes it. A read must not rescan both 4 KiB slots.
+        LDR      R0,=store_runtime
+        LDRB     R0,[R0]
+        CMP      R0,#+0
+        BNE.N    cfg_read_cached
           CFI FunCall mem_config_result
         BL       mem_config_result
         CMP      R0,#+1
         BNE.N    ??cfg_read_0
+cfg_read_cached:
         LDR.W    R0,??DataTable21_4
         LDR      R0,[R0, #+0]
         B.N      ??cfg_read_1
@@ -2100,8 +2111,9 @@ mem_erase_mem:
 
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
+; page[64] shares sjr.data while config owns the flash.
 cfg_job:
-        DS8 104
+        DS8 40
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock72 Using cfiCommon0
@@ -2110,7 +2122,7 @@ cfg_job:
         THUMB
 mem_config_result:
         LDR.W    R0,??DataTable21_14
-        LDRB     R0,[R0, #+99]
+        LDRB     R0,[R0, #+35]
         BX       LR
           CFI EndBlock cfiBlock72
 
@@ -2142,8 +2154,8 @@ mem_config_reset:
         BL       free
         MOVS     R0,#+0
         STR      R0,[R4, #+0]
-        STRB     R0,[R4, #+99]
-        STRB     R0,[R4, #+100]
+        STRB     R0,[R4, #+35]
+        STRB     R0,[R4, #+36]
 ??mem_config_reset_0:
         POP      {R4,PC}
           CFI EndBlock cfiBlock74
@@ -2162,8 +2174,21 @@ mem_config_begin:
           CFI CFA R13+24
         MOV      R4,R0
         MOV      R5,R1
+ ; Config receives the common page only after the old owner is quiescent.
+          CFI FunCall photo_storage_busy
+        BL       photo_storage_busy
+        CMP      R0,#+0
+        BNE.N    ??mem_config_begin_0
+          CFI FunCall table_runtime_blocks_reads
+        BL       table_runtime_blocks_reads
+        CMP      R0,#+0
+        BNE.N    ??mem_config_begin_0
+          CFI FunCall sj_runtime_blocked
+        BL       sj_runtime_blocked
+        CMP      R0,#+0
+        BNE.N    ??mem_config_begin_0
         LDR.W    R6,??DataTable21_14
-        LDRB     R0,[R6, #+99]
+        LDRB     R0,[R6, #+35]
         CBNZ.N   R0,??mem_config_begin_0
           CFI FunCall w25_async_active
         BL       w25_async_active
@@ -2197,38 +2222,38 @@ mem_config_begin:
         BL       __aeabi_memcpy
         LDR.W    R0,??DataTable21_4
         LDR      R1,[R0, #+0]
-        STR      R1,[R6, #+68]
+        STR      R1,[R6, #+4]
         LDR.W    R2,??DataTable21_2
         CMP      R1,R2
         IT       EQ
         LDREQ.W  R2,??DataTable21_3
-        STR      R2,[R6, #+72]
+        STR      R2,[R6, #+8]
         LDR.N    R1,??DataTable21_1
-        STR      R1,[R6, #+76]
+        STR      R1,[R6, #+12]
         LDR.W    R1,??DataTable21_7
         LDR      R1,[R1, #+0]
         ADDS     R1,R1,#+1
-        STR      R1,[R6, #+80]
+        STR      R1,[R6, #+16]
         MOVS     R1,#+0
-        STRH     R1,[R6, #+96]
-        STRB     R1,[R6, #+102]
-        STRB     R1,[R6, #+101]
+        STRH     R1,[R6, #+32]
+        STRB     R1,[R6, #+38]
+        STRB     R1,[R6, #+37]
         LDR      R1,[R0, #+0]
         LDR.N    R0,??DataTable21_5
         CMP      R1,R0
         ITE      EQ
         MOVEQ    R0,#+1
         MOVNE    R0,#+0
-        STRB     R0,[R6, #+103]
+        STRB     R0,[R6, #+39]
         MOVS     R0,#+0
-        STRB     R0,[R6, #+100]
+        STRB     R0,[R6, #+36]
         MOVS     R0,#+1
-        STRB     R0,[R6, #+98]
-        STRB     R0,[R6, #+99]
+        STRB     R0,[R6, #+34]
+        STRB     R0,[R6, #+35]
         POP      {R1,R4-R7,PC}
           CFI EndBlock cfiBlock75
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock76 Using cfiCommon0
           CFI Function cfg_async_page
         THUMB
@@ -2237,22 +2262,22 @@ cfg_async_page:
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
         LDR.N    R3,??DataTable21_14
-        LDRH     R0,[R3, #+96]
+        LDRH     R0,[R3, #+32]
         CMP      R0,#+1024
         BCS.N    ??cfg_async_page_0
         MOVS     R2,#+64
         LDR      R1,[R3, #+0]
         ADD      R1,R1,R0
-        ADDS     R0,R3,#+4
+        LDR      R0,=sjr+61
           CFI FunCall __aeabi_memcpy
         BL       __aeabi_memcpy
         MOVS     R0,#+1
         POP      {R1,PC}
 ??cfg_async_page_0:
         MOVS     R2,#+64
-        ADDS     R1,R3,#+4
-        LDR      R0,[R3, #+68]
-        LDRH     R3,[R3, #+96]
+        LDR      R1,=sjr+61
+        LDR      R0,[R3, #+4]
+        LDRH     R3,[R3, #+32]
         ADDS     R0,R3,R0
         POP      {R3,LR}
           CFI R14 SameValue
@@ -2299,7 +2324,7 @@ mem_config_poll:
         BL       ?Subroutine15
 ??CrossCallReturnLabel_33:
         BNE.N    ??mem_config_poll_1
-        LDRB     R0,[R4, #+100]
+        LDRB     R0,[R4, #+36]
         CBZ.N    R0,??mem_config_poll_2
         MOV      R0,R5
           CFI FunCall w25_async_poll
@@ -2307,36 +2332,45 @@ mem_config_poll:
         CMP      R0,#+1
         BEQ.N    ??mem_config_poll_1
         MOVS     R1,#+0
-        STRB     R1,[R4, #+100]
+        STRB     R1,[R4, #+36]
         CMP      R0,#+2
 ??mem_config_poll_3:
         BNE.W    ??mem_config_poll_4
-        LDRB     R0,[R4, #+103]
+        LDRB     R0,[R4, #+39]
         CMP      R0,#+0
         BEQ.N    ??mem_config_poll_1
-        LDRB     R0,[R4, #+98]
+        LDRB     R0,[R4, #+34]
         CMP      R0,#+2
         BNE.N    ??mem_config_poll_1
-        LDR      R0,[R4, #+72]
-        STR      R0,[R4, #+68]
+        LDR      R0,[R4, #+8]
+        STR      R0,[R4, #+4]
         LDR.N    R1,??DataTable21_4
         STR      R0,[R1, #+0]
-        LDR      R0,[R4, #+80]
+        LDR      R0,[R4, #+16]
         LDR.N    R1,??DataTable21_7
         STR      R0,[R1, #+0]
 ??mem_config_poll_1:
         B.N      ??mem_config_poll_5
 ??mem_config_poll_2:
-        LDRB     R0,[R4, #+98]
+        LDRB     R0,[R4, #+34]
         SUBS     R0,R0,#+1
         CMP      R0,#+11
         BHI.N    ??mem_config_poll_3
         TBH      [PC, R0, LSL #+1]
         DATA
 ??mem_config_poll_0:
-        DC16     0xC,0x46,0x57,0x71
-        DC16     0x71,0x71,0x5F,0x64
-        DC16     0x71,0xD2,0xF1,0x107
+        DC16 (??mem_config_poll_6-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_15-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_17-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_20-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_20-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_20-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_18-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_19-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_20-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_29-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_30-??mem_config_poll_0)/2
+        DC16 (??mem_config_poll_31-??mem_config_poll_0)/2
           CFI FunCall cfg_async_page
         THUMB
 ??mem_config_poll_6:
@@ -2345,7 +2379,7 @@ mem_config_poll:
         BEQ.N    ??mem_config_poll_7
         MOVS     R2,#+64
         MOV      R1,SP
-        LDR      R0,[R4, #+68]
+        LDR      R0,[R4, #+4]
         BL       ?Subroutine12
 ??CrossCallReturnLabel_24:
         CMP      R0,#+0
@@ -2354,11 +2388,11 @@ mem_config_poll:
 ??CrossCallReturnLabel_18:
         CBZ.N    R0,??mem_config_poll_8
         MOVS     R0,#+1
-        STRB     R0,[R4, #+101]
+        STRB     R0,[R4, #+37]
 ??mem_config_poll_8:
         MOVS     R2,#+64
         MOV      R1,SP
-        LDRH     R0,[R4, #+96]
+        LDRH     R0,[R4, #+32]
         BL       ?Subroutine11
 ??CrossCallReturnLabel_21:
         CMP      R0,#+0
@@ -2367,22 +2401,22 @@ mem_config_poll:
 ??CrossCallReturnLabel_17:
         CBZ.N    R0,??mem_config_poll_9
         MOVS     R0,#+1
-        STRB     R0,[R4, #+102]
+        STRB     R0,[R4, #+38]
 ??mem_config_poll_9:
-        LDRH     R1,[R4, #+96]
+        LDRH     R1,[R4, #+32]
         ADDS     R1,R1,#+64
         UXTH     R0,R1
         CMP      R0,#+4096
         BNE.N    ??mem_config_poll_10
         MOVS     R1,#+0
-        LDRB     R0,[R4, #+103]
+        LDRB     R0,[R4, #+39]
         CBNZ.N   R0,??mem_config_poll_11
-        LDRB     R0,[R4, #+102]
+        LDRB     R0,[R4, #+38]
         CBZ.N    R0,??mem_config_poll_12
         MOVS     R0,#+2
         B.N      ??mem_config_poll_13
 ??mem_config_poll_12:
-        LDRB     R0,[R4, #+101]
+        LDRB     R0,[R4, #+37]
         CBZ.N    R0,??mem_config_poll_14
 ??mem_config_poll_11:
         MOVS     R0,#+7
@@ -2390,15 +2424,15 @@ mem_config_poll:
 ??mem_config_poll_14:
         MOVS     R0,#+12
 ??mem_config_poll_13:
-        STRB     R0,[R4, #+98]
+        STRB     R0,[R4, #+34]
 ??mem_config_poll_10:
-        STRH     R1,[R4, #+96]
+        STRH     R1,[R4, #+32]
         B.N      ??mem_config_poll_5
 ??mem_config_poll_15:
         LDR.N    R6,??DataTable21_9
         MOVS     R0,#+3
 ??mem_config_poll_16:
-        STRB     R0,[R4, #+98]
+        STRB     R0,[R4, #+34]
         MOV      R3,R5
         MOVS     R2,#+0
         MOVS     R1,#+0
@@ -2409,93 +2443,93 @@ mem_config_poll:
 ??mem_config_poll_7:
         BEQ.W    ??mem_config_poll_4
         MOVS     R0,#+1
-        STRB     R0,[R4, #+100]
+        STRB     R0,[R4, #+36]
         B.N      ??mem_config_poll_5
 ??mem_config_poll_17:
         MOV      R6,#+1892352
         MOV      R0,#+1024
-        STRH     R0,[R4, #+96]
+        STRH     R0,[R4, #+32]
         MOVS     R0,#+4
         B.N      ??mem_config_poll_16
 ??mem_config_poll_18:
-        LDR      R6,[R4, #+72]
+        LDR      R6,[R4, #+8]
         ADD      R6,R6,#+4096
         MOVS     R0,#+8
         B.N      ??mem_config_poll_16
 ??mem_config_poll_19:
-        LDR      R6,[R4, #+72]
+        LDR      R6,[R4, #+8]
         MOVS     R0,#+0
-        STRH     R0,[R4, #+96]
+        STRH     R0,[R4, #+32]
         MOVS     R0,#+9
-        STRB     R0,[R4, #+98]
+        STRB     R0,[R4, #+34]
         BL       ?Subroutine7
 ??CrossCallReturnLabel_14:
-        STR      R0,[R4, #+84]
-        LDRB     R0,[R4, #+98]
+        STR      R0,[R4, #+20]
+        LDRB     R0,[R4, #+34]
         B.N      ??mem_config_poll_16
 ??mem_config_poll_20:
           CFI FunCall cfg_async_page
         BL       cfg_async_page
         CMP      R0,#+0
         BEQ.N    ??mem_config_poll_21
-        LDRB     R0,[R4, #+98]
+        LDRB     R0,[R4, #+34]
         CMP      R0,#+9
         ITE      EQ
-        LDREQ    R0,[R4, #+72]
+        LDREQ    R0,[R4, #+8]
         LDRNE.N  R0,??DataTable21_5
         MOV      R3,R5
         MOVS     R2,#+64
-        ADDS     R1,R4,#+4
-        LDRH     R5,[R4, #+96]
+        LDR      R1,=sjr+61
+        LDRH     R5,[R4, #+32]
         ADDS     R0,R5,R0
           CFI FunCall w25_async_start
         BL       w25_async_start
         CMP      R0,#+0
         BEQ.N    ??mem_config_poll_21
-        LDRB     R0,[R4, #+98]
+        LDRB     R0,[R4, #+34]
         CMP      R0,#+9
         BNE.N    ??mem_config_poll_22
         MOVS     R2,#+64
-        ADDS     R1,R4,#+4
-        LDR      R0,[R4, #+84]
+        LDR      R1,=sjr+61
+        LDR      R0,[R4, #+20]
           CFI FunCall crc32_update
         BL       crc32_update
-        STR      R0,[R4, #+84]
+        STR      R0,[R4, #+20]
 ??mem_config_poll_22:
-        LDRB     R0,[R4, #+98]
-        LDRH     R1,[R4, #+96]
+        LDRB     R0,[R4, #+34]
+        LDRH     R1,[R4, #+32]
         ADDS     R1,R1,#+64
-        STRH     R1,[R4, #+96]
+        STRH     R1,[R4, #+32]
         MOVS     R1,#+1
-        STRB     R1,[R4, #+100]
+        STRB     R1,[R4, #+36]
         CMP      R0,#+4
         BNE.N    ??mem_config_poll_23
-        LDRH     R1,[R4, #+96]
+        LDRH     R1,[R4, #+32]
         CMP      R1,#+4096
         BNE.N    ??mem_config_poll_24
         MOV      R0,#+512
-        STRH     R0,[R4, #+96]
+        STRH     R0,[R4, #+32]
         MOVS     R0,#+5
         B.N      ??mem_config_poll_24
 ??mem_config_poll_23:
         CMP      R0,#+5
         BNE.N    ??mem_config_poll_25
-        LDRH     R1,[R4, #+96]
+        LDRH     R1,[R4, #+32]
         CMP      R1,#+1024
         BNE.N    ??mem_config_poll_24
         MOVS     R0,#+0
-        STRH     R0,[R4, #+96]
+        STRH     R0,[R4, #+32]
         MOVS     R0,#+6
         B.N      ??mem_config_poll_24
 ??mem_config_poll_25:
         CMP      R0,#+6
         BNE.N    ??mem_config_poll_26
-        LDRH     R1,[R4, #+96]
+        LDRH     R1,[R4, #+32]
         CMP      R1,#+512
         BNE.N    ??mem_config_poll_24
-        LDRB     R0,[R4, #+103]
+        LDRB     R0,[R4, #+39]
         CBNZ.N   R0,??mem_config_poll_27
-        LDRB     R0,[R4, #+101]
+        LDRB     R0,[R4, #+37]
         CBNZ.N   R0,??mem_config_poll_28
 ??mem_config_poll_27:
         MOVS     R0,#+12
@@ -2506,20 +2540,20 @@ mem_config_poll:
 ??mem_config_poll_26:
         CMP      R0,#+9
         ITT      EQ
-        LDRHEQ   R1,[R4, #+96]
+        LDRHEQ   R1,[R4, #+32]
         CMPEQ    R1,#+4096
         BNE.N    ??mem_config_poll_24
         MOVS     R0,#+0
-        STRH     R0,[R4, #+96]
+        STRH     R0,[R4, #+32]
         BL       ?Subroutine7
 ??CrossCallReturnLabel_13:
-        STR      R0,[R4, #+92]
+        STR      R0,[R4, #+28]
         MOVS     R0,#+10
         B.N      ??mem_config_poll_24
 ??mem_config_poll_29:
         MOVS     R2,#+64
         MOV      R1,SP
-        LDR      R0,[R4, #+72]
+        LDR      R0,[R4, #+8]
         BL       ?Subroutine12
 ??CrossCallReturnLabel_23:
         CMP      R0,#+0
@@ -2527,54 +2561,54 @@ mem_config_poll:
         BEQ.N    ??mem_config_poll_4
         MOVS     R2,#+64
         MOV      R1,SP
-        LDR      R0,[R4, #+92]
+        LDR      R0,[R4, #+28]
           CFI FunCall crc32_update
         BL       crc32_update
-        STR      R0,[R4, #+92]
-        LDRH     R0,[R4, #+96]
+        STR      R0,[R4, #+28]
+        LDRH     R0,[R4, #+32]
         ADDS     R0,R0,#+64
-        STRH     R0,[R4, #+96]
-        LDRH     R0,[R4, #+96]
+        STRH     R0,[R4, #+32]
+        LDRH     R0,[R4, #+32]
         CMP      R0,#+4096
         BNE.N    ??mem_config_poll_5
-        LDR      R1,[R4, #+92]
-        LDR      R0,[R4, #+84]
+        LDR      R1,[R4, #+28]
+        LDR      R0,[R4, #+20]
         CMP      R1,R0
         BNE.N    ??mem_config_poll_4
         MVNS     R0,R0
-        STR      R0,[R4, #+88]
+        STR      R0,[R4, #+24]
         MOVS     R0,#+11
         B.N      ??mem_config_poll_24
 ??mem_config_poll_30:
         MOV      R3,R5
         MOVS     R2,#+16
-        ADD      R1,R4,#+76
-        LDR      R0,[R4, #+72]
+        ADD      R1,R4,#+12
+        LDR      R0,[R4, #+8]
         ADD      R0,R0,#+4096
           CFI FunCall w25_async_start
         BL       w25_async_start
         CBZ.N    R0,??mem_config_poll_4
         MOVS     R0,#+1
-        STRB     R0,[R4, #+100]
-        LDRB     R0,[R4, #+103]
+        STRB     R0,[R4, #+36]
+        LDRB     R0,[R4, #+39]
         CMP      R0,#+0
         ITE      NE
         MOVNE    R0,#+2
         MOVEQ    R0,#+12
 ??mem_config_poll_24:
-        STRB     R0,[R4, #+98]
+        STRB     R0,[R4, #+34]
         B.N      ??mem_config_poll_5
 ??mem_config_poll_31:
-        LDRB     R0,[R4, #+101]
+        LDRB     R0,[R4, #+37]
         CMP      R0,#+0
         ITT      EQ
-        LDRBEQ   R0,[R4, #+103]
+        LDRBEQ   R0,[R4, #+39]
         CMPEQ    R0,#+0
         BEQ.N    ??CrossCallReturnLabel_29
-        LDR      R1,[R4, #+72]
+        LDR      R1,[R4, #+8]
         LDR.N    R0,??DataTable21_4
         STR      R1,[R0, #+0]
-        LDR      R1,[R4, #+80]
+        LDR      R1,[R4, #+16]
         BL       ??Subroutine13_0
 ??CrossCallReturnLabel_29:
         MOVS     R0,#+2
@@ -2586,7 +2620,7 @@ mem_config_poll:
         STR      R0,[R1, #+0]
         MOVS     R0,#+3
 ??mem_config_poll_32:
-        STRB     R0,[R4, #+99]
+        STRB     R0,[R4, #+35]
 ??mem_config_poll_5:
         ADD      SP,SP,#+64
           CFI CFA R13+16
@@ -2614,7 +2648,7 @@ mem_config_poll:
         THUMB
 ?Subroutine15:
         LDR.N    R4,??DataTable21_14
-        LDRB     R0,[R4, #+99]
+        LDRB     R0,[R4, #+35]
         CMP      R0,#+1
         BX       LR
           CFI EndBlock cfiCond78
@@ -2748,7 +2782,7 @@ mem_config_poll:
           CFI (cfiPicker83) Picker
         THUMB
 ?Subroutine12:
-        LDRH     R3,[R4, #+96]
+        LDRH     R3,[R4, #+32]
         ADDS     R0,R3,R0
           CFI (cfiCond81) FunCall mem_config_poll w25_read_data
           CFI (cfiCond81) FunCall mem_config_poll w25_read_data
@@ -2789,7 +2823,7 @@ mem_config_poll:
           CFI EndBlock cfiCond85
           CFI EndBlock cfiPicker86
 
-        SECTION `.text`:CODE:NOROOT(1)
+        SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiCond87 Using cfiCommon0
           CFI Function mem_config_poll
           CFI Conditional ??CrossCallReturnLabel_18
@@ -2812,7 +2846,7 @@ mem_config_poll:
         THUMB
 ?Subroutine9:
         MOVS     R2,#+64
-        ADDS     R1,R4,#+4
+        LDR      R1,=sjr+61
         MOV      R0,SP
           CFI (cfiCond87) FunCall mem_config_poll memcmp
           CFI (cfiCond87) FunCall mem_config_poll memcmp
@@ -2844,7 +2878,7 @@ mem_config_poll:
         THUMB
 ?Subroutine7:
         MOVS     R2,#+4
-        ADD      R1,R4,#+80
+        ADD      R1,R4,#+16
         MOV      R0,#+4294967295
           CFI (cfiCond90) FunCall mem_config_poll crc32_update
           CFI (cfiCond90) FunCall mem_config_poll crc32_update

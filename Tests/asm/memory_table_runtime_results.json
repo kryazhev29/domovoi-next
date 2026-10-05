@@ -1,0 +1,64 @@
+{
+  "units": "Unicorn instructions, modeled NOR, NOT cycles or milliseconds",
+  "normal": {
+    "13/1": {
+      "max_instructions": 1068,
+      "total_instructions": 350962,
+      "passes": 991,
+      "stack": 292,
+      "begin_instructions": 1040,
+      "max_poll_instructions": 1068
+    },
+    "13/63": {
+      "max_instructions": 25468,
+      "total_instructions": 590456,
+      "passes": 991,
+      "stack": 292,
+      "begin_instructions": 25468,
+      "max_poll_instructions": 2808
+    },
+    "13/6": {
+      "max_instructions": 3010,
+      "total_instructions": 1062422,
+      "passes": 3574,
+      "stack": 292,
+      "begin_instructions": 3010,
+      "max_poll_instructions": 1068
+    },
+    "14/3": {
+      "max_instructions": 1815,
+      "total_instructions": 266083,
+      "passes": 895,
+      "stack": 288,
+      "begin_instructions": 1815,
+      "max_poll_instructions": 1068
+    },
+    "15/3": {
+      "max_instructions": 1267,
+      "total_instructions": 264576,
+      "passes": 895,
+      "stack": 288,
+      "begin_instructions": 1267,
+      "max_poll_instructions": 1068
+    },
+    "16/2": {
+      "max_instructions": 1651,
+      "total_instructions": 273570,
+      "passes": 879,
+      "stack": 288,
+      "begin_instructions": 726,
+      "max_poll_instructions": 1651
+    }
+  },
+  "cancel_reconnect": 13,
+  "faults": 27,
+  "corruption": 1,
+  "interaction_heap": {
+    "full_id_passes": 26748,
+    "full_id_max_poll": 1068,
+    "full_id_total_instructions": 23092217,
+    "full_id_stack": 292,
+    "simultaneous_heap_payload": 3770
+  },
+  "elf_sha256": "839d99349024ce42c9a2b994302f8791c5318d3e9b02724ab8ef0176dc9b13fe"
+}

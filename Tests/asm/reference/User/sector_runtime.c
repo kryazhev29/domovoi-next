@@ -29,6 +29,7 @@ static void sjr_start(uint32_t address, const uint8_t *data, uint16_t n, uint32_
 }
 uint8_t sj_runtime_poll(uint32_t now)
 {
+  uint8_t check[64]; /* independent reference: no lifetime beyond this call */
   if (!sjr.phase) return 0;
   if (sjr.waiting) {
     uint8_t r=w25_async_poll(now);
@@ -41,8 +42,8 @@ uint8_t sj_runtime_poll(uint32_t now)
   switch (sjr.phase) {
   case 16:
     if (!sjr.reader(sjr.context,sjr.offset,sjr.data) ||
-        !w25_read_data(sjr.address+sjr.offset,sjr.check,64)) { sjr_fail(); break; }
-    if (memcmp(sjr.data,sjr.check,64)) sjr.changed=1;
+        !w25_read_data(sjr.address+sjr.offset,check,64)) { sjr_fail(); break; }
+    if (memcmp(sjr.data,check,64)) sjr.changed=1;
     sjr.offset+=64;
     if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=sjr.changed ? 1 : 30; }
     break;
@@ -58,8 +59,8 @@ uint8_t sj_runtime_poll(uint32_t now)
     else sjr.phase=3;
     break;
   case 5:
-    if (!w25_read_data(SJ_DATA+sjr.offset,sjr.check,64)) { sjr_fail(); break; }
-    sjr.crc=crc32_update(sjr.crc,sjr.check,64); sjr.offset+=64;
+    if (!w25_read_data(SJ_DATA+sjr.offset,check,64)) { sjr_fail(); break; }
+    sjr.crc=crc32_update(sjr.crc,check,64); sjr.offset+=64;
     if (sjr.offset==SJ_SECTOR) {
       if (sjr.crc!=sjr.expected) { sjr_fail(); break; }
       sjr.header[0]=SJ_MAGIC; sjr.header[1]=SJ_VERSION; sjr.header[2]=sjr.address;
@@ -70,8 +71,8 @@ uint8_t sj_runtime_poll(uint32_t now)
     break;
   case 6: sjr_start(SJ_META,(uint8_t*)sjr.header,28,now,7); break;
   case 7:
-    if (!w25_read_data(SJ_META,sjr.check,32) || memcmp(sjr.header,sjr.check,28) ||
-        sjr.check[28]!=255 || sjr.check[29]!=255 || sjr.check[30]!=255 || sjr.check[31]!=255) {
+    if (!w25_read_data(SJ_META,check,32) || memcmp(sjr.header,check,28) ||
+        check[28]!=255 || check[29]!=255 || check[30]!=255 || check[31]!=255) {
       sjr_fail(); break;
     }
     sjr.phase=8; break;
@@ -79,7 +80,7 @@ uint8_t sj_runtime_poll(uint32_t now)
     sjr.committed=1; /* Marker write may have reached NOR even if its check fails. */
     sjr_start(SJ_META+28,(uint8_t*)sjr.header+28,4,now,9); break;
   case 9:
-    if (!w25_read_data(SJ_META,sjr.check,32) || memcmp(sjr.header,sjr.check,32)) { sjr_fail(); break; }
+    if (!w25_read_data(SJ_META,check,32) || memcmp(sjr.header,check,32)) { sjr_fail(); break; }
     sjr.phase=10; break;
   case 10: sjr_start(sjr.address,0,0,now,11); break;
   case 11: sjr.offset=0; sjr.phase=12; break;
@@ -92,9 +93,9 @@ uint8_t sj_runtime_poll(uint32_t now)
     else sjr.phase=12;
     break;
   case 14:
-    if (!w25_read_data(sjr.address+sjr.offset,sjr.check,64) ||
-        !w25_read_data(SJ_DATA+sjr.offset,sjr.data,64) || memcmp(sjr.data,sjr.check,64)) { sjr_fail(); break; }
-    sjr.crc=crc32_update(sjr.crc,sjr.check,64); sjr.offset+=64;
+    if (!w25_read_data(sjr.address+sjr.offset,check,64) ||
+        !w25_read_data(SJ_DATA+sjr.offset,sjr.data,64) || memcmp(sjr.data,check,64)) { sjr_fail(); break; }
+    sjr.crc=crc32_update(sjr.crc,check,64); sjr.offset+=64;
     if (sjr.offset==SJ_SECTOR) {
       if (sjr.crc!=sjr.expected) sjr_fail(); else sjr.phase=15;
     }
