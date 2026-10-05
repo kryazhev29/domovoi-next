@@ -3,6 +3,9 @@
 ; total16/first18/wanted20/copied22/seen24/crc26/offset28/wirelen30,
 ; command32/channel33/uniq34/phase35. No incoming packet is retained.
         AAPCS BASE,INTERWORK
+        #include "flash_owner.h"
+        EXTERN flash_claim
+        EXTERN flash_release
         PRESERVE8
         REQUIRE8
         EXTERN malloc
@@ -156,6 +159,11 @@ upload_runtime_begin:
         STR R2,[R0,#+8]
         LDR.W R1,up_context
         STR R0,[R1]
+        ; Cannot fail: commands start only with no owner; the config job
+        ; started by the ACK above is not a byte owner.
+        MOVS R0,#+FO_UPLOAD
+          CFI FunCall flash_claim
+        BL flash_claim
         B.N up_begin_handled
 up_begin_free_packet:
         LDR R0,[R7]
@@ -218,6 +226,9 @@ upload_runtime_cancel:
         CBZ R4,up_cancel_return
         MOVS R1,#+0
         STR R1,[R0]
+        MOVS R0,#+FO_UPLOAD
+          CFI FunCall flash_release
+        BL flash_release
         LDR R0,[R4]
         CBZ R0,up_cancel_context
           CFI FunCall free
@@ -570,10 +581,16 @@ up_poll_empty:
         LDR.W R0,up_context
         MOVS R1,#+0
         STR R1,[R0]
+        MOVS R0,#+FO_UPLOAD
+          CFI FunCall flash_release
+        BL flash_release
         MOV R0,R5
           CFI FunCall upload_finish
         BL upload_finish
         MOV R6,R0
+        MOVS R0,#+FO_UPLOAD
+          CFI FunCall flash_claim
+        BL flash_claim
         LDR.W R0,up_context
         STR R4,[R0]
         CMP R6,#+0

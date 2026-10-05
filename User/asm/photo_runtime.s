@@ -11,6 +11,9 @@
         RTMODEL "__dlib_full_locale_support", "0"
         RTMODEL "__dlib_version", "6"
         AAPCS BASE,INTERWORK
+        #include "flash_owner.h"
+        EXTERN flash_claim
+        EXTERN flash_release
         PRESERVE8
         REQUIRE8
 
@@ -206,8 +209,30 @@ pr_release:
         STRB     R0,[R4, #+113]
         STRB     R0,[R4, #+108]
         STRB     R0,[R4, #+106]
-        POP      {R4,PC}
+        POP      {R4,LR}
+          CFI R4 SameValue
+          CFI R14 SameValue
+          CFI CFA R13+0
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_release
+        B.W      flash_release
           CFI EndBlock cfiBlock2
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiPrOwner Using cfiCommon0
+          CFI Function pr_owner
+        THUMB
+; R0 = the state just stored in pr[106]: nonzero holds the Flash for the
+; photo, zero frees it. Every 0 -> busy transition runs with no other owner
+; (pr_poll, pr_request and pr_start check user_storage_command_ready).
+pr_owner:
+        CMP      R0,#+0
+        MOV      R0,#+FO_PHOTO
+          CFI FunCall flash_release
+        BEQ.W    flash_release
+          CFI FunCall flash_claim
+        B.W      flash_claim
+          CFI EndBlock cfiPrOwner
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock3 Using cfiCommon0
@@ -308,13 +333,20 @@ pr_write:
         STRB     R6,[R0, #+107]
         MOVS     R1,#+1
         STRB     R1,[R0, #+106]
-        POP      {R4-R6,PC}
+        POP      {R4-R6,LR}
+          CFI R4 SameValue
+          CFI R5 SameValue
+          CFI R6 SameValue
+          CFI R14 SameValue
+          CFI CFA R13+0
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_claim
+        B.W      flash_claim
           CFI EndBlock cfiBlock4
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock5 Using cfiCommon0
           CFI Function pr_erase
-          CFI NoCalls
         THUMB
 pr_erase:
         LDR.W    R2,??DataTable14
@@ -326,13 +358,14 @@ pr_erase:
         STRB     R0,[R2, #+109]
         STRB     R1,[R2, #+107]
         STRB     R0,[R2, #+106]
-        BX       LR
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_claim
+        B.W      flash_claim
           CFI EndBlock cfiBlock5
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock6 Using cfiCommon0
           CFI Function pr_scan_begin
-          CFI NoCalls
         THUMB
 pr_scan_begin:
         LDR.W    R1,??DataTable14
@@ -347,7 +380,9 @@ pr_scan_begin:
         STRH     R0,[R1, #+92]
         MOVS     R0,#+3
         STRB     R0,[R1, #+106]
-        BX       LR
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_claim
+        B.W      flash_claim
           CFI EndBlock cfiBlock6
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -425,7 +460,12 @@ pr_scan_finish:
         MOVS     R0,#+0
 ??pr_scan_finish_1:
         STRB     R0,[R1, #+106]
-        POP      {R4,PC}
+        POP      {R4,LR}
+          CFI R4 SameValue
+          CFI R14 SameValue
+          CFI CFA R13+0
+          CFI FunCall pr_owner
+        B.W      pr_owner
           CFI EndBlock cfiBlock7
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -604,7 +644,9 @@ pr_prepare:
         MOVS     R0,#+22
         STRB     R0,[R1, #+106]
 ??pr_prepare_2:
-        MOVS     R0,#+1
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_claim
+        BL       flash_claim
         POP      {R4,PC}
           CFI EndBlock cfiBlock9
 
@@ -907,7 +949,6 @@ photo_request_answer:
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock14 Using cfiCommon0
           CFI Function pr_send_begin
-          CFI NoCalls
         THUMB
 pr_send_begin:
         LDR.N    R0,??DataTable14
@@ -927,7 +968,9 @@ pr_send_begin:
         STRB     R1,[R0, #+106]
         MOVS     R1,#+0
         STRB     R1,[R0, #+118]
-        BX       LR
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_claim
+        B.W      flash_claim
           CFI EndBlock cfiBlock14
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -971,6 +1014,9 @@ pr_cleanup_begin:
         STR      R1,[R0, #+32]
         MOVS     R1,#+27
         STRB     R1,[R0, #+106]
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_claim
+        BL       flash_claim
 ??pr_cleanup_begin_0:
         POP      {R0,PC}
           CFI EndBlock cfiBlock15
@@ -1253,6 +1299,8 @@ photo_storage_poll:
         MOVS     R0,#+42
 ??photo_storage_poll_8:
         STRB     R0,[R7, #+106]
+          CFI FunCall pr_owner
+        BL       pr_owner
         B.N      ??photo_storage_poll_11
 ??photo_storage_poll_20:
 ??jt0_41:
@@ -3715,6 +3763,9 @@ pr_poll:
         STRB     R0,[R8, #+112]
         MOVS     R0,#+2
         STRB     R0,[R8, #+106]
+        MOVS     R0,#+FO_PHOTO
+          CFI FunCall flash_claim
+        BL       flash_claim
         B.N      ??pr_poll_0
 ??pr_poll_1:
         LDR.W    R5,??DataTable36_3

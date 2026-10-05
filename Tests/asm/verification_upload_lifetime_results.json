@@ -1,12 +1,12 @@
 {
   "status": "PASS",
-  "elf_sha256": "e62ab6029bc1a523d38c1840d4e367a7ca1ddd2d18d584a218c2c1d50a9bb536",
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709",
   "durable_empty": [
     {
       "command": 9,
       "channel": 0,
       "cleanup_polls": 1331,
-      "maximum_model_instructions": 10902,
+      "maximum_model_instructions": 10932,
       "stack": 216,
       "largest_after": 4088,
       "transitions": [
@@ -72,7 +72,7 @@
       "command": 9,
       "channel": 1,
       "cleanup_polls": 1331,
-      "maximum_model_instructions": 10897,
+      "maximum_model_instructions": 10927,
       "stack": 216,
       "largest_after": 4088,
       "transitions": [
@@ -138,7 +138,7 @@
       "command": 10,
       "channel": 0,
       "cleanup_polls": 1331,
-      "maximum_model_instructions": 11163,
+      "maximum_model_instructions": 11193,
       "stack": 216,
       "largest_after": 4088,
       "transitions": [
@@ -204,7 +204,7 @@
       "command": 10,
       "channel": 1,
       "cleanup_polls": 1331,
-      "maximum_model_instructions": 11158,
+      "maximum_model_instructions": 11188,
       "stack": 216,
       "largest_after": 4088,
       "transitions": [

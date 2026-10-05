@@ -3,6 +3,9 @@
 ; NOR and data CRC: <=64 bytes per poll; wire CRC: <=205 bytes once.
 ; A pending TX retains the completed packet; failed reads never produce a CRC.
         AAPCS BASE,INTERWORK
+        #include "flash_owner.h"
+        EXTERN flash_claim
+        EXTERN flash_release
         PRESERVE8
         REQUIRE8
         CFI Names sc_names
@@ -192,6 +195,10 @@ sc_begin:
         STRBEQ R7,[R8,#105]
         LDR R0,=service_crc_job
         STR R8,[R0]
+        ; Cannot fail: user_storage_flash_ready saw no owner in this call.
+        MOVS R0,#FO_CRC
+        CFI FunCall flash_claim
+        BL flash_claim
         MOVS R0,#1
         B sc_begin_done
 sc_begin_bad:
@@ -230,6 +237,17 @@ sc_quiet_done:
         CFI Block sc_cancel_block Using sc_frame
         CFI Function service_crc_cancel
 service_crc_cancel:
+        PUSH {R4,LR}
+        CFI R4 Frame(CFA,-8)
+        CFI R14 Frame(CFA,-4)
+        CFI CFA R13+8
+        MOVS R0,#FO_CRC
+        CFI FunCall flash_release
+        BL flash_release
+        POP {R4,LR}
+        CFI R4 SameValue
+        CFI R14 SameValue
+        CFI CFA R13+0
         LDR R1,=service_crc_job
         LDR R0,[R1]
         MOVS R2,#0

@@ -3,6 +3,9 @@
         PRESERVE8
         REQUIRE8
         AAPCS BASE,INTERWORK
+        #include "flash_owner.h"
+        EXTERN flash_claim
+        EXTERN flash_release
         EXTERN malloc
         EXTERN free
         EXTERN __aeabi_memcpy
@@ -101,6 +104,9 @@ expiry_release:
         CFI R4 Frame(CFA,-8)
         CFI R14 Frame(CFA,-4)
         CFI CFA R13+8
+        MOVS R0,#FO_EXPIRY
+        CFI FunCall flash_release
+        BL flash_release
         LDR R4,=expiry_job
         LDR R0,[R4]
         CFI FunCall free
@@ -180,6 +186,10 @@ ex_begin_needed:
         STR R1,[R0,#24]
         LDR R2,=expiry_job
         STR R0,[R2]
+        ; Cannot fail: user_storage_background_ready saw no owner.
+        MOVS R0,#FO_EXPIRY
+        CFI FunCall flash_claim
+        BL flash_claim
         MOVS R1,#0
         LDR R2,=id_endScan
         STRB R1,[R2]

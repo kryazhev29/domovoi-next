@@ -16,6 +16,7 @@
         REQUIRE8
 
         #define SHT_PROGBITS 0x1
+        #include "flash_owner.h"
 
         EXTERN __aeabi_memclr4
         EXTERN __aeabi_memcpy
@@ -23,9 +24,7 @@
         EXTERN crc32_update
         EXTERN fast_all_ff
         EXTERN sjr
-        EXTERN sj_runtime_blocked
-        EXTERN table_runtime_blocks_reads
-        EXTERN photo_storage_busy
+        EXTERN table_fault
         EXTERN free
         EXTERN malloc
         EXTERN memcmp
@@ -36,7 +35,6 @@
         EXTERN sj_runtime_blocked
         EXTERN sj_span
         EXTERN store_runtime
-        EXTERN table_runtime_blocks_reads
         EXTERN user_wait_stable_power
         EXTERN w25_async_active
         EXTERN w25_async_poll
@@ -61,13 +59,11 @@
         PUBLIC mem_replace_pages
         PUBLIC mem_replace_sector
         PUBLIC mem_rewrite
-        EXTERN fw_service_active
-        EXTERN upload_runtime_active
-        EXTERN idindex_runtime_active
-        EXTERN service_crc_active
-        EXTERN idclear_runtime_active
-        EXTERN expiry_runtime_active
         PUBLIC mem_tables_ready
+        PUBLIC flash_owner
+        PUBLIC flash_claim
+        PUBLIC flash_release
+        PUBLIC flash_read_allowed
         PUBLIC mem_write
         PUBLIC sj_io_erase
         PUBLIC sj_io_read
@@ -255,6 +251,87 @@ mem_recover:
         POP      {R1,PC}
           CFI EndBlock cfiBlock7
 
+; Flash ownership (docs/flash_contract_20261005.md, part 2). One byte:
+; 0 = free, otherwise an FO_* owner from flash_owner.h; bit 7 means that
+; owner also forbids table reads. Only main-loop code touches the byte: no
+; IRQ handler calls these functions or any storage owner, so no PRIMASK.
+        SECTION `.bss`:DATA:REORDER:NOROOT(0)
+        DATA
+flash_owner:
+        DS8 1
+
+        SECTION `.text`:CODE:NOROOT(2)
+          CFI Block cfiFoClaim Using cfiCommon0
+          CFI Function flash_claim
+          CFI NoCalls
+        THUMB
+; R0 = FO_* owner. Takes a free byte or keeps the same owner number (bit 7
+; may change). Returns 1, or 0 while another owner holds the Flash.
+flash_claim:
+        LDR.N    R1,??fo_byte
+        LDRB     R2,[R1, #+0]
+        CBZ.N    R2,??flash_claim_take
+        EORS     R2,R2,R0
+        LSLS     R2,R2,#+25
+        BNE.N    ??flash_claim_busy
+??flash_claim_take:
+        STRB     R0,[R1, #+0]
+        MOVS     R0,#+1
+        BX       LR
+??flash_claim_busy:
+        MOVS     R0,#+0
+        BX       LR
+          CFI EndBlock cfiFoClaim
+
+          CFI Block cfiFoRelease Using cfiCommon0
+          CFI Function flash_release
+          CFI NoCalls
+; R0 = FO_* owner. Frees the byte only when this owner number holds it.
+; Returns 0 (callers tail-call it from functions returning 0).
+flash_release:
+        LDR.N    R1,??fo_byte
+        LDRB     R2,[R1, #+0]
+        EORS     R2,R2,R0
+        LSLS     R2,R2,#+25
+        IT       EQ
+        STRBEQ   R2,[R1, #+0]
+        MOVS     R0,#+0
+        BX       LR
+          CFI EndBlock cfiFoRelease
+
+          CFI Block cfiFoRead Using cfiCommon0
+          CFI Function flash_read_allowed
+          CFI NoCalls
+; Returns 1 when no owner, or an owner without FO_READ_BLOCK, holds Flash.
+flash_read_allowed:
+        LDR.N    R0,??fo_byte
+        LDRB     R0,[R0, #+0]
+        LSRS     R0,R0,#+7
+        SUBS     R0,R0,#+1
+        LSRS     R0,R0,#+31
+        BX       LR
+          CFI EndBlock cfiFoRead
+        ALIGNROM 2
+        DATA
+??fo_byte:
+        DC32     flash_owner
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiFoIntact Using cfiCommon0
+          CFI Function mem_tables_blocked
+        THUMB
+; Nonzero while a failed table job or an unrecovered sector-journal
+; transaction forbids table I/O. Kept apart from the owner byte (part 2.3).
+mem_tables_blocked:
+        LDR.W    R0,??DataTable_tf
+        LDRB     R0,[R0, #+0]
+        CBNZ.N   R0,??mem_tables_blocked_0
+          CFI FunCall sj_runtime_blocked
+        B.W      sj_runtime_blocked
+??mem_tables_blocked_0:
+        BX       LR
+          CFI EndBlock cfiFoIntact
+
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock8 Using cfiCommon0
           CFI Function mem_tables_ready
@@ -263,31 +340,11 @@ mem_tables_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
-          CFI FunCall idclear_runtime_active
-        BL idclear_runtime_active
-        CMP R0,#0
-        BNE.W ??mem_tables_ready_0
-          CFI FunCall expiry_runtime_active
-        BL expiry_runtime_active
-        CBNZ R0,??mem_tables_ready_0
-          CFI FunCall fw_service_active
-        BL       fw_service_active
-        CMP R0,#+0
-        BNE.W ??mem_tables_ready_0
-          CFI FunCall upload_runtime_active
-        BL       upload_runtime_active
-        CBNZ.N   R0,??mem_tables_ready_0
-          CFI FunCall idindex_runtime_active
-        BL idindex_runtime_active
-        CBNZ R0,??mem_tables_ready_0
-          CFI FunCall service_crc_active
-        BL service_crc_active
-        CBNZ R0,??mem_tables_ready_0
-          CFI FunCall table_runtime_blocks_reads
-        BL       table_runtime_blocks_reads
-        CBNZ.N   R0,??mem_tables_ready_0
-          CFI FunCall sj_runtime_blocked
-        BL       sj_runtime_blocked
+          CFI FunCall flash_read_allowed
+        BL       flash_read_allowed
+        CBZ.N    R0,??mem_tables_ready_2
+          CFI FunCall mem_tables_blocked
+        BL       mem_tables_blocked
         CBNZ.N   R0,??mem_tables_ready_0
         LDR.W    R0,??DataTable19
         LDRB     R0,[R0, #+0]
@@ -2200,39 +2257,13 @@ mem_config_begin:
           CFI CFA R13+24
         MOV      R4,R0
         MOV      R5,R1
- ; Config receives the common page only after the old owner is quiescent.
-          CFI FunCall photo_storage_busy
-        BL       photo_storage_busy
-        CMP      R0,#+0
-        BNE.N    ??mem_config_begin_0
-          CFI FunCall fw_service_active
-        BL fw_service_active
-        CMP R0,#0
-        BNE.W ??mem_config_begin_0
-          CFI FunCall upload_runtime_active
-        BL upload_runtime_active
-        CMP R0,#0
-        BNE.W ??mem_config_begin_0
-          CFI FunCall idclear_runtime_active
-        BL idclear_runtime_active
-        CMP R0,#0
-        BNE.W ??mem_config_begin_0
-          CFI FunCall expiry_runtime_active
-        BL expiry_runtime_active
-        CMP R0,#0
-        BNE.W ??mem_config_begin_0
-          CFI FunCall service_crc_active
-        BL service_crc_active
-        CMP R0,#0
-        BNE.W ??mem_config_begin_0
-          CFI FunCall table_runtime_blocks_reads
-        BL       table_runtime_blocks_reads
-        CMP      R0,#+0
-        BNE.N    ??mem_config_begin_0
-          CFI FunCall sj_runtime_blocked
-        BL       sj_runtime_blocked
-        CMP      R0,#+0
-        BNE.N    ??mem_config_begin_0
+ ; Config receives the common page only while no owner holds the Flash.
+        LDR.W    R0,??DataTable21_15
+        LDRB     R0,[R0, #+0]
+        CBNZ.N   R0,??mem_config_begin_0
+          CFI FunCall mem_tables_blocked
+        BL       mem_tables_blocked
+        CBNZ.N   R0,??mem_config_begin_0
         LDR.W    R6,??DataTable21_14
         LDRB     R0,[R6, #+35]
         CBNZ.N   R0,??mem_config_begin_0
@@ -2345,6 +2376,13 @@ cfg_async_page:
 ??DataTable19_1:
         DATA32
         DC32     store_runtime
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable_tf:
+        DATA32
+        DC32     table_fault
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -2805,6 +2843,13 @@ mem_config_poll:
 ??DataTable21_14:
         DATA32
         DC32     cfg_job
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+??DataTable21_15:
+        DATA32
+        DC32     flash_owner
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond81 Using cfiCommon0

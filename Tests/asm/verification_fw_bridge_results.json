@@ -68,6 +68,6 @@
   ],
   "quiet_reconnect_usb": 8,
   "abort_reset": 16,
-  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7",
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709",
   "scope": "Real linked callers and storage scheduler; modeled NOR/transport. No board timing."
 }

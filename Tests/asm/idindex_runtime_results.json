@@ -2,8 +2,8 @@
   "normal": {
     "((), False)": {
       "passes": 266,
-      "max_instructions": 61,
-      "total_instructions": 7464,
+      "max_instructions": 69,
+      "total_instructions": 8784,
       "stack": 88,
       "max_read": 0,
       "max_async_actions": 1,
@@ -16,7 +16,7 @@
     "((1,), False)": {
       "passes": 270,
       "max_instructions": 92,
-      "total_instructions": 7650,
+      "total_instructions": 8990,
       "stack": 96,
       "max_read": 64,
       "max_async_actions": 1,
@@ -29,7 +29,7 @@
     "((1, 2, 129), True)": {
       "passes": 830,
       "max_instructions": 92,
-      "total_instructions": 34612,
+      "total_instructions": 25932,
       "stack": 168,
       "max_read": 64,
       "max_async_actions": 1,
@@ -42,7 +42,7 @@
     "((1, 50048), False)": {
       "passes": 50321,
       "max_instructions": 92,
-      "total_instructions": 2660312,
+      "total_instructions": 2661672,
       "stack": 96,
       "max_read": 64,
       "max_async_actions": 1,
@@ -58,13 +58,14 @@
   "boundaries": 4,
   "real_w25": {
     "passes": 4374,
-    "max_instructions": 939,
-    "total_instructions": 3776912,
+    "max_instructions": 951,
+    "total_instructions": 3778272,
     "stack": 296,
     "max_spi_read_bytes": 64,
     "max_status_reads": 4
   },
-  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7",
+  "power_cuts": 575,
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709",
   "index_bss_bytes": 24,
   "status": "PASS"
 }

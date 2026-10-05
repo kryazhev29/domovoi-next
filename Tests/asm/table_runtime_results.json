@@ -2,52 +2,52 @@
   "units": "Unicorn instructions, modeled NOR, NOT cycles or milliseconds",
   "normal": {
     "13/1": {
-      "max_instructions": 1182,
-      "total_instructions": 383773,
+      "max_instructions": 1113,
+      "total_instructions": 395477,
       "passes": 991,
       "stack": 292,
-      "begin_instructions": 1182,
-      "max_poll_instructions": 1101
+      "begin_instructions": 996,
+      "max_poll_instructions": 1113
     },
     "13/63": {
-      "max_instructions": 25610,
-      "total_instructions": 623267,
+      "max_instructions": 25424,
+      "total_instructions": 634971,
       "passes": 991,
       "stack": 292,
-      "begin_instructions": 25610,
-      "max_poll_instructions": 2841
+      "begin_instructions": 25424,
+      "max_poll_instructions": 2853
     },
     "13/6": {
-      "max_instructions": 3152,
-      "total_instructions": 1180472,
+      "max_instructions": 2966,
+      "total_instructions": 1223172,
       "passes": 3574,
       "stack": 292,
-      "begin_instructions": 3152,
-      "max_poll_instructions": 1101
+      "begin_instructions": 2966,
+      "max_poll_instructions": 1113
     },
     "14/3": {
-      "max_instructions": 1957,
-      "total_instructions": 295727,
+      "max_instructions": 1771,
+      "total_instructions": 306279,
       "passes": 895,
       "stack": 288,
-      "begin_instructions": 1957,
-      "max_poll_instructions": 1101
+      "begin_instructions": 1771,
+      "max_poll_instructions": 1113
     },
     "15/3": {
-      "max_instructions": 1409,
-      "total_instructions": 294220,
+      "max_instructions": 1223,
+      "total_instructions": 304772,
       "passes": 895,
       "stack": 288,
-      "begin_instructions": 1409,
-      "max_poll_instructions": 1101
+      "begin_instructions": 1223,
+      "max_poll_instructions": 1113
     },
     "16/2": {
-      "max_instructions": 1684,
-      "total_instructions": 302686,
+      "max_instructions": 1696,
+      "total_instructions": 313046,
       "passes": 879,
       "stack": 288,
-      "begin_instructions": 868,
-      "max_poll_instructions": 1684
+      "begin_instructions": 682,
+      "max_poll_instructions": 1696
     }
   },
   "cancel_reconnect": 13,
@@ -55,12 +55,12 @@
   "corruption": 1,
   "interaction_heap": {
     "full_id_passes": 26748,
-    "full_id_max_poll": 1101,
-    "full_id_total_instructions": 23975009,
+    "full_id_max_poll": 1113,
+    "full_id_total_instructions": 24295797,
     "full_id_stack": 292,
     "simultaneous_heap_payload": 3770
   },
   "power_cuts": 670,
   "power_elf_sha256": "d7b95246300f37b92a6d0d24dd350e08495103acb9d7c5e50253b306f3036416",
-  "elf_sha256": "920faa14754ead4a941d7f2992360c39288fec4ff413529e5b90cc4b3ef718ee"
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709"
 }

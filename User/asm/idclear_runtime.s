@@ -4,6 +4,9 @@
         PRESERVE8
         REQUIRE8
         AAPCS BASE,INTERWORK
+        #include "flash_owner.h"
+        EXTERN flash_claim
+        EXTERN flash_release
         EXTERN malloc
         EXTERN free
         EXTERN device
@@ -198,6 +201,10 @@ idclear_runtime_begin:
         STRH R0,[R7,#33]
         CFI FunCall idindex_runtime_suspend
         BL idindex_runtime_suspend
+        ; Cannot fail: user_storage_command_ready saw no owner in this call.
+        MOVS R0,#FO_IDCLEAR
+        CFI FunCall flash_claim
+        BL flash_claim
         LDR R0,=idclear_job
         STR R7,[R0]
         MOVS R0,#1
@@ -353,6 +360,9 @@ ic_reply:
         BL usb_try_send
         CBZ R0,ic_done
 ic_release:
+        MOVS R0,#FO_IDCLEAR
+        CFI FunCall flash_release
+        BL flash_release
         CFI FunCall idclear_release
         BL idclear_release
 ic_done:

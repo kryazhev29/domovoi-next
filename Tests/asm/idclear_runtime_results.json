@@ -1,8 +1,8 @@
 {
   "success_heap": {
     "passes": 13,
-    "maximum_instructions": 71,
-    "total_instructions": 417,
+    "maximum_instructions": 81,
+    "total_instructions": 427,
     "stack": 120,
     "context_chunk": 64,
     "synthetic_heap_chunks": [
@@ -24,8 +24,8 @@
     "full_partition": {
       "bytes": 1601536,
       "passes": 1566,
-      "maximum_instructions": 71,
-      "total_instructions": 42746,
+      "maximum_instructions": 81,
+      "total_instructions": 42756,
       "stack": 68,
       "async_starts": 391,
       "async_polls": 1173
@@ -41,5 +41,5 @@
     "partial_erase_cuts_with_real_startup_scan": 10,
     "atomic": false
   },
-  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7"
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709"
 }

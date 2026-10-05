@@ -120,8 +120,7 @@
   },
   "faults": 12,
   "config_power_cuts": 665,
-  "power_elf_sha256": "839d99349024ce42c9a2b994302f8791c5318d3e9b02724ab8ef0176dc9b13fe",
-  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7",
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709",
   "static_gap": 160,
   "heap_bytes": 4096,
   "stack_bytes": 4096

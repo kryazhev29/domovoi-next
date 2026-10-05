@@ -73,6 +73,10 @@
         REQUIRE8
 
         #define SHT_PROGBITS 0x1
+        #include "flash_owner.h"
+        EXTERN flash_owner
+        EXTERN flash_claim
+        EXTERN flash_release
 
         EXTERN service_crc_active
         EXTERN service_crc_begin_pack
@@ -264,7 +268,6 @@
         PUBLIC port_check_data
         PUBLIC server_rx_begin_pass
         PUBLIC server_rx_process
-        PUBLIC table_runtime_blocks_reads
         PUBLIC timers_user_handle
         PUBLIC uniqIDCnt
         PUBLIC usb_data_reading
@@ -471,47 +474,15 @@ store:
           CFI Block cfiBlock1 Using cfiCommon0
           CFI Function user_storage_command_ready
         THUMB
+; A new command may start a job: no Flash owner (storage_idle), no store
+; job or reset request, no config job/result. The USB session check runs
+; first, as before, because it mutes stale replies.
 user_storage_command_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
           CFI FunCall store_usb_session
         BL       store_usb_session
-          CFI FunCall idclear_runtime_active
-        BL idclear_runtime_active
-        CMP R0,#0
-        BNE.W ??user_storage_command_ready_0
-          CFI FunCall expiry_runtime_active
-        BL expiry_runtime_active
-        CMP R0,#0
-        BNE.W ??user_storage_command_ready_0
-          CFI FunCall idindex_runtime_active
-        BL idindex_runtime_active
-        CMP R0,#0
-        BNE.W ??user_storage_command_ready_0
-          CFI FunCall service_crc_active
-        BL service_crc_active
-        CMP R0,#0
-        BNE.W ??user_storage_command_ready_0
-          CFI FunCall fw_service_active
-        BL       fw_service_active
-        CMP R0,#+0
-        BNE.W ??user_storage_command_ready_0
-          CFI FunCall upload_runtime_active
-        BL       upload_runtime_active
-        CBNZ.N   R0,??user_storage_command_ready_0
-          CFI FunCall photo_storage_busy
-        BL       photo_storage_busy
-        CBNZ.N   R0,??user_storage_command_ready_0
-          CFI FunCall table_runtime_active
-        BL       table_runtime_active
-        CBNZ.N   R0,??user_storage_command_ready_0
-          CFI FunCall fw_async_active
-        BL       fw_async_active
-        CBNZ.N   R0,??user_storage_command_ready_0
-          CFI FunCall log_async_active
-        BL       log_async_active
-        CBNZ.N   R0,??user_storage_command_ready_0
         LDR.W    R0,??DataTable32_1
         LDRB     R1,[R0, #+18]
         LDR.W    R0,??DataTable38
@@ -521,19 +492,44 @@ user_storage_command_ready:
           CFI FunCall mem_config_result
         BL       mem_config_result
         CBNZ.N   R0,??user_storage_command_ready_0
-          CFI FunCall w25_async_active
-        BL       w25_async_active
-        CBNZ.N   R0,??user_storage_command_ready_0
-          CFI FunCall w25_read_available
-        BL       w25_read_available
-        CBZ.N    R0,??user_storage_command_ready_1
-        MOVS     R0,#+1
-        POP      {R1,PC}
+        POP      {R0,LR}
+          CFI R14 SameValue
+          CFI CFA R13+0
+          CFI FunCall storage_idle
+        B.W      storage_idle
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+8
 ??user_storage_command_ready_0:
         MOVS     R0,#+0
-??user_storage_command_ready_1:
         POP      {R1,PC}
           CFI EndBlock cfiBlock1
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block cfiStorageIdle Using cfiCommon0
+          CFI Function storage_idle
+        THUMB
+; No Flash owner and no W25 job, and the NOR answers its status as idle.
+storage_idle:
+        PUSH     {R7,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+8
+        LDR      R0,=flash_owner
+        LDRB     R0,[R0, #+0]
+        CBNZ.N   R0,??storage_idle_0
+          CFI FunCall w25_async_active
+        BL       w25_async_active
+        CBNZ.N   R0,??storage_idle_0
+        POP      {R0,LR}
+          CFI R14 SameValue
+          CFI CFA R13+0
+          CFI FunCall w25_read_available
+        B.W      w25_read_available
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+8
+??storage_idle_0:
+        MOVS     R0,#+0
+        POP      {R1,PC}
+          CFI EndBlock cfiStorageIdle
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock2 Using cfiCommon0
@@ -560,61 +556,18 @@ store_command_allowed:
           CFI Block cfiBlock3 Using cfiCommon0
           CFI Function user_storage_flash_ready
         THUMB
+; Foreground Flash work (events, access, server/USB polls) may run: no
+; owner and no store erase of the log area (store[19] == 9).
 user_storage_flash_ready:
-        PUSH     {R7,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI CFA R13+8
-          CFI FunCall idclear_runtime_active
-        BL idclear_runtime_active
-        CMP R0,#0
-        BNE.W ??user_storage_flash_ready_0
-          CFI FunCall expiry_runtime_active
-        BL expiry_runtime_active
-        CMP R0,#0
-        BNE.W ??user_storage_flash_ready_0
-          CFI FunCall idindex_runtime_active
-        BL idindex_runtime_active
-        CMP R0,#0
-        BNE.W ??user_storage_flash_ready_0
-          CFI FunCall service_crc_active
-        BL service_crc_active
-        CMP R0,#0
-        BNE.W ??user_storage_flash_ready_0
-          CFI FunCall fw_service_active
-        BL       fw_service_active
-        CMP R0,#+0
-        BNE.W ??user_storage_flash_ready_0
-          CFI FunCall upload_runtime_active
-        BL       upload_runtime_active
-        CBNZ.N   R0,??user_storage_flash_ready_0
-          CFI FunCall photo_storage_busy
-        BL       photo_storage_busy
-        CBNZ.N   R0,??user_storage_flash_ready_0
-          CFI FunCall table_runtime_active
-        BL       table_runtime_active
-        CBNZ.N   R0,??user_storage_flash_ready_0
-          CFI FunCall fw_async_active
-        BL       fw_async_active
-        CBNZ.N   R0,??user_storage_flash_ready_0
-          CFI FunCall log_async_active
-        BL       log_async_active
-        CBNZ.N   R0,??user_storage_flash_ready_0
         LDR.W    R0,??DataTable32_1
         LDRB     R0,[R0, #+19]
         CMP      R0,#+9
         BEQ.N    ??user_storage_flash_ready_0
-          CFI FunCall w25_async_active
-        BL       w25_async_active
-        CBNZ.N   R0,??user_storage_flash_ready_0
-          CFI FunCall w25_read_available
-        BL       w25_read_available
-        CBZ.N    R0,??user_storage_flash_ready_1
-        MOVS     R0,#+1
-        POP      {R1,PC}
+          CFI FunCall storage_idle
+        B.W      storage_idle
 ??user_storage_flash_ready_0:
         MOVS     R0,#+0
-??user_storage_flash_ready_1:
-        POP      {R1,PC}
+        BX       LR
           CFI EndBlock cfiBlock3
 
         SECTION `.bss`:DATA:REORDER:NOROOT(1)
@@ -11565,21 +11518,6 @@ table_runtime_active:
         DATA8
         DC8      0x48, 0x57, 0x00, 0x00
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock314 Using cfiCommon0
-          CFI Function table_runtime_blocks_reads
-          CFI NoCalls
-        THUMB
-table_runtime_blocks_reads:
-        LDR.W    R0,??DataTable120_8
-        LDRB     R1,[R0, #+50]
-        LDR.W    R0,??DataTable120_9
-        LDRB     R0,[R0, #+0]
-        ORRS     R0,R0,R1
-        IT       NE
-        MOVNE    R0,#+1
-        BX       LR
-          CFI EndBlock cfiBlock314
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock315 Using cfiCommon0
@@ -11833,14 +11771,6 @@ table_runtime_begin:
         BL       user_storage_command_ready
         CBZ.N    R0,??table_runtime_begin_3
         LDR.W    R4,??DataTable120_8
-        LDRB     R1,[R4, #+50]
-        LDR.W    R0,??DataTable120_9
-        LDRB     R0,[R0, #+0]
-        ORRS     R1,R0,R1
-        BNE.N    ??table_runtime_begin_3
-          CFI FunCall sj_runtime_blocked
-        BL       sj_runtime_blocked
-        CBNZ.N   R0,??table_runtime_begin_3
         CMP      R8,#+0
         BEQ.N    ??table_runtime_begin_3
         MOVW     R0,#+2049
@@ -11898,6 +11828,10 @@ table_runtime_begin:
           CFI FunCall id_today
         BL       id_today
         STRH     R0,[R4, #+42]
+        ; Cannot fail: user_storage_command_ready saw no owner in this call.
+        MOVS     R0,#+FO_TABLE
+          CFI FunCall flash_claim
+        BL       flash_claim
         MOVS     R0,#+1
         STRB     R0,[R4, #+50]
         LDR      R0,[SP, #+0]
@@ -12032,6 +11966,9 @@ table_runtime_finish:
         LDR      R0,[R4, #+0]
           CFI FunCall free
         BL       free
+        MOVS     R0,#+FO_TABLE
+          CFI FunCall flash_release
+        BL       flash_release
         MOVS     R0,#+0
         STR      R0,[R4, #+0]
         STRB     R0,[R4, #+50]
@@ -16911,23 +16848,12 @@ fw_async_begin:
         MOV      R4,R0
         MOV      R6,R1
         MOV      R5,R2
-          CFI FunCall photo_storage_busy
-        BL       photo_storage_busy
+        LDR      R0,=flash_owner
+        LDRB     R0,[R0, #+0]
         CBNZ.N   R0,??fw_async_begin_0
-          CFI FunCall table_runtime_active
-        BL       table_runtime_active
+        LDR.W    R0,??DataTable163_1
+        LDRB     R0,[R0, #+18]
         CBNZ.N   R0,??fw_async_begin_0
-          CFI FunCall fw_async_active
-        BL       fw_async_active
-        CBNZ.N   R0,??fw_async_begin_0
-          CFI FunCall log_async_active
-        BL       log_async_active
-        CMP      R0,#+0
-        ITTT     EQ
-        LDREQ.W  R0,??DataTable163_1
-        LDRBEQ   R0,[R0, #+18]
-        CMPEQ    R0,#+0
-        BNE.N    ??fw_async_begin_0
           CFI FunCall mem_config_result
         BL       mem_config_result
         CBNZ.N   R0,??fw_async_begin_0
@@ -16977,9 +16903,13 @@ fw_async_begin:
         ADD      R6,R6,#+1024
         CMP      R0,R6
         ITE      CC
-        MOVCC    R0,#+1
-        MOVCS    R0,#+2
-        STRB     R0,[R7, #+32]
+        MOVCC    R4,#+1
+        MOVCS    R4,#+2
+        ; Cannot fail: the owner byte was zero above, no call claims since.
+        MOVS     R0,#+FO_FWBLOCK
+          CFI FunCall flash_claim
+        BL       flash_claim
+        STRB     R4,[R7, #+32]
         MOVS     R0,#+1
         POP      {R1,R4-R7,PC}
           CFI EndBlock cfiBlock404
@@ -17086,6 +17016,9 @@ fw_storage_poll:
         LDR      R0,[R4, #+0]
           CFI FunCall free
         BL       free
+        MOVS     R0,#+FO_FWBLOCK
+          CFI FunCall flash_release
+        BL       flash_release
         MOVS     R0,#+0
         STR      R0,[R4, #+0]
         STRH     R0,[R4, #+32]
@@ -17106,6 +17039,9 @@ fw_storage_poll:
         CMP      R0,#+0
         BNE.N    ??fw_storage_poll_3
 ??fw_storage_poll_6:
+        MOVS     R0,#+FO_FWBLOCK
+          CFI FunCall flash_release
+        BL       flash_release
         MOVS     R0,#+0
         STRB     R0,[R4, #+32]
         LDRB     R0,[R4, #+36]
@@ -17315,8 +17251,17 @@ fw_storage_poll:
         STRB     R0,[R4, #+32]
         LDR.W    R0,??DataTable185
 ??fw_storage_poll_25:
+        ; fw_abort runs detached from the Flash, as the zero state above.
+        MOV      R5,R0
+        MOVS     R0,#+FO_FWBLOCK
+          CFI FunCall flash_release
+        BL       flash_release
+        MOV      R0,R5
           CFI FunCall fw_abort
         BL       fw_abort
+        MOVS     R0,#+FO_FWBLOCK
+          CFI FunCall flash_claim
+        BL       flash_claim
         MOVS     R0,#+5
 ??fw_storage_poll_17:
         STRB     R0,[R4, #+32]
@@ -17402,6 +17347,10 @@ log_async_begin:
         LDR.W    R0,??DataTable165
         LDR      R0,[R0, #+0]
         STR      R0,[R4, #+36]
+        ; Cannot fail: the scheduler starts a log job only with no owner.
+        MOVS     R0,#+FO_LOG
+          CFI FunCall flash_claim
+        BL       flash_claim
         MOVS     R0,#+1
         STRB     R0,[R4, #+44]
         MOVS     R0,#+0
@@ -17644,6 +17593,9 @@ log_async_step:
         LDRH     R1,[R0, #+129]
         ORR      R1,R1,#0x1000
         STRH     R1,[R0, #+129]
+        MOVS     R0,#+FO_LOG
+          CFI FunCall flash_release
+        BL       flash_release
         MOVS     R0,#+0
         STRB     R0,[R4, #+44]
         MOVS     R0,#+2
@@ -17696,6 +17648,9 @@ log_async_step:
         CMPNE    R0,#+2
         BNE.N    ??log_async_step_32
 ??log_async_step_11:
+        MOVS     R0,#+FO_LOG
+          CFI FunCall flash_release
+        BL       flash_release
         MOVS     R0,#+0
 ??log_async_step_28:
         STRB     R0,[R4, #+44]
@@ -19712,22 +19667,7 @@ store_snapshot:
           CFI R5 Frame(CFA, -8)
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
-          CFI FunCall photo_storage_busy
-        BL       photo_storage_busy
-        CBNZ.N   R0,??store_snapshot_0
-          CFI FunCall table_runtime_active
-        BL       table_runtime_active
-        CBNZ.N   R0,??store_snapshot_0
-          CFI FunCall fw_async_active
-        BL       fw_async_active
-        CBNZ.N   R0,??store_snapshot_0
-          CFI FunCall log_async_active
-        BL       log_async_active
-        CBZ.N    R0,??store_snapshot_1
-??store_snapshot_0:
-        MOVS     R0,#+0
-        POP      {R1,R4,R5,PC}
-??store_snapshot_1:
+        ; Every caller runs with no Flash owner; mem_config_begin checks it.
         LDR.W    R5,??DataTable197_4
         BL       ?Subroutine55
 ??CrossCallReturnLabel_189:

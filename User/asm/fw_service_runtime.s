@@ -5,6 +5,9 @@
 ; mode: 0 duplicate, 1 rollback, 2 download. WAIT_CONFIG8 yields ownership.
 ; All NOR source bytes remain owned until verified completion or error.
         AAPCS BASE,INTERWORK
+        #include "flash_owner.h"
+        EXTERN flash_claim
+        EXTERN flash_release
         PRESERVE8
         REQUIRE8
         EXTERN malloc
@@ -109,8 +112,9 @@ fsa_return:
         THUMB
         CFI Block fw_service_config_result_cfi Using fs_common
         CFI Function fw_service_config_result
+; WAIT_CONFIG takes the Flash back as soon as config reports its result,
+; before the store machine clears store[18] (no gap for another owner).
 fw_service_config_result:
-        CFI NoCalls
         LDR.W R1,=fw_service_context
         LDR R1,[R1]
         CBZ R1,fscr_return
@@ -123,6 +127,9 @@ fw_service_config_result:
         BNE fscr_return
 fscr_store:
         STRB R0,[R1,#127]
+        MOVS R0,#FO_FWSERVICE
+        CFI FunCall flash_claim
+        B.W flash_claim
 fscr_return:
         BX LR
         CFI EndBlock fw_service_config_result_cfi
@@ -174,6 +181,9 @@ fw_service_cancel:
         ; WAIT_CONFIG owns no NOR source: the config job has its own copy.
         MOVS R1,#0
         STR R1,[R0]
+        MOVS R0,#FO_FWSERVICE
+        CFI FunCall flash_release
+        BL flash_release
         LDR R0,[R4,#96]
         CFI FunCall free
         BL free
@@ -323,6 +333,10 @@ fsb_ff:
         MOVS R0,#4
 fsb_publish:
         STRB R0,[R7,#120]
+        ; Cannot fail: user_storage_command_ready saw no owner in this call.
+        MOVS R0,#FO_FWSERVICE
+        CFI FunCall flash_claim
+        BL flash_claim
         LDR.W R0,=fw_service_context
         STR R7,[R0]
         B fsb_handled
@@ -659,13 +673,21 @@ fsp_handoff:
         STR R1,[R4,#96]
         CFI FunCall free
         BL free
+        MOVS R0,#FO_FWSERVICE
+        CFI FunCall flash_release
+        BL flash_release
         CFI FunCall store_snapshot
         BL store_snapshot
         MOV R5,R0
         LDR.W R0,=fw_service_context
         STR R4,[R0]
         CMP R5,#0
-        BEQ.W fsp_io_error
+        BNE fsp_handoff_ok
+        MOVS R0,#FO_FWSERVICE
+        CFI FunCall flash_claim
+        BL flash_claim
+        B.W fsp_io_error
+fsp_handoff_ok:
         LDR.W R0,=store
         MOVS R1,#19
         STRB R1,[R0,#21]
@@ -687,6 +709,8 @@ fsp_wait_config:
         LDRB R0,[R0,#18]
         CMP R0,#0
         BNE.W fsp_return
+        ; The Flash is ours again: store[18] leaves 9 only after config
+        ; reported 2/3, and fw_service_config_result claimed it then.
         LDRB R0,[R4,#127]
         CMP R0,#2
         BNE.W fsp_io_error
@@ -740,9 +764,16 @@ fsp_error_log:
         LDR.W R0,=fw_service_context
         MOVS R2,#0
         STR R2,[R0]
-        MOV R0,R1
+        MOV R6,R1
+        MOVS R0,#FO_FWSERVICE
+        CFI FunCall flash_release
+        BL flash_release
+        MOV R0,R6
         CFI FunCall fw_abort
         BL fw_abort
+        MOVS R0,#FO_FWSERVICE
+        CFI FunCall flash_claim
+        BL flash_claim
         LDR.W R0,=fw_service_context
         STR R4,[R0]
         LDRB R0,[R4,#118]

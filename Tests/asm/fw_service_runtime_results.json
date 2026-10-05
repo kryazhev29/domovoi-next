@@ -2,67 +2,67 @@
   "normal": {
     "2_4_0": {
       "polls": 674,
-      "max_poll_instructions": 10914,
-      "total_poll_instructions": 226759,
-      "max_instructions": 10914,
-      "total_instructions": 235828,
+      "max_poll_instructions": 10849,
+      "total_poll_instructions": 226711,
+      "max_instructions": 10849,
+      "total_instructions": 235605,
       "stack": 168,
       "max_fw_read": 0,
       "phase_maximum": {
         "4": 101,
         "5": 101,
-        "6": 10914,
+        "6": 10849,
         "8": 982,
-        "16": 185
+        "16": 195
       }
     },
     "4_1028_1": {
       "polls": 674,
-      "max_poll_instructions": 10921,
-      "total_poll_instructions": 226806,
-      "max_instructions": 10921,
-      "total_instructions": 235842,
+      "max_poll_instructions": 10856,
+      "total_poll_instructions": 226758,
+      "max_instructions": 10856,
+      "total_instructions": 235619,
       "stack": 168,
       "max_fw_read": 0,
       "phase_maximum": {
         "4": 101,
         "5": 101,
-        "6": 10921,
+        "6": 10856,
         "8": 982,
-        "16": 225
+        "16": 235
       }
     },
     "1_4_0": {
       "polls": 718,
-      "max_poll_instructions": 10951,
-      "total_poll_instructions": 231178,
-      "max_instructions": 10951,
-      "total_instructions": 240656,
+      "max_poll_instructions": 10886,
+      "total_poll_instructions": 231130,
+      "max_instructions": 10886,
+      "total_instructions": 240433,
       "stack": 168,
       "max_fw_read": 64,
       "phase_maximum": {
         "1": 115,
-        "2": 10951,
+        "2": 10886,
         "8": 982,
         "16": 124,
         "10": 111,
         "11": 112,
         "12": 112,
         "13": 133,
-        "14": 248
+        "14": 258
       }
     },
     "1_132_1": {
       "polls": 732,
-      "max_poll_instructions": 10951,
-      "total_poll_instructions": 234612,
-      "max_instructions": 10951,
-      "total_instructions": 242773,
+      "max_poll_instructions": 10886,
+      "total_poll_instructions": 234564,
+      "max_instructions": 10886,
+      "total_instructions": 242617,
       "stack": 168,
       "max_fw_read": 64,
       "phase_maximum": {
         "1": 115,
-        "2": 10951,
+        "2": 10886,
         "8": 982,
         "16": 164,
         "10": 111,
@@ -74,42 +74,42 @@
     },
     "1_4096_0": {
       "polls": 1163,
-      "max_poll_instructions": 11416,
-      "total_poll_instructions": 339372,
-      "max_instructions": 11416,
-      "total_instructions": 350947,
+      "max_poll_instructions": 11351,
+      "total_poll_instructions": 339324,
+      "max_instructions": 11351,
+      "total_instructions": 350791,
       "stack": 168,
       "max_fw_read": 64,
       "phase_maximum": {
         "1": 115,
-        "2": 11416,
+        "2": 11351,
         "8": 982,
         "16": 124,
         "10": 111,
         "11": 112,
         "12": 112,
         "13": 133,
-        "14": 713
+        "14": 723
       }
     },
     "1_97792_0": {
       "polls": 11499,
-      "max_poll_instructions": 11416,
-      "total_poll_instructions": 2831546,
-      "max_instructions": 11416,
-      "total_instructions": 2936145,
+      "max_poll_instructions": 11351,
+      "total_poll_instructions": 2831498,
+      "max_instructions": 11351,
+      "total_instructions": 2935989,
       "stack": 168,
       "max_fw_read": 64,
       "phase_maximum": {
         "1": 115,
-        "2": 11416,
+        "2": 11351,
         "8": 982,
         "16": 124,
         "10": 111,
         "11": 112,
         "12": 112,
         "13": 133,
-        "14": 713
+        "14": 723
       }
     }
   },
@@ -142,19 +142,20 @@
   "boundaries": 12,
   "io_faults": 13,
   "busy_cancel": 16,
+  "power_cuts": 580,
   "real_spi": {
     "polls": 1192,
-    "max_poll_instructions": 11052,
-    "total_poll_instructions": 794382,
-    "max_instructions": 11052,
-    "total_instructions": 824230,
+    "max_poll_instructions": 10987,
+    "total_poll_instructions": 794334,
+    "max_instructions": 10987,
+    "total_instructions": 824182,
     "stack": 288,
     "spi_read_max": 192,
     "fw_spi_read_max": 64,
     "spi_status_max": 3,
     "phase_maximum": {
       "1": 212,
-      "2": 11052,
+      "2": 10987,
       "8": 1273,
       "16": 124,
       "10": 967,
@@ -165,8 +166,6 @@
     }
   },
   "exact_failure_logs": 6,
-  "power_cuts": 580,
-  "power_elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7",
-  "status": "PASS",
-  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7"
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709",
+  "status": "PASS"
 }

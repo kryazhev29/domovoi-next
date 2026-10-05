@@ -1,36 +1,35 @@
 {
-  "elf_sha256": "68320ad975e471b2044fff1107986e914485154dd6f32467c1d8e59b58944398",
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709",
   "phases": [
     {
       "phase": 39,
       "live_photo_tx_chunk": 544,
+      "heap_used_with_synthetic_reserve": 1784,
       "free_chunks": [
         2312
       ],
-      "new_storage_commands": "rejected before allocation/I/O",
-      "heap_used_with_synthetic_reserve": 1784
+      "new_storage_commands": "rejected before allocation/I/O"
     },
     {
       "phase": 40,
       "live_photo_tx_chunk": 544,
+      "heap_used_with_synthetic_reserve": 1784,
       "free_chunks": [
         2312
       ],
-      "new_storage_commands": "rejected before allocation/I/O",
-      "heap_used_with_synthetic_reserve": 1784
+      "new_storage_commands": "rejected before allocation/I/O"
     },
     {
       "phase": 41,
       "live_photo_tx_chunk": 544,
+      "heap_used_with_synthetic_reserve": 1784,
       "free_chunks": [
         2312
       ],
-      "new_storage_commands": "rejected before allocation/I/O",
-      "heap_used_with_synthetic_reserve": 1784
+      "new_storage_commands": "rejected before allocation/I/O"
     }
   ],
   "phase_zero_photo_tx": 0,
-  "conclusion": "Photo TX544 is mutually exclusive with accepted command9/10/13 and config snapshots; photo_s192 can coexist.",
   "idle_with_synthetic_reserve_heap_used": 1240,
-  "synthetic_reserve_note": "Additional1040 is explicit allocator pressure; USB driver itself uses static rings, and new upload packet replaces the old USB response allocation."
+  "conclusion": "Photo TX544 is mutually exclusive with accepted command9/10/13 and config snapshots; photo_s192 can coexist."
 }

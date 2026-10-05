@@ -5,10 +5,10 @@
       "positions": null,
       "passes": 865,
       "max_instructions": 1038,
-      "total_instructions": 204679,
+      "total_instructions": 204689,
       "max_reads": 128,
       "stack": 192,
-      "legacy_instructions": 394664,
+      "legacy_instructions": 394508,
       "legacy_stack": 2136
     },
     {
@@ -16,10 +16,10 @@
       "positions": null,
       "passes": 3,
       "max_instructions": 85,
-      "total_instructions": 203,
+      "total_instructions": 213,
       "max_reads": 32,
       "stack": 116,
-      "legacy_instructions": 297,
+      "legacy_instructions": 219,
       "legacy_stack": 1088
     },
     {
@@ -27,10 +27,10 @@
       "positions": null,
       "passes": 4,
       "max_instructions": 82,
-      "total_instructions": 262,
+      "total_instructions": 272,
       "max_reads": 64,
       "stack": 116,
-      "legacy_instructions": 337,
+      "legacy_instructions": 259,
       "legacy_stack": 1088
     },
     {
@@ -40,10 +40,10 @@
       ],
       "passes": 874,
       "max_instructions": 1038,
-      "total_instructions": 205038,
+      "total_instructions": 205048,
       "max_reads": 128,
       "stack": 192,
-      "legacy_instructions": 395408,
+      "legacy_instructions": 395057,
       "legacy_stack": 2136
     },
     {
@@ -54,10 +54,10 @@
       ],
       "passes": 1728,
       "max_instructions": 1038,
-      "total_instructions": 409312,
+      "total_instructions": 409322,
       "max_reads": 128,
       "stack": 192,
-      "legacy_instructions": 789018,
+      "legacy_instructions": 788784,
       "legacy_stack": 2136
     },
     {
@@ -68,10 +68,10 @@
       ],
       "passes": 1735,
       "max_instructions": 1038,
-      "total_instructions": 409759,
+      "total_instructions": 409769,
       "max_reads": 128,
       "stack": 192,
-      "legacy_instructions": 789650,
+      "legacy_instructions": 789260,
       "legacy_stack": 2136
     },
     {
@@ -81,21 +81,21 @@
       ],
       "passes": 871,
       "max_instructions": 1038,
-      "total_instructions": 205091,
+      "total_instructions": 205101,
       "max_reads": 128,
       "stack": 192,
-      "legacy_instructions": 395116,
+      "legacy_instructions": 394843,
       "legacy_stack": 2136
     },
     {
       "records": 2,
       "positions": null,
       "passes": 4,
-      "max_instructions": 70,
-      "total_instructions": 235,
+      "max_instructions": 80,
+      "total_instructions": 245,
       "max_reads": 64,
       "stack": 116,
-      "legacy_instructions": 309,
+      "legacy_instructions": 231,
       "legacy_stack": 1088
     },
     {
@@ -106,10 +106,10 @@
       ],
       "passes": 1923,
       "max_instructions": 1038,
-      "total_instructions": 416763,
+      "total_instructions": 416773,
       "max_reads": 128,
       "stack": 192,
-      "legacy_instructions": 791407,
+      "legacy_instructions": 791017,
       "legacy_stack": 2136
     }
   ],
@@ -119,7 +119,7 @@
     "id_bytes": 1601536,
     "passes": 76636,
     "max_instructions": 85,
-    "total_instructions": 2879399,
+    "total_instructions": 2879409,
     "max_read_bytes": 64,
     "stack": 116,
     "context_request": 1092,
@@ -142,6 +142,5 @@
     }
   },
   "power_cuts": 670,
-  "power_elf_sha256": "f1594cddd2ab4e476a1707a29a18ae608072764de6463bce7f80c93d9452036b",
-  "elf_sha256": "dd2cbb55d70e71928fee440aded45c29e51718eba3f472f5f62ffaeb271652f7"
+  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709"
 }

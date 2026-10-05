@@ -12,6 +12,9 @@
         REQUIRE8
 
         #define SHT_PROGBITS 0x1
+        #include "flash_owner.h"
+        EXTERN flash_claim
+        EXTERN flash_release
 
         EXTERN fast_fnv10
         EXTERN mem_erase_sector
@@ -504,6 +507,11 @@ idindex_poll:
         BL       w25_async_poll
         CMP      R0,#+1
         BEQ.W    ix_poll_return
+        MOV      R5,R0
+        MOVS     R0,#+FO_INDEX
+          CFI FunCall flash_release
+        BL       flash_release
+        MOV      R0,R5
         MOVS     R1,#+0
         STRB     R1,[R4, #+11]
         CMP      R0,#+2
@@ -697,6 +705,10 @@ ix_poll_start:
         BL       w25_async_start
         CMP      R0,#+0
         BEQ.N    ix_poll_error
+        ; Cannot fail: user_loop starts a step only with no owner.
+        MOVS     R0,#+FO_INDEX
+          CFI FunCall flash_claim
+        BL       flash_claim
         STRB     R7,[R4, #+11]
         B.N      ix_poll_return
 ix_poll_error:
