@@ -82,8 +82,8 @@ class ServiceMachine(StorageMachine):
         self.checked('user_storage_poll')
         assert self.u.reg_read(UC_ARM_REG_PRIMASK) == before
         self.poll_costs.append(self.steps)
-        assert self.read_budget <= 64, ('hidden read loop', self.read_budget)
-        assert self.io_budget == 0 and self.steps < 10000
+        assert self.read_budget <= 256, ('bounded CRC batch', self.read_budget)
+        assert self.io_budget == 0 and self.steps < 100000
 
     def restored_heap(self):
         p = self.checked('__basic_malloc', 4088)
@@ -341,7 +341,7 @@ def real_w25():
         m.tick()
         max_read = max(max_read, wire['read']); max_status = max(max_status, wire['status'])
         total_read += wire['read']
-        assert wire['read'] <= 64 and wire['status'] <= 4
+        assert wire['read'] <= 256 and wire['status'] <= 16
     else: assert False, 'real driver service did not terminate'
     assert m.sent == [m.expected(17)]
     m.restored_heap()

@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / 'Tests'))
 import iar_irq_support  # Existing dependency discovery and selected ELF support.
 
 CASES = {
+    'id_sync_fast': [('test_id_sync_fast', 'contracts'), ('test_id_sync_fast', 'mutations')],
     **{n:[('c_vs_asm_extra',n)] for n in ('event_append','fw_blocks','fw_bridge','usb_queue')},
     'access': [('test_access_reads', n) for n in ('table_cells','holidays','find_id','access')],
     'config': [('test_memory_runtime', n) for n in ('allocator','cached_reads','config_ownership','config_faults')],
@@ -40,7 +41,7 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CORE = ('access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','usb_replies','storage_boundary')
+CORE = ('id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 
 

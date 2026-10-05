@@ -41,9 +41,11 @@ def patch(m, mode):
         assert len(places) == 3, places # real bytes, FF bytes, commit result
         off = places[-1]+2; replacement = b'\x00\xbf'
     else:
-        pattern = b'\x31\x8c\x48\x40\x20\x82' # affine constant XOR then store CRC
+        name = 'crc16_ffInit' # shared affine helper now owns the FF transform
+        start = m.addr(name); code = bytes(m.u.mem_read(start, 60))
+        pattern = b'\x80\xea\x01\x05' # eor.w r5,r0,r1 (affine constant)
         assert code.count(pattern) == 1
-        off = code.index(pattern)+2; replacement = b'\x00\xbf'
+        off = code.index(pattern); replacement = b'\x05\x46\x00\xbf' # mov r5,r0; nop
     original = code[off:off+len(replacement)]
     assert original != replacement
     m.u.mem_write(start+off, replacement)

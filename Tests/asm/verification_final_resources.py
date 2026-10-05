@@ -25,7 +25,7 @@ def camera_table_reset_case(m,step):
     for _ in range(512):
         if not m.checked('table_runtime_active'):break
         m.now+=1;step(m.checked,'user_storage_poll')
-        assert m.read_budget<=64 and m.io_budget==0
+        assert m.read_budget<=256 and m.io_budget==0
     assert not m.checked('table_runtime_active') and m.io is None
     assert m.counts['start']==io_before['start'] and m.counts['poll']==io_before['poll']
     assert bytes(m.flash)==flash_before

@@ -780,4 +780,17 @@ idindex_runtime_suspend:
         DATA
         DC32 0
 
+        PUBLIC idindex_table_commit
+        SECTION .text:CODE:NOROOT(2)
+        CFI Block table_commit_block Using cfiCommon0
+        CFI Function idindex_table_commit
+        THUMB
+idindex_table_commit:
+        LDR R2,=ix
+        LDR R2,[R2]
+        EORS R0,R0,R2
+        CFI TailCall idindex_scanned
+        B.W idindex_scanned
+        CFI EndBlock table_commit_block
+        LTORG
         END

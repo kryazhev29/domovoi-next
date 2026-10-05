@@ -11501,16 +11501,6 @@ table_job:
 table_fault:
         DS8 1
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock313 Using cfiCommon0
-          CFI Function table_runtime_active
-          CFI NoCalls
-        THUMB
-table_runtime_active:
-        LDR.W    R0,??DataTable120_8
-        LDRB     R0,[R0, #+50]
-        B.W      ?Subroutine0
-          CFI EndBlock cfiBlock313
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -11520,40 +11510,7 @@ table_runtime_active:
         DC8      0x48, 0x57, 0x00, 0x00
 
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock315 Using cfiCommon0
-          CFI Function table_runtime_quiet
-          CFI NoCalls
-        THUMB
-table_runtime_quiet:
-        LDR.W    R2,??DataTable120_8
-        LDRB     R1,[R2, #+50]
-        CBZ.N    R1,??table_runtime_quiet_0
-        LDRB     R1,[R2, #+53]
-        CMP      R1,R0
-        ITT      EQ
-        MOVEQ    R0,#+1
-        STRBEQ   R0,[R2, #+55]
-??table_runtime_quiet_0:
-        BX       LR
-          CFI EndBlock cfiBlock315
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock316 Using cfiCommon0
-          CFI Function table_runtime_cancel
-        THUMB
-table_runtime_cancel:
-        LDR.W    R1,??DataTable120_8
-        LDRB     R0,[R1, #+50]
-        CBZ.N    R0,??table_runtime_cancel_0
-        MOVS     R0,#+1
-        STRB     R0,[R1, #+55]
-        STRB     R0,[R1, #+56]
-          CFI FunCall sj_runtime_cancel
-        B.W      sj_runtime_cancel
-??table_runtime_cancel_0:
-        BX       LR
-          CFI EndBlock cfiBlock316
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -11576,154 +11533,6 @@ table_runtime_cancel:
         DATA32
         DC32     ?_66
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock317 Using cfiCommon0
-          CFI Function table_chunk
-        THUMB
-table_chunk:
-        PUSH     {R3-R11,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R11 Frame(CFA, -8)
-          CFI R10 Frame(CFA, -12)
-          CFI R9 Frame(CFA, -16)
-          CFI R8 Frame(CFA, -20)
-          CFI R7 Frame(CFA, -24)
-          CFI R6 Frame(CFA, -28)
-          CFI R5 Frame(CFA, -32)
-          CFI R4 Frame(CFA, -36)
-          CFI CFA R13+40
-        MOV      R5,R1
-        MOV      R10,R2
-        LDR.W    R7,??DataTable120_8
-        MOVS     R2,#+64
-        MOV      R1,R10
-        LDR      R0,[R7, #+8]
-        ADDS     R0,R5,R0
-          CFI FunCall w25_read_data
-        BL       w25_read_data
-        CMP      R0,#+0
-        BEQ.N    ??table_chunk_0
-        LDRB     R0,[R7, #+52]
-        CMP      R0,#+16
-        BNE.N    ??table_chunk_1
-        MOVS     R1,#+0
-??table_chunk_2:
-        ADDS     R0,R1,R5
-        LDR.N    R2,??DataTable119_7
-        LDR      R2,[R2, #+44]
-        CMP      R0,R2
-        BCS.N    ??table_chunk_3
-        ADDS     R2,R1,R5
-        LDRH     R0,[R7, #+40]
-        CMP      R2,R0
-        ITTTE    LT
-        LDRLT    R2,[R7, #+0]
-        ADDLT    R0,R1,R5
-        LDRBLT   R0,[R2, R0]
-        MOVGE    R0,#+255
-        STRB     R0,[R10, R1]
-        ADDS     R1,R1,#+1
-        UXTH     R1,R1
-        CMP      R1,#+64
-        BLT.N    ??table_chunk_2
-??table_chunk_3:
-        MOVS     R0,#+1
-??table_chunk_4:
-        POP      {R1,R4-R11,PC}
-??table_chunk_1:
-        MOV      R11,#+0
-        B.N      ??table_chunk_5
-??table_chunk_6:
-        MOV      R2,R1
-        MOV      R1,R6
-        ADD      R0,R10,R3
-          CFI FunCall __aeabi_memcpy
-        BL       __aeabi_memcpy
-        B.N      ??table_chunk_7
-??table_chunk_8:
-        LDRB     R0,[R7, #+52]
-        CMP      R0,#+13
-        BNE.N    ??table_chunk_6
-        ADD      R8,R10,R3
-        LDRB     R9,[R8, #+28]
-        LDRH     R1,[R8, #+0]
-        BL       ?Subroutine62
-??CrossCallReturnLabel_215:
-        BEQ.N    ??table_chunk_9
-        MOVS     R2,#+10
-        ADDS     R1,R6,#+2
-        ADD      R0,R8,#+2
-          CFI FunCall memcmp
-        BL       memcmp
-        SUBS     R4,R0,#+1
-        SBCS     R4,R4,R4
-        LSRS     R4,R4,#+31
-??table_chunk_10:
-        ADD      R3,R8,#+22
-        LDR      R2,[R3, #+0]
-        STR      R2,[SP, #+0]
-        LDRH     R2,[R7, #+38]
-        MOV      R1,R6
-        MOV      R0,R8
-          CFI FunCall __aeabi_memcpy
-        BL       __aeabi_memcpy
-        CBZ.N    R4,??table_chunk_11
-        ADD      R0,R8,#+22
-        LDR      R1,[SP, #+0]
-        STR      R1,[R0, #+0]
-        STRB     R9,[R8, #+28]
-??table_chunk_11:
-        LDRH     R1,[R7, #+42]
-        MOV      R0,R8
-          CFI FunCall id_set_pass_day
-        BL       id_set_pass_day
-??table_chunk_7:
-        ADD      R11,R11,#+1
-??table_chunk_5:
-        LDRH     R0,[R7, #+36]
-        UXTH     R1,R11
-        CMP      R1,R0
-        BCS.N    ??table_chunk_3
-        LDR      R0,[R7, #+0]
-        LDRH     R2,[R7, #+34]
-        ADDS     R2,R1,R2
-        LDRH     R1,[R7, #+38]
-        MULS     R2,R1,R2
-        ADDS     R6,R0,R2
-        LDRB     R1,[R6, #+0]
-        LDRB     R0,[R7, #+52]
-        CMP      R0,#+13
-        ITT      EQ
-        LDRBEQ   R0,[R6, #+1]
-        ORREQ    R1,R1,R0, LSL #+8
-        LDR      R3,[R7, #+12]
-        SUBS     R1,R1,#+1
-        LDRH     R0,[R7, #+38]
-        MLA      R3,R0,R1,R3
-        LDR      R1,[R7, #+8]
-        ADDS     R1,R5,R1
-        CMP      R3,R1
-        BCC.N    ??table_chunk_7
-        LDR      R1,[R7, #+8]
-        ADDS     R1,R5,R1
-        ADDS     R1,R1,#+64
-        CMP      R3,R1
-        BCS.N    ??table_chunk_7
-        LDR      R0,[R7, #+8]
-        SUBS     R3,R3,R0
-        SUBS     R3,R3,R5
-        UXTH     R3,R3
-        RSB      R0,R3,#+64
-        LDRH     R1,[R7, #+38]
-        CMP      R0,R1
-        BGE.N    ??table_chunk_8
-??table_chunk_0:
-        MOVS     R0,#+0
-        B.N      ??table_chunk_4
-??table_chunk_9:
-        MOVS     R4,#+0
-        B.N      ??table_chunk_10
-          CFI EndBlock cfiBlock317
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -11739,111 +11548,6 @@ table_chunk:
         DATA32
         DC32     0x5f5e1000
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock318 Using cfiCommon0
-          CFI Function table_runtime_begin
-        THUMB
-table_runtime_begin:
-        PUSH     {R3-R11,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R11 Frame(CFA, -8)
-          CFI R10 Frame(CFA, -12)
-          CFI R9 Frame(CFA, -16)
-          CFI R8 Frame(CFA, -20)
-          CFI R7 Frame(CFA, -24)
-          CFI R6 Frame(CFA, -28)
-          CFI R5 Frame(CFA, -32)
-          CFI R4 Frame(CFA, -36)
-          CFI CFA R13+40
-        MOV      R5,R0
-        MOV      R10,R1
-        MOV      R9,R2
-        LDRB     R0,[R5, #+4]
-        STR      R0,[SP, #+0]
-        CMP      R0,#+13
-        BNE.N    ??table_runtime_begin_0
-        MOVS     R6,#+2
-??table_runtime_begin_1:
-        MOVS     R7,#+32
-??table_runtime_begin_2:
-        LDRB     R0,[R5, #+9]
-        MUL      R8,R7,R0
-          CFI FunCall user_storage_command_ready
-        BL       user_storage_command_ready
-        CBZ.N    R0,??table_runtime_begin_3
-        LDR.W    R4,??DataTable120_8
-        CMP      R8,#+0
-        BEQ.N    ??table_runtime_begin_3
-        MOVW     R0,#+2049
-        CMP      R8,R0
-        BGE.N    ??table_runtime_begin_3
-          CFI FunCall mem_tables_ready
-        BL       mem_tables_ready
-        CBZ.N    R0,??table_runtime_begin_3
-        MOV      R0,R8
-          CFI FunCall malloc
-        BL       malloc
-        MOVS     R11,R0
-        BNE.N    ??table_runtime_begin_4
-??table_runtime_begin_3:
-        MOVS     R0,#+0
-        B.N      ??table_runtime_begin_5
-??table_runtime_begin_0:
-        CMP      R0,#+14
-        IT       EQ
-        MOVEQ    R6,#+4
-        BEQ.N    ??table_runtime_begin_1
-        CMP      R0,#+15
-        ITTEE    NE
-        MOVNE    R6,#+5
-        MOVNE    R7,#+4
-        MOVEQ    R6,#+3
-        MOVEQ    R7,#+16
-        B.N      ??table_runtime_begin_2
-??table_runtime_begin_4:
-        MOV      R2,R8
-        ADD      R1,R5,#+10
-          CFI FunCall __aeabi_memcpy
-        BL       __aeabi_memcpy
-        MOVS     R1,#+60
-        MOV      R0,R4
-          CFI FunCall __aeabi_memclr4
-        BL       __aeabi_memclr4
-        STR      R11,[R4, #+0]
-        LDRB     R0,[R5, #+9]
-        STRH     R0,[R4, #+32]
-        STRH     R7,[R4, #+38]
-        STRH     R8,[R4, #+40]
-        ADDS     R3,R5,#+5
-        ADDS     R0,R4,#+4
-        LDR      R2,[R3, #+0]
-        STR      R2,[R0, #+0]
-        LDR      R0,[SP, #+0]
-        STRB     R0,[R4, #+52]
-        STRB     R6,[R4, #+51]
-        STRB     R10,[R4, #+53]
-        STRB     R9,[R4, #+54]
-        LDR.N    R0,??DataTable119_7
-        LDR      R0,[R0, R6, LSL #+3]
-        STR      R0,[R4, #+12]
-          CFI FunCall id_today
-        BL       id_today
-        STRH     R0,[R4, #+42]
-        ; Cannot fail: user_storage_command_ready saw no owner in this call.
-        MOVS     R0,#+FO_TABLE
-          CFI FunCall flash_claim
-        BL       flash_claim
-        MOVS     R0,#+1
-        STRB     R0,[R4, #+50]
-        LDR      R0,[SP, #+0]
-        CMP      R0,#+13
-          CFI FunCall idindex_runtime_suspend
-        IT       EQ
-        BLEQ     idindex_runtime_suspend
-        MOVS     R0,#+1
-??table_runtime_begin_5:
-        POP      {R1,R4-R11,PC}
-          CFI EndBlock cfiBlock318
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -11852,31 +11556,6 @@ table_runtime_begin:
         DATA32
         DC32     0x15180
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock319 Using cfiCommon0
-          CFI Function table_scan_begin
-          CFI NoCalls
-        THUMB
-table_scan_begin:
-        LDR.W    R0,??DataTable120_8
-        MOVS     R1,#+3
-        STRB     R1,[R0, #+50]
-        MOVS     R1,#+0
-        STR      R1,[R0, #+16]
-        MOVW     R1,#+65535
-        STRH     R1,[R0, #+44]
-        MOVS     R1,#+0
-        STRH     R1,[R0, #+48]
-        STRH     R1,[R0, #+46]
-        STR      R1,[R0, #+24]
-        STR      R1,[R0, #+20]
-        LDRB     R0,[R0, #+52]
-        CMP      R0,#+13
-        ITT      EQ
-        LDREQ.N  R0,??DataTable118
-        STREQ    R1,[R0, #+0]
-        BX       LR
-          CFI EndBlock cfiBlock319
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -11892,89 +11571,6 @@ table_scan_begin:
         DATA32
         DC32     status_reported
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock320 Using cfiCommon0
-          CFI Function table_runtime_finish
-        THUMB
-table_runtime_finish:
-        PUSH     {R3-R5,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R5 Frame(CFA, -8)
-          CFI R4 Frame(CFA, -12)
-          CFI CFA R13+16
-        LDR.W    R4,??DataTable120_8
-        LDRB     R5,[R4, #+52]
-        LDRB     R0,[R4, #+57]
-        CMP      R0,#+0
-        ITT      EQ
-        LDRBEQ   R0,[R4, #+56]
-        CMPEQ    R0,#+0
-        BNE.N    ??table_runtime_finish_0
-        CMP      R5,#+13
-        BNE.N    ??table_runtime_finish_1
-        LDR      R1,[R4, #+4]
-        LDR.N    R0,??DataTable120_5
-        STR      R1,[R0, #+31]
-        MOVS     R5,#+1
-        MOVS     R0,#+1
-        B.N      ??table_runtime_finish_2
-??table_runtime_finish_1:
-        CMP      R5,#+14
-        BNE.N    ??table_runtime_finish_3
-        LDR      R1,[R4, #+4]
-        LDR.N    R0,??DataTable120_5
-        STR      R1,[R0, #+35]
-        MOVS     R5,#+3
-        MOVS     R0,#+8
-        B.N      ??table_runtime_finish_2
-??table_runtime_finish_3:
-        CMP      R5,#+15
-        LDR      R1,[R4, #+4]
-        LDR.N    R0,??DataTable120_5
-        BNE.N    ??table_runtime_finish_4
-        STR      R1,[R0, #+39]
-        MOVS     R5,#+2
-        MOVS     R0,#+4
-        B.N      ??table_runtime_finish_2
-??table_runtime_finish_4:
-        STR      R1,[R0, #+43]
-        MOVS     R5,#+5
-        MOVS     R0,#+16
-??table_runtime_finish_2:
-          CFI FunCall sync_packet
-        BL       sync_packet
-        LDRB     R0,[R4, #+55]
-        CBNZ.N   R0,??table_runtime_finish_5
-        LDRB     R0,[R4, #+54]
-        STR      R0,[SP, #+0]
-        LDRB     R3,[R4, #+53]
-        LDRH     R2,[R4, #+44]
-        LDR      R1,[R4, #+4]
-        MOV      R0,R5
-          CFI FunCall user_send_timeshtamp
-        BL       user_send_timeshtamp
-        B.N      ??table_runtime_finish_5
-??table_runtime_finish_0:
-        LDRB     R0,[R4, #+55]
-        CBNZ.N   R0,??table_runtime_finish_5
-        LDRB     R3,[R4, #+54]
-        LDRB     R2,[R4, #+53]
-        MOVS     R1,#+2
-        MOV      R0,R5
-          CFI FunCall user_send_answer_comand
-        BL       user_send_answer_comand
-??table_runtime_finish_5:
-        LDR      R0,[R4, #+0]
-          CFI FunCall free
-        BL       free
-        MOVS     R0,#+FO_TABLE
-          CFI FunCall flash_release
-        BL       flash_release
-        MOVS     R0,#+0
-        STR      R0,[R4, #+0]
-        STRB     R0,[R4, #+50]
-        POP      {R0,R4,R5,PC}
-          CFI EndBlock cfiBlock320
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -12067,307 +11663,6 @@ table_runtime_finish:
         DATA32
         DC32     ?_69
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock321 Using cfiCommon0
-          CFI Function table_runtime_poll
-        THUMB
-table_runtime_poll:
-        PUSH     {R4-R8,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R8 Frame(CFA, -8)
-          CFI R7 Frame(CFA, -12)
-          CFI R6 Frame(CFA, -16)
-          CFI R5 Frame(CFA, -20)
-          CFI R4 Frame(CFA, -24)
-          CFI CFA R13+24
-        SUB      SP,SP,#+64
-          CFI CFA R13+88
-        MOV      R5,R0
-        LDR.N    R4,??DataTable120_8
-        LDRB     R0,[R4, #+50]
-        CMP      R0,#+1
-        BNE.N    ??table_runtime_poll_0
-        LDRB     R0,[R4, #+56]
-        CMP      R0,#+0
-        BNE.N    ??table_runtime_poll_1
-        LDR      R2,[R4, #+0]
-        LDRH     R1,[R4, #+34]
-        LDRH     R0,[R4, #+38]
-        MULS     R1,R0,R1
-        LDRB     R0,[R2, R1]
-        STRH     R0,[SP, #+0]
-        LDRB     R0,[R4, #+52]
-        CMP      R0,#+13
-        BNE.N    ??table_runtime_poll_2
-        LDR      R1,[R4, #+0]
-        LDRH     R2,[R4, #+34]
-        LDRH     R0,[R4, #+38]
-        MULS     R2,R0,R2
-        ADDS     R3,R1,R2
-        BL       ?Subroutine15
-??CrossCallReturnLabel_30:
-        LDR      R1,[R4, #+12]
-        LDRH     R2,[SP, #+0]
-        SUBS     R2,R2,#+1
-        LDRH     R0,[R4, #+38]
-        MLA      R1,R0,R2,R1
-        LSRS     R1,R1,#+12
-        LSLS     R1,R1,#+12
-??table_runtime_poll_3:
-        STR      R1,[R4, #+8]
-        MOVS     R0,#+1
-        STRH     R0,[R4, #+36]
-        LDRB     R0,[R4, #+52]
-        CMP      R0,#+16
-        BNE.N    ??table_runtime_poll_4
-        LDRH     R0,[R4, #+32]
-        STRH     R0,[R4, #+36]
-        B.N      ??table_runtime_poll_5
-??table_runtime_poll_2:
-        CMP      R0,#+16
-        BNE.N    ??CrossCallReturnLabel_30
-        LDR      R1,[R4, #+12]
-        B.N      ??table_runtime_poll_3
-??table_runtime_poll_6:
-        LDRH     R0,[R4, #+36]
-        ADDS     R0,R0,#+1
-        STRH     R0,[R4, #+36]
-??table_runtime_poll_4:
-        LDRH     R1,[R4, #+34]
-        LDRH     R0,[R4, #+36]
-        ADDS     R1,R0,R1
-        LDRH     R0,[R4, #+32]
-        CMP      R1,R0
-        BGE.N    ??table_runtime_poll_5
-        LDR      R0,[R4, #+0]
-        LDRH     R2,[R4, #+34]
-        LDRH     R1,[R4, #+36]
-        ADDS     R2,R1,R2
-        LDRH     R1,[R4, #+38]
-        MULS     R2,R1,R2
-        ADD      R0,R0,R2
-        LDRB     R1,[R0, #+0]
-        STRH     R1,[SP, #+0]
-        LDRB     R1,[R4, #+52]
-        CMP      R1,#+13
-        BNE.N    ??table_runtime_poll_7
-        LDRH     R1,[SP, #+0]
-        LDRB     R0,[R0, #+1]
-        ORR      R1,R1,R0, LSL #+8
-        STRH     R1,[SP, #+0]
-??table_runtime_poll_7:
-        LDR      R2,[R4, #+12]
-        LDRH     R1,[SP, #+0]
-        SUBS     R1,R1,#+1
-        LDRH     R0,[R4, #+38]
-        MLA      R2,R0,R1,R2
-        LSRS     R2,R2,#+12
-        LSLS     R2,R2,#+12
-        LDR      R0,[R4, #+8]
-        CMP      R2,R0
-        BEQ.N    ??table_runtime_poll_6
-??table_runtime_poll_5:
-        MOVS     R2,#+0
-        LDR.W    R1,??DataTable123
-        LDR      R0,[R4, #+8]
-          CFI FunCall sj_runtime_begin
-        BL       sj_runtime_begin
-        CBNZ.N   R0,??table_runtime_poll_8
-        MOVS     R0,#+1
-        STRB     R0,[R4, #+57]
-??table_runtime_poll_1:
-        B.N      ??table_runtime_poll_9
-??table_runtime_poll_8:
-        MOVS     R0,#+2
-        B.N      ??table_runtime_poll_10
-??table_runtime_poll_0:
-        CMP      R0,#+2
-        BNE.N    ??table_runtime_poll_11
-        MOV      R0,R5
-          CFI FunCall sj_runtime_poll
-        BL       sj_runtime_poll
-        MOV      R5,R0
-        CMP      R5,#+1
-        BEQ.N    ??table_runtime_poll_12
-          CFI FunCall sj_runtime_reset
-        BL       sj_runtime_reset
-        CMP      R5,#+2
-        BEQ.N    ??table_runtime_poll_13
-        MOVS     R0,#+1
-        STRB     R0,[R4, #+57]
-          CFI FunCall sj_runtime_blocked
-        BL       sj_runtime_blocked
-        CBZ.N    R0,??table_runtime_poll_9
-        B.N      ??table_runtime_poll_14
-??table_runtime_poll_13:
-        LDRH     R1,[R4, #+34]
-        LDRH     R0,[R4, #+36]
-        ADDS     R1,R0,R1
-        STRH     R1,[R4, #+34]
-        LDRH     R1,[R4, #+34]
-        LDRH     R0,[R4, #+32]
-        CMP      R1,R0
-        BEQ.N    ??table_runtime_poll_9
-        LDRB     R0,[R4, #+56]
-        CBZ.N    R0,??table_runtime_poll_15
-??table_runtime_poll_9:
-          CFI FunCall table_scan_begin
-        BL       table_scan_begin
-??table_runtime_poll_12:
-        B.N      ??table_runtime_poll_16
-??table_runtime_poll_15:
-        MOVS     R0,#+1
-        B.N      ??table_runtime_poll_10
-??table_runtime_poll_11:
-        CMP      R0,#+3
-        BNE.N    ??table_runtime_poll_17
-        MOVS     R6,#+64
-        LDR.W    R5,??DataTable123_1
-        LDRB     R0,[R4, #+51]
-        ADD      R0,R5,R0, LSL #+3
-        LDR      R1,[R0, #+4]
-        LDR      R0,[R4, #+16]
-        SUBS     R1,R1,R0
-        CMP      R1,#+64
-        BCS.N    ??table_runtime_poll_18
-        LDRB     R0,[R4, #+51]
-        ADD      R0,R5,R0, LSL #+3
-        LDR      R6,[R0, #+4]
-        LDR      R0,[R4, #+16]
-        SUBS     R6,R6,R0
-        UXTH     R6,R6
-??table_runtime_poll_18:
-        MOV      R2,R6
-        MOV      R1,SP
-        LDR      R0,[R4, #+12]
-        LDR      R3,[R4, #+16]
-        ADDS     R0,R3,R0
-          CFI FunCall w25_read_data
-        BL       w25_read_data
-        CBNZ.N   R0,??table_runtime_poll_19
-        MOVS     R0,#+1
-        STRB     R0,[R4, #+57]
-??table_runtime_poll_14:
-        MOVS     R1,#+1
-        LDR.N    R0,??DataTable120_9
-        STRB     R1,[R0, #+0]
-        B.N      ??table_runtime_poll_20
-??table_runtime_poll_19:
-        LDRH     R2,[R4, #+44]
-        MOV      R1,R6
-        MOV      R0,SP
-          CFI FunCall crc16_calcInit
-        BL       crc16_calcInit
-        STRH     R0,[R4, #+44]
-        LDRB     R0,[R4, #+52]
-        CMP      R0,#+13
-        BNE.N    ??table_runtime_poll_21
-        MOVS     R7,#+0
-        B.N      ??table_runtime_poll_22
-??table_runtime_poll_23:
-        ADD      R8,SP,R7
-        MOVS     R1,#+32
-        ADD      R0,SP,R7
-          CFI FunCall fast_all_ff
-        BL       fast_all_ff
-        CBNZ.N   R0,??table_runtime_poll_24
-        LDR      R0,[R4, #+16]
-        ADDS     R0,R7,R0
-        ADDS     R0,R0,#+32
-        STR      R0,[R4, #+24]
-??table_runtime_poll_24:
-        LDRH     R0,[R8, #+0]
-        MOVW     R1,#+65535
-        CMP      R0,R1
-        BEQ.N    ??table_runtime_poll_25
-        LDR      R0,[R4, #+16]
-        ADDS     R0,R7,R0
-        LSRS     R0,R0,#+5
-        ADDS     R0,R0,#+1
-        LDRH     R1,[R4, #+46]
-        ADDS     R1,R1,#+1
-        STRH     R1,[R4, #+46]
-        STRH     R0,[R4, #+48]
-        ADD      R1,R8,#+2
-        UXTH     R0,R0
-          CFI FunCall idindex_hash
-        BL       idindex_hash
-        LDR      R1,[R4, #+20]
-        EORS     R0,R0,R1
-        STR      R0,[R4, #+20]
-        MOV      R0,R8
-          CFI FunCall id_time_end
-        BL       id_time_end
-          CFI FunCall id_watch_end
-        BL       id_watch_end
-??table_runtime_poll_25:
-        ADDS     R7,R7,#+32
-        UXTH     R7,R7
-??table_runtime_poll_22:
-        CMP      R7,R6
-        BLT.N    ??table_runtime_poll_23
-??table_runtime_poll_21:
-        LDR      R0,[R4, #+16]
-        ADDS     R6,R6,R0
-        STR      R6,[R4, #+16]
-        LDRB     R1,[R4, #+51]
-        ADD      R1,R5,R1, LSL #+3
-        LDR      R1,[R1, #+4]
-        CMP      R6,R1
-        BNE.N    ??table_runtime_poll_16
-        LDRB     R0,[R4, #+52]
-        CMP      R0,#+13
-        BNE.N    ??table_runtime_poll_20
-        LDRH     R1,[R4, #+46]
-        LDR.N    R0,??DataTable120_5
-        STRH     R1,[R0, #+81]
-        LDRH     R1,[R4, #+48]
-        LDR.W    R0,??DataTable125
-        STRH     R1,[R0, #+0]
-        LDR      R1,[R4, #+24]
-        LDR.W    R0,??DataTable126
-        STR      R1,[R0, #+0]
-        LDRH     R1,[R4, #+48]
-        LDR      R0,[R4, #+20]
-          CFI FunCall idindex_scanned
-        BL       idindex_scanned
-??table_runtime_poll_20:
-        MOVS     R0,#+4
-??table_runtime_poll_10:
-        STRB     R0,[R4, #+50]
-        B.N      ??table_runtime_poll_16
-??table_runtime_poll_17:
-        CMP      R0,#+4
-        BNE.N    ??table_runtime_poll_16
-        LDRB     R0,[R4, #+55]
-        CMP      R0,#+0
-        ITT      EQ
-        LDRBEQ   R0,[R4, #+53]
-        CMPEQ    R0,#+1
-        BNE.N    ??table_runtime_poll_26
-          CFI FunCall comm_tx_busy
-        BL       comm_tx_busy
-        CBZ.N    R0,??table_runtime_poll_26
-        LDRB     R0,[R4, #+58]
-        CBNZ.N   R0,??table_runtime_poll_27
-        MOVS     R0,#+1
-        STRB     R0,[R4, #+58]
-        ADD      R0,R5,#+2000
-        STR      R0,[R4, #+28]
-??table_runtime_poll_27:
-        LDR      R0,[R4, #+28]
-        SUBS     R5,R5,R0
-        BMI.N    ??table_runtime_poll_16
-        MOVS     R0,#+1
-        STRB     R0,[R4, #+55]
-??table_runtime_poll_26:
-          CFI FunCall table_runtime_finish
-        BL       table_runtime_finish
-??table_runtime_poll_16:
-        ADD      SP,SP,#+64
-          CFI CFA R13+24
-        POP      {R4-R8,PC}
-          CFI EndBlock cfiBlock321
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -12448,16 +11743,6 @@ table_runtime_poll:
           CFI R6 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+24
-          CFI Block cfiCond323 Using cfiCommon0
-          CFI (cfiCond323) Function table_runtime_poll
-          CFI (cfiCond323) Conditional ??CrossCallReturnLabel_30
-          CFI (cfiCond323) R4 Frame(CFA, -24)
-          CFI (cfiCond323) R5 Frame(CFA, -20)
-          CFI (cfiCond323) R6 Frame(CFA, -16)
-          CFI (cfiCond323) R7 Frame(CFA, -12)
-          CFI (cfiCond323) R8 Frame(CFA, -8)
-          CFI (cfiCond323) R14 Frame(CFA, -4)
-          CFI (cfiCond323) CFA R13+88
           CFI Block cfiPicker324 Using cfiCommon1
           CFI (cfiPicker324) NoFunction
           CFI (cfiPicker324) Picker
@@ -12469,7 +11754,7 @@ table_runtime_poll:
         STRB     R2,[SP, #+1]
         BX       LR
           CFI EndBlock cfiCond322
-          CFI EndBlock cfiCond323
+
           CFI EndBlock cfiPicker324
 
         SECTION `.text`:CODE:NOROOT(2)
@@ -14325,30 +13610,17 @@ user_addIdToTempBuffer:
         DC32     id_used_bytes
 
         SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiCond356 Using cfiCommon0
-          CFI Function table_chunk
-          CFI Conditional ??CrossCallReturnLabel_215
-          CFI R4 Frame(CFA, -36)
-          CFI R5 Frame(CFA, -32)
-          CFI R6 Frame(CFA, -28)
-          CFI R7 Frame(CFA, -24)
-          CFI R8 Frame(CFA, -20)
-          CFI R9 Frame(CFA, -16)
-          CFI R10 Frame(CFA, -12)
-          CFI R11 Frame(CFA, -8)
-          CFI R14 Frame(CFA, -4)
-          CFI CFA R13+40
           CFI Block cfiCond357 Using cfiCommon0
-          CFI (cfiCond357) Function user_findID
-          CFI (cfiCond357) Conditional ??CrossCallReturnLabel_216
-          CFI (cfiCond357) R4 Frame(CFA, -28)
-          CFI (cfiCond357) R5 Frame(CFA, -24)
-          CFI (cfiCond357) R6 Frame(CFA, -20)
-          CFI (cfiCond357) R7 Frame(CFA, -16)
-          CFI (cfiCond357) R8 Frame(CFA, -12)
-          CFI (cfiCond357) R9 Frame(CFA, -8)
-          CFI (cfiCond357) R14 Frame(CFA, -4)
-          CFI (cfiCond357) CFA R13+1056
+          CFI Function user_findID
+          CFI Conditional ??CrossCallReturnLabel_216
+          CFI R4 Frame(CFA, -28)
+          CFI R5 Frame(CFA, -24)
+          CFI R6 Frame(CFA, -20)
+          CFI R7 Frame(CFA, -16)
+          CFI R8 Frame(CFA, -12)
+          CFI R9 Frame(CFA, -8)
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+1056
           CFI Block cfiCond358 Using cfiCommon0
           CFI (cfiCond358) Function user_addIdToTempBuffer
           CFI (cfiCond358) Conditional ??CrossCallReturnLabel_217
@@ -14379,7 +13651,7 @@ user_addIdToTempBuffer:
         MOVW     R0,#+65535
         CMP      R1,R0
         BX       LR
-          CFI EndBlock cfiCond356
+
           CFI EndBlock cfiCond357
           CFI EndBlock cfiCond358
           CFI EndBlock cfiCond359
@@ -21440,4 +20712,955 @@ fw_service_owner_idle:
         DATA
         DC32 0
 
+
+; Bounded ID/table CRC and journal metadata deltas.
+        EXTERN idindex_table_commit
+        EXTERN sjr
+        CFI Names ids_cfiNames0
+          CFI StackFrame CFA R13 DATA
+          CFI Resource R0:32, R1:32, R2:32, R3:32, R4:32, R5:32, R6:32, R7:32
+          CFI Resource R8:32, R9:32, R10:32, R11:32, R12:32, R13:32, R14:32
+          CFI EndNames ids_cfiNames0
+
+          CFI Common ids_cfiCommon0 Using ids_cfiNames0
+          CFI CodeAlign 2
+          CFI DataAlign 4
+          CFI ReturnAddress R14 CODE
+          CFI CFA R13+0
+          CFI R0 Undefined
+          CFI R1 Undefined
+          CFI R2 Undefined
+          CFI R3 Undefined
+          CFI R4 SameValue
+          CFI R5 SameValue
+          CFI R6 SameValue
+          CFI R7 SameValue
+          CFI R8 SameValue
+          CFI R9 SameValue
+          CFI R10 SameValue
+          CFI R11 SameValue
+          CFI R12 Undefined
+          CFI R14 SameValue
+          CFI EndCommon ids_cfiCommon0
+
+
+
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock0 Using ids_cfiCommon0
+          CFI Function table_runtime_active
+          CFI NoCalls
+        THUMB
+table_runtime_active:
+        LDR.W    R0,ids___DataTable7
+        LDRB     R0,[R0, #+50]
+        CBZ.N    R0,ids___table_runtime_active_0
+        MOVS     R0,#+1
+ids___table_runtime_active_0:
+        BX       LR
+          CFI EndBlock ids_cfiBlock0
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock1 Using ids_cfiCommon0
+          CFI Function table_runtime_quiet
+          CFI NoCalls
+        THUMB
+table_runtime_quiet:
+        LDR.W    R2,ids___DataTable7
+        LDRB     R1,[R2, #+50]
+        CBZ.N    R1,ids___table_runtime_quiet_0
+        LDRB     R1,[R2, #+53]
+        CMP      R1,R0
+        ITT      EQ
+        MOVEQ    R0,#+1
+        STRBEQ   R0,[R2, #+55]
+ids___table_runtime_quiet_0:
+        BX       LR
+          CFI EndBlock ids_cfiBlock1
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock2 Using ids_cfiCommon0
+          CFI Function table_runtime_cancel
+        THUMB
+table_runtime_cancel:
+        LDR.W    R1,ids___DataTable7
+        LDRB     R0,[R1, #+50]
+        CBZ.N    R0,ids___table_runtime_cancel_0
+        MOVS     R0,#+1
+        STRB     R0,[R1, #+55]
+        STRB     R0,[R1, #+56]
+          CFI FunCall sj_runtime_cancel
+        B.W      sj_runtime_cancel
+ids___table_runtime_cancel_0:
+        BX       LR
+          CFI EndBlock ids_cfiBlock2
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock3 Using ids_cfiCommon0
+          CFI Function table_chunk
+        THUMB
+table_chunk:
+        PUSH     {R1-R11,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI R11 Frame(CFA, -8)
+          CFI R10 Frame(CFA, -12)
+          CFI R9 Frame(CFA, -16)
+          CFI R8 Frame(CFA, -20)
+          CFI R7 Frame(CFA, -24)
+          CFI R6 Frame(CFA, -28)
+          CFI R5 Frame(CFA, -32)
+          CFI R4 Frame(CFA, -36)
+          CFI CFA R13+48
+        MOV      R8,R1
+        MOV      R7,R2
+        LDR.W    R4,ids___DataTable7
+        MOVS     R2,#+64
+        MOV      R1,R7
+        LDR      R0,[R4, #+8]
+        ADD      R0,R8,R0
+          CFI FunCall w25_read_data
+        BL       w25_read_data
+        CMP      R0,#+0
+        BEQ.W    ids___table_chunk_0
+        LDRB     R0,[R4, #+52]
+        CMP      R0,#+16
+        BNE.N    ids___table_chunk_1
+        MOVS     R1,#+0
+ids___table_chunk_2:
+        ADD      R0,R1,R8
+        LDR.W    R2,ids___DataTable7_1
+        LDR      R2,[R2, #+44]
+        CMP      R0,R2
+        BCS.N    ids___table_chunk_3
+        ADD      R2,R1,R8
+        LDRH     R0,[R4, #+40]
+        CMP      R2,R0
+        ITTE     LT
+        LDRLT    R0,[R4, #+0]
+        LDRBLT   R0,[R0, R2]
+        MOVGE    R0,#+255
+        STRB     R0,[R7, R1]
+        ADDS     R1,R1,#+1
+        UXTH     R1,R1
+        CMP      R1,#+64
+        BLT.N    ids___table_chunk_2
+ids___table_chunk_3:
+        MOVS     R0,#+1
+ids___table_chunk_4:
+        POP      {R1-R11,PC}
+ids___table_chunk_1:
+        MOV      R11,#+0
+        STR      R7,[SP, #+4]
+        LDR.W    R10,ids___DataTable7_2
+        B.N      ids___table_chunk_5
+ids___table_chunk_6:
+        MOV      R2,R1
+        MOV      R1,R6
+        LDR      R0,[SP, #+4]
+        ADD      R0,R0,R3
+          CFI FunCall __aeabi_memcpy
+        BL       __aeabi_memcpy
+        B.N      ids___table_chunk_7
+ids___table_chunk_8:
+        LDRB     R0,[R4, #+52]
+        CMP      R0,#+13
+        BNE.N    ids___table_chunk_6
+        LDR      R0,[SP, #+4]
+        ADDS     R5,R0,R3
+        LDRB     R9,[R5, #+28]
+        LDRB     R0,[R10, #+54]
+        CMP      R0,#+16
+        BNE.N    ids___table_chunk_9
+        LDRH     R1,[R5, #+0]
+        MOVW     R0,#+65535
+        CMP      R1,R0
+        BNE.N    ids___table_chunk_10
+        LDRH     R0,[R4, #+46]
+        ADDS     R0,R0,#+1
+        STRH     R0,[R4, #+46]
+ids___table_chunk_11:
+        ADDS     R1,R6,#+2
+        MOV      R0,R7
+          CFI FunCall idindex_hash
+        BL       idindex_hash
+        LDR      R1,[R4, #+20]
+        EORS     R0,R0,R1
+        STR      R0,[R4, #+20]
+        LDRH     R0,[R4, #+48]
+        CMP      R0,R7
+        IT       LT
+        STRHLT   R7,[R4, #+48]
+        LDR      R0,[R4, #+24]
+        CMP      R0,R7, LSL #+5
+        ITT      CC
+        LSLCC    R7,R7,#+5
+        STRCC    R7,[R4, #+24]
+ids___table_chunk_9:
+        LDRH     R1,[R5, #+0]
+        MOVW     R0,#+65535
+        CMP      R1,R0
+        BEQ.N    ids___table_chunk_12
+        MOVS     R2,#+10
+        ADDS     R1,R6,#+2
+        ADDS     R0,R5,#+2
+          CFI FunCall memcmp
+        BL       memcmp
+        SUBS     R7,R0,#+1
+        SBCS     R7,R7,R7
+        LSRS     R7,R7,#+31
+ids___table_chunk_13:
+        ADD      R3,R5,#+22
+        LDR      R2,[R3, #+0]
+        STR      R2,[SP, #+0]
+        LDRH     R2,[R4, #+38]
+        MOV      R1,R6
+        MOV      R0,R5
+          CFI FunCall __aeabi_memcpy
+        BL       __aeabi_memcpy
+        CBZ.N    R7,ids___table_chunk_14
+        ADD      R3,R5,#+22
+        LDR      R1,[SP, #+0]
+        STR      R1,[R3, #+0]
+        STRB     R9,[R5, #+28]
+ids___table_chunk_14:
+        LDRH     R1,[R4, #+42]
+        MOV      R0,R5
+          CFI FunCall id_set_pass_day
+        BL       id_set_pass_day
+        LDRB     R0,[R10, #+54]
+        CMP      R0,#+16
+        BNE.N    ids___table_chunk_7
+        MOV      R0,R5
+          CFI FunCall id_time_end
+        BL       id_time_end
+          CFI FunCall id_watch_end
+        BL       id_watch_end
+ids___table_chunk_7:
+        ADD      R11,R11,#+1
+ids___table_chunk_5:
+        LDRH     R1,[R4, #+36]
+        UXTH     R0,R11
+        CMP      R0,R1
+        BCS.N    ids___table_chunk_3
+        LDR      R0,[R4, #+0]
+        LDRH     R2,[R4, #+34]
+        UXTH     R1,R11
+        ADDS     R2,R1,R2
+        LDRH     R1,[R4, #+38]
+        MULS     R2,R1,R2
+        ADDS     R6,R0,R2
+        LDRB     R7,[R6, #+0]
+        LDRB     R0,[R4, #+52]
+        CMP      R0,#+13
+        ITT      EQ
+        LDRBEQ   R0,[R6, #+1]
+        ORREQ    R7,R7,R0, LSL #+8
+        LDR      R3,[R4, #+12]
+        SUBS     R1,R7,#+1
+        LDRH     R0,[R4, #+38]
+        MLA      R3,R0,R1,R3
+        LDR      R1,[R4, #+8]
+        ADD      R1,R8,R1
+        CMP      R3,R1
+        BCC.N    ids___table_chunk_7
+        LDR      R1,[R4, #+8]
+        ADD      R1,R8,R1
+        ADDS     R1,R1,#+64
+        CMP      R3,R1
+        BCS.N    ids___table_chunk_7
+        LDR      R0,[R4, #+8]
+        SUBS     R3,R3,R0
+        SUB      R3,R3,R8
+        UXTH     R3,R3
+        RSB      R0,R3,#+64
+        LDRH     R1,[R4, #+38]
+        CMP      R0,R1
+        BGE.W    ids___table_chunk_8
+ids___table_chunk_0:
+        MOVS     R0,#+0
+        B.N      ids___table_chunk_4
+ids___table_chunk_10:
+        ADDS     R1,R5,#+2
+        MOV      R0,R7
+          CFI FunCall idindex_hash
+        BL       idindex_hash
+        LDR      R1,[R4, #+20]
+        EORS     R0,R0,R1
+        STR      R0,[R4, #+20]
+        B.N      ids___table_chunk_11
+ids___table_chunk_12:
+        MOVS     R7,#+0
+        B.N      ids___table_chunk_13
+          CFI EndBlock ids_cfiBlock3
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock4 Using ids_cfiCommon0
+          CFI Function table_runtime_begin
+        THUMB
+table_runtime_begin:
+        PUSH     {R3-R11,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI R11 Frame(CFA, -8)
+          CFI R10 Frame(CFA, -12)
+          CFI R9 Frame(CFA, -16)
+          CFI R8 Frame(CFA, -20)
+          CFI R7 Frame(CFA, -24)
+          CFI R6 Frame(CFA, -28)
+          CFI R5 Frame(CFA, -32)
+          CFI R4 Frame(CFA, -36)
+          CFI CFA R13+40
+        MOV      R11,R0
+        MOV      R6,R1
+        MOV      R10,R2
+        LDRB     R4,[R11, #+4]
+        CMP      R4,#+13
+        BNE.N    ids___table_runtime_begin_0
+        MOVS     R5,#+2
+ids___table_runtime_begin_1:
+        MOVS     R7,#+32
+ids___table_runtime_begin_2:
+        LDRB     R0,[R11, #+9]
+        MUL      R8,R7,R0
+          CFI FunCall user_storage_command_ready
+        BL       user_storage_command_ready
+        CMP      R0,#+0
+        IT       NE
+        CMPNE    R8,#+0
+        BEQ.N    ids___table_runtime_begin_3
+        MOVW     R0,#+2049
+        CMP      R8,R0
+        BGE.N    ids___table_runtime_begin_3
+          CFI FunCall mem_tables_ready
+        BL       mem_tables_ready
+        CBZ.N    R0,ids___table_runtime_begin_3
+        MOV      R0,R8
+          CFI FunCall malloc
+        BL       malloc
+        MOVS     R9,R0
+        BNE.N    ids___table_runtime_begin_4
+ids___table_runtime_begin_3:
+        MOVS     R0,#+0
+        B.N      ids___table_runtime_begin_5
+ids___table_runtime_begin_0:
+        CMP      R4,#+14
+        IT       EQ
+        MOVEQ    R5,#+4
+        BEQ.N    ids___table_runtime_begin_1
+        CMP      R4,#+15
+        ITTEE    NE
+        MOVNE    R5,#+5
+        MOVNE    R7,#+4
+        MOVEQ    R5,#+3
+        MOVEQ    R7,#+16
+        B.N      ids___table_runtime_begin_2
+ids___table_runtime_begin_4:
+        STRB     R6,[SP, #+0]
+        MOV      R2,R8
+        ADD      R1,R11,#+10
+          CFI FunCall __aeabi_memcpy
+        BL       __aeabi_memcpy
+        LDR.W    R6,ids___DataTable7
+        MOVS     R1,#+60
+        MOV      R0,R6
+          CFI FunCall __aeabi_memclr4
+        BL       __aeabi_memclr4
+        STR      R9,[R6, #+0]
+        LDRB     R0,[R11, #+9]
+        STRH     R0,[R6, #+32]
+        STRH     R7,[R6, #+38]
+        STRH     R8,[R6, #+40]
+        ADD      R3,R11,#+5
+        ADDS     R0,R6,#+4
+        LDR      R2,[R3, #+0]
+        STR      R2,[R0, #+0]
+        STRB     R4,[R6, #+52]
+        STRB     R5,[R6, #+51]
+        LDRB     R0,[SP, #+0]
+        STRB     R0,[R6, #+53]
+        STRB     R10,[R6, #+54]
+        LDR.W    R0,ids___DataTable7_1
+        LDR      R0,[R0, R5, LSL #+3]
+        STR      R0,[R6, #+12]
+          CFI FunCall id_today
+        BL       id_today
+        STRH     R0,[R6, #+42]
+        MOVS     R0,#+1
+        STRB     R0,[R6, #+50]
+        MOVS     R0,#+135
+          CFI FunCall flash_claim
+        BL       flash_claim
+        CMP      R4,#+13
+        BNE.N    ids___table_runtime_begin_6
+        LDR.W    R0,ids___DataTable7_3
+        LDRH     R0,[R0, #+0]
+        STRH     R0,[R6, #+48]
+        LDR.W    R0,ids___DataTable7_4
+        LDR      R0,[R0, #+0]
+        STR      R0,[R6, #+24]
+          CFI FunCall idindex_runtime_suspend
+        BL       idindex_runtime_suspend
+ids___table_runtime_begin_6:
+        MOVS     R0,#+1
+ids___table_runtime_begin_5:
+        POP      {R1,R4-R11,PC}
+          CFI EndBlock ids_cfiBlock4
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock5 Using ids_cfiCommon0
+          CFI Function table_scan_begin
+        THUMB
+table_scan_begin:
+        PUSH     {R4,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI R4 Frame(CFA, -8)
+          CFI CFA R13+8
+        LDR.W    R2,ids___DataTable7
+        MOVS     R0,#+3
+        STRB     R0,[R2, #+50]
+        MOVS     R0,#+0
+        STR      R0,[R2, #+16]
+        MOVW     R0,#+65535
+        STRH     R0,[R2, #+44]
+        LDR.W    R1,ids___DataTable7_1
+        LDRB     R0,[R2, #+51]
+        ADD      R0,R1,R0, LSL #+3
+        LDR      R0,[R0, #+4]
+        STR      R0,[R2, #+8]
+        MOVS     R0,#+0
+        STRH     R0,[R2, #+36]
+        LDRB     R0,[R2, #+52]
+        CMP      R0,#+13
+        BNE.N    ids___table_scan_begin_0
+        LDRB     R0,[R2, #+57]
+        CMP      R0,#+0
+        ITT      EQ
+        LDRBEQ   R0,[R2, #+56]
+        CMPEQ    R0,#+0
+        BNE.N    ids___table_scan_begin_1
+        LDR.W    R1,ids___DataTable7_4
+        LDR      R0,[R1, #+0]
+        CMN      R0,#+1
+        BEQ.N    ids___table_scan_begin_1
+        LDR.W    R4,ids___DataTable7_5
+        LDRH     R3,[R4, #+81]
+        LDRH     R0,[R2, #+46]
+        ADDS     R3,R0,R3
+        STRH     R3,[R4, #+81]
+        LDRH     R3,[R2, #+48]
+        LDR.W    R0,ids___DataTable7_3
+        STRH     R3,[R0, #+0]
+        LDR      R0,[R2, #+24]
+        STR      R0,[R1, #+0]
+        STR      R0,[R2, #+8]
+        MOV      R1,R3
+        LDR      R0,[R2, #+20]
+        POP      {R4,LR}
+          CFI R4 SameValue
+          CFI R14 SameValue
+          CFI CFA R13+0
+          CFI FunCall idindex_table_commit
+        B.W      idindex_table_commit
+          CFI R4 Frame(CFA, -8)
+          CFI R14 Frame(CFA, -4)
+          CFI CFA R13+8
+ids___table_scan_begin_1:
+        MOVS     R0,#+1
+        STRH     R0,[R2, #+36]
+        MOV      R1,#+4294967295
+        LDR.W    R0,ids___DataTable7_4
+        STR      R1,[R0, #+0]
+        MOVS     R1,#+0
+        LDR.W    R0,ids___DataTable7_6
+        STR      R1,[R0, #+0]
+        STRH     R1,[R2, #+48]
+        STRH     R1,[R2, #+46]
+        STR      R1,[R2, #+24]
+        STR      R1,[R2, #+20]
+        POP      {R4,PC}
+ids___table_scan_begin_0:
+        LDRB     R0,[R2, #+52]
+        CMP      R0,#+16
+        ITT      EQ
+        LDRBEQ   R0,[R2, #+57]
+        CMPEQ    R0,#+0
+        BNE.N    ids___table_scan_begin_2
+        LDRB     R0,[R2, #+56]
+        CBNZ.N   R0,ids___table_scan_begin_2
+        LDRH     R0,[R2, #+40]
+        STR      R0,[R2, #+8]
+ids___table_scan_begin_2:
+        POP      {R4,PC}
+          CFI EndBlock ids_cfiBlock5
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock6 Using ids_cfiCommon0
+          CFI Function table_runtime_finish
+        THUMB
+table_runtime_finish:
+        PUSH     {R3-R5,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI R5 Frame(CFA, -8)
+          CFI R4 Frame(CFA, -12)
+          CFI CFA R13+16
+        LDR.N    R4,ids___DataTable7
+        LDRB     R5,[R4, #+52]
+        LDRB     R0,[R4, #+57]
+        CMP      R0,#+0
+        ITT      EQ
+        LDRBEQ   R0,[R4, #+56]
+        CMPEQ    R0,#+0
+        BNE.N    ids___table_runtime_finish_0
+        CMP      R5,#+13
+        BNE.N    ids___table_runtime_finish_1
+        LDR      R1,[R4, #+4]
+        LDR.N    R0,ids___DataTable7_5
+        STR      R1,[R0, #+31]
+        MOVS     R5,#+1
+        MOVS     R0,#+1
+        B.N      ids___table_runtime_finish_2
+ids___table_runtime_finish_1:
+        CMP      R5,#+14
+        BNE.N    ids___table_runtime_finish_3
+        LDR      R1,[R4, #+4]
+        LDR.N    R0,ids___DataTable7_5
+        STR      R1,[R0, #+35]
+        MOVS     R5,#+3
+        MOVS     R0,#+8
+        B.N      ids___table_runtime_finish_2
+ids___table_runtime_finish_3:
+        CMP      R5,#+15
+        LDR      R1,[R4, #+4]
+        LDR.N    R0,ids___DataTable7_5
+        BNE.N    ids___table_runtime_finish_4
+        STR      R1,[R0, #+39]
+        MOVS     R5,#+2
+        MOVS     R0,#+4
+        B.N      ids___table_runtime_finish_2
+ids___table_runtime_finish_4:
+        STR      R1,[R0, #+43]
+        MOVS     R5,#+5
+        MOVS     R0,#+16
+ids___table_runtime_finish_2:
+          CFI FunCall sync_packet
+        BL       sync_packet
+        LDRB     R0,[R4, #+55]
+        CBNZ.N   R0,ids___table_runtime_finish_5
+        LDRB     R0,[R4, #+54]
+        STR      R0,[SP, #+0]
+        LDRB     R3,[R4, #+53]
+        LDRH     R2,[R4, #+44]
+        LDR      R1,[R4, #+4]
+        MOV      R0,R5
+          CFI FunCall user_send_timeshtamp
+        BL       user_send_timeshtamp
+        B.N      ids___table_runtime_finish_5
+ids___table_runtime_finish_0:
+        LDRB     R0,[R4, #+55]
+        CBNZ.N   R0,ids___table_runtime_finish_5
+        LDRB     R3,[R4, #+54]
+        LDRB     R2,[R4, #+53]
+        MOVS     R1,#+2
+        MOV      R0,R5
+          CFI FunCall user_send_answer_comand
+        BL       user_send_answer_comand
+ids___table_runtime_finish_5:
+        LDR      R0,[R4, #+0]
+          CFI FunCall free
+        BL       free
+        MOVS     R0,#+0
+        STR      R0,[R4, #+0]
+        STRB     R0,[R4, #+50]
+        MOVS     R0,#+135
+        POP      {R1,R4,R5,LR}
+          CFI R4 SameValue
+          CFI R5 SameValue
+          CFI R14 SameValue
+          CFI CFA R13+0
+          CFI FunCall flash_release
+        B.W      flash_release
+          CFI EndBlock ids_cfiBlock6
+
+        SECTION `.text`:CODE:NOROOT(1)
+          CFI Block ids_cfiBlock7 Using ids_cfiCommon0
+          CFI Function table_runtime_poll
+        THUMB
+table_runtime_poll:
+        PUSH     {R2-R10,LR}
+          CFI R14 Frame(CFA, -4)
+          CFI R10 Frame(CFA, -8)
+          CFI R9 Frame(CFA, -12)
+          CFI R8 Frame(CFA, -16)
+          CFI R7 Frame(CFA, -20)
+          CFI R6 Frame(CFA, -24)
+          CFI R5 Frame(CFA, -28)
+          CFI R4 Frame(CFA, -32)
+          CFI CFA R13+40
+        MOV      R5,R0
+        LDR.N    R4,ids___DataTable7
+        LDRB     R0,[R4, #+50]
+        CMP      R0,#+1
+        BNE.N    ids___table_runtime_poll_0
+        LDRB     R0,[R4, #+56]
+        CMP      R0,#+0
+        BNE.N    ids___table_runtime_poll_1
+        LDR      R2,[R4, #+0]
+        LDRH     R1,[R4, #+34]
+        LDRH     R0,[R4, #+38]
+        MULS     R1,R0,R1
+        LDRB     R0,[R2, R1]
+        STRH     R0,[SP, #+0]
+        LDRB     R0,[R4, #+52]
+        CMP      R0,#+13
+        BNE.N    ids___table_runtime_poll_2
+        LDR      R2,[R4, #+0]
+        LDRH     R1,[R4, #+34]
+        LDRH     R0,[R4, #+38]
+        MULS     R1,R0,R1
+        ADDS     R3,R2,R1
+        LDRB     R2,[R3, #+0]
+        STRB     R2,[SP, #+0]
+        LDRB     R2,[R3, #+1]
+        STRB     R2,[SP, #+1]
+ids___table_runtime_poll_3:
+        LDR      R1,[R4, #+12]
+        LDRH     R2,[SP, #+0]
+        SUBS     R2,R2,#+1
+        LDRH     R0,[R4, #+38]
+        MLA      R1,R0,R2,R1
+        LSRS     R1,R1,#+12
+        LSLS     R1,R1,#+12
+ids___table_runtime_poll_4:
+        STR      R1,[R4, #+8]
+        MOVS     R0,#+1
+        STRH     R0,[R4, #+36]
+        LDRB     R0,[R4, #+52]
+        CMP      R0,#+16
+        BNE.N    ids___table_runtime_poll_5
+        LDRH     R0,[R4, #+32]
+        STRH     R0,[R4, #+36]
+        B.N      ids___table_runtime_poll_6
+ids___table_runtime_poll_2:
+        CMP      R0,#+16
+        BNE.N    ids___table_runtime_poll_3
+        LDR      R1,[R4, #+12]
+        B.N      ids___table_runtime_poll_4
+ids___table_runtime_poll_7:
+        LDRH     R0,[R4, #+36]
+        ADDS     R0,R0,#+1
+        STRH     R0,[R4, #+36]
+ids___table_runtime_poll_5:
+        LDRH     R1,[R4, #+34]
+        LDRH     R0,[R4, #+36]
+        ADDS     R1,R0,R1
+        LDRH     R0,[R4, #+32]
+        CMP      R1,R0
+        BGE.N    ids___table_runtime_poll_6
+        LDR      R0,[R4, #+0]
+        LDRH     R2,[R4, #+34]
+        LDRH     R1,[R4, #+36]
+        ADDS     R2,R1,R2
+        LDRH     R1,[R4, #+38]
+        MULS     R2,R1,R2
+        ADD      R0,R0,R2
+        LDRB     R1,[R0, #+0]
+        STRH     R1,[SP, #+0]
+        LDRB     R1,[R4, #+52]
+        CMP      R1,#+13
+        BNE.N    ids___table_runtime_poll_8
+        LDRH     R1,[SP, #+0]
+        LDRB     R0,[R0, #+1]
+        ORR      R1,R1,R0, LSL #+8
+        STRH     R1,[SP, #+0]
+ids___table_runtime_poll_8:
+        LDR      R2,[R4, #+12]
+        LDRH     R1,[SP, #+0]
+        SUBS     R1,R1,#+1
+        LDRH     R0,[R4, #+38]
+        MLA      R2,R0,R1,R2
+        LSRS     R2,R2,#+12
+        LSLS     R2,R2,#+12
+        LDR      R0,[R4, #+8]
+        CMP      R2,R0
+        BEQ.N    ids___table_runtime_poll_7
+ids___table_runtime_poll_6:
+        MOVS     R2,#+0
+        LDR.N    R1,ids___DataTable7_7
+        LDR      R0,[R4, #+8]
+          CFI FunCall sj_runtime_begin
+        BL       sj_runtime_begin
+        CBNZ.N   R0,ids___table_runtime_poll_9
+        MOVS     R0,#+1
+        STRB     R0,[R4, #+57]
+ids___table_runtime_poll_1:
+        B.N      ids___table_runtime_poll_10
+ids___table_runtime_poll_9:
+        MOVS     R0,#+2
+        B.N      ids___table_runtime_poll_11
+ids___table_runtime_poll_0:
+        CMP      R0,#+2
+        BNE.N    ids___table_runtime_poll_12
+        MOV      R0,R5
+          CFI FunCall sj_runtime_poll
+        BL       sj_runtime_poll
+        MOV      R5,R0
+        CMP      R5,#+1
+        BEQ.N    ids___table_runtime_poll_13
+          CFI FunCall sj_runtime_reset
+        BL       sj_runtime_reset
+        CMP      R5,#+2
+        BEQ.N    ids___table_runtime_poll_14
+        MOVS     R0,#+1
+        STRB     R0,[R4, #+57]
+          CFI FunCall sj_runtime_blocked
+        BL       sj_runtime_blocked
+        CBZ.N    R0,ids___table_runtime_poll_10
+        MOVS     R0,#+1
+        LDR.N    R1,ids___DataTable7_8
+        STRB     R0,[R1, #+0]
+        B.N      ids___table_runtime_poll_15
+ids___table_runtime_poll_14:
+        LDRH     R1,[R4, #+34]
+        LDRH     R0,[R4, #+36]
+        ADDS     R1,R0,R1
+        STRH     R1,[R4, #+34]
+        LDRH     R1,[R4, #+34]
+        LDRH     R0,[R4, #+32]
+        CMP      R1,R0
+        BEQ.N    ids___table_runtime_poll_10
+        LDRB     R0,[R4, #+56]
+        CBZ.N    R0,ids___table_runtime_poll_16
+ids___table_runtime_poll_10:
+          CFI FunCall table_scan_begin
+        BL       table_scan_begin
+ids___table_runtime_poll_13:
+        B.N      ids___table_runtime_poll_17
+ids___table_runtime_poll_16:
+        MOVS     R0,#+1
+        B.N      ids___table_runtime_poll_11
+ids___table_runtime_poll_12:
+        CMP      R0,#+3
+        BNE.W    ids___table_runtime_poll_18
+        MOVS     R5,#+4
+          CFI FunCall timers_getMillis
+        BL       timers_getMillis
+        MOV      R8,R0
+        LDR.W    R9,ids___DataTable7_2
+ids___table_runtime_poll_19:
+        MOVS     R7,#+64
+        LDR      R0,[R4, #+16]
+        LDR      R1,[R4, #+8]
+        CMP      R0,R1
+        BEQ.N    ids___table_runtime_poll_20
+        SUBS     R1,R1,R0
+        CMP      R1,#+64
+        BCS.N    ids___table_runtime_poll_21
+        LDR      R7,[R4, #+8]
+        SUBS     R7,R7,R0
+        UXTH     R7,R7
+ids___table_runtime_poll_21:
+        MOV      R2,R7
+        ADD      R1,R9,#+61
+        LDR      R0,[R4, #+12]
+        LDR      R3,[R4, #+16]
+        ADDS     R0,R3,R0
+          CFI FunCall w25_read_data
+        BL       w25_read_data
+        CBZ.N    R0,ids___table_runtime_poll_22
+        LDRH     R2,[R4, #+44]
+        MOV      R1,R7
+        ADD      R0,R9,#+61
+          CFI FunCall crc16_calcInit
+        BL       crc16_calcInit
+        STRH     R0,[R4, #+44]
+        LDRH     R0,[R4, #+36]
+        CMP      R0,#+0
+        BEQ.N    ids___table_runtime_poll_23
+        MOVS     R6,#+0
+        B.N      ids___table_runtime_poll_24
+ids___table_runtime_poll_20:
+        LDRH     R1,[R4, #+44]
+        LDR.N    R2,ids___DataTable7_1
+        LDRB     R0,[R4, #+51]
+        ADD      R0,R2,R0, LSL #+3
+        LDR      R0,[R0, #+4]
+        LDR      R2,[R4, #+16]
+        SUBS     R0,R0,R2
+          CFI FunCall crc16_ffInit
+        BL       crc16_ffInit
+        STRH     R0,[R4, #+44]
+        LDRH     R0,[R4, #+36]
+        CBZ.N    R0,ids___table_runtime_poll_15
+        LDRH     R1,[R4, #+46]
+        LDR.N    R0,ids___DataTable7_5
+        STRH     R1,[R0, #+81]
+        LDRH     R1,[R4, #+48]
+        LDR.N    R0,ids___DataTable7_3
+        STRH     R1,[R0, #+0]
+        LDR      R0,[R4, #+24]
+        LDR.N    R1,ids___DataTable7_4
+        STR      R0,[R1, #+0]
+        LDRH     R1,[R4, #+48]
+        LDR      R0,[R4, #+20]
+          CFI FunCall idindex_scanned
+        BL       idindex_scanned
+        B.N      ids___table_runtime_poll_15
+ids___table_runtime_poll_22:
+        MOVS     R0,#+1
+        STRB     R0,[R4, #+57]
+        MOVS     R1,#+1
+        LDR.N    R0,ids___DataTable7_8
+        STRB     R1,[R0, #+0]
+ids___table_runtime_poll_15:
+        MOVS     R0,#+4
+ids___table_runtime_poll_11:
+        STRB     R0,[R4, #+50]
+        B.N      ids___table_runtime_poll_17
+ids___table_runtime_poll_25:
+        ADD      R0,R9,R6
+        ADD      R10,R0,#+61
+        MOVS     R1,#+32
+        ADDS     R0,R0,#+61
+          CFI FunCall fast_all_ff
+        BL       fast_all_ff
+        CBNZ.N   R0,ids___table_runtime_poll_26
+        LDR      R0,[R4, #+16]
+        ADDS     R0,R6,R0
+        ADDS     R0,R0,#+32
+        STR      R0,[R4, #+24]
+ids___table_runtime_poll_26:
+        LDRH     R1,[R10, #+0]
+        MOVW     R0,#+65535
+        CMP      R1,R0
+        BEQ.N    ids___table_runtime_poll_27
+        LDR      R0,[R4, #+16]
+        ADDS     R0,R6,R0
+        LSRS     R0,R0,#+5
+        ADDS     R0,R0,#+1
+        LDRH     R1,[R4, #+46]
+        ADDS     R1,R1,#+1
+        STRH     R1,[R4, #+46]
+        STRH     R0,[R4, #+48]
+        ADD      R1,R10,#+2
+        UXTH     R0,R0
+          CFI FunCall idindex_hash
+        BL       idindex_hash
+        LDR      R1,[R4, #+20]
+        EORS     R0,R0,R1
+        STR      R0,[R4, #+20]
+        MOV      R0,R10
+          CFI FunCall id_time_end
+        BL       id_time_end
+          CFI FunCall id_watch_end
+        BL       id_watch_end
+ids___table_runtime_poll_27:
+        ADDS     R6,R6,#+32
+        UXTH     R6,R6
+ids___table_runtime_poll_24:
+        CMP      R6,R7
+        BLT.N    ids___table_runtime_poll_25
+ids___table_runtime_poll_23:
+        LDR      R0,[R4, #+16]
+        ADDS     R7,R7,R0
+        STR      R7,[R4, #+16]
+        SUBS     R5,R5,#+1
+        UXTB     R0,R5
+        CBZ.N    R0,ids___table_runtime_poll_17
+          CFI FunCall timers_getMillis
+        BL       timers_getMillis
+        SUBS     R0,R0,R8
+        BEQ.W    ids___table_runtime_poll_19
+        B.N      ids___table_runtime_poll_17
+ids___table_runtime_poll_18:
+        CMP      R0,#+4
+        BNE.N    ids___table_runtime_poll_17
+        LDRB     R0,[R4, #+55]
+        CMP      R0,#+0
+        ITT      EQ
+        LDRBEQ   R0,[R4, #+53]
+        CMPEQ    R0,#+1
+        BNE.N    ids___table_runtime_poll_28
+          CFI FunCall comm_tx_busy
+        BL       comm_tx_busy
+        CBZ.N    R0,ids___table_runtime_poll_28
+        LDRB     R0,[R4, #+58]
+        CBNZ.N   R0,ids___table_runtime_poll_29
+        MOVS     R0,#+1
+        STRB     R0,[R4, #+58]
+        ADD      R0,R5,#+2000
+        STR      R0,[R4, #+28]
+ids___table_runtime_poll_29:
+        LDR      R0,[R4, #+28]
+        SUBS     R5,R5,R0
+        BMI.N    ids___table_runtime_poll_17
+        MOVS     R0,#+1
+        STRB     R0,[R4, #+55]
+ids___table_runtime_poll_28:
+          CFI FunCall table_runtime_finish
+        BL       table_runtime_finish
+ids___table_runtime_poll_17:
+        POP      {R0,R1,R4-R10,PC}
+          CFI EndBlock ids_cfiBlock7
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7:
+        DATA32
+        DC32     table_job
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_1:
+        DATA32
+        DC32     mem
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_2:
+        DATA32
+        DC32     sjr
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_3:
+        DATA32
+        DC32     id_cells_end
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_4:
+        DATA32
+        DC32     id_used_bytes
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_5:
+        DATA32
+        DC32     device
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_6:
+        DATA32
+        DC32     id_nextEnd
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_7:
+        DATA32
+        DC32     table_chunk
+
+        SECTION `.text`:CODE:NOROOT(2)
+        SECTION_TYPE SHT_PROGBITS, 0
+        DATA
+ids___DataTable7_8:
+        DATA32
+        DC32     table_fault
         END
