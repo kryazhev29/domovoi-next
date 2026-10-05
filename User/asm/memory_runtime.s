@@ -61,6 +61,7 @@
         PUBLIC mem_replace_pages
         PUBLIC mem_replace_sector
         PUBLIC mem_rewrite
+        EXTERN fw_service_active
         EXTERN upload_runtime_active
         EXTERN idindex_runtime_active
         EXTERN service_crc_active
@@ -269,6 +270,10 @@ mem_tables_ready:
           CFI FunCall expiry_runtime_active
         BL expiry_runtime_active
         CBNZ R0,??mem_tables_ready_0
+          CFI FunCall fw_service_active
+        BL       fw_service_active
+        CMP R0,#+0
+        BNE.W ??mem_tables_ready_0
           CFI FunCall upload_runtime_active
         BL       upload_runtime_active
         CBNZ.N   R0,??mem_tables_ready_0
@@ -2200,6 +2205,10 @@ mem_config_begin:
         BL       photo_storage_busy
         CMP      R0,#+0
         BNE.N    ??mem_config_begin_0
+          CFI FunCall fw_service_active
+        BL fw_service_active
+        CMP R0,#0
+        BNE.W ??mem_config_begin_0
           CFI FunCall upload_runtime_active
         BL upload_runtime_active
         CMP R0,#0
