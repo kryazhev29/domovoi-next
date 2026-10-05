@@ -3,6 +3,7 @@
 // Автор: Корякин Сергей
 
 #include "memory.h"
+#include "fast_kernels.h"
 #include "sector_journal.h"
 
 static bool mem_storage_ready = false;
@@ -202,10 +203,10 @@ static uint8_t cfg_prepare(void)
 static uint8_t cfg_blank_sector(uint32_t address)
 {
   uint8_t b[64];
-  uint16_t off, i;
+  uint16_t off;
   for (off = 0; off < MEMSECTORSIZE; off += sizeof(b)) {
     if (!w25_read_data(address + off, b, sizeof(b))) return 0;
-    for (i = 0; i < sizeof(b); i++) if (b[i] != 0xFF) return 0;
+    if (!fast_all_ff(b, sizeof(b))) return 0;
   }
   return 1;
 }

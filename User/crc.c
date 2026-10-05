@@ -91,12 +91,17 @@ unsigned short crc16_calcInit(unsigned char* buf, unsigned short size, unsigned 
 #endif /* !ASM_CRC */
 
 /* Столбцы m - линейное отображение 16 бит над GF(2); результат m*x. */
+#ifdef ASM_FAST_KERNELS
+#include "fast_kernels.h"
+#define gf2_apply fast_gf2_apply
+#else
 static unsigned short gf2_apply(const unsigned short *m, unsigned short x)
 {
   unsigned short r = 0;
   for (unsigned char j = 0; x; j++, x >>= 1) if (x & 1u) r ^= m[j];
   return r;
 }
+#endif
 
 /* CRC-16 ModBus после count байт 0xFF без самих байт (стёртая флеш).
    Шаг по одному байту 0xFF аффинный: r -> T*r ^ c, где T - шаг по байту 0,

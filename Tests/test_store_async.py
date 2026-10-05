@@ -15,6 +15,7 @@ header = "\n".join(x for x in src("User/memory.h").splitlines() if x.startswith(
 with tempfile.TemporaryDirectory() as d:
     p = pathlib.Path(d)
     unit = base + "\n" + src("Tests/store_async_model.inc") + "\n" + header + "\n" + shared + mem + "\n" + src("Tests/store_async_cases.inc")
+    unit = src("User/fast_kernels.h") + "\n" + unit
     (p/"test.c").write_text(unit, encoding="utf-8")
     subprocess.run([ZIG,"cc","-std=c99","-O2","-Wno-unused-function","-Wno-unused-variable",str(p/"test.c"),"-o",str(p/"test.exe")],check=True)
     subprocess.run([str(p/"test.exe")],check=True,timeout=300)

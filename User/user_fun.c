@@ -1,4 +1,5 @@
 // Доработка: Кряжев А., 2026
+#include "fast_kernels.h"
 #include "stm32_it.h"
 // Пользовательские функции
 
@@ -406,12 +407,10 @@ static void server_rx_scan(void)
   if (server_rx_ready || server_rx_busy) return;
   /* Compact once: a corrupt full frame must not cause quadratic copying. */
   while (offset < server_rx_count){
+    offset += (uint16_t)fast_sldn(server_rx_buffer + offset, server_rx_count - offset);
+    if (offset == server_rx_count) break;
     p = server_rx_buffer + offset;
     left = server_rx_count - offset;
-    if (memcmp(p, "SLDN", left < 4 ? left : 4)){
-      offset++;
-      continue;
-    }
     if (left < 6) break;
     body = (uint16_t)p[4] | ((uint16_t)p[5] << 8);
     if (body < 3 || body > SERVER_RX_CAPACITY - 8){

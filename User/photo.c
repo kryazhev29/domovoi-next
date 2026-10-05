@@ -1,6 +1,7 @@
 // Доработка: Кряжев А., 2026
 // C328/OV528: последовательность команд из старого Modules/jpeg.c.
 #include "photo.h"
+#include "fast_kernels.h"
 #include "sector_journal.h"
 #include "../Modules/comm_channel.h"
 extern device_s device;
@@ -261,7 +262,7 @@ static uint8_t photo_prepare(uint32_t size)
   uint32_t a, end = photo_storage_end();
   uint16_t prefix = photo->address & (MEMSECTORSIZE - 1u);
   uint8_t b[64], dirty = 0;
-  uint16_t off, step;
+  uint16_t step;
   if (!size || size > PHOTO_LIMIT) {
     user_debug("Photo: invalid image size\r\n");
     return 0;
@@ -277,7 +278,7 @@ static uint8_t photo_prepare(uint32_t size)
       step = photo->address - prefix + MEMSECTORSIZE - a > sizeof(b) ? sizeof(b) :
              (uint16_t)(photo->address - prefix + MEMSECTORSIZE - a);
       if (!mem_read(a, b, step)) return 0;
-      for (off = 0; off < step; off++) if (b[off] != 0xFF) dirty = 1;
+      if (!fast_all_ff(b, step)) dirty = 1;
       wdt_reload();
     }
   }

@@ -552,6 +552,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         helper='static config_s staged_config; static bool staged_ok;\nstatic bool store_config_start(void){staged_config=config; staged_ok=user_writeConfigAndDevice(); return staged_ok;}\nstatic const uint8_t *mem_config_snapshot(void){return (const uint8_t*)&staged_config;}\n'+function(source('User/user_fun.c'),'store_config_complete')+'\n'
         unit=unit.replace('static void receive_config(',helper+'static void receive_config_step(')
         unit=unit.replace('static void test_rs485cfg(void)', 'static void receive_config(dataChanel_e cch,uint8_t code){staged_ok=false;receive_config_step(cch,code);if(staged_ok){store_config_complete();user_send_timeshtamp(SHTAMP_CONFIG,config.datetime,user_calcCRC16InFlash(mem[MB_CONFIG].start,mem[MB_CONFIG].size),cch,7);}}\nstatic void test_rs485cfg(void)')
+    if 'fast_' in unit:
+        (d/'fast_kernels.h').write_text(source('User/fast_kernels.h'), encoding='ascii')
+        unit='#include "fast_kernels.h"\n'+unit.replace('#include "fast_kernels.h"','')
     (d/'test.c').write_text(unit.replace('\r\n','\n'))
     subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)

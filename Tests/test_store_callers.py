@@ -22,6 +22,7 @@ upload=u[u.index("/* >>> подтверждение выгрузки */"):u.inde
 impl=u[u.index("/* >>> Cooperative storage implementation */"):]
 names=("log_blank","log_valid","log_uniqueIndex","log_getRecordsCount","log_readRecords","user_getTempIDRecordsCount","log_addEvent","log_flushPending","user_send_logRecords","user_send_tempIDs","user_comm_session","user_writeConfigAndDevice")
 unit=base+src("Tests/store_async_model.inc")+header+shared+mem+decls+upload+"\n".join(fun(u,n) for n in names)+impl+src("Tests/store_callers_cases.inc")
+unit=src("User/fast_kernels.h")+"\n"+unit.replace('#include "fast_kernels.h"','')
 with tempfile.TemporaryDirectory() as d:
  p=pathlib.Path(d); (p/"test.c").write_text(unit,encoding="utf-8")
  subprocess.run([ns["ZIG"],"cc","-std=c99","-O2","-Wall","-Wextra","-Wno-unused-function","-Wno-unused-variable",str(p/"test.c"),"-o",str(p/"test.exe")],check=True)

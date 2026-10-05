@@ -21,7 +21,7 @@ def function(text, name):
     return text[m.start():i]
 
 def unit():
-    old = '#define COMM_CHANNEL_MODEL 1\n' + slm_unit().replace('int main(void)', 'static int slm_regressions(void)')
+    old = '#include "'+(ROOT/'User/fast_kernels.h').as_posix()+'"\n#define COMM_CHANNEL_MODEL 1\n' + slm_unit().replace('int main(void)', 'static int slm_regressions(void)')
     old = old.replace('static void sim_tx(void)', 'static void legacy_sim_tx(void)')
     old = old.replace('  sim_tx();', '  legacy_sim_tx();')
     headers = '\n'.join(line for n in NEW_HEADERS for line in source(n).splitlines() if not line.startswith('#include "'))
