@@ -1,0 +1,34 @@
+{
+  "expiry_scheduler": [
+    {
+      "cancel_at": null,
+      "passes": 865,
+      "maximum_instructions": 1074,
+      "total_instructions": 235819,
+      "stack": 272
+    },
+    {
+      "cancel_at": 2,
+      "passes": 3,
+      "maximum_instructions": 152,
+      "total_instructions": 339,
+      "stack": 196
+    },
+    {
+      "cancel_at": 36,
+      "passes": 37,
+      "maximum_instructions": 524,
+      "total_instructions": 17225,
+      "stack": 272
+    },
+    {
+      "cancel_at": 400,
+      "passes": 401,
+      "maximum_instructions": 764,
+      "total_instructions": 100227,
+      "stack": 272
+    }
+  ],
+  "status": "PASS",
+  "elf_sha256": "c3dab1d68232b4ba31bad074e228cf6abb85cb5d87b2632109054169034ad68e"
+}

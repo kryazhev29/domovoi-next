@@ -63,6 +63,7 @@
         PUBLIC mem_rewrite
         EXTERN idindex_runtime_active
         EXTERN service_crc_active
+        EXTERN expiry_runtime_active
         PUBLIC mem_tables_ready
         PUBLIC mem_write
         PUBLIC sj_io_erase
@@ -259,6 +260,9 @@ mem_tables_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall expiry_runtime_active
+        BL expiry_runtime_active
+        CBNZ R0,??mem_tables_ready_0
           CFI FunCall idindex_runtime_active
         BL idindex_runtime_active
         CBNZ R0,??mem_tables_ready_0
@@ -2187,6 +2191,14 @@ mem_config_begin:
         BL       photo_storage_busy
         CMP      R0,#+0
         BNE.N    ??mem_config_begin_0
+          CFI FunCall expiry_runtime_active
+        BL expiry_runtime_active
+        CMP R0,#0
+        BNE.W ??mem_config_begin_0
+          CFI FunCall service_crc_active
+        BL service_crc_active
+        CMP R0,#0
+        BNE.W ??mem_config_begin_0
           CFI FunCall table_runtime_blocks_reads
         BL       table_runtime_blocks_reads
         CMP      R0,#+0

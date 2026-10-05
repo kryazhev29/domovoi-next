@@ -14,6 +14,8 @@
         PUBLIC id_nextEnd
         PUBLIC id_time_end
         PUBLIC id_watch_end
+        EXTERN expiry_runtime_active
+        EXTERN expiry_runtime_poll
         EXTERN expiry_runtime_begin
         EXTERN expiry_runtime_cancel
         PUBLIC id_used_bytes
@@ -444,6 +446,10 @@ user_storage_command_ready:
           CFI CFA R13+8
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall expiry_runtime_active
+        BL expiry_runtime_active
+        CMP R0,#0
+        BNE.W ??user_storage_command_ready_0
           CFI FunCall idindex_runtime_active
         BL idindex_runtime_active
         CMP R0,#0
@@ -516,6 +522,10 @@ user_storage_flash_ready:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
+          CFI FunCall expiry_runtime_active
+        BL expiry_runtime_active
+        CMP R0,#0
+        BNE.W ??user_storage_flash_ready_0
           CFI FunCall idindex_runtime_active
         BL idindex_runtime_active
         CMP R0,#0
@@ -20581,6 +20591,15 @@ ix_owner_poll_idle:
         BL service_crc_poll
         B.W ??user_storage_poll_1
 sc_storage_idle:
+          CFI FunCall expiry_runtime_active
+        BL expiry_runtime_active
+        CBZ R0,ex_storage_idle
+          CFI FunCall timers_getMillis
+        BL timers_getMillis
+          CFI FunCall expiry_runtime_poll
+        BL expiry_runtime_poll
+        B.W ??user_storage_poll_1
+ex_storage_idle:
           CFI FunCall timers_getMillis
         BL       timers_getMillis
         MOV      R5,R0
