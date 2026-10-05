@@ -101,6 +101,7 @@ def run(root):
     return {
         'elf_sha256': hashlib.sha256((root / 'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest(),
         'units': 'bytes; modeled allocator execution, not physical board timing',
+        'allocation_scenario': 'Synthetic simultaneous allocator stress; actual subsystem lifetime overlap is checked separately.',
         'heap': m.heap_bytes, 'cstack': m.top - m.bottom,
         'static_gap': m.addr('fault_record') - m.addr('HEAP$$Limit'),
         'concurrent_chunks': chunks, 'concurrent_used': sum(chunks),
