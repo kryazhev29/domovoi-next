@@ -53,6 +53,28 @@ def durable_empty():
     return out
 
 
+def recovery_gate():
+    count=0
+    for bad_state in ('not_recovered','table_fault','journal_fault'):
+        for through_parser in (False,True):
+            m=UploadMachine();m.fixture(10,[log(1)])
+            if bad_state=='not_recovered':m.write(m.addr('mem_storage_ready'),0,1)
+            if bad_state=='table_fault':m.write(m.addr('table_fault'),1,1)
+            if bad_state=='journal_fault':m.write(m.addr('sjr')+59,1,1)
+            assert not m.checked('mem_tables_ready')
+            m.write(m.addr('log_unacked'),1,2)
+            if through_parser:
+                packet=struct.pack('<HBBB',3,0,7,10)
+                packet+=struct.pack('<H',crc16(packet));m.u.mem_write(0x21000000,packet)
+                m.checked('user_parse_comand',0x21000000,0)
+            else:m.request()
+            assert not m.ptr() and not m.sent and not any(m.counts.values()),bad_state
+            assert m.pending_cursor()==1 and m.checked('upload_index',10,0)==0
+            assert largest_free(m)==4088
+            count+=1
+    return count
+
+
 def reachable_ack():
     m=PhotoUploadMachine();m.boot_media();m.capture(b'x'*58)
     assert m.photo_ptr() and not m.checked('photo_storage_busy')
@@ -90,7 +112,7 @@ def reachable_ack():
 
 if __name__=='__main__':
     out=dict(status='PASS',elf_sha256=hashlib.sha256((a.project/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest(),
-        durable_empty=durable_empty(),reachable_ack=reachable_ack(),
+        durable_empty=durable_empty(),reachable_ack=reachable_ack(),recovery_gate=recovery_gate(),
         units='Unicorn instructions with modeled NOR/transport; not board cycles or time')
     Path(__file__).with_name('verification_upload_lifetime_results.json').write_text(json.dumps(out,indent=2)+'\n')
     print(json.dumps(out,indent=2))

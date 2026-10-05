@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "elf_sha256": "a4874e0b9a2d104e570d9974b122216bece326b97877448c364fa870a312de0b",
+  "elf_sha256": "e62ab6029bc1a523d38c1840d4e367a7ca1ddd2d18d584a218c2c1d50a9bb536",
   "durable_empty": [
     {
       "command": 9,
@@ -282,5 +282,6 @@
     "only_idle_photo_remaining": 192,
     "largest_after": 3896
   },
+  "recovery_gate": 6,
   "units": "Unicorn instructions with modeled NOR/transport; not board cycles or time"
 }
