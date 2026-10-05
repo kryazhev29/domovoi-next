@@ -115,5 +115,6 @@
   ],
   "cancel_reset_sessions": 16,
   "faults_oom": 20,
-  "elf_sha256": "f1594cddd2ab4e476a1707a29a18ae608072764de6463bce7f80c93d9452036b"
+  "elf_sha256": "f1594cddd2ab4e476a1707a29a18ae608072764de6463bce7f80c93d9452036b",
+  "power_cuts": 670
 }
