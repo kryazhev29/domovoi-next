@@ -1,0 +1,21 @@
+{
+  "17:0:8192": {
+    "entry_instructions": 160027,
+    "stack": 1256,
+    "read_bytes": 14368,
+    "read_calls": 16
+  },
+  "18:0:16000": {
+    "entry_instructions": 1185338,
+    "stack": 1200,
+    "read_bytes": 16000,
+    "read_calls": 16
+  },
+  "18:100:1600000": {
+    "entry_instructions": 162277,
+    "stack": 1200,
+    "read_bytes": 16000,
+    "read_calls": 16
+  },
+  "elf_sha256": "d7b95246300f37b92a6d0d24dd350e08495103acb9d7c5e50253b306f3036416"
+}

@@ -1,0 +1,183 @@
+{
+  "units": "Unicorn instructions; modeled NOR; NOT cycles or milliseconds",
+  "elf_sha256": "68320ad975e471b2044fff1107986e914485154dd6f32467c1d8e59b58944398",
+  "wire": {
+    "17:0:0:0": {
+      "polls": 122,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 70399,
+      "stack": 132,
+      "read_bytes": 6144
+    },
+    "17:0:0:1": {
+      "polls": 122,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 70444,
+      "stack": 132,
+      "read_bytes": 6144
+    },
+    "17:0:63:0": {
+      "polls": 122,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 71492,
+      "stack": 132,
+      "read_bytes": 6207
+    },
+    "17:0:63:1": {
+      "polls": 122,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 71537,
+      "stack": 132,
+      "read_bytes": 6207
+    },
+    "17:0:64:0": {
+      "polls": 122,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 71459,
+      "stack": 132,
+      "read_bytes": 6208
+    },
+    "17:0:64:1": {
+      "polls": 122,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 71504,
+      "stack": 132,
+      "read_bytes": 6208
+    },
+    "17:0:65:0": {
+      "polls": 123,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 71912,
+      "stack": 132,
+      "read_bytes": 6209
+    },
+    "17:0:65:1": {
+      "polls": 123,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 71957,
+      "stack": 132,
+      "read_bytes": 6209
+    },
+    "17:0:4097:0": {
+      "polls": 185,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 116843,
+      "stack": 132,
+      "read_bytes": 10241
+    },
+    "17:0:4097:1": {
+      "polls": 185,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 116888,
+      "stack": 132,
+      "read_bytes": 10241
+    },
+    "17:0:8192:0": {
+      "polls": 257,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 162332,
+      "stack": 132,
+      "read_bytes": 14336
+    },
+    "17:0:8192:1": {
+      "polls": 257,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 162377,
+      "stack": 132,
+      "read_bytes": 14336
+    },
+    "18:0:16000:0": {
+      "polls": 1838,
+      "max_poll_instructions": 2110,
+      "total_poll_instructions": 321541,
+      "stack": 132,
+      "read_bytes": 16000
+    },
+    "18:0:16000:1": {
+      "polls": 1838,
+      "max_poll_instructions": 2110,
+      "total_poll_instructions": 321634,
+      "stack": 132,
+      "read_bytes": 16000
+    },
+    "18:0:16001:0": {
+      "polls": 1839,
+      "max_poll_instructions": 2110,
+      "total_poll_instructions": 321981,
+      "stack": 132,
+      "read_bytes": 16001
+    },
+    "18:0:16001:1": {
+      "polls": 1839,
+      "max_poll_instructions": 2110,
+      "total_poll_instructions": 322074,
+      "stack": 132,
+      "read_bytes": 16001
+    },
+    "18:1:16000:0": {
+      "polls": 254,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 178888,
+      "stack": 132,
+      "read_bytes": 16000
+    },
+    "18:1:16000:1": {
+      "polls": 254,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 178929,
+      "stack": 132,
+      "read_bytes": 16000
+    },
+    "18:2:16001:0": {
+      "polls": 19,
+      "max_poll_instructions": 140,
+      "total_poll_instructions": 2094,
+      "stack": 132,
+      "read_bytes": 1
+    },
+    "18:2:16001:1": {
+      "polls": 19,
+      "max_poll_instructions": 141,
+      "total_poll_instructions": 2135,
+      "stack": 132,
+      "read_bytes": 1
+    },
+    "18:100:1600000:0": {
+      "polls": 254,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 178888,
+      "stack": 132,
+      "read_bytes": 16000
+    },
+    "18:100:1600000:1": {
+      "polls": 254,
+      "max_poll_instructions": 714,
+      "total_poll_instructions": 178929,
+      "stack": 132,
+      "read_bytes": 16000
+    }
+  },
+  "faults_lifetime": 19,
+  "config_reply": {
+    "polls": 53,
+    "max_poll": 714,
+    "stack": 160
+  },
+  "config_cached_source": "PASS",
+  "ff_affine": {
+    "cases": 72,
+    "maximum_poll_instructions": 157,
+    "maximum_passes": 33
+  },
+  "pending_timeout": 3,
+  "real_w25": {
+    "polls": 257,
+    "maximum_poll_instructions": 857,
+    "total_poll_instructions": 194364,
+    "stack": 152,
+    "maximum_spi_read_bytes": 64,
+    "maximum_status_reads": 2,
+    "total_spi_read_bytes": 14336
+  },
+  "unrecovered_storage": 2
+}
