@@ -1,0 +1,78 @@
+{
+  "normal": {
+    "(9, 1, 0, 0)": {
+      "passes": 9,
+      "maximum": 304,
+      "total": 1096,
+      "stack": 172,
+      "read_bytes": 74,
+      "max_read": 32
+    },
+    "(9, 1536, 0, 1)": {
+      "passes": 1658,
+      "maximum": 715,
+      "total": 124269,
+      "stack": 172,
+      "read_bytes": 50152,
+      "max_read": 32
+    },
+    "(9, 1536, 1500, 0)": {
+      "passes": 1584,
+      "maximum": 720,
+      "total": 119874,
+      "stack": 172,
+      "read_bytes": 49512,
+      "max_read": 32
+    },
+    "(10, 1, 0, 0)": {
+      "passes": 9,
+      "maximum": 483,
+      "total": 1792,
+      "stack": 172,
+      "read_bytes": 96,
+      "max_read": 32
+    },
+    "(10, 3072, 0, 1)": {
+      "passes": 3127,
+      "maximum": 715,
+      "total": 835024,
+      "stack": 172,
+      "read_bytes": 99328,
+      "max_read": 32
+    },
+    "(10, 3072, 3071, 0)": {
+      "passes": 6151,
+      "maximum": 483,
+      "total": 1663333,
+      "stack": 172,
+      "read_bytes": 196608,
+      "max_read": 32
+    }
+  },
+  "faults_and_gaps": 11,
+  "busy_empty_cancel": 19,
+  "heap_ack": {
+    "pressure_kind": "allocator stress: extra 1040 and 534 byte blocks are not a proved concurrent upload lifetime",
+    "live_chunks": [
+      192,
+      1048,
+      544
+    ],
+    "ack_pending_largest_payload": 1088,
+    "free_observations": 4,
+    "peak_largest_free_payload": 176,
+    "peak_used_chunks": 3912,
+    "peak_free_bytes": 184,
+    "peak_free_fragments": 1,
+    "post_recovery_largest_payload": 4088,
+    "fragmented_total_free": 2048,
+    "fragmented_largest_payload": 504,
+    "idle_photo_ack_largest_payload": 1768,
+    "idle_photo_ack_used_chunks": 2320,
+    "idle_photo_ack_free_bytes": 1776
+  },
+  "ack_power_cuts": 532,
+  "elf_sha256": "a4874e0b9a2d104e570d9974b122216bece326b97877448c364fa870a312de0b",
+  "status": "PASS",
+  "parser": 2
+}
