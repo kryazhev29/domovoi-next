@@ -121,9 +121,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         c19=case(19);c20=case(20)
         assert '(len - 3) == 16' in c19 and 'cmdCode_e started = fw_start(&ptr[5], cch);' in c19 and 'store_command_start(19, cch, uniqId)' in c19,'command 19'
         assert 'fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);' in c20 and 'FW_BLOCK_SKIP' not in user and 'user_send_statusUpdateFW(ptr[4], code, cch, uniqId);' in c20,'command 20'
-        # Command 2: a download is cancelled before the reset, a rollback or install is left alone.
+        # Command 2: a download is cancelled before the reset, a rollback or install is left alone;
+        # reset now goes through timeToReset so answer 11 is sent first.
         c2=case(2)
-        assert c2.index('if (device.rebootToUpdate){')<c2.index('fw_abort("CANCEL");')<c2.index('user_savereset();'),'command 2 during an update'
+        assert c2.index('if (device.rebootToUpdate){')<c2.index('fw_abort("CANCEL");')<c2.index('device.timeToReset = 2;'),'command 2 during an update'
         # A failed install or trial goes to the journal after registration, command 4 is not sent.
         c1=case(1)
         assert 'app_boot_error_text(reason);' in c1 and 'app_boot_error_reported();' in c1 and 'user_send_statusUpdateFW' not in c1,'boot error after registration'

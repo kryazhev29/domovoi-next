@@ -3122,10 +3122,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       if (device.FWinProgress) fw_abort("CANCEL");
       if (ptr[5] == 0){
+        /* Reset now = in 1-2 s by timeToReset (user_loop writes 33): a blocking pause kept the modem from sending answer 11. */
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
-        log_addSystemEvent(LOG_SYS_RESETONCMD);
-        delay_ms(1000);
-        user_savereset();
+        device.timeToReset = 2;
       } else{
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // кода 5 в ответе 11 нет (строка 537)
         device.timeToReset = ptr[5];

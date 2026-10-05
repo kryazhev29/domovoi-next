@@ -12755,13 +12755,11 @@ user_parse_comand:
         BNE.N    ??user_parse_comand_54
         BL       ??Subroutine18_0
 ??CrossCallReturnLabel_40:
-        MOVS     R0,#+33
-          CFI FunCall log_addSystemEvent
-        BL       log_addSystemEvent
-        MOV      R0,#+1000
-          CFI FunCall timers_pause
-        BL       timers_pause
-        B.N      ??user_parse_comand_55
+        ; Reset now = reset in 1-2 s by timeToReset (user_loop writes event 33):
+        ; a blocking pause here kept the modem from sending answer 11.
+        MOVS     R0,#+2
+        STRB     R0,[R4, #+111]
+        B.N      ??user_parse_comand_1
 ??user_parse_comand_54:
         BL       ??Subroutine18_0
 ??CrossCallReturnLabel_39:

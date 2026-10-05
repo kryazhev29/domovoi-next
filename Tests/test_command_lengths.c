@@ -15,7 +15,6 @@ static unsigned effects, replies, reply_cmd, reply_code, reply_kind, crc_calls, 
 static int trial, boot_error;
 /* CRC */
 static void wdt_reload(void) {}
-static void delay_ms(unsigned n) { CHECK(n==1000);effects++; }
 static uint32_t timers_getMillis(void) { return 42; }
 static void user_send_answer_comand(uint8_t cmd,cmdCode_e code,dataChanel_e ch,uint8_t id)
 { CHECK((ch==CH_USB || ch==CH_SERVER) && id==42);replies++;reply_cmd=cmd;reply_code=code;reply_kind=11; }
@@ -35,7 +34,6 @@ static void status_event_sent(uint16_t n,uint32_t now) { (void)n;CHECK(now==42);
 static void comm_server_registered(uint8_t success) { (void)success;effects++; }
 static void comm_channel_reopen(uint32_t pause) { CHECK(pause==0);effects++; }
 static void user_factoryReset(void) { effects++; }
-static bool log_addSystemEvent(logSystem_e event) { CHECK(event==LOG_SYS_RESETONCMD);effects++;return true; }
 static void user_savereset(void) { effects++; }
 static void fw_abort(const char *why) { CHECK(!strcmp(why,"CANCEL"));device.FWinProgress=0;effects++; }
 /* PRODUCTION */
