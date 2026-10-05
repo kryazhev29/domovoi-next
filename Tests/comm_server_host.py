@@ -44,7 +44,7 @@ def unit():
         producer_code += user[user.index('/* >>> уведомление об ID */'):user.index('/* <<< уведомление об ID */')]
     if '/* >>> ответ считывателя' in user:
         producer_code += '\n' + user[user.index('/* >>> ответ считывателя'):user.index('/* <<< ответ считывателя */')]
-    old += '\n#define user_storage_command_ready() 1\n#define store_command_allowed(cmd) 1\nstatic struct {unsigned job,channel,quiet,seen;} store;\n'
+    old += '\n#define fw_async_quiet(ch) ((void)(ch))\n#define user_storage_command_ready() 1\n#define store_command_allowed(cmd) 1\nstatic struct {unsigned job,channel,quiet,seen;} store;\n'
     return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('User/crc.c'), 'crc16_calc')+'\n'+function(source('User/crc.c'), 'crc16_calcInit')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c')).replace('/* CALL */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):

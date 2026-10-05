@@ -1,9 +1,11 @@
 """Final IAR ELF collector, per-pass instructions (not cycles/time)."""
-import argparse, hashlib, json
+import argparse, hashlib, json, sys
 from pathlib import Path
 from test_asm_crc import Machine, STACK, UC_HOOK_CODE
 from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_PC, UC_ARM_REG_LR
 from test_perf_scan import crc16
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from iar_layout import fields
 
 
 def measure(path, data, bounded):
@@ -53,8 +55,43 @@ def main():
         assert new['max_instructions'] < 16000,(name,new)
         result['cases'][name]={'before':old,'after':new}
         print(name,old['max_instructions'],'->',new['max_instructions'],'passes',new['passes'])
+    result['service']={}
+    for chunk in (2048,1):
+        old=service(a.baseline,cases['nested_bad_crc'],chunk,False)
+        new=service(a.firmware,cases['nested_bad_crc'],chunk,True)
+        result['service'][str(chunk)]={'before':old,'after':new}
+        print('service chunk',chunk,old,'->',new)
+    old=service(a.baseline,cases['nested_bad_crc'],1,False,128)
+    new=service(a.firmware,cases['nested_bad_crc'],1,True,128)
+    result['service']['128_byte_pass']={'before':old,'after':new}
+    print('service 128-byte pass',old,'->',new)
     result['sha256']={str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in (a.baseline,a.firmware)}
     a.json.write_text(json.dumps(result,indent=2)+'\n')
     print('PASS bounded collector ELF: equivalent output, bounded passes, ABI')
+
+def service(path,data,chunk,bounded,batch=2048):
+    m=Machine(path);count=[0];timer=m.sym['timers_getMillis']&~1
+    from test_asm_crc import ARGS,BUF
+    def hook(u,a,n,_):
+        count[0]+=1
+        if a==timer:
+            u.reg_write(ARGS[0],0);u.reg_write(UC_ARM_REG_PC,u.reg_read(UC_ARM_REG_LR))
+    m.uc.hook_add(UC_HOOK_CODE,hook)
+    m.uc.mem_write(m.sym['device']+fields('device_s')['connectionhandle'],b'\x02')
+    m.uc.mem_write(BUF,data)
+    costs=[]
+    for at in range(0,len(data),batch):
+        count[0]=0
+        if bounded:m.call('server_rx_begin_pass',check_abi=True)
+        end=min(at+batch,len(data))
+        for off in range(at,end,chunk):
+            m.call('user_dataconnection',2,BUF+off,min(chunk,end-off),check_abi=True)
+        m.call('server_rx_process',check_abi=True);costs.append(count[0])
+    maximum=max(costs);first=max(costs);passes=len(costs)
+    while int.from_bytes(m.uc.mem_read(m.sym['server_rx_count'],2),'little'):
+        assert bounded and passes<20000
+        count[0]=0;m.call('server_rx_begin_pass',check_abi=True);m.call('server_rx_process',check_abi=True)
+        maximum=max(maximum,count[0]);passes+=1
+    return dict(max_instructions=maximum,max_input_pass_instructions=first,passes=passes)
 
 if __name__=='__main__':main()

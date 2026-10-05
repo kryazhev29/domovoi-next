@@ -538,9 +538,15 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#include <stdint.h>\n#include <stdbool.h>\n#define store_runtime 0\nstatic uint8_t store_save_requested __attribute__((unused)), store_reset_requested __attribute__((unused));\nstatic struct {uint8_t job,clear,channel,uniq,cmd,quiet,seen;} store __attribute__((unused));\n#define store_ack(a,b) false\n#define store_finish(a) false\n#define store_restore(a) ((void)0)\n#define store_upload_request(a,b,c) true\n#define store_command_start(a,b,c) user_send_answer_comand(a,CMD_SUCCESS,b,c)\n'+unit
     # Legacy queue tests remain synchronous; the real runtime writer is tested separately.
     if kind == 'log':
+        unit=re.sub(r'/\* >>> Cooperative firmware block writer \*/.*?/\* <<< Cooperative firmware block writer \*/', '', unit, flags=re.S)
         unit=re.sub(r'/\* >>> Cooperative event writer \*/.*?/\* <<< Cooperative event writer \*/', '', unit, flags=re.S)
     if 'log_async_active(' in unit and 'bool log_async_active(void) {' not in unit:
         unit='#define log_async_active() false\n'+unit
+    if 'fw_async_active(' in unit and 'bool fw_async_active(void) {' not in unit:
+        unit='#define fw_async_active() false\n'+unit
+    for helper,args,value in [('fw_async_begin','a,b,c','false'),('fw_async_reply','id','((void)(id))'),('fw_async_quiet','ch','((void)(ch))'),('fw_async_cancel','','((void)0)')]:
+        if helper+'(' in unit and 'static void '+helper+'(' not in unit and 'static bool '+helper+'(' not in unit:
+            unit='#define '+helper+'('+args+') '+value+'\n'+unit
     if 'server_rx_verified(' in unit and 'bool server_rx_verified(' not in unit:
         unit='#define server_rx_verified(p) 0\n'+unit
     if 'store_command_allowed(' in unit and 'bool store_command_allowed(' not in unit:

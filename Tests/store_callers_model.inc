@@ -1,3 +1,6 @@
+static bool fw_async_active(void){return false;}
+static void fw_async_quiet(dataChanel_e channel){(void)channel;}
+static void fw_storage_poll(uint32_t now){(void)now;}
 
 static config_s config;
 static device_s device;

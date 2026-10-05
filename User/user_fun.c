@@ -52,6 +52,12 @@ config_s config;
 device_s device;
 
 /* >>> Cooperative storage callers */
+static bool fw_async_active(void);
+static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel);
+static void fw_async_reply(uint8_t id);
+static void fw_async_cancel(void);
+static void fw_async_quiet(dataChanel_e channel);
+static void fw_storage_poll(uint32_t now);
 static bool log_async_active(void);
 static void log_storage_poll(uint32_t now);
 static uint8_t store_runtime, store_save_requested, store_reset_requested;
@@ -70,9 +76,9 @@ static bool store_config_start(void);
 static void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
 static void store_restore(const device_s *saved);
 void user_storage_poll(void);
-bool user_storage_command_ready(void) { store_usb_session(); return !log_async_active() && !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
+bool user_storage_command_ready(void) { store_usb_session(); return !fw_async_active() && !log_async_active() && !store.job && !store_reset_requested && !mem_config_result() && !w25_async_active() && w25_read_available(); }
 static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || user_storage_command_ready(); }
-bool user_storage_flash_ready(void) { return !log_async_active() && store.clear != 9 && !w25_async_active() && w25_read_available(); }
+bool user_storage_flash_ready(void) { return !fw_async_active() && !log_async_active() && store.clear != 9 && !w25_async_active() && w25_read_available(); }
 /* <<< Cooperative storage callers */
 
 /* >>> подтверждение выгрузки */
@@ -175,6 +181,7 @@ static void reader_reply_poll(void);
 #define FW_TIMEOUT_S            600u    /* вс€ загрузка, от команды 19 */
 #define FW_BLOCK_RETRY_MS       20000u  /* врем€ актуальности команды 13 */
 #define FW_WRITE_TRIES          3u      /* один блок не прошЄл проверку после записи */
+#define FW_BLOCK_PENDING        252u /* internal only: never sent on the wire */
 #define FW_BLOCK_OK             0u      /* коды команды 4 */
 #define FW_BLOCK_END            253u
 #define FW_BLOCK_BADWRITE       254u
@@ -535,6 +542,7 @@ void user_comm_rx_done(uint16_t count, uint8_t reason)
 void user_comm_session(bool open)
 {
   server_rx_reset();
+  fw_async_quiet(CH_SERVER);
   device.connectionhandle = 0; device.registredOnServer = 0; device.answerTimeout = 0;
   /* ѕоколение TCP отмен€ет неподтверждЄнный пакет; сохранЄнные курсоры и USB не трогаем. */
   log_unacked[1] = temp_unacked[1] = 0;
@@ -1217,6 +1225,7 @@ void user_setdefault (void)
 
 // —брос всего
 void user_factoryReset (void){
+  fw_async_cancel();
 #ifdef DEBUG_USER
   user_debug(">>U Factory reset\r\n"); 
 #endif  
@@ -2373,6 +2382,7 @@ void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId){
 
 // ѕакет 13 - «апрос конкретного блока прошивки
 bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
+  if (fw_async_active()) return false;
   uint8_t send_local[16];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return false;
@@ -2540,6 +2550,7 @@ static uint32_t fw_rollback_pos, fw_rollback_end;
 /* «агрузка заканчиваетс€ без установки. Ѕлоки получают 253 до следующей команды 19. */
 static void fw_abort(const char *reason)
 {
+  fw_async_cancel();
   fw_rollback_end = 0;
   device.FWinProgress = 0;
   device.status.readyToUpdate = 0;
@@ -2765,6 +2776,7 @@ static uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
      первый): стирание всей области сразу останавливало цикл на секунды и рвало св€зь.
      ѕовтор блока стирает свой сектор снова - там только этот блок - и дописывает оборванное. */
   adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u;
+  if (store_runtime) return fw_async_begin(&p[2], adr, cch) ? FW_BLOCK_PENDING : FW_BLOCK_BADWRITE;
   uint32_t sector = (adr + 4095u) & ~4095u;
   bool written = (sector >= adr + 1024u || mem_erase_sector(sector)) && mem_write(adr, (uint8_t*)&p[2], 1024);
   wdt_reload();
@@ -3434,7 +3446,8 @@ if (cch != CH_USB && len >= 5){
 #endif
       {
         uint8_t code = fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);
-        user_send_statusUpdateFW(ptr[4], code, cch, uniqId);
+        if (code == FW_BLOCK_PENDING) fw_async_reply(uniqId);
+        else user_send_statusUpdateFW(ptr[4], code, cch, uniqId);
       }
       break;
 
@@ -4575,6 +4588,123 @@ static cellLog_s log_pending[LOG_PENDING_MAX];
 static uint8_t log_pendingCount;
 static uint8_t log_timeKnown;
 
+/* >>> Cooperative firmware block writer */
+static struct {
+  uint8_t *data;
+  uint32_t address, position, remaining, crc, expected_crc, usb_epoch;
+  uint16_t offset, block;
+  uint8_t phase, waiting, channel, id, quiet, cancelled, code;
+} fw_job;
+enum { FA_ERASE=1, FA_WRITE, FA_HEADER, FA_CRC, FA_REPLY };
+static bool fw_async_active(void) { return fw_job.phase != 0; }
+static void fw_async_cancel(void)
+{
+  if (fw_async_active()) fw_job.cancelled = fw_job.quiet = 1;
+}
+static void fw_async_quiet(dataChanel_e channel)
+{
+  if (fw_async_active() && fw_job.channel == channel) fw_job.quiet = 1;
+}
+static void fw_async_reply(uint8_t id) { fw_job.id = id; }
+static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel)
+{
+  if (fw_async_active() || log_async_active() || store.job || mem_config_result() || w25_async_active()) return false;
+  if (address < mem[MB_FIRMWARE].start + FWBLOCK_OFFSET ||
+      address > mem[MB_FIRMWARE].start + mem[MB_FIRMWARE].size - 1024u) return false;
+  fw_job.data = malloc(1024u);
+  if (!fw_job.data) return false;
+  memcpy(fw_job.data, data, 1024u);
+  fw_job.address = address; fw_job.block = device.FWblockIdx;
+  fw_job.offset = 0; fw_job.waiting = fw_job.quiet = fw_job.cancelled = 0;
+  fw_job.channel = channel; fw_job.usb_epoch = usb_bus_resets;
+  fw_job.phase = ((address + 4095u) & ~4095u) < address + 1024u ? FA_ERASE : FA_WRITE;
+  return true;
+}
+static void fw_async_complete(uint8_t code)
+{
+  free(fw_job.data); fw_job.data = NULL;
+  fw_job.code = code; fw_job.phase = FA_REPLY;
+}
+static void fw_storage_poll(uint32_t now)
+{
+  uint8_t r;
+  uint16_t n;
+  bootFWparam_s header;
+  if (fw_job.channel == CH_USB && fw_job.usb_epoch != usb_bus_resets) fw_job.quiet = 1;
+  if (fw_job.cancelled) {
+    if (fw_job.waiting && w25_async_poll(now) == 1) return;
+    free(fw_job.data); fw_job.data = NULL; fw_job.phase = fw_job.waiting = 0;
+    return; /* A timed-out operation cannot publish progress or a late ACK. */
+  }
+  if (fw_job.phase == FA_REPLY) {
+    if (!fw_job.quiet && fw_job.channel == CH_SERVER && comm_tx_busy()) return;
+    fw_job.phase = 0;
+    if (!fw_job.quiet) user_send_statusUpdateFW(20, fw_job.code, (dataChanel_e)fw_job.channel, fw_job.id);
+    return;
+  }
+  if (fw_job.waiting) {
+    r = w25_async_poll(now);
+    if (r == 1) return;
+    fw_job.waiting = 0;
+    if (r != 2) goto write_error;
+    if (fw_job.phase == FA_ERASE) fw_job.phase = FA_WRITE;
+    else fw_job.offset += 64u;
+    return;
+  }
+  if (!w25_read_available()) return;
+  if (fw_job.phase == FA_ERASE) {
+    fw_job.waiting = w25_async_start((fw_job.address + 4095u) & ~4095u, NULL, 0, now);
+    if (!fw_job.waiting) goto write_error;
+    return;
+  }
+  if (fw_job.phase == FA_WRITE) {
+    if (fw_job.offset < 1024u) {
+      fw_job.waiting = w25_async_start(fw_job.address + fw_job.offset, fw_job.data + fw_job.offset, 64u, now);
+      if (!fw_job.waiting) goto write_error;
+      return;
+    }
+    /* Every byte was read back by W25 before the block cursor/percent moves. */
+    fw_write_errors = 0; device.startWaitFWtime = 0;
+    device.FWblockIdx = fw_job.block + 1u;
+    device.firmwarePercent = (uint8_t)((uint32_t)device.FWblockIdx * 100u / device.FWblockCount);
+    if (device.FWblockIdx < device.FWblockCount) { fw_async_complete(FW_BLOCK_OK); return; }
+    fw_job.phase = FA_HEADER; return;
+  }
+  if (fw_job.phase == FA_HEADER) {
+    if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&header, sizeof(header))) goto read_error;
+    if (!header.firmwareSize || (header.firmwareSize & 3u) ||
+        header.firmwareSize > (uint32_t)device.FWblockCount * 1024u ||
+        header.firmwareSize > mem[MB_FIRMWARE].size - FWBLOCK_OFFSET) {
+      fw_async_complete(fw_blocks_done(0)); return;
+    }
+    fw_job.remaining = header.firmwareSize; fw_job.expected_crc = header.firmwareCRC;
+    fw_job.position = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET; fw_job.crc = 0xffffffffu;
+    fw_job.phase = FA_CRC; return;
+  }
+  if (fw_job.phase == FA_CRC) {
+    n = fw_job.remaining > 64u ? 64u : (uint16_t)fw_job.remaining;
+    /* Reuse the owned, aligned heap snapshot after its last program completed. */
+    if (!mem_read(fw_job.position, fw_job.data, n)) goto read_error;
+    for (uint16_t i = 0; i < n; i += 4u) {
+      uint32_t word; memcpy(&word, fw_job.data + i, 4);
+      fw_job.crc = CRC32(fw_job.crc, word); /* existing verified ASM kernel */
+    }
+    fw_job.position += n; fw_job.remaining -= n;
+    if (!fw_job.remaining) fw_async_complete(fw_blocks_done(fw_job.crc == fw_job.expected_crc));
+    return;
+  }
+  return;
+write_error:
+  r = ++fw_write_errors < FW_WRITE_TRIES ? FW_BLOCK_BADWRITE : FW_BLOCK_END;
+  fw_async_complete(r);
+  if (r == FW_BLOCK_END) { fw_job.phase = 0; fw_abort("WRITE"); fw_job.phase = FA_REPLY; }
+  return;
+read_error:
+  fw_async_complete(FW_BLOCK_END);
+  fw_job.phase = 0; fw_abort("READ"); fw_job.phase = FA_REPLY;
+}
+/* <<< Cooperative firmware block writer */
+
 /* >>> Cooperative event writer */
 /* Snapshot owns both async program sources, never the caller or queue storage.
  * result: 1 pending, 2 verified, 3 failed (retained for delayed reconciliation).
@@ -5097,6 +5227,7 @@ static void store_usb_session(void)
 {
   if (store.usb_epoch == usb_bus_resets) return;
   store.usb_epoch = usb_bus_resets;
+  fw_async_quiet(CH_USB);
   log_unacked[0] = temp_unacked[0] = 0; store.seen &= 10u;
   if (store.job && store.channel == CH_USB) store.quiet = 1;
 }
@@ -5109,7 +5240,7 @@ static void store_marker(uint8_t cmd, uint32_t end)
 }
 static bool store_snapshot(void)
 {
-  if (log_async_active()) return false;
+  if (fw_async_active() || log_async_active()) return false;
   config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
   device.crc = crc16_calc((uint8_t*)&device, sizeof(device) - 2);
   return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
@@ -5202,6 +5333,7 @@ void user_storage_poll(void)
   store_usb_session();
   uint32_t now = timers_getMillis();
   uint8_t result = mem_config_result();
+  if (fw_async_active()) { fw_storage_poll(now); return; }
   if (log_async_active()) { log_storage_poll(now); return; }
   if (result == 1) { mem_config_poll(now); return; }
   if (store.job == US_REPLY) { store_reply(); return; }
