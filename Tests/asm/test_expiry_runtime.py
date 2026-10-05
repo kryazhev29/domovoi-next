@@ -126,12 +126,33 @@ def power():
             for i,v in enumerate(data):state[a+i]&=v
     return count
 
+def full_scan_and_heap():
+    from test_memory_runtime import heap_stats
+    m=ExpiryMachine();m.write(m.addr('mem')+20,1601536)
+    m.install([record(50048,first=NOW,minutes=1)],(50047,))
+    live=[m.checked('__basic_malloc',n) for n in (180,1040,534)]
+    assert all(live) and m.start_expiry()
+    ctx=int.from_bytes(m.u.mem_read(m.addr('expiry_job'),4),'little')
+    chunk=int.from_bytes(m.u.mem_read(ctx-8,4),'little');assert chunk==1104
+    peak=heap_stats(m);assert peak['largest_request']==1200
+    m.expiry_drain(80000)
+    assert not m.expiry_events and m.io is None
+    assert int.from_bytes(m.u.mem_read(m.addr('id_nextEnd'),4),'little')==NOW+60
+    assert not m.start_expiry(),'future minimum must suppress a repeat sweep'
+    for p in live:m.checked('__basic_free',p)
+    assert heap_stats(m)['largest_request']==4088
+    return {'id_bytes':1601536,'passes':len(m.runtime_costs),'max_instructions':max(m.runtime_costs),
+            'total_instructions':sum(m.runtime_costs),'max_read_bytes':max(m.runtime_reads),
+            'stack':m.stack_peak,'context_request':1092,'context_chunk':chunk,
+            'synthetic_overlap_chunks':[192,1048,544,chunk],'synthetic_overlap':2888,'free_at_overlap':peak}
+
 if __name__=='__main__':
     import argparse
     p=argparse.ArgumentParser();p.add_argument('--power',action='store_true');a=p.parse_args()
     out={'differential':differential()};print('legacy/canonical/fallback/boundaries PASS',flush=True)
     out['cancel_reset_sessions']=cancel_and_sessions();out['faults_oom']=faults()
     print('cancel/reset/session/I/O/OOM/priority PASS',flush=True)
+    out['full_scan_heap']=full_scan_and_heap();print('full ID/heap/fragmentation/coalescing PASS',flush=True)
     if a.power:out['power_cuts']=power();print('power cuts',out['power_cuts'],'PASS',flush=True)
     out['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
     (ROOT/'Tests/asm/expiry_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
