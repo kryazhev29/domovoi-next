@@ -113,6 +113,7 @@ def collect(root):
             'stack_limitations':['IAR CFI still includes preserved unreachable historical bodies, e.g. user_checkIdTimeEnd.',
                 'Indirect calls and IRQ nesting prevent treating this map as a complete global bound.',
                 'The IAR interrupt-root table omits Wiegand EXTI2/3 even though WG_init enables them.',
+                'WG EXTI priority0 and comm UART/DMA priority1 can nest after uart_init selects priority group1.',
                 'Exception hardware frame is 32 bytes per level plus possible four-byte alignment.']}
     traces={}
 
@@ -220,7 +221,7 @@ def collect(root):
     assert not m.checked('user_findID',0x21000000,0x21000100,budget=5000000)
     residual['access_missing_key_full_fallback']={'model_instructions_one_call':m.steps,'stack':m.stack_peak,
         'flash_read_bytes_one_call':m.read_budget,'partition_bytes':1601536,
-        'real_caller':'user_checkAccessID/user_activateOut -> user_findID -> 1024-byte fallback loop'}
+        'real_caller':'reader_id -> user_checkIdAndControl -> user_findID; also user_activateOut -> user_findID -> 1024-byte fallback loop'}
     residual['factory_source_audit']={'executed':False,
         'real_callers':['USB/server cmd3','user_loop delayed factory reset','registration unknown/not-bound','SMS default'],
         'chain':['user_writeConfigAndDevice synchronous config journal','user_clearMemBlock on 2,3,4,5,7,8,9',
