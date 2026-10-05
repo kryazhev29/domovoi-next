@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 typedef unsigned dataChanel_e;
+#define CH_SERVER 1
 #define CMD_CRCERROR 7
 #define CMD_SUCCESS 0
 #define CMD_PARAMERROR 1

@@ -11,6 +11,7 @@
 #include "../Modules/comm_sms.h"
 #include "../Modules/comm_balance.h"
 void server_rx_process(void);
+void server_rx_begin_pass(void);
 static void user_comm_registration(void) { user_send_registrationData(CH_SERVER); }
 static void user_comm_status(void) { user_send_statusPack(CH_SERVER); }
 static bool user_comm_no_traffic(void)
@@ -55,6 +56,7 @@ bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handl
 bool user_comm_sms(const char *number, const char *text) { return comm_sms_send(number, text); }
 void user_comm_poll(uint32_t now_ms)
 {
+  server_rx_begin_pass();
   comm_channel_rx_capacity(user_comm_rx_capacity());
   comm_server_poll(now_ms);
   comm_recover_poll(now_ms);

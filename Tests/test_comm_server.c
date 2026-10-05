@@ -57,7 +57,7 @@ static uint16_t server_frame(uint8_t *p, uint8_t cmd, uint8_t id, const uint8_t 
 }
 static void user_parse_comand(uint8_t *p, unsigned channel)
 {
-  CHECK(channel == CH_SERVER && !comm_tx_busy()); ++server_commands;
+  CHECK(channel == CH_SERVER && !comm_tx_busy() && server_rx_verified(p)); ++server_commands;
   /* Модель разрешает только законные ответы. Любая мусорная команда — ошибка теста. */
   if (p[4] == 1) { CHECK(p[5] == 0); comm_server_registered(1); }
   else if (p[4] == 24) comm_server_status_ack(p[5]);
@@ -258,7 +258,7 @@ static void transport_tick(unsigned increment)
   if (ping_reply_kind && (int32_t)(sim_now-ping_reply_due)>=0) {
     sim_feed(ping_reply_kind==3 ? "+QPING: 0,2,1,1,30,30,30\r\n" : ping_reply_kind==1 ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n+QPING: 0,2,1,1,30,30,30\r\n" : "+QPING: 0,2,0,2,0,0,0\r\n"); ping_reply_kind=0;
   }
-  comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
+  server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
   if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
   transport_tx(); sim_now+=increment;
 }

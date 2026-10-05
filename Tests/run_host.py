@@ -297,6 +297,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/user_fun.c')
         for name in ['user_comm_session','user_comm_rx_done']:
             assert 'server_rx_reset();' in function(user,name),name
+        assert function(source('User/user_comm.c'),'user_comm_poll').count('server_rx_begin_pass();') == 1
         code=user[user.index('#define SERVER_RX_CAPACITY'):user.index('/* QIRD копирует прямо в прежний сборщик')]
         unit=(ROOT/'Tests/test_server_rx.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='fwblockbounds':
@@ -535,6 +536,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     # Runtime continuations have their own real-code harness (test_store_callers.py).
     if ('store.' in unit or 'store_runtime' in unit or 'store_restore(' in unit or 'store_command_start(' in unit) and 'static uint8_t store_runtime' not in unit and 'unsigned job,channel,quiet,seen' not in unit:
         unit='#include <stdint.h>\n#include <stdbool.h>\n#define store_runtime 0\nstatic uint8_t store_save_requested __attribute__((unused)), store_reset_requested __attribute__((unused));\nstatic struct {uint8_t job,clear,channel,uniq,cmd,quiet,seen;} store __attribute__((unused));\n#define store_ack(a,b) false\n#define store_finish(a) false\n#define store_restore(a) ((void)0)\n#define store_upload_request(a,b,c) true\n#define store_command_start(a,b,c) user_send_answer_comand(a,CMD_SUCCESS,b,c)\n'+unit
+    if 'server_rx_verified(' in unit and 'bool server_rx_verified(' not in unit:
+        unit='#define server_rx_verified(p) 0\n'+unit
     if 'store_command_allowed(' in unit and 'bool store_command_allowed(' not in unit:
         unit='#define store_command_allowed(cmd) 1\n'+unit
     if 'user_storage_flash_ready()' in unit and 'bool user_storage_flash_ready(void)' not in unit:

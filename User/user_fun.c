@@ -375,22 +375,36 @@ void user_errorconnection (int8_t handle){
  * Неполный кадр живёт не дольше 30 с; новое соединение всегда начинается с чистого буфера. */
 #define SERVER_RX_CAPACITY 2048u
 #define SERVER_RX_TIMEOUT_MS 30000u
+#define SERVER_RX_WORK 256u
 static uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
-static uint16_t server_rx_count = 0;
-static uint32_t server_rx_last = 0;
-/* Кадр выполняется после возврата префикса UART: ответ AT не изменяет читаемые байты.
- * Резервы heap/стека не меняются; разбор DATA только собирает server_rx_buffer. */
-static uint8_t server_rx_defer = 0;
-static uint16_t server_rx_ready = 0; // длина готового кадра в начале буфера, 0 - нет
-static uint8_t server_rx_busy = 0;   // идёт разбор кадра из начала буфера: новые байты только копятся
-static uint8_t server_rx_provisional;
+static uint16_t server_rx_count;
+static uint32_t server_rx_last;
+static uint8_t server_rx_defer, server_rx_busy, server_rx_provisional;
+static uint16_t server_rx_ready;
+/* Only begin_pass replenishes these, never receive/process/reset. Search and
+ * CRC share credits, including repeated byte callbacks and nested reception.
+ * At most one scan compaction and one command/consume per service pass. */
+static uint16_t server_rx_work;
+static uint8_t server_rx_compacted, server_rx_commands, server_rx_cancelled;
+static uint16_t server_rx_offset, server_rx_total, server_rx_pos, server_rx_crc;
 void server_rx_process(void);
 
 static void server_rx_reset(void)
 {
-  server_rx_count = 0;
-  server_rx_ready = 0;
+  if (server_rx_busy) server_rx_cancelled = 1;
+  else server_rx_count = 0;
+  server_rx_ready = server_rx_offset = server_rx_total = server_rx_pos = 0;
   server_rx_provisional = 0;
+}
+
+void server_rx_begin_pass(void)
+{
+  if (server_rx_busy) return;
+  server_rx_work = SERVER_RX_WORK;
+  server_rx_compacted = 0;
+  server_rx_commands = 1;
+  if (server_rx_count && (uint32_t)(timers_getMillis() - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
+    server_rx_reset();
 }
 
 static void server_rx_consume(uint16_t n)
@@ -399,87 +413,110 @@ static void server_rx_consume(uint16_t n)
   memmove(server_rx_buffer, server_rx_buffer + n, server_rx_count);
 }
 
-// Найти в начале буфера целый кадр с верным CRC и пометить готовым; мусор перед ним отбросить.
 static void server_rx_scan(void)
 {
-  uint16_t body, total, crc, offset = 0, left;
+  uint16_t left, n, found, body;
   uint8_t *p;
-  if (server_rx_ready || server_rx_busy) return;
-  /* Compact once: a corrupt full frame must not cause quadratic copying. */
-  while (offset < server_rx_count){
-    offset += (uint16_t)fast_sldn(server_rx_buffer + offset, server_rx_count - offset);
-    if (offset == server_rx_count) break;
-    p = server_rx_buffer + offset;
-    left = server_rx_count - offset;
-    if (left < 6) break;
-    body = (uint16_t)p[4] | ((uint16_t)p[5] << 8);
-    if (body < 3 || body > SERVER_RX_CAPACITY - 8){
-      offset++;
-      continue;
+  if (server_rx_ready || server_rx_busy || !server_rx_work) return;
+  while (server_rx_offset < server_rx_count && server_rx_work >= 8u) {
+    p = server_rx_buffer + server_rx_offset;
+    left = server_rx_count - server_rx_offset;
+    if (!server_rx_total) {
+      /* Bound the kernel itself; its partial suffix is retried next pass. */
+      n = left > 64u ? 64u : left;
+      if (n > server_rx_work - 8u) n = server_rx_work - 8u;
+      if (!n) break;
+      found = (uint16_t)fast_sldn(p, n);
+      server_rx_work -= found + 4u < n ? found + 4u : n;
+      server_rx_offset += found;
+      if (found == n) continue;
+      if (n - found < 4u && left > n) continue;
+      p += found; left -= found;
+      server_rx_work -= 8u; /* header/length and candidate transition */
+      if (left < 6u) break;
+      body = (uint16_t)p[4] | ((uint16_t)p[5] << 8);
+      if (body < 3u || body > SERVER_RX_CAPACITY - 8u) {
+        ++server_rx_offset; continue;
+      }
+      if (left < body + 8u) break;
+      server_rx_total = body + 8u;
+      server_rx_pos = 4u;
+      server_rx_crc = 0xffffu;
     }
-    total = body + 8;
-    if (left < total) break;
-    crc = (uint16_t)p[total - 2] | ((uint16_t)p[total - 1] << 8);
-    if (crc != crc16_calc(p + 4, body + 2)){
-      offset++;
-      continue;
+    n = server_rx_total - 2u - server_rx_pos;
+    if (n > server_rx_work) n = server_rx_work;
+    if (n) {
+      server_rx_crc = crc16_calcInit(p + server_rx_pos, n, server_rx_crc);
+      server_rx_pos += n; server_rx_work -= n;
     }
-    server_rx_ready = total;
-    break;
+    if (server_rx_pos != server_rx_total - 2u) break;
+    if (server_rx_crc == ((uint16_t)p[server_rx_total - 2u] |
+                         ((uint16_t)p[server_rx_total - 1u] << 8))) {
+      /* A verified frame may wait for next pass's compaction quota. */
+      if (server_rx_offset && server_rx_compacted) break;
+      server_rx_ready = server_rx_total;
+      server_rx_total = server_rx_pos = 0;
+      break;
+    }
+    server_rx_total = server_rx_pos = 0;
+    ++server_rx_offset;
   }
-  if (offset) server_rx_consume(offset);
+  if (server_rx_offset && !server_rx_compacted) {
+    server_rx_consume(server_rx_offset);
+    server_rx_offset = 0;
+    server_rx_compacted = 1;
+  }
 }
 
-// данные с сервера
-void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz)
+void user_dataconnection(int8_t handle, uint8_t *data, uint16_t siz)
 {
   uint32_t now = timers_getMillis();
-  if (handle != device.connectionhandle) return;
+  uint16_t n;
+  if (handle != device.connectionhandle || server_rx_cancelled) return;
   if (!server_rx_busy && server_rx_count && (uint32_t)(now - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
     server_rx_reset();
   if (siz) server_rx_last = now;
-
-  while (siz--){
-    // Буфер полон только готовым кадром и хвостом за ним: выполнить сейчас, данные не терять.
-    if (server_rx_count == SERVER_RX_CAPACITY && server_rx_ready){
+  while (siz) {
+    if (server_rx_count == SERVER_RX_CAPACITY) {
       uint8_t defer = server_rx_defer;
-      server_rx_process();
-      server_rx_defer = defer;
+      server_rx_process(); server_rx_defer = defer;
     }
-    /* При вложенном приёме текущий кадр ещё занят обработчиком: освобождать или
-     * перезаписывать его нельзя. Невместившийся хвост сервер повторит. */
-    if (server_rx_count >= SERVER_RX_CAPACITY) return;
-    server_rx_buffer[server_rx_count++] = *data++;
+    n = SERVER_RX_CAPACITY - server_rx_count;
+    if (!n) return; /* QIRD uses capacity/backpressure; legacy drops excess. */
+    if (n > siz) n = siz;
+    memcpy(server_rx_buffer + server_rx_count, data, n);
+    server_rx_count += n; data += n; siz -= n;
     server_rx_scan();
-    if (server_rx_ready && !server_rx_defer) server_rx_process();
+    if (!server_rx_defer) server_rx_process();
   }
 }
 
-// Выполнить готовые кадры по порядку и снять отложенный режим.
 void server_rx_process(void)
 {
   uint16_t total;
-  if (server_rx_provisional) return;
+  if (server_rx_provisional || server_rx_busy) return;
   server_rx_defer = 0;
-  if (server_rx_busy) return; // вызов изнутри разбора: кадры выполнит внешний цикл
-  while (server_rx_ready){
-    if (comm_tx_busy()) return;
-    if (!store_command_allowed(server_rx_buffer[8])) return;
-    total = server_rx_ready;
-    server_rx_ready = 0;
-    server_rx_busy = 1;
-    user_parse_comand(server_rx_buffer + 4, CH_SERVER);
-    server_rx_busy = 0;
-    // Разбор мог закрыть соединение и сбросить буфер.
-    if (server_rx_count < total) break;
-    server_rx_consume(total);
-    server_rx_scan(); // следующий кадр мог прийти в том же куске
+  server_rx_scan(); /* Also resume when the input stream has stopped. */
+  if (!server_rx_ready || !server_rx_commands || comm_tx_busy()) return;
+  if (!store_command_allowed(server_rx_buffer[8])) return;
+  --server_rx_commands;
+  total = server_rx_ready; server_rx_ready = 0;
+  server_rx_busy = 1;
+  user_parse_comand(server_rx_buffer + 4, CH_SERVER);
+  server_rx_busy = 0;
+  if (server_rx_cancelled) {
+    server_rx_cancelled = 0; server_rx_reset(); return;
   }
+  server_rx_consume(total);
+  server_rx_scan();
 }
 
 /* QIRD копирует прямо в прежний сборщик. До финала команды выполнение отложено. */
+static bool server_rx_verified(const uint8_t *p)
+{ return server_rx_busy && p == server_rx_buffer + 4; }
+
 uint16_t user_comm_rx_capacity(void)
-{ return (uint16_t)(sizeof(server_rx_buffer) - server_rx_count); }
+{ return server_rx_cancelled ? 0 : (uint16_t)(sizeof(server_rx_buffer) - server_rx_count); }
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count)
 {
   uint16_t capacity = user_comm_rx_capacity();
@@ -2943,7 +2980,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   if (len < 3) return; // В неполном заголовке нет команды и uniqId.
   crc = ptr[len + 3];  // crc
   crc = (crc<<8) | ptr[len + 2];
-  i = crc16_calc(&ptr[0], len + 2);
+  i = (cch == CH_SERVER && server_rx_verified(ptr)) ? crc : crc16_calc(ptr, len + 2);
 
   //cmd_timeout = ptr[2];
   uniqId = ptr[3];

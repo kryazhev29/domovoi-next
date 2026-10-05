@@ -19,7 +19,8 @@ static void server_rx_reset(void);
 static uint8_t expected[2048];
 static uint16_t expected_size;
 uint32_t timers_getMillis(void){return now;}
-static uint16_t crc16_calc(const uint8_t *p,uint16_t n){uint16_t c=0xffff;unsigned j;while(n--){c^=*p++;for(j=0;j<8;j++)c=(c>>1)^((c&1)?0xa001:0);}return c;}
+static uint16_t crc16_calcInit(const uint8_t *p,uint16_t n,uint16_t c){unsigned j;while(n--){c^=*p++;for(j=0;j<8;j++)c=(c>>1)^((c&1)?0xa001:0);}return c;}
+static uint16_t crc16_calc(const uint8_t *p,uint16_t n){return crc16_calcInit(p,n,0xffff);}
 void user_parse_comand(uint8_t *p,unsigned ch){CHECK(ch==CH_SERVER);if(calls<8)seen[calls]=p[0]|(p[1]<<8);if(!nested_len||!calls)CHECK(!memcmp(p,expected+4,expected_size-4));calls++;if(reset_in_parse)server_rx_reset();if(nested){now+=nested_advance;const uint8_t*q=nested;nested=0;user_dataconnection(2,(uint8_t*)q,nested_len);CHECK(server_rx_count<=2048 && server_rx_count>=expected_size);CHECK(!memcmp(p,expected+4,expected_size-4));}}
 static unsigned rx_move_calls, rx_move_bytes;
 static void *rx_move(void *d, const void *s, size_t n) {
@@ -30,7 +31,32 @@ static void *rx_move(void *d, const void *s, size_t n) {
 #undef memmove
 
 static void frame(unsigned n){unsigned i;uint16_t c;expected_size=n;memcpy(expected,"SLDN",4);expected[4]=(n-8)&255;expected[5]=(n-8)>>8;for(i=6;i<n-2;i++)expected[i]=(uint8_t)i;if(n>30)memcpy(expected+17,"SLDN",4);c=crc16_calc(expected+4,n-6);expected[n-2]=c&255;expected[n-1]=c>>8;}
-static void reset(void){server_rx_reset();server_rx_defer=0;reset_in_parse=0;nested_advance=0;nested=0;calls=0;now=0;}
+static void reset(void){server_rx_reset();server_rx_begin_pass();server_rx_defer=0;reset_in_parse=0;nested_advance=0;nested=0;calls=0;now=0;}
+/* One simulated main pass, with hard work and compaction accounting. */
+static void poll(void) {
+  server_rx_begin_pass(); rx_move_calls=rx_move_bytes=0;
+  server_rx_process();
+  CHECK(server_rx_work<=SERVER_RX_WORK);
+  CHECK(rx_move_calls<=2 && rx_move_bytes<=4096);
+}
+static void drain(void) {
+  unsigned limit=20000;
+  do {
+    uint16_t count=server_rx_count, pos=server_rx_pos, off=server_rx_offset;
+    unsigned before=calls;
+    poll(); CHECK(limit--);
+    if(count==server_rx_count && pos==server_rx_pos && off==server_rx_offset && before==calls) break;
+  } while(server_rx_count);
+}
+static void finish_scan(void) {
+  unsigned limit=20000;
+  do {
+    uint16_t count=server_rx_count, pos=server_rx_pos, off=server_rx_offset;
+    server_rx_begin_pass(); rx_move_calls=rx_move_bytes=0;server_rx_scan();
+    CHECK(limit-- && rx_move_calls<=1 && rx_move_bytes<=2048);
+    if(count==server_rx_count && pos==server_rx_pos && off==server_rx_offset) break;
+  } while(!server_rx_ready && server_rx_count);
+}
 static void reference_scan(uint8_t *p, uint16_t *count, uint16_t *ready) {
   while(*count) {
     uint16_t body=0,total=0;
@@ -62,7 +88,7 @@ static void scan_equivalence(void) {
     }
     count=server_rx_count=n; memcpy(copy,server_rx_buffer,n);
     reference_scan(copy,&count,&ready);
-    rx_move_calls=rx_move_bytes=0; server_rx_scan();
+    rx_move_calls=rx_move_bytes=0; finish_scan();
     CHECK(server_rx_count==count && server_rx_ready==ready);
     CHECK(!memcmp(server_rx_buffer,copy,count));
     CHECK(rx_move_calls<=1 && rx_move_bytes<=count);
@@ -82,52 +108,81 @@ static void scan_cost(void) {
     if(tail)memcpy(server_rx_buffer+2048-tail,suffix,tail);
     CHECK(crc16_calc(server_rx_buffer+4,2042)!=(server_rx_buffer[2046]|server_rx_buffer[2047]<<8));
     server_rx_count=2048; rx_move_calls=rx_move_bytes=0;
-    server_rx_scan();
+    finish_scan();
     CHECK(!server_rx_ready && server_rx_count==tail);
     CHECK(!memcmp(server_rx_buffer,suffix,tail));
     CHECK(rx_move_calls<=1 && rx_move_bytes<=tail);
   }
 }
-int main(void){unsigned n,split,i;uint8_t bad[2048],noise[]={0,'S','S','L',0,'S','L','D','N',255,255};
- for(n=11;n<=2048;n+=(n==11?1026:1011)){
-  frame(n);
-  for(split=1;split<n;split++){reset();user_dataconnection(2,expected,split);CHECK(!calls);user_dataconnection(2,expected+split,n-split);CHECK(calls==1&&!server_rx_count);}
- }
- frame(1037);reset();for(i=0;i<expected_size;i++)user_dataconnection(2,expected+i,1);CHECK(calls==1);
- reset();user_dataconnection(2,noise,sizeof(noise));user_dataconnection(2,expected,expected_size);CHECK(calls==1);
- memcpy(bad,expected,expected_size);bad[expected_size-1]^=1;reset();user_dataconnection(2,bad,expected_size);CHECK(!calls);user_dataconnection(2,expected,expected_size);CHECK(calls==1);
- frame(20);memcpy(bad,expected,20);memcpy(bad+20,expected,20);reset();user_dataconnection(2,bad,40);CHECK(calls==2);
- reset();user_dataconnection(2,expected,5);user_dataconnection(3,expected,20);CHECK(!calls&&server_rx_count==5);user_dataconnection(2,expected+5,15);CHECK(calls==1);
- reset();user_dataconnection(2,expected,5);now=SERVER_RX_TIMEOUT_MS;user_dataconnection(2,expected,20);CHECK(calls==1);
- reset();now=0xfffffff0u;user_dataconnection(2,expected,5);now+=SERVER_RX_TIMEOUT_MS;user_dataconnection(2,expected,20);CHECK(calls==1);
- reset();user_dataconnection(2,expected,5);server_rx_reset();user_dataconnection(2,expected,20);CHECK(calls==1);
- /* Отложенный режим (01.10.2026): кадр ждёт server_rx_process, команды идут по порядку. */
- frame(20);reset();server_rx_defer=1;user_dataconnection(2,expected,20);CHECK(!calls&&server_rx_ready==20);server_rx_process();CHECK(calls==1&&!server_rx_count&&!server_rx_defer);
- memcpy(bad,expected,20);memcpy(bad+20,expected,20);reset();server_rx_defer=1;user_dataconnection(2,bad,40);CHECK(!calls);server_rx_process();CHECK(calls==2&&!server_rx_count);
- reset();server_rx_defer=1;user_dataconnection(2,bad,27);CHECK(!calls);server_rx_process();CHECK(calls==1&&server_rx_count==7&&!server_rx_ready);user_dataconnection(2,bad+27,13);CHECK(calls==2&&!server_rx_count);
- frame(1037);memcpy(bad,expected,1037);memcpy(bad+1037,expected,1011);reset();server_rx_defer=1;user_dataconnection(2,bad,2048);CHECK(!calls&&server_rx_count==2048);
- user_dataconnection(2,expected+1011,26);CHECK(calls==1&&server_rx_defer);server_rx_process();CHECK(calls==2&&!server_rx_count);
- frame(20);memcpy(bad,expected,20);memcpy(bad+20,expected,20);reset();server_rx_defer=1;user_dataconnection(2,bad,40);reset_in_parse=1;server_rx_process();CHECK(calls==1&&!server_rx_count&&!server_rx_ready);
- reset();server_rx_defer=1;user_dataconnection(2,expected,20);user_dataconnection(3,expected,20);CHECK(server_rx_count==20);server_rx_reset();CHECK(!server_rx_ready);server_rx_process();CHECK(!calls);
- frame(30);memcpy(bad,expected,30);frame(20);
- reset();nested=bad;nested_len=30;user_dataconnection(2,expected,20);CHECK(calls==2&&seen[0]==12&&seen[1]==22&&!server_rx_count&&!server_rx_busy);
- reset();server_rx_defer=1;user_dataconnection(2,expected,20);nested=bad;nested_len=30;server_rx_process();CHECK(calls==2&&seen[0]==12&&seen[1]==22&&!server_rx_count);
- frame(2048);reset();bad[0]='X';nested=bad;nested_len=1;user_dataconnection(2,expected,2048);CHECK(calls==1&&!server_rx_count&&!server_rx_busy);
- /* B14: таймаут не освобождает кадр, пока обработчик им владеет. */
- frame(30);memcpy(bad,expected,30);frame(20);
- for(unsigned deferred=0;deferred<2;deferred++) {
-   for(unsigned elapsed=29999;elapsed<=30001;elapsed++) {
-     reset();server_rx_defer=deferred;nested=bad;nested_len=30;nested_advance=elapsed;
-     user_dataconnection(2,expected,20);if(deferred)server_rx_process();
-     CHECK(calls==2&&seen[0]==12&&seen[1]==22&&!server_rx_count&&!server_rx_busy);
-   }
- }
- reset();now=0xfffffff0u;nested=bad;nested_len=30;nested_advance=30000;
- user_dataconnection(2,expected,20);CHECK(calls==2&&!server_rx_count&&!server_rx_busy);
- reset();nested=bad;nested_len=0;nested_advance=30000;
- user_dataconnection(2,expected,20);CHECK(calls==1&&!server_rx_count&&!server_rx_busy);
- frame(2048);reset();bad[0]='X';nested=bad;nested_len=1;nested_advance=30000;
- user_dataconnection(2,expected,2048);CHECK(calls==1&&!server_rx_count&&!server_rx_busy);
- nested_len=0;
- scan_cost();scan_equivalence();
- puts("server RX: 5000 differential scans + bounded compaction, all splits of 11/1037/2048-byte frames, bytewise input, embedded signature, noise, CRC, concatenation, foreign handle, timeout/wrap/reset, deferred execution (order, tail, overflow, reset in parse, nested input during parse) passed");return 0;}
+
+static void nested_headers(void) {
+  uint8_t copy[2048]; uint16_t n=2048,ready=0;
+  reset();memset(server_rx_buffer,0xa5,2048);
+  for(unsigned i=0;i<2000;i+=8) {
+    memcpy(server_rx_buffer+i,"SLDN",4);
+    unsigned body=2048-i-8;
+    server_rx_buffer[i+4]=body;server_rx_buffer[i+5]=body>>8;
+  }
+  memcpy(copy,server_rx_buffer,2048);reference_scan(copy,&n,&ready);
+  server_rx_count=2048;
+  server_rx_scan(); CHECK(server_rx_count && server_rx_total && !calls);
+  uint16_t pos=server_rx_pos,work=server_rx_work;
+  for(unsigned i=0;i<4096;i++) {server_rx_process();user_dataconnection(2,copy,0);}
+  CHECK(server_rx_pos==pos && server_rx_work==work); /* no budget refill */
+  finish_scan(); CHECK(server_rx_ready==ready && server_rx_count==n);
+  CHECK(!memcmp(copy,server_rx_buffer,n));
+}
+int main(void) {
+  uint8_t bad[2048], noise[]={0,'S','S','L',0,'S','L','D','N',255,255};
+  for(unsigned n=11;n<=2048;n+=(n==11?1026:1011)) {
+    frame(n);
+    for(unsigned split=1;split<n;split++) {
+      reset();user_dataconnection(2,expected,split);drain();CHECK(!calls);
+      user_dataconnection(2,expected+split,n-split);drain();CHECK(calls==1&&!server_rx_count);
+      for(unsigned i=0;i<3;i++)poll();CHECK(calls==1);
+    }
+  }
+  frame(1037);reset();for(unsigned i=0;i<1037;i++)user_dataconnection(2,expected+i,1);
+  CHECK(!calls);drain();CHECK(calls==1);
+  reset();user_dataconnection(2,noise,sizeof(noise));user_dataconnection(2,expected,1037);drain();CHECK(calls==1);
+  memcpy(bad,expected,1037);bad[1036]^=1;
+  reset();user_dataconnection(2,bad,1037);drain();CHECK(!calls);
+  user_dataconnection(2,expected,1037);drain();CHECK(calls==1);
+  frame(20);memcpy(bad,expected,20);memcpy(bad+20,expected,20);
+  reset();user_dataconnection(2,bad,40);CHECK(calls<=1);drain();CHECK(calls==2);
+  reset();server_rx_defer=1;user_dataconnection(2,bad,27);CHECK(!calls);
+  poll();CHECK(calls==1&&server_rx_count==7);user_dataconnection(2,bad+27,13);drain();CHECK(calls==2);
+  reset();user_dataconnection(2,expected,5);user_dataconnection(3,expected,20);CHECK(server_rx_count==5);
+  user_dataconnection(2,expected+5,15);drain();CHECK(calls==1);
+  for(unsigned wrap=0;wrap<2;wrap++) {
+    reset();now=wrap?0xfffffff0u:0;user_dataconnection(2,expected,5);
+    now+=SERVER_RX_TIMEOUT_MS;poll();CHECK(!server_rx_count&&!calls);
+  }
+  /* Stream stops during CRC; next service passes complete or cancel it. */
+  frame(2048);reset();user_dataconnection(2,expected,2048);CHECK(!calls&&server_rx_total);
+  drain();CHECK(calls==1&&!server_rx_count);
+  reset();user_dataconnection(2,expected,2048);server_rx_reset();drain();CHECK(!calls);
+  user_dataconnection(2,expected,2048);drain();CHECK(calls==1);
+  reset();user_dataconnection(2,expected,2048);now+=SERVER_RX_TIMEOUT_MS;poll();CHECK(!calls&&!server_rx_count&&!server_rx_total);
+  /* Provisional modem frame cannot execute, including a full buffer. */
+  reset();server_rx_provisional=server_rx_defer=1;user_dataconnection(2,expected,2048);
+  for(unsigned i=0;i<20;i++)poll();CHECK(!calls);
+  server_rx_provisional=0;drain();CHECK(calls==1);
+  /* Full QIRD buffer remains owned until drained. Legacy excess is dropped. */
+  reset();user_dataconnection(2,expected,2048);bad[0]='X';user_dataconnection(2,bad,1);
+  CHECK(server_rx_count==2048);drain();CHECK(calls==1&&!server_rx_count);
+  frame(30);memcpy(bad,expected,30);frame(20);
+  for(unsigned elapsed=29999;elapsed<=30001;elapsed++) {
+    reset();nested=bad;nested_len=30;nested_advance=elapsed;
+    user_dataconnection(2,expected,20);CHECK(calls==1);drain();
+    CHECK(calls==2&&seen[0]==12&&seen[1]==22&&!server_rx_count&&!server_rx_busy);
+  }
+  nested_len=0;reset();server_rx_defer=1;user_dataconnection(2,expected,20);
+  reset_in_parse=1;poll();CHECK(calls==1&&!server_rx_count);poll();CHECK(calls==1);
+  scan_cost();scan_equivalence();nested_headers();
+  /* Long junk over many full buffers, including artificial chunk suffixes. */
+  reset();memset(bad,'S',sizeof(bad));
+  for(unsigned i=0;i<20;i++){user_dataconnection(2,bad,2048);drain();CHECK(server_rx_count==1&&!calls);}
+  puts("server RX: bounded passes, 5000 differential scans, exhaustive splits 11/1037/2048, stalled CRC, nested headers, noise, reset/timeout/wrap/provisional/full buffer/nested input: PASS");
+  return 0;
+}
