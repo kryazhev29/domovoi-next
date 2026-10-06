@@ -372,19 +372,20 @@ static uint8_t usb_tx_submit(const uint8_t *source,uint16_t length,uint32_t epoc
 }
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer,uint16_t Nb_bytes)
 {
-  uint32_t budget=320000u,epoch=usb_tx_epoch;
+  uint32_t mask=__get_PRIMASK(),epoch=usb_tx_epoch; uint8_t result;
   if(Nb_bytes>=USART_RX_DATA_SIZE || (Nb_bytes && !data_buffer)) return 0;
-  do {
-    uint32_t mask=__get_PRIMASK(); uint8_t result;
-    __disable_irq();
-    if(bDeviceState!=CONFIGURED || epoch!=usb_tx_epoch) { __set_PRIMASK(mask); return 0; }
-    result=usb_tx_submit(data_buffer,Nb_bytes,epoch);
-    __set_PRIMASK(mask);
-    if(result) return 1;
-    if(mask) return 0;
-  } while(--budget);
-  return 0;
+  __disable_irq();
+  result=usb_tx_submit(data_buffer,Nb_bytes,epoch);
+  __set_PRIMASK(mask);
+  return result;
 }
+/* RX keeps its frame until the preceding complete TX source is acknowledged. */
+uint8_t USB_Tx_CommandReady(void)
+{
+  extern bool user_storage_command_ready(void);
+  return user_storage_command_ready() && !USB_Tx_SourceBusy();
+}
+
 uint8_t USB_Tx_Try(const uint8_t *source,uint16_t length)
 {
   extern uint8_t usb_enabled; extern uint8_t store[];

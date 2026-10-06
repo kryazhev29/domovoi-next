@@ -568,6 +568,12 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#define store_command_allowed(cmd) 1\n'+unit
     if 'user_storage_flash_ready()' in unit and 'bool user_storage_flash_ready(void)' not in unit:
         unit='#define user_storage_flash_ready() 1\n'+unit
+    if 'USB_Tx_CommandReady()' in unit:
+        helper=function(source('USB-FS-CDC_User/Src/hw_config.c'),'USB_Tx_CommandReady')
+        helper=helper.replace('  extern bool user_storage_command_ready(void);','')
+        at=unit.index('int main(')
+        unit=unit[:at]+helper+'\n'+unit[at:]
+        unit='#define USB_Tx_SourceBusy() 0\n'+unit
     if 'user_storage_command_ready()' in unit and 'bool user_storage_command_ready(void)' not in unit:
         unit='#define user_storage_command_ready() 1\n'+unit
     if kind in ('cfgstrings','commands'):

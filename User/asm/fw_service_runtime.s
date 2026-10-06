@@ -30,7 +30,8 @@
         EXTERN w25_async_start
         EXTERN w25_async_poll
         EXTERN timers_getMillis
-        EXTERN CRC32
+        EXTERN fw_crc_begin
+        EXTERN fw_crc_next
         EXTERN crc16_calc
         EXTERN answer11
         EXTERN user_comm_acquire
@@ -583,7 +584,8 @@ fsp_read_header:
         STR R0,[R4,#104]
         MOV R0,#512
         STR R0,[R4,#100]
-        MVN R0,#0
+        CFI FunCall fw_crc_begin
+        BL fw_crc_begin
         STR R0,[R4,#108]
         MOVS R0,#2
         CMP R5,#13
@@ -615,8 +617,8 @@ fsp_crc:
         ADD R7,R7,R4
 fsp_crc_word:
         LDR R1,[R6],#4
-        CFI FunCall CRC32
-        BL CRC32
+        CFI FunCall fw_crc_next
+        BL fw_crc_next
         CMP R6,R7
         BCC fsp_crc_word
         STR R0,[R4,#108]

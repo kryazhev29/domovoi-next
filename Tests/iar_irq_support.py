@@ -6,7 +6,7 @@ for deps in (ROOT/'Release/photo_test_deps',ROOT.parents[1]/'СофтЭкспе�
     if deps.exists():sys.path.insert(0,str(deps))
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser
-from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_HOOK_MEM_WRITE
+from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_HOOK_MEM_WRITE,UC_HOOK_MEM_READ
 from unicorn.arm_const import *
 
 _IMAGE_METADATA = {}
@@ -67,6 +67,8 @@ class Machine:
         self.stop=0x08000000+flash_bytes-16;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={}
         self.u.reg_write(UC_ARM_REG_XPSR,0x01000000)
         self.u.hook_add(UC_HOOK_CODE,self.hook)
+        from stm32_crc_model import CRCModel
+        self.crc_model = CRCModel(self.u)
     def addr(self,n):
         # IAR selects dlmalloc instead of the basic heap at High/Speed.
         # Existing fixtures hook the allocator implementation, not its trampoline.

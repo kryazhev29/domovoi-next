@@ -110,6 +110,9 @@ class Machine:
         self.uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
         self.uc.mem_map(0x08000000, 0x20000)
         self.uc.mem_map(0x20000000, 0x5000)
+        self.uc.mem_map(0x40023000, 0x1000)
+        from stm32_crc_model import CRCModel
+        self.crc_model = CRCModel(self.uc)
         # Separate synthetic input region covers the full uint16_t length contract.
         self.uc.mem_map(BUF, 0x11000)
         self.uc.mem_map(STOP & ~0xFFF, 0x1000)

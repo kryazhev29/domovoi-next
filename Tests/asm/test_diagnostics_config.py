@@ -27,7 +27,7 @@ def run():
 
     m.stubs[m.addr('usb_send')] = send
     before = bytes(m.flash)
-    names = ('prof_init', 'prof_add', 'prof_relay_on', 'prof_send',
+    names = ('prof_init', 'prof_add', 'prof_relay_on', 'prof_send_comm',
              'prof_card_mark', 'user_send_usbDiag', 'user_send_commDiag',
              'usb_diag_fill', 'usb_diag_fill_regs', 'usb_diag_fill_errors',
              'usb_diag_fill_addr', 'comm_channel_diag', 'comm_server_diag',
@@ -40,6 +40,8 @@ def run():
     if enabled:
         for code, expected in ((111, [111]), (112, [112, 113])):
             answers, wires = command(m, code, 0, 0)
+            from test_stage4_usb import frames
+            wires = frames(b''.join(wires))
             assert not answers and [p[8] for p in wires] == expected
             packets.extend(p.hex() for p in wires)
             for packet in wires:

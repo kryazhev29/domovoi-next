@@ -56,7 +56,7 @@
         EXTERN memcmp
         EXTERN strlen
         EXTERN usb_in_armed
-        EXTERN user_storage_command_ready
+        EXTERN USB_Tx_CommandReady
 
         PUBLIC usb_buffer
 #if DOMOVOI_DIAG
@@ -975,8 +975,8 @@ usb_check_data:
           CFI R5 Frame(CFA, -32)
           CFI R4 Frame(CFA, -36)
           CFI CFA R13+40
-          CFI FunCall user_storage_command_ready
-        BL       user_storage_command_ready
+          CFI FunCall USB_Tx_CommandReady
+        BL       USB_Tx_CommandReady
         MRS      R9,PRIMASK
         MOVS     R4,#+0
         CPSID    I

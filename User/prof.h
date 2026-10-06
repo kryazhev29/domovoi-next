@@ -29,7 +29,7 @@ extern uint32_t prof_card_mark; // такт приёма кадра Wiegand, 0 - карты нет
 void prof_init(void);
 void prof_add(uint8_t i, uint32_t cycles);
 void prof_relay_on(void);
-void prof_send(uint8_t uniqId);
+void prof_send_comm(const uint8_t *reply, uint16_t size);
 
 #else
 #define PROF_NOW() 0u
@@ -37,7 +37,7 @@ void prof_send(uint8_t uniqId);
 #define PROF_CARD_MARK() ((void)0)
 #define prof_init() ((void)0)
 #define prof_relay_on() ((void)0)
-#define prof_send(uniqId) ((void)0)
+#define prof_send_comm(reply, size) ((void)0)
 #endif
 
 #endif

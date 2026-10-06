@@ -1,0 +1,25 @@
+"""Independent bitwise oracle for the linked hardware CRC users."""
+import random
+from iar_irq_support import Machine
+
+
+def word(crc, value):
+    crc ^= value
+    for _ in range(32):
+        crc = ((crc << 1) ^ (0x04c11db7 if crc & 0x80000000 else 0)) & 0xffffffff
+    return crc
+
+
+def run():
+    m = Machine(); m.init(); rng = random.Random(41006)
+    words = [0, 0xffffffff, 0x12345678] + [rng.getrandbits(32) for _ in range(512)]
+    maximum = 0
+    for length in (1, 2, 16, 256, len(words)):
+        crc = m.call('fw_crc_begin'); assert crc == 0xffffffff
+        for value in words[:length]:
+            crc = word(crc, value)
+            assert m.call('fw_crc_next', 0, value) == crc
+            maximum = max(maximum, m.steps)
+        # Starting the next exclusive task must discard the preceding DR state.
+        assert m.call('fw_crc_begin') == 0xffffffff and m.crc_model.value == 0xffffffff
+    return {'word_cases': sum((1, 2, 16, 256, len(words))), 'maximum_word_instructions': maximum, 'arbitrary_seed_restore': False}

@@ -2,6 +2,7 @@
 #include "fast_kernels.h"
 #include "runtime_internal.h"
 #include "prof.h"
+#include "../fw_crc.h"
 #include "../user_format.h"
 #include "../hybrid/string_select.h"
 #include "stm32_it.h"
@@ -3891,7 +3892,7 @@ if (cch != CH_USB && len >= 5){
         user_send_usbDiag(uniqId);
       break;
     case USB_COMM_DIAG_COMMAND:
-      if (cch == CH_USB) { user_send_commDiag(uniqId); prof_send(uniqId); }
+      if (cch == CH_USB) { user_send_commDiag(uniqId); }
       break;
 
     #endif
@@ -5046,7 +5047,7 @@ static void fw_storage_poll(uint32_t now)
       fw_async_complete(fw_blocks_done(0)); return;
     }
     fw_job.remaining = header.firmwareSize; fw_job.expected_crc = header.firmwareCRC;
-    fw_job.position = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET; fw_job.crc = 0xffffffffu;
+    fw_job.position = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET; fw_job.crc = fw_crc_begin();
     fw_job.phase = FA_CRC; return;
   }
   if (fw_job.phase == FA_CRC) {
@@ -5055,7 +5056,7 @@ static void fw_storage_poll(uint32_t now)
     if (!mem_read(fw_job.position, fw_job.data, n)) goto read_error;
     for (uint16_t i = 0; i < n; i += 4u) {
       uint32_t word; memcpy(&word, fw_job.data + i, 4);
-      fw_job.crc = CRC32(fw_job.crc, word); /* existing verified ASM kernel */
+      fw_job.crc = fw_crc_next(fw_job.crc, word);
     }
     fw_job.position += n; fw_job.remaining -= n;
     if (!fw_job.remaining) fw_async_complete(fw_blocks_done(fw_job.crc == fw_job.expected_crc));
@@ -5391,31 +5392,16 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
 
   if (!size || (size & 3u)) return false;
 
-  uint32_t crcvalue = 0xffffffff;
+  uint32_t crcvalue = fw_crc_begin();
   uint32_t readed;
   uint32_t i;
 
-  // подаём тактирование на модуль CRC
-  /*RCC_AHBPeriphClockCmd(RCC_AHBPeriph_CRC, ENABLE);
-  
-  CRC_ResetDR();
-  
-  while (size > 0){
-    readed = (size > 128) ? 128 : size; // сколько считывать байт
-    mem_read (adr, bf, readed);
-    // аппаратный подсчёт контрольной суммы
-    crcvalue = CRC_CalcBlockCRC(bf32, readed/4);
-
-    adr += readed;
-    size -= readed;
-  }*/
-  
   while (size > 0){
     readed = (size > 128) ? 128 : size; // сколько считывать байт
     if (!mem_read (adr, bf, readed)) return false;
     
     for (i = 0; i < (readed/4); i++)
-      crcvalue = CRC32(crcvalue, bf32[i]);
+      crcvalue = fw_crc_next(crcvalue, bf32[i]);
 
     adr += readed;
     size -= readed;
@@ -5429,20 +5415,6 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
 }
 #endif
 
-#ifndef ASM_CRC
-#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
-uint32_t CRC32(uint32_t crc, uint32_t data){
-  crc = crc ^ data;
-  for (uint8_t i = 0; i < 32; i++){
-    if (crc&0x80000000)
-      crc = (crc<<1)^0x4C11DB7;
-    else
-      crc <<= 1;
-  }
-  return crc;
-}
-#endif
-#endif /* !ASM_CRC */
 
 /* Команда 111, раскладка версии 4: 57 значений uint32, младшим байтом вперёд.
  *  0 версия, 1 время работы с, 2 миллисекунды,
@@ -5536,7 +5508,7 @@ HYBRID_LOCAL void user_send_commDiag(uint8_t uniqId)
   memcpy(&send_buffer[9], (uint8_t*)v, sizeof(v));
   crc = crc16_calc(&send_buffer[4], len + 2);
   send_buffer[len + 6] = crc & 0xff; send_buffer[len + 7] = (crc >> 8) & 0xff;
-  usb_send(send_buffer, len + 8);
+  prof_send_comm(send_buffer, len + 8);
 }
 #endif
 #endif

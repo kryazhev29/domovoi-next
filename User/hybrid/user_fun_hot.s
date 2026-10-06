@@ -25,7 +25,6 @@
         PUBLIC id_nextEnd
         PUBLIC id_time_end
         PUBLIC id_watch_end
-        EXTERN prof_send
         EXTERN expiry_runtime_active
         EXTERN expiry_runtime_poll
         EXTERN idclear_runtime_begin
@@ -99,7 +98,8 @@
         EXTERN service_crc_poll
         EXTERN service_crc_cancel
         EXTERN service_crc_quiet
-        EXTERN CRC32
+        EXTERN fw_crc_begin
+        EXTERN fw_crc_next
         EXTERN WG_init
         EXTERN WG_process
         EXTERN __aeabi_memclr
@@ -13287,8 +13287,6 @@ user_parse_comand:
           CFI FunCall user_send_commDiag
         BL       user_send_commDiag
         MOV      R0,R6
-          CFI FunCall prof_send
-        BL       prof_send
         B.N      ??user_parse_comand_1
 #endif
 ??user_parse_comand_42:
@@ -16109,7 +16107,8 @@ fw_storage_poll:
         LDR      R0,[R5, #+0]
         ADD      R0,R0,#+512
         STR      R0,[R4, #+8]
-        MOV      R0,#+4294967295
+          CFI FunCall fw_crc_begin
+        BL       fw_crc_begin
         STR      R0,[R4, #+16]
         MOVS     R0,#+4
         B.N      ??fw_storage_poll_17
@@ -16136,8 +16135,8 @@ fw_storage_poll:
         STR      R3,[SP, #+0]
         MOV      R1,R3
         LDR      R0,[R4, #+16]
-          CFI FunCall CRC32
-        BL       CRC32
+          CFI FunCall fw_crc_next
+        BL       fw_crc_next
         STR      R0,[R4, #+16]
         ADDS     R6,R6,#+4
         UXTH     R6,R6

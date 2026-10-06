@@ -1,10 +1,11 @@
 /* Доработка: Кряжев А., 2026. Command19/rollback, including owned error replies. */
 #include "runtime_internal.h"
+#include "../fw_crc.h"
 extern uint8_t fw_start_rejected(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t);
 extern const char *fw_start_refused(void);
 extern uint8_t fw_same_download(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t,dataChanel_e);
 extern void fw_log(logUpdate_e,const char *),fw_abort(const char *);
-extern uint32_t fw_rollback_pos,fw_rollback_end,CRC32(uint32_t,uint32_t);
+extern uint32_t fw_rollback_pos,fw_rollback_end;
 extern uint8_t fw_write_errors,store_save_requested;
 extern bool store_snapshot(void);
 /* Same store layout exported by user_fun; offsets are part of the ASM ABI. */
@@ -107,11 +108,11 @@ start:
     }
     p->expected=rt_get32(p->header+12); n=rt_get32(p->header+8);
     if(!n || (n&3u) || n>0x17e00u) goto bad_crc;
-    p->end=n+512; p->pos=512; p->crc=0xffffffffu; p->phase=phase==13?14:2; return;
+    p->end=n+512; p->pos=512; p->crc=fw_crc_begin(); p->phase=phase==13?14:2; return;
   case 2: case 14:
     n=p->end-p->pos; if(n>64) n=64; p->len=(uint16_t)n;
     if(!w25_read_data(mem[phase==2?1:0].start+p->pos,p->data,p->len)) goto read_error;
-    for(n=0;n<p->len;n+=4) p->crc=CRC32(p->crc,rt_get32(p->data+n));
+    for(n=0;n<p->len;n+=4) p->crc=fw_crc_next(p->crc,rt_get32(p->data+n));
     p->pos+=p->len; if(p->pos<p->end) return;
     if(p->crc!=p->expected) goto bad_crc;
     if(phase==14) { fw_rollback_end=0; fw_log((logUpdate_e)137,NULL); device.rebootToUpdate=1; goto cancel; }

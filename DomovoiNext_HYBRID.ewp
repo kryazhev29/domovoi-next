@@ -3518,6 +3518,9 @@
         <file>
             <name>$PROJ_DIR$\User\wiegand.c</name>
         </file>
+        <file>
+            <name>$PROJ_DIR$\User\fw_crc.c</name>
+        </file>
     </group>
     <file>
         <name>$PROJ_DIR$\board.c</name>

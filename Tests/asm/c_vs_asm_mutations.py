@@ -55,12 +55,14 @@ def cases():
     def add(label,m,symbol,mode,check):result.append((label,m,symbol,mode,check))
     def kernel(name,args,expected,data=b'abcdefghij'):
         m=Machine();m.init();m.u.mem_write(0x21000000,data)
-        def check():assert m.call(name,*args)==expected
+        def check():
+            if name == 'fw_crc_next': m.call('fw_crc_begin')
+            assert m.call(name,*args)==expected
         check();add(name,m,name,'return-zero',check)
     m=Machine();m.init();m.u.mem_write(0x21000000,b'abcdefghij')
     for name,args in (('fast_fnv10',(0x21000000,)),('idindex_hash',(7,0x21000000)),
                       ('crc16_calc',(0x21000000,10)),('crc16_calcInit',(0x21000000,10,65535)),
-                      ('CRC32',(0xffffffff,0x12345678)),('fast_sldn',(0x21000000,10))):
+                      ('fw_crc_next',(0xffffffff,0x12345678)),('fast_sldn',(0x21000000,10))):
         expected=m.call(name,*args);assert expected;kernel(name,args,expected)
     kernel('fast_gf2_apply',(0x21000000,1),1,b'\x01\0'*16)
     m=Machine();m.init();m.u.mem_write(0x21000000,b'\x00')

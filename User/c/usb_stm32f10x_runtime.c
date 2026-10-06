@@ -253,7 +253,8 @@ static void usb_rx_consume(uint16_t length)
 // usb check data --------------------------------------------------------------
 void usb_check_data (void)
 {
-  uint8_t store_ready = user_storage_command_ready();
+  extern uint8_t USB_Tx_CommandReady(void);
+  uint8_t store_ready = USB_Tx_CommandReady();
   uint32_t mask = __get_PRIMASK();
   uint16_t count, skip = 0, body, total, crc;
   __disable_irq();
