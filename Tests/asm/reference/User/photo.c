@@ -1,4 +1,6 @@
 // Доработка: Кряжев А., 2026
+// Эталон прежнего формата фото для проверок протокола и исторических ошибок.
+// В продукт C/HYBRID не входит; актуальный автомат проверяется по IAR ELF.
 // C328/OV528: последовательность команд из старого Modules/jpeg.c.
 #include "photo.h"
 #include "fast_kernels.h"
@@ -40,11 +42,13 @@ enum { P_IDLE, P_SYNC, P_INIT, P_SIZE, P_SNAP, P_GET, P_DATA, P_PREP };
 #endif
 
 
+// Выделить контекст камеры при первом обращении.
 static uint8_t photo_alloc(void)
 {
   if (!photo) photo = calloc(1, sizeof(*photo));
   return photo != NULL;
 }
+// Остановить съёмку и вернуть обычный приём RS485.
 static void photo_stop(void)
 {
   uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
@@ -63,6 +67,7 @@ uint32_t rs485_baud(void)
   default: return 115200;
   }
 }
+// Нормализовать настройки и запустить RS485.
 void rs485_init(void)
 {
   uint8_t i, camera = 0, other = 0;
@@ -79,6 +84,7 @@ void rs485_init(void)
   uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
   uart_setRecTimeout(PORT1_PORT, 10);
 }
+// Применить настройки и остановить несовместимую съёмку.
 void rs485_set_config(const uint8_t *data)
 {
   const config_s *next = (const config_s *)data;
@@ -116,6 +122,7 @@ static void photo_fail(const char *why)
   user_debug(text);
   photo_stop();
 }
+// Послать команду камеры и назначить срок ответа.
 static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
   uint8_t p[6] = {0xAA, cmd, a, b, c, d};
@@ -123,11 +130,12 @@ static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t 
   photo->last = timers_getMillis();
   photo->deadline = photo->last + 2000u;
 }
+// Послать команду текущей фазы камеры.
 static void photo_issue(void)
 {
   switch (photo->stage) {
   case P_SYNC: photo_command(0x0D,0,0,0,0); break;
-  case P_INIT: photo_command(1,0,7,0,PHOTO_RESOLUTION); break; // JPEG
+  case P_INIT: photo_command(1,0,7,0,PHOTO_RESOLUTION); break; // Получить сжатый снимок JPEG.
   case P_SIZE: photo_command(6,8,PHOTO_PACKET,0,0); break;
   case P_SNAP: photo_command(5,0,0,0,0); break;
   case P_GET: photo_command(4,1,0,0,0); break;
@@ -135,6 +143,7 @@ static void photo_issue(void)
   }
   if (photo->stage == P_SYNC) photo->deadline = photo->last + 50u;
 }
+// Проверить выбранную камеру и начать съёмку в эталонной модели.
 cmdCode_e photo_start(uint8_t address)
 {
 #ifdef ASM_RUNTIME
@@ -187,6 +196,7 @@ cmdCode_e photo_start(uint8_t address)
   return CMD_SUCCESS;
 #endif
 }
+// Записать и прочитать обратно данные прежнего эталона.
 static uint8_t photo_write(uint32_t address, uint8_t *data, uint16_t n)
 {
   uint8_t check[64];
@@ -207,6 +217,7 @@ uint32_t photo_storage_end(void)
 {
   return mem[MB_PHOTO].start + (mem[MB_PHOTO].size >= 8192u ? mem[MB_PHOTO].size - 8192u : 0);
 }
+// Проверить контрольную сумму резервной копии прежнего формата.
 static uint8_t photo_backup_crc(uint32_t address, uint16_t n, uint32_t *result)
 {
   uint8_t b[64];
@@ -221,6 +232,7 @@ static uint8_t photo_backup_crc(uint32_t address, uint16_t n, uint32_t *result)
   *result = crc;
   return 1;
 }
+// Проверить маркер незавершённой очистки прежнего формата.
 uint8_t photo_cleanup_active(void)
 {
   uint32_t marker, scratch = photo_storage_end();
@@ -228,6 +240,7 @@ uint8_t photo_cleanup_active(void)
   if (!mem_read(scratch + MEMSECTORSIZE + 32u, (uint8_t*)&marker, 4)) return 2;
   return marker == 0u;
 }
+// Восстановить намерение копирования или очистки прежнего формата.
 uint8_t photo_recover(void)
 {
   uint32_t h[4], crc, scratch = photo_storage_end();
@@ -238,6 +251,7 @@ uint8_t photo_recover(void)
       !h[1] || h[1] >= MEMSECTORSIZE || (!photo_restore_phase && (!photo_backup_crc(scratch, (uint16_t)h[1], &crc) || crc != h[2]))) return 0;
   return 0; // Копия восстанавливается по шагам из photo_poll.
 }
+// Выполнить один шаг восстановления резервной копии.
 static uint8_t photo_restore_step(void)
 {
   uint32_t h[4], crc, scratch = photo_storage_end();
@@ -265,6 +279,7 @@ static uint8_t photo_restore_step(void)
   user_getPhotoCount();
   return 1;
 }
+// Проверить место и подготовить защиту записи прежнего формата.
 static uint8_t photo_prepare(uint32_t size)
 {
 #ifdef ASM_RUNTIME
@@ -303,6 +318,7 @@ static uint8_t photo_prepare(uint32_t size)
   return 1;
 #endif
 }
+// Выполнить следующий шаг подготовки области снимка.
 static uint8_t photo_prepare_step(void)
 {
   uint32_t end = photo_storage_end(), h[4];
@@ -354,6 +370,7 @@ static uint8_t photo_data_ready(void)
   photo_erased_to += MEMSECTORSIZE;
   return 0;
 }
+// Разобрать ответ камеры и перейти к следующему шагу съёмки.
 static void photo_frame(uint8_t *p, uint16_t n)
 {
   uint16_t i, length, id;
@@ -427,6 +444,7 @@ uint16_t photo_confirmed_offset(uint32_t address, uint16_t size)
   }
   return done;
 }
+// Найти следующую ячейку подтверждения прежнего формата.
 static uint32_t photo_ack_slot(uint32_t address)
 {
   uint16_t i, entry[4];
@@ -438,6 +456,7 @@ static uint32_t photo_ack_slot(uint32_t address)
   }
   return 0;
 }
+// Записать подтверждённое смещение прежнего формата.
 static uint8_t photo_ack_write(uint32_t address, uint16_t size, uint16_t offset)
 {
   uint16_t value[2];
@@ -477,6 +496,7 @@ static uint8_t photo_clear_confirmed(void)
   if (photo) { photo->readAddress = first; photo->offset = 0; }
   return 1;
 }
+// Стереть следующий сектор подтверждённой очереди прежнего формата.
 static void photo_cleanup_step(void)
 {
   uint32_t marker[3], at = photo_storage_end() + MEMSECTORSIZE + 32u;
@@ -500,6 +520,7 @@ static void photo_cleanup_step(void)
   device.newAddressPhoto = first;
   device.countPhoto = 0; device.status.readyPhoto = 0;
 }
+// Найти первый неподтверждённый снимок и его смещение.
 static uint8_t photo_first_pending(uint32_t *address, uint32_t *offset)
 {
   uint32_t a;
@@ -548,6 +569,7 @@ static cmdCode_e photo_ack_request(uint32_t number, uint16_t offset)
   }
   return CMD_SUCCESS;
 }
+// Принять команду выгрузки и назначить курсор эталонного потока.
 cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
 #ifdef ASM_RUNTIME
@@ -575,6 +597,7 @@ cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, u
   return CMD_SUCCESS;
 #endif
 }
+// Найти следующую порцию данных эталонного потока.
 static uint8_t photo_next(uint32_t *address, uint32_t *offset, photoParam_s *head)
 {
   uint32_t a, first = *address;
@@ -591,6 +614,7 @@ static uint8_t photo_next(uint32_t *address, uint32_t *offset, photoParam_s *hea
   }
   return 0;
 }
+// Сформировать и передать один пакет фото из эталона.
 static void photo_send(void)
 {
   uint32_t address = photo->readAddress, offset = photo->offset;
@@ -628,6 +652,7 @@ static void photo_send(void)
     photo_pending_since = timers_getMillis();
   } else photo->pending = 0;
 }
+// Остановить серверный поток при разрыве соединения.
 void photo_connection_lost(void)
 {
   if (photo && photo->channel == CH_SERVER) photo->pending = 0;
@@ -635,6 +660,7 @@ void photo_connection_lost(void)
   if (photo && photo->channel==CH_SERVER) pr.quiet=1;
 #endif
 }
+// Обслужить съёмку, восстановление и поток эталонной модели.
 void photo_poll(void)
 {
 #ifdef ASM_RUNTIME

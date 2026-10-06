@@ -1,5 +1,6 @@
 // Доработка: Кряжев А., 2026
 // Эмулятор C328 и NOR; исполняется производственный код.
+// Текущий C/HYBRID отдельно проверяется по машинному коду IAR и модели NOR.
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 #include <time.h>
 static jmp_buf power_reset;
 static int cut_after, flash_ops, byte_cuts;
+// Прервать выполнение в заданной точке записи или стирания модели NOR.
 static void power_cut(void) { if(cut_after && ++flash_ops==cut_after) longjmp(power_reset,1); }
 typedef enum { CMD_SUCCESS, CMD_PARAMERROR, CMD_RUNERROR } cmdCode_e;
 typedef enum {CH_USB, CH_SERVER, CH_SMS} dataChanel_e;
@@ -40,6 +42,7 @@ static uint8_t *bridge_jpeg;
 static uint32_t rxready, baudrate, send_ready_at;
 static int connected, send_attempts;
 static int quiet, nack, bad_once, fail_send, sends, erases, programs, fail_write;
+// Получить воспроизводимый байт снимка для проверки содержимого.
 static uint8_t pixel(uint32_t i) {
  if (bridge_jpeg) return bridge_jpeg[i];
  if (!i || i == image_size-2) return 0xFF;
@@ -47,23 +50,35 @@ static uint8_t pixel(uint32_t i) {
  if (i == image_size-1) return 0xD9;
  return (uint8_t)(i*13u + 3u);
 }
+// Вернуть время модели для проверки сроков ожидания.
 static uint32_t timers_getMillis(void) { return now; }
+// Имитировать обслуживание сторожевого таймера.
 static void wdt_reload(void) { watchdog++; }
 static uint32_t failed_header_read=UINT32_MAX;
 static unsigned fail_erase;
+// Прочитать модель NOR или вернуть заданную ошибку чтения.
 static bool mem_read(uint32_t a,uint8_t *p,uint16_t n) { assert(a+n <= sizeof(flash)); memcpy(p,flash+a,n); return a!=failed_header_read; }
+// Запрограммировать модель NOR с ошибками и точками обрыва питания.
 static bool mem_write(uint32_t a,uint8_t *p,uint16_t n) {
  assert(a+n <= sizeof(flash)); if (fail_write) return false; programs++; while(n--) {flash[a++] &= *p++; if(byte_cuts) power_cut();} if(!byte_cuts) power_cut(); return true;
 }
+// Стереть сектор модели NOR с заданной точкой обрыва.
 static bool mem_erase_sector(uint32_t a) { assert(a%4096 == 0); assert(a+4096 <= sizeof(flash)); if(fail_erase)return false;memset(flash+a,255,4096); erases++; power_cut(); return true; }
+// Настроить буфер приёма модели RS485.
 static int uart_init(uint8_t u,uint32_t rate,uint8_t stop,uint8_t *p,uint16_t n) {(void)u;assert((rate==115200 || rate==57600 || rate==38400 || rate==19200 || rate==9600) && !stop);baudrate=rate;rx=p;rxcap=n;rxcount=0;return 1;}
+// Сообщить о наличии принятого кадра модели UART.
 static int uart_getstate(uint8_t u) {(void)u;return rxcount!=0 && now>=rxready;}
+// Сообщить, продолжается ли приём модели UART.
 static int uart_isReceiving(uint8_t u) {(void)u;return 0;}
+// Вернуть число принятых байтов модели UART.
 static uint16_t uart_received(uint8_t u) {(void)u;return rxcount;}
+// Освободить обработанный приёмный буфер UART.
 static void uart_clear(uint8_t u) {(void)u;rxcount=0;}
+// Передать подготовленный ответ камеры в модель UART.
 static void reply(uint8_t cmd,uint8_t a,uint8_t b,uint8_t c,uint8_t d) {
  uint8_t p[]={0xAA,cmd,a,b,c,d}; assert(rxcount+6<=rxcap);memcpy(rx+rxcount,p,6);rxcount+=6;
 }
+// Разобрать команду камеры и сформировать ответ модели.
 static void uart_send(uint8_t u,uint8_t *p,uint16_t n) {
  (void)u;assert(n==6 && p[0]==0xAA);sent_commands++;assert(!device.status.readyToUpdate);
  if(bridge_jpeg) {
@@ -94,12 +109,16 @@ static void uart_send(uint8_t u,uint8_t *p,uint16_t n) {
  }
  rxready=now+((n+rxcount)*10000u+115199u)/115200u+2u;
 }
+// Вычислить эталон CRC16 для проверки пакетов на проводе.
 static uint16_t crc16_calc(uint8_t *p,uint16_t n) {uint16_t c=0;while(n--)c+=*p++;return c;}
+// Сохранить пакет USB для побайтовой проверки.
 static uint8_t usb_send(uint8_t *p,uint16_t n) {if(fail_send)return 0;assert(n<=sizeof(wire));memcpy(wire,p,n);wirelen=n;assert(sends<32);memcpy(history[sends],p,n);history_len[sends]=n;sends++;return 1;}
 static int8_t connection_state(uint8_t h) {(void)h;return connected?CE_CONNECTED:-1;}
+// Имитировать готовность серверного транспорта к следующему пакету.
 static int connection_datasended(uint8_t h) {(void)h;return now>=send_ready_at;}
 static int8_t connection_send(uint8_t h,uint8_t *p,uint16_t n) {(void)h;send_attempts++;if(now<send_ready_at)return -1;if(!usb_send(p,n))return -1;send_ready_at=now+3;return CE_OK;}
 static cmdCode_e answer;
+// Сохранить код и идентификатор ответа на внешнюю команду.
 static void user_send_answer_comand(uint8_t cmd,cmdCode_e code,dataChanel_e channel,uint8_t id) {(void)cmd;(void)channel;(void)id;answer=code;}
 uint32_t photo_storage_end(void);
 uint8_t photo_recover(void);
@@ -107,46 +126,61 @@ uint8_t photo_cleanup_active(void);
 uint16_t photo_confirmed_offset(uint32_t address,uint16_t size);
 static int fail_alloc;
 static size_t live_heap, peak_heap;
+// Выделить память модели с учётом отказа и текущего пика.
 static void *host_malloc(size_t n) {
  size_t use=((n+7u)&~7u)+16u;
  if(fail_alloc || live_heap+use>5120)return NULL;
  size_t *p=malloc(use);assert(p);*p=use;live_heap+=use;if(live_heap>peak_heap)peak_heap=live_heap;return p+2;
 }
+// Освободить память модели и обновить учёт занятого объёма.
 static void host_free(void *p){if(p){size_t *h=(size_t*)p-2;live_heap-=*h;free(h);}}
+// Выделить и обнулить память модели через проверяемый распределитель.
 static void *host_calloc(size_t n,size_t size){void *p=host_malloc(n*size);if(p)memset(p,0,n*size);return p;}
 static unsigned debug_reasons;
+// Поглотить отладочный текст, не создавая внешнего соединения.
 static void user_debug(const char *text){(void)text;debug_reasons++;}
 static unsigned photo_events;static uint32_t photo_logged;
+// Запомнить событие сохранения снимка для проверки номера.
 static uint8_t log_addPhotoEvent(uint32_t number){photo_events++;photo_logged=number;return 1;}
 #define malloc host_malloc
 #define calloc host_calloc
 #define free host_free
+// Имитировать настройку тайм-аута UART.
 static void uart_setRecTimeout(uint8_t p,uint16_t t){(void)p;(void)t;}
 uint32_t rs485_baud(void);
-/* PRODUCTION */
+/* ЭТАЛОН ФОТО */
 #undef malloc
 #undef calloc
 #undef free
 
+// Имитировать перезапуск с сохранением содержимого NOR.
 static void reset_ram(void) {host_free(photo);photo=NULL;photo_erased_to=photo_pending_since=0;photo_copy_off=photo_prep_phase=photo_restore_phase=0;memset(&device,0,sizeof(device));device.datetime=1789900000;uart_init(0,115200,0,port_buffer,32);for(int i=0;i<100 && !photo_cleanup_active() && !photo_recover();i++){int prior=erases;now++;photo_poll();assert(erases-prior<=1);}device.countPhoto=user_getPhotoCount();device.status.readyPhoto=device.countPhoto!=0;}
+// Довести очистку эталонной очереди до конца без зависания.
 static void clean(void) {
  reset_ram();memset(flash,255,sizeof(flash));device.status.readyPhoto=0;mem[0].start=0;mem[0].size=1024*1024;
  memset(&config,0,sizeof(config));config.rs485Mode=1;config.rs485Periphery[0].address=17;config.rs485Periphery[0].type=3;
  rxready=0;now=0;image_size=2507;sent_commands=packet_requests=watchdog=0;
  quiet=nack=bad_once=fail_send=sends=erases=programs=fail_write=0;wirelen=0;connected=1;send_ready_at=0;send_attempts=0;
 }
+// Выполнить один шаг эталона и проверить ограничение числа стираний.
 static void step(void){int prior=erases;now+=1;photo_poll();assert(erases-prior<=1);}
+// Записать снимок заданного размера в эталонной модели.
 static void capture(void){if(user_getPhotoCount())device.datetime++;cmdCode_e result=photo_start(17);if(result==CMD_RUNERROR && photo_cleanup_active()){for(int i=0;i<300 && photo_cleanup_active();i++)step();assert(!photo_cleanup_active());result=photo_start(17);}assert(result==CMD_SUCCESS);for(int i=0;i<100000 && device.getPhoto;i++)step();assert(!device.getPhoto);}
+// Сверить данные сохранённого снимка с воспроизводимым образцом.
 static void check_image(uint32_t a) {
  photoParam_s h;mem_read(a,(uint8_t*)&h,8);assert(h.datetime==device.datetime && h.size==image_size);
  for(uint32_t i=0;i<image_size;i++)assert(flash[a+PHOTO_RECORD_HEAD+i]==pixel(i));
 }
+// Передать подтверждённые номер и смещение команде выгрузки.
 static void request_at(uint8_t id,uint32_t number,uint16_t offset,int explicit_offset) {
  uint8_t args[6];memcpy(args,&number,4);memcpy(args+4,&offset,2);
  int prior=erases;assert(photo_request(CH_SERVER,id,args,explicit_offset?6:0)==CMD_SUCCESS);assert(erases==prior);
 }
+// Выполнить все шаги эталонного потока до его завершения.
 static void drain(void){for(int i=0;i<1000 && photo && photo->pending;i++)step();assert(!photo || !photo->pending);}
+// Запросить выгрузку очереди и проверить ответ команды.
 static void request(uint8_t id){request_at(id,0,0,0);}
+// Проверить заголовок, курсор, данные и CRC пакета на проводе.
 static void check_wire(uint16_t off,uint16_t n,uint8_t count) {
  assert(wire[6]==60 && wire[8]==14 && wire[9]==count);
  if(!count){assert(wirelen==12);return;}
@@ -154,9 +188,11 @@ static void check_wire(uint16_t off,uint16_t n,uint8_t count) {
  uint32_t stamp,size;memcpy(&stamp,wire+10,4);memcpy(&size,wire+14,4);assert(stamp==device.datetime && size==image_size);
  for(uint16_t i=0;i<n;i++)assert(wire[20+i]==pixel(off+i));
 }
+// Проверить сохранность ранее записанных снимков.
 static void check_saved(int i,uint16_t off,uint16_t n,uint8_t count,uint32_t number) {
  assert(i<sends);wirelen=history_len[i];memcpy(wire,history[i],wirelen);uint32_t old=device.datetime;device.datetime=number;check_wire(off,n,count);device.datetime=old;
 }
+// Проверить ошибки NOR и сохранность снимков при отказах.
 static void storage_fault_tests(void) {
  uint32_t bad[3], address, offset, crc, end;int before_programs,before_erases,before_sends;
  clean();capture();check_image(0);end=photo_storage_end();
@@ -181,7 +217,7 @@ static void storage_fault_tests(void) {
  before_sends=sends;size_t held_heap=live_heap;failed_header_read=PHOTO_RECORD_HEAD;
  for(unsigned k=0;k<10;k++){photo_send();assert(live_heap==held_heap && sends==before_sends && !photo->offset && photo->pending);}
  failed_header_read=UINT32_MAX;drain();assert(sends>before_sends);
- /* Failed verification cannot bless even bytes that happen to match. */
+ /* Ошибка проверки запрещает успех, даже если байты случайно совпали. */
  failed_header_read=0;assert(!photo_write(0,flash,4));failed_header_read=UINT32_MAX;
  fail_write=1;assert(!photo_write(0,flash,4));fail_write=0;
  assert(photo_ack_write(0,(uint16_t)image_size,(uint16_t)image_size));
@@ -195,7 +231,7 @@ static void storage_fault_tests(void) {
  failed_header_read+=12u;photo_cleanup_step();assert(erases==before_erases && programs==before_programs);
  failed_header_read=UINT32_MAX;fail_erase=1;photo_cleanup_step();
  assert(erases==before_erases && programs==before_programs);fail_erase=0;
- /* Recovery must validate its backup and erase before advancing phases. */
+ /* Восстановление проверяет резерв и стирание до перехода к следующей фазе. */
  clean();end=photo_storage_end();memset(flash+end,0xA5,64);
  assert(photo_backup_crc(end,64,&crc));
  { uint32_t h[4]={0,64,crc,0x50484F54u};memcpy(flash+end+MEMSECTORSIZE,h,sizeof(h)); }
@@ -209,7 +245,7 @@ static void storage_fault_tests(void) {
  puts("photo: read/write/erase faults preserve stored images, reject missing metadata and retain upload position");
 }
 
-/* Independent legacy CRC32 answers generated with zlib; internal CRC has no final XOR. */
+/* Эталон CRC32 получен через zlib; внутренний CRC не имеет итогового XOR. */
 static void backup_crc_vectors(void) {
  const struct { uint16_t n; uint32_t crc; } cases[] = {{0u,0xFFFFFFFFu}, {1u,0xBA2FC9FAu}, {3u,0xC8AC5A84u}, {63u,0x4519F626u}, {64u,0x004519F6u}, {65u,0xB5D08A28u}, {255u,0x99D926A2u}, {256u,0x71285CAFu}, {257u,0xD1CA4FADu}, {4095u,0xE9DEF125u}};
  uint32_t crc, a;
@@ -223,6 +259,7 @@ static void backup_crc_vectors(void) {
  failed_header_read=UINT32_MAX;clean();
 }
 
+// Выполнить сценарии протокола и исторических сбоев эталонной модели.
 int main(int argc,char **argv) {
  backup_crc_vectors();
  storage_fault_tests();
@@ -240,7 +277,7 @@ int main(int argc,char **argv) {
  drain();assert(sends==1);check_saved(0,0,0,0,0);
  clean();command(7,4,99,1);assert(answer==CMD_PARAMERROR);command(7,3,17,1);assert(answer==CMD_PARAMERROR);
  command(21,4,0,1);assert(answer==CMD_PARAMERROR);unsigned events=photo_events;capture();check_image(0);assert(user_getPhotoCount()==1 && device.status.readyPhoto);
- uint32_t stamp=device.datetime;assert(photo_events==events+1 && photo_logged==stamp); /* journal 129: number of the stored photo */
+ uint32_t stamp=device.datetime;assert(photo_events==events+1 && photo_logged==stamp); /* Событие 129 содержит номер сохранённого фото. */
  request_at(1,0,0,1);drain();assert(sends==6 && user_getPhotoCount()==1 && device.status.readyPhoto);
  for(int i=0;i<5;i++)check_saved(i,512*i,i==4?459:512,1,stamp);
  check_saved(5,0,0,0,stamp);

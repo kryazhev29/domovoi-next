@@ -1,4 +1,7 @@
-"""Sequential mutations of linked Thumb instructions (not the C specification)."""
+"""Доработка: Кряжев А., 2026. Мутации инструкций замороженного ASM.
+Подмена проверяется до выполнения сценария; каждая должна быть обнаружена.
+C и HYBRID проверяет общий набор парных мутаций.
+"""
 import test_photo_edges as edge
 import test_photo_runtime as runtime
 Original=runtime.PhotoMachine
@@ -6,6 +9,7 @@ Original=runtime.PhotoMachine
 for mode in ('pending','checksum','backup-crc','packet-advance','cancel'):
     applied=[]
     class Mutant(Original):
+        # Подготовить модель и перехватить аппаратные границы машинного кода.
         def __init__(self,*args):
             super().__init__(*args)
             name='pr_frame' if mode=='checksum' else 'photo_storage_cancel' if mode=='cancel' else 'photo_storage_poll'
@@ -23,7 +27,7 @@ for mode in ('pending','checksum','backup-crc','packet-advance','cancel'):
                 assert word&0xf000==0xd000,(mode,hex(word))
                 replacement=(word^0x100).to_bytes(2,'little') if mode=='pending' else b'\0\xbf'
             self.u.mem_write(a+off,replacement);applied.append(a+off)
-    # Patch setup is audited independently of the failure expected below.
+    # Подмена инструкции проверяется отдельно от ожидаемого падения сценария.
     probe=Mutant();assert len(applied)==1;applied.clear()
     edge.PhotoMachine=runtime.PhotoMachine=Mutant
     try:

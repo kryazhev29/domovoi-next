@@ -1,20 +1,27 @@
-"""Доработка: Кряжев А., 2026. Обрывы NOR при записи, ACK, очистке и переходе."""
-import hashlib,json,struct
+"""Доработка: Кряжев А., 2026. Обрывы NOR при записи, ACK, очистке и переходе.
+Проверяется машинный код выбранного IAR ELF; плата и сервер не используются.
+Результат относится к модели аппаратных границ.
+"""
+import json,struct
 from test_photo_runtime import *
 
+# Смоделировать обрыв посреди программирования или стирания NOR.
 def cut_image(flash,kind,a,b,n):
     cut=bytearray(flash)
     for i,x in enumerate(b[:n]):cut[a+i]=x if kind=='erase' else cut[a+i]&x
     return cut
 
 class Rebooter:
+    # Подготовить модель и перехватить аппаратные границы машинного кода.
     def __init__(self):
         self.m=PhotoMachine();self.ram=bytes(self.m.u.mem_read(0x20000000,0x5000))
+    # Перезапустить машинный код с исходной ОЗУ и заданным содержимым NOR.
     def boot(self,flash):
         m=self.m;m.u.mem_write(0x20000000,self.ram);m.flash[:]=flash;m.io=None;m.fault=None
         m.costs=[];m.counts={'read':0,'start':0,'poll':0};m.answers=[];m.sent=[];m.events=[];m.commands=[];m.rx_count=0;m.now=0
         m.boot_media();return m
 
+# Перезапустить модель в точках обрыва записи и сохранить предыдущее фото.
 def capture_cuts():
     initial=prefix_flash();initial[0x201000:0x202000]=b'\x55'*4096
     m=PhotoMachine(initial);m.boot_media();m.record_changes=True;m.capture(b'z'*129)
@@ -36,6 +43,7 @@ def capture_cuts():
         flash=cut_image(flash,kind,a,b,len(b))
     print('capture',count,'cuts PASS',flush=True);return {'cuts':count}
 
+# Проверить все значения повреждённого ACK и потерю частичного курсора при сбросе.
 def acknowledgement_cuts():
     m=PhotoMachine();m.boot_media();address,stamp=m.capture(b'a'*700);initial=bytes(m.flash)
     m.record_changes=True;m.packet(21,struct.pack('<IH',stamp,512));m.drain()
@@ -55,6 +63,7 @@ def acknowledgement_cuts():
         count+=1
     print('ACK',count,'bit cuts PASS',flush=True);return count
 
+# Довести отложенную очистку до устойчивого пустого состояния.
 def clean(m):
     for _ in range(100):
         m.port();m.drain()
@@ -62,6 +71,7 @@ def clean(m):
         assert not m.rget('fault')
     raise AssertionError('cleanup did not terminate')
 
+# Проверить обрывы очистки, старый формат и невоскрешение хвоста очереди.
 def cleanup_cuts():
     initial=prefix_flash(dirty=False);initial[0x200000+HEAD-1]=0
     initial[0x201000:0x201000+HEAD]=struct.pack('<IIIB',51,58,FORMAT,0)

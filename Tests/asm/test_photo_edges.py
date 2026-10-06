@@ -1,8 +1,12 @@
-"""Доработка: Кряжев А., 2026. Границы, ошибки и владение флеш фото."""
-import hashlib,json
+"""Доработка: Кряжев А., 2026. Границы, ошибки и владение флеш фото.
+Проверяется машинный код выбранного IAR ELF; плата и сервер не используются.
+Результат относится к модели аппаратных границ.
+"""
+import json
 from test_photo_runtime import *
 from test_photo_power import clean
 
+# Дождаться заданной фазы без скрытого зависания автомата.
 def reach(m,phase,limit=2500):
     for _ in range(limit):
         if m.rget('phase')==phase and m.io is None:return
@@ -10,10 +14,12 @@ def reach(m,phase,limit=2500):
         m.tick()
     raise AssertionError(('unreachable',phase))
 
+# Собрать внешний кадр камеры с номером и контрольной суммой.
 def frame(data,packet=0):
     b=struct.pack('<HH',packet,len(data))+data
     return b+bytes([sum(b)&255,0])
 
+# Проверить отмену до и после необратимой публикации фото.
 def cancellation():
     for name in ('DATA_DONE','PHOTO_MARK','PHOTO_DONE'):
         m=PhotoMachine(prefix_flash());m.boot_media();old=bytes(m.flash[0x200000:0x201000])
@@ -25,6 +31,7 @@ def cancellation():
         assert int.from_bytes(m.u.mem_read(m.device+m.d['countPhoto'],2),'little')==1+int(bool(committed))
     return 3
 
+# Проверить старые, повреждённые и немонотонные заголовки.
 def corrupt():
     for offset,value in ((8,0),(4,0),(4,65536)):
         f=prefix_flash();f[0x200000+offset:0x200004+offset]=struct.pack('<I',value)
@@ -37,6 +44,7 @@ def corrupt():
         assert int.from_bytes(m.u.mem_read(m.device+m.d['newAddressPhoto'],4),'little')==0x201000
     return 6
 
+# Проверить завершение запросов при ошибках чтения и записи NOR.
 def failures():
     for kind in ('read','start','poll'):
         m=PhotoMachine();m.boot_media();_,stamp=m.capture(b'x'*700)
@@ -50,6 +58,7 @@ def failures():
         assert m.rget('fault') and not m.events and m.io is None
     return 5
 
+# Проверить контрольную сумму, номер, фрагментацию и неверные длины кадров.
 def stream():
     m=PhotoMachine();m.boot_media();m.begin_camera(116);m.next_request();good=frame(b'x'*58)
     bad=bytearray(good);bad[-2]^=1
@@ -66,6 +75,7 @@ def stream():
         assert m.flash[0x200000:0x200000+HEAD]==b'\xff'*HEAD
     return 15
 
+# Проверить занятый транспорт, отказ рабочего буфера и разрыв соединения.
 def transport_and_heap():
     m=PhotoMachine();m.boot_media();_,stamp=m.capture(b'x'*768)
     for args in (struct.pack('<IH',stamp,769),struct.pack('<IH',stamp+1,0)):
@@ -83,6 +93,7 @@ def transport_and_heap():
     drop(m,REPLY,held);m.port();m.drain();assert len(m.sent)==1
     return 6
 
+# Проверить исключительное владение NOR и приоритет фоновых владельцев.
 def ownership():
     m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request();m.feed(frame(b'x'*58));m.tick()
     assert m.io and not m.checked('user_storage_command_ready') and not m.checked('user_storage_flash_ready')
@@ -98,6 +109,7 @@ def ownership():
         assert m.checked('mem_config_result')==1 if name=='store_save_requested' else m.checked('log_async_active')
     return 8
 
+# Убедиться, что пустая очередь стирает только первый сектор.
 def full_cleanup():
     f=prefix_flash(dirty=False);f[0x200000+HEAD-1]=0
     f[0x201000:0x300000]=b'\x55'*(255*4096)
@@ -107,6 +119,7 @@ def full_cleanup():
     assert [(kind,a) for kind,a,b in m.changes]==[('erase',0x200000)]
     return {'sectors':1,'passes':len(m.costs),'stack':m.stack_peak}
 
+# Проверить размеры, границы области и защиту от переполнения номера.
 def headers_and_space():
     for prefix in (1034,4087,4094,4095):
         f=prefix_flash(prefix);m=PhotoMachine(f);m.boot_media();old=bytes(f[0x200000:0x201000])

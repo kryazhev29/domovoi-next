@@ -1,4 +1,5 @@
-﻿# Доработка: Кряжев А., 2026
+# Доработка: Кряжев А., 2026
+# Эталон прежнего формата сохраняет независимые проверки ошибок протокола.
 # Каждая мутация должна компилироваться и падать на проверке поведения.
 import os, pathlib, shutil, subprocess, sys, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -57,17 +58,23 @@ mutations=[
  ('empty_no_flash_write','if (size && device.countPhoto) {','if (!device.countPhoto) { uint8_t zero = 0; mem_write(photo_storage_end() + MEMSECTORSIZE + 64u, &zero, 1); }\n  if (size && device.countPhoto) {'),
 ]
 
-subprocess.run([sys.executable,str(ROOT/"Tests/run_host.py"),"work","photo"],check=True)
 reports=[]
 with tempfile.TemporaryDirectory(prefix='photo-mutations-') as tmp:
  copy=pathlib.Path(tmp)
- for name in ['Tests/run_host.py','Tests/test_photo.c','Tests/comm_photo_slot.c','Tests/asm/reference/User/user_fun.c','Tests/asm/reference/User/photo.c','User/sector_journal.c','User/fast_kernels.h']:
+ for name in ['Tests/run_host.py','Tests/test_photo.c','Tests/comm_photo_slot.c','Tests/asm/reference/User/user_fun.c','Tests/asm/reference/User/photo.c','User/sector_journal.c','User/fast_kernels.h','User/user_format.h','User/user_format.c','User/domovoi_diag.h']:
   dest=copy/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,dest)
+ # Чужой общий исполнитель меняется только во временной копии; дифф есть в отчёте.
+ runner=copy/'Tests/run_host.py'
+ runner.write_bytes(runner.read_bytes().replace(b"source('Tests/test_photo.c').replace('/* PRODUCTION */'",
+     "source('Tests/test_photo.c').replace('/* ЭТАЛОН ФОТО */'".encode('utf-8')))
+ env={**os.environ,'DOMOVOI_ROOT':str(copy),
+      'PYTHONPATH':os.pathsep.join((str(ROOT/'Tests'),os.environ.get('PYTHONPATH','')))}
+ subprocess.run([sys.executable,str(runner),'work','photo'],env=env,check=True)
  original=(copy/'Tests/asm/reference/User/photo.c').read_text(encoding='cp1251')
  for name,old,new in mutations:
   assert original.count(old)==1,(name,original.count(old))
   (copy/'Tests/asm/reference/User/photo.c').write_bytes(original.replace(old,new).replace('\n','\r\n').encode('cp1251'))
-  r=subprocess.run([sys.executable,str(ROOT/'Tests/run_host.py'),'work','photo'],env={**os.environ,'DOMOVOI_ROOT':str(copy)},capture_output=True,text=True)
+  r=subprocess.run([sys.executable,str(runner),'work','photo'],env=env,capture_output=True,text=True)
   output=r.stdout+r.stderr
   assert r.returncode and 'error:' not in output and 'Assertion failed' in output,(name,r.returncode,output)
   reports.append(name+': DETECTED');print(reports[-1],flush=True)

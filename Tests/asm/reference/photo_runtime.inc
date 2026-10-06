@@ -1,6 +1,6 @@
-/* Independent specification of the checked-in IAR ASM photo state machines.
- * All NOR writes are owned until verified. No BUSY loops. One I/O/64-byte read
- * per storage pass; send buffers remain private across communication polls. */
+/* Доработка: Кряжев А., 2026. Эталон прежнего автомата фото для тестов ASM.
+ * Владение NOR сохраняется до проверки записи; активного ожидания нет.
+ * За проход — одна операция или чтение до 64 байт; пакет остаётся частным. */
 #include "photo_runtime.h"
 #include "usb_istr.h"
 static photo_runtime_s pr;
@@ -24,20 +24,24 @@ static void photo_frame(uint8_t *,uint16_t);
 static void photo_fail(const char *);
 static uint8_t pr_data_ready(void);
 
+// Сообщить о занятой флеш в эталоне прежнего автомата.
 bool photo_storage_busy(void) { return pr.phase!=0; }
+// Отменить запрос, сохранив уже начатую необратимую операцию.
 void photo_storage_cancel(void)
 {
   pr.cancelled=pr.quiet=1;
   if (pr.task==PT_ACK) pr.initialized=0;
   if (photo) { photo->pending=0; if (photo->stage) photo_stop(); }
 }
+// Освободить пакет и владение флеш после завершения операции.
 static void pr_release(void)
 {
   free(pr.tx); pr.tx=0; pr.phase=pr.waiting=pr.committed=0;
 }
+// Завершить операцию ошибкой и запретить дальнейшую работу до сброса.
 static void pr_fail(void)
 {
-  pr.fault=1; /* Finite error outcome; reset/recovery resolves uncertain media. */
+  pr.fault=1; /* После ошибки останавливаем работу: неопределённое состояние восстановит перезапуск. */
   if (photo) {
     if (photo->stage) photo_stop();
     photo->pending=0;
@@ -46,21 +50,25 @@ static void pr_fail(void)
   }
   pr.initialized=0; pr_release();
 }
+// Скопировать источник и запланировать проверяемую запись NOR.
 static void pr_write(uint32_t address,const uint8_t *p,uint16_t n,uint8_t after)
 {
   if (!n || n>64) { pr_fail(); return; }
   if (p!=sjr.data) memcpy(sjr.data,p,n);
   pr.io_address=address; pr.io_len=n; pr.io_done=0; pr.erase=0; pr.after=after; pr.phase=PR_IO;
 }
+// Запланировать стирание одного сектора.
 static void pr_erase(uint32_t address,uint8_t after)
 {
   pr.io_address=address; pr.io_len=pr.io_done=0; pr.erase=1; pr.after=after; pr.phase=PR_IO;
 }
+// Начать скан заголовков с начала области фото.
 static void pr_scan_begin(uint8_t task)
 {
   pr.task=task; pr.scan=mem[MB_PHOTO].start; pr.count=0; pr.max_number=0;
   pr.first=0; pr.first_offset=0; pr.phase=PR_HEAD;
 }
+// Опубликовать результат скана и продолжить запрос или отправку.
 static void pr_scan_finish(void)
 {
   if (pr.task==PT_SEND) { pr.send_size=0; pr.phase=PR_SEND_FILL; return; }
@@ -74,6 +82,7 @@ static void pr_scan_finish(void)
   if (pr.task==PT_REQUEST || pr.task==PT_ACK) { pr.phase=PR_REQUEST_DONE; return; }
   pr.phase=0;
 }
+// Проверить команду съёмки и запланировать её первый шаг.
 static cmdCode_e pr_start(uint8_t address)
 {
   uint8_t found=0;
@@ -85,6 +94,7 @@ static cmdCode_e pr_start(uint8_t address)
   pr.address=address; pr.cancelled=pr.quiet=pr.committed=0; pr_scan_begin(PT_START);
   return CMD_SUCCESS;
 }
+// Проверить размер снимка и подготовить запись прежнего формата.
 static uint8_t pr_prepare(uint32_t size)
 {
   uint32_t end=photo_storage_end();
@@ -95,6 +105,7 @@ static uint8_t pr_prepare(uint32_t size)
   if (!pr.prefix) { photo_erased_to=photo->address; pr.phase=PR_PREP_DONE; }
   return 1;
 }
+// Подготовить сектор до запроса очередных данных камеры.
 static uint8_t pr_data_ready(void)
 {
   uint32_t used=photo->written+PHOTO_DATA;
@@ -105,6 +116,7 @@ static uint8_t pr_data_ready(void)
   if (photo_erased_to>=photo_storage_end()) { photo_stop(); return 0; }
   pr.task=PT_DATA; pr_erase(photo_erased_to,PR_LAZY_DONE); return 0;
 }
+// Проверить кадр камеры и запланировать запись его данных.
 static void pr_frame(uint8_t *p,uint16_t n)
 {
   if (n<6 || n>64 || pr.phase) return;
@@ -114,6 +126,7 @@ static void pr_frame(uint8_t *p,uint16_t n)
   pr.task=PT_DATA; pr.payload=len;
   pr_write(photo->address+PHOTO_RECORD_HEAD+photo->written,p+4,len,PR_DATA_DONE);
 }
+// Проверить команду выгрузки и начать поиск заданного снимка.
 static cmdCode_e pr_request(dataChanel_e channel,uint8_t id,const uint8_t *args,uint8_t size)
 {
   if (size && size!=6) return CMD_PARAMERROR;
@@ -124,16 +137,19 @@ static cmdCode_e pr_request(dataChanel_e channel,uint8_t id,const uint8_t *args,
   photo->channel=channel; photo->requestId=id; photo->pending=0;
   pr_scan_begin(PT_REQUEST); return (cmdCode_e)255;
 }
+// Ответить на команду выгрузки с учётом текущей очистки.
 void photo_request_answer(dataChanel_e channel,uint8_t id,const uint8_t *args,uint8_t size)
 {
   cmdCode_e r=pr_request(channel,id,args,size);
   if ((uint8_t)r!=255) user_send_answer_comand(21,r,channel,id);
 }
+// Начать формирование следующего пакета по сохранённому курсору.
 static void pr_send_begin(void)
 {
   pr.task=PT_SEND; pr.quiet=pr.cancelled=0; pr.usb_epoch=usb_bus_resets;
   pr.scan=photo->readAddress; pr.phase=PR_HEAD; pr.reply_wait=0;
 }
+// Начать отложенную очистку подтверждённой очереди.
 static void pr_cleanup_begin(void)
 {
   uint32_t first=mem[MB_PHOTO].start,end=photo_storage_end(),last=device.newAddressPhoto;
@@ -144,6 +160,7 @@ static void pr_cleanup_begin(void)
   pr.cancelled=pr.quiet=pr.committed=0;
   pr.task=PT_CLEAN; pr.h[0]=0; pr.h[1]=last; pr.h[2]=~last; pr.phase=PR_CLEAN_BODY;
 }
+// Выполнить один ограниченный шаг прежнего автомата NOR.
 void photo_storage_poll(uint32_t now)
 {
   uint32_t scratch=photo_storage_end(); uint16_t n;
@@ -170,9 +187,9 @@ void photo_storage_poll(uint32_t now)
   case PR_META:
     if (!w25_read_data(scratch+4096+32,(uint8_t*)pr.h,12)) { pr_fail(); break; }
     if (pr.h[0]==0) {
-      /* A torn final metadata erase may leave its marker but erase its body.
-       * Body was verified before publishing; destination was verified before
-       * cleanup. Discard only this invalid intent, never a photo sector. */
+      /* Обрыв стирания метаданных может оставить метку без тела.
+       * Тело и назначение проверены до публикации и очистки.
+       * Удаляем только недействительное намерение, сохраняя сектор фото. */
       if (pr.h[1]!=~pr.h[2] || pr.h[1]>scratch || pr.h[1]<=mem[MB_PHOTO].start || (pr.h[1]&4095u)) { pr_erase(scratch+4096,PR_META_DONE); break; }
       pr.cleanup=1; pr.task=PT_CLEAN; pr.limit=pr.h[1]; pr.offset=0; pr.phase=PR_CLEAN_SCAN; break;
     }
@@ -403,6 +420,7 @@ void photo_storage_poll(uint32_t now)
   default: pr_fail(); break;
   }
 }
+// Обслужить камеру, восстановление и отправку в эталоне прежнего ASM.
 static void pr_poll(void)
 {
   if (pr.phase || !user_storage_background_ready()) return;

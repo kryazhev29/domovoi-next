@@ -1,23 +1,20 @@
-﻿"""Доработка: Кряжев А., 2026. Побайтовое сравнение провода до/после чистки."""
-import argparse,json,os,struct
+"""Доработка: Кряжев А., 2026. Побайтовое сравнение провода до/после чистки.
+Проверяется машинный код выбранного IAR ELF; плата и сервер не используются.
+Результат относится к модели аппаратных границ.
+"""
+import argparse,os,struct
 from pathlib import Path
 from c_vs_asm_suite import select_image
 from test_photo_runtime import PhotoMachine
 
-class BeforePhoto(PhotoMachine):
-    def capture(self,data):
-        self.begin_camera(len(data));a=self.pget('address',4);stamp=self.pget('stamp',4)
-        for off in range(0,len(data),58):self.data(data[off:off+58])
-        assert self.flash[a:a+8]==struct.pack('<II',stamp,len(data))
-        assert self.flash[a+1033:a+1033+len(data)]==data
-        return a,stamp
-
+# Выбрать свежий или исходный ELF для сравнения поведения.
 def image(before,variant):
     base=Path(os.environ['DOMOVOI_COMPARE_BUILD'])
     select_image(variant,base/'before' if before else base)
 
+# Снять команды камеры, события, ответы и пакеты полного цикла выгрузки.
 def scenario(before,variant,channel,queue):
-    image(before,variant);m=(BeforePhoto if before else PhotoMachine)();m.boot_media()
+    image(before,variant);m=PhotoMachine();m.boot_media()
     stamps=[]
     for data in queue:stamps.append(m.capture(data)[1])
     m.packet(21,b'',channel);m.drain()
@@ -34,6 +31,7 @@ def scenario(before,variant,channel,queue):
     m.port();m.drain()
     return first,resumed,(list(m.answers),list(m.sent))
 
+# Сравнить команды 7 и 21 и весь поток пакетов 14 до и после второго прохода.
 def run(variant):
     count=0
     for channel in (0,1):
