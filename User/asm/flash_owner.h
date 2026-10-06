@@ -1,7 +1,7 @@
-/* Flash transaction owners for the byte flash_owner (memory_runtime.s).
-   0 = free. Bit 7 set = this owner also forbids table reads.
-   Shared by the IAR assembler (#include) and C tests. A claim and the
-   release of the same owner use the same constant. */
+/* Коды владельцев байта flash_owner.
+   0 — свободно. Бит 7 запрещает чтение таблиц на время операции.
+   Общие константы для ассемблера IAR и C.
+   Захват и освобождение владельца используют один и тот же код. */
 #ifndef FLASH_OWNER_H
 #define FLASH_OWNER_H
 

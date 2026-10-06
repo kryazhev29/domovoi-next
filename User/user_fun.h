@@ -122,8 +122,6 @@ bool user_checkShedule(uint8_t shd);
 bool user_updateID(cellID_s *c);
 void user_checkIdTimeEnd(void);
 
-// очистить буфер журнала
-bool log_clearLogBuffer(void);
 // добавить событие в буфер
 bool log_addEvent(cellLog_s *cl);
 void log_flushPending(void);
