@@ -176,8 +176,12 @@ def startup_counts():
         if fail_at:
             m.fault = ('read', fail_at)
         count = m.checked('user_getNumbersCount')
-        assert count == (65535 if fail_at else 3), (fail_at, count)
-        if not fail_at:
+        assert count == (0 if fail_at else 3), (fail_at, count)
+        if fail_at:
+            # Отказ чтения: поиск идёт по всей базе, конец данных неизвестен.
+            assert int.from_bytes(m.u.mem_read(m.addr('id_cells_end'), 2), 'little') == 512 // 32
+            assert int.from_bytes(m.u.mem_read(m.addr('id_used_bytes'), 4), 'little') == 0xFFFFFFFF
+        else:
             assert int.from_bytes(m.u.mem_read(m.addr('id_cells_end'), 2), 'little') == 9
             assert int.from_bytes(m.u.mem_read(m.addr('id_used_bytes'), 4), 'little') == 512
         checks += 1

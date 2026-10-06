@@ -383,7 +383,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         import re as _re
         outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
         # DWT вне модели; используется настоящая реализация реле.
-        unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */','void prof_relay_on(void) {}\n'+outs)
+        unit=fixture('Tests/test_outs.c').replace('/* PRODUCTION */','void prof_relay_on(void) {}\n'+outs)
     elif kind=='crcff':
         crc=source('Tests/asm/reference/User/crc.c')
         user=source('Tests/asm/reference/User/user_fun.c')
