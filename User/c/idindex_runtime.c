@@ -18,9 +18,16 @@
 #define IX_LOG     (IX_BASE + IX_AREA)       /* сектор отметок верности */
 #define IX_MARKS   (4096u / 8u)              /* отметка 8 байт: сумма и её проверка */
 #define IX_MAGIC   0x58444931u
-#define IX_STEP    8u                        /* ячеек за шаг пересборки */
 
-enum { IX_BOOT, IX_ERASE, IX_FILL, IX_READY, IX_OFF };
+enum {
+  IX_BOOT, IX_INVALIDATE, IX_FILL,
+  IX_READY, IX_OFF, IX_ERASE,
+  IX_ADD, IX_PUBLISH, IX_DRAIN
+};
+enum {
+  IX_LOG_ERASE=1, IX_LOG_DIRTY, IX_BUCKET_ERASE,
+  IX_BUCKET_WRITE, IX_COMMIT_ERASE, IX_LOG_VALID
+};
 struct {
   uint32_t sum;        /* сумма хешей ячеек базы - по базе, а не по индексу */
   uint16_t step, end;  /* шаг пересборки; последняя записанная ячейка базы */
@@ -50,25 +57,11 @@ static uint32_t ix_bucket(const uint8_t *id)
   return IX_BASE + ((h ^ (h >> 12) ^ (h >> 24)) & (IX_BUCKETS - 1u)) * IX_BYTES;
 }
 
-/* Отметка в журнал верности: valid - индекс соответствует базе с суммой sum.
-   Сектор заполнен - стирается; обрыв между стиранием и записью оставляет
-   журнал пустым, это «индекс неверен». */
-static bool ix_mark(bool valid, uint32_t sum)
-{
-  uint32_t r[2] = {0, 0};
-  if (valid) { r[0] = sum; r[1] = ~sum ^ IX_MAGIC; }
-  if (ix.mark >= IX_MARKS) {
-    if (!mem_erase_sector(IX_LOG)) return false;
-    ix.mark = 0;
-  }
-  return mem_write(IX_LOG + (uint32_t)ix.mark++ * 8u, (uint8_t*)r, 8);
-}
-
 /* Сначала отметка «неверен», потом стирание: иначе старая верная отметка
    после обрыва признала бы полустёртый индекс. */
 static void ix_rebuild(void)
 {
-ix.state=ix.pending?8:1; ix.step=0;
+  ix.state=ix.pending?IX_DRAIN:IX_INVALIDATE; ix.step=0;
 }
 
 /* Последняя отметка журнала и первое свободное место. */
@@ -95,7 +88,6 @@ void idindex_impl_scanned(uint32_t sum, uint16_t cells_end)
   ix.sum = sum;
   ix.end = cells_end;
   if (ix.state == IX_BOOT && ix_last(&marked) && marked == sum) { ix.state = IX_READY; return; }
-  if (ix.state == IX_BOOT) ix.state = IX_ERASE;  /* отметки «неверен» не нужно: верной нет */
   ix_rebuild();
 }
 
@@ -105,6 +97,7 @@ void idindex_impl_table_commit(uint32_t delta, uint16_t end)
   idindex_scanned(ix.sum ^ delta, end);
 }
 
+// Проверяет кандидатов корзины по действующим ячейкам основной базы.
 int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 {
   uint16_t e[IX_SLOTS];
@@ -118,88 +111,55 @@ int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
   return 0;
 }
 
-/* Номер в корзину: уже есть - ничего, есть пустое место - дописать 2 байта
-   и проверить чтением. Полная корзина или сбой записи - false. */
-static bool ix_add(uint16_t index, const uint8_t *id)
-{
-  uint16_t e[IX_SLOTS];
-  uint32_t at = ix_bucket(id);
-  if (!mem_read(at, (uint8_t*)e, IX_BYTES)) return false;
-  for (uint8_t i = 0; i < IX_SLOTS; i++) {
-    if (e[i] == index) return true;
-    if (e[i] != 0xFFFFu) continue;
-    return mem_write(at + i * 2u, (uint8_t*)&index, 2);
-  }
-  return false;
-}
-
-// Добавляет ID или передаёт его фоновой пересборке.
-bool idindex_impl_put(uint16_t index, const uint8_t *id)
-{
-  /* При стирании и выше шага пересборки ячейку подберёт сама пересборка. */
-  if (ix.state != IX_READY && !(ix.state == IX_FILL && index < ix.step)) return true;
-  if (ix_add(index, id)) return true;
-  if (ix.state == IX_READY) ix_rebuild(); else ix.state = IX_OFF;
-  return false;
-}
-
-// Публикует сумму базы после завершения записи ID.
-void idindex_impl_commit(uint32_t delta, uint16_t cells_end)
-{
-  ix.sum ^= delta;
-  if (cells_end > ix.end) ix.end = cells_end;
-  if (ix.state == IX_READY && !ix_mark(true, ix.sum)) ix.state = IX_OFF;
-}
-
 // Делает ограниченный шаг проверки, стирания или заполнения индекса.
 void idindex_impl_poll(uint32_t base)
 {
-uint16_t rows[32],n=0;
+  uint16_t rows[IX_SLOTS],n=0;
   uint8_t op=ix.pending,result; uint32_t address=0; const uint8_t *source=NULL;
   if(op) {
     result=w25_async_poll(timers_getMillis()); if(result==1) return;
     flash_release(FO_INDEX); ix.pending=0;
     if(result!=2) goto error;
-    if(ix.state==4) return;
-    if(ix.state==8) { ix.state=1; return; }
-    if(op==1 || op==5) { ix.mark=0; return; }
-    if(op==2) { ix.mark++; ix.state=5; return; }
-    if(op==3) { if(++ix.step>=64) { ix.state=2; ix.step=1; } return; }
-    if(op==4) goto advance;
-    if(op==6) { ix.mark++; ix.state=3; return; }
+    if(ix.state==IX_OFF) return;
+    if(ix.state==IX_DRAIN) { ix.state=IX_INVALIDATE; return; }
+    if(op==IX_LOG_ERASE || op==IX_COMMIT_ERASE) { ix.mark=0; return; }
+    if(op==IX_LOG_DIRTY) { ix.mark++; ix.state=IX_ERASE; return; }
+    if(op==IX_BUCKET_ERASE) { if(++ix.step>=64) { ix.state=IX_FILL; ix.step=1; } return; }
+    if(op==IX_BUCKET_WRITE) goto advance;
+    if(op==IX_LOG_VALID) { ix.mark++; ix.state=IX_READY; return; }
     goto error;
   }
-  if(ix.state!=1 && ix.state!=2 && (ix.state<5 || ix.state>7)) return;
+  if(ix.state!=IX_INVALIDATE && ix.state!=IX_FILL && (ix.state<IX_ERASE || ix.state>IX_PUBLISH)) return;
   if(w25_async_active() || !w25_read_available()) return;
-  if(ix.state==1 || ix.state==7) {
-    op=ix.state==7?6:2;
-    if(ix.mark>=512) { op--; address=IX_LOG; goto start; }
+  if(ix.state==IX_INVALIDATE || ix.state==IX_PUBLISH) {
+    op=ix.state==IX_PUBLISH?IX_LOG_VALID:IX_LOG_DIRTY;
+    if(ix.mark>=IX_MARKS) { op=ix.state==IX_PUBLISH?IX_COMMIT_ERASE:IX_LOG_ERASE; address=IX_LOG; goto start; }
     address=IX_LOG+8u*ix.mark;
-    ix.source[0]=op==6?ix.sum:0; ix.source[1]=op==6?(~ix.sum^IX_MAGIC):0;
+    ix.source[0]=op==IX_LOG_VALID?ix.sum:0; ix.source[1]=op==IX_LOG_VALID?(~ix.sum^IX_MAGIC):0;
     source=(uint8_t *)ix.source; n=8; goto start;
   }
-  if(ix.state==5) { address=IX_BASE+4096u*ix.step; op=3; goto start; }
-  if(ix.state==6) {
+  if(ix.state==IX_ERASE) { address=IX_BASE+4096u*ix.step; op=IX_BUCKET_ERASE; goto start; }
+  if(ix.state==IX_ADD) {
     if(!w25_read_data(ix.bucket,(uint8_t *)rows,64)) goto error;
     for(unsigned i=0;i<32;i++) {
       if(rows[i]==ix.step) goto advance;
       if(rows[i]==65535) {
         address=ix.bucket+2*i; ((uint16_t *)ix.source)[0]=ix.step;
-        source=(uint8_t *)ix.source; op=4; n=2; goto start;
+        source=(uint8_t *)ix.source; op=IX_BUCKET_WRITE; n=2; goto start;
       }
     }
     goto error;
   }
-  if(ix.step>ix.end) { ix.state=7; return; }
+  if(ix.step>ix.end) { ix.state=IX_PUBLISH; return; }
   if(!w25_read_data(base+32u*(uint32_t)(ix.step-1),(uint8_t *)rows,32)) goto error;
   if(rows[0]==65535 || ((uint8_t *)rows)[31]==255) goto advance;
-  ix.bucket=ix_bucket((uint8_t *)rows+2); ix.state=6; return;
+  ix.bucket=ix_bucket((uint8_t *)rows+2); ix.state=IX_ADD; return;
 advance:
-  if(ix.step>=ix.end) ix.state=7; else { ix.step++; ix.state=2; } return;
+  if(ix.step>=ix.end) ix.state=IX_PUBLISH; else { ix.step++; ix.state=IX_FILL; } return;
 start:
   if(!w25_async_start(address,source,n,timers_getMillis())) goto error;
   flash_claim(FO_INDEX); ix.pending=op; return;
-error: ix.state=4;
+error: ix.state=IX_OFF;
 }
 
 // Приостанавливает индекс на время изменения основной базы.

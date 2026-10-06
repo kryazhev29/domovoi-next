@@ -1,15 +1,13 @@
+# Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
-"""Handwritten index rebuild in the linked IAR ELF; no physical hardware.
-
-NOR operations use StorageMachine's delayed verified/error boundary. All index
-logic, ownership glue, hashes, caller ABI and cancellation execute as Thumb-2.
-"""
+"""Пересборка индекса в связанном IAR ELF; модель задаёт границу NOR, код и владение выполняются реально."""
 import argparse, hashlib, json, struct
 from storage_machine import *
 
 BASE, IX_BASE, IX_LOG, MAGIC = 0x41000, 0x300000, 0x340000, 0x58444931
 
 
+# Считает независимый эталон хеша FNV.
 def fnv(data):
     h = 2166136261
     for b in data:
@@ -17,16 +15,19 @@ def fnv(data):
     return h
 
 
+# Вычисляет корзину ID по независимому эталону хеша.
 def bucket(ident):
     h = fnv(ident)
     return IX_BASE + ((h ^ (h >> 12) ^ (h >> 24)) & 4095) * 64
 
 
+# Создаёт одну запись заданного номера для тестовой базы.
 def row(i):
     return struct.pack('<H', i) + struct.pack('<IIH', i * 17, i * 19, i) + bytes(20)
 
 
 class IndexMachine(StorageMachine):
+    # Готовит связанный образ, модель NOR и состояние сценария.
     def __init__(self, flash=None):
         super().__init__(flash)
         self.at = self.addr('ix')
@@ -34,15 +35,19 @@ class IndexMachine(StorageMachine):
         self.stubs[self.addr('w25_erase_sector')] = self.no_sync
         self.max_read = self.max_io = 0
 
+    # Запрещает синхронную запись в фоновом сценарии.
     def no_sync(self):
         raise AssertionError('index called synchronous program/erase')
 
+    # Читает состояние фоновой пересборки индекса.
     def state(self):
         return self.u.mem_read(self.at + 10, 1)[0]
 
+    # Читает текущего владельца флеша.
     def owner(self):
         return self.u.mem_read(self.at + 11, 1)[0]
 
+    # Создаёт исходное состояние сценария и его подменяемые границы.
     def setup(self, indices=(1, 2, 129), log_full=False):
         expected = bytearray(b'\xff' * 0x40000)
         total = 0
@@ -57,8 +62,8 @@ class IndexMachine(StorageMachine):
                     break
             else:
                 raise AssertionError('fixture full bucket')
-        # A previous valid cache with the SAME sum must be invalidated before
-        # any erase. Rebuild may be requested after a runtime suspend/scan.
+        # Старую верную отметку с той же суммой нужно отменить до
+        # любого стирания; пересборка может начаться после приостановки и нового сканирования.
         self.flash[IX_BASE:IX_LOG] = expected
         mark = struct.pack('<II', total, (~total ^ MAGIC) & 0xffffffff)
         if log_full:
@@ -71,6 +76,7 @@ class IndexMachine(StorageMachine):
         assert self.state() == 1 and not self.owner()
         return bytes(expected), total, max(indices, default=0)
 
+    # Выполняет шаг пересборки индекса с контролем ресурсов.
     def tick_index(self, glue=False):
         self.now += 1
         primask = self.u.reg_read(UC_ARM_REG_PRIMASK)
@@ -88,6 +94,7 @@ class IndexMachine(StorageMachine):
         assert self.io_budget <= 1, self.io_budget
         assert bool(self.owner()) == (self.io is not None)
 
+    # Доводит пересборку индекса до конечного состояния.
     def drain_index(self, limit=20000, glue=False):
         for _ in range(limit):
             if self.state() in (3, 4) and not self.owner():
@@ -95,6 +102,7 @@ class IndexMachine(StorageMachine):
             self.tick_index(glue and bool(self.owner()))
         raise AssertionError(('index stuck', self.state(), self.owner()))
 
+    # Сверяет данные базы, счётчики и байты ответа с эталоном.
     def verify(self, expected, total):
         assert self.state() == 3 and not self.owner()
         assert self.flash[IX_BASE:IX_LOG] == expected
@@ -102,6 +110,7 @@ class IndexMachine(StorageMachine):
         assert self.flash[IX_LOG + (n - 1) * 8:IX_LOG + n * 8] == struct.pack('<II', total, (~total ^ MAGIC) & 0xffffffff)
 
 
+# Проверяет штатные операции, данные и ответы модуля.
 def test_normal():
     results = {}
     for indices, full in [((), False), ((1,), False), ((1, 2, 129), True), ((1, 50048), False)]:
@@ -119,6 +128,7 @@ def test_normal():
     return results
 
 
+# Проверяет отказы каждой границы обмена и состояние после них.
 def test_faults():
     count = 0
     for kind, points in [('read', (1, 2, 3, 20, 130)), ('start', (1, 2, 16, 65, 66, 67, 68, 69, 70)),
@@ -133,13 +143,14 @@ def test_faults():
             assert m.state() == 4 and not m.owner() and m.io is None, (kind, point)
             assert m.flash[BASE:BASE + 32] == row(1)
             count += 1
-    # Idle is not a verified result, including an unexpected driver reset.
+    # Отсутствие команды не считается проверенным результатом, в том числе после сброса драйвера.
     m = IndexMachine(); m.setup(); m.tick_index()
     m.stubs[m.addr('w25_async_poll')] = lambda: (setattr(m, 'io', None), m.ret(0))
     m.tick_index(); assert m.state() == 4 and not m.owner(); count += 1
     return count
 
 
+# Проверяет приостановку и перезапуск фонового индекса.
 def test_cancel_restart():
     count = 0
     for pending in (1, 2, 3, 4, 5, 6):
@@ -155,7 +166,7 @@ def test_cancel_restart():
         source = bytes(m.u.mem_read(m.at + 12, 8))
         m.checked('idindex_runtime_suspend')
         assert m.state() == 4 and m.owner()
-        # Reconnect/reset cannot strand this background owner.
+        # Смена сеанса и сброс не должны оставлять фонового владельца занятым.
         m.checked('user_comm_session', 0)
         m.write(m.addr('usb_bus_resets'), 1)
         while m.owner():
@@ -165,26 +176,27 @@ def test_cancel_restart():
         m.checked('idindex_scanned', total, end)
         m.drain_index(); m.verify(expected, total)
         count += 1
-    # Re-scan in an outstanding erase requests restart, retaining its source.
+    # Новый скан во время стирания требует перезапуска, сохраняя источник текущей команды.
     m = IndexMachine(); expected, total, end = m.setup((1,))
     m.tick_index(); m.checked('idindex_scanned', total, end)
     assert m.state() == 8 and m.owner()
     m.drain_index(); m.verify(expected, total); count += 1
-    # Another owner is never polled or overwritten by the index.
+    # Индекс не опрашивает и не перезаписывает команду другого владельца.
     m = IndexMachine(); m.setup(); m.io = (0x1000, 0, 0, b'\xff' * 4096, 0)
     m.checked('idindex_poll', BASE); assert m.counts['poll'] == 0 and not m.owner(); count += 1
     return count
 
 
+# Проверяет последние допустимые позиции и переполненную корзину.
 def test_boundaries():
     m = IndexMachine(); expected, total, _ = m.setup((1,))
-    # A full collision bucket must turn off without writing an out-of-range slot.
+    # Полная корзина отключает индекс без записи за её границу.
     while m.state() != 6:
         m.tick_index()
     address = bucket(row(1)[2:12]); m.flash[address:address + 64] = struct.pack('<32H', *range(2, 34))
     before = bytes(m.flash); m.tick_index()
     assert m.state() == 4 and bytes(m.flash) == before
-    # The last available bucket slot is in range and remains live until verified.
+    # Последнее место корзины лежит в диапазоне и живёт до проверки W25.
     m = IndexMachine(); m.setup((1,))
     while m.state() != 6:
         m.tick_index()
@@ -193,17 +205,18 @@ def test_boundaries():
     while m.owner():
         m.tick_index()
     assert m.flash[address + 62:address + 64] == b'\x01\0' and m.state() == 7
-    # Last 16-bit cursor is consumed without wrapping into index zero.
+    # Последний 16-битный курсор обрабатывается без перехода к нулевому номеру.
     m = IndexMachine(); m.write(m.at + 10, 2, 1)
     m.write(m.at + 4, 65535, 2); m.write(m.at + 6, 65535, 2)
     m.tick_index(); assert m.state() == 7
-    # OOM cannot affect the index: no allocation is requested at any point.
+    # Нехватка кучи не влияет на индекс: он не запрашивает память.
     m = IndexMachine(); expected, total, _ = m.setup((1,))
     m.stubs[m.addr('work_acquire')] = lambda: (_ for _ in ()).throw(AssertionError('index allocated'))
     m.drain_index(); m.verify(expected, total)
     return 4
 
 
+# Проверяет устойчивые состояния каждого обрыва операции.
 def test_power():
     count = 0
     boot = IndexMachine()
@@ -215,7 +228,7 @@ def test_power():
             m.tick_index()
             candidates = [bytes(m.flash)]
             if before != candidates[0]:
-                # Tear first/half/last byte of every changed NOR operation.
+                # Обрываем каждую изменяющую команду NOR на первом, среднем и последнем байте.
                 changed = [i for i, (a, b) in enumerate(zip(before, candidates[0])) if a != b]
                 for cut in sorted({1, len(changed)//2, len(changed)-1}):
                     if cut <= 0:
@@ -225,8 +238,8 @@ def test_power():
                         torn[pos] = m.flash[pos]
                     candidates.append(bytes(torn))
             for image in candidates:
-                # Reuse decoded ELF/debug metadata; restore the complete initial
-                # RAM image for every reboot, including ix, heap and W25 owner.
+                # Используем уже разобранные ELF и DWARF, но восстанавливаем весь начальный
+                # образ ОЗУ при каждом старте, включая ix, кучу и владельца W25.
                 boot.u.mem_write(0x20000000, boot_ram)
                 boot.flash = bytearray(image)
                 boot.checked('idindex_scanned', total, end)
@@ -239,8 +252,9 @@ def test_power():
     return count
 
 
+# Проверяет индекс с реальными командами драйвера W25.
 def test_real_w25():
-    """Index + the real async W25 driver, modeled only at the SPI boundary."""
+    """Индекс с реальным фоновым W25; модель подменяет только границу SPI."""
     from unicorn import UC_HOOK_MEM_WRITE
     m = IndexMachine(); expected, total, _ = m.setup((1, 2))
     m.write(0x40013000, 0x40, 2)
@@ -248,6 +262,7 @@ def test_real_w25():
     for name in ('w25_read_data', 'w25_async_start', 'w25_async_poll', 'w25_async_active', 'w25_read_available'):
         del m.stubs[m.addr(name)]
 
+    # Моделирует границу выбора SPI-чипа и завершение команды NOR.
     def cs(u, access, a, n, value, unused):
         if a == 0x40010c14 and value == 4096:
             wire.update(cmd=0, address=0, address_bytes=0)
@@ -261,6 +276,7 @@ def test_real_w25():
                 a = wire['address']; m.flash[a:a+4096] = b'\xff' * 4096
                 wire.update(wel=0, busy=3)
 
+    # Моделирует команду, адрес и данные одного обмена SPI.
     def send_byte():
         b = m.args()[0] & 255
         if not wire['cmd']:
@@ -270,6 +286,7 @@ def test_real_w25():
             wire['address_bytes'] += 1
         m.ret()
 
+    # Моделирует один байт ответа SPI.
     def read_byte():
         assert wire['cmd'] == 5
         wire['status'] += 1
@@ -278,6 +295,7 @@ def test_real_w25():
             wire['busy'] -= 1
         m.ret(v)
 
+    # Моделирует передачу буфера по границе SPI.
     def send():
         p, n, _, _ = m.args()
         assert wire['cmd'] == 2 and wire['wel'] and n <= 64
@@ -285,6 +303,7 @@ def test_real_w25():
             m.flash[wire['address']] &= b; wire['address'] += 1
         m.ret()
 
+    # Читает модельную NOR с контролем диапазона и заданным отказом.
     def read():
         p, n, _, _ = m.args()
         assert wire['cmd'] == 3 and n <= 64

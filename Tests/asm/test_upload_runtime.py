@@ -1,13 +1,16 @@
+# Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
-"""Cooperative command 9/10 upload in the final IAR ELF, modeled NOR/TX only."""
+"""Выгрузка команд 9/10 в связанном IAR ELF; моделируются только NOR и транспорт."""
 import hashlib, json, struct
 from storage_machine import *
 
 
+# Создаёт запись временного ID для проверки выгрузки.
 def temp(i):
     return struct.pack('<HIIH', i, i * 17, i * 19, i) + bytes(20)
 
 
+# Создаёт запись события с независимой CRC.
 def log(i, legacy=False):
     body = struct.pack('<II', i, 1700000000 + i) + bytes(range(16))
     crc = crc16(body)
@@ -15,6 +18,7 @@ def log(i, legacy=False):
 
 
 class UploadMachine(StorageMachine):
+    # Готовит связанный образ, модель NOR и состояние сценария.
     def __init__(self):
         super().__init__()
         self.write(self.addr('cfg_boot_done' if 'cfg_boot_done' in self.symbols else 'cfg_legacy_checked'),1,1)
@@ -29,6 +33,7 @@ class UploadMachine(StorageMachine):
         if 'usb_try_send' in self.symbols:
             self.stubs[self.addr('usb_try_send')] = self.usb
 
+    # Фиксирует готовый USB-ответ для сравнения байтов.
     def usb(self):
         p, n, _, _ = self.args()
         assert n <= 1038
@@ -36,6 +41,7 @@ class UploadMachine(StorageMachine):
             self.sent.append(bytes(self.u.mem_read(p, n)))
         self.ret(not self.busy)
 
+    # Моделирует выдачу передающего буфера с учётом занятости транспорта.
     def acquire(self):
         self.acquires += 1
         self.write(self.args()[0], 1040, 2)
@@ -45,6 +51,7 @@ class UploadMachine(StorageMachine):
         else:
             self.lease = True; self.ret(0x21000800)
 
+    # Фиксирует принятый транспортом кадр либо моделирует отказ.
     def commit(self):
         assert self.lease
         if self.commit_fail:
@@ -52,19 +59,24 @@ class UploadMachine(StorageMachine):
         self.sent.append(bytes(self.u.mem_read(0x21000800, self.args()[0])))
         self.lease = False; self.ret(1)
 
+    # Моделирует возврат передающего буфера.
     def release(self):
         assert self.lease, 'released a TX frame this upload did not own'
         self.releases += 1; self.lease = False; self.ret()
 
+    # Читает адрес текущего контекста из связанного образа.
     def ptr(self):
         return self.read_word(self.addr('upload_runtime_context'))
 
+    # Читает слово состояния из связанной памяти.
     def read_word(self, at, n=4):
         return int.from_bytes(self.u.mem_read(at, n), 'little')
 
+    # Читает фазу рабочего автомата.
     def phase(self):
         return self.read_word(self.ptr()+31, 1) if self.ptr() else 0
 
+    # Готовит базу и метаданные заданного сценария.
     def fixture(self, cmd, slots):
         self.cmd = cmd; self.base = (0x1d0000 if "log_cursor32" in self.symbols else 0x1cf400) if cmd == 10 else 0x1e8400
         size = 98304 if cmd == 10 else 49152
@@ -75,9 +87,11 @@ class UploadMachine(StorageMachine):
         for i, cell in enumerate(slots):
             self.flash[self.base+i*32:self.base+(i+1)*32] = cell
 
+    # Передаёт запрос следующего кадра выгрузки.
     def request(self, channel=0, uniq=7):
         self.checked('user_send_logRecords' if self.cmd == 10 else 'user_send_tempIDs', channel, uniq)
 
+    # Выполняет шаг выгрузки и измеряет его стоимость.
     def tick_upload(self):
         upload_active = bool(self.ptr())
         self.now += 1
@@ -89,6 +103,7 @@ class UploadMachine(StorageMachine):
         self.max_read = max(self.max_read, self.read_budget)
         self.total_read += self.read_budget
 
+    # Доводит выгрузку до отправки либо отмены.
     def drain_upload(self, limit=12000):
         for _ in range(limit):
             if not self.ptr():
@@ -96,27 +111,32 @@ class UploadMachine(StorageMachine):
             self.tick_upload()
         raise AssertionError(('upload stuck', self.phase()))
 
+    # Задаёт сохранённый логический курсор сценария.
     def set_cursor(self,channel,ordinal):
         if self.cmd==10 and "log_cursor32" in self.symbols:self.write(self.addr("log_cursor32")+4*channel,ordinal+1 if ordinal else 0)
         else:self.checked("upload_setIndex",self.cmd,channel,ordinal)
 
+    # Читает сохранённый курсор подтверждения журнала.
     def cursor(self,channel=0):
         if self.cmd==10 and "log_cursor32" in self.symbols:return max(0,self.read_word(self.addr("log_cursor32")+4*channel)-1)
         return self.checked("upload_index",self.cmd,channel)
 
+    # Готовит неподтверждённую границу предыдущего кадра.
     def seed_pending(self,ordinal):
         if self.cmd==10 and "log_pending32" in self.symbols:self.write(self.addr("log_pending32"),ordinal+1)
         else:self.write(self.addr("log_unacked" if self.cmd==10 else "temp_unacked"),ordinal,2)
 
+    # Читает границу переданного, но ещё не подтверждённого кадра.
     def pending_cursor(self, channel=0):
-        # Legacy wire scenarios use sequential record IDs, starting at 1.
+        # Проводные сценарии используют последовательные номера записей с единицы.
         if self.cmd==10 and "log_pending32" in self.symbols:return max(0,self.read_word(self.addr("log_pending32")+4*channel)-1)
         return self.read_word(self.addr('log_unacked' if self.cmd == 10 else 'temp_unacked')+channel*2, 2)
 
 
+# Собирает ожидаемые байты кадра независимо от кода продукта.
 def wire(cmd, uniq, first, cells, total=None):
     if not cells:
-        data = b'\0'*3  # Protocol2: left (2) + count (1), answers 9 and 10 alike
+        data = b'\0'*3  # Протокол: остаток 2 Б и количество 1 Б одинаковы в ответах 9 и 10.
         body = struct.pack('<HBBB', len(data)+3, 255, uniq, cmd)+data
     else:
         count = len(cells); total = total if total is not None else count
@@ -125,6 +145,7 @@ def wire(cmd, uniq, first, cells, total=None):
     return b'SLDN'+body+struct.pack('<H', crc16(body))
 
 
+# Проверяет штатные операции, данные и ответы модуля.
 def test_normal():
     results = {}
     for cmd, n, first, ch in [(9,1,0,0),(9,1536,0,1),(9,1536,1500,0),
@@ -142,6 +163,7 @@ def test_normal():
     return results
 
 
+# Проверяет пропуски записей и отказ чтения при выгрузке.
 def test_gaps_and_faults():
     m=UploadMachine(); cells=[log(1),bytes(24)+b'\xff'*8,log(2),b'\xff'*32,log(3)]
     m.fixture(10,cells);m.request();m.drain_upload()
@@ -157,9 +179,10 @@ def test_gaps_and_faults():
     return count
 
 
+# Проверяет настоящий разбор команды и её длину.
 def test_parser():
-    # Existing wire protocol is deliberately asymmetric: request 9 -> reply 10
-    # (logs), request 10 -> reply 9 (temporary IDs).
+    # Асимметрия существующего протокола: запрос 9 даёт ответ 10
+    # для журнала, а запрос 10 — ответ 9 для временных ID.
     for reply in (9,10):
         m=UploadMachine();cell=temp(1) if reply==9 else log(1);m.fixture(reply,[cell])
         body=struct.pack('<HBBB',3,0,7,19-reply);body+=struct.pack('<H',crc16(body))
@@ -169,6 +192,7 @@ def test_parser():
     return 2
 
 
+# Проверяет отказ доступа к недоступной базе до чтения записей.
 def test_media_gate():
     count=0
     for blocked in ('not-ready','journal-fault'):
@@ -188,6 +212,7 @@ def test_media_gate():
     return count
 
 
+# Проверяет занятую передачу, пустую выгрузку и отмену.
 def test_busy_empty_cancel():
     count=0
     for cmd in (9,10):
@@ -226,6 +251,7 @@ def test_busy_empty_cancel():
     return count
 
 
+# Возвращает размер наибольшего свободного блока модели.
 def largest_free(m):
     p=take(m,REPLY)
     if not p:return 0
@@ -233,10 +259,11 @@ def largest_free(m):
     return 2032
 
 
+# Проверяет резерв выгрузки и возврат памяти перед сохранением ACK.
 def test_heap_ack():
     from unicorn import UC_HOOK_CODE
     results={}
-    # A conflicting owner rejects before ACK cursor, NOR or wire changes.
+    # Занятая память отклоняет запрос до изменения ACK, NOR или проводных данных.
     for slot in (REPLY,CONFIG,TABLE):
         m=UploadMachine();m.fixture(10,[log(1)])
         p=take(m,slot);assert p
@@ -253,7 +280,7 @@ def test_heap_ack():
     assert m.cursor()==0 and m.pending_cursor()==1
     assert not m.sent and not m.counts['start']
     assert owned(m)==(1<<(PHOTO-1))|(1<<(CONFIG-1))
-    # Upload buffers were admitted together, then released before snapshot.
+    # Участки выгрузки выданы вместе, затем возвращены до снимка настроек.
     assert snapshots[0] & (1<<(UP_CONTEXT-1)) and snapshots[0] & (1<<(UP_PACKET-1))
     for _ in range(1000):
         m.tick_upload()
@@ -266,6 +293,7 @@ def test_heap_ack():
     return results
 
 
+# Проверяет долговечность курсора при обрывах сохранения ACK.
 def test_ack_power():
     m=UploadMachine();m.fixture(10,[log(1),log(2)])
     m.checked('upload_store')
@@ -284,7 +312,7 @@ def test_ack_power():
                 torn=bytearray(before);torn[a:a+cut]=m.flash[a:a+cut];images.append(bytes(torn))
             for image in images:
                 boot.u.mem_write(0x20000000,initial);boot.flash=bytearray(image)
-                selected=boot.checked('cfg_select',0x21000000)
+                selected=boot.select_config()
                 saved=image[selected+512:selected+1024]
                 assert crc16(saved[:510])==int.from_bytes(saved[510:512],'little')
                 cursor=(max(0,int.from_bytes(saved[boot.d['reserv']+20:boot.d['reserv']+24],'little')-1) if 'log_cursor32' in m.symbols else int.from_bytes(saved[boot.d['reserv']+4:boot.d['reserv']+6],'little'))

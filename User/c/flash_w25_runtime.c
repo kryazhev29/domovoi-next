@@ -3,15 +3,26 @@
 // ќдна команда находитс€ в работе; источник записи сохран€етс€ до проверки.
 // ƒрайвер читает назад каждую запись и стирание, а при старте может ждать BUSY.
 #include "flash_w25.h"
+
+// ќжидание завершени€ предыдущей команды
+static uint8_t w25_busy (void);
+// встраиваема€ задержка
+static inline void w25_delay_ON (void);
+// встраиваема€ задержка
+static inline void w25_delay_OFF (void);
+// разрешить запись
+static void w25_WREN(void);
+// запретить запись
+static void w25_WRDI(void);
+// «апись страницы пам€ти
+static bool w25_page_program (Int32U address, pInt8U src, Int16U len);
+
+static bool w25_verify(Int32U address, const uint8_t *src, Int16U len);
+static void w25_command(uint8_t command, uint32_t address);
 #include <intrinsics.h>
 
 // ¬ работе одна команда NOR, без DMA и обратных вызовов главного цикла.
-struct {
-  const uint8_t *data;
-  uint32_t address, started;
-  uint16_t length, checked;
-  uint8_t active;
-} w25_job;
+w25_job_s w25_job;
 // —ообщает, принадлежит ли драйверу незавершЄнна€ команда.
 bool w25_async_active(void) { return w25_job.active != 0; }
 // „итает BUSY один раз и провер€ет работоспособность SPI после обмена.
@@ -23,11 +34,7 @@ bool w25_async_start(uint32_t address, const uint8_t *src, uint16_t len, uint32_
   if (w25_job.active || !w25_read_available()) return false;
   w25_WREN();
   if (!(w25_read_status() & 2u) || !spi_ready()) return false;
-  w25_chip_ON(); w25_delay_ON();
-  spi_send_byte(src ? 0x02 : 0x20);
-  spi_send_byte((address >> 16) & 255u);
-  spi_send_byte((address >> 8) & 255u);
-  spi_send_byte(address & 255u);
+  w25_command(src ? 0x02 : 0x20, address);
   if (src) spi_send((uint8_t*)src, len);
   w25_chip_OFF(); w25_delay_OFF();
   if (!spi_ready()) return false;
@@ -71,13 +78,7 @@ bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
   extern uint8_t store_runtime;
   if (store_runtime ? !w25_read_available() : (w25_busy() & 1u)) return false;
 
-  w25_chip_ON();
-  w25_delay_ON();
-
-  spi_send_byte(0x03); // команда чтени€ данных
-  spi_send_byte((address>>16) & 0xff); // адрес
-  spi_send_byte((address>>8) & 0xff);
-  spi_send_byte(address & 0xff);
+  w25_command(0x03, address);
   spi_read(dst, len);
 
   w25_chip_OFF();
@@ -89,33 +90,12 @@ bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
 bool w25_write_data (Int32U address, pInt8U src, Int16U len)
 {
   if (w25_job.active) return false;
-  uint32_t k;
-  uint16_t s;
-  
-  k = div(address, FLASH_W25_PAGE_SIZE).rem; // с какого адреса пишем на странице размером 256 байт
-  if (k != 0) // не сначала страницы = пишем остаток до заполнени€ страницы
-  {
-    k = FLASH_W25_PAGE_SIZE - k; // остаток от страницы
-    
-    if (len > k) s = k; // записываемые данные больше остатка?
-    else s = len;
-    
-    if (!w25_page_program(address, src, s)) return false;
-    address += s;
-    src += s;
-    len -= s;    
-  }
-  
-  while (len)
-  {
-    if (len > FLASH_W25_PAGE_SIZE) s = FLASH_W25_PAGE_SIZE; // записываемые данные больше размера страницы?
-    else s = len;
-    
+  while (len) {
+    uint16_t n = FLASH_W25_PAGE_SIZE - (address & (FLASH_W25_PAGE_SIZE - 1u));
+    if (n > len) n = len;
     wdt_reload();
-    if (!w25_page_program(address, src, s)) return false;
-    address += s;
-    src += s;
-    len -= s;   
+    if (!w25_page_program(address, src, n)) return false;
+    address += n; src += n; len -= n;
   }
   return true;
 }
@@ -129,13 +109,7 @@ bool w25_erase_sector (Int32U address)
   w25_WREN();
   if (!(w25_read_status() & 2u)) return false;
 
-  w25_chip_ON();
-  w25_delay_ON();
-
-  spi_send_byte(0x20);
-  spi_send_byte((address>>16) & 0xff); // адрес
-  spi_send_byte((address>>8) & 0xff);
-  spi_send_byte(address & 0xff);
+  w25_command(0x20, address);
 
   w25_chip_OFF();
   w25_delay_OFF();
@@ -152,19 +126,13 @@ Int16U w25_read_devID (void)
 
   if (w25_busy() & 1u) return 0xFFFF;
 
-  w25_chip_ON();
-  w25_delay_ON();
-
-  spi_send_byte (0x90); // команда запроса Device ID
-  spi_send_byte (0x00); // адрес..00
-  spi_send_byte (0x00);
-  spi_send_byte (0x00);
+  w25_command(0x90, 0);
   spi_read ((pInt8U)&result, 2);
 
   w25_chip_OFF();
   w25_delay_OFF();
 
-  return result;  
+  return result;
 }
 
 // „тение статуса -------------------------------------------------------------
@@ -180,7 +148,7 @@ Int8U w25_read_status (void)
 
   w25_chip_OFF();
   w25_delay_OFF();
-  
+
   return data;
 }
 
@@ -205,28 +173,28 @@ static uint8_t w25_busy (void)
 
   w25_chip_OFF();
   w25_delay_OFF();
-  
+
   return data;
 }
 
-// встраиваема€ задержка ------------------------------------------------------
+// ¬ыдерживает врем€ переключени€ выбора чипа W25.
 static inline void w25_delay_ON (void)
 {
   __no_operation();
 }
 
-// встраиваема€ задержка ------------------------------------------------------
+// ¬ыдерживает врем€ переключени€ выбора чипа W25.
 static inline void w25_delay_OFF (void)
 {
   __no_operation();
   __no_operation();
   __no_operation();
   __no_operation();
-  __no_operation();  
+  __no_operation();
 }
 
 // разрешить запись -----------------------------------------------------------
-static void w25_WREN()
+static void w25_WREN(void)
 {
   w25_chip_ON();
   w25_delay_ON();
@@ -238,7 +206,7 @@ static void w25_WREN()
 }
 
 // запретить запись -----------------------------------------------------------
-static void w25_WRDI()
+static void w25_WRDI(void)
 {
   w25_chip_ON();
   w25_delay_ON();
@@ -256,19 +224,13 @@ static bool w25_page_program (Int32U address, pInt8U src, Int16U len)
 
   w25_WREN();
   if (!(w25_read_status() & 2u)) return false;
-  
-  w25_chip_ON();
-  w25_delay_ON();
 
-  spi_send_byte(0x02);
-  spi_send_byte((address>>16) & 0xff); // адрес
-  spi_send_byte((address>>8) & 0xff);
-  spi_send_byte(address & 0xff);
+  w25_command(0x02, address);
   spi_send(src, len);
 
   w25_chip_OFF();
   w25_delay_OFF();
-  
+
   bool ready = !(w25_busy() & 1u);
   w25_WRDI();
   return ready && w25_verify(address, src, len);
@@ -288,4 +250,14 @@ static bool w25_verify(Int32U address, const uint8_t *src, Int16U len)
     len -= n;
   }
   return true;
+}
+
+// Ќачинает адресную SPI-команду; вызывающий передаЄт данные и закрывает выбор чипа.
+static void w25_command(uint8_t command, uint32_t address)
+{
+  w25_chip_ON(); w25_delay_ON();
+  spi_send_byte(command);
+  spi_send_byte((uint8_t)(address >> 16));
+  spi_send_byte((uint8_t)(address >> 8));
+  spi_send_byte((uint8_t)address);
 }

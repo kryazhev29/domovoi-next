@@ -1,14 +1,19 @@
-/* Доработка: Кряжев А., 2026. Explicit cooperative workspace ownership. */
+// Доработка: Кряжев А., 2026
+// Фиксированные участки общей рабочей памяти без кучи.
+// Совместимость владельцев исключает наложение живых контекстов и кадров.
+// Память USB-источника возвращается только после окончания передачи.
 #ifndef WORK_MEMORY_H
 #define WORK_MEMORY_H
 #include <stdint.h>
-#include <stddef.h>
 #include "work_slots.h"
-/* Main-loop only. IRQ handlers never acquire or release this storage. */
+// Выдача и возврат выполняются главным циклом; прерывания память не занимают.
 void *work_acquire(uint32_t size, uint32_t slot);
+// Возвращает участок сразу либо после окончания заимствования USB.
 uint8_t work_release(void *pointer, uint32_t slot);
+// Заимствует живой кадр либо копирует временный ответ для USB.
 const uint8_t *work_usb_source(const uint8_t *source, uint16_t length);
+// Возвращает маску владельцев после завершённых передач USB.
 uint16_t work_owned(void);
+// Возвращает допустимый размер участка владельца.
 uint32_t work_capacity(uint32_t slot);
-uint8_t work_upload_ack(uint8_t command, uint8_t channel, void *context);
 #endif

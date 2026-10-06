@@ -1,4 +1,4 @@
-/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. РРЅРґРµРєСЃ Р±Р°Р·С‹ ID РїРѕ РєРѕСЂР·РёРЅР°Рј РЅР° РјРѕРґРµР»Рё NOR-С„Р»РµС€. */
+/* Доработка: Кряжев А., 2026. Индекс базы ID по корзинам на модели NOR-флеш. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -12,24 +12,31 @@ static int stage;
 static uint8_t flash[0x342000];
 static unsigned long reads, read_bytes, erases;
 static int fail_write_at = -1, writes;
-/* NOR: Р·Р°РїРёСЃСЊ С‚РѕР»СЊРєРѕ СЃР±СЂР°СЃС‹РІР°РµС‚ Р±РёС‚С‹, СЃС‚РёСЂР°РЅРёРµ - СЃРµРєС‚РѕСЂРѕРј 4 РљР‘. */
+/* NOR: запись только сбрасывает биты, стирание - сектором 4 КБ. */
 static bool mem_read(uint32_t a, uint8_t *p, uint16_t n){CHECK(a + n <= sizeof(flash));memcpy(p, flash + a, n);reads++;read_bytes += n;return true;}
+// Проверяет сценарий mem_write по независимым данным модуля.
 static bool mem_write(uint32_t a, uint8_t *p, uint16_t n){CHECK(a + n <= sizeof(flash));if (writes++ == fail_write_at) return false;for (uint16_t i = 0; i < n; i++) flash[a + i] &= p[i];return true;}
+// Проверяет сценарий mem_erase_sector по независимым данным модуля.
 static bool mem_erase_sector(uint32_t a){a &= ~4095u;CHECK(a + 4096 <= sizeof(flash));memset(flash + a, 0xFF, 4096);erases++;return true;}
-/* PRODUCTION */
+/* ИСХОДНИК */
 static uint32_t rnd = 12345;
+// Проверяет сценарий next по независимым данным модуля.
 static uint32_t next(void){rnd = rnd * 1103515245u + 12345u;return rnd >> 8;}
+// Проверяет сценарий make_id по независимым данным модуля.
 static void make_id(uint8_t *id, uint32_t k){for (int i = 0; i < 10; i++) id[i] = (uint8_t)('0' + (k >> (i * 3)) % 10);id[9] = (uint8_t)k;}
-/* РЇС‡РµР№РєР° Р±Р°Р·С‹: РЅРѕРјРµСЂ, ID, РѕСЃС‚Р°Р»СЊРЅРѕРµ - РїСЂРёР·РЅР°РєРё. Р—Р°РїРёСЃСЊ РєР°Рє Сѓ РєРѕРјР°РЅРґС‹ 13: СЃРµРєС‚РѕСЂ РїРµСЂРµРїРёСЃС‹РІР°РµС‚СЃСЏ С†РµР»РёРєРѕРј. */
+/* Ячейка базы: номер, ID, остальное - признаки. Запись как у команды 13: сектор переписывается целиком. */
 static void cell_write(uint16_t index, const uint8_t *id){uint8_t *c = flash + BASE + (uint32_t)(index - 1u) * 32u;memset(c, 0, 32);memcpy(c, &index, 2);memcpy(c + 2, id, 10);}
+// Проверяет сценарий cell_clear по независимым данным модуля.
 static void cell_clear(uint16_t index){memset(flash + BASE + (uint32_t)(index - 1u) * 32u, 0xFF, 32);}
-/* РџРѕР»РЅС‹Р№ РїСЂРѕС…РѕРґ РєР°Рє РїСЂРё СЃС‚Р°СЂС‚Рµ: СЃСѓРјРјР° С…РµС€РµР№ Рё РєРѕРЅРµС† Р±Р°Р·С‹. */
+/* Полный проход как при старте: сумма хешей и конец базы. */
 static uint16_t scan(uint32_t *sum){uint16_t end = 0;*sum = 0;for (uint16_t i = 1; i <= CELLS; i++){const uint8_t *c = flash + BASE + (uint32_t)(i - 1u) * 32u;if (c[0] == 0xFF && c[1] == 0xFF) continue;end = i;*sum ^= idindex_hash(i, c + 2);}return end;}
-/* Р­С‚Р°Р»РѕРЅ: РїРµСЂРµР±РѕСЂ РІСЃРµР№ Р±Р°Р·С‹. */
+/* Эталон: перебор всей базы. */
 static int linear(const uint8_t *id){for (uint32_t i = 0; i < CELLS; i++){const uint8_t *c = flash + BASE + i * 32u;if (!(c[0] == 0xFF && c[1] == 0xFF) && !memcmp(c + 2, id, 10)) return 1;}return 0;}
+// Выполняет восстановление журнала и измеряет объём стартового чтения.
 static void boot(void){uint32_t s;uint16_t e = scan(&s);memset(&ix, 0, sizeof(ix));idindex_scanned(s, e);}
+// Проверяет сценарий settle по независимым данным модуля.
 static void settle(void){for (int i = 0; i < 200000 && ix.state != IX_READY && ix.state != IX_OFF; i++) idindex_poll(BASE);}
-/* РџР°РєРµС‚ РєРѕРјР°РЅРґС‹ 13, РєР°Рє РІ РїСЂРѕС€РёРІРєРµ: РЅРѕРјРµСЂ РІ РёРЅРґРµРєСЃ РґРѕ Р·Р°РїРёСЃРё, СЃСѓРјРјР° РїРѕСЃР»Рµ. */
+/* Пакет команды 13, как в прошивке: номер в индекс до записи, сумма после. */
 static void sync(const uint16_t *index, uint8_t (*id)[10], int n){
   uint32_t delta = 0;uint16_t last = 0;
   for (int i = 0; i < n; i++){
@@ -44,63 +51,65 @@ static void sync(const uint16_t *index, uint8_t (*id)[10], int n){
   for (int i = 0; i < n; i++) cell_write(index[i], id[i]);
   idindex_commit(delta, last);
 }
+// Проверяет сценарий check_all по независимым данным модуля.
 static void check_all(uint32_t keys){
   uint8_t id[10], cell[32];
   for (uint32_t k = 0; k < keys; k++){make_id(id, k);int r = idindex_find(BASE, id, cell);CHECK(r == linear(id));if (r) CHECK(!memcmp(cell + 2, id, 10));}
 }
+// Запускает проверки модуля и сохраняет результаты в заданный файл.
 int main(void){
   uint8_t id[10], cell[32];
   memset(flash, 0xFF, sizeof(flash));
   stage=1;
-  /* 1. РџСѓСЃС‚Р°СЏ Р±Р°Р·Р°, РїРµСЂРІР°СЏ Р·Р°РіСЂСѓР·РєР°: РѕС‚РјРµС‚РєРё РЅРµС‚ - РїРµСЂРµСЃР±РѕСЂРєР°, РїРѕС‚РѕРј РіРѕС‚РѕРІ. */
+  /* 1. Пустая база, первая загрузка: отметки нет - пересборка, потом готов. */
   boot();CHECK(ix.state == IX_ERASE);settle();CHECK(ix.state == IX_READY);
   stage=2;
-  /* 2. 5000 ID РєРѕРјР°РЅРґРѕР№ 13 РїР°РєРµС‚Р°РјРё РїРѕ 30, СЃ РґС‹СЂР°РјРё Рё РїРѕРІС‚РѕСЂР°РјРё РЅРѕРјРµСЂРѕРІ. */
+  /* 2. 5000 ID командой 13 пакетами по 30, с дырами и повторами номеров. */
   {uint32_t k = 0;for (int p = 0; p < 170; p++){uint16_t idx[30];uint8_t ids[30][10];
     for (int i = 0; i < 30; i++){idx[i] = (uint16_t)(1 + next() % 9000);make_id(ids[i], k++ % 6000);}
     if (p % 7 == 0) idx[5] = idx[4];
     sync(idx, ids, 30);}}
   CHECK(ix.state == IX_READY);check_all(8000);
-  /* РџРѕРёСЃРє С‡РёС‚Р°РµС‚ РѕРґРЅСѓ РєРѕСЂР·РёРЅСѓ Рё РѕРґРЅСѓ-РґРІРµ СЏС‡РµР№РєРё, Р° РЅРµ Р±Р°Р·Сѓ. */
+  /* Поиск читает одну корзину и одну-две ячейки, а не базу. */
   make_id(id, 77);reads = read_bytes = 0;(void)idindex_find(BASE, id, cell);CHECK(read_bytes <= 64 + 3 * 32);
   stage=3;
-  /* 3. РџРµСЂРµР·Р°РіСЂСѓР·РєР° Р±РµР· РёР·РјРµРЅРµРЅРёР№: РѕС‚РјРµС‚РєР° СЃРѕРІРїР°Р»Р° - СЃСЂР°Р·Сѓ РіРѕС‚РѕРІ, Р±РµР· СЃС‚РёСЂР°РЅРёСЏ. */
+  /* 3. Перезагрузка без изменений: отметка совпала - сразу готов, без стирания. */
   erases = 0;boot();CHECK(ix.state == IX_READY && !erases);check_all(8000);
   stage=4;
-  /* 4. Р‘Р°Р·Сѓ РїРѕРјРµРЅСЏР»Рё РјРёРјРѕ РёРЅРґРµРєСЃР° (СЃС‚Р°СЂР°СЏ РїСЂРѕС€РёРІРєР°): СЃСѓРјРјР° РЅРµ СЃС…РѕРґРёС‚СЃСЏ - РїРµСЂРµСЃР±РѕСЂРєР°. */
+  /* 4. Базу поменяли мимо индекса (старая прошивка): сумма не сходится - пересборка. */
   make_id(id, 999999);cell_write(4321, id);cell_clear(17);
   boot();CHECK(ix.state == IX_ERASE);CHECK(idindex_find(BASE, id, cell) == -1);settle();CHECK(ix.state == IX_READY);
   CHECK(idindex_find(BASE, id, cell) == 1);check_all(8000);
   stage=5;
-  /* 5. Р—Р°РїРёСЃСЊ РІРѕ РІСЂРµРјСЏ РїРµСЂРµСЃР±РѕСЂРєРё: РЅРёР¶Рµ Рё РІС‹С€Рµ С€Р°РіР° - РїРѕСЃР»Рµ РЅРµС‘ РІСЃС‘ РЅР°С…РѕРґРёС‚СЃСЏ. */
-  {uint32_t s;uint16_t e = scan(&s);boot();CHECK(ix.state == IX_READY);idindex_scanned(s, e);} /* РїРµСЂРµСЃРєР°РЅРёСЂРѕРІР°РЅРёРµ - РїРµСЂРµСЃР±РѕСЂРєР° */
+  /* 5. Запись во время пересборки: ниже и выше шага - после неё всё находится. */
+  {uint32_t s;uint16_t e = scan(&s);boot();CHECK(ix.state == IX_READY);idindex_scanned(s, e);} /* пересканирование - пересборка */
   for (int i = 0; i < 64 + 50; i++) idindex_poll(BASE);
   CHECK(ix.state == IX_FILL && ix.step > 100);
   {uint16_t idx[2] = {3, 8999};uint8_t ids[2][10];make_id(ids[0], 1000001);make_id(ids[1], 1000002);sync(idx, ids, 2);}
   settle();CHECK(ix.state == IX_READY);make_id(id, 1000001);CHECK(idindex_find(BASE, id, cell) == 1);make_id(id, 1000002);CHECK(idindex_find(BASE, id, cell) == 1);check_all(8000);
   stage=6;
-  /* 6. РћР±СЂС‹РІ РїРёС‚Р°РЅРёСЏ РјРµР¶РґСѓ РЅРѕРјРµСЂРѕРј РІ РёРЅРґРµРєСЃРµ Рё Р·Р°РїРёСЃСЊСЋ СЏС‡РµР№РєРё: Р±Р°Р·Р° РЅРµ РёР·РјРµРЅРёР»Р°СЃСЊ,
-        РѕС‚РјРµС‚РєР° РІРµСЂРЅР°, Р»РёС€РЅРёР№ РЅРѕРјРµСЂ Р±РµР·РІСЂРµРґРµРЅ - СЏС‡РµР№РєР° СЃРІРµСЂСЏРµС‚СЃСЏ С†РµР»РёРєРѕРј. */
+  /* 6. Обрыв питания между номером в индексе и записью ячейки: база не изменилась,
+        отметка верна, лишний номер безвреден - ячейка сверяется целиком. */
   {uint16_t idx = 9100;make_id(id, 2000000);(void)idindex_put(idx, id);}
   CHECK(idindex_find(BASE, id, cell) == 0);
   boot();settle();CHECK(ix.state == IX_READY);CHECK(idindex_find(BASE, id, cell) == 0);check_all(8000);
   stage=7;
-  /* 7. РћР±СЂС‹РІ РїСЂРё РїРµСЂРµСЃР±РѕСЂРєРµ (РїРѕСЃР»Рµ РѕС‚РјРµС‚РєРё В«РЅРµРІРµСЂРµРЅВ»): РїСЂРё СЃС‚Р°СЂС‚Рµ РЅРµ РІРµСЂРёС‚ СЃС‚Р°СЂРѕР№ РѕС‚РјРµС‚РєРµ. */
+  /* 7. Обрыв при пересборке (после отметки «неверен»): при старте не верит старой отметке. */
   {uint32_t s;uint16_t e = scan(&s);(void)e;boot();CHECK(ix.state == IX_READY);
-   idindex_scanned(s ^ 1u, 0);  /* СЃСѓРјРјР° РїРѕРјРµРЅСЏР»Р°СЃСЊ - РѕС‚РјРµС‚РєР° В«РЅРµРІРµСЂРµРЅВ» Рё СЃС‚РёСЂР°РЅРёРµ */
-   CHECK(ix.state == IX_ERASE);idindex_poll(BASE);  /* СЃС‚С‘СЂС‚ РѕРґРёРЅ СЃРµРєС‚РѕСЂ Рё В«РІС‹РєР»СЋС‡РёР»РёВ» */
+   idindex_scanned(s ^ 1u, 0);  /* сумма поменялась - отметка «неверен» и стирание */
+   CHECK(ix.state == IX_ERASE);idindex_poll(BASE);  /* стёрт один сектор и «выключили» */
    boot();CHECK(ix.state == IX_ERASE);settle();CHECK(ix.state == IX_READY);check_all(8000);}
   stage=8;
-  /* 8. РЎР±РѕР№ Р·Р°РїРёСЃРё РЅРѕРјРµСЂР°: РёРЅРґРµРєСЃ СѓС…РѕРґРёС‚ РЅР° РїРµСЂРµСЃР±РѕСЂРєСѓ, РїРѕРёСЃРє РїРѕРєР° РїРµСЂРµР±РѕСЂРѕРј. */
+  /* 8. Сбой записи номера: индекс уходит на пересборку, поиск пока перебором. */
   fail_write_at = writes;make_id(id, 3000000);{uint16_t idx[1] = {9200};uint8_t ids[1][10];memcpy(ids[0], id, 10);sync(idx, ids, 1);}
   fail_write_at = -1;CHECK(ix.state != IX_READY);CHECK(idindex_find(BASE, id, cell) == -1);
   settle();CHECK(ix.state == IX_READY);CHECK(idindex_find(BASE, id, cell) == 1);check_all(8000);
   stage=9;
-  /* 9. РЎРµРєС‚РѕСЂ РѕС‚РјРµС‚РѕРє РїРµСЂРµРїРѕР»РЅСЏРµС‚СЃСЏ Рё СЃС‚РёСЂР°РµС‚СЃСЏ: РѕС‚РјРµС‚РєРё РїСЂРѕРґРѕР»Р¶Р°СЋС‚ СЂР°Р±РѕС‚Р°С‚СЊ. */
+  /* 9. Сектор отметок переполняется и стирается: отметки продолжают работать. */
   for (int i = 0; i < 700; i++){uint16_t idx[1] = {9300};uint8_t ids[1][10];make_id(ids[0], 4000000u + (uint32_t)i);sync(idx, ids, 1);}
   boot();CHECK(ix.state == IX_READY);make_id(id, 4000699);CHECK(idindex_find(BASE, id, cell) == 1);make_id(id, 4000698);CHECK(idindex_find(BASE, id, cell) == 0);
   stage=10;
-  /* 10. РџРµСЂРµРїРѕР»РЅРµРЅРЅР°СЏ РєРѕСЂР·РёРЅР°: РёРЅРґРµРєСЃ РІС‹РєР»СЋС‡Р°РµС‚СЃСЏ, РїРѕРёСЃРє РїРµСЂРµР±РѕСЂРѕРј, Р±РµР· Р»РѕР¶РЅРѕРіРѕ В«РЅРµС‚В». */
+  /* 10. Переполненная корзина: индекс выключается, поиск перебором, без ложного «нет». */
   {uint32_t target = ix_bucket(id), k = 5000000, put = 0;uint8_t ids[1][10];
    while (put < 40){make_id(ids[0], k++);if (ix_bucket(ids[0]) != target) continue;uint16_t idx[1] = {(uint16_t)(10000 + put++)};sync(idx, ids, 1);}
    CHECK(ix.state != IX_READY);settle();CHECK(ix.state == IX_OFF);CHECK(idindex_find(BASE, ids[0], cell) == -1);}

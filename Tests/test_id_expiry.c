@@ -1,15 +1,16 @@
+// Доработка: Кряжев А., 2026
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
-/* TYPES */
+/* ТИПЫ */
 #define ONE_DAY 86400u
 #define ID_TIME_VALID 1600000000u
 #define ID_TIME_DONE 0x38u
 static struct {uint32_t datetime;} device;
-/* PRODUCTION */
+/* ИСХОДНИК */
 int main(void){
  const uint32_t firsts[]={1600000000u,2147483600u,UINT32_MAX-120u,UINT32_MAX-30u};
  const uint16_t durations[]={0,1,2,65535};

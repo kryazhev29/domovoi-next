@@ -1,4 +1,5 @@
-﻿"""Linked raw-byte CRC cache: all writer classes, reboot and every write cut."""
+# Доработка: Кряжев А., 2026
+"""Кэш CRC сырых байтов: все писатели, сброс и обрывы каждой записи в связанном коде."""
 from test_id_sync_fast import SyncMachine,fixture,cell,BASE
 from test_access_reads import AccessMachine
 from test_expiry_runtime import ExpiryMachine,record
@@ -6,12 +7,15 @@ from test_idclear_runtime import ClearMachine
 from storage_machine import crc16
 import struct
 
+# Читает готовую CRC базы через её текущий интерфейс.
 def get(m):
     p=0x21000800
-    return int.from_bytes(m.u.mem_read(p,2),'little') if m.checked('idcrc_get',0,8192,p) else None
+    return int.from_bytes(m.u.mem_read(p,2),'little') if m.checked('idcrc_get',p) else None
 
+# Считает результат по независимому эталону сырых данных.
 def oracle(m):return crc16(m.flash[BASE:BASE+8192])
 
+# Доводит кэш CRC до готовности перед проверкой записи.
 def warm(m):
     for _ in range(1600):
         m.now+=1;m.checked('idcrc_background')
@@ -19,6 +23,7 @@ def warm(m):
         if value is not None and not m.checked('idcrc_io_active'):return value
     raise AssertionError('CRC cache did not become known')
 
+# Проверяет основные сценарии модуля и возвращает результаты.
 def run():
     m=fixture(SyncMachine(),0,total=8192);assert warm(m)==oracle(m)
     for ids in ((1,2),(1,129),(2,)):
@@ -37,6 +42,7 @@ def run():
     c.parse();c.clear_drain();assert get(c)==oracle(c);assert warm(c)==oracle(c)
     return {'writers':['packet13 append','packet13 sector journal','user_updateID / cntPass / first-pass','expiry','clear'],'CRC':'raw full oracle'}
 
+# Проверяет восстановление после обрывов изменяющих операций.
 def power():
     m=fixture(SyncMachine(),0,total=8192);assert warm(m)==oracle(m)
     initial=bytes(m.flash);m.record_changes=True
@@ -60,8 +66,9 @@ def power():
     return {'cuts':cuts,'CRC_flash_writes':0}
 
 
+# Проверяет фоновое построение CRC, приостановку и повтор после сброса.
 def background():
-    # Occupied raw bytes include torn cells. A known boundary reads only them.
+    # Граница сырых байтов учитывает оборванные ячейки; готовая граница ограничивает чтение.
     counts=[]
     for used in (0,1,63,64,65,8192,0xffffffff):
         m=fixture(SyncMachine(),0,total=8192)
@@ -71,7 +78,7 @@ def background():
         before=m.counts['read'];assert warm(m)==oracle(m)
         assert m.counts['read']-before==(n+63)//64 and not m.changes
         counts.append(used)
-    # Each completed scan chunk is a power-cut boundary: RAM must start unknown.
+    # После каждого фрагмента сканирования имитируем сброс: CRC в ОЗУ снова неизвестна.
     m=fixture(SyncMachine(),0,unknown=True,total=8192)
     m.flash[BASE:BASE+8192]=bytes((i*13)&255 for i in range(8192))
     expected=oracle(m)
@@ -79,14 +86,14 @@ def background():
         m.now+=1;m.checked('idcrc_background');assert m.read_budget<=64
         r=fixture(SyncMachine(m.flash),0,unknown=True,total=8192)
         assert get(r) is None and warm(r)==expected
-    # Another Flash owner pauses without dropping the completed prefix.
+    # Другой владелец флеша приостанавливает проход, сохраняя готовый префикс.
     m=fixture(SyncMachine(),0,unknown=True,total=8192);m.checked('idcrc_background')
     before=m.counts['read'];m.write(m.addr('flash_owner'),1,1)
     for _ in range(3):m.checked('idcrc_background')
     assert m.counts['read']==before
     m.write(m.addr('flash_owner'),0,1);assert warm(m)==oracle(m)
     assert m.counts['read']==128
-    # A writer after a partial scan restarts it; a read failure retries as well.
+    # Запись после частичного прохода и ошибка чтения требуют повторного сканирования.
     m=fixture(SyncMachine(),0,unknown=True,total=8192);m.checked('idcrc_background')
     m.command(13,cell(1),1);m.drain();assert get(m) is None and warm(m)==oracle(m)
     m=fixture(SyncMachine(),0,unknown=True,total=8192);m.fault=('read',1)
@@ -95,6 +102,7 @@ def background():
     return {'occupied_boundaries':counts,'scan_power_cuts':129,'pause_resume':'prefix retained','writer_mid_scan':'restart','read_error':'retry','Flash_metadata':0}
 
 
+# Проверяет запрет публикации CRC отменённой записи.
 def cancellation():
     for point in ('old_bytes','verify'):
         m=fixture(SyncMachine(),1,total=8192);assert warm(m)==oracle(m)
@@ -135,6 +143,7 @@ def cancellation():
     return {'cancel_before_write_and_during_verify':2,'writer_cancels':['packet13','expiry','clear'],'unknown_old_read':'recompute','expiry_read_failure':'recompute','missing_update_ID':'recompute'}
 
 
+# Проверяет учёт CRC через реальный драйвер записи и стирания W25.
 def real_nor():
     from test_id_sync_fast import TimedMachine
     m=fixture(TimedMachine(),1,total=8192);m.install_nor();assert warm(m)==oracle(m)
@@ -153,6 +162,7 @@ def real_nor():
     return {'native_NOR_job_ABI':'verified','write_and_erase':'oracle equal','maximum_CRC_poll_ms':round(max(peaks),6),'timing':'modeled SPI/NOR'}
 
 
+# Проверяет восстановление журнала неизменённым загрузчиком.
 def loader_recovery():
     m=fixture(SyncMachine(),1,total=8192);assert warm(m)==oracle(m)
     initial=bytes(m.flash);m.record_changes=True;m.command(13,cell(1,1),1);m.drain();warm(m)
@@ -162,8 +172,8 @@ def loader_recovery():
         if kind=='write' and a==0x1fa01c:break
     else:raise AssertionError('journal commit not reached')
     assert cut[BASE:BASE+8192]==initial[BASE:BASE+8192]
-    # The unchanged bootloader performs sector recovery with raw NOR calls;
-    # it knows nothing about the application CRC journal or its RAM cache.
+    # Неизменённый загрузчик восстанавливает сектор прямыми вызовами NOR;
+    # он не знает о кэше CRC приложения в ОЗУ.
     loader=fixture(SyncMachine(cut),0,unknown=True,total=8192)
     loader.stubs[loader.addr('idcrc_write')]=loader.sync_write
     loader.stubs[loader.addr('idcrc_erase')]=loader.sync_erase
@@ -179,6 +189,7 @@ def loader_recovery():
     return {'cut':'SJ commit before first MB_ID mutation','loader':'unmodified raw NOR boundary','CRC':expected}
 
 
+# Проверяет восстановление после отказа фиксации журнала.
 def failed_commit_recovery():
     m=fixture(SyncMachine(),1,total=8192);assert warm(m)==oracle(m)
     m.command(13,cell(1,1),1)
@@ -188,8 +199,8 @@ def failed_commit_recovery():
     else:raise AssertionError('commit marker not reached')
     m.fault=('poll',m.counts['poll']+1);m.drain()
     assert m.answers and not m.sent
-    # Metadata publication after a failed transaction must not make the still
-    # pending loader recovery disappear behind a valid pre-transaction CRC.
+    # Публикация настроек после отказа не должна скрыть незавершённое
+    # восстановление загрузчика за готовой CRC состояния до записи.
     loader=fixture(SyncMachine(m.flash),0,unknown=True,total=8192)
     loader.stubs[loader.addr('idcrc_write')]=loader.sync_write
     loader.stubs[loader.addr('idcrc_erase')]=loader.sync_erase

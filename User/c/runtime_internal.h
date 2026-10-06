@@ -1,6 +1,6 @@
 // Доработка: Кряжев А., 2026
 // Общие внутренние контракты автоматов хранилища.
-// Структура store сохраняет размещение данных гибридного ASM.
+// Общий тип store используется сохранением настроек и сервисом прошивки.
 // Готовые аргументы не проверяются повторно; владение флешем и рабочей памятью обязательно.
 #ifndef C_RUNTIME_INTERNAL_H
 #define C_RUNTIME_INTERNAL_H
@@ -11,21 +11,16 @@
 #include "sector_runtime.h"
 #include "../asm/flash_owner.h"
 #include "../../Modules/comm_channel.h"
-#include <stddef.h>
-// Состояние сохранения из user_fun; порядок полей сохраняет контракт гибридного ASM.
+// Состояние владельца настроек из user_store.c.
 typedef struct {
   uint32_t erase, end, retry_at, usb_epoch;
   uint16_t cursor;
   uint8_t job, clear, waiting, cmd, channel, uniq, quiet, repeat;
   uint8_t last_id[4], seen;
 } store_state_s;
-typedef char store_state_size[(sizeof(store_state_s)==32)?1:-1];
-typedef char store_state_job[(offsetof(store_state_s,job)==18)?1:-1];
-typedef char store_state_command[(offsetof(store_state_s,cmd)==21)?1:-1];
-typedef char store_state_channel[(offsetof(store_state_s,channel)==22)?1:-1];
-typedef char store_state_uniq[(offsetof(store_state_s,uniq)==23)?1:-1];
-typedef char store_state_quiet[(offsetof(store_state_s,quiet)==24)?1:-1];
-enum { STORE_JOB_COMMAND = 9 };
+enum {
+  STORE_JOB_COMMAND = 9
+};
 extern uint8_t flash_owner, store_runtime, store_reset_requested;
 extern device_s device;
 extern config_s config;

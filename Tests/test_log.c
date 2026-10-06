@@ -1,23 +1,26 @@
+// Доработка: Кряжев А., 2026
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
-/* TYPES */
+/* ТИПЫ */
 static struct { uint32_t datetime, worktime; uint8_t hardwareVersion; uint16_t firmwareVersion; uint32_t buildDate; } device;
 enum { MB_LOG };
 static struct { uint32_t start, size; } mem[1] = {{4096, 4096}};
 static uint8_t logflash[4096];
+// Проверяет сценарий mem_read по независимым данным модуля.
 static bool mem_read(uint32_t a, uint8_t *p, uint32_t n) { memcpy(p, logflash + a - mem[MB_LOG].start, n); return true; }
 static cellLog_s last;
 static unsigned added,fail_write;
 static cellLog_s written[64];
+// Проверяет сценарий log_addEvent по независимым данным модуля.
 static bool log_addEvent(cellLog_s *cl) { if(fail_write==1||(fail_write==2&&added>=1))return false;last = *cl; if (added < 64) written[added] = *cl; added++; return true; }
-static bool id_endScan; /* use time ends of user_fun.c, recounted on new time */
-/* PRODUCTION */
+static bool id_endScan; /* Используем сроки из user_fun.c, пересчитываемые после установки нового времени. */
+/* ИСХОДНИК */
 
-/* Event journal sheet of the protocol table, column A: the number the server reads in logType. */
+/* Таблица событий протокола, колонка A: номер, который сервер читает в logType. */
 static const struct { int value, sheet; const char *name; } table[] = {
   {LOG_SYS_DEFCONF, 0, "factory settings"},
   {LOG_SYS_ENDIDUPDATE, 6, "ID sync done"}, {LOG_SYS_ENDCONFUPDATE, 7, "settings sync done"},
@@ -65,8 +68,7 @@ int main(void)
       exit(1);
     }
 
-  /* Before the server time arrives the clock runs from zero: events wait in memory and are
-     written with the real time minus the seconds passed since each of them (18.09.2026). */
+  /* До серверного времени часы идут от нуля: события ждут в ОЗУ, затем получают истинное время с учётом прошедших секунд. */
   device.datetime = 31; device.worktime = 31;
   CHECK(log_addSystemEvent(LOG_SYS_CONNECT1) && added == 0);
   device.datetime = 40; device.worktime = 40;
@@ -79,21 +81,21 @@ int main(void)
   log_setTime(1789600005u); CHECK(added == 2);
   added = 0;
 
-  /* Every record carries the event number itself, not a category. */
+  /* Запись содержит номер самого события, а не его категорию. */
   device.datetime = 1789600000u;
   CHECK(log_addSystemEvent(LOG_SYS_ENDIDUPDATE) && last.logType == 6 && last.datetime == 1789600000u && last.index == 1789600000u);
   CHECK(log_addSystemEventID(LOG_SYS_RECVSMS, id) && last.logType == 35 && !memcmp(last.ID, id, 10));
   CHECK(log_addControlEvent(LOG_CON_OUTONBYAPP, id, 3) && last.logType == 77 && last.arg2 == 0 && last.passCnt == 3 && !memcmp(last.ID, id, 10));
-  /* Photo number goes to the first 4 bytes of argument 1, argument 2 stays reserved (Protocol2 E533, E534). */
+  /* Номер фото занимает первые 4 Б аргумента 1; аргумент 2 зарезервирован по E533/E534. */
   { static const char num[10] = {0x78,0x56,0x34,0x12};
     CHECK(log_addPhotoEvent(0x12345678u) && last.logType == 129 && !memcmp(last.ID, num, 10) && last.arg2 == 0 && last.passCnt == 0); }
-  /* FW events: argument 1 is the running version HW 1 byte, FW 2, build 4; argument 2 the reason code. */
+  /* События прошивки: аргумент 1 содержит аппаратную версию, версию ПО и сборку; аргумент 2 — код причины. */
   { static const char ver[10] = {(char)139, 71, 0, 0x78, 0x56, 0x34, 0x12};
     device.hardwareVersion = 139; device.firmwareVersion = 71; device.buildDate = 0x12345678u;
     CHECK(log_addUpdateEvent(LOG_FW_FAIL, 8) && last.logType == 133 && !memcmp(last.ID, ver, 10) && last.arg2 == 8); }
   CHECK(added == 5);
 
-  /* No server time: a full queue, the time limit and a reset write the events as they are. */
+  /* Без серверного времени полная очередь, предельное ожидание и сброс записывают события как есть. */
   log_timeKnown = 0; log_pendingCount = 0; added = 0; device.worktime = 5; device.datetime = 5;
   for (i = 0; i < LOG_PENDING_MAX; i++) log_addSystemEvent(LOG_SYS_NOTGSMREG);
   CHECK(added == 0 && log_pendingCount == LOG_PENDING_MAX);
@@ -105,7 +107,7 @@ int main(void)
   log_timeKnown = 0; log_pendingCount = 0; added = 0; device.worktime = 7;
   log_addSystemEvent(LOG_SYS_RESETONCMD); log_flushPending(); CHECK(added == 1 && last.logType == 33);
 
-  /* Record numbers only grow: two events in one second, after a restart and after the erase. */
+  /* Номера растут при двух событиях за секунду, после перезапуска и после стирания. */
   { cellLog_s c; uint32_t at = mem[MB_LOG].start;
     memset(logflash, 0xff, sizeof(logflash)); log_lastIndex = 0;
     memset(&c, 0, sizeof(c)); c.index = 1000; log_uniqueIndex(&c, at); CHECK(c.index == 1000);

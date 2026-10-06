@@ -1,4 +1,5 @@
-"""Final ASM USB -> command -> storage, and the strong/weak callback contract."""
+# Доработка: Кряжев А., 2026
+"""Связанный путь USB → команда → хранилище и контракт переопределяемых обработчиков."""
 from storage_machine import *
 from test_table_runtime import rows
 

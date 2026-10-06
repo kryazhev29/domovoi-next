@@ -1,11 +1,12 @@
+// Доработка: Кряжев А., 2026
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);} } while(0)
-/* TYPES */
-/* DEFINES */
+/* ТИПЫ */
+/* КОНСТАНТЫ */
 #define DEBUG_USER
 #define MB_FIRMWARE 0
 static struct { uint32_t start; } mem[1];
@@ -16,27 +17,38 @@ static unsigned writes,reads,aborts,logs,status_count,debug_lines;
 static uint8_t status_code;
 static int manual,written,foreign;
 static char tempStrBuffer[128];
+// Проверяет сценарий boot_manual_busy по независимым данным модуля.
 static bool boot_manual_busy(void) { return manual!=0; }
+// Проверяет сценарий wdt_reload по независимым данным модуля.
 static void wdt_reload(void) {}
+// Проверяет сценарий fw_image_foreign по независимым данным модуля.
 static bool fw_image_foreign(const uint8_t *p,uint8_t hw) { CHECK(p!=NULL && hw==139);return foreign!=0; }
+// Проверяет сценарий fw_abort по независимым данным модуля.
 static void fw_abort(const char *why) { (void)why;aborts++;device.startWaitFWtime=0; }
+// Проверяет сценарий fw_log по независимым данным модуля.
 static void fw_log(logUpdate_e event,const char *why) { CHECK(event==LOG_FW_FAIL && !strcmp(why,"HW"));logs++; }
 static bool mem_write(uint32_t address,uint8_t *p,uint16_t n)
 { CHECK(n==1024 && p==input+2 && address==FWBLOCK_OFFSET+(uint32_t)device.FWblockIdx*1024);writes++; return true; }
 static unsigned erases;static uint32_t erased[8];static int erase_fail;
+// Проверяет сценарий mem_erase_sector по независимым данным модуля.
 static bool mem_erase_sector(uint32_t a) { CHECK(a%4096u==0);if(erase_fail)return false;if(erases<8)erased[erases]=a;erases++;return true; }
+// Проверяет сценарий fw_block_written по независимым данным модуля.
 static bool fw_block_written(uint32_t address,const uint8_t *p) { (void)address;CHECK(p==input+2);return written!=0; }
+// Проверяет сценарий mem_read по независимым данным модуля.
 static bool mem_read(uint32_t address,uint8_t *p,uint16_t n) { CHECK(address==0 && n==sizeof(bootFWparam_s));memset(p,0,n);reads++; return true; }
+// Проверяет сценарий user_checkFirmware по независимым данным модуля.
 static bool user_checkFirmware(uint32_t address,uint32_t n,uint32_t crc) { CHECK(address==FWBLOCK_OFFSET && !n && !crc);return true; }
+// Проверяет сценарий fw_blocks_done по независимым данным модуля.
 static uint8_t fw_blocks_done(bool ok) { CHECK(ok);return FW_BLOCK_OK; }
 static uint8_t fw_write_errors;
 static void user_send_statusUpdateFW(uint8_t cmd,uint8_t code,dataChanel_e ch,uint8_t id)
 { CHECK(cmd==20 && ch==CH_SERVER && id==42);status_count++;status_code=code; }
+// Проверяет сценарий user_debug по независимым данным модуля.
 static void user_debug(char *p) { CHECK(strstr(p,"cmd 20")!=NULL);CHECK(input_size>=2);debug_lines++; }
 static void *checked_memcpy(void *dest,const void *source,size_t n)
 { if(source==input)CHECK(n<=input_size);CHECK(source!=NULL);return memcpy(dest,source,n); }
 #define memcpy checked_memcpy
-/* PRODUCTION */
+/* ИСХОДНИК */
 #undef memcpy
 static void init(void)
 {
@@ -79,7 +91,7 @@ static void test_command(void)
     }
     puts("fwblockbounds command20: DEBUG_USER respects payload boundaries; one unchanged command4 response passed");
 }
-/* A sector is erased right before the first block written into it: blocks 3 and 7 cross 0x1000 and 0x2000. */
+/* Сектор стирается прямо перед первым блоком: блоки 3 и 7 пересекают 0x1000 и 0x2000. */
 static void test_lazy_erase(void)
 {
     uint8_t p[1026]={0};input=p;input_size=sizeof(p);

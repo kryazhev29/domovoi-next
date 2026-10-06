@@ -70,14 +70,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=source('Tests/asm/reference/User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
         defines='\n'.join(x for x in header.splitlines() if x.startswith(('#define MEM','typedef uint8_t (*mem_page_reader','bool mem_patch','uint8_t mem_config_result')))
-        test=(ROOT/'Tests/test_storage.c').read_text()
+        test=(ROOT/'Tests/test_storage.c').read_bytes().decode('cp1251')
         legacy=subprocess.check_output(['git','show','203c55b:User/user_fun.c'],cwd=ROOT).decode('cp1251')
         legacy_code='\n'.join(function(legacy,n) for n in ['user_writeConfigAndDevice','user_readconfig'])
         for n in ['user_writeConfigAndDevice','user_readconfig','user_setdefault','user_saveindex','mem_read','mem_write','mem_erase_sector']:
             legacy_code=re.sub(r'\b'+n+r'\b','legacy_'+n,legacy_code)
         reset='#define TEST_STORAGE_BOOT() (cfg_legacy_checked = 0)\n' if 'cfg_legacy_checked' in code else '#define TEST_STORAGE_BOOT() ((void)0)\n'
         shared=source('User/sector_journal.h')+'\n'+source('User/sector_journal.c').replace('#include "sector_journal.h"','')+'\n' if '#include "sector_journal.h"' in source('Tests/asm/reference/User/memory.c') else ''
-        unit=test.replace('/* PRODUCTION */',defines+'\n'+shared+code+'\n'+reset+function(source('Tests/asm/reference/User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
+        unit=test.replace('/* ИСХОДНИК */',defines+'\n'+shared+code+'\n'+reset+function(source('Tests/asm/reference/User/user_fun.c'),'user_writeConfigAndDevice')+'\n'+legacy_code)
     elif kind in ('sectorjournal','bootjournal'):
         code=source('Tests/asm/reference/User/memory.c').replace('#include "memory.h"','').replace('#include "sector_journal.h"','')
         header=source('User/memory.h')
@@ -101,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             if name in ('MB_ID','MB_GROUP','MB_SHEDULE','MB_HOLIDAY','MB_TEMPID'):
                 start,size=int(start),int(size);expected.append('{'+str(start&~4095)+'u,'+str((start+size+4095)&~4095)+'u}')
         layout='static const uint32_t expected[][2] = {'+','.join(expected)+'};'
-        unit=(ROOT/'Tests/test_sector_journal.c').read_text(encoding='utf8').replace('/* PRODUCTION */',defines+'\n'+shared+code).replace('/* EXPECTED DESTINATIONS */',layout).replace('/* BOOT_ADAPTER_TEST */',boot_test)
+        unit=(ROOT/'Tests/test_sector_journal.c').read_bytes().decode('cp1251').replace('/* ИСХОДНИК */',defines+'\n'+shared+code).replace('/* АДРЕСА НАЗНАЧЕНИЯ */',layout).replace('/* ПРОВЕРКА ЗАГРУЗЧИКА */',boot_test)
 
     elif kind in ('photo','rs485cfg'):
         user=source('Tests/asm/reference/User/user_fun.c'); case=cases(user)
@@ -157,7 +157,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         poll=poll[:poll.rfind('  }')]
         tick=loop[loop.index('    if (device.updateTimeout){'):loop.index('    if (app_trial_expired()){')]
         audit='static void audit_poll(void){\n'+poll+'\n}\nstatic void audit_tick(void){\n'+tick+'\n}\n'
-        unit=(ROOT/'Tests/test_fw_start.c').read_text(encoding='utf-8').replace('/* TYPES */',types).replace('/* PRODUCTION */',defines+helpers).replace('/* AUDIT LOOP */',audit).replace('/* FIRMWARE CRC */', function(user,'CRC32')+'\n'+function(user,'user_checkFirmware'))
+        unit=(ROOT/'Tests/test_fw_start.c').read_bytes().decode('cp1251').replace('/* ТИПЫ */',types).replace('/* ИСХОДНИК */',defines+helpers).replace('/* ПРОВЕРКА ЦИКЛА */',audit).replace('/* CRC ПРОШИВКИ */', function(user,'CRC32')+'\n'+function(user,'user_checkFirmware'))
     elif kind=='log':
         user=source('Tests/asm/reference/User/user_fun.c');st=source('structures.h')
         case=cases(user)
@@ -209,19 +209,19 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
                  'LOG_SYS_ENDCONFUPDATE':'LOG_SYS_ENDIDUPDATE + i','LOG_SYS_ENDGROUPUPDATE':'LOG_SYS_ENDIDUPDATE + i',
                  'LOG_SYS_ENDSHEDULEUPDATE':'LOG_SYS_ENDIDUPDATE + i','LOG_SYS_ENDHOLLIDAYUPDATE':'LOG_SYS_ENDIDUPDATE + i'}
         not_written={'LOG_SYS_RESETONSHEDULE'}
-        names=re.findall(r'\{(LOG_\w+), \d+,',(ROOT/'Tests/test_log.c').read_text())
+        names=re.findall(r'\{(LOG_\w+), \d+,',(ROOT/'Tests/test_log.c').read_bytes().decode('cp1251'))
         assert len(names)>=55,'journal table'
         missing=[n for n in names if n not in not_written and n not in writers and not (n in derived and derived[n] in writers)]
         assert not missing,('journal events never written',missing)
         assert 'event = (uint8_t)(event + user_comm_server(address));' in user,'second server by offset'
         code=function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'+pend+'\n'.join(function(user,n) for n in ['log_addSystemEvent','log_addSystemEventID','log_addControlEvent','log_addPhotoEvent','log_addUpdateEvent'])
-        unit=(ROOT/'Tests/test_log.c').read_text().replace('/* TYPES */',typedefs(st,'logSystem_e','logControl_e','logUpdate_e','cellLog_s')).replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_log.c').read_bytes().decode('cp1251').replace('/* ТИПЫ */',typedefs(st,'logSystem_e','logControl_e','logUpdate_e','cellLog_s')).replace('/* ИСХОДНИК */',code)
     elif kind=='logcommit':
         user=source('Tests/asm/reference/User/user_fun.c')
         names=['log_blank','log_valid','log_uniqueIndex','log_addEvent','log_getRecordsCount','log_readRecords']
         code='static uint32_t log_lastIndex;\n'+function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
         code+='\n'.join(function(user,n) for n in names if re.search(r'(?m)^(?:static )?(?:bool|void|uint16_t) '+n+r'\(',user))
-        unit=(ROOT/'Tests/test_log_commit.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s')).replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_log_commit.c').read_bytes().decode('cp1251').replace('/* ТИПЫ */',typedefs(source('structures.h'),'cellLog_s')).replace('/* ИСХОДНИК */',code)
         if 'static bool log_readRecords(' not in user:
             unit=unit.replace('/* PRODUCTION */',code)
             unit=unit.replace('static void reset(void)', 'static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){return mem_read(4096+first*32,p,count*32);}\nstatic void reset(void)')
@@ -315,7 +315,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         defines='\n'.join(x for x in user.splitlines() if x.startswith('#define FW_'))+'\n#define FWBLOCK_OFFSET 0x200u\n'
         code=function(user,'fw_take_block')+'\nvoid command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(20)+'default: abort(); }}'
         types=typedefs(source('structures.h'),'dataChanel_e','logUpdate_e','bootFWparam_s')
-        unit=(ROOT/'Tests/test_fw_block_bounds.c').read_text().replace('/* TYPES */',types).replace('/* DEFINES */',defines).replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_fw_block_bounds.c').read_bytes().decode('cp1251').replace('/* ТИПЫ */',types).replace('/* КОНСТАНТЫ */',defines).replace('/* ИСХОДНИК */',code)
     elif kind=='cmdlengths':
         user=source('Tests/asm/reference/User/user_fun.c');parse=function(user,'user_parse_comand')
         types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s','status_s','triggers_s','device_s','dataChanel_e','cmdCode_e','logSystem_e','logUpdate_e')
@@ -366,7 +366,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='usbdesc':
         unit=fixture('Tests/test_usb_descriptor.c').replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_GetStringDescriptor'))
     elif kind=='logupload':
-        unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('Tests/asm/reference/User/user_fun.c'),'user_send_logRecords'))
+        unit=(ROOT/'Tests/test_log_upload.c').read_bytes().decode('cp1251').replace('/* ИСХОДНИК */',function(source('Tests/asm/reference/User/user_fun.c'),'user_send_logRecords'))
     elif kind=='uploadretry':
         user=source('Tests/asm/reference/User/user_fun.c')
         code=function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
@@ -375,10 +375,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         else:
             code+='static uint16_t log_usbReadIndex,temp_usbReadIndex,log_unacked[2],temp_unacked[2]; static void upload_reset(uint8_t cmd){(void)cmd;} static uint16_t upload_index(uint8_t cmd,dataChanel_e ch){return cmd==10?(ch==CH_USB?log_usbReadIndex:device.readLogIDIndex):device.readTempIDIndex;} static void upload_restore(const device_s *v){(void)v;} static void log_setReadIndex(dataChanel_e ch,uint16_t n){if(ch==CH_USB)log_usbReadIndex=n;else device.readLogIDIndex=n;}\n'
         code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_readRecords','user_send_anyData','user_send_logRecords','user_send_tempIDs','user_factoryReset'])
-        unit=(ROOT/'Tests/test_upload_retry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s','dataChanel_e')).replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_upload_retry.c').read_bytes().decode('cp1251').replace('/* ТИПЫ */',typedefs(source('structures.h'),'cellLog_s','cellID_s','dataChanel_e')).replace('/* ИСХОДНИК */',code)
     elif kind=='idindex':
         code=source('Tests/asm/reference/User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))
-        unit=(ROOT/'Tests/test_idindex.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+        unit=(ROOT/'Tests/test_idindex.c').read_bytes().decode('cp1251').replace('/* ИСХОДНИК */',code)
     elif kind=='outs':
         import re as _re
         outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
@@ -485,7 +485,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_utc_day.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellHoliday_s')).replace('/* PRODUCTION */',code)
     elif kind=='idexpiry':
         user=source('Tests/asm/reference/User/user_fun.c')
-        unit=(ROOT/'Tests/test_id_expiry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
+        unit=(ROOT/'Tests/test_id_expiry.c').read_bytes().decode('cp1251').replace('/* ТИПЫ */',typedefs(source('structures.h'),'cellID_s')).replace('/* ИСХОДНИК */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
     elif kind=='tempidmeta':
         unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('Tests/asm/reference/User/user_fun.c'),'user_findTempID')+'\n'+function(source('Tests/asm/reference/User/user_fun.c'),'user_addIdToTempBuffer'))
     elif kind=='commuart':

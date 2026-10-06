@@ -1,3 +1,4 @@
+// Доработка: Кряжев А., 2026
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -16,22 +17,27 @@ static unsigned operations, cut, partial, lengths[128], reads, fail_read, fail_o
 static uint32_t addresses[128];
 static int cut_bits=-1;
 static jmp_buf poweroff;
+// Проверяет сценарий w25_read_data по независимым данным модуля.
 bool w25_read_data(uint32_t a,uint8_t *p,uint16_t n) {
     CHECK(a <= sizeof(flash) && n <= sizeof(flash)-a);
     if (++reads == fail_read) return false;
     memcpy(p,flash+a,n);return true;
 }
+// Проверяет сценарий limit по независимым данным модуля.
 static unsigned limit(unsigned n) {
     CHECK(operations < 128);lengths[operations]=n;
     return cut == operations+1 && partial < n ? partial : n;
 }
+// Проверяет сценарий checkpoint по независимым данным модуля.
 static void checkpoint(void) { if (++operations == cut) longjmp(poweroff,1); }
+// Проверяет сценарий w25_erase_sector по независимым данным модуля.
 bool w25_erase_sector(uint32_t a) {
     a &= ~4095u;CHECK(a+4096<=sizeof(flash));
     addresses[operations]=a;
     if (operations+1 == fail_op) { operations++; return false; }
     memset(flash+a,255,limit(4096));checkpoint();return true;
 }
+// Проверяет сценарий w25_write_data по независимым данным модуля.
 bool w25_write_data(uint32_t a,uint8_t *p,uint16_t n) {
     while(n) {
         unsigned k=256-(a&255),i,m;if(k>n)k=n;m=limit(k);
@@ -48,54 +54,62 @@ bool w25_write_data(uint32_t a,uint8_t *p,uint16_t n) {
         a+=k;p+=k;n-=k;checkpoint();
     }return true;
 }
+// Проверяет сценарий crc16_calcInit по независимым данным модуля.
 uint16_t crc16_calcInit(uint8_t *p,uint16_t n,uint16_t c) {
     unsigned bit;while(n--) { c^=*p++;for(bit=0;bit<8;bit++)c=(c>>1)^((c&1)?0xa001:0); }
     return c;
 }
-/* PRODUCTION */
+/* ИСХОДНИК */
 static void seed(void) {
     unsigned i;memset(flash,255,sizeof(flash));
     for(i=0;i<4096;i++)before[i]=(uint8_t)(i*17u+23u);
     memcpy(after,before,4096);memset(after+100,0x42,32);
     memcpy(flash+TARGET,before,4096);operations=cut=partial=reads=fail_read=fail_op=services=0;cut_bits=-1;
 }
+// Проверяет сценарий restart по независимым данным модуля.
 static bool restart(void) {
 #ifdef SECTOR_JOURNAL_H
     mem_storage_ready=false;cfg_legacy_checked=0;
     return mem_recover();
 #else
-    /* Р’ РїСЂРµР¶РЅРµР№ РїСЂРѕС€РёРІРєРµ С‚РѕС‡РєРё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ С‚Р°Р±Р»РёС† РЅРµС‚. */
+    /* В прежней прошивке точки восстановления таблиц нет. */
     return true;
 #endif
 }
 #ifdef SECTOR_JOURNAL_H
-/* EXPECTED DESTINATIONS */
+/* АДРЕСА НАЗНАЧЕНИЯ */
 static uint8_t saved[3][4096];
+// Проверяет сценарий model_crc по независимым данным модуля.
 static uint32_t model_crc(const uint8_t *p,unsigned n) {
     uint32_t c=0xffffffffu;unsigned i;while(n--){c^=*p++;for(i=0;i<8;i++)c=(c>>1)^((c&1)?0xedb88320u:0);}
     return ~c;
 }
+// Проверяет сценарий save_flash по независимым данным модуля.
 static void save_flash(void) {
     memcpy(saved[0],flash+TARGET,4096);memcpy(saved[1],flash+SJ_DATA,4096);memcpy(saved[2],flash+SJ_META,4096);
 }
+// Проверяет сценарий load_flash по независимым данным модуля.
 static void load_flash(void) {
     memcpy(flash+TARGET,saved[0],4096);memcpy(flash+SJ_DATA,saved[1],4096);memcpy(flash+SJ_META,saved[2],4096);
     operations=cut=partial=reads=fail_read=fail_op=services=0;cut_bits=-1;mem_storage_ready=false;cfg_legacy_checked=0;
 }
+// Проверяет сценарий whole по независимым данным модуля.
 static void whole(void) {
     unsigned i;CHECK(!memcmp(flash+TARGET,before,4096)||!memcmp(flash+TARGET,after,4096));
     for(i=0;i<4096;i++)CHECK(flash[TARGET-4096+i]==0xff&&flash[TARGET+4096+i]==0xff);
 }
+// Создаёт исходное состояние сценария и его подменяемые границы.
 static void setup(unsigned reuse) {
     seed();
     if(reuse) {
-        /* РћСЃС‚Р°РІРёС‚СЊ РґРµР№СЃС‚РІРёС‚РµР»СЊРЅС‹Р№ РїСЂРµР¶РЅРёР№ commit РїРѕСЃР»Рµ РѕС‚РєР°Р·Р° РѕС‡РёСЃС‚РєРё. */
+        /* Оставить действительный прежний commit после отказа очистки. */
         fail_op=38;CHECK(!mem_replace_sector(TARGET,after));fail_op=0;
         CHECK(!memcmp(flash+TARGET,after,4096));
         memcpy(before,after,4096);after[700]^=0x23;after[4020]^=0xa1;
     }
     operations=reads=services=0;save_flash();
 }
+// Проверяет сценарий campaign по независимым данным модуля.
 static void campaign(unsigned reuse) {
     unsigned total,lens[128],k,p,cases=0;uint32_t a[128];
     setup(reuse);CHECK(mem_rewrite(TARGET,after,4096,image));CHECK(services>0);
@@ -106,7 +120,7 @@ static void campaign(unsigned reuse) {
         if(!setjmp(poweroff))CHECK(mem_rewrite(TARGET,after,4096,image));
         CHECK(operations==k);cut=0;CHECK(restart());whole();cases++;
     }
-    /* РџРѕР»РЅС‹Р№ marker РјРѕР¶РµС‚ РїРѕР»СѓС‡РёС‚СЊСЃСЏ РґРѕ РїРѕСЃР»РµРґРЅРµРіРѕ Р±РёС‚Р°; С‚РѕРіРґР° РЅРѕРІС‹Р№ РѕР±СЂР°Р· СѓР¶Рµ РѕРїСѓР±Р»РёРєРѕРІР°РЅ. */
+    /* Полный marker может получиться до последнего бита; тогда новый образ уже опубликован. */
     for(k=1;k<=total;k++)if(a[k-1]==SJ_META+28)for(p=0;p<=32;p++) {
         uint32_t marker;load_flash();cut=k;cut_bits=(int)p;
         if(!setjmp(poweroff))CHECK(mem_rewrite(TARGET,after,4096,image));
@@ -115,6 +129,7 @@ static void campaign(unsigned reuse) {
     }
     printf("sectorjournal: %s, %u operations, %u byte/commit-bit cuts PASS\n",reuse?"previous commit reuse":"fresh transaction",total,cases);
 }
+// Проверяет сценарий published по независимым данным модуля.
 static void published(void) {
     uint32_t h[8];
     seed();cut=21;partial=1700;
@@ -123,6 +138,7 @@ static void published(void) {
     CHECK(h[4]==model_crc(after,4096)&&h[6]==model_crc((uint8_t*)h,24)&&h[7]==SJ_COMMIT);
     cut=0;mem_storage_ready=false;operations=reads=0;save_flash();
 }
+// Проверяет сценарий recovery_campaign по независимым данным модуля.
 static void recovery_campaign(void) {
     unsigned total,lens[128],k,p,cases=0;
     published();CHECK(restart());total=operations;memcpy(lens,lengths,sizeof(lens));
@@ -131,7 +147,7 @@ static void recovery_campaign(void) {
         if(!setjmp(poweroff))CHECK(restart());
         CHECK(operations==k);cut=0;CHECK(restart());CHECK(!memcmp(flash+TARGET,after,4096));whole();cases++;
     }
-    /* РџРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅС‹Рµ РІС‹РєР»СЋС‡РµРЅРёСЏ РІ РѕРґРЅРѕР№ Рё С‚РѕР№ Р¶Рµ recovery. */
+    /* Последовательные выключения в одной и той же recovery. */
     load_flash();
     for(k=0;k<6;k++) {
         operations=0;cut=1;partial=19+k*73;
@@ -140,6 +156,7 @@ static void recovery_campaign(void) {
     CHECK(restart());CHECK(!memcmp(flash+TARGET,after,4096));
     printf("sectorjournal: recovery, %u operations, %u byte cuts and repeated cuts PASS\n",total,cases);
 }
+// Проверяет последствия отказов чтения, записи и обратной проверки.
 static void faults(void) {
     static uint8_t large[65535];
     unsigned nr,nw,k;setup(0);CHECK(mem_replace_sector(TARGET,after));nr=reads;nw=operations;
@@ -157,6 +174,7 @@ static void faults(void) {
     CHECK(!mem_read(0x1C8000u,large,sizeof(large))&&operations==0);
     printf("sectorjournal: %u read failures, %u erase/program failures and corrupt scratch PASS\n",nr,nw);
 }
+// Проверяет сценарий bounds по независимым данным модуля.
 static void bounds(void) {
     static const uint32_t bad[]={0,0x20000,0x21000,0x40000,0x41001,0x1c8000,0x1cb000,0x1cd000,0x1ce000,0x1cf000,0x1f5000,0x1f7000,SJ_DATA,SJ_META,0x200000,0xfffff000};
     unsigned i;seed();
@@ -171,9 +189,10 @@ static void bounds(void) {
         for(j=0;j<sizeof(expected)/sizeof(expected[0]);j++)if(i>=expected[j][0]&&i<expected[j][1])allowed=true;
         CHECK(sj_destination(i)==allowed);
     }
-    /* BOOT_ADAPTER_TEST */
+    /* ПРОВЕРКА ЗАГРУЗЧИКА */
     puts("sectorjournal: destination whitelist, reserved sectors, unchanged image PASS");
 }
+// Проверяет сценарий metadata по независимым данным модуля.
 static void metadata(void) {
     unsigned word,bit;
     published();memcpy(flash+TARGET,before,4096);save_flash();
@@ -184,6 +203,7 @@ static void metadata(void) {
     puts("sectorjournal: 256 metadata bit corruptions do not erase destination PASS");
 }
 #endif
+// Запускает проверки модуля и сохраняет результаты в заданный файл.
 int main(void) {
     seed();cut=1;partial=2072;
     if(!setjmp(poweroff))CHECK(mem_rewrite(TARGET+100,after+100,32,image));
