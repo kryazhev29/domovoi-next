@@ -1,16 +1,18 @@
-"""Доработка: Кряжев А., 2026. Частный TX фото живёт до завершения отправки."""
+"""Доработка: Кряжев А., 2026. Частный TX фото живёт до завершения отправки.
+Проверяется машинный код выбранного IAR ELF; плата и сервер не используются.
+Результат относится к модели аппаратных границ.
+"""
 import hashlib
 import json
 from test_photo_runtime import *
 from test_photo_edges import reach
 
 
-
-
+# Проверить, что частный пакет защищён от чужих команд до принятия транспортом.
 def run():
     m = PhotoMachine(); m.boot_media(); m.capture(b'x'*768)
     m.packet(21, b'', 1); m.drain(); m.port(); reach(m,PHASE['SEND_FILL'])
-    m.tick() # allocate TX534 and fill the first <=64 bytes
+    m.tick() # Выделить пакет 534 байта и прочитать первую порцию до 64 байт.
     from test_work_memory import take,drop,owned,UP_PACKET,PHOTO,PHOTO_PACKET
     reserve=take(m,UP_PACKET);assert reserve
     tested = []
@@ -37,8 +39,6 @@ def run():
     return {'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest(),
             'phases':tested,'phase_zero_photo_tx':0,'workspace_bytes':2224,
             'conclusion':'Photo TX is guarded from accepted command9/10/13 and config snapshots; idle photo context can coexist.'}
-
-
 
 if __name__ == '__main__':
     out = run()

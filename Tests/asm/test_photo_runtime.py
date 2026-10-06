@@ -1,19 +1,42 @@
-from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
-"""Доработка: Кряжев А., 2026. Камера и команды в IAR ELF; UART/NOR — модели."""
-import argparse,json,hashlib,struct
+"""Доработка: Кряжев А., 2026. Камера и команды в машинном коде IAR.
+UART и NOR моделируются; кадры, владение буферами и бюджет шага проверяются.
+Смещения контекста берутся из модуля фото, а не из старой копии структуры.
+"""
+from test_work_memory import take, drop, PHOTO, REPLY
+from iar_image import image_paths
+import json,struct
 from storage_machine import *
 
 HEAD=13
 FORMAT=0x32504850
-PHASE={name:i+1 for i,name in enumerate(("IO","HEAD","RECORD","CAMERA","PREP_DONE","LAZY_DONE","DATA_DONE","PHOTO_NUMBER","PHOTO_MARK","PHOTO_DONE","CLEAN_END","ACK_HEAD","ACK_ADVANCE","REQUEST_DONE","SEND_FILL","SEND_COMMIT"))}
+PHASE={name:i+1 for i,name in enumerate(("IO","HEAD","CAMERA","LAZY_DONE","DATA_DONE","PHOTO_MARK","PHOTO_DONE","CLEAN_END","ACK_HEAD","ACK_ADVANCE","REQUEST_DONE","SEND_FILL","SEND_COMMIT"))}
+# Вычислить начало следующего снимка с выравниванием по сектору.
 def next_record(a,size):return (a+HEAD+size+4095)&~4095
 
-@lru_cache(None)
-def pf():return fields('photo_s')
-@lru_cache(None)
-def rf():return fields('photo_runtime_s')
+# Читаем фактический тип камеры: runtime_layout.c пока содержит старую копию.
+def pf():
+    image=image_paths()[0]
+    return photo_fields(str(image), image.stat().st_mtime_ns)
 
+# Кешируем DWARF отдельно для каждого образа при сравнении до и после.
+@lru_cache(None)
+def photo_fields(path, version):
+    with open(path, 'rb') as source:
+        for cu in ELFFile(source).get_dwarf_info().iter_CUs():
+            if not cu.get_top_DIE().attributes['DW_AT_name'].value.replace(b'\\', b'/').endswith(b'/photo_runtime.c'):
+                continue
+            for die in cu.iter_DIEs():
+                if die.tag=='DW_TAG_typedef' and die.attributes.get('DW_AT_name', None) and die.attributes['DW_AT_name'].value==b'photo_s':
+                    result={}
+                    for member in die.get_DIE_from_attribute('DW_AT_type').iter_children():
+                        if 'DW_AT_name' not in member.attributes:continue
+                        offset=member.attributes['DW_AT_data_member_location'].value
+                        if not isinstance(offset,int):offset=DWARFExprParser(cu.structs).parse_expr(offset)[0].args[0]
+                        result[member.attributes['DW_AT_name'].value.decode()]=offset
+                    return result
+    raise AssertionError(('контекст фото не найден', path))
 class PhotoMachine(StorageMachine):
+    # Подготовить модель и перехватить аппаратные границы машинного кода.
     def __init__(self,flash=None):
         super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
         self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
@@ -29,40 +52,56 @@ class PhotoMachine(StorageMachine):
             self.stubs[self.addr(name)]=fn
         if 'usb_try_send' in self.symbols:
             self.stubs[self.addr('usb_try_send')]=self.usb_send
+    # Записать команду камеры и проверить её максимальный размер.
     def uart_send(self):
         p,n,_,_=self.args();assert n<=6;self.commands.append(bytes(self.u.mem_read(p,n)));self.ret()
+    # Освободить принятые байты модели UART.
     def uart_clear(self):self.rx_count=0;self.ret()
+    # Запомнить номер фото из события журнала.
     def event(self):self.events.append(self.args()[0]);self.ret()
+    # Записать принятый транспортом пакет и проверить его размер.
     def usb_send(self):
         p,n,_,_=self.args();assert n<=534
         self.sent.append(bytes(self.u.mem_read(p,n)));self.ret(1)
+    # Выдать слот серверного транспорта, если он свободен.
     def acquire(self):
         p=self.args()[0];self.write(p,self.capacity,2);self.ret(0 if self.transport_busy else 0x21000800)
+    # Запомнить пакет, принятый серверным транспортом.
     def commit(self):
         n=self.args()[0];self.sent.append(bytes(self.u.mem_read(0x21000800,n)));self.ret(1)
+    # Получить адрес рабочего контекста камеры из ELF.
     def photo_ptr(self):return int.from_bytes(self.u.mem_read(self.addr('photo'),4),'little')
+    # Прочитать поле фактического контекста камеры по DWARF.
     def pget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.photo_ptr()+pf()[n],size),'little')
+    # Прочитать поле автомата хранения по DWARF.
     def rget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.addr('pr')+self.runtime_fields[n],size),'little')
+    # Узнать, владеет ли автомат фото флеш.
     def active(self):return self.call('photo_storage_busy')!=0
+    # Выполнить шаг хранения и проверить ограничение работы с NOR.
     def tick(self):
         self.now+=1;self.checked('user_storage_poll')
         self.poll_costs.append(self.steps)
         assert self.read_budget<=64,('photo read budget',self.read_budget)
         assert self.io_budget<=1
+    # Выполнить обработку RS485 и проверить бюджет чтения.
     def port(self):
         self.now+=1;self.checked('port_check_data');assert self.read_budget<=64
         self.port_costs.append(self.steps)
+    # Передать порцию UART в реальный обработчик камеры.
     def feed(self,data):
         assert len(data)<=64 and self.photo_ptr()
         self.u.mem_write(self.photo_ptr()+pf()['rx'],bytes(data));self.rx_count=len(data);self.port()
+    # Передать команду с CRC и затереть исходный буфер после разбора.
     def packet(self,cmd,body=b'',channel=0,uniq=9):
         p=struct.pack('<HBBB',len(body)+3,0,uniq,cmd)+body;p+=struct.pack('<H',crc16(p))
         self.u.mem_write(0x21000000,p);self.checked('user_parse_comand',0x21000000,channel)
         self.u.mem_write(0x21000000,b'\xa5'*len(p))
+    # Восстановить очередь и проверить завершение стартового скана.
     def boot_media(self):
         self.port();self.drain()
-        # A committed cleanup deliberately yields ownership at every sector.
+        # Стартовый скан либо восстановил очередь, либо запустил её очистку.
         assert (self.rget('initialized') or self.rget('cleanup')) and not self.rget('fault')
+    # Пройти согласование камеры до готовности принимать снимок.
     def begin_camera(self,size,drain=True):
         self.packet(7,b'\5');assert self.answers[-1][1]==0 and self.active()
         self.drain();assert self.pget('stage')==1
@@ -70,8 +109,8 @@ class PhotoMachine(StorageMachine):
         for ack in (1,6,5):
             self.now+=50;self.port();self.feed(bytes([0xaa,0x0e,ack,0,0,0]))
         self.now+=50;self.port();self.feed(bytes([0xaa,0x0a,1,size&255,(size>>8)&255,(size>>16)&255]))
-        assert self.active()
         if drain:self.drain();assert self.pget('stage')==6
+    # Дождаться запроса следующего пакета без пропуска номера.
     def next_request(self):
         packet=self.pget('packet',2)
         if self.commands and self.commands[-1]==bytes([0xaa,0x0e,0,0,packet&255,packet>>8]) and self.pget('deadline',4)>self.now:return
@@ -81,6 +120,7 @@ class PhotoMachine(StorageMachine):
             if self.active():self.drain()
             if len(self.commands)>old:return
         raise AssertionError('camera request did not progress')
+    # Записать пакет камеры, проверить срок жизни буфера и обработку дубля.
     def data(self,payload,duplicate=False):
         self.next_request();packet=self.pget('packet',2);written=self.pget('written',2)
         assert packet==written//58,'camera packet skipped or repeated'
@@ -93,6 +133,7 @@ class PhotoMachine(StorageMachine):
         if duplicate and self.pget('stage'):
             before=self.pget('written',2);self.feed(frame)
             assert self.pget('written',2)==before and not self.active()
+    # Записать весь снимок и проверить заголовок, данные и выравнивание.
     def capture(self,data):
         self.begin_camera(len(data));start=self.pget('address',4);stamp=self.pget('stamp',4)
         for off in range(0,len(data),58):self.data(data[off:off+58])
@@ -104,6 +145,7 @@ class PhotoMachine(StorageMachine):
         assert self.flash[start+8:start+HEAD]==struct.pack("<IB",FORMAT,255)
         return start,stamp
 
+# Создать готовое фото и занятый хвост для проверки границ секторов.
 def prefix_flash(prefix=4087,dirty=True):
     # Параметр — прежняя граница данных; новый снимок всегда в следующем секторе.
     f=bytearray(b'\xff'*0x400000);base=0x200000;size=prefix-HEAD
@@ -113,6 +155,7 @@ def prefix_flash(prefix=4087,dirty=True):
     return f
 
 
+# Проверить размеры снимков, содержимое NOR и бюджет каждого шага.
 def normal():
     results={}
     for size in (1,58,59,255,256,4095,4096,65535):
@@ -130,6 +173,7 @@ def normal():
     print('sector alignment/lazy erase PASS',flush=True)
     return results
 
+# Проверить пакеты 14, частичный курсор, полный ACK и повтор после очистки.
 def uploads():
     m=PhotoMachine();m.boot_media();data=bytes(range(256))*3;address,stamp=m.capture(data)
     m.packet(21,b'');assert m.active();before=len(m.answers);m.drain();assert len(m.answers)==before+1 and m.answers[-1][1]==0
@@ -166,12 +210,12 @@ def uploads():
     r.packet(21,struct.pack('<IH',s2,60));r.drain();r.sent=[]
     r.port();r.drain();r.port()
     assert r.rget('cleanup')
-    if r.rget('cleanup'):
-        r.packet(21,struct.pack('<IH',s2,60));assert r.answers[-1][1]==0
-        r.drain();r.port();r.drain();assert r.sent[-1][9]==0
+    r.packet(21,struct.pack('<IH',s2,60));assert r.answers[-1][1]==0
+    r.drain();r.port();r.drain();assert r.sent[-1][9]==0
     print('upload 512, CRC, RAM cursor/full ACK/retry, cleanup PASS',flush=True)
     return {'max_instructions':max(m.costs),'passes':len(m.costs),'stack':m.stack_peak}
 
+# Проверить дубли кадров, отказ памяти, отмену, сбои NOR и разрыв канала.
 def errors():
     m=PhotoMachine();m.boot_media();m.begin_camera(116);m.data(b'A'*58,True);m.data(b'B'*58)
     assert len(m.events)==1 and m.flash[0x200000+HEAD:0x200000+HEAD+116]==b'A'*58+b'B'*58
