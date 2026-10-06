@@ -1,3 +1,7 @@
+// Доработка: Кряжев А., 2026
+// USB CDC платы v5: usb_istr.
+// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
+// Диагностические счётчики отделены от обязательных таймаутов восстановления.
 #ifndef BOOTLOADER
 #include "../../User/domovoi_diag.h"
 #endif
@@ -20,8 +24,8 @@
   *
   *        http://www.st.com/software_license_agreement_liberty_v2
   *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
@@ -35,7 +39,6 @@
 */
 
 
-/* Includes ------------------------------------------------------------------*/
 #ifndef BOOTLOADER
 #include "usb_stm32f10x.h"
 #endif
@@ -47,19 +50,12 @@
 #include "hw_config.h"
 #endif
 
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
-__IO uint16_t wIstr;  /* ISTR register last read value */
-__IO uint8_t bIntPackSOF = 0;  /* SOFs received between 2 consecutive packets */
-__IO uint32_t esof_counter =0; /* expected SOF counter */
+__IO uint16_t wIstr;
+__IO uint8_t bIntPackSOF = 0;
+__IO uint32_t esof_counter =0;
 __IO uint32_t wCNTR=0;
 
-/* Extern variables ----------------------------------------------------------*/
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
-/* function pointers to non-control endpoints service routines */
+/* Таблицы обратных вызовов конечных точек, кроме управляющей EP0. */
 void (*const pEpInt_IN[7])(void) =
   {
     EP1_IN_Callback,
@@ -82,18 +78,13 @@ void (*const pEpInt_OUT[7])(void) =
     EP7_OUT_Callback,
   };
 
-/*******************************************************************************
-* Function Name  : USB_Istr
-* Description    : ISTR events interrupt service routine
-* Input          : None.
-* Output         : None.
-* Return         : None.
-*******************************************************************************/
+
+// Обслужить USB-прерывания и ограниченное восстановление шины.
 void USB_Istr(void)
 {
     uint32_t i=0;
  __IO uint32_t EP[8];
-  
+
   wIstr = _GetISTR();
 
 #if (IMR_MSK & ISTR_SOF)
@@ -107,20 +98,20 @@ void USB_Istr(void)
 #endif
   }
 #endif
-  /*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*/  
-  
+  /*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*/
+
 #if (IMR_MSK & ISTR_CTR)
   if (wIstr & ISTR_CTR & wInterrupt_Mask)
   {
-    /* servicing of the endpoint correct transfer interrupt */
-    /* clear of the CTR flag into the sub */
+
+
     CTR_LP();
 #ifdef CTR_CALLBACK
     CTR_Callback();
 #endif
   }
 #endif
-  /*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*/  
+  /*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*/
 #if (IMR_MSK & ISTR_RESET)
   if (wIstr & ISTR_RESET & wInterrupt_Mask)
   {
@@ -171,17 +162,17 @@ void USB_Istr(void)
 #if (IMR_MSK & ISTR_SUSP)
   if (wIstr & ISTR_SUSP & wInterrupt_Mask)
   {
-    /* check if SUSPEND is possible */
+
     if (fSuspendEnabled)
     {
       Suspend();
     }
     else
     {
-      /* if not possible then resume after xx ms */
+
       Resume(RESUME_LATER);
     }
-    /* clear of the ISTR bit must be done after setting of CNTR_FSUSP */
+    /* Флаг ISTR очищается после установки CNTR_FSUSP: порядок задан аппаратурой. */
     _SetISTR((uint16_t)CLR_SUSP);
 #ifdef SUSP_CALLBACK
     SUSP_Callback();
@@ -193,39 +184,39 @@ void USB_Istr(void)
 #if (IMR_MSK & ISTR_ESOF)
   if (wIstr & ISTR_ESOF & wInterrupt_Mask)
   {
-    /* clear ESOF flag in ISTR */
+
     _SetISTR((uint16_t)CLR_ESOF);
-    
+
     if ((_GetFNR()&FNR_RXDP)!=0)
     {
-      /* increment ESOF counter */
+
       esof_counter ++;
-      
-      /* test if we enter in ESOF more than 3 times with FSUSP =0 and RXDP =1=>> possible missing SUSP flag*/
+
+      /* Более трёх ESOF при FSUSP=0 и RXDP=1 означает возможную потерю SUSP. */
       if ((esof_counter >3)&&((_GetCNTR()&CNTR_FSUSP)==0))
-      {           
-        /* this a sequence to apply a force RESET*/
-      
-        /*Store CNTR value */
-        wCNTR = _GetCNTR(); 
-      
-        /*Store endpoints registers status */
+      {
+        /* Восстановление принудительным сбросом после потери события шины. */
+
+        /* Сохранить маску USB-прерываний до сброса. */
+        wCNTR = _GetCNTR();
+
+        /* Сохранить настройки конечных точек до сброса USB. */
         for (i=0;i<8;i++) EP[i] = _GetENDPOINT(i);
-      
+
 #ifndef BOOTLOADER
 #if DOMOVOI_DIAG
         usb_esof_forced++;
 #endif
 #endif
-        /*apply FRES */
+
         wCNTR|=CNTR_FRES;
         _SetCNTR(wCNTR);
- 
-        /*clear FRES*/
+
+
         wCNTR&=~CNTR_FRES;
         _SetCNTR(wCNTR);
-       
-        /*poll for RESET flag in ISTR*/
+
+        /* Дождаться подтверждения аппаратного сброса с ограничением времени. */
 #ifndef BOOTLOADER
         {
           uint32_t budget = 32000u;
@@ -248,13 +239,13 @@ void USB_Istr(void)
         if (!USB_WaitReset()) { esof_counter = 0; return; }
 #endif
 
-        /* clear RESET flag in ISTR */
+
         _SetISTR((uint16_t)CLR_RESET);
-   
-       /*restore Enpoints*/
+
+       /* Восстановить настройки конечных точек после сброса. */
         for (i=0;i<8;i++)
         _SetENDPOINT(i, EP[i]);
-      
+
         esof_counter = 0;
       }
     }
@@ -262,16 +253,16 @@ void USB_Istr(void)
     {
         esof_counter = 0;
     }
-    
-    /* resume handling timing is made with ESOFs */
-//USERCOMMENTED    Resume(RESUME_ESOF); /* request without change of the machine state */
+
+    /* Временные фазы восстановления отсчитываются по событиям ESOF. */
+
 
 #ifdef ESOF_CALLBACK
     ESOF_Callback();
 #endif
   }
 #endif
-} /* USB_Istr */
+}
 
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

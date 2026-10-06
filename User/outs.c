@@ -1,5 +1,7 @@
-// Подпрограммы работы со входами и выходами
-// Автор: Корякин Сергей
+// Доработка: Кряжев А., 2026
+// Два реле платы: уровни, импульсы и паузы с шагом 100 мс.
+// Индекс выхода проверяется владельцем команды до вызова этого модуля.
+// Внутренние функции используют только индексы 0 и 1.
 
 #include "outs.h"
 #include "prof.h"
@@ -14,13 +16,13 @@ uint8_t out_st = 0; // состояние выходов
 
 // Перевод выхода в активное/неактивное состояние
 // 0 - неактивное, 1 - активное
+// Изменить аппаратный уровень проверенного выхода.
 static void out_set (Int8U out, Int8U set)
 {
-  if (out >= OUTSCOUNT) return;
 
   switch (out)
   {
-#ifdef OUT1_ON     
+#ifdef OUT1_ON
   case 0:
     if (set != 0)
       OUT1_ON;
@@ -38,7 +40,7 @@ static void out_set (Int8U out, Int8U set)
 #endif
   default: break;
   }
-  
+
   if (set && !(out_st & (1<<out))) prof_relay_on();
   if (set)
     out_st |= (1<<out);
@@ -47,26 +49,28 @@ static void out_set (Int8U out, Int8U set)
 }
 
 // Запрос состояния выхода
+// Прочитать аппаратное состояние выхода.
 Int8U out_getstate (Int8U out)
 {
   Int8U o = 0;
 
   switch (out)
   {
-#ifdef OUT1_IN   
+#ifdef OUT1_IN
   case 0: o = OUT1_IN ? 1 : 0; break;
 #endif
 #ifdef OUT2_IN
   case 1: o = OUT2_IN ? 1 : 0; break;
 #endif
-  default: break; 
+  default: break;
   }
-  
+
   return o;
 }
 
 // Обработка выходов
 // обрабатывается раз в 100 мс
+// Обслужить импульсы и паузы каждые 100 мс.
 void out_process (void)
 {
   Int8U i;
@@ -90,20 +94,20 @@ void out_process (void)
             out_time[i] = out_timeactiv[i];
             if (out_period[i] != 255)
               out_period[i]--;
-            if (out_period[i] == 0) 
+            if (out_period[i] == 0)
               out_set (i, 0); // закончился повтор - выключаем выход
           }
           else
           {
           out_activpause &= ~(1<<i);
           out_time[i] = out_timepause[i];
-          } 
+          }
         }
         else // загружаем активный уровень и проверяем число повторов
         {
           out_activpause |= (1<<i);
           out_time[i] = out_timeactiv[i];
-          if (out_period[i] != 255) 
+          if (out_period[i] != 255)
             out_period[i]--;
         }
       }
@@ -112,50 +116,51 @@ void out_process (void)
 }
 
 // Активация выхода
+// Загрузить режим для уже проверенного индекса выхода.
 void out_load (Int8U out, Int8U mode, Int16U activ, Int16U pause, Int8U period)
 {
-  if (out >= OUTSCOUNT) return;
-  
+
   switch (mode)
   {
   case OUT_OFF: // выключить
-  case OUT_ON: // включить 
-    out_period[out] = 0; 
-    out_set (out, mode); 
+  case OUT_ON: // включить
+    out_period[out] = 0;
+    out_set (out, mode);
     break;
-    
-  case OUT_INV: // инвертировать 
-    out_period[out] = 0; 
-    out_set (out, !out_getstate(out)); 
+
+  case OUT_INV: // инвертировать
+    out_period[out] = 0;
+    out_set (out, !out_getstate(out));
     break;
-    
-  case OUT_IMP: // импульс 
+
+  case OUT_IMP: // импульс
     /* Протокол2 (E254/E255): время в секундах 1-255; out_process идёт раз в 100 мс,
        поэтому внутри десятые доли. Реле включается сразу, а не на следующем такте:
        проход не ждёт до секунды. */
-    out_timeactiv[out] = (Int16U)(activ * 10u); 
-    out_timepause[out] = (Int16U)(pause * 10u); 
+    out_timeactiv[out] = (Int16U)(activ * 10u);
+    out_timepause[out] = (Int16U)(pause * 10u);
     out_period[out] = period;
-    out_time[out] = (Int16U)(activ * 10u); 
-    out_activpause |= (1<<out); 
+    out_time[out] = (Int16U)(activ * 10u);
+    out_activpause |= (1<<out);
     if (period && activ) out_set (out, 1);
     break;
-    
+
   default: break;
   }
 }
 
 // узнаем выполняется алгоритм выхода или нет
+// Проверить активность алгоритма выбранного выхода.
 uint8_t out_getmodestate (uint8_t out)
 {
-  if (out >= OUTSCOUNT) return 0;  
-  if (out_period[out]) 
+  if (out_period[out])
     return 1;
-  else 
+  else
     return 0;
 }
 
 // состояние всех выходов
+// Вернуть битовую маску состояния всех реле.
 uint8_t out_outstates (void)
 {
   return out_st;

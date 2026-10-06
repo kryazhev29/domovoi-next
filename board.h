@@ -1,4 +1,7 @@
-// Описание входов/выходов
+// Доработка: Кряжев А., 2026
+// Распиновка платы v5 (HW 139), уровни GPIO и адреса приложения.
+// USART1 принадлежит RS-485, USART3 — отдельному драйверу модема.
+// Заголовок 0x08008000 и векторы 0x08008200 сохраняют договор с загрузчиком.
 
 #ifndef BOARD_H
 #define BOARD_H
@@ -52,10 +55,10 @@
 #define GSM_PWR_OFF     GPIOC->BRR = GPIO_Pin_13 /* выход управления питанием GSM*/
 
 #define OUT1_ON 	GPIOB->BSRR = GPIO_Pin_3
-#define OUT1_OFF	GPIOB->BRR = GPIO_Pin_3 
+#define OUT1_OFF	GPIOB->BRR = GPIO_Pin_3
 #define OUT1_IN         ((GPIOB->ODR & GPIO_Pin_3) != (uint32_t)Bit_RESET)
 
-#define OUT2_ON 	GPIOA->BSRR = GPIO_Pin_0  
+#define OUT2_ON 	GPIOA->BSRR = GPIO_Pin_0
 #define OUT2_OFF	GPIOA->BRR = GPIO_Pin_0
 #define OUT2_IN         ((GPIOA->ODR & GPIO_Pin_0) != (uint32_t)Bit_RESET)
 
@@ -103,17 +106,17 @@
 // PA4 - IN4
 #define VCC_PIN         GPIO_Pin_4
 #define VCC_PORT        GPIOA
-#define VCC_CHANEL      ADC_Channel_4
+#define VCC_CHANEL      4u
 
 // Входы IN1 и IN2 (аналог)
 // PB0, PB1
 #define IN1_PIN         GPIO_Pin_0
 #define IN1_PORT        GPIOB
-#define IN1_CHANEL      ADC_Channel_8
+#define IN1_CHANEL      8u
 
 #define IN2_PIN         GPIO_Pin_1
 #define IN2_PORT        GPIOB
-#define IN2_CHANEL      ADC_Channel_9
+#define IN2_CHANEL      9u
 
 // Память
 // PA5:PA7 - SPI1
@@ -122,6 +125,11 @@
 #define SPI_MOSI_SCK    GPIO_Pin_5 | GPIO_Pin_7
 #define SPI_MISO        GPIO_Pin_6
 #define SPI_PORT        GPIOA
+
+// Настроить проверенную маску EXTI с прежним порядком отключения и включения.
+void board_exti_config(uint32_t lines, uint8_t falling);
+// Разрешить внутреннее IRQ с уже рассчитанным приоритетом CMSIS.
+void board_irq_enable(uint8_t irq, uint8_t priority);
 
 // инициализация
 void board_init (void);

@@ -1,25 +1,17 @@
-/******************************************************************************
-*    ADC functions
-******************************************************************************/
+// Доработка: Кряжев А., 2026
+// Интерфейс трёх injected-каналов АЦП платы v5.
+// Напряжения читаются в милливольтах после успешного преобразования.
+// Аппаратные ожидания ограничены, неисправный АЦП отключается.
 
 #ifndef __ADC_H
 #define __ADC_H
-
-#include "stm32f10x_gpio.h"
-#include "stm32f10x_adc.h"
-
-// инициализация АЦП
-void adc_init (void);
+#include "stm32f10x.h"
+// Настроить АЦП и выполнить калибровку.
+void adc_init(void);
+// Проверить доступность измерений.
 uint8_t adc_ready(void);
-
-// узнать температуру контроллера
-// в градусах
-int8_t adc_gettemp (void);
-
-// узнать значение входа в мВ
+// Вернуть напряжение заданного injected-канала.
 uint16_t adc_getinjectedvalue_mV(uint8_t ind);
-
-uint8_t adc_startRegularConvertion (void);
-uint8_t adc_startInjectedConvertion (void);
-
+// Запустить измерение и дождаться готовности.
+uint8_t adc_startInjectedConvertion(void);
 #endif

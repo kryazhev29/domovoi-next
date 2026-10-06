@@ -1,3 +1,7 @@
+// Доработка: Кряжев А., 2026
+// USB CDC платы v5: usb_prop.
+// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
+// Диагностические счётчики отделены от обязательных таймаутов восстановления.
 /**
   ******************************************************************************
   * @file    usb_prop.h
@@ -16,8 +20,8 @@
   *
   *        http://www.st.com/software_license_agreement_liberty_v2
   *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
@@ -25,13 +29,10 @@
   ******************************************************************************
   */
 
-
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __usb_prop_H
 #define __usb_prop_H
 
-/* Includes ------------------------------------------------------------------*/
-/* Exported types ------------------------------------------------------------*/
+
 typedef struct
 {
   uint32_t bitrate;
@@ -40,19 +41,13 @@ typedef struct
   uint8_t datatype;
 }LINE_CODING;
 
-/* Exported constants --------------------------------------------------------*/
-/* Exported macro ------------------------------------------------------------*/
-/* Exported define -----------------------------------------------------------*/
-
 #define Virtual_Com_Port_GetConfiguration          NOP_Process
-//#define Virtual_Com_Port_SetConfiguration          NOP_Process
 #define Virtual_Com_Port_GetInterface              NOP_Process
 #define Virtual_Com_Port_SetInterface              NOP_Process
 #define Virtual_Com_Port_GetStatus                 NOP_Process
 #define Virtual_Com_Port_ClearFeature              NOP_Process
 #define Virtual_Com_Port_SetEndPointFeature        NOP_Process
 #define Virtual_Com_Port_SetDeviceFeature          NOP_Process
-//#define Virtual_Com_Port_SetDeviceAddress          NOP_Process
 
 #define SEND_ENCAPSULATED_COMMAND   0x00
 #define GET_ENCAPSULATED_RESPONSE   0x01
@@ -64,7 +59,7 @@ typedef struct
 #define SET_CONTROL_LINE_STATE      0x22
 #define SEND_BREAK                  0x23
 
-/* Exported functions ------------------------------------------------------- */
+
 void Virtual_Com_Port_init(void);
 void Virtual_Com_Port_Reset(void);
 void Virtual_Com_Port_SetConfiguration(void);
@@ -81,7 +76,7 @@ uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t);
 uint8_t *Virtual_Com_Port_GetLineCoding(uint16_t Length);
 uint8_t *Virtual_Com_Port_SetLineCoding(uint16_t Length);
 
-#endif /* __usb_prop_H */
+#endif
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
 

@@ -1,34 +1,8 @@
 // Доработка: Кряжев А., 2026
-/**
-  ******************************************************************************
-  * @file    stm32_it.c
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   Main Interrupt Service Routines.
-  *          This file provides template for all exceptions handler and peripherals
-  *          interrupt service routine.
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Обработчики системных исключений, USB и контроля падения питания.
+// Аварийный снимок сохраняется без использования повреждённого стека.
+// SysTick обслуживает связь и таймеры; PVD передаёт сброс согласованному механизму.
 
-/* Includes ------------------------------------------------------------------*/
 #include "includes.h"
 #include "Modules/comm_uart.h"
 
@@ -39,6 +13,7 @@
 #pragma location=".fault_record"
 __root __no_init volatile uint32_t fault_record[12];
 
+// Сохранить аварийный снимок без использования повреждённого стека.
 __stackless void fault_capture(void)
 {
   __asm(
@@ -97,196 +72,108 @@ __stackless void fault_capture(void)
   );
 }
 
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
-/******************************************************************************/
-/*            Cortex-M Processor Exceptions Handlers                          */
-/******************************************************************************/
 
-/*******************************************************************************
-* Function Name  : NMI_Handler
-* Description    : This function handles NMI exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
 #pragma call_graph_root="interrupt"
+// Обработать NMI_Handler с прежним аппаратным контрактом.
 void NMI_Handler(void)
 {
 }
 
-/*******************************************************************************
-* Function Name  : HardFault_Handler
-* Description    : This function handles Hard Fault exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать HardFault_Handler с прежним аппаратным контрактом.
 __stackless void HardFault_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-/*******************************************************************************
-* Function Name  : MemManage_Handler
-* Description    : This function handles Memory Manage exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать MemManage_Handler с прежним аппаратным контрактом.
 __stackless void MemManage_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-/*******************************************************************************
-* Function Name  : BusFault_Handler
-* Description    : This function handles Bus Fault exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать BusFault_Handler с прежним аппаратным контрактом.
 __stackless void BusFault_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-/*******************************************************************************
-* Function Name  : UsageFault_Handler
-* Description    : This function handles Usage Fault exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать UsageFault_Handler с прежним аппаратным контрактом.
 __stackless void UsageFault_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-/*******************************************************************************
-* Function Name  : SVC_Handler
-* Description    : This function handles SVCall exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать SVC_Handler с прежним аппаратным контрактом.
 void SVC_Handler(void)
 {
 }
 
-/*******************************************************************************
-* Function Name  : DebugMon_Handler
-* Description    : This function handles Debug Monitor exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать DebugMon_Handler с прежним аппаратным контрактом.
 void DebugMon_Handler(void)
 {
 }
 
-/*******************************************************************************
-* Function Name  : PendSV_Handler
-* Description    : This function handles PendSVC exception.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать PendSV_Handler с прежним аппаратным контрактом.
 void PendSV_Handler(void)
 {
 }
 
-/*******************************************************************************
-* Function Name  : SysTick_Handler
-* Description    : This function handles SysTick Handler.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать SysTick_Handler с прежним аппаратным контрактом.
 void SysTick_Handler(void)
 {
   comm_uart_tick(); /* DMA/RTS проверяются каждые 1 мс. */
   timers_handle();
 }
 
-/*******************************************************************************
-* Function Name  : USB_IRQHandler
-* Description    : This function handles USB Low Priority interrupts
-*                  requests.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать USB_LP_CAN1_RX0_IRQHandler с прежним аппаратным контрактом.
 void USB_LP_CAN1_RX0_IRQHandler(void)
 {
   USB_Istr();
 }
 
-/*******************************************************************************
-* Function Name  : USB_FS_WKUP_IRQHandler
-* Description    : This function handles USB WakeUp interrupt request.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать USBWakeUp_IRQHandler с прежним аппаратным контрактом.
 void USBWakeUp_IRQHandler(void)
 {
-  EXTI_ClearITPendingBit(EXTI_Line18);
+  EXTI->PR = EXTI_PR_PR18;
 }
 
-/*******************************************************************************
-* Function Name  : ADC1_2_IRQHandler
-* Description    : This function handles ADC1 and ADC2 interrupt request.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
+
 #pragma call_graph_root="interrupt"
+// Обработать ADC1_2_IRQHandler с прежним аппаратным контрактом.
 void ADC1_2_IRQHandler(void)
 {
-  ADC_ClearITPendingBit(ADC1, ADC_IT_JEOC);
+  ADC1->SR = ~ADC_SR_JEOC;
 }
-
-/******************************************************************************/
-/*                 STM32 Peripherals Interrupt Handlers                   */
-/*  Add here the Interrupt Handler for the used peripheral(s) (PPP), for the  */
-/*  available peripheral interrupt handler's name please refer to the startup */
-/*  file (startup_stm32xxx.s).                                            */
-/******************************************************************************/
-
-/*******************************************************************************
-* Function Name  : PPP_IRQHandler
-* Description    : This function handles PPP interrupt request.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
-/*void PPP_IRQHandler(void)
-{
-}*/
 
 // обработчик прерывания от PVD
 #pragma call_graph_root="interrupt"
+// Обработать PVD_IRQHandler с прежним аппаратным контрактом.
 void PVD_IRQHandler(void)
 {
   // сброс только при подтверждённом падении питания
-  if (EXTI_GetITStatus(EXTI_Line16) != RESET) {
-    EXTI_ClearITPendingBit(EXTI_Line16);
-    if (PWR_GetFlagStatus(PWR_FLAG_PVDO) != RESET) {
+  if ((EXTI->PR & EXTI->IMR & EXTI_PR_PR16) != 0) {
+    EXTI->PR = EXTI_PR_PR16;
+    if ((PWR->CSR & PWR_CSR_PVDO) != 0) {
       // Причина переживает системный сброс; журнал заполняется после старта.
       BKP->DR1 = PVD_RESET_MARK;
       __DSB();
