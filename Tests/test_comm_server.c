@@ -23,7 +23,12 @@ static uint32_t open_times[64];
 static uint8_t open_addresses[64];
 static uint32_t timers_getMillis(void) { return sim_now; }
 /* «вонок: сколько раз сброшен, ответ модема на сброс, последн€€ команда перед данными. */
-static unsigned chups, chup_silence; static char last_command[32];
+static bool call_access_ready, call_registration_noise;
+static unsigned chups, chup_silence, answers, aths, answer_mode, answer_delay, ath_silence;
+static unsigned call_drop, call_drop_urc, call_activations, call_activation_error, call_net_queries, call_pdp_queries, call_tcp_queries;
+static uint8_t call_cgreg_model, call_cereg_model, call_creg_model, call_pdp_model, call_other_pdp, call_other_socket;
+static uint32_t answer_at, answer_due, hangup_at, hangup_due, call_network_due, call_tcp_due;
+static char last_command[32];
 /* SMS: €чейки SIM 1..10 (PDU hex), журнал команд SMS, последн€€ отправленна€ PDU. */
 static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
 static unsigned cmgs_error, sms_received_count;
@@ -160,8 +165,8 @@ static void transport_tx(void)
     if (n) enqueue(response,n);
     return;
   }
-  CHECK(tx_data==command);
-  char cmd[128]; CHECK(tx_count<=sizeof(cmd)); memcpy(cmd,command,tx_count); cmd[tx_count-1u]=0;
+  CHECK(tx_count>=3 && tx_count<=128 && tx_data[0]=='A' && tx_data[1]=='T');
+  char cmd[128]; CHECK(tx_count<=sizeof(cmd)); memcpy(cmd,tx_data,tx_count); cmd[tx_count-1u]=0;
   snprintf(last_command,sizeof(last_command),"%s",cmd);
   if (!strncmp(cmd,"AT+CMG",6) || !strncmp(cmd,"AT+CPMS",7) || !strncmp(cmd,"AT+CNMI",7)) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
@@ -205,10 +210,42 @@ static void transport_tx(void)
     else { sim_reply("OK\r\n",30); cusd_due=sim_now+2000; }
     return;
   }
-  if (!strcmp(cmd,"AT+CHUP")) {
+  if (!strcmp(cmd,"ATA") || !strcmp(cmd,"ATH") || !strcmp(cmd,"AT+CHUP")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
-    interrupt_byte(0,USART_SR_TC); ++chups;
-    if (!chup_silence) sim_reply("OK\r\n",40);
+    interrupt_byte(0,USART_SR_TC);
+    if (!strcmp(cmd,"ATA")) {
+      ++answers; answer_at=sim_now;
+      if (answer_mode!=3) answer_due=sim_now+answer_delay;
+      if (call_drop) {
+        socket_model=false;
+        if (call_drop==2) call_pdp_model=0;
+        if (call_drop_urc) sim_feed(call_drop==2 ? "+QIURC: \"pdpdeact\",1\r\n" : "+QIURC: \"closed\",0\r\n");
+      }
+    } else {
+      hangup_at=sim_now;
+      if (!strcmp(cmd,"ATH")) { ++aths; if (!ath_silence) hangup_due=sim_now+40; }
+      else { ++chups; if (!chup_silence) hangup_due=sim_now+40; }
+    }
+    return;
+  }
+  if (comm_modem_ready() && (!strcmp(cmd,"AT+CGREG?") || !strcmp(cmd,"AT+CEREG?") || !strcmp(cmd,"AT+CREG?"))) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC); ++call_net_queries;
+    const char *tag=!strcmp(cmd,"AT+CGREG?") ? "+CGREG" : !strcmp(cmd,"AT+CEREG?") ? "+CEREG" : "+CREG";
+    uint8_t v=!strcmp(cmd,"AT+CGREG?") ? call_cgreg_model : !strcmp(cmd,"AT+CEREG?") ? call_cereg_model : call_creg_model;
+    char reply[40]; CHECK(snprintf(reply,sizeof(reply),"%s: 1,%u\r\nOK\r\n",tag,v)>0); sim_reply(reply,30); return;
+  }
+  if (comm_modem_ready() && (!strcmp(cmd,"AT+QIACT?") || !strcmp(cmd,"AT+QIACT=1"))) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    if (!strcmp(cmd,"AT+QIACT?")) {
+      ++call_pdp_queries; if (call_registration_noise) sim_feed("+CEREG: 1\r\n");
+      if (!call_pdp_model && call_other_pdp) sim_reply(call_other_pdp==1 ? "+QIACT: 2,1,1,\"10.0.0.2\"\r\nOK\r\n" : "+QIACT: 1,1,3,\"10.0.0.1\"\r\nOK\r\n",30);
+      else sim_reply(call_pdp_model ? "+QIACT: 1,1,1,\"10.0.0.1\"\r\nOK\r\n" : "OK\r\n",30);
+    } else {
+      ++call_activations; if (!call_activation_error) call_pdp_model=1;
+      sim_reply(call_activation_error ? "ERROR\r\n" : "OK\r\n",100);
+    }
     return;
   }
   if (!strncmp(cmd,"AT+QISEND=",10) || !strcmp(cmd,"AT+QICLOSE=0") || !strncmp(cmd,"AT+QPING=",9)
@@ -221,13 +258,21 @@ static void transport_tx(void)
       ++closes; if (close_error!=1) socket_model=false;
       sim_reply(close_error ? "ERROR\r\n" : "OK\r\n",20);
     } else if (!strcmp(cmd,"AT+QISTATE=0,1")) {
-      sim_reply(socket_model ? "+QISTATE: 0,\"TCP\",\"1.2.3.4\",7777,4444,2,1,0,0,\"uart1\"\r\nOK\r\n" : "OK\r\n",20);
+      ++call_tcp_queries; if (call_registration_noise) sim_feed("+CEREG: 1\r\n");
+      if (call_other_socket) {
+        const char *reply=call_other_socket==1 ? "+QISTATE: 1,\"TCP\",\"1.2.3.4\",7777,4444,2,1,0,0,\"uart1\"\r\nOK\r\n"
+          : call_other_socket==2 ? "+QISTATE: 0,\"TCP\",\"1.2.3.4\",7777,4444,1,1,0,0,\"uart1\"\r\nOK\r\n"
+          : call_other_socket==3 ? "+QISTATE: 0,\"TCP\",\"1.2.3.4\",7777,4444,2,2,0,0,\"uart1\"\r\nOK\r\n"
+          : "+QISTATE: 0,\"UDP\",\"1.2.3.4\",7777,4444,2,1,0,0,\"uart1\"\r\nOK\r\n";
+        sim_reply(reply,20);
+      } else sim_reply(socket_model ? "+QISTATE: 0,\"TCP\",\"1.2.3.4\",7777,4444,2,1,0,0,\"uart1\"\r\nOK\r\n" : "OK\r\n",20);
     } else if (!strncmp(cmd,"AT+QIOPEN=",10)) {
-      CHECK(!socket_model && opens<sizeof(open_addresses));
+      CHECK(call_pdp_model && !socket_model && opens<sizeof(open_addresses));
       open_times[opens]=sim_now; open_addresses[opens]=ch.address;
       socket_model=true; ++opens;
       CHECK(strstr(cmd,ch.address ? "backup.local" : "test.local"));
-      sim_reply(sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
+      if (ch.call_stage==DATA_REGISTER) { sim_reply("OK\r\n",30); call_tcp_due=sim_now+300; }
+      else sim_reply(sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
     } else if (!strncmp(cmd,"AT+QPING=",9)) {
       CHECK(!strcmp(cmd,"AT+QPING=1,\"ya.ru\",3,2")); ++pings;
       sim_reply("OK\r\n",20); ping_reply_due=sim_now+1000;
@@ -250,6 +295,14 @@ static void transport_tx(void)
 static void transport_tick(unsigned increment)
 {
   writes = 0;
+  if (answer_due && (int32_t)(sim_now-answer_due)>=0) {
+    answer_due=0; sim_feed(answer_mode==1 ? "ERROR\r\n" : answer_mode==2 ? "NO CARRIER\r\n" : "OK\r\n");
+  }
+  if (hangup_due && (int32_t)(sim_now-hangup_due)>=0) { hangup_due=0; sim_feed("OK\r\n"); }
+  if (call_tcp_due && (int32_t)(sim_now-call_tcp_due)>=0) { call_tcp_due=0; sim_feed(sim_open_error ? "+QIOPEN: 0,566\r\n" : "+QIOPEN: 0,0\r\n"); }
+  if (call_network_due && (int32_t)(sim_now-call_network_due)>=0) {
+    call_network_due=0; call_cereg_model=1; sim_feed("+CEREG: 1,\"1234\",\"ABCDEF\",7\r\n");
+  }
   if (sim_pending[0] && (int32_t)(sim_now-reply_due)>=0) { sim_feed(sim_pending); sim_pending[0]=0; }
   if (dns_late && (int32_t)(sim_now-dns_late)>=0) { dns_late=0;
     sim_feed(dns_success==2 ? "+QIURC: \"dnsgip\",0,1,60\r\n"
@@ -258,7 +311,7 @@ static void transport_tick(unsigned increment)
   if (ping_reply_kind && (int32_t)(sim_now-ping_reply_due)>=0) {
     sim_feed(ping_reply_kind==3 ? "+QPING: 0,2,1,1,30,30,30\r\n" : ping_reply_kind==1 ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n+QPING: 0,2,1,1,30,30,30\r\n" : "+QPING: 0,2,0,2,0,0,0\r\n"); ping_reply_kind=0;
   }
-  server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
+  server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
   if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
   transport_tx(); sim_now+=increment;
 }
@@ -276,6 +329,11 @@ static void server_reset(void)
   device.status=0x1234; device.freeBufferSize=2048; device.answerID=0; incoming_count=sent_count=0;
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
+  call_access_ready=true; call_registration_noise=false;
+  chups=chup_silence=answers=aths=answer_mode=ath_silence=0; answer_delay=40;
+  answer_at=answer_due=hangup_at=hangup_due=call_network_due=call_tcp_due=0;
+  call_drop=call_drop_urc=call_activations=call_activation_error=call_net_queries=call_pdp_queries=call_tcp_queries=0;
+  call_cgreg_model=call_cereg_model=call_creg_model=call_pdp_model=1; call_other_pdp=call_other_socket=0;
   chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(call_caller, volte_flag_model);
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;

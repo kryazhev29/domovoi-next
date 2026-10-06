@@ -23,10 +23,11 @@ static struct {
   comm_power_gpio_t gpio;
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
   void (*urc[COMM_URC_COUNT])(const uint8_t *, uint16_t);
+  uint8_t call_phase;
   uint8_t session; /* растёт с каждой попыткой запуска */
   /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
      данные уходят в том же poll; результат забирает только владелец req. */
-  struct { const comm_side_t *req; uint8_t queued, running, prompted, done, result; } side;
+  struct { const comm_side_t *req; uint32_t started; uint8_t queued, running, prompted, done, result; } side;
   slm_diag_t diag;
 } slm;
 typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 128u) ? 1 : -1];
@@ -141,7 +142,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       return;
     }
     uint32_t value;
-    if (p && comm_at_parse(p,n,slm.profile->pdp,&value) && value == 1) slm_fail(SLM_ERR_PDP);
+    if (!slm.call_phase && p && comm_at_parse(p,n,slm.profile->pdp,&value) && value == 1) slm_fail(SLM_ERR_PDP);
     return;
   }
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
@@ -236,7 +237,7 @@ static void slm_begin(bool power, uint32_t now_ms)
   memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
 #endif
   memset(&slm.attempt, 0, sizeof(slm.attempt));
-  slm_side_cancel();
+  slm_side_cancel(); slm.call_phase = 0;
   ++slm.session;
 #if DOMOVOI_DIAG
   slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
@@ -298,13 +299,28 @@ static bool slm_side_allowed(void)
   return slm.attempt.status.state == SLM_READY
     || (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
 }
-bool comm_modem_side(const comm_side_t *req)
+static bool slm_side_queue(const comm_side_t *req)
 {
   if (!req || !req->cmd || req->timeout >= COMM_T_COUNT || slm.side.queued || slm.side.running
       || slm.side.prompted || (slm.side.done && slm.side.req != req) || !slm_side_allowed()) return false;
   slm.side.req = req; slm.side.queued = 1; slm.side.done = 0;
   return true;
 }
+void comm_modem_call(uint8_t phase) { slm.call_phase = phase; }
+void comm_modem_data_failed(uint8_t reason) { slm_fail(reason); }
+bool comm_modem_side(const comm_side_t *req) { return !slm.call_phase && slm_side_queue(req); }
+static void slm_side_issue(void);
+bool comm_modem_call_side(const comm_side_t *req)
+{
+  if (!slm_side_queue(req)) return false;
+  slm_side_issue(); return true;
+}
+bool comm_modem_side_started(const comm_side_t *req, uint32_t *since)
+{
+  if (slm.side.req != req || slm.side.queued || !(slm.side.running || slm.side.done)) return false;
+  *since = slm.side.started; return true;
+}
+bool comm_modem_call_abort(uint32_t now_ms) { return comm_at_call_abort(now_ms); }
 uint8_t comm_modem_side_result(const comm_side_t *req)
 {
   if (!slm.side.done || slm.side.req != req) return UINT8_MAX;
@@ -328,7 +344,7 @@ static void slm_side_issue(void)
     if (r == COMM_AT_BUSY) return;
     slm.side.queued = 0;
   }
-  if (r == COMM_AT_ACCEPTED) slm.side.running = 1;
+  if (r == COMM_AT_ACCEPTED) { slm.side.running = 1; slm.side.started = slm.attempt.now; }
   else { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
 }
 bool comm_modem_busy(void) { return comm_at_busy(); }
@@ -336,7 +352,7 @@ bool comm_modem_busy(void) { return comm_at_busy(); }
 
 uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms)
 {
-  if (slm.side.prompted) return COMM_AT_BUSY;
+  if (slm.side.prompted || slm.side.queued || (slm.call_phase == 1u && slm.attempt.status.state == SLM_READY)) return COMM_AT_BUSY;
   if ((slm.attempt.status.state == SLM_STARTING && !slm.attempt.in_poll)
       || (slm.attempt.status.state != SLM_STARTING && slm.attempt.status.state != SLM_READY)) return COMM_AT_BUSY;
   uint8_t r = comm_at_start(request, now_ms);
@@ -484,6 +500,7 @@ void comm_modem_poll(uint32_t now_ms)
   comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
   if (slm.attempt.done) slm_completed();
   if (slm.attempt.status.state != SLM_STARTING) goto end;
+  if (slm.call_phase == 1u && slm_side_allowed()) goto end;
   if (slm.attempt.status.step == SLM_AT_READY && now_ms - slm.attempt.step_started >= comm_timeouts[COMM_T_AT_READY]) {
     slm_fail(SLM_ERR_TIMEOUT); goto end;
   }

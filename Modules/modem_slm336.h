@@ -97,6 +97,12 @@ typedef struct {
 } comm_side_t;
 /* Одна в работе; false - занято, чужой результат не забран или модем не настроен. */
 bool comm_modem_side(const comm_side_t *req);
+/* Вызов владеет служебным слотом до отбоя; 2 - проверка данных после него. */
+void comm_modem_call(uint8_t phase);
+void comm_modem_data_failed(uint8_t reason);
+bool comm_modem_call_side(const comm_side_t *req);
+bool comm_modem_side_started(const comm_side_t *req, uint32_t *since);
+bool comm_modem_call_abort(uint32_t now_ms);
 /* UINT8_MAX - ещё в работе или не req; результат AT один раз, перезапуск даёт ERROR. */
 uint8_t comm_modem_side_result(const comm_side_t *req);
 /* Совместимость принятых слоёв; реализация общая, дополнительных функций нет. */

@@ -48,11 +48,14 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   600000, /* COMM_T_EARLY_AT */
   3600000, /* COMM_T_EARLY_TCP */
   86400000, /* COMM_T_DAY */
-  /* Звонок без ответа: номер после RING до 1 с; сброс AT+CHUP до 5 с;
+  /* Вызов: номер после RING до 1 с; отбой;
      вызов окончен, если 8 с нет RING/CLIP (RING идёт раз в ~5 с). */
   1000, /* COMM_T_CALL_NUMBER */
   5000, /* COMM_T_CALL_HANGUP */
   8000, /* COMM_T_CALL_QUIET */
+  1500, /* COMM_T_CALL_ANSWER: срок от физической отправки ATA */
+  1000, /* COMM_T_CALL_HOLD: от OK до ATH, настраиваемое время */
+  2500, /* COMM_T_CALL_LIMIT: аварийный CHUP от отправки ATA */
   /* SMS: чтение/стирание/настройка на SIM до 5 с; отправка в сеть до 60 с
      (27.005 допускает дольше, но канал AT стоит); отказ настройки - снова через 30 с. */
   5000, /* COMM_T_SMS */

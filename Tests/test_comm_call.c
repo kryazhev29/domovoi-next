@@ -1,60 +1,173 @@
-/* Доработка: Кряжев А., 2026. Входящий вызов без ответа на модели модема и канала. */
-static unsigned calls, chups_at_call; static char call_seen[24];
+/* Доработка: Кряжев А., 2026. Доступ до ATA, ограниченный ответ и возврат данных. */
+static unsigned calls, chups_at_call, answers_at_call, call_actions; static char call_seen[24];
+static uint32_t call_action_at;
 static void call_caller(const char *number)
 {
-  ++calls; chups_at_call=chups; CHECK(strlen(number)<sizeof(call_seen));
-  memcpy(call_seen,number,strlen(number)+1u);
+  ++calls; chups_at_call=chups; answers_at_call=answers; call_action_at=sim_now;
+  CHECK(strlen(number)<sizeof(call_seen)); memcpy(call_seen,number,strlen(number)+1u);
+  /* Модель допуска: скрытый и чужой номер не открывают. Производственный доступ прежний. */
+  if (number[0] && strcmp(number,"+79990000000")) ++call_actions;
 }
 static bool user_comm_busy_model(void) { return comm_call_active(); }
-static void call_reset(void) { server_reset(); calls=0; call_seen[0]=0; }
-/* Вызов звонит, пока не сброшен: RING (+CLIP) каждые 5 с. */
+static void call_reset(void) { server_reset(); calls=call_actions=0; call_seen[0]=0; call_action_at=0; }
 static void ring(const char *clip) { sim_feed("RING\r\n"); if (clip) sim_feed(clip); }
+static void call_until_hangup(void)
+{
+  for (unsigned i=0; !aths && !chups; ++i) { CHECK(i<400); transport_tick(10); }
+  CHECK(hangup_at-answer_at<=comm_timeouts[COMM_T_CALL_LIMIT]);
+}
+static uint32_t call_until_registered(void)
+{
+  for (unsigned i=0; !comm_server_online() || comm_channel_call_pending(); ++i) { CHECK(i<1200); transport_tick(10); }
+  return sim_now-hangup_at;
+}
 static void call_tests(void)
 {
-  /* RING, затем CLIP: открыть один раз, потом сбросить, без ATA и без обрыва TCP. */
   call_reset(); unsigned opened=opens;
-  ring("+CLIP: \"+79161234567\",145,\"\",0,\"\",0\r\n"); advance(200);
-  CHECK(calls==1 && !strcmp(call_seen,"+79161234567") && chups_at_call==0 && chups==1);
-  CHECK(comm_call_active() && comm_server_online());
-  /* Повтор того же вызова - только сброс, второго открытия нет. */
-  advance(4800); ring("+CLIP: \"+79161234567\",145,\"\",0,\"\",0\r\n"); advance(200);
-  CHECK(calls==1 && chups==2);
-  advance(9000); CHECK(!comm_call_active() && opens==opened && comm_server_online());
-  /* Тот же номер после тишины - новый вызов. */
-  ring("+CLIP: \"+79161234567\",145,\"\",0,\"\",0\r\n"); advance(200); CHECK(calls==2 && chups==3);
-  /* CLIP раньше RING. */
-  call_reset(); sim_feed("+CLIP: \"89035551122\",129,\"\",0,\"\",0\r\nRING\r\n"); advance(200);
-  CHECK(calls==1 && !strcmp(call_seen,"89035551122") && chups==1);
-  /* Номер скрыт или CLIP потерян: через 1 с сброс без открытия. */
-  call_reset(); ring(NULL); advance(500); CHECK(!calls && !chups);
-  advance(700); CHECK(!calls && chups==1);
-  /* Пустой номер передаётся проверке как есть (старое поведение), мусорный - нет. */
-  call_reset(); ring("+CLIP: \"\",128,\"\",0,\"\",0\r\n"); advance(200); CHECK(calls==1 && !call_seen[0]);
-  call_reset(); ring("+CLIP: \"+7916x\",145\r\n"); advance(1300); CHECK(!calls && chups==1);
-  call_reset(); ring("+CLIP: \"+791612345678901234567\",145\r\n"); advance(1300); CHECK(!calls && chups==1);
-  /* Во время сброса звонит другой номер: открыть и для него. */
-  call_reset(); chup_silence=1; ring("+CLIP: \"+79160000001\",145\r\n"); advance(100);
-  CHECK(calls==1 && chups==1);
-  ring("+CLIP: \"+79160000002\",145\r\n"); advance(100); CHECK(calls==2 && !strcmp(call_seen,"+79160000002"));
-  chup_silence=0; advance(6000); CHECK(chups==2);
-  /* Сброс не проходит, вызов жив: следующий RING сбрасывает снова, без открытия. */
-  call_reset(); chup_silence=1; ring("+CLIP: \"+79160000003\",145\r\n"); advance(5500);
-  CHECK(calls==1 && chups==1 && comm_call_active());
-  chup_silence=0; ring("+CLIP: \"+79160000003\",145\r\n"); advance(200); CHECK(calls==1 && chups==2);
-  /* Перезапуск модема посреди сброса: ожидание снимается, вызов не зависает. */
-  call_reset(); chup_silence=1; ring("+CLIP: \"+79160000004\",145\r\n"); advance(100);
-  CHECK(chups==1 && comm_modem_restart(false,sim_now));
-  CHECK(slm.side.done && slm.side.result==COMM_AT_ERROR); comm_call_poll(sim_now); CHECK(comm_call_active() && !slm.side.done);
-  chup_silence=0; advance(9000); CHECK(!comm_call_active() && calls==1);
-  /* Вызов посреди передачи кадра: сброс ждёт, пока после '>' уйдут данные. */
+  ring("+CLIP: \"+79161234567\",145,\"\",0,\"\",0\r\n"); advance(1700);
+  CHECK(calls==1 && call_actions==1 && !strcmp(call_seen,"+79161234567"));
+  CHECK(!answers_at_call && !chups_at_call && call_action_at<answer_at);
+  CHECK(answers==1 && aths==1 && !chups && hangup_at-answer_at>=1040 && hangup_at-answer_at<=1070);
+  CHECK(comm_call_active() && comm_server_online() && opens==opened && !closes);
+  CHECK(call_net_queries==3 && call_pdp_queries==1 && call_tcp_queries==1);
+  advance(3300); ring("+CLIP: \"+79161234567\",145\r\n"); advance(200);
+  CHECK(calls==1 && answers==1 && aths==1 && !chups);
+  advance(8100); CHECK(!comm_call_active());
+  ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700); CHECK(calls==2 && answers==2 && aths==2);
+  call_reset(); sim_feed("+CLIP: \"89035551122\",129\r\nRING\r\n"); advance(1700);
+  CHECK(calls==1 && !strcmp(call_seen,"89035551122") && answers==1 && aths==1);
+  call_reset(); ring(NULL); advance(500); CHECK(!calls && !answers);
+  advance(2300); CHECK(!calls && !call_actions && answers==1 && aths==1);
+  call_reset(); ring("+CLIP: \"\",128\r\n"); advance(1700);
+  CHECK(calls==1 && !call_actions && !call_seen[0] && answers==1 && aths==1);
+  call_reset(); ring("+CLIP: \"+79990000000\",145\r\n"); advance(1700);
+  CHECK(calls==1 && !call_actions && answers==1 && aths==1);
+  call_reset(); ring("+CLIP: \"+7916x\",145\r\n"); advance(2800); CHECK(!calls && answers==1 && aths==1);
+  call_reset(); ring("+CLIP: \"+791612345678901234567\",145\r\n"); advance(2800); CHECK(!calls && answers==1 && aths==1);
+  /* Занятая флеш задерживает только действие до ATA, а не таймер снятой трубки. */
+  call_reset(); call_access_ready=false; ring("+CLIP: \"+79161234567\",145\r\n"); advance(2000);
+  CHECK(!calls && !answers); call_access_ready=true; advance(100); CHECK(calls==1 && answers==1);
+  call_access_ready=false; advance(1600); CHECK(aths==1 && !chups);
+  call_reset(); ring("+CLIP: \"+79161234567\",145\r\n"); advance(100);
+  sim_feed("NO CARRIER\r\n"); advance(20); CHECK(chups==1 && !aths && hangup_at-answer_at<1500);
+  /* Сроки переживают переполнение millis. */
+  call_reset(); ring("+CLIP: \"+79161234567\",145\r\n"); advance(100);
+  uint32_t shift=UINT32_MAX-sim_now-200u;
+  sim_now+=shift; call.now+=shift; call.since+=shift; call.last+=shift; call.answered+=shift;
+  ch.now+=shift; sv.now+=shift; sv.status_since+=shift; answer_at+=shift; started+=shift;
+  advance(1600); CHECK(answers==1 && aths==1 && !chups && hangup_at-answer_at<=2500);
+  /* Поздний OK оставляет запас: абсолютный предел не сдвигается. */
+  call_reset(); answer_delay=1490; ring("+CLIP: \"+79160000001\",145\r\n"); call_until_hangup();
+  CHECK(calls==1 && answers==1 && hangup_at-answer_at<=2500); advance(500);
+  CHECK(aths==1 && chups==1 && hangup_at-answer_at==2500);
+  for (unsigned failure=1;failure<=3;++failure) {
+    call_reset(); answer_mode=failure; ring("+CLIP: \"+79160000001\",145\r\n"); call_until_hangup();
+    CHECK(calls==1 && answers==1 && !aths && chups==1);
+    CHECK(hangup_at-answer_at==(failure==3 ? 1500u : 40u)); advance(500);
+    CHECK(comm_server_online() && !comm_channel_call_pending());
+  }
+  /* Старый OK после CHUP не является ответом следующего запроса. */
+  call_reset(); answer_delay=1800; ring("+CLIP: \"+79160000001\",145\r\n"); call_until_hangup();
+  CHECK(chups==1 && hangup_at-answer_at==1500); advance(800); CHECK(comm_server_online());
+  call_reset(); answer_delay=1400; ath_silence=1;
+  ring("+CLIP: \"+79160000001\",145\r\n"); advance(2700);
+  CHECK(answers==1 && aths==1 && chups==1 && hangup_at-answer_at==2500);
+  call_reset(); ring("+CLIP: \"+79160000001\",145\r\n"); advance(100);
+  ring("+CLIP: \"+79160000002\",145\r\n"); advance(100);
+  CHECK(calls==2 && !strcmp(call_seen,"+79160000002") && answers==1);
+  advance(2800); CHECK(calls==2 && answers==2 && aths==2);
+  /* Между приглашением и данными нет ATA/ATH, включая одновременный closed URC. */
   call_reset(); prompt_silence=1;
   uint16_t cap; uint8_t *p=comm_tx_acquire(&cap); CHECK(p); memset(p,0x5A,12); CHECK(comm_tx_commit(12));
   for (unsigned i=0;ch.tx_state!=TX_PROMPT && i<100;++i) transport_tick(10);
   CHECK(ch.tx_state==TX_PROMPT);
   ring("+CLIP: \"+79161112233\",145\r\n"); advance(50);
-  CHECK(calls==1 && !chups && slm.side.queued); /* сброс ждёт ответа на QISEND */
-  sim_feed("> "); advance(500); CHECK(chups==1 && sent_count==12 && !comm_tx_busy());
-  /* Вызов виден как занятость (ночной перезапуск модема ждёт его конца). */
-  call_reset(); CHECK(!user_comm_busy_model()); ring(NULL); advance(20); CHECK(comm_call_active());
-  puts("comm_call: RING/CLIP order, one open per call, hidden/bad number, repeat hangup, restart, prompt guard PASS");
+  CHECK(calls==1 && !answers && slm.side.queued);
+  sim_feed("> "); advance(1700); CHECK(answers==1 && aths==1 && sent_count==12 && !comm_tx_busy());
+  call_reset(); prompt_silence=1;
+  p=comm_tx_acquire(&cap); CHECK(p); memset(p,0x5A,12); CHECK(comm_tx_commit(12));
+  for (unsigned i=0;ch.tx_state!=TX_PROMPT && i<100;++i) transport_tick(10);
+  ring("+CLIP: \"+79161112233\",145\r\n"); advance(50); CHECK(!answers);
+  prompt_silence=0; socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n> "); advance(2000);
+  CHECK(calls==1 && answers==1 && aths==1 && opens==2 && comm_server_online());
+  /* Обновление FW не запрещает телефонный доступ/ответ. */
+  call_reset(); device.status|=1u<<11; device.firmwarePercent=37;
+  ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700); CHECK(calls==1 && answers==1 && aths==1);
+  /* Ночной перезапуск проходит только после тихого конца вызова и проверки данных. */
+  call_reset(); rc_clock=86400u+3u*3600u; static const comm_recover_hooks_t hooks={rc_session,rc_time,user_comm_busy_model};
+  comm_recover_init(&hooks,sim_now); uint8_t session=comm_modem_session();
+  ring("+CLIP: \"+79161234567\",145\r\n");
+  for (unsigned i=0;i<790;++i) { transport_tick(10); comm_recover_poll(sim_now); CHECK(comm_modem_session()==session); }
+  for (unsigned i=0;i<50 && comm_modem_session()==session;++i) { transport_tick(10); comm_recover_poll(sim_now); }
+  CHECK(!comm_call_active() && comm_modem_session()!=session); rc_clock=UINT32_MAX;
+  /* Перезапуск извне снимает владельца AT; старый вызов не блокирует новый сеанс. */
+  call_reset(); answer_mode=3; ring("+CLIP: \"+79161234567\",145\r\n"); advance(100);
+  CHECK(answers==1 && comm_modem_restart(false,sim_now)); advance(9000); CHECK(!comm_call_active());
+  /* Вызов после SIM во время запуска: долгий QIACT не занимает окно ATA/ATH. */
+  call_reset(); CHECK(comm_modem_restart(false,sim_now)); sim_activation_delay=10000;
+  comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx,user_comm_rx_done);
+  for (unsigned i=0; slm.attempt.status.step!=SLM_SIM; ++i) { CHECK(i<1000); transport_tick(10); }
+  ring("+CLIP: \"+79161234567\",145\r\n"); advance(200); CHECK(answers==1 && call.state==CALL_HOLD);
+  uint8_t startup_step=slm.attempt.status.step; advance(500);
+  CHECK(comm_modem_state()==SLM_STARTING && slm.attempt.status.step==startup_step && !aths);
+  advance(1000); CHECK(aths==1 && !chups && hangup_at-answer_at==1040);
+  /* Ожидаемые потери обнаруживаются и по запросу, и по URC; ступени не растут. */
+  for (unsigned loss=1;loss<=2;++loss) for (unsigned urc=0;urc<=1;++urc) {
+    call_reset(); call_drop=loss; call_drop_urc=urc;
+    ch.connections=3; ch.retry_step=2; ch.address_failures=2;
+    comm_recover_init(&rc_hooks,sim_now); unsigned failures=slm.diag.failure_next;
+    ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
+    uint32_t elapsed=call_until_registered(); comm_recover_poll(sim_now);
+    CHECK(elapsed<=5000 && opens==2 && !closes && call_activations==(loss==2));
+    CHECK(ch.retry_step==2 && !ch.address_failures && !ch.connections && !rc.soft_fails && !rc.tcp_count);
+    CHECK(slm.diag.failure_next==failures && links==3 && link_kinds[1]==COMM_LINK_LOST && link_kinds[2]==COMM_LINK_UP);
+    printf("comm_call: loss=%u urc=%u hangup->server=%u ms\n",loss,urc,(unsigned)elapsed);
+  }
+  /* Регистрационный URC не является ответом QIACT/QISTATE текущей операции. */
+  for (unsigned loss=1;loss<=2;++loss) {
+    call_reset(); call_drop=loss; call_registration_noise=true;
+    ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
+    CHECK(call_until_registered()<=5000 && opens==2 && call_activations==(loss==2));
+  }
+  /* Чужой/неактивный/UDP сокет не подтверждает наше TCP; чужой PDP не подтверждает контекст 1. */
+  for (unsigned other=1;other<=4;++other) {
+    call_reset(); call_drop=1; call_other_socket=(uint8_t)other;
+    ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
+    CHECK(call_until_registered()<=5000 && opens==2);
+  }
+  for (unsigned other=1;other<=2;++other) {
+    call_reset(); call_drop=2; call_other_pdp=(uint8_t)other;
+    ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
+    CHECK(call_until_registered()<=5000 && opens==2 && call_activations==1);
+  }
+  /* Следующий вызов во время проверки данных не наследует её состояние/результат. */
+  call_reset(); call_drop=1;
+  ring("+CLIP: \"+79160000001\",145\r\n");
+  for (unsigned i=0; ch.operation!=OP_CALL_NET; ++i) { CHECK(i<400); transport_tick(10); }
+  ring("+CLIP: \"+79160000002\",145\r\n"); advance(2000);
+  CHECK(calls==2 && answers==2 && aths==2 && opens==2 && comm_server_online() && !comm_channel_call_pending());
+  /* Возврат сети определяется URC; без него нет слепых QIOPEN и опроса раз в секунду. */
+  for (unsigned wait=4000;wait<=6000;wait+=2000) {
+    call_reset(); call_drop=2; call_drop_urc=1;
+    ring("+CLIP: \"+79161234567\",145\r\n"); advance(100);
+    call_cgreg_model=call_cereg_model=call_creg_model=2;
+    call_until_hangup(); call_network_due=hangup_at+wait;
+    advance(1000); CHECK(ch.call_stage==DATA_WAIT && opens==1 && !call_activations && call_net_queries==3);
+    uint32_t elapsed=call_until_registered(); CHECK(elapsed>=wait && elapsed<=wait+1000 && (wait>4000 || elapsed<=5000));
+    printf("comm_call: network=%u ms hangup->server=%u ms\n",wait,(unsigned)elapsed);
+  }
+  /* Первая быстрая неудача уже реальная: далее обычные 10 с восстановления PDP. */
+  call_reset(); call_drop=2; call_activation_error=1; comm_recover_init(&rc_hooks,sim_now);
+  ring("+CLIP: \"+79161234567\",145\r\n"); advance(2000); comm_recover_poll(sim_now);
+  CHECK(call_activations==1 && comm_modem_state()==SLM_FAILED && rc.state==RC_WAIT && rc.wait_ms==10000 && rc.soft_fails==1);
+  /* После первой неудачи TCP счёт/откат обычные, повторной бесплатной попытки нет. */
+  call_reset(); call_drop=1; sim_open_error=1;
+  ring("+CLIP: \"+79161234567\",145\r\n"); advance(2500);
+  CHECK(!comm_channel_call_pending() && slm.diag.failure_next && links>=3);
+  sim_open_error=0; call_drop=0; advance(8100);
+  for (unsigned i=0; !comm_server_online(); ++i) { CHECK(i<40000); transport_tick(10); }
+  opened=opens;
+  ring("+CLIP: \"+79160000002\",145\r\n"); advance(1700);
+  CHECK(opens==opened && comm_server_online() && !comm_channel_call_pending());
+  puts("comm_call: action/ATA/OK/ATH, deadlines/CHUP, hidden/foreign/repeats, prompt, FW/night, fast data recovery PASS");
 }

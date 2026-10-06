@@ -337,11 +337,10 @@ user_comm_poll:
         BL       comm_info_poll
           CFI FunCall user_storage_flash_ready
         BL       user_storage_flash_ready
-        CBZ.N    R0,??user_comm_poll_0
+        MOV      R1,R0
         MOV      R0,R4
           CFI FunCall comm_call_poll
         BL       comm_call_poll
-??user_comm_poll_0:
           CFI FunCall user_storage_flash_ready
         BL       user_storage_flash_ready
         CBZ.N    R0,??user_comm_poll_1

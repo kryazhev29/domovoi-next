@@ -12,7 +12,7 @@ static uint8_t state, mode, grammar, result, in_poll, cr, prompt_space, header, 
 /* PDU: строка после заголовка ответа - тело SMS (hex), без разбора и кусками;
    1 - ждём тело, 2 - отдан кусок. */
 static uint8_t pdu_body;
-enum { IDLE, RUN, COMPLETE, DRAIN, SYNC_SEND, SYNC_WAIT, SYNC_COMPLETE, FAULT };
+enum { IDLE, RUN, COMPLETE, DRAIN, CALL_DRAIN, SYNC_SEND, SYNC_WAIT, SYNC_COMPLETE, FAULT };
 enum { LINES, M66_HEADER, BODY, BODY_CR, BODY_LF };
 
 static void event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t detail)
@@ -146,10 +146,12 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
   uint8_t trailing_space = prompt_space;
   if (!available()) return COMM_AT_BUSY;
   if (!request || !request->command || request->count < 2u
-      || request->count >= sizeof(command) || request->mode == COMM_AT_SEND || request->mode > COMM_AT_PDU
+      || request->count >= sizeof(command) || request->mode == COMM_AT_SEND || request->mode > COMM_AT_CALL
       || !request->timeout_ms || request->timeout_ms > INT32_MAX
       || !recovery || recovery > INT32_MAX) return COMM_AT_INVALID;
   if (request->command[0] != 'A' || request->command[1] != 'T') return COMM_AT_INVALID;
+  if (request->mode == COMM_AT_CALL && (request->count != 3u
+      || (memcmp(request->command, "ATA", 3u) && memcmp(request->command, "ATH", 3u)))) return COMM_AT_INVALID;
   for (i = 0; i < request->count; ++i) {
     uint8_t value = request->command[i];
     if (value < ' ' || value > '~') return COMM_AT_INVALID;
@@ -272,6 +274,9 @@ static void complete_line(void)
           || (mode != COMM_AT_SLM_QIRD && mode != COMM_AT_M66_QIRD))) {
     fault(COMM_AT_BAD_FRAME); return; /* Неожиданное тело не становится текстом. */
   }
+  if (mode == COMM_AT_CALL && state == RUN && comm_at_equal(line, line_count, "NO CARRIER")) {
+    result = COMM_AT_ERROR; state = COMPLETE; return;
+  }
   if (final(&code)) {
     if (state == RUN) {
       if (code == COMM_AT_OK && ((mode == COMM_AT_SLM_QIRD && !header)
@@ -282,7 +287,7 @@ static void complete_line(void)
       state = COMPLETE;
     } else if (state == SYNC_WAIT && sync_seen && code == COMM_AT_OK) {
       state = SYNC_COMPLETE;
-    } else if (state == DRAIN) state = SYNC_SEND;
+    } else if (state == DRAIN || state == CALL_DRAIN) state = SYNC_SEND;
     return;
   }
   if ((state == RUN || (state >= DRAIN && state <= SYNC_WAIT))
@@ -335,6 +340,19 @@ static void byte(uint8_t value)
   line[line_count++] = value;
 }
 
+/* Голосовая команда не имеет бинарного тела/приглашения: её можно прервать.
+   CHUP уходит раньше CMEE; ответы ATA/ATH/CHUP не подтверждают следующий запрос. */
+bool comm_at_call_abort(uint32_t now_ms)
+{
+  static const uint8_t stop[] = "AT+CHUP\r";
+  if (mode != COMM_AT_CALL || grammar != LINES || state > COMPLETE
+      || !comm_uart_tx_done() || !comm_uart_tx(stop, sizeof(stop) - 1u)) return false;
+  uint8_t running = state != IDLE;
+  state = line_count || cr ? DRAIN : CALL_DRAIN;
+  mode = COMM_AT_TEXT; sync_seen = 0; started = now_ms; timeout = 300u;
+  if (running) event(COMM_AT_DONE, NULL, 0, COMM_AT_TIMEOUT);
+  return true;
+}
 void comm_at_poll(uint32_t now_ms)
 {
   const uint8_t *view;
@@ -343,6 +361,7 @@ void comm_at_poll(uint32_t now_ms)
   in_poll = 1;
   if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); goto end; }
   if ((state >= RUN && state <= COMPLETE) && expired(now_ms, timeout)) {
+    if (mode == COMM_AT_CALL) { comm_at_call_abort(now_ms); goto end; }
     /* Отмена сохраняет грамматику и остаток тела: поиск OK внутри запрещён. */
     state = grammar != LINES || line_count || cr ? DRAIN : SYNC_SEND;
     sync_seen = 0;
@@ -377,6 +396,7 @@ void comm_at_poll(uint32_t now_ms)
   }
   /* Оборванный URC без активной команды иначе навсегда запрещает новый AT. */
   if (state == IDLE && (line_count || cr) && expired(now_ms, recovery)) fault(COMM_AT_BAD_FRAME);
+  if (state == CALL_DRAIN && expired(now_ms, timeout)) state = SYNC_SEND;
   if (state == DRAIN && grammar == LINES && !line_count && !cr) state = SYNC_SEND;
   if ((state == COMPLETE || state == SYNC_COMPLETE || state == SYNC_SEND)
       && comm_uart_tx_done() && !line_count && !cr && !comm_uart_peek(&view)) {

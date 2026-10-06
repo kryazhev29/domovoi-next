@@ -10,20 +10,68 @@ static struct {
   void (*event)(uint8_t, uint8_t);
   uint16_t (*binary)(const uint8_t *, uint16_t);
   void (*read_done)(uint16_t, uint8_t);
-  uint32_t now, tx_since, operation_since, ack_next, reopen_pause, dns_since, probe_since;
+  uint32_t now, tx_since, operation_since, ack_next, reopen_pause, dns_since, probe_since, call_since;
   uint16_t frame_count, capacity, bytes, open_code;
   uint8_t state, tx_state, operation, answer;
   uint8_t address, address_failures, connections, retry_step, probe;
-  uint8_t probe_active, probe_answer;
+  uint8_t probe_active, probe_answer, call_stage, call_net, call_lost;
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
 } ch;
 enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT };
 enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_ACK };
-enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY };
+enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY, OP_CALL_NET, OP_CALL_PDP, OP_CALL_TCP, OP_CALL_ACTIVATE };
+enum { DATA_NONE, DATA_CALL, DATA_CGREG, DATA_CEREG, DATA_CREG, DATA_WAIT,
+       DATA_PDP, DATA_TCP, DATA_ACTIVATE, DATA_OPEN, DATA_REGISTER };
 /* Служебный запрос (сигнал, регистрация): одна команда, строки ответа - заказчику. */
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
 static void channel_emit(uint8_t kind, uint8_t value)
 { if (ch.event) ch.event(kind, value); }
+bool comm_channel_call_pending(void) { return ch.call_stage != DATA_NONE; }
+void comm_channel_call(bool active)
+{
+  if (active) { if (!ch.call_stage) ch.call_lost = 0; ch.call_stage = DATA_CALL; ch.call_net = 0; }
+  else if (ch.call_stage == DATA_CALL && comm_modem_ready()) {
+    ch.call_stage = DATA_CGREG; ch.call_since = ch.now;
+    comm_modem_record(SLM_NETWORK, 0, 0);
+  } else { ch.call_stage = DATA_NONE; comm_modem_call(0); }
+}
+static void channel_call_loss(void)
+{
+  if (!ch.call_lost && ch.state == CH_OPEN) channel_emit(COMM_CH_CLOSED, 0);
+  ch.call_lost = 1; ch.flags.registered_session = 0;
+}
+/* Запрос даёт <n>,<stat>; URC при n=1 даёт <stat>[,location,...]. */
+static void channel_call_net(const uint8_t *p, uint16_t n, bool urc)
+{
+  uint16_t pos; uint8_t bit; uint32_t v;
+  if (comm_at_prefix(p,n,"+CGREG:")) { pos = 7; bit = 1; }
+  else if (comm_at_prefix(p,n,"+CEREG:")) { pos = 7; bit = 2; }
+  else if (comm_at_prefix(p,n,"+CREG:")) { pos = 6; bit = 4; }
+  else return;
+  if (!comm_at_scan(p,n,&pos,5,&v)) return;
+  if (!urc && (pos >= n || p[pos++] != ',' || !comm_at_scan(p,n,&pos,5,&v))) return;
+  if (pos < n && p[pos] != ',') return;
+  ch.call_net = (uint8_t)(v == 1 || v == 5 ? ch.call_net | bit : ch.call_net & ~bit);
+  if (!urc) ch.answer = 1;
+  if (ch.call_stage == DATA_WAIT && urc) {
+    if (ch.call_net & 3u) ch.call_stage = DATA_PDP;
+    else if (bit == 4 && (ch.call_net & 4u)) ch.call_stage = DATA_CGREG;
+  }
+}
+/* EX §8.1.6: только socket 0, TCP, state=2, context 1 считается живым. */
+static bool channel_call_socket(const uint8_t *p, uint16_t n)
+{
+  uint16_t pos = comm_at_spaces(p,n,sizeof("+QISTATE:") - 1u); uint32_t v[4];
+  if (!comm_at_scan(p,n,&pos,7,&v[0]) || v[0] || pos >= n) return false;
+  p += pos; n = (uint16_t)(n - pos);
+  if (!comm_at_prefix(p,n,",\"TCP\",\"")) return false;
+  pos = sizeof(",\"TCP\",\"") - 1u;
+  while (pos < n && p[pos] != '"') ++pos;
+  if (pos == n) return false;
+  ++pos;
+  return comm_at_parse(p + pos,(uint16_t)(n - pos),",\005,\005,\005,\005,*",v)
+    && v[2] == 2 && v[3] == 1;
+}
 /* IPv4: четыре проверенных октета, с кавычками или без. */
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma inline=forced
@@ -58,14 +106,26 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
   if (kind == COMM_AT_DONE) return;
   if (!p) return;
   uint32_t v[8];
+  if (ch.call_stage && kind == COMM_AT_URC) channel_call_net(p,n,true);
+  if (ch.operation == OP_CALL_NET && kind == COMM_AT_LINE) { channel_call_net(p,n,false); return; }
+  if (ch.operation == OP_CALL_PDP && kind == COMM_AT_LINE) {
+    if (comm_at_parse(p,n,"+QIACT: \005,\005,\005,*",v) && v[0] == 1 && v[1] == 1 && v[2] >= 1 && v[2] <= 2) ch.answer = 1;
+    return;
+  }
+  if (ch.operation == OP_CALL_TCP && kind == COMM_AT_LINE) {
+    if (comm_at_prefix(p,n,"+QISTATE:") && channel_call_socket(p,n)) ch.answer = 1;
+    return;
+  }
   if (comm_at_parse(p,n,comm_modem_profile()->recv,v) && v[0] == 0) ch.flags.recv = 1;
   if (comm_at_parse(p,n,comm_modem_profile()->closed,v) && v[0] == 0) {
     channel_read_done(SLM_ERR_TCP);
+    if (ch.call_stage && ch.call_stage != DATA_REGISTER) { channel_call_loss(); return; }
     if (comm_modem_ready()) comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, comm_modem_status()->modem_code);
     ch.flags.peer_closed = 1; comm_channel_reopen(0); return;
   }
   if (comm_at_parse(p,n,comm_modem_profile()->pdp,v) && v[0] == 1) {
     channel_read_done(SLM_ERR_PDP);
+    if (ch.call_stage && ch.call_stage != DATA_REGISTER) { channel_call_loss(); return; }
     comm_channel_reopen(0); return;
   }
   if (ch.operation == OP_QUERY && kind == COMM_AT_LINE) { if (query.line) query.line(p, n); return; }
@@ -122,7 +182,8 @@ void comm_channel_priority(bool pending) { ch.flags.urgent = (uint8_t)pending; }
 uint8_t *comm_tx_acquire(uint16_t *capacity)
 {
   if (capacity) *capacity = sizeof(frame);
-  if (!comm_channel_ready() || ch.tx_state != TX_FREE || ch.flags.urgent) return NULL;
+  if (!comm_channel_ready() || ch.tx_state != TX_FREE || ch.flags.urgent
+      || (ch.call_stage && ch.call_stage < DATA_REGISTER)) return NULL;
   ch.tx_state = TX_BUILD; ch.tx_since = ch.now; return frame;
 }
 bool comm_tx_commit(uint16_t count)
@@ -132,9 +193,15 @@ bool comm_tx_commit(uint16_t count)
 }
 void comm_tx_release(void) { if (ch.tx_state == TX_BUILD) ch.tx_state = TX_FREE; }
 void comm_channel_stable(void) { ch.retry_step = 0; }
-void comm_channel_registered(void) { ch.connections = 0; ch.address_failures = 0; ch.flags.registered_session = 1; }
+void comm_channel_registered(void)
+{
+  ch.connections = 0; ch.address_failures = 0; ch.flags.registered_session = 1; ch.call_lost = 0;
+  if (ch.call_stage == DATA_REGISTER) { ch.call_stage = DATA_NONE; comm_modem_call(0); }
+}
 void comm_channel_reopen(uint32_t pause_ms)
 {
+  if (ch.call_stage && ch.call_stage != DATA_REGISTER) { channel_call_loss(); return; }
+  if (ch.call_stage == DATA_REGISTER) { ch.call_stage = DATA_NONE; comm_modem_call(0); }
   if (ch.state == CH_CLOSE || ch.state == CH_CLOSING || ch.state == CH_VERIFY || ch.state == CH_PAUSE || ch.state == CH_FAULT) return;
   if (ch.state == CH_INITIAL) ch.connections = 1;
   bool had_socket = ch.state == CH_OPEN;
@@ -205,6 +272,7 @@ static void channel_completed(void)
       else result = ch.open_code ? COMM_AT_ERROR : COMM_AT_OK;
     }
     ch.operation = OP_NONE;
+    if (result != COMM_AT_OK && ch.call_stage == DATA_REGISTER) { ch.call_stage = DATA_NONE; comm_modem_call(0); }
     uint8_t reason = result == COMM_AT_OK ? SLM_ERR_NONE
       : result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT : SLM_ERR_TCP;
     comm_modem_record(SLM_STEP_COUNT, reason, ch.flags.open_seen ? ch.open_code : comm_modem_status()->modem_code);
@@ -216,6 +284,31 @@ static void channel_completed(void)
   }
   if (result == UINT8_MAX) return;
   ch.operation = OP_NONE;
+  if (op >= OP_CALL_NET) {
+    if (ch.call_stage == DATA_CALL) return; /* новый вызов: проверим данные после него */
+    if (result != COMM_AT_OK || (op == OP_CALL_NET && !ch.answer)) {
+      ch.call_stage = DATA_NONE; comm_modem_call(0);
+      comm_modem_data_failed(result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT : SLM_ERR_PDP); return;
+    }
+    if (op == OP_CALL_NET) {
+      if (ch.call_stage == DATA_CREG) ch.call_stage = ch.call_net & 3u ? DATA_PDP : DATA_WAIT;
+      else ++ch.call_stage;
+      if (ch.call_stage == DATA_PDP) comm_modem_record(SLM_STEP_COUNT, 0, 0);
+    } else if (op == OP_CALL_PDP) {
+      ch.call_stage = ch.answer ? DATA_TCP : DATA_ACTIVATE;
+      if (!ch.answer) channel_call_loss();
+    } else if (op == OP_CALL_TCP && ch.answer) {
+      if (ch.call_lost) { ch.call_stage = DATA_REGISTER; channel_emit(COMM_CH_OPENED, ch.address); }
+      else { ch.call_stage = DATA_NONE; comm_modem_call(0); }
+    } else {
+      if (op == OP_CALL_ACTIVATE) comm_modem_record(SLM_STEP_COUNT, 0, 0);
+      channel_call_loss(); ch.call_stage = DATA_OPEN;
+      ch.state = CH_PAUSE; ch.operation_since = ch.now; ch.reopen_pause = 0;
+      ch.flags.recv = ch.flags.peer_closed = 0; ch.tx_state = TX_FREE; ch.frame_count = 0;
+      ch.probe = ch.probe_active = 0;
+    }
+    return;
+  }
   if (op == OP_READ) {
     uint8_t reason = result == COMM_AT_OK ? SLM_ERR_NONE : result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT
       : result > COMM_AT_TIMEOUT ? SLM_ERR_STREAM : SLM_ERR_AT;
@@ -274,7 +367,7 @@ void comm_channel_poll(uint32_t now_ms)
     ch.state = CH_PAUSE;
   }
   if (ch.state == CH_OPEN && !comm_modem_ready()) comm_channel_reopen(0);
-  if (ch.state == CH_OPEN && ch.tx_state != TX_FREE && now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED])
+  if (!ch.call_stage && ch.state == CH_OPEN && ch.tx_state != TX_FREE && now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED])
     comm_channel_reopen(0);
   if (ch.probe_active) {
     uint8_t t = ch.probe_active == COMM_CH_PING ? COMM_T_PING : COMM_T_DNS;
@@ -283,6 +376,31 @@ void comm_channel_poll(uint32_t now_ms)
     }
   }
   if (modem_slm336_busy()) return; /* В том числе безопасная ресинхронизация AT. */
+  /* Приглашение уже получено: даже потеря TCP/вызов не заменяет данные командой. */
+  if (ch.tx_state == TX_PAYLOAD && !ch.operation) {
+    if (channel_command(NULL, COMM_AT_SEND, COMM_T_SEND_RESULT, OP_SEND)) ch.tx_state = TX_SENDING;
+    return;
+  }
+  if (ch.call_stage && ch.call_stage < DATA_OPEN) {
+    if (ch.operation || ch.call_stage == DATA_CALL) return;
+    if (now_ms - ch.call_since >= comm_timeouts[COMM_T_NETWORK]) {
+      ch.call_stage = DATA_NONE; comm_modem_call(0); comm_modem_data_failed(SLM_ERR_TIMEOUT); return;
+    }
+    switch (ch.call_stage) {
+    case DATA_CGREG: channel_command("AT+CGREG?",COMM_AT_TEXT,COMM_T_AT_SIMPLE,OP_CALL_NET); break;
+    case DATA_CEREG: channel_command("AT+CEREG?",COMM_AT_TEXT,COMM_T_AT_SIMPLE,OP_CALL_NET); break;
+    case DATA_CREG: channel_command("AT+CREG?",COMM_AT_TEXT,COMM_T_AT_SIMPLE,OP_CALL_NET); break;
+    case DATA_WAIT:
+      if (ch.call_net & 3u) { comm_modem_record(SLM_STEP_COUNT,0,0); ch.call_stage = DATA_PDP; }
+      break;
+    case DATA_PDP: channel_command("AT+QIACT?",COMM_AT_TEXT,COMM_T_AT_SIMPLE,OP_CALL_PDP); break;
+    case DATA_TCP: channel_command("AT+QISTATE=0,1",COMM_AT_TEXT,COMM_T_AT_SIMPLE,OP_CALL_TCP); break;
+    case DATA_ACTIVATE:
+      if (channel_command("AT+QIACT=1",COMM_AT_TEXT,COMM_T_QIACT,OP_CALL_ACTIVATE)) comm_modem_record(SLM_ACTIVATE,0,0);
+      break;
+    }
+    return;
+  }
   if (ch.state == CH_CLOSE) {
     if (ch.operation == OP_OPEN) return;
     ch.operation = OP_NONE;
@@ -299,7 +417,10 @@ void comm_channel_poll(uint32_t now_ms)
     if (now_ms - ch.operation_since < ch.reopen_pause) return;
     if (!channel_command(NULL, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_OPEN)) return;
     ch.flags.peer_closed = 0;
-    ch.state = CH_OPENING; ++ch.connections; return;
+    ch.state = CH_OPENING;
+    if (ch.call_stage == DATA_OPEN) ch.call_stage = DATA_REGISTER;
+    else ++ch.connections;
+    return;
   }
   if (ch.state != CH_OPEN || ch.operation) return;
   if (ch.tx_state == TX_QUEUED) {

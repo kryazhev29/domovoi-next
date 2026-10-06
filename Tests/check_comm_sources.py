@@ -15,7 +15,7 @@ C_FILES=(
 )
 C_FILES += tuple(str(p.relative_to(ROOT)).replace('\\','/') for p in sorted((ROOT/'User/c').iterdir()) if p.suffix in ('.c','.h','.inc'))
 PY_FILES=('Tests/run_host.py','Tests/comm_server_host.py','Tests/comm_slm_host.py',
-          'Tests/build_comm_uart.py','Tests/comm_uart_budget.py','Tests/comm_budget.py','Tests/comm_mutations.py','Tests/test_photo_mutations.py','Tests/check_comm_sources.py','Tests/recover_mutations.py')
+          'Tests/build_comm_uart.py','Tests/comm_uart_budget.py','Tests/comm_budget.py','Tests/comm_mutations.py','Tests/call_mutations.py','Tests/test_photo_mutations.py','Tests/check_comm_sources.py','Tests/recover_mutations.py')
 
 def check(fix=False):
     for name in (*C_FILES,*PY_FILES):
