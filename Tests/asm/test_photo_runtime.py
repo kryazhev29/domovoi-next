@@ -1,7 +1,12 @@
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
-"""Actual camera/command/main-loop paths in final IAR ASM, with modeled UART/NOR."""
+"""Доработка: Кряжев А., 2026. Камера и команды в IAR ELF; UART/NOR — модели."""
 import argparse,json,hashlib,struct
 from storage_machine import *
+
+HEAD=13
+FORMAT=0x32504850
+PHASE={name:i+1 for i,name in enumerate(("IO","HEAD","RECORD","CAMERA","PREP_DONE","LAZY_DONE","DATA_DONE","PHOTO_NUMBER","PHOTO_MARK","PHOTO_DONE","CLEAN_END","ACK_HEAD","ACK_ADVANCE","REQUEST_DONE","SEND_FILL","SEND_COMMIT"))}
+def next_record(a,size):return (a+HEAD+size+4095)&~4095
 
 @lru_cache(None)
 def pf():return fields('photo_s')
@@ -10,7 +15,7 @@ def rf():return fields('photo_runtime_s')
 
 class PhotoMachine(StorageMachine):
     def __init__(self,flash=None):
-        super().__init__(flash);self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
+        super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
         self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
         config=fields('config_s');self.write(self.addr('config')+config['rs485Mode'],1,1)
         self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,3]))
@@ -37,7 +42,7 @@ class PhotoMachine(StorageMachine):
         n=self.args()[0];self.sent.append(bytes(self.u.mem_read(0x21000800,n)));self.ret(1)
     def photo_ptr(self):return int.from_bytes(self.u.mem_read(self.addr('photo'),4),'little')
     def pget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.photo_ptr()+pf()[n],size),'little')
-    def rget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.addr('pr')+rf()[n],size),'little')
+    def rget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.addr('pr')+self.runtime_fields[n],size),'little')
     def active(self):return self.call('photo_storage_busy')!=0
     def tick(self):
         self.now+=1;self.checked('user_storage_poll')
@@ -91,18 +96,22 @@ class PhotoMachine(StorageMachine):
     def capture(self,data):
         self.begin_camera(len(data));start=self.pget('address',4);stamp=self.pget('stamp',4)
         for off in range(0,len(data),58):self.data(data[off:off+58])
-        assert self.pget('stage')==0 and self.events[-1]==stamp
+        stamp=self.events[-1]
+        assert self.pget('stage')==0 and stamp==self.pget('stamp',4)
         assert self.flash[start:start+8]==struct.pack('<II',stamp,len(data))
-        assert self.flash[start+1033:start+1033+len(data)]==data
-        assert self.flash[start+8:start+1033]==b'\xff'*1025
+        assert not start%4096
+        assert self.flash[start+HEAD:start+HEAD+len(data)]==data
+        assert self.flash[start+8:start+HEAD]==struct.pack("<IB",FORMAT,255)
         return start,stamp
 
 def prefix_flash(prefix=4087,dirty=True):
-    f=bytearray(b'\xff'*0x400000);base=0x200000
-    f[base:base+8]=struct.pack('<II',50,prefix-1033)
-    f[base+1033:base+prefix]=bytes((i*19)&255 for i in range(prefix-1033))
+    # Параметр — прежняя граница данных; новый снимок всегда в следующем секторе.
+    f=bytearray(b'\xff'*0x400000);base=0x200000;size=prefix-HEAD
+    f[base:base+HEAD]=struct.pack('<IIIB',50,size,FORMAT,255)
+    f[base+HEAD:base+prefix]=bytes((i*19)&255 for i in range(size))
     if dirty:f[base+4095]=0
     return f
+
 
 def normal():
     results={}
@@ -113,12 +122,12 @@ def normal():
                             'max_storage_poll':max(m.poll_costs),'max_port_poll':max(m.port_costs),
                             'total_instructions':sum(m.costs),'stack':m.stack_peak}
         print('camera',size,'PASS',flush=True)
-    m=PhotoMachine(prefix_flash());old=bytes(m.flash[0x200000:0x200ff7]);m.boot_media();m.capture(b'z'*129)
-    assert m.flash[0x200000:0x200ff7]==old and m.events==[51]
+    m=PhotoMachine(prefix_flash());old=bytes(m.flash[0x200000:0x201000]);m.boot_media();m.capture(b'z'*129)
+    assert m.flash[0x200000:0x201000]==old and m.events==[51]
     assert m.flash[0x2ff000:0x300000]==b'\xff'*4096
-    results['prefix4087']={'max_instructions':max(m.costs),'max_storage_poll':max(m.poll_costs),
+    results['sector_alignment']={'max_instructions':max(m.costs),'max_storage_poll':max(m.poll_costs),
                           'passes':len(m.costs),'total_instructions':sum(m.costs),'stack':m.stack_peak}
-    print('prefix backup/CRC/restore PASS',flush=True)
+    print('sector alignment/lazy erase PASS',flush=True)
     return results
 
 def uploads():
@@ -131,19 +140,41 @@ def uploads():
     assert b''.join(x[20:-2] for x in m.sent[:-1])==data
     for p in m.sent:assert crc16(p[4:-2])==int.from_bytes(p[-2:],'little')
     m.packet(21,struct.pack('<IH',stamp,512));m.drain()
-    assert m.flash[address+8:address+16]==struct.pack('<HHI',512,65535^512,0)
+    assert m.flash[address+8:address+HEAD]==struct.pack('<IB',FORMAT,255)
+    assert m.rget('resume_offset',2)==512
     m.packet(21,struct.pack('<IH',stamp,512));m.drain()
-    assert m.flash[address+16:address+24]==b'\xff'*8,'duplicate ACK used another slot'
-    m.packet(21,struct.pack('<IH',stamp,len(data)));m.drain();assert m.flash[address+1032]==0
+    assert m.flash[address+8:address+HEAD]==struct.pack('<IB',FORMAT,255),'partial ACK wrote flash'
+    m.packet(21,struct.pack('<IH',stamp,len(data)));m.drain();assert m.flash[address+HEAD-1]==0
     for _ in range(60):m.port();m.drain()
     assert m.flash[0x200000:0x201000]==b'\xff'*4096 and not m.rget('cleanup')
     assert not m.rget('fault') and m.rget('initialized')
-    print('upload 512, CRC, persistent ACK/retry, cleanup PASS',flush=True)
+    # Повтор итогового ACK после очистки и перезагрузки — ответ 11/0 и пустой 14.
+    for machine in (m, PhotoMachine(m.flash)):
+        if machine is not m:machine.boot_media()
+        machine.sent=[];machine.packet(21,struct.pack('<IH',stamp,len(data)));machine.drain()
+        assert machine.answers[-1][1]==0
+        machine.port();machine.drain();assert len(machine.sent)==1 and machine.sent[0][9]==0
+    # Номер 0 после перезапуска пропускает полностью подтверждённое фото.
+    q=PhotoMachine();q.boot_media();a,s1=q.capture(b'a'*59);b,s2=q.capture(b'b'*60)
+    q.packet(21,struct.pack('<IH',s2,17));q.drain()
+    assert q.flash[a+HEAD-1]==0 and q.flash[b+HEAD-1]==255
+    r=PhotoMachine(q.flash);r.boot_media();r.packet(21,struct.pack('<IH',0,0));r.drain()
+    assert r.pget('readAddress',4)==b and r.pget('offset',2)==0
+    r.packet(21,struct.pack('<IH',s2,17));r.drain()
+    r.port();r.drain();assert r.sent[-1][20:-2]==b'b'*43
+    # Во время первого стирания повтор ACK не отменяет очистку.
+    r.packet(21,struct.pack('<IH',s2,60));r.drain();r.sent=[]
+    r.port();r.drain();r.port()
+    assert r.rget('cleanup')
+    if r.rget('cleanup'):
+        r.packet(21,struct.pack('<IH',s2,60));assert r.answers[-1][1]==0
+        r.drain();r.port();r.drain();assert r.sent[-1][9]==0
+    print('upload 512, CRC, RAM cursor/full ACK/retry, cleanup PASS',flush=True)
     return {'max_instructions':max(m.costs),'passes':len(m.costs),'stack':m.stack_peak}
 
 def errors():
     m=PhotoMachine();m.boot_media();m.begin_camera(116);m.data(b'A'*58,True);m.data(b'B'*58)
-    assert len(m.events)==1 and m.flash[0x200000+1033:0x200000+1033+116]==b'A'*58+b'B'*58
+    assert len(m.events)==1 and m.flash[0x200000+HEAD:0x200000+HEAD+116]==b'A'*58+b'B'*58
     m=PhotoMachine();m.boot_media();assert take(m,PHOTO)
     m.packet(7,b'\5');assert m.answers[-1][1]==2 and not m.active() and not m.counts['start']
     m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request()
@@ -160,6 +191,6 @@ def errors():
 
 if __name__=='__main__':
     out={'units':'Unicorn instructions with NOR/UART models; NOT cycles/time','normal':normal(),'upload':uploads(),'errors':errors()}
-    out['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
+    out['elf_sha256']=hashlib.sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()
     (ROOT/'Tests/asm/photo_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
     print('PASS actual photo ASM/camera/main-loop: verified I/O, ownership, ABI, bounded work')

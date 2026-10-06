@@ -3459,7 +3459,7 @@
             <name>$PROJ_DIR$\User\c\idclear_runtime.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\photo_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\photo_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\c\idindex_runtime.c</name>

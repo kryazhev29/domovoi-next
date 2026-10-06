@@ -1,4 +1,4 @@
-"""Prove in linked code that private photo TX cannot overlap new storage jobs."""
+"""Доработка: Кряжев А., 2026. Частный TX фото живёт до завершения отправки."""
 import hashlib
 import json
 from test_photo_runtime import *
@@ -9,12 +9,12 @@ from test_photo_edges import reach
 
 def run():
     m = PhotoMachine(); m.boot_media(); m.capture(b'x'*768)
-    m.packet(21, b'', 1); m.drain(); m.port(); reach(m,39)
+    m.packet(21, b'', 1); m.drain(); m.port(); reach(m,PHASE['SEND_FILL'])
     m.tick() # allocate TX534 and fill the first <=64 bytes
     from test_work_memory import take,drop,owned,UP_PACKET,PHOTO,PHOTO_PACKET
     reserve=take(m,UP_PACKET);assert reserve
     tested = []
-    for phase in (39,40,41):
+    for phase in (PHASE['SEND_FILL'],PHASE['SEND_COMMIT']):
         reach(m, phase)
         pointer = m.rget('tx',4); assert pointer
         assert owned(m)==(1<<(PHOTO-1))|(1<<(PHOTO_PACKET-1))|(1<<(UP_PACKET-1))
@@ -42,5 +42,5 @@ def run():
 
 if __name__ == '__main__':
     out = run()
-    (ROOT/'Tests/asm/verification_photo_lifetime_results.json').write_text(json.dumps(out,indent=2)+'\n')
+    (__import__('pathlib').Path(__import__('os').environ['DOMOVOI_COMPARE_BUILD'])/'verification_photo_lifetime_results.json').write_text(json.dumps(out,indent=2)+'\n')
     print('PASS linked photo TX lifetime:',out['phases'],flush=True)
