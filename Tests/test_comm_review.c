@@ -65,7 +65,7 @@ static void review_settings(void)
   config.netOperator[0] = 0; slm.attempt.mnc = 1;
   comm_modem_build(cmd, sizeof(cmd), apn, NULL, 0);
   CHECK(strstr(cmd, "internet.mts.ru"));
-  strcpy(config.netOperator, "bad\"apn"); CHECK(!slm_valid_settings());
+  strcpy(config.netOperator, "bad\"apn"); CHECK(!comm_modem_valid_settings());
   config.netOperator[0] = 0;
   static const uint8_t expected[] = {0, 1, 0, 5, 3};
   const char *rat = slm_commands + slm_steps[SLM_RAT_SET - SLM_AT_READY].command;
@@ -73,7 +73,7 @@ static void review_settings(void)
     config.netType = (uint8_t)i;
     comm_modem_build(cmd, sizeof(cmd), rat, NULL, 0);
     char want[40]; snprintf(want, sizeof(want), "AT+QCFG=\"nwscanmode\",%u,1", expected[i]);
-    CHECK(!strcmp(cmd, want) && slm_valid_settings());
+    CHECK(!strcmp(cmd, want) && comm_modem_valid_settings());
   }
   /* Новые настройки меняют следующий QIOPEN без перезагрузки процессора. */
   comm_split(0, "old.local:1234"); comm_split(1, "old-backup.local:1235");
