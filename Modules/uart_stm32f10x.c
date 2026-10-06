@@ -2,7 +2,6 @@
 // Единственный UART приложения — USART1 для RS-485.
 // ISR дописывает буфер, главный цикл разбирает его после межбайтовой тишины.
 // Граница приёма проверяет ёмкость; ожидание освобождения TX ограничено.
-// Неиспользуемый первый аргумент временно сохраняет ABI чужих C/ASM-модулей.
 
 #include "uart_stm32f10x.h"
 #include <string.h>
@@ -51,9 +50,8 @@ void USART1_IRQHandler(void)
 }
 
 // Настроить USART1 и передать ему приёмный буфер владельца RS-485.
-bool uart_init(uint8_t legacy_port, uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t bfsize)
+bool uart_init(uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t bfsize)
 {
-  (void)legacy_port;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
   uart.rxbuffer = rxbuffer;
@@ -95,18 +93,16 @@ static bool uart_sendbyte(uint8_t ch)
 }
 
 // Передать двоичный буфер; при отказе порта прекратить текущую посылку.
-void uart_send(uint8_t legacy_port, uint8_t *buf, uint16_t size)
+void uart_send(uint8_t *buf, uint16_t size)
 {
-  (void)legacy_port;
   uart.txfailed = 0;
   if (!(USART1->CR1 & USART_CR1_UE) || (size && buf == NULL)) { uart.txfailed = 1; return; }
   for (uint16_t i = 0; i < size; ++i) if (!uart_sendbyte(buf[i])) return;
 }
 
 // Атомарно освободить принятый кадр относительно ISR.
-void uart_clear(uint8_t legacy_port)
+void uart_clear(void)
 {
-  (void)legacy_port;
   if (uart.rxbuffer == NULL) return;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
@@ -117,16 +113,14 @@ void uart_clear(uint8_t legacy_port)
 }
 
 // Вернуть число байтов для разбора фотоответа.
-uint16_t uart_received(uint8_t legacy_port)
+uint16_t uart_received(void)
 {
-  (void)legacy_port;
   return uart.received;
 }
 
 // Разрешить разбор кадра после заданной межбайтовой тишины.
-uint8_t uart_getstate(uint8_t legacy_port)
+uint8_t uart_getstate(void)
 {
-  (void)legacy_port;
   return uart.twait ? 0 : uart.state;
 }
 
@@ -140,15 +134,13 @@ void uart_timer1ms(void)
 }
 
 // Задать межбайтовую задержку, минимум 1 мс.
-void uart_setRecTimeout(uint8_t legacy_port, unsigned int t)
+void uart_setRecTimeout(unsigned int t)
 {
-  (void)legacy_port;
   uart.timetowait = t == 0 ? 1 : t;
 }
 
 // Проверить, продолжается ли приём текущего кадра.
-bool uart_isReceiving(uint8_t legacy_port)
+bool uart_isReceiving(void)
 {
-  (void)legacy_port;
   return uart.receiving != 0;
 }

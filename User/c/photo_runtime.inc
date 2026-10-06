@@ -240,7 +240,7 @@ void photo_storage_poll(uint32_t now)
     photo->rxBytes=0;
 #endif
     photo->started=now; photo->last=now-50; photo->deadline=now;
-    uart_init(PHOTO_PORT,PHOTO_BAUD,0,photo->rx,sizeof(photo->rx)); device.getPhoto=pr.address; pr_release(); break;
+    uart_init(PHOTO_BAUD,0,photo->rx,sizeof(photo->rx)); device.getPhoto=pr.address; pr_release(); break;
   case PR_PREP_DONE:
     photo->stage=P_DATA; photo->deadline=now; pr_release(); break;
   case PR_LAZY_DONE: photo_erased_to+=4096; pr_release(); break;
@@ -345,8 +345,8 @@ void photo_poll(void)
     if (photo->pending && photo->channel==CH_USB && pr.usb_epoch!=usb_bus_resets) photo->pending=0;
     if (device.status.readyToUpdate) photo_storage_cancel();
     else {
-      if (photo->stage && uart_getstate(PHOTO_PORT) && !uart_isReceiving(PHOTO_PORT)) {
-        uint16_t n=uart_received(PHOTO_PORT); if (n>64) { photo_stop(); n=0; }
+      if (photo->stage && uart_getstate() && !uart_isReceiving()) {
+        uint16_t n=uart_received(); if (n>64) { photo_stop(); n=0; }
         for (uint16_t i=0;i<n && photo->stage && !pr.phase;i++) {
 #if DOMOVOI_DIAG
           if (photo->rxBytes<sizeof(photo->rxHead)) photo->rxHead[photo->rxBytes]=photo->rx[i];
@@ -361,7 +361,7 @@ void photo_poll(void)
           }
           if (photo->used==pr.frame_size) { photo_frame(photo->frame,pr.frame_size); photo->used=0; }
         }
-        uart_clear(PHOTO_PORT);
+        uart_clear();
       }
       if (pr.phase) return;
       if (photo->stage && (uint32_t)(now-photo->started)>=60000u) {

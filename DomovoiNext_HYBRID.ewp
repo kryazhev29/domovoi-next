@@ -3476,10 +3476,7 @@
         <file>
             <name>$PROJ_DIR$\User\prof.c</name>
         </file>
-        <file>
-            <name>$PROJ_DIR$\User\hybrid\user_fun_hot.s</name>
-        </file>
-        <file>
+<file>
             <name>$PROJ_DIR$\User\c\service_runtime.c</name>
             <configuration>
                 <name>Release</name>
@@ -3664,40 +3661,40 @@
     <file>
         <name>$PROJ_DIR$\Bootloader\boot_manual.c</name>
     </file>
-<group><name>HYBRID selection</name>        <file>
-            <name>$PROJ_DIR$\User\c\user_fun_runtime.c</name>
-            <configuration>
-                <name>Release</name>
-                <settings>
-                    <name>ICCARM</name>
-                    <archiveVersion>2</archiveVersion>
-                    <data>
-                        <version>38</version>
-                        <wantNonLocal>1</wantNonLocal>
-                        <debug>0</debug>
-                        <option>
-                            <name>CCAllowList</name>
-                            <version>1</version>
-                            <state>11111111</state>
-                        </option>
-                    </data>
-                </settings>
-            </configuration>
-            <configuration>
-                <name>ReleaseCustomer</name>
-                <settings>
-                    <name>ICCARM</name>
-                    <archiveVersion>2</archiveVersion>
-                    <data>
-                        <version>38</version>
-                        <wantNonLocal>1</wantNonLocal>
-                        <debug>0</debug>
-                        <option>
-                            <name>CCAllowList</name>
-                            <version>1</version>
-                            <state>11111111</state>
-                        </option>
-                    </data>
-                </settings>
-            </configuration>
-        </file></group></project>
+<group><name>HYBRID selection</name>        <file><name>$PROJ_DIR$\User\c\user_main.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_commands.c</name>
+                <configuration>
+                    <name>Release</name>
+                    <settings>
+                        <name>ICCARM</name>
+                        <data>
+                            <option><name>CCOptStrategy</name><state>0</state></option>
+                            <option><name>CCOptStrategySlave</name><state>0</state></option>
+                        </data>
+                    </settings>
+                </configuration>
+                <configuration>
+                    <name>ReleaseCustomer</name>
+                    <settings>
+                        <name>ICCARM</name>
+                        <data>
+                            <option><name>CCOptStrategy</name><state>0</state></option>
+                            <option><name>CCOptStrategySlave</name><state>0</state></option>
+                        </data>
+                    </settings>
+                </configuration>
+            </file>
+<file><name>$PROJ_DIR$\User\c\user_access.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_ids.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_schedule.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_sms.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_log.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_upload.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_protocol.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_fw.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_store.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_config.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_modem.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_diag.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_rx.c</name></file>
+        <file><name>$PROJ_DIR$\User\c\user_fw_compat.c</name></file></group></project>
