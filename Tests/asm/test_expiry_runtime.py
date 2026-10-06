@@ -105,8 +105,11 @@ def faults():
     m=ExpiryMachine();m.install([record()]);p=take(m,REPLY);assert p
     before=bytes(m.flash);assert not m.start_expiry()
     assert bytes(m.flash)==before and not any(m.counts.values()) and not m.expiry_events;count+=1
-    m=ExpiryMachine();m.install([record()]);m.write(m.addr('id_cells_end'),0xffff,2)
-    assert not m.start_expiry() and not any(m.counts.values());count+=1
+    # Число ячеек задаёт проверенный скан основной базы, внутренний вызов не повторяет границу.
+    m=ExpiryMachine();m.install([record()])
+    used=int.from_bytes(m.u.mem_read(m.addr('id_cells_end'),2),'little')*32
+    size=int.from_bytes(m.u.mem_read(m.addr('mem')+20,4),'little')
+    assert used<=size and not used&31;count+=1
     m=ExpiryMachine();m.install([record()]);m.write(m.addr('store_save_requested'),1,1)
     assert not m.start_expiry();count+=1
     return count
@@ -144,8 +147,8 @@ def full_scan_and_heap():
     assert owned(m)==0
     return {'id_bytes':1601536,'passes':len(m.runtime_costs),'max_instructions':max(m.runtime_costs),
             'total_instructions':sum(m.runtime_costs),'max_read_bytes':max(m.runtime_reads),
-            'stack':m.stack_peak,'context_request':1092,'workspace_bytes':2224,
-            'live_workspace_payload':180+534+1092,'free_at_overlap':peak}
+            'stack':m.stack_peak,'context_request':132,'workspace_bytes':2224,
+            'live_workspace_payload':180+534+132,'free_at_overlap':peak}
 
 if __name__=='__main__':
     import argparse

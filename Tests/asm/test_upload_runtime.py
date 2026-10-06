@@ -17,7 +17,7 @@ def log(i, legacy=False):
 class UploadMachine(StorageMachine):
     def __init__(self):
         super().__init__()
-        self.write(self.addr('cfg_legacy_checked'),1,1)
+        self.write(self.addr('cfg_boot_done' if 'cfg_boot_done' in self.symbols else 'cfg_legacy_checked'),1,1)
         self.sent = []; self.busy = False; self.commit_fail = False; self.lease = False
         self.acquires = self.releases = self.max_read = self.total_read = 0
         self.u.mem_write(self.addr('mem') + 6*8, struct.pack('<II', 0x1cd400, 4096))
@@ -63,7 +63,7 @@ class UploadMachine(StorageMachine):
         return int.from_bytes(self.u.mem_read(at, n), 'little')
 
     def phase(self):
-        return self.read_word(self.ptr()+35, 1) if self.ptr() else 0
+        return self.read_word(self.ptr()+31, 1) if self.ptr() else 0
 
     def fixture(self, cmd, slots):
         self.cmd = cmd; self.base = (0x1d0000 if "log_cursor32" in self.symbols else 0x1cf400) if cmd == 10 else 0x1e8400

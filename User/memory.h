@@ -23,7 +23,6 @@ const uint8_t *mem_config_snapshot(void);
 
 bool mem_recover(void);
 bool mem_tables_ready(void);
-bool mem_replace_sector(uint32_t adr, const uint8_t *image);
 typedef uint8_t (*mem_page_reader)(const void *context, uint16_t offset, uint8_t *page);
 bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context);
 bool mem_patch(Int32U adr, const uint8_t *data, Int16U size);
@@ -37,11 +36,5 @@ bool mem_write (Int32U adr, pInt8U buff, Int16U size);
 
 // —тереть сектор
 bool mem_erase_sector (Int32U adr);
-
-// «апись данных в пам€ть с предварительным чтением сектора
-bool mem_rewrite (Int32U adr, pInt8U buff, Int16U size, uint8_t* mem_buffer4kB);
-
-// стереть диапазон пам€ти
-bool mem_erase_mem (Int32U fadr, Int32U eadr);
 
 #endif

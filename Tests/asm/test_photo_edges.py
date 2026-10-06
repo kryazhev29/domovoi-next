@@ -92,7 +92,7 @@ def ownership():
     assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1' and not m.events
     for name in ('store_save_requested','log_pendingCount'):
         m=PhotoMachine();m.boot_media();m.capture(b'x'*58);m.packet(21,b'');m.drain()
-        m.write(m.addr(name),1,1);m.write(m.addr('log_timeKnown'),1,1);m.write(m.addr('cfg_legacy_checked'),1,1)
+        m.write(m.addr(name),1,1);m.write(m.addr('log_timeKnown'),1,1);m.write(m.addr('cfg_boot_done' if 'cfg_boot_done' in m.symbols else 'cfg_legacy_checked'),1,1)
         m.port();assert not m.active(),name
         m.tick()
         assert m.checked('mem_config_result')==1 if name=='store_save_requested' else m.checked('log_async_active')

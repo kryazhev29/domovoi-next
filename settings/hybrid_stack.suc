@@ -33,9 +33,9 @@ possible calls slm_valid_settings [comm_modem.o]: comm_number, comm_text;
 // resets session state and does not reopen the channel (comm_server.c:27-46).
 max recursion depth server_channel_event [comm_server.o]: 2;
 
-// sector journal readers: mem_replace_pages / sj_replace / sj_runtime_begin.
-possible calls sj_pages_equal [sector_journal_runtime.o]: sj_ram_page [sector_journal_runtime.o], mem_image_page [memory_runtime.o];
-possible calls sj_replace_pages: sj_ram_page [sector_journal_runtime.o], mem_image_page [memory_runtime.o];
+// Источник синхронного журнала: страницы образа mem_replace_pages.
+possible calls sj_pages_equal [sector_journal_runtime.o]: mem_image_page [memory_runtime.o];
+possible calls sj_replace_pages: mem_image_page [memory_runtime.o];
 possible calls sj_runtime_poll: table_chunk [user_fun_hot.o], expiry_chunk [expiry_runtime.o];
 
 // USB Device_Property, User_Standard_Requests, CopyData, endpoint arrays.

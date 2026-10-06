@@ -74,7 +74,7 @@ def run():
     findings['crc_metadata_first_cut'] = {'cached': after, 'oracle': before}
     findings['crc_data_first_cut'] = {'cached': before, 'oracle': after}
     m = StorageMachine()
-    m.write(m.addr('cfg_legacy_checked'), 1, 1)
+    m.write(m.addr('cfg_boot_done' if 'cfg_boot_done' in m.symbols else 'cfg_legacy_checked'), 1, 1)
     assert m.call('flash_claim', 5)
     accepted = m.call('mem_config_begin', m.addr('config'), m.addr('device'))
     assert not accepted

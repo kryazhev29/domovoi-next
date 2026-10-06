@@ -113,9 +113,11 @@ def sessions_cancel_faults():
 
 def guards():
     count=0
-    for base,size in ((BASE+1,8192),(BASE,8193),(0,8192),(0x1c8000,4096),(BASE,0xfffff000)):
-        m=ClearMachine();m.write(m.addr('mem')+16,base);m.write(m.addr('mem')+20,size)
-        before=bytes(m.flash);assert not m.start_clear();assert bytes(m.flash)==before and not any(m.counts.values());count+=1
+    # Адреса mem[] задаются при user_init: проверяем профиль один раз в тесте.
+    m=ClearMachine()
+    base=int.from_bytes(m.u.mem_read(m.addr('mem')+16,4),'little');size=int.from_bytes(m.u.mem_read(m.addr('mem')+20,4),'little')
+    assert base==BASE and size==8192 and not (base|size)&4095
+    assert 0x41000<=base<base+size<=0x1c8000;count+=1
     m=ClearMachine();p=take(m,REPLY);assert p
     old=bytes(m.u.mem_read(m.addr('ix'),16));m.parse()
     assert not m.clear_active() and not any(m.counts.values()) and m.answers[-1]==(103,2,0,7)

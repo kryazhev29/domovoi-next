@@ -126,19 +126,9 @@ extern uint8_t store_runtime, store_save_requested, store_reset_requested;
 uint8_t store_runtime, store_save_requested, store_reset_requested;
 #endif
 #ifdef HYBRID_CARD
-extern struct {
-  uint32_t erase, end, retry_at, usb_epoch;
-  uint16_t cursor;
-  uint8_t job, clear, waiting, cmd, channel, uniq, quiet, repeat;
-  uint8_t last_id[4], seen;
-} store;
+extern store_state_s store;
 #else
-struct {
-  uint32_t erase, end, retry_at, usb_epoch;
-  uint16_t cursor;
-  uint8_t job, clear, waiting, cmd, channel, uniq, quiet, repeat;
-  uint8_t last_id[4], seen;
-} store;
+store_state_s store;
 #endif
 enum { US_SAVE=1, US_ACK, US_MARK, US_ERASE, US_CLEAN, US_CONFIG, US_RESET, US_REPLY, US_COMMAND, US_RECOVER, US_RECOVER_CLEAN };
 #ifndef HYBRID_CARD
@@ -285,9 +275,6 @@ bool upload_finish(uint8_t cmd){
 
 #ifndef HYBRID_CARD
 static void fw_resume_after_boot(void);
-#endif
-#ifndef HYBRID_CARD
-static void fw_rollback_poll(void);
 #endif
 #ifndef HYBRID_CARD
 static void fw_status_poll(void);
@@ -1147,7 +1134,6 @@ void user_loop(void)
   if (config.wiegandType != 0 && user_storage_flash_ready())
     WG_process();
   if (user_storage_command_ready() && user_storage_flash_ready()) idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
-  if (user_storage_command_ready() && user_storage_flash_ready()) fw_rollback_poll();
   fw_status_poll();
   unreg_sms_poll();
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
@@ -2096,29 +2082,16 @@ static void reader_reply_poll(void)
 
 // Пакет 11 - подтверждение приема команды от сервера
 #ifndef HYBRID_CARD
-void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId){
-  
-  uint16_t len = 11; // timeout comand + uniqIdCnt + id + payload
-  uint8_t send_local[19];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
-  if (!send_buffer) return;
-  uint32_t tmp32;
-  
+void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId)
+{
+  uint8_t local[19];
+  uint8_t *buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(local)) : local;
+  if (!buffer) return;
 #ifdef DEBUG_USER
-  user_debug(">>U Send answer (cmd 11)\r\n"); 
-#endif    
-  
-  send_buffer[6] = (cmd == 7 || cmd == 21) ? 5 : 255; // таймаут актуальности команды
-  send_buffer[7] = uniqId; // uniqId
-  send_buffer[8] = 11; // id
-  send_buffer[9] = cmd; // На какую именно команду выдается подтверждение
-  send_buffer[10] = cc; // Код выполнения или ошибки
-  tmp32 = device.datetime;
-  memcpy(&send_buffer[11], (uint8_t*)&tmp32, 4); // Время контроллера
-  tmp32 = device.freeBufferSize;
-  memcpy(&send_buffer[15], (uint8_t*)&tmp32, 2); // Размер буфера входящих данных 
-
-  packet_send(send_buffer, len, (uint8_t)cch);
+  user_debug(">>U Send answer (cmd 11)\r\n");
+#endif
+  answer11(buffer, uniqId, cmd, (uint8_t)cc);
+  packet_send(buffer, 11, (uint8_t)cch);
 }
 #endif
 
@@ -2639,118 +2612,15 @@ uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, uint32_
 
 /* Номер 1: подготовить резервную копию для загрузчика и перезапуститься. Возможно, пока копия
  * цела, иначе ответ 2. */
-#ifndef HYBRID_CARD
-static cmdCode_e fw_rollback(dataChanel_e cch)
-{
-  bootFWparam_s fwParam;
-  if (!mem_read(mem[MB_BACKUP].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s))) return CMD_RUNERROR;
-  if ((fwParam.buildDate == 0xffffffff) || (fwParam.firmwareSize == 0xffffffff) ||
-      (fwParam.firmwareCRC == 0xffffffff) || (fwParam.firmwareVersion == 0xffff)){
-    fw_log(LOG_FW_FAIL, "NO BACKUP");
-    return CMD_RUNERROR;
-  }
-  if ((fwParam.firmwareSize > (CPU_ENDMEMORYADDRESS + 1u - APLICATION_ADDRESS)) ||
-      !user_checkFirmware(mem[MB_BACKUP].start + FWBLOCK_OFFSET, fwParam.firmwareSize, fwParam.firmwareCRC)){
-    fw_log(LOG_FW_FAIL, "BAD BACKUP");
-    return CMD_RUNERROR;
-  }
-  fw_rollback_pos = 0;
-  fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET;
-  device.cchFWupdate = cch;
-  device.status.readyToUpdate = 1;
-  return CMD_SUCCESS;
-}
-#endif
+
 
 /* Один фрагмент за проход: стирание не больше одного сектора, без нового буфера. */
-#ifndef HYBRID_CARD
-static void fw_rollback_poll(void)
-{
-  if (store_runtime) return;
-  uint16_t n;
-  bootFWparam_s h;
-  if (!fw_rollback_end) return;
-  n = fw_rollback_end - fw_rollback_pos > 128u ? 128u : (uint16_t)(fw_rollback_end - fw_rollback_pos);
-  if ((fw_rollback_pos & 4095u) == 0 && !mem_erase_sector(mem[MB_FIRMWARE].start + fw_rollback_pos)) {
-    fw_end("WRITE", 0); return;
-  }
-  if (!mem_read(mem[MB_BACKUP].start + fw_rollback_pos, bf, n)) { fw_end("READ", 0); return; }
-  if (fw_rollback_pos == 0) memset(bf, 0xff, 4);
-  if (!mem_write(mem[MB_FIRMWARE].start + fw_rollback_pos, bf, n)) { fw_end("WRITE", 0); return; }
-  fw_rollback_pos += n;
-  wdt_reload();
-  if (fw_rollback_pos < fw_rollback_end) return;
-  fw_rollback_end = 0;
-  if (!mem_read(mem[MB_FIRMWARE].start, (uint8_t*)&h, sizeof(h)) ||
-      !user_checkFirmware(mem[MB_FIRMWARE].start + FWBLOCK_OFFSET, h.firmwareSize, h.firmwareCRC)) {
-    fw_end("CRC", 0); return;
-  }
-  fw_log(LOG_FW_ROLLBACK, NULL);
-  device.rebootToUpdate = 1;
-}
-#endif
+
 
 /* Команда 19 (E122): ответ 0 принято, 1 неверные поля, 2 сейчас нельзя. Номер с установленным
  * не сверяется: что ставить, решает сервер. Тот же файл во время его загрузки - загрузка
  * продолжается. */
-#ifndef HYBRID_CARD
-static cmdCode_e fw_start(const uint8_t *p, dataChanel_e cch)
-{
-  uint16_t number, blocks;
-  uint32_t build, size, crc;
-  const char *busy;
-  bootFWparam_s fwParam;
 
-  memcpy((uint8_t*)&number, &p[0], 2);
-  memcpy((uint8_t*)&build, &p[2], 4);
-  memcpy((uint8_t*)&size, &p[6], 4);
-  memcpy((uint8_t*)&crc, &p[10], 4);
-  memcpy((uint8_t*)&blocks, &p[14], 2);
-
-  if (fw_start_rejected(number, build, size, crc, blocks)){
-    fw_log(LOG_FW_FAIL, "PARAM");
-    return CMD_PARAMERROR;
-  }
-  if (number != 1 && fw_same_download(number, build, size, crc, blocks, cch)){
-    device.startWaitFWtime = 0; /* запросить недостающий блок сразу */
-    return CMD_SUCCESS;
-  }
-  busy = fw_start_refused();
-  if (busy != NULL){
-    fw_log(LOG_FW_FAIL, busy);
-    return CMD_RUNERROR;
-  }
-  if (number == 1) return fw_rollback(cch);
-
-  /* Только первый сектор (заголовок и начало блока 0): остальные стирает fw_take_block. */
-  if (!mem_erase_sector(mem[MB_FIRMWARE].start)) return CMD_RUNERROR;
-  memset(&fwParam, 0xff, sizeof(fwParam));
-  fwParam.hardwareVersion = device.hardwareVersion;
-  fwParam.firmwareVersion = number;
-  fwParam.firmwareSize = size;
-  fwParam.firmwareCRC = crc;
-  fwParam.buildDate = build;
-  if (!mem_write(mem[MB_FIRMWARE].start, (uint8_t*)&fwParam, sizeof(bootFWparam_s))) return CMD_RUNERROR;
-  wdt_reload();
-
-  device.FWblockCount = blocks;
-  device.FWblockIdx = 0;
-  device.firmwarePercent = 0;
-  device.startWaitFWtime = 0;
-  device.cchFWupdate = cch;
-  fw_write_errors = 0;
-  fw_log(LOG_FW_START, NULL);
-  /* Сервер: бит 11, блоки запрашивает контроллер, один срок на всю загрузку, всё переживает
-     сброс. USB: блоки шлёт NextConfig. */
-  if (cch != CH_USB){
-    device.FWinProgress = 1;
-    device.updateTimeout = FW_TIMEOUT_S;
-    device.status.readyToUpdate = 1;
-    user_saveindex();
-  }
-  return CMD_SUCCESS;
-}
-#endif
 
 /* Блок читается обратно: оборванная или неудачная запись видна здесь (код 254). */
 #ifndef HYBRID_CARD
@@ -3281,10 +3151,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
-      if (!mem_tables_ready()) {
-        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-        break;
-      }
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
 
@@ -3297,10 +3163,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
-      if (!mem_tables_ready()) {
-        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-        break;
-      }
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
 
@@ -3313,10 +3175,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
-      if (!mem_tables_ready()) {
-        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-        break;
-      }
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
 
@@ -3331,10 +3189,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
-      if (!mem_tables_ready()) {
-        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-        break;
-      }
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
 
@@ -3365,10 +3219,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     user_debug(">>U Recv cmd fw update (cmd 19)\r\n");
 #endif
       if ((len - 3) == 16){
-        if (fw_service_begin(ptr+5,cch,uniqId)) break;
-        cmdCode_e started = fw_start(&ptr[5], cch);
-        if (started == CMD_SUCCESS && store_save_requested) store_command_start(19, cch, uniqId);
-        else user_send_answer_comand(ptr[4], started, cch, uniqId);
+        (void)fw_service_begin(ptr+5,cch,uniqId);
       } else{
         fw_log(LOG_FW_FAIL, "PARAM");
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);

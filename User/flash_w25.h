@@ -31,10 +31,6 @@ bool w25_erase_sector (Int32U address);
 Int16U w25_read_devID (void);
 // Чтение статуса
 Int8U w25_read_status (void);
-// Сброс регистра статуса
-void w25_clear_status (void);
-// Стереть микросхему 
-void w25_erase_chip (void);
 
 // Ожидание завершения предыдущей команды
 static uint8_t w25_busy (void);

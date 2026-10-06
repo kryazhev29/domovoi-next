@@ -22,7 +22,7 @@ class ServiceMachine(StorageMachine):
             n = min(used, size) if mb == 2 else size
             self.flash[base:base+n] = bytes((i * 17 + mb * 11) & 255 for i in range(n))
         self.write(self.addr('id_used_bytes'), used)
-        self.write(self.addr('cfg_legacy_checked'), 1, 1)
+        self.write(self.addr('cfg_boot_done' if 'cfg_boot_done' in self.symbols else 'cfg_legacy_checked'), 1, 1)
         self.write(self.addr('cfg_cached_active'), 0x1cd400)
         self.write(self.device+self.d['datetime'], 0x78563412)
         self.write(self.device+self.d['freeBufferSize'], 0xa9b8, 2)

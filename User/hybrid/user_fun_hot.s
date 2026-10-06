@@ -128,6 +128,7 @@
         EXTERN service_crc_cancel
         EXTERN service_crc_quiet
         EXTERN packet_send
+        EXTERN answer11
         EXTERN fw_crc_begin
         EXTERN fw_crc_next
         EXTERN WG_init
@@ -4508,14 +4509,6 @@ user_loop:
           CFI FunCall idindex_poll
         BL       idindex_poll
 ??user_loop_1:
-          CFI FunCall user_storage_command_ready
-        BL       user_storage_command_ready
-        CBZ.N    R0,??user_loop_2
-          CFI FunCall user_storage_flash_ready
-        BL       user_storage_flash_ready
-        CBZ.N    R0,??user_loop_2
-          CFI FunCall fw_rollback_poll
-        BL       fw_rollback_poll
 ??user_loop_2:
           CFI FunCall fw_status_poll
         BL       fw_status_poll
@@ -7259,27 +7252,13 @@ user_send_answer_comand:
 
 #endif
 ??CrossCallReturnLabel_130:
-        MOVS     R0,#+0
 ??CrossCallReturnLabel_229:
-        CMP      R7,#+7
-        ITET     NE
-        CMPNE    R7,#+21
-        MOVEQ    R0,#+5
-        MOVNE    R0,#+255
-        STRB     R0,[R4, #+6]
-        STRB     R8,[R4, #+7]
-        MOVS     R0,#+11
-        STRB     R0,[R4, #+8]
-        STRB     R7,[R4, #+9]
-        STRB     R6,[R4, #+10]
-        LDR.W    R0,??DataTable102
-        LDR      R1,[R0, #+47]
-        STR      R1,[SP, #+0]
-        ADD      R1,R4,#+11
-        LDR      R3,[SP, #+0]
-        STR      R3,[R1, #+0]
-        LDRH     R0,[R0, #+165]
-        BL       ?Subroutine8
+        MOV      R0,R4
+        MOV      R1,R8
+        MOV      R2,R7
+        MOV      R3,R6
+          CFI FunCall answer11
+        BL       answer11
 ??CrossCallReturnLabel_9:
         MOV      R0,R4
         MOVW     R1,#+11
@@ -11572,10 +11551,6 @@ user_parse_comand:
         CMP      R4,R0, LSL #+2
         BNE.N    ??user_parse_comand_57
 ??user_parse_comand_82:
-          CFI FunCall mem_tables_ready
-        BL       mem_tables_ready
-        CMP      R0,#+0
-        BEQ.N    ??user_parse_comand_83
         MOV      R2,R6
         MOV      R1,R5
         MOV      R0,R7
@@ -11650,29 +11625,11 @@ user_parse_comand:
         ADD R0,R7,#+5
           CFI FunCall fw_service_begin
         BL fw_service_begin
-        CMP R0,#+0
-        BNE.W ??user_parse_comand_1
-        MOV      R1,R5
-        ADDS     R0,R7,#+5
-          CFI FunCall fw_start
-        BL       fw_start
-        MOVS     R1,R0
-        BNE.N    ??user_parse_comand_87
-        LDR.W    R1,??DataTable132
-        LDRB     R1,[R1, #+0]
-        CBZ.N    R1,??user_parse_comand_87
-        MOV      R2,R6
-        MOV      R1,R5
-        MOVS     R0,#+19
+        B.W ??user_parse_comand_1
 ??user_parse_comand_62:
           CFI FunCall store_command_start
         BL       store_command_start
         B.N      ??user_parse_comand_1
-??user_parse_comand_87:
-        MOV      R3,R6
-        MOV      R2,R5
-        MOV      R1,R0
-        B.N      ??user_parse_comand_8
 ??user_parse_comand_86:
         BL       ?Subroutine68
 ??CrossCallReturnLabel_241:

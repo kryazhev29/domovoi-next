@@ -77,12 +77,20 @@ def test_faults():
     return count+1
 
 def test_corrupt():
-    m=StorageMachine();m.flash[0x4101f]=0;m.command(13,rows([1]),1)
-    offset=fields('sj_runtime_state_s')['phase'];at=m.addr('sjr')
+    # Порча во время проверки записи обнаруживается драйвером, не вторым CRC автомата.
+    m=StorageMachine();m.flash[0x4101f]=0
+    poll=m.poll
+    def verified_poll():
+        address,source,n,data,step=m.io
+        if step>=2 and m.flash[address:address+len(data)]!=data:
+            m.io=None;m.ret(3);return
+        poll()
+    m.stubs[m.addr('w25_async_poll')]=verified_poll
+    m.command(13,rows([1]),1)
     for _ in range(2000):
-        if m.u.mem_read(at+offset,1)[0]==5:break
+        if m.io and m.io[0]==0x1f9000 and m.io[1]:break
         m.tick()
-    else:raise AssertionError('backup CRC phase missing')
+    else:raise AssertionError('scratch program missing')
     m.flash[0x1f9000]^=1;m.drain()
     assert not m.timestamps and m.answers[-1][1]==2
     assert m.flash[0x41000:0x42000]==b'\xff'*31+b'\0'+b'\xff'*(4096-32)

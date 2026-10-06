@@ -23,7 +23,7 @@ def config_machine():
     m.flash[SLOT0+4096:SLOT0+4112]=struct.pack('<IIII',0x32474643,17,crc,crc^0xffffffff)
     m.flash[LEGACY:LEGACY+4096]=old
     assert m.checked('cfg_select',0x21000f00,budget=1000000)==SLOT0
-    m.write(m.addr('cfg_legacy_checked'),1,1)
+    assert m.checked('cfg_boot_select',budget=1000000)
     data=bytes((i*11+91)&255 for i in range(1024))
     m.u.mem_write(0x21000000,data)
     return m,old,data
@@ -93,11 +93,11 @@ def cached_reads():
     for active in (LEGACY,SLOT0,SLOT1):
         for result in (0,1,2,3):
             m=StorageMachine();m.write(m.addr('cfg_cached_active'),active)
-            m.write(m.addr('cfg_job')+35,result,1)
+            m.write(m.addr('cfg_job')+31,result,1)
             expected=bytes((i+result)&255 for i in range(64));m.flash[active+128:active+192]=expected
             # Neither full slot validation nor migration is legal at runtime.
             def forbidden():raise AssertionError('runtime config rescan')
-            m.stubs[m.addr('cfg_select')]=forbidden;m.stubs[m.addr('cfg_prepare')]=forbidden
+            m.stubs[m.addr('cfg_select')]=forbidden;m.stubs[m.addr('cfg_boot_select')]=forbidden
             assert m.checked('mem_read',LEGACY+128,0x21000000,64)
             assert bytes(m.u.mem_read(0x21000000,64))==expected and m.read_budget==64
             out.append({'active':active,'result':result,'instructions':m.steps,'stack':m.stack_peak})
@@ -138,5 +138,5 @@ if __name__=='__main__':
     out['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
     m=StorageMachine();out['static_gap']=m.addr('fault_record')-m.addr('HEAP$$Limit')
     out['heap_bytes']=m.heap_bytes;out['stack_bytes']=m.top-m.bottom
-    assert m.map_size('sjr')==128 and m.map_size('cfg_job')==40
+    assert m.map_size('sjr')==128 and m.map_size('cfg_job')==36
     (ROOT/'Tests/asm/memory_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
