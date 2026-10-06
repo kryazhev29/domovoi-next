@@ -11,12 +11,8 @@ volatile uint32_t wgTime = 0;
 volatile uint8_t wgBitCount = 0;
 uint32_t wgID = 0;
 
-
-// >>> прерывания -------------------------------------------------------------------
-// WG26
 // Принять бит D0 и очистить аппаратный флаг фронта.
 void EXTI2_IRQHandler(void){
-  // D0
   wgData <<= 1;
   if (wgBitCount < 255) wgBitCount++; // Шум не должен снова стать кадром из 26 бит.
   wgTime = timers_getMillis();
@@ -25,15 +21,12 @@ void EXTI2_IRQHandler(void){
 
 // Принять бит D1 и очистить аппаратный флаг фронта.
 void EXTI3_IRQHandler(void){
-  // D1
   wgData = (wgData<<1) | 1;
   if (wgBitCount < 255) wgBitCount++; // Шум не должен снова стать кадром из 26 бит.
   wgTime = timers_getMillis();
   EXTI->PR = EXTI_Line3;
 }
-// <<< прерывания -------------------------------------------------------------------
 
-// инициализация
 // Разрешить фронты D0/D1 и их прежние приоритеты.
 void WG_init(void)
 {
@@ -54,7 +47,6 @@ static bool wg_parity_valid(uint32_t data)
   return (p & 0x10001u) == 1u;
 }
 
-// обработчик
 // Передать завершённую карту в текущем проходе после атомарного снимка.
 void WG_process(void){
   uint32_t mask = __get_PRIMASK();
@@ -78,10 +70,4 @@ void WG_process(void){
     PROF_CARD_MARK();
     PROF_STEP(PROF_WG_CALL, WG_readedID(wgID));
   }
-}
-
-// разбор принятых данных определяется пользователем ---------------------------
-// Передать карту пользовательскому обработчику, если он определён.
-__weak void WG_readedID(uint32_t id){
-
 }

@@ -1,11 +1,9 @@
+// Доработка: Кряжев А., 2026
+// Запуск USB и чтение пакетов OUT.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    usb_sil.h
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    28-August-2012
-  * @brief   Simplified Interface Layer function prototypes.
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
@@ -25,23 +23,14 @@
   ******************************************************************************
   */
 
-
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USB_SIL_H
 #define __USB_SIL_H
 
-/* Includes ------------------------------------------------------------------*/
-/* Exported types ------------------------------------------------------------*/
-/* Exported constants --------------------------------------------------------*/
-/* Exported macro ------------------------------------------------------------*/
-/* Exported functions ------------------------------------------------------- */
-
-uint32_t USB_SIL_Init(void);
-uint32_t USB_SIL_Write(uint8_t bEpAddr, uint8_t* pBufferPointer, uint32_t wBufferSize);
+// Запустить питание USB и установить рабочую маску прерываний.
+void USB_SIL_Init(void);
+// Прочитать принятый пакет конечной точки в буфер владельца.
 uint32_t USB_SIL_Read(uint8_t bEpAddr, uint8_t* pBufferPointer);
 
-/* External variables --------------------------------------------------------*/
-
-#endif /* __USB_SIL_H */
+#endif
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

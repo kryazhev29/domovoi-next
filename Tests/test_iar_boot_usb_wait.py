@@ -1,17 +1,19 @@
-"""B36: настоящий boot USB IRQ/Suspend; RESET никогда не приходит."""
+"""Проверяет ограниченное ожидание RESET в USB IRQ загрузчика.
+Восстановление должно начаться через 20 мс в главном цикле.
+Доработка: Кряжев А., 2026"""
 import sys
 from iar_irq_support import Machine
 from unicorn import UC_HOOK_MEM_READ
 
 mode=sys.argv[1] if len(sys.argv)>1 else 'both'
 for boot,name in ((True,'USB_Istr'),):
-    if mode=='esof' and name!='USB_Istr':continue
-    if mode=='suspend' and name!='Suspend':continue
+    assert mode in ('both','esof'), mode
     m=Machine(boot=boot);m.init();m.u.mem_map(0x42000000,0x600000)
     polls=[0]
+    # Удерживает ESOF и запрещает появление RESET в модели USB.
     def read(u,access,a,n,value,_):
         if a==0x40005c44:
-            polls[0]+=1;m.write(a,0x100 if name=='USB_Istr' else 0,2)
+            polls[0]+=1;m.write(a,0x100,2)
         if a==0x40005c48:m.write(a,0x8000,2)
     m.u.hook_add(UC_HOOK_MEM_READ,read)
     m.write(m.addr('wInterrupt_Mask'),0x100,2);m.write(m.addr('esof_counter'),4,1)

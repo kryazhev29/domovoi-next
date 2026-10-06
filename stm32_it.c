@@ -72,94 +72,82 @@ __stackless void fault_capture(void)
   );
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать NMI_Handler с прежним аппаратным контрактом.
+// Вернуться из немаскируемого IRQ; CSS на плате не включён.
 void NMI_Handler(void)
 {
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать HardFault_Handler с прежним аппаратным контрактом.
+// Передать аппаратный сбой в безстековый снимок.
 __stackless void HardFault_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать MemManage_Handler с прежним аппаратным контрактом.
+// Сохранить нарушение защиты памяти без использования повреждённого стека.
 __stackless void MemManage_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать BusFault_Handler с прежним аппаратным контрактом.
+// Сохранить сбой шины без использования повреждённого стека.
 __stackless void BusFault_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать UsageFault_Handler с прежним аппаратным контрактом.
+// Сохранить недопустимую инструкцию без использования повреждённого стека.
 __stackless void UsageFault_Handler(void)
 {
   __asm("B fault_capture");
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать SVC_Handler с прежним аппаратным контрактом.
+// Завершить программное исключение; приложение не использует службы SVC.
 void SVC_Handler(void)
 {
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать DebugMon_Handler с прежним аппаратным контрактом.
+// Завершить событие отладочного монитора.
 void DebugMon_Handler(void)
 {
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать PendSV_Handler с прежним аппаратным контрактом.
+// Завершить отложенное исключение; диспетчера задач в приложении нет.
 void PendSV_Handler(void)
 {
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать SysTick_Handler с прежним аппаратным контрактом.
+// Обслужить миллисекундные таймеры связи и приложения.
 void SysTick_Handler(void)
 {
   comm_uart_tick(); /* DMA/RTS проверяются каждые 1 мс. */
   timers_handle();
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать USB_LP_CAN1_RX0_IRQHandler с прежним аппаратным контрактом.
+// Передать события USB библиотеке CDC.
 void USB_LP_CAN1_RX0_IRQHandler(void)
 {
   USB_Istr();
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать USBWakeUp_IRQHandler с прежним аппаратным контрактом.
+// Подтвердить внутреннюю линию пробуждения USB.
 void USBWakeUp_IRQHandler(void)
 {
   EXTI->PR = EXTI_PR_PR18;
 }
 
-
 #pragma call_graph_root="interrupt"
-// Обработать ADC1_2_IRQHandler с прежним аппаратным контрактом.
+// Подтвердить завершение инжектированного измерения.
 void ADC1_2_IRQHandler(void)
 {
   ADC1->SR = ~ADC_SR_JEOC;
@@ -167,7 +155,7 @@ void ADC1_2_IRQHandler(void)
 
 // обработчик прерывания от PVD
 #pragma call_graph_root="interrupt"
-// Обработать PVD_IRQHandler с прежним аппаратным контрактом.
+// Сохранить причину сброса и перезапустить МК при низком питании.
 void PVD_IRQHandler(void)
 {
   // сброс только при подтверждённом падении питания
@@ -183,4 +171,3 @@ void PVD_IRQHandler(void)
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
-

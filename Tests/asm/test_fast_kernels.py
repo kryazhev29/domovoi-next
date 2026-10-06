@@ -1,4 +1,6 @@
-"""IAR Thumb-2 candidates: differential tests and executed instructions (not cycles)."""
+"""Сравнивает быстрые ядра Thumb-2 с независимыми эталонами.
+Проверяет границы и ABI; считает инструкции, а не аппаратные такты.
+Доработка: Кряжев А., 2026"""
 import argparse
 import hashlib
 import json
@@ -19,12 +21,13 @@ ASM = dict(zip(KINDS, ('fast_fnv10', 'fast_gf2_apply', 'fast_all_ff',
 SELECTED = ('fnv10', 'gf2', 'all_ff', 'sldn')
 
 
+# Собирает проверяемые ядра и рабочую реализацию IAR.
 def build(out, assembly=None, production=None):
     names = [p+k for p in ('old_', 'opt_') for k in KINDS] + ['opt_gf2_sparse']
     objs, keep = [], list(ASM.values()) + ['fast_gf2_sparse', 'fast_gf2_unrolled']
-    # Also link the actual production source, separately from rejected candidates.
-    prod = (production or ROOT/'User/asm/fast_kernels.s').read_text().replace('fast_', 'prod_fast_')
-    (out/'prod.s').write_text(prod, encoding='ascii')
+    # Рабочее ядро компонуется отдельно от экспериментальных вариантов.
+    prod = (production or ROOT/'User/asm/fast_kernels.s').read_text(encoding='cp1251').replace('fast_', 'prod_fast_')
+    (out/'prod.s').write_text(prod, encoding='cp1251')
     run([IAR/'iasmarm.exe', out/'prod.s', '--cpu', 'Cortex-M3', '-o', out/'prod.o'])
     objs.append(out/'prod.o')
     keep.extend('prod_'+ASM[k] for k in SELECTED)
@@ -43,7 +46,7 @@ def build(out, assembly=None, production=None):
         wrappers += 'extern unsigned short '+name+'(const unsigned short*, unsigned short);\n'
         wrappers += body.replace('gf2_apply(', name+'(').replace('crc16_ffInit', 'ff_'+name)+'\n'
         keep.append('ff_'+name)
-    (out/'ff.c').write_text(wrappers, encoding='ascii')
+    (out/'ff.c').write_text(wrappers, encoding='cp1251')
     run([IAR/'iccarm.exe', out/'ff.c', '--cpu', 'Cortex-M3', '--thumb', '-Ohz', '-e', '-o', out/'ff.o'])
     run([IAR/'iasmarm.exe', ROOT/'User/asm/crc_asm.s', '--cpu', 'Cortex-M3', '-o', out/'crc.o'])
     run([IAR/'ilinkarm.exe', *objs, out/'asm.o', out/'ff.o', out/'crc.o', '--config', ROOT/'Tests/asm/asm_link.icf',
@@ -51,12 +54,14 @@ def build(out, assembly=None, production=None):
     return out/'fast.out'
 
 
+# Возвращает проверяемые реализации выбранного ядра.
 def variants(kind):
     return [p+c+kind for p in ('size_', 'speed_') for c in ('old_', 'opt_')] + [ASM[kind]] + (
         ['fast_gf2_sparse', 'fast_gf2_unrolled', 'size_opt_gf2_sparse', 'speed_opt_gf2_sparse'] if kind == 'gf2' else []) + (
         ['prod_'+ASM[kind]] if kind in SELECTED else [])
 
 
+# Вычисляет результат независимым алгоритмом Python.
 def reference(kind, a, b=None):
     if kind == 'fnv10':
         h = 2166136261
@@ -79,6 +84,7 @@ def reference(kind, a, b=None):
     return len(a)
 
 
+# Размещает входные данные и формирует аргументы вызова.
 def arguments(m, kind, a, b=None, align=0, align2=0):
     p, q = BUF+align, BUF+0x10000+align2
     if kind == 'gf2':
@@ -93,6 +99,7 @@ def arguments(m, kind, a, b=None, align=0, align2=0):
     return p, len(a)
 
 
+# Создаёт характерные и случайные входные данные.
 def cases():
     rng = random.Random(20261006)
     for align in range(4):
@@ -131,6 +138,7 @@ def cases():
                 yield 'gf2', a, x, align, 0
 
 
+# Сравнивает результат ядра и проверяет границы памяти.
 def check(path, all_variants=True, bounds=False, prefix=''):
     m, counts = Machine(path), {k: 0 for k in KINDS}
     reads, writes = [], []
@@ -158,7 +166,7 @@ def check(path, all_variants=True, bounds=False, prefix=''):
             assert actual == expected, (kind, name, len(a), b, align)
             counts[kind] += 1
             if bounds:
-                # Selected leaf kernels may only read the exact input and ROM literals.
+                # Ядро без вложенных вызовов читает только вход и константы ROM.
                 ranges = [(args[0], args[0]+(32 if kind == 'gf2' else len(a)))]
                 if kind == 'id_equal':
                     ranges.append((args[1], args[1]+10))
@@ -171,6 +179,7 @@ def check(path, all_variants=True, bounds=False, prefix=''):
     return counts
 
 
+# Перебирает все пары байтов умножения в поле GF(2).
 def exhaustive_gf2(path, prefix=''):
     m, rng = Machine(path), random.Random(913)
     a = [rng.getrandbits(16) for _ in range(16)]
@@ -180,11 +189,12 @@ def exhaustive_gf2(path, prefix=''):
     return 65536
 
 
+# Проверяет границы чтения эталонных функций C.
 def guarded_c_bounds(path):
-    """Unmapped guard pages, without read hooks that disturb IAR memcmp IT in Unicorn.
+    """Неотображённые защитные страницы не вмешиваются в IT инструкции IAR memcmp.
 
-    Values/ABI cover all alignments separately. These probes place inputs at both
-    page edges; selected ASM additionally gets exact byte-granularity read hooks.
+    Значения и ABI проверяют каждое выравнивание отдельно. Здесь входы стоят
+    на краях страниц; рабочий ASM дополнительно проверяется по каждому байту.
     """
     m, count = Machine(path), 0
     a_page, b_page = 0x11000000, 0x12000000
@@ -221,8 +231,9 @@ def guarded_c_bounds(path):
     return count
 
 
+# Проверяет чувствительность тестов к ошибкам ядра.
 def mutations(out):
-    source = (ROOT/'User/asm/fast_kernels.s').read_text()
+    source = (ROOT/'User/asm/fast_kernels.s').read_text(encoding='cp1251')
     faults = [
         ('fnv-byte-bound', '[r1, #9]', '[r1, #10]'),
         ('fnv-prime', '=16777619', '=16777617'),
@@ -246,7 +257,7 @@ def mutations(out):
         folder = out/label
         folder.mkdir()
         mutant = folder/'mutant.s'
-        mutant.write_text(source.replace(old, new, 1), encoding='ascii')
+        mutant.write_text(source.replace(old, new, 1), encoding='cp1251')
         path = build(folder, production=mutant)
         try:
             check(path, False, True, 'prod_')
@@ -257,6 +268,7 @@ def mutations(out):
     return detected
 
 
+# Измеряет число инструкций на характерных входах.
 def measure(path):
     result = {}
     samples = [('fnv10', 'id', b'0123456789', None),
@@ -272,6 +284,7 @@ def measure(path):
             if name not in m.sym:
                 continue
             args = arguments(m, kind, a, b, align, align)
+            # Подсчитывает каждую выполненную инструкцию эмулятора.
             def hook(u, p, n, d):
                 count[0] += 1
                 low[0] = min(low[0], u.reg_read(UC_ARM_REG_SP))
@@ -291,8 +304,9 @@ def measure(path):
     return result
 
 
+# Определяет размер ядра и его данных по ELF.
 def footprints(out):
-    """Retain one function: include literal pools and any runtime-library callees."""
+    """Оставляет одну функцию вместе с литералами и вызываемыми функциями библиотеки."""
     result = {}
     for kind in KINDS:
         for name in variants(kind):
@@ -305,6 +319,7 @@ def footprints(out):
     return result
 
 
+# Запускает сравнение ядер и сохраняет отчёт.
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--json', type=Path, required=True)
@@ -312,7 +327,7 @@ def main():
     p.add_argument('--measure-only', action='store_true')
     p.add_argument('--mutations', action='store_true')
     args = p.parse_args()
-    project = ET.parse(ROOT/'DomovoiNext.ewp').getroot()
+    project = ET.parse(ROOT/'DomovoiNext_HYBRID.ewp').getroot()
     for config in project.findall('configuration'):
         defines = [s.text for o in config.findall('.//option') if o.findtext('name') == 'CCDefines' for s in o.findall('state')]
         assert 'ASM_FAST_KERNELS' in defines, config.findtext('name')

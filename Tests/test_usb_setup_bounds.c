@@ -1,3 +1,6 @@
+// Доработка: Кряжев А., 2026
+// Проверка контрактов периферии без физической платы.
+// Зависимости моделируются, код проверяемого модуля вставляет стенд.
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -9,8 +12,7 @@ static DEVICE Device_Table={4};
 static struct {unsigned USBwIndex0,USBwIndex1,USBwValue,Current_Feature,Current_Configuration;struct {unsigned Usb_wLength;} Ctrl_Info;} info,*pInformation=&info;
 static struct {unsigned MaxPacketSize;} Device_Property={64};
 static unsigned mmio;
-static union {uint16_t w;uint8_t b[2];} StatusInfo;
-#define StatusInfo0 StatusInfo.b[0]
+static union {uint16_t w;struct {uint8_t bb1,bb0;} bw;} StatusInfo;
 #define STANDARD_REQUEST 0
 #define DEVICE_RECIPIENT 0
 #define INTERFACE_RECIPIENT 1
@@ -24,9 +26,7 @@ static union {uint16_t w;uint8_t b[2];} StatusInfo;
 #define EP_RX_VALID 1
 #define EP_TX_STALL 2
 #define EP_RX_STALL 2
-#define ValBit(v,b) ((v)&(1u<<(b)))
-#define SetBit(v,b) ((v)|=1u<<(b))
-#define ClrBit(v,b) ((v)&=~(1u<<(b)))
+// Зафиксировать MMIO и проверить границу номера конечной точки.
 static unsigned touch(unsigned ep){CHECK(ep<8&&ep<Device_Table.Total_Endpoint);mmio++;return 1;}
 #define _GetEPTxStatus touch
 #define _GetEPRxStatus touch
@@ -38,9 +38,11 @@ static unsigned touch(unsigned ep){CHECK(ep<8&&ep<Device_Table.Total_Endpoint);m
 #define _SetEPTxStatus SetEPTxStatus
 #define _SetEPRxStatus SetEPTxStatus
 #define SetEPRxCount SetEPTxStatus
+// Имитировать callback стандартного запроса без действия.
 static void noop(void){}
 static struct {void (*User_GetStatus)(void),(*User_ClearFeature)(void),(*User_SetEndPointFeature)(void);} requests={noop,noop,noop},*pUser_Standard_Requests=&requests;
-/* PRODUCTION */
+/* КОД */
+// Проверить все сценарии модуля и вернуть результат прогона.
 int main(void){
  info.Current_Configuration=1;
  for(unsigned total=1;total<=8;total++){Device_Table.Total_Endpoint=total;

@@ -1,5 +1,7 @@
-; Cortex-M3 / IAR. Executable production module.
-; Reference: Tests/asm/reference/User/crc.c
+; Доработка: Кряжев А., 2026
+; Продвижение CRC16 по пустой флеш без чтения каждого байта.
+; Аффинная матрица применяется лишь для установленных битов длины.
+; Таблица степеней повторяется через 15 шагов; стек описан для анализа IAR.
 
         RTMODEL "__CPP_Runtime", "1"
         RTMODEL "__SystemLibrary", "DLib"
@@ -10,12 +12,9 @@
 
         #define SHT_PROGBITS 0x1
 
-        EXTERN __aeabi_memcpy4
-        EXTERN crc16_calcInit
         EXTERN fast_gf2_apply
 
         PUBLIC crc16_ffInit
-        PUBLIC crc8_calc
 
           CFI Names cfiNames0
           CFI StackFrame CFA R13 DATA
@@ -48,6 +47,7 @@
           CFI Block cfiBlock0 Using cfiCommon0
           CFI Function crc16_ffInit
         THUMB
+; Продолжить CRC16 по count байтам FF с переданного начального значения.
 crc16_ffInit:
         PUSH {R4-R8,LR}
         CFI R4 Frame(CFA,-24)
@@ -71,6 +71,7 @@ ff_more:
         BL fast_gf2_apply
         LDRH R1,[R6,#32]
         EOR R5,R0,R1
+; Следующая степень соответствует следующему биту длины, после 14 снова степень 0.
 ff_next:
         LSRS R4,R4,#1
         ADDS R6,R6,#36
@@ -86,54 +87,10 @@ ff_done:
           CFI EndBlock cfiBlock0
         LTORG
 
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock1 Using cfiCommon0
-          CFI Function crc8_calc
-          CFI NoCalls
-        THUMB
-crc8_calc:
-        PUSH     {R4-R6,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R6 Frame(CFA, -8)
-          CFI R5 Frame(CFA, -12)
-          CFI R4 Frame(CFA, -16)
-          CFI CFA R13+16
-        MOV      R3,R0
-        MOVS     R0,#+0
-        B.N      ??crc8_calc_0
-??crc8_calc_1:
-        ADDS     R3,R3,#+1
-??crc8_calc_0:
-        MOV      R2,R1
-        SUBS     R1,R2,#+1
-        UXTB     R2,R2
-        CBZ.N    R2,??crc8_calc_2
-        LDRB     R4,[R3, #+0]
-        MOVS     R2,#+8
-??crc8_calc_3:
-        EOR      R6,R0,R4
-        LSLS     R5,R6,#+31
-        ITEE     PL
-        LSRPL    R0,R0,#+1
-        LSRMI    R0,R0,#+1
-        EORMI    R0,R0,#0x8C
-        LSRS     R4,R4,#+1
-        SUBS     R2,R2,#+1
-        BNE.N    ??crc8_calc_3
-        B.N      ??crc8_calc_1
-??crc8_calc_2:
-        POP      {R4-R6,PC}
-          CFI EndBlock cfiBlock1
-
-        SECTION `.iar_vfe_header`:DATA:NOALLOC:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-        DC32 0
-
         SECTION .rodata:CONST:NOROOT(2)
         DATA
         PUBLIC sc_ff_powers
-; FF^(2^k) affine CRC-16/MODBUS powers repeat after k=14.
+; Строка содержит 16 столбцов матрицы и свободный член: всего 36 байт.
 sc_ff_powers:
         DC16 0xC0C1,0xC181,0xC301,0xC601,0xCC01,0xD801,0xF001,0xA001,0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,0x4040,0x0000
         DC16 0x9001,0x6001,0xC002,0xC007,0xC00D,0xC019,0xC031,0xC061,0xC0C1,0xC181,0xC301,0xC601,0xCC01,0xD801,0xF001,0xA001,0xB001,0x0000

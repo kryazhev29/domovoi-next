@@ -31,12 +31,17 @@ void board_init(void)
                   RCC_APB2ENR_IOPBEN | RCC_APB2ENR_IOPCEN;
   // –ежимы по 4 бита: 0 Ч аналог, 3 Ч выход 50 ћ√ц, 7 Ч открытый сток, 8 Ч подт€жка.
   // ћаски затрагивают только ножки платы, остальные настройки принадлежат драйверам.
-  GPIOA->CRL = (GPIOA->CRL & ~0x000FFFFFu) | 0x00008883u;
+  // PA0 Ч реле, PA2/PA3 Ч Wiegand; PA1/PA4 остаютс€ в прежнем состо€нии.
+  GPIOA->CRL = (GPIOA->CRL & ~0x0000FF0Fu) | 0x00008803u;
+  // PA8 Ч подт€жка USB, PA13 Ч подт€жка входа загрузчика.
   GPIOA->CRH = (GPIOA->CRH & ~0x00F0000Fu) | 0x00800003u;
+  // PB0/PB1 Ч аналоговые IN1/IN2; PB3 Ч реле, PB6/PB7 Ч светодиоды.
   GPIOB->CRL = (GPIOB->CRL & ~0xFF00F0FFu) | 0x33003000u;
+  // PB8 Ч светодиод, PB12 Ч CS, PB14 Ч RTS, PB15 Ч детект USB.
   GPIOB->CRH = (GPIOB->CRH & ~0xFF0F000Fu) | 0x43030003u;
+  // PC13 Ч питание модема, PC14 Ч открытый сток ключа запуска.
   GPIOC->CRH = (GPIOC->CRH & ~0x0FF00000u) | 0x07300000u;
-  GPIOA->BSRR = GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_13;
+  GPIOA->BSRR = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_13;
   LED1_OFF;
   LED2_OFF;
   LED3_OFF;

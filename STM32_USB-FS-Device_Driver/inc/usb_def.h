@@ -1,11 +1,9 @@
+// Доработка: Кряжев А., 2026
+// Константы восьмибайтового SETUP и дескрипторов USB.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    usb_def.h
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    28-August-2012
-  * @brief   Definitions related to USB Core
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
@@ -25,20 +23,16 @@
   ******************************************************************************
   */
 
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USB_DEF_H
 #define __USB_DEF_H
 
-/* Includes ------------------------------------------------------------------*/
-/* Exported types ------------------------------------------------------------*/
 typedef enum _RECIPIENT_TYPE
 {
-  DEVICE_RECIPIENT,     /* Recipient device */
-  INTERFACE_RECIPIENT,  /* Recipient interface */
-  ENDPOINT_RECIPIENT,   /* Recipient endpoint */
+  DEVICE_RECIPIENT,
+  INTERFACE_RECIPIENT,
+  ENDPOINT_RECIPIENT,
   OTHER_RECIPIENT
 } RECIPIENT_TYPE;
-
 
 typedef enum _STANDARD_REQUESTS
 {
@@ -54,11 +48,10 @@ typedef enum _STANDARD_REQUESTS
   SET_CONFIGURATION,
   GET_INTERFACE,
   SET_INTERFACE,
-  TOTAL_sREQUEST,  /* Total number of Standard request */
+  TOTAL_sREQUEST,
   SYNCH_FRAME = 12
 } STANDARD_REQUESTS;
 
-/* Definition of "USBwValue" */
 typedef enum _DESCRIPTOR_TYPE
 {
   DEVICE_DESCRIPTOR = 1,
@@ -68,25 +61,18 @@ typedef enum _DESCRIPTOR_TYPE
   ENDPOINT_DESCRIPTOR
 } DESCRIPTOR_TYPE;
 
-/* Feature selector of a SET_FEATURE or CLEAR_FEATURE */
 typedef enum _FEATURE_SELECTOR
 {
   ENDPOINT_STALL,
   DEVICE_REMOTE_WAKEUP
 } FEATURE_SELECTOR;
 
-/* Exported constants --------------------------------------------------------*/
-/* Definition of "USBbmRequestType" */
-#define REQUEST_TYPE      0x60  /* Mask to get request type */
-#define STANDARD_REQUEST  0x00  /* Standard request */
-#define CLASS_REQUEST     0x20  /* Class request */
-#define VENDOR_REQUEST    0x40  /* Vendor request */
+#define REQUEST_TYPE      0x60
+#define STANDARD_REQUEST  0x00
+#define CLASS_REQUEST     0x20
 
-#define RECIPIENT         0x1F  /* Mask to get recipient */
+#define RECIPIENT         0x1F
 
-/* Exported macro ------------------------------------------------------------*/
-/* Exported functions ------------------------------------------------------- */
-
-#endif /* __USB_DEF_H */
+#endif
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

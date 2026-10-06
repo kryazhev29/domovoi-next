@@ -1,3 +1,6 @@
+// Доработка: Кряжев А., 2026
+// Проверка контрактов периферии без физической платы.
+// Зависимости моделируются, код проверяемого модуля вставляет стенд.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,13 +27,18 @@ static unsigned daddr=0x85;
 #define _GetDADDR() daddr
 #define _GetEPTxCount(i) (17u+(i))
 volatile uint8_t USB_Tx_State=1;volatile uint32_t usb_in_armed=7;
+// Вернуть занятость модели очереди IN.
 uint8_t USB_Tx_Pending(void){return tx_pending!=0;}
+// Вернуть длину оставшегося ответа модели.
 uint16_t USB_Tx_Queued(void){return tx_pending?42:0;}
 unsigned bDeviceState=CONFIGURED;
 volatile unsigned wIstr,esof_counter,wCNTR;
 unsigned wInterrupt_Mask=ISTR_ESOF;
+// Прочитать маску прерываний модели.
 uint32_t __get_PRIMASK(void){return mask;}
+// Запретить прерывания в модели.
 void __disable_irq(void){mask=1;}
+// Восстановить маску и доставить ожидающий тик модели.
 void __set_PRIMASK(uint32_t m){mask=m;}
 #define __DMB() ((void)0)
 #define USB_PULLUP_ON (pullup=1)
@@ -46,16 +54,38 @@ void __set_PRIMASK(uint32_t m){mask=m;}
 #define _GetENDPOINT(i) (i)
 #define _SetENDPOINT(i,x) do{(void)(i);(void)(x);ep_restore++;}while(0)
 #define _SetISTR(x) ((void)(x))
+// Выдать RESET на выбранном опросе и ограничить ожидание.
 unsigned _GetISTR(void){CHECK(++reset_poll<100000);return ISTR_ESOF|((reset_after&&reset_poll>=reset_after)?ISTR_RESET:0);}
+// Запомнить сброс очереди IN.
 void USB_Tx_Reset(void){tx_reset++;}
+// Принять модельный ответ только при выбранной конфигурации.
 uint8_t USART_To_USB_Send_Data(uint8_t*p,uint16_t n){(void)p;(void)n;return bDeviceState==CONFIGURED;}
+// Имитировать приём всей диагностической строки.
 uint16_t USB_Send_Debug(uint8_t*p,uint16_t n){(void)p;return n;}
 void usb_clear_buffer(void);
+// Проверить принятый кадр и отметить его передачу приложению.
 void usb_data_reading(uint8_t*p,uint16_t n){CHECK(n==11&&p[8]==101);delivered++;}
+// Посчитать независимый побитовый CRC16 кадра.
 uint16_t crc16_calc(uint8_t*p,uint16_t n){uint16_t c=0xffff;unsigned i;while(n--){c^=*p++;for(i=0;i<8;i++)c=(c>>1)^((c&1)?0xa001:0);}return c;}
-/* PRODUCTION */
+#define ISTR_SOF 0x0200u
+#define ISTR_CTR 0x8000u
+#define ISTR_ERR 0x2000u
+#define CLR_SOF ((uint16_t)~ISTR_SOF)
+#define CLR_ERR ((uint16_t)~ISTR_ERR)
+
+// Имитировать отдельный разбор завершённых передач; этот тест проверяет ESOF.
+void CTR_LP(void) {}
+// Имитировать кадр USB; счётчик SOF проверяется своим сценарием.
+void SOF_Callback(void) {}
+// Имитировать callback класса при обычном RESET.
+static void usb_reset_callback(void) {}
+static struct { void (*Reset)(void); } Device_Property = {usb_reset_callback};
+/* КОД */
+// Продвинуть миллисекундные таймеры USB.
 static void ticks(unsigned n){while(n--){usb_timer1ms();usb_check_data();}}
+// Дождаться 20 мс отсоединения и проверить повторное подключение.
 static void settle(void){ticks(25);CHECK(pullup&&usb_enabled);bDeviceState=CONFIGURED;}
+// Проверить зависание IN, поступление данных и сброс сторожа при продвижении.
 static void usb_watch_test(void){unsigned base;
 #if DOMOVOI_DIAG
  uint32_t v[23];
@@ -63,21 +93,21 @@ static void usb_watch_test(void){unsigned base;
 uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(frame+4,5);frame[9]=(uint8_t)crc;frame[10]=(uint8_t)(crc>>8);
  settle();base=tx_reset;
  usb_bus_error_seen();usb_bus_error_seen();usb_bus_error_seen();
- /* Data left for a closed port: no host write, no recovery. */
+ /* Данные остались в закрытом порту: нет записи хоста и восстановления. */
  tx_pending=1;ticks(5000);CHECK(pullup&&tx_reset==base);
- /* Host writes while the answer is never taken: recover after 2 s, not before. */
+ /* Хост пишет, но не забирает ответ: восстановление только после 2 с. */
  usb_datareceived(frame,11);ticks(1999);CHECK(pullup&&tx_reset==base);
  ticks(1);CHECK(!pullup&&tx_reset==base+1); DIAG_CHECK(usb_watch_in_recoveries==1);
- /* Registers are captured before FRES: CNTR 0 then, FRES now. */
+ /* Снимок сделан до FRES: тогда CNTR был 0, сейчас содержит FRES. */
 #if DOMOVOI_DIAG
  {uint32_t r[18];usb_diag_fill_regs(r);CHECK(r[0]==1&&r[1]==3&&r[2]==18&&r[4]==0&&r[5]==FNR_RXDP&&r[6]==1&&r[7]==7&&r[8]==0);
   CHECK(r[9]==1&&r[10]==3&&r[13]==CNTR_FRES&&r[17]==0);}
 #endif
- /* Bus errors: the recovery keeps the count it saw, later errors only move the live one. */
+ /* Снимок восстановления хранит прежний счётчик ошибок; новые ошибки меняют только текущий. */
 #if DOMOVOI_DIAG
  {uint32_t e[2];usb_bus_error_seen();usb_diag_fill_errors(e);CHECK(e[0]==4&&e[1]==3);}
 #endif
- /* Address captured by the recovery, the live value read now. */
+ /* Сохранённый адрес отличается от текущего адреса, прочитанного сейчас. */
 #if DOMOVOI_DIAG
  {uint32_t a[4];daddr=0;usb_diag_fill_addr(a);CHECK(a[0]==0x85&&a[1]==0&&a[2]==0&&a[3]==0);daddr=0x85;}
 #endif
@@ -85,32 +115,33 @@ uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(fram
  usb_diag_fill(v);CHECK(v[4]==1&&v[6]==2&&v[7]==CONFIGURED&&v[8]==1&&v[9]==42&&v[11]==2000);
 #endif
  tx_pending=0;settle();base=tx_reset;
- /* Slow but moving transfer: every taken IN packet restarts the 2 s window. */
+ /* Медленная передача продвигается: подтверждение IN заново отсчитывает 2 с. */
  tx_pending=1;usb_datareceived(frame,11);ticks(1500);usb_in_done();ticks(1500);usb_in_done();ticks(1500);CHECK(pullup&&tx_reset==base);
 #if DOMOVOI_DIAG
  {uint32_t r[18];usb_in_armed=9;usb_diag_fill_regs(r);CHECK(r[7]==7&&r[8]==0&&r[16]==9&&r[17]==2);}
 #endif
- /* Queue drained: disarm, a later pending answer without a new write stays quiet. */
+ /* Пустая очередь снимает контроль; поздний ответ без новой записи не запускает восстановление. */
  tx_pending=0;ticks(1);tx_pending=1;ticks(3000);CHECK(pullup&&tx_reset==base);
  tx_pending=0;ticks(1);
- /* Host writes but the device believes it is not configured. */
+ /* Данные приходят, пока устройство считает конфигурацию USB невыбранной. */
  bDeviceState=ATTACHED;usb_datareceived(frame,11);ticks(1999);CHECK(pullup&&tx_reset==base);
  ticks(1);CHECK(!pullup); DIAG_CHECK(usb_watch_unconf_recoveries==1&&usb_out_unconfigured>=1);
 #if DOMOVOI_DIAG
  usb_diag_fill(v);CHECK(v[5]==1&&v[6]==3&&v[7]==ATTACHED);
 #endif
  settle();}
+// Проверить все сценарии модуля и вернуть результат прогона.
 int main(void){unsigned i;(void)daddr;uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(frame+4,5);frame[9]=(uint8_t)crc;frame[10]=(uint8_t)(crc>>8);
- /* Successful robustness reset must preserve the configured session. */
+ /* Успешный сброс восстановления сохраняет выбранную конфигурацию. */
  usb_enabled=1;reset_after=3;esof_counter=4;USB_Istr();CHECK(bDeviceState==CONFIGURED&&pullup&&ep_restore==8&&!tx_reset);
- /* Missing RESET must return promptly and recover without a board reset. */
+ /* Отсутствие RESET должно вернуть управление и восстановить USB без сброса платы. */
  reset_after=reset_poll=0;esof_counter=4;USB_Istr();CHECK(reset_poll<40000);CHECK(!pullup&&!usb_enabled&&tx_reset==1);
  CHECK(!usb_send(frame,11));
  for(i=0;i<19;i++){usb_timer1ms();usb_check_data();CHECK(!pullup&&!init_count);}
  usb_timer1ms();cable=0;usb_check_data();CHECK(!pullup&&!init_count);
  cable=1;usb_check_data();CHECK(pullup&&usb_enabled&&init_count==1&&!(cntr&CNTR_FRES));
  bDeviceState=CONFIGURED;usb_datareceived(frame,11);usb_check_data();CHECK(delivered==1&&usb_send(frame,11));
- /* Repeat while a parser owns the RX prefix: defer clearing until release. */
+ /* Сброс при занятом префиксе RX откладывает очистку до возврата разборщика. */
  usb_rx_processing=1;esof_counter=4;reset_poll=0;USB_Istr();CHECK(usb_rx_discard);
  for(i=0;i<20;i++)usb_timer1ms();usb_check_data();CHECK(init_count==1);
  usb_rx_processing=0;usb_check_data();CHECK(init_count==2&&mask==0);

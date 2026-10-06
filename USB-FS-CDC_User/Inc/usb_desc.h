@@ -1,15 +1,9 @@
 // Доработка: Кряжев А., 2026
-// USB CDC платы v5: usb_desc.
-// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
-// Диагностические счётчики отделены от обязательных таймаутов восстановления.
+// Точные двоичные дескрипторы CDC и строки устройства.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    usb_desc.h
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   Descriptor Header for Virtual COM Port Device
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
@@ -47,9 +41,6 @@
 #define VIRTUAL_COM_PORT_SIZ_STRING_VENDOR      38
 #define VIRTUAL_COM_PORT_SIZ_STRING_PRODUCT     50
 #define VIRTUAL_COM_PORT_SIZ_STRING_SERIAL      26
-
-#define STANDARD_ENDPOINT_DESC_SIZE             0x09
-
 
 extern const uint8_t Virtual_Com_Port_DeviceDescriptor[VIRTUAL_COM_PORT_SIZ_DEVICE_DESC];
 extern const uint8_t Virtual_Com_Port_ConfigDescriptor[VIRTUAL_COM_PORT_SIZ_CONFIG_DESC];

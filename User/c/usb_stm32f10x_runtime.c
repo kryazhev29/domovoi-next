@@ -11,7 +11,7 @@
 #define USBBUFFERSIZE                   (uint16_t)2048
 
 #pragma data_alignment=4
-uint8_t usb_buffer[USBBUFFERSIZE]; // принятые данные по usb
+uint8_t usb_buffer[USBBUFFERSIZE]; // принятые данные по USB
 volatile uint16_t usb_buffer_count = 0;
 volatile uint8_t usb_rx_processing = 0;
 volatile uint8_t usb_rx_discard = 0;
@@ -79,7 +79,7 @@ uint32_t usb_last_addr[2];
 
 /* EP1R, EP3R, счётчик TX EP1, ISTR, CNTR, FNR, USB_Tx_State, IN выставлен, IN забран. */
 #if DOMOVOI_DIAG
-// Обработать usb_regs_read с прежним аппаратным контрактом.
+// Снять регистры очереди для диагностики восстановления.
 static void usb_regs_read(uint32_t *r)
 {
   r[0] = _GetENDPOINT(ENDP1);
@@ -95,7 +95,7 @@ static void usb_regs_read(uint32_t *r)
 #endif
 
 /* Прерывание USB: хост забрал пакет IN. */
-// Обработать usb_in_done с прежним аппаратным контрактом.
+// Отметить подтверждённый пакет IN и обнулить время зависания.
 void usb_in_done(void)
 {
 #if DOMOVOI_DIAG
@@ -108,7 +108,7 @@ void usb_in_done(void)
 }
 
 /* Прерывание USB: ошибка шины. */
-// Обработать usb_bus_error_seen с прежним аппаратным контрактом.
+// Посчитать ошибку USB для стендовой диагностики.
 void usb_bus_error_seen(void)
 {
 #if DOMOVOI_DIAG
@@ -117,7 +117,7 @@ void usb_bus_error_seen(void)
 }
 
 /* Прерывание USB: начало кадра. */
-// Обработать usb_sof_seen с прежним аппаратным контрактом.
+// Отметить свежий кадр USB для диагностического возраста.
 void usb_sof_seen(void)
 {
 #if DOMOVOI_DIAG
@@ -127,7 +127,7 @@ void usb_sof_seen(void)
 
 /* Вызывается при неустранимом таймауте сброса USB. Переподключение делается из главного цикла,
  * внутри прерывания USB никогда не ждать хоста или SysTick. */
-// Обработать usb_request_recovery с прежним аппаратным контрактом.
+// Отсоединить зависший USB на 20 мс, освободив очередь и приём.
 void usb_request_recovery(void)
 {
   uint32_t mask = __get_PRIMASK();
@@ -164,9 +164,7 @@ void usb_request_recovery(void)
   __set_PRIMASK(mask);
 }
 
-
-// Инициализация --------------------------------------------------------------
-// Обработать usb_init с прежним аппаратным контрактом.
+// Подготовить USB и подключить подтяжку после настройки периферии.
 void usb_init(void)
 {
   USB_PULLUP_OFF; /* Подтяжка включается только после инициализации USB. */
@@ -179,8 +177,7 @@ void usb_init(void)
   USB_PULLUP_ON;
 }
 
-// Копируем даные из USB в буфер ----------------------------------------------
-// Обработать usb_datareceived с прежним аппаратным контрактом.
+// Атомарно добавить внешние байты OUT без изменения разбираемого префикса.
 void usb_datareceived (uint8_t* ptr, uint16_t len)
 {
   uint32_t mask = __get_PRIMASK();
@@ -248,7 +245,7 @@ void usb_sendstr (char* str)
 }
 #endif
 
-// Обработать usb_timer1ms с прежним аппаратным контрактом.
+// Отсчитать таймауты USB и тишину незаконченного кадра.
 void usb_timer1ms (void)
 {
   uint32_t mask = __get_PRIMASK();
@@ -275,7 +272,7 @@ void usb_timer1ms (void)
 }
 
 /* Вызывается с запрещёнными прерываниями, после освобождения префикса, взятого разборщиком. */
-// Обработать usb_rx_consume с прежним аппаратным контрактом.
+// Освободить префикс при закрытых IRQ, сохраняя свежий хвост.
 static void usb_rx_consume(uint16_t length)
 {
   uint16_t count = usb_buffer_count, expired = usb_rx_expired;
@@ -286,10 +283,9 @@ static void usb_rx_consume(uint16_t length)
   if (count == 0) usb_rx_silence = 0;
 }
 
-// Обработать usb_check_data с прежним аппаратным контрактом.
+// Проверить один целый кадр, передать его приложению и освободить префикс.
 void usb_check_data (void)
 {
-  extern uint8_t USB_Tx_CommandReady(void);
   uint8_t store_ready = USB_Tx_CommandReady();
   uint32_t mask = __get_PRIMASK();
   uint16_t count, skip = 0, body, total, crc;
@@ -379,15 +375,13 @@ void usb_check_data (void)
   __set_PRIMASK(mask);
 }
 
-// активен usb или нет ---------------------------------------------------------
-// Обработать usb_get_state с прежним аппаратным контрактом.
+// Вернуть состояние программного подключения USB.
 uint8_t usb_get_state (void)
 {
   return usb_enabled;
 }
 
-// очистка буфера --------------------------------------------------------------
-// Обработать usb_clear_buffer с прежним аппаратным контрактом.
+// Сбросить приём сразу либо после возврата разборщика.
 void usb_clear_buffer (void)
 {
   uint32_t mask = __get_PRIMASK();
@@ -402,15 +396,9 @@ void usb_clear_buffer (void)
   __set_PRIMASK(mask);
 }
 
-// разбор принятых данных определяется пользователем ---------------------------
-// Обработать usb_data_reading с прежним аппаратным контрактом.
-__weak void usb_data_reading(uint8_t* ptr, uint16_t len)
-{
-}
-
 /* Команда 111: 23 значения USB в порядке, описанном у user_send_usbDiag. */
 #if DOMOVOI_DIAG
-// Обработать usb_diag_fill с прежним аппаратным контрактом.
+// Снять 23 счётчика USB для команды 111.
 void usb_diag_fill(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -440,7 +428,7 @@ void usb_diag_fill(uint32_t *v)
 /* Хвост команды 111 v2: 9 значений регистров на момент последнего восстановления, затем 9
  * текущих. */
 #if DOMOVOI_DIAG
-// Обработать usb_diag_fill_regs с прежним аппаратным контрактом.
+// Снять текущие регистры и регистры последнего восстановления.
 void usb_diag_fill_regs(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -454,7 +442,7 @@ void usb_diag_fill_regs(uint32_t *v)
 
 /* Хвост команды 111 v3: ошибки шины сейчас и на момент последнего восстановления. */
 #if DOMOVOI_DIAG
-// Обработать usb_diag_fill_errors с прежним аппаратным контрактом.
+// Выдать число ошибок шины сейчас и при последнем восстановлении.
 void usb_diag_fill_errors(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -467,7 +455,7 @@ void usb_diag_fill_errors(uint32_t *v)
 
 /* Хвост команды 111 v4: DADDR и EP0R на момент последнего восстановления, затем текущие. */
 #if DOMOVOI_DIAG
-// Обработать usb_diag_fill_addr с прежним аппаратным контрактом.
+// Выдать адрес и EP0 сейчас и при последнем восстановлении.
 void usb_diag_fill_addr(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -482,5 +470,5 @@ void usb_diag_fill_addr(uint32_t *v)
 
 /* Очередь передачи сохраняет владение источником ответа во всех вариантах. */
 extern uint8_t USB_Tx_Try(const uint8_t *,uint16_t);
-// Обработать usb_try_send с прежним аппаратным контрактом.
+// Принять неизменяемый источник ответа в единственную очередь USB.
 uint8_t usb_try_send(const uint8_t *ptr,uint16_t len) { return USB_Tx_Try(ptr,len); }

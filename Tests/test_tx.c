@@ -1,4 +1,6 @@
 // Доработка: Кряжев А., 2026
+// Проверки очереди передачи USB на модели без платы.
+// Вставляет рабочий код и моделирует события IRQ и сброса.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,15 +14,21 @@ volatile uint32_t bDeviceState=CONFIGURED;
 static unsigned mask,irq_restore,pump,wirelen,reset_poll;
 static uint8_t wire[8192],pma[64];
 static unsigned pmacount;
+// Читает маску прерываний модели.
 uint32_t __get_PRIMASK(void){return mask;}
+// Закрывает прерывания модели.
 void __disable_irq(void){mask=1;}
+// Восстанавливает маску и вставляет разрешённое событие IRQ.
 void __set_PRIMASK(uint32_t);
 #define __DMB() ((void)0)
 #define VIRTUAL_COM_PORT_DATA_SIZE 64
 #define ENDP1_TXADDR 0
 #define ENDP1 1
+// Копирует пакет в модель PMA.
 void UserToPMABufferCopy(uint8_t*p,unsigned a,unsigned n){(void)a;CHECK(n<=64);memcpy(pma,p,n);}
+// Запоминает длину пакета PMA.
 void SetEPTxCount(unsigned ep,unsigned n){(void)ep;pmacount=n;}
+// Передаёт готовый пакет в модель провода.
 void SetEPTxValid(unsigned ep){(void)ep;CHECK(wirelen+pmacount<=sizeof(wire));memcpy(wire+wirelen,pma,pmacount);wirelen+=pmacount;}
 struct {int Current_Configuration,Current_Feature,Current_Interface;} info,*pInformation=&info;
 struct {int MaxPacketSize;} Device_Property;
@@ -52,14 +60,20 @@ unsigned _GetISTR(void){reset_poll++;CHECK(reset_poll<1000000);return ISTR_ESOF;
 #define _GetENDPOINT(i) (i)
 #define _SetCNTR(x) ((void)(x))
 #define _SetENDPOINT(i,x) ((void)(i),(void)(x))
+// Сбрасывает очередь приёма; заглушка модели передачи.
 void usb_clear_buffer(void){}
+// Объявляет сброс очереди для вставляемого кода.
 void USB_Tx_Reset(void);
+// Сбрасывает передачу и отключает модель сеанса.
 void usb_request_recovery(void){USB_Tx_Reset();bDeviceState=UNCONNECTED;}
 volatile uint32_t usb_esof_forced,usb_esof_timeouts,usb_recovery_reason,usb_bus_resets;
+// Завершает приём; заглушка модели передачи.
 void usb_in_done(void){}
 
-/* PRODUCTION */
+/* КОД */
+// Восстанавливает маску и вставляет разрешённое событие IRQ.
 void __set_PRIMASK(uint32_t value){mask=value;irq_restore++;CHECK(irq_restore<1000000);if(!value&&pump==1){if(USB_Tx_State)EP1_IN_Callback();else Handle_USBAsynchXfer();}if(!value&&pump==2){pump=0;Virtual_Com_Port_Reset();}}
+// Запускает сценарии очереди, сброса и целостности кадра.
 int main(int argc,char**argv){uint8_t data[523];unsigned i;CHECK(argc>1);for(i=0;i<sizeof(data);i++)data[i]=(uint8_t)i;
  if(!strcmp(argv[1],"reset")){USB_Tx_State=1;USART_Rx_ptr_in=33;USART_Rx_ptr_out=22;USART_Rx_length=11;Virtual_Com_Port_Reset();CHECK(!USB_Tx_State&&!USART_Rx_ptr_in&&!USART_Rx_ptr_out&&!USART_Rx_length);}
  else if(!strcmp(argv[1],"esof")){esof_counter=4;USB_Istr();CHECK(reset_poll<1000000);CHECK(bDeviceState==UNCONNECTED);}
@@ -78,7 +92,7 @@ int main(int argc,char**argv){uint8_t data[523];unsigned i;CHECK(argc>1);for(i=0
 #endif
  for(i=0;i<100;i++){if(USB_Tx_State)EP1_IN_Callback();else Handle_USBAsynchXfer();}CHECK(wirelen==sizeof(data));CHECK(!memcmp(data,wire,sizeof(data)));
 #ifdef HOST_FIXED
- /* Wrapping enqueue, stalled queue, whole-frame reservation and reset during wait. */
+ /* Перенос индекса, остановка очереди, резерв всего кадра и сброс при ожидании. */
  USB_Tx_Reset();USART_Rx_ptr_in=USART_Rx_ptr_out=USART_RX_DATA_SIZE-100;wirelen=0;CHECK(USART_To_USB_Send_Data(data,sizeof(data)));for(i=0;i<100;i++){if(USB_Tx_State)EP1_IN_Callback();else Handle_USBAsynchXfer();}CHECK(wirelen==sizeof(data)&&!memcmp(data,wire,sizeof(data)));
  USB_Tx_Reset();USART_Rx_ptr_in=USART_RX_DATA_SIZE-10;CHECK(USB_Send_Debug(data,20)==9);CHECK(USART_Rx_ptr_in==USART_RX_DATA_SIZE-1);
  CHECK(!USART_To_USB_Send_Data(data,sizeof(data)));CHECK(USART_Rx_ptr_in==USART_RX_DATA_SIZE-1);
@@ -87,7 +101,7 @@ int main(int argc,char**argv){uint8_t data[523];unsigned i;CHECK(argc>1);for(i=0
 #endif
  }
  else CHECK(0);
- /* Largest current reply: log records, 1024 payload + 14 framing = 1038. Photo blocks are 512 + 22. */
+ /* Самый большой ответ: журнал 1024 + 14 = 1038 байтов; фотоблок — 512 + 22. */
  if(!strcmp(argv[1],"large")){
   uint8_t largest[1038];for(i=0;i<sizeof(largest);i++)largest[i]=(uint8_t)(i*7u);
   USB_Tx_Reset();wirelen=0;CHECK(USART_To_USB_Send_Data(largest,sizeof(largest)));

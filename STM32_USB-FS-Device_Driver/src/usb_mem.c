@@ -1,11 +1,9 @@
+// Доработка: Кряжев А., 2026
+// Копирование между обычной памятью и разреженной PMA.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    usb_mem.c
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    28-August-2012
-  * @brief   Utility functions for memory transfers to/from PMA
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
@@ -25,26 +23,9 @@
   ******************************************************************************
   */
 
-/* Includes ------------------------------------------------------------------*/
 #include "usb_lib.h"
 
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
-/* Extern variables ----------------------------------------------------------*/
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
-
-/*******************************************************************************
-* Function Name  : UserToPMABufferCopy
-* Description    : Copy a buffer from user memory area to packet memory area (PMA)
-* Input          : - pbUsrBuf: pointer to user memory area.
-*                  - wPMABufAddr: address into PMA.
-*                  - wNBytes: no. of bytes to be copied.
-* Output         : None.
-* Return         : None	.
-*******************************************************************************/
+// Скопировать ровно заданное число байтов в разреженную память USB.
 void UserToPMABufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNBytes)
 {
   uint16_t *pma = (uint16_t *)(wPMABufAddr * 2 + PMAAddr);
@@ -56,15 +37,7 @@ void UserToPMABufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNByt
   if (wNBytes) *pma = *pbUsrBuf;
 }
 
-/*******************************************************************************
-* Function Name  : PMAToUserBufferCopy
-* Description    : Copy a buffer from user memory area to packet memory area (PMA)
-* Input          : - pbUsrBuf    = pointer to user memory area.
-*                  - wPMABufAddr = address into PMA.
-*                  - wNBytes     = no. of bytes to be copied.
-* Output         : None.
-* Return         : None.
-*******************************************************************************/
+// Скопировать ровно заданное число байтов из разреженной памяти USB.
 void PMAToUserBufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNBytes)
 {
   uint32_t *pma = (uint32_t *)(wPMABufAddr * 2 + PMAAddr);

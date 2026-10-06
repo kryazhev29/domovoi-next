@@ -35,8 +35,6 @@ uint32_t stack_free_bytes(void)
 }
 #endif
 
-// основная программа
-
 // При повреждении стека записать STAK и ждать сторож без стека.
 __stackless void stack_canary_check(void)
 {
@@ -90,19 +88,17 @@ void main()
 
   // Назначение задержки не описано в истории: не сокращать без проверки платы.
   delay_ms(500);
-  wdt_reload(); // сброс watchdog
+  wdt_reload(); // обслужить сторож
 
-  // настраиваем usb при необходимости при подключенном кабеле
+  // настраиваем USB при необходимости при подключенном кабеле
   if (USB_DETECT)
     usb_init();
 
   // Инициализация сторожевого таймера
-  wdt_init(3750); // 3 сек
+  wdt_init();
 
   // Инициализация пользовательской программы
   user_init();
-
-  // включаем питание gsm модуля
 
   #if DOMOVOI_DIAG
   unsigned int loop_mark = timers_getMillis();
@@ -110,20 +106,15 @@ void main()
   uint32_t prof_loop = PROF_NOW();
   #endif
 
-  // Входим в основной цикл работы
   while (true)
   {
     stack_canary_check();
-    // порт - gsm
     PROF_STEP(PROF_GSM, gsm_check_data());
 
-    // порт - 485
     PROF_STEP(PROF_PORT, port_check_data());
 
-    // порт - USB
     PROF_STEP(PROF_USB, usb_check_data());
 
-    // циклический обработчик
     PROF_STEP(PROF_USER, user_loop());
     PROF_STEP(PROF_STORAGE, user_storage_poll());
 

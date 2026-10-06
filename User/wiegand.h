@@ -11,11 +11,11 @@
 #define WG_PARITY 1
 #endif
 
-
+// Разрешить EXTI2/EXTI3 считывателя W26.
 void WG_init(void);
+// Передать завершённый проверенный кадр приложению.
 void WG_process(void);
+// Обработать карту в пользовательском модуле доступа.
 void WG_readedID(uint32_t id);
 
 #endif
-
-
