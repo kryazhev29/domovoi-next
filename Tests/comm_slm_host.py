@@ -10,7 +10,7 @@ from source_select import diagnostic_header
 
 MODULES = ('User/comm_timeouts.c', 'Modules/comm_power_v5.c', 'Modules/comm_modem.c', 'Modules/modem_slm336.c')
 HEADERS = ('Modules/comm_uart.h', 'Modules/comm_at.h', 'User/comm_timeouts.h',
-           'Modules/comm_power_v5.h', 'Modules/modem_slm336.h', 'Modules/comm_modem.h')
+           'Modules/comm_power_v5.h', 'Modules/modem_slm336.h', 'Modules/comm_modem.h', 'Modules/comm_recover.h', 'Modules/comm_channel.h')
 
 
 def unit(root=ROOT):
@@ -23,7 +23,8 @@ def unit(root=ROOT):
                         if not line.startswith('#include "'))
     sources = '\n'.join(line for n in ('Modules/comm_uart.c', 'Modules/comm_at.c', *MODULES)
                         for line in source(n).splitlines() if not line.startswith('#include'))
-    return diagnostic_header(root) + model + headers + sources + '\n' + source('Tests/test_comm_slm.c')
+    model_irq = source('Tests/test_comm_uart.c').split('/* PRODUCTION */',1)[1].split('static void reset(void)',1)[0]
+    return diagnostic_header(root) + model + headers + sources + model_irq + '\n' + source('Tests/test_comm_slm.c')
 
 
 def memory(obj):

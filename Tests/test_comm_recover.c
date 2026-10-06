@@ -5,7 +5,7 @@ static struct { uint32_t at, ms; uint8_t power; unsigned opens; } rc_log[16];
 static unsigned rc_logged, rc_power_starts, rc_soft_starts;
 static uint32_t rc_last_since, rc_last_attempt, rc_clock = UINT32_MAX;
 static bool rc_busy_flag;
-static void rc_session(void) { comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done); }
+static void rc_session(void) { socket_model=false; comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done); }
 static uint32_t rc_time(void) { return rc_clock == UINT32_MAX ? UINT32_MAX : rc_clock + sim_now / 1000u; }
 static bool rc_busy(void) { return rc_busy_flag; }
 static const comm_recover_hooks_t rc_hooks = {rc_session, rc_time, rc_busy};

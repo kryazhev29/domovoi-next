@@ -20,7 +20,8 @@ def unit(root=ROOT):
     uart_test = uart_test.replace('/* HEADER */', source('Modules/comm_uart.h'))
     code = '\n'.join(line for name in ('Modules/comm_uart.c', 'Modules/comm_at.c')
                      for line in source(name).splitlines() if not line.startswith('#include'))
-    return diagnostic_header(root) + uart_test + source('Modules/comm_at.h') + code + c_header() + source('Tests/test_comm_at.c')
+    model_irq = source('Tests/test_comm_uart.c').split('/* PRODUCTION */',1)[1].split('static void reset(void)',1)[0]
+    return diagnostic_header(root) + uart_test + source('Modules/comm_at.h') + code + model_irq + c_header() + source('Tests/test_comm_at.c')
 
 
 def arm(out):

@@ -1,4 +1,8 @@
-/* Доработка: Кряжев А., 2026. Сигнал, регистрация и тип сети. Устройство - в comm_info.h. */
+/* Доработка: Кряжев А., 2026.
+   Опрашивает сигнал, регистрацию и технологию сети.
+   Опрос имеет низкий приоритет и не мешает данным сервера.
+   Без связи прошлые значения очищаются, слабый сигнал отмечается раз в сутки.
+*/
 #include "comm_info.h"
 #include "comm_channel.h"
 #include "comm_at.h"
@@ -16,6 +20,7 @@ static struct {
   uint8_t step, ps, daily; /* ps: бит 0 - CGREG, бит 1 - CEREG; daily - срок day назначен */
 } info = {{99, 0, 0, 0}, 0, 0, 0, 0, 0};
 static void (*info_low)(uint8_t);
+/* Подключить запись события слабого сигнала. */
 void comm_info_low_signal(void (*handler)(uint8_t csq)) { info_low = handler; info.daily = 0; }
 
 /* Есть ли в строке подстрока (короткие строки ответа, без кучи). */
@@ -46,6 +51,7 @@ static void info_line(const uint8_t *p, uint16_t n)
   }
 }
 
+/* Поставить очередной фоновый запрос сведений. */
 void comm_info_poll(uint32_t now_ms)
 {
   /* Модем не на связи - цифры прошлого сеанса не показываем, опрос заново с начала. */
@@ -59,10 +65,11 @@ void comm_info_poll(uint32_t now_ms)
   if (info.step) return;
   info.next = now_ms + INFO_PERIOD_MS;
   /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
-  if (info_low && (!info.daily || (int32_t)(now_ms - info.day) >= 0)) {
+  if (!info.daily || (int32_t)(now_ms - info.day) >= 0) {
     info.daily = 1; info.day = now_ms + comm_timeouts[COMM_T_DAY];
     if (info.v.csq < 15u) info_low(info.v.csq);
   }
 }
 
+/* Выдать текущий снимок сигнала и регистрации. */
 const comm_info_t *comm_info(void) { return &info.v; }

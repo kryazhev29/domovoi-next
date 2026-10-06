@@ -3384,9 +3384,6 @@
     <group>
         <name>STM32F10x_StdPeriph_Driver</name>
         <file>
-            <name>$PROJ_DIR$\STM32F10x_StdPeriph_Driver\src\misc.c</name>
-        </file>
-        <file>
             <name>$PROJ_DIR$\STM32F10x_StdPeriph_Driver\src\stm32f10x_gpio.c</name>
         </file>
         <file>
@@ -3394,9 +3391,6 @@
         </file>
         <file>
             <name>$PROJ_DIR$\STM32F10x_StdPeriph_Driver\src\stm32f10x_spi.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\STM32F10x_StdPeriph_Driver\src\stm32f10x_usart.c</name>
         </file>
     </group>
     <group>
@@ -3450,7 +3444,7 @@
             <name>$PROJ_DIR$\User\comm_timeouts.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\user_comm_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\user_comm_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\asm\crc_runtime.s</name>

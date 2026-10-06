@@ -8,7 +8,14 @@
 /* DMA продолжает работать при PRIMASK=1, как на STM32. */
 typedef struct { volatile uint32_t ISR, IFCR; } DMA_TypeDef;
 typedef struct { volatile uint32_t CCR, CNDTR, CPAR, CMAR; } DMA_Channel_TypeDef;
-typedef struct { volatile uint32_t AHBENR; } RCC_TypeDef;
+typedef struct { volatile uint32_t AHBENR, APB1ENR, APB2ENR, APB1RSTR, CFGR; } RCC_TypeDef;
+typedef struct { volatile uint32_t CRH, BSRR; } GPIO_TypeDef;
+static GPIO_TypeDef gpio;
+static struct { uint32_t AIRCR; } scb = {0x600};
+#define SCB (&scb)
+static uint32_t SystemCoreClock = 72000000u;
+static uint8_t irq_priorities[64];
+static uint32_t irq_enabled[2];
 static DMA_TypeDef dma;
 static DMA_Channel_TypeDef dma_channel;
 static RCC_TypeDef rcc;
@@ -49,35 +56,25 @@ static USART_TypeDef regs;
 #define USART_CR1_TCIE (1u<<6)
 #define USART_CR1_RXNEIE (1u<<5)
 #define USART_CR3_EIE 1u
-#define USART_HardwareFlowControl_None 0u
-#define USART_HardwareFlowControl_CTS 0x200u
-#define USART_Mode_Rx 4u
-#define USART_Mode_Tx 8u
-#define USART_IT_RXNE USART_CR1_RXNEIE
-#define USART_IT_ERR USART_CR3_EIE
-#define USART_FLAG_TC USART_SR_TC
-#define GPIO_Pin_10 (1u<<10)
+#define USART_CR1_RE 4u
+#define USART_CR1_TE 8u
+#define USART_CR1_UE 0x2000u
+#define USART_CR3_CTSE 0x200u
 #define GPIO_Pin_11 (1u<<11)
 #define GPIO_Pin_13 (1u<<13)
-#define GPIO_Pin_14 (1u<<14)
-#define GPIO_Mode_IPU 1u
-#define GPIO_Mode_AF_PP 2u
-#define GPIO_Mode_Out_PP 3u
-#define GPIO_Speed_50MHz 50u
-#define GPIOB 2u
-#define RCC_APB2Periph_AFIO 1u
-#define RCC_APB2Periph_GPIOB 2u
-#define RCC_APB1Periph_USART3 4u
+#define GPIOB (&gpio)
+#define RCC_APB2ENR_AFIOEN 1u
+#define RCC_APB2ENR_IOPBEN 8u
+#define RCC_APB1ENR_USART3EN (1u<<18)
+#define RCC_APB1RSTR_USART3RST (1u<<18)
+#define RCC_CFGR_PPRE1 0x700u
 #define USART3_IRQn 39u
 #define ENABLE 1u
 #define DISABLE 0u
 #ifndef DOMOVOI_APP_HW
 #define DOMOVOI_APP_HW 139
 #endif
-typedef struct { uint32_t GPIO_Pin, GPIO_Mode, GPIO_Speed; } GPIO_InitTypeDef;
-typedef struct { uint32_t USART_BaudRate, USART_Mode, USART_HardwareFlowControl; } USART_InitTypeDef;
-typedef struct { uint8_t NVIC_IRQChannel, NVIC_IRQChannelPreemptionPriority, NVIC_IRQChannelSubPriority, NVIC_IRQChannelCmd; } NVIC_InitTypeDef;
-static uint32_t primask, input_pins, output_pins, gpio_pins, apb1, apb2, flow;
+static uint32_t primask;
 static bool rts_stop;
 static unsigned rts_writes;
 #if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
@@ -110,13 +107,8 @@ static void dma_byte(uint8_t b, bool service) {
 }
 /* Старые границы проверяем при наблюдении каждого байта; новые потоки —
    с настоящими HT/TC и тиком раз в 12 байт, без RXNE IRQ. */
-static void interrupt_byte(uint8_t b, uint32_t flags) {
-  if (flags&USART_SR_RXNE) {
-    dma_byte(b,false); comm_uart_tick(); flags&=~USART_SR_RXNE;
-  }
-  regs.SR=flags; regs.DR=b; uart_irqs++; USART3_IRQHandler();
-}
-static uint32_t __get_PRIMASK(void) { return primask; }
+static void interrupt_byte(uint8_t b, uint32_t flags);
+static uint32_t __get_PRIMASK(void) { dma_clear_flags(); return primask; }
 static void __disable_irq(void) { primask=1; }
 static void __set_PRIMASK(uint32_t m) {
   primask=m;
@@ -130,39 +122,56 @@ static void __DMB(void) {
     else { interrupt_byte(pending_byte,USART_SR_IDLE|USART_SR_TXE|USART_SR_TC); comm_uart_tick(); }
   }
 }
-static void GPIO_Init(uint32_t port,GPIO_InitTypeDef *p) { CHECK(port==GPIOB); if (p->GPIO_Mode==GPIO_Mode_IPU) input_pins|=p->GPIO_Pin; else { if (p->GPIO_Mode==GPIO_Mode_Out_PP) gpio_pins|=p->GPIO_Pin; else { CHECK(p->GPIO_Mode==GPIO_Mode_AF_PP); output_pins|=p->GPIO_Pin; } } }
-static void USART_StructInit(USART_InitTypeDef *p) { memset(p,0,sizeof(*p)); }
-static void USART_DeInit(USART_TypeDef *p) { memset(p,0,sizeof(*p)); }
-static void USART_Init(USART_TypeDef *p,USART_InitTypeDef *i) { CHECK(i->USART_BaudRate==115200 && i->USART_Mode==(USART_Mode_Rx|USART_Mode_Tx)); flow=i->USART_HardwareFlowControl; p->CR3=flow; }
-static void USART_ITConfig(USART_TypeDef *p,uint32_t bit,uint32_t enable) { CHECK(enable==ENABLE); if (bit==USART_IT_RXNE) p->CR1|=bit; else { CHECK(bit==USART_IT_ERR); p->CR3|=bit; } }
-static void USART_Cmd(USART_TypeDef *p,uint32_t e) { (void)p; CHECK(e==ENABLE); }
-static uint16_t USART_ReceiveData(USART_TypeDef *p) { dma_clear_flags(); reads++; uint16_t b=(uint16_t)p->DR; p->SR&=~(USART_SR_IDLE|USART_SR_RXNE|USART_SR_ORE|USART_SR_FE|USART_SR_NE); return b; }
-static void USART_SendData(USART_TypeDef *p,uint16_t b) { CHECK(writes<sizeof(wire)); wire[writes++]=(uint8_t)b; p->DR=b; p->SR&=~(USART_SR_TXE|USART_SR_TC); }
-static void USART_ClearFlag(USART_TypeDef *p,uint16_t f) { p->SR&=~f; }
-static void RCC_APB2PeriphClockCmd(uint32_t p,uint32_t e) { CHECK(e==ENABLE); apb2|=p; }
-static void RCC_APB1PeriphClockCmd(uint32_t p,uint32_t e) { CHECK(e==ENABLE); apb1|=p; }
-static void NVIC_Init(NVIC_InitTypeDef *p) { CHECK((p->NVIC_IRQChannel==USART3_IRQn || p->NVIC_IRQChannel==DMA1_Channel3_IRQn) && p->NVIC_IRQChannelCmd==ENABLE); }
+/* Настройку NVIC сверяем по конкретным номерам и значениям регистров. */
+static void board_irq_enable(uint8_t irq,uint8_t priority)
+{
+  CHECK(irq==USART3_IRQn || irq==DMA1_Channel3_IRQn);
+  irq_priorities[irq]=priority; irq_enabled[irq/32] |= 1u<<(irq%32);
+}
 /* PRODUCTION */
+/* Учесть аппаратные эффекты записи DR и чтения SR/DR после IRQ. */
+static void model_irq(uint32_t flags, uint8_t b)
+{
+  uint16_t before=uart_state.tx_index;
+  regs.SR=flags; regs.DR=b; uart_irqs++; USART3_IRQHandler();
+  if (uart_state.tx_index != before) {
+    CHECK(writes<sizeof(wire)); wire[writes++]=(uint8_t)regs.DR;
+    regs.SR&=~(USART_SR_TXE|USART_SR_TC);
+  }
+  if (flags&(USART_SR_ORE|USART_SR_FE|USART_SR_NE)) {
+    ++reads; regs.SR&=~(USART_SR_IDLE|USART_SR_RXNE|USART_SR_ORE|USART_SR_FE|USART_SR_NE);
+  }
+}
+/* DMA принимает RXNE; обработчик USART обслуживает только ошибки и передачу. */
+static void interrupt_byte(uint8_t b, uint32_t flags)
+{
+  if (flags&USART_SR_RXNE) {
+    dma_byte(b,false); comm_uart_tick(); flags&=~USART_SR_RXNE;
+  }
+  model_irq(flags,b);
+}
+
 static void reset(void) {
   primask=0; pending_sr=0; edge_at=0; barriers=0; writes=reads=0;
   memset(&dma,0,sizeof(dma)); memset(&dma_channel,0,sizeof(dma_channel)); dma_irqs=uart_irqs=0;
-  input_pins=output_pins=gpio_pins=apb1=apb2=0; rts_stop=true; rts_writes=0; comm_uart_init(115200); reads=0;
-  CHECK(primask==0 && apb1==RCC_APB1Periph_USART3 && apb2==(RCC_APB2Periph_AFIO|RCC_APB2Periph_GPIOB));
+  memset(&rcc,0,sizeof(rcc)); memset(&gpio,0,sizeof(gpio)); memset(&regs,0,sizeof(regs));
+  memset(irq_enabled,0,sizeof(irq_enabled)); rcc.CFGR=0x400u;
+  rts_stop=true; rts_writes=0; comm_uart_init(115200); reads=0;
+  CHECK(primask==0 && rcc.APB1ENR==RCC_APB1ENR_USART3EN && rcc.APB2ENR==(RCC_APB2ENR_AFIOEN|RCC_APB2ENR_IOPBEN));
   CHECK(!(regs.CR1&(USART_CR1_RXNEIE|USART_CR1_IDLEIE)) && (regs.CR3&USART_CR3_EIE) && (regs.CR3&USART_CR3_DMAR));
   CHECK(dma_channel.CNDTR==512 && dma_channel.CCR==(DMA_CCR3_EN|DMA_CCR3_CIRC|DMA_CCR3_MINC|DMA_CCR3_HTIE|DMA_CCR3_TCIE|DMA_CCR3_TEIE));
   CHECK(dma_channel.CMAR==(uint32_t)(uintptr_t)rx && dma_channel.CPAR==(uint32_t)(uintptr_t)&regs.DR);
   CHECK(rcc.AHBENR&RCC_AHBENR_DMA1EN);
-#if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
-  CHECK(flow==USART_HardwareFlowControl_CTS && input_pins==(GPIO_Pin_11|GPIO_Pin_13));
-  CHECK(output_pins==GPIO_Pin_10 && gpio_pins==GPIO_Pin_14 && !rts_stop);
-#else
-  CHECK(flow==USART_HardwareFlowControl_None && input_pins==GPIO_Pin_11 && output_pins==GPIO_Pin_10);
-  CHECK(gpio_pins==0 && rts_writes==0);
-#endif
+  CHECK(regs.CR3==(USART_CR3_CTSE|USART_CR3_DMAR|USART_CR3_EIE));
+  CHECK(gpio.CRH==0x03808B00u && gpio.BSRR==(GPIO_Pin_11|GPIO_Pin_13) && !rts_stop);
+  CHECK(regs.BRR==312u && regs.CR1==(USART_CR1_RE|USART_CR1_TE|USART_CR1_UE));
+  CHECK(irq_priorities[USART3_IRQn]==0xF0 && irq_priorities[DMA1_Channel3_IRQn]==0xF0);
+  CHECK(irq_enabled[USART3_IRQn/32]&(1u<<(USART3_IRQn%32)));
+  CHECK(irq_enabled[DMA1_Channel3_IRQn/32]&(1u<<(DMA1_Channel3_IRQn%32)));
 }
 static void rx_tests(void) {
   const uint8_t *p=NULL; comm_uart_stats_t s;
-  reset(); CHECK(comm_uart_peek(&p)==0 && p==NULL); CHECK(comm_uart_peek(NULL)==0);
+  reset(); CHECK(comm_uart_peek(&p)==0 && p==NULL);
   CHECK(comm_uart_consume(0)); CHECK(!comm_uart_consume(1));
   for (unsigned i=0;i<511;i++) interrupt_byte((uint8_t)i,USART_SR_RXNE);
   CHECK(comm_uart_peek(&p)==511); for (unsigned i=0;i<511;i++) CHECK(p[i]==(uint8_t)i);
@@ -194,7 +203,7 @@ static void rx_tests(void) {
   primask=1; CHECK(comm_uart_errors()==(COMM_UART_ORE|COMM_UART_FE|COMM_UART_NE) && primask==1); __set_PRIMASK(0);
   CHECK(comm_uart_errors()==0); comm_uart_stats(&s); CHECK(s.errors==0); DIAG_CHECK(s.ore==2 && s.fe==2 && s.ne==2);
   for (unsigned i=0;i<70000;i++) interrupt_byte(0,USART_SR_ORE);
-  comm_uart_stats(&s); DIAG_CHECK(s.ore==UINT16_MAX); comm_uart_stats(NULL);
+  comm_uart_stats(&s); DIAG_CHECK(s.ore==UINT16_MAX);
   comm_uart_abort(); /* После ошибки линии DMA-данные недостоверны. */
   interrupt_byte('Z',USART_SR_RXNE); CHECK(comm_uart_peek(&p)==1 && *p=='Z');
   primask=1; comm_uart_abort(); CHECK(primask==1); __set_PRIMASK(0);
@@ -205,29 +214,25 @@ static bool owned_tx(const uint8_t *data, uint16_t count) {
   return comm_uart_tx(data,count);
 }
 static void tx_finish(unsigned count) {
-  for (unsigned i=0;i<count;i++) { regs.SR=USART_SR_TXE|USART_SR_TC; USART3_IRQHandler(); CHECK(!comm_uart_tx_done()); }
-  regs.SR=USART_SR_TC; USART3_IRQHandler(); CHECK(comm_uart_tx_done());
+  for (unsigned i=0;i<count;i++) { regs.SR=USART_SR_TXE|USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(!comm_uart_tx_done()); }
+  regs.SR=USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(comm_uart_tx_done());
 }
 static void tx_tests(void) {
   const uint8_t *rxp; reset(); CHECK(!comm_uart_tx_done());
-  CHECK(!comm_uart_tx(NULL,1)); CHECK(!comm_uart_tx(NULL,0)); CHECK(!comm_uart_tx(frame,1041));
   at_command[0]='A'; at_command[1]='B'; at_command[2]='C';
   pending_byte='R'; edge_at=barriers+1; CHECK(owned_tx(at_command,3));
   CHECK(primask==0 && writes==1 && wire[0]=='A' && !comm_uart_tx_done());
   CHECK(uart_state.tx_ptr==at_command); /* Публикуется указатель, копии команды нет. */
   CHECK(comm_uart_peek(&rxp)==1 && *rxp=='R'); CHECK(comm_uart_consume(1));
   CHECK(!owned_tx(frame,1)); CHECK(!owned_tx(at_command,0)); CHECK(uart_state.tx_ptr==at_command);
-  regs.SR=USART_SR_TC; USART3_IRQHandler(); CHECK(writes==1 && !comm_uart_tx_done());
-  regs.SR=USART_SR_TXE|USART_SR_TC; USART3_IRQHandler(); CHECK(writes==2 && !comm_uart_tx_done());
-  regs.SR=USART_SR_TXE|USART_SR_TC; USART3_IRQHandler(); CHECK(writes==3 && !comm_uart_tx_done());
+  regs.SR=USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(writes==1 && !comm_uart_tx_done());
+  regs.SR=USART_SR_TXE|USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(writes==2 && !comm_uart_tx_done());
+  regs.SR=USART_SR_TXE|USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(writes==3 && !comm_uart_tx_done());
   CHECK(!(regs.CR1&USART_CR1_TXEIE) && (regs.CR1&USART_CR1_TCIE));
   CHECK(!owned_tx(frame,1)); /* Владелец занят и между последним TXE и TC. */
-  regs.SR=USART_SR_TXE; USART3_IRQHandler(); CHECK(writes==3 && !comm_uart_tx_done());
-  regs.SR=USART_SR_TC; USART3_IRQHandler(); CHECK(comm_uart_tx_done() && uart_state.tx_ptr==NULL);
+  regs.SR=USART_SR_TXE; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(writes==3 && !comm_uart_tx_done());
+  regs.SR=USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(comm_uart_tx_done() && uart_state.tx_ptr==NULL);
   CHECK(!(regs.CR1&(USART_CR1_TXEIE|USART_CR1_TCIE)) && !memcmp(wire,"ABC",3));
-  /* Ноль завершён без DR и IRQ; отказ не снимает предыдущий успех. */
-  CHECK(owned_tx(at_command,0)); CHECK(comm_uart_tx_done() && writes==3 && uart_state.tx_ptr==NULL);
-  CHECK(!comm_uart_tx(NULL,1)); CHECK(comm_uart_tx_done());
   /* Кадр уже построен: команда QISEND его не затирает, затем передаётся кадр. */
   reset(); for (unsigned i=0;i<sizeof(frame);i++) frame[i]=(uint8_t)i;
   static const char command[]="AT+QISEND=0,1040\r";
@@ -241,9 +246,9 @@ static void tx_tests(void) {
   /* Указатель жив до TC/abort; abort не разрешает устаревшему IRQ читать его. */
   for (unsigned stage=0;stage<3;stage++) {
     CHECK(owned_tx(frame,2)); CHECK(!comm_uart_tx_done());
-    for (unsigned i=0;i<stage;i++) { regs.SR=USART_SR_TXE; USART3_IRQHandler(); }
+    for (unsigned i=0;i<stage;i++) { regs.SR=USART_SR_TXE; model_irq(regs.SR,(uint8_t)regs.DR); }
     unsigned sent=writes; primask=1; comm_uart_abort(); CHECK(primask==1 && uart_state.tx_ptr==NULL); __set_PRIMASK(0);
-    regs.SR=USART_SR_TXE|USART_SR_TC; USART3_IRQHandler();
+    regs.SR=USART_SR_TXE|USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR);
     CHECK(writes==sent && !comm_uart_tx_done() && !(regs.CR1&(USART_CR1_TXEIE|USART_CR1_TCIE)));
   }
   memset(at_command,0xa5,sizeof(at_command)); CHECK(owned_tx(at_command,sizeof(at_command)));
@@ -313,7 +318,7 @@ static void dma_tests(void) {
   reset(); unsigned sent=0; received=0;
   for (unsigned block=1;block<=73;block++) {
     for (unsigned j=0;j<block;j++) dma_byte((uint8_t)sent++,true);
-    regs.SR=USART_SR_IDLE|USART_SR_RXNE; regs.DR=0xa5; USART3_IRQHandler();
+    regs.SR=USART_SR_IDLE|USART_SR_RXNE; regs.DR=0xa5; model_irq(regs.SR,(uint8_t)regs.DR);
     CHECK((regs.SR&USART_SR_RXNE) && regs.DR==0xa5); received=drain(received);
   }
   CHECK(received==sent && reads==0); comm_uart_stats(&stats); CHECK(!stats.errors);

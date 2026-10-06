@@ -1,4 +1,8 @@
-/* Доработка: Кряжев А., 2026. Все сроки связи, миллисекунды. */
+/* Доработка: Кряжев А., 2026.
+   Хранит сроки питания, AT, канала, вызова, SMS и USSD.
+   Все значения заданы в миллисекундах и используются через именованные индексы.
+   Таблица едина для стенда и сборки заказчика.
+*/
 #ifndef COMM_TIMEOUTS_H
 #define COMM_TIMEOUTS_H
 #include <stdint.h>
@@ -13,7 +17,7 @@ enum {
   COMM_T_PING, COMM_T_DNS, COMM_T_ACK_POLL, COMM_T_DNS_FENCE,
   COMM_T_SOFT_1, COMM_T_SOFT_2, COMM_T_SOFT_3, COMM_T_POWER_1, COMM_T_POWER_2, COMM_T_POWER_3,
   COMM_T_EARLY_AT, COMM_T_EARLY_TCP, COMM_T_DAY,
-  COMM_T_CALL_NUMBER, COMM_T_CALL_HANGUP, COMM_T_CALL_QUIET,
+  COMM_T_CALL_NUMBER, COMM_T_CALL_QUIET,
   COMM_T_CALL_ANSWER, COMM_T_CALL_HOLD, COMM_T_CALL_LIMIT,
   COMM_T_SMS, COMM_T_SMS_SEND, COMM_T_SMS_RETRY,
   COMM_T_USSD, COMM_T_USSD_RETRY, COMM_T_VOLTE, COMM_T_COUNT

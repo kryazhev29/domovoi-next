@@ -1,3 +1,8 @@
+/* Доработка: Кряжев А., 2026.
+   Восстанавливает связь по причинам отказа и окнам AT/TCP.
+   Ступени задают паузы перезапуска модема, процессор не перезагружается.
+   Ожидаемая потеря PDP после звонка получает первую попытку без отката.
+*/
 /* Доработка: Кряжев А., 2026. Восстановление связи (этап 5).
    Лестница по цене, как у производителей модулей: соединение -> мобильный
    интернет (модем заново с AT) -> снятие питания. Паузы по решениям этапа 0:
@@ -9,6 +14,7 @@
 #ifndef COMM_RECOVER_H
 #define COMM_RECOVER_H
 #include <stdint.h>
+#include "domovoi_diag.h"
 #include <stdbool.h>
 
 typedef struct {
@@ -19,8 +25,14 @@ typedef struct {
 
 /* hooks - постоянная (static const) структура, хранится указатель. */
 void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms);
+/* Исполнить назначенный перезапуск или проверить условия надзора. */
 void comm_recover_poll(uint32_t now_ms);
+/* Новый отказ транспорта сразу обновляет окна раннего восстановления. */
+void comm_recover_failure(uint8_t step, uint8_t reason, uint32_t now_ms);
+/* Собрать ступени и остаток паузы для команды 112. */
+#if DOMOVOI_DIAG
 uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left);
+#endif
 /* Сервер молчит, ping и DNS не прошли: TCP заново, потом модем с AT, потом питание. */
 void comm_recover_no_internet(void);
 

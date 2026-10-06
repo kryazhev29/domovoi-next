@@ -32,7 +32,7 @@ static void review_error_windows(void)
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(65537000u);
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(100);
   CHECK(!rc_logged && comm_server_online());
-  /* Exact boundary and millis rollover, including a timestamp of zero. */
+  /* Точная граница и оборот миллисекунд, включая отметку времени ноль. */
   uint32_t times[3]; uint8_t index = 0, count = 0;
   rc.now = UINT32_MAX - 100u;
   CHECK(!rc_burst(times, 3, &index, &count, COMM_T_EARLY_AT));
@@ -56,7 +56,7 @@ static void review_settings(void)
   slm.settings.text = comm_text; slm.settings.number = comm_number;
   strcpy(config.netOperator, "private.apn,user,password");
   char cmd[128];
-  const char *apn = slm.profile->commands + slm.profile->steps[SLM_APN - SLM_AT_READY].command;
+  const char *apn = slm_commands + slm_steps[SLM_APN - SLM_AT_READY].command;
   comm_modem_build(cmd, sizeof(cmd), apn, NULL, 0);
   CHECK(!strcmp(cmd, "AT+QICSGP=1,1,\"private.apn\",\"user\",\"password\",1"));
   strcpy(config.netOperator, "private.apn");
@@ -68,22 +68,22 @@ static void review_settings(void)
   strcpy(config.netOperator, "bad\"apn"); CHECK(!slm_valid_settings());
   config.netOperator[0] = 0;
   static const uint8_t expected[] = {0, 1, 0, 5, 3};
-  const char *rat = slm.profile->commands + slm.profile->steps[SLM_RAT_SET - SLM_AT_READY].command;
+  const char *rat = slm_commands + slm_steps[SLM_RAT_SET - SLM_AT_READY].command;
   for (unsigned i = 0; i < sizeof(expected); ++i) {
     config.netType = (uint8_t)i;
     comm_modem_build(cmd, sizeof(cmd), rat, NULL, 0);
     char want[40]; snprintf(want, sizeof(want), "AT+QCFG=\"nwscanmode\",%u,1", expected[i]);
     CHECK(!strcmp(cmd, want) && slm_valid_settings());
   }
-  /* A settings update must change the next real QIOPEN without a MCU reboot. */
+  /* Новые настройки меняют следующий QIOPEN без перезагрузки процессора. */
   comm_split(0, "old.local:1234"); comm_split(1, "old-backup.local:1235");
   uint16_t capacity;
   const char *host = comm_text(SLM_CFG_HOST, &capacity);
-  comm_modem_build(cmd, sizeof(cmd), slm.profile->commands + slm.profile->tcp, host, comm_number(SLM_CFG_PORT));
+  comm_modem_build(cmd, sizeof(cmd), slm_commands + SLM_TCP_COMMAND, host, comm_number(SLM_CFG_PORT));
   CHECK(strstr(cmd, "test.local\",7777"));
   strcpy(config.server1, "new.local:9999");
   host = comm_text(SLM_CFG_HOST, &capacity);
-  comm_modem_build(cmd, sizeof(cmd), slm.profile->commands + slm.profile->tcp, host, comm_number(SLM_CFG_PORT));
+  comm_modem_build(cmd, sizeof(cmd), slm_commands + SLM_TCP_COMMAND, host, comm_number(SLM_CFG_PORT));
   CHECK(strstr(cmd, "new.local\",9999"));
   config.useServer1 = 0; config.useServer2 = 1;
   CHECK(!strcmp(comm_text(SLM_CFG_HOST, &capacity), "backup.local") && comm_number(SLM_CFG_PORT) == 8888);
