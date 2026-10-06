@@ -17,8 +17,8 @@
   *
   *        http://www.st.com/software_license_agreement_liberty_v2
   *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
@@ -26,38 +26,31 @@
   ******************************************************************************
   */
 
-
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __HW_CONFIG_H
 #define __HW_CONFIG_H
+#include "../../User/domovoi_diag.h"
 
-/* Includes ------------------------------------------------------------------*/
 #include "stm32f10x.h"
 #include "usb_type.h"
 
-/* Exported types ------------------------------------------------------------*/
-/* Exported constants --------------------------------------------------------*/
-/* Exported macro ------------------------------------------------------------*/
-/* Exported define -----------------------------------------------------------*/
 #define MASS_MEMORY_START     0x04002000
 #define BULK_MAX_PACKET_SIZE  0x00000040
 
 
 #ifndef BOOTLOADER
-/* Largest application reply: 32 log records, 1038 bytes including framing. */
+/* Самый длинный ответ: 32 записи журнала, 1038 байт вместе с обрамлением. */
 #include "../../User/usb_ring_size.h"
 #define USART_RX_DATA_SIZE   USB_TX_RING_BYTES
 #else
 #define USART_RX_DATA_SIZE   512
 #endif
-/* Exported functions ------------------------------------------------------- */
+
 void Set_System(void);
 void Set_USBClock(void);
 void Enter_LowPowerMode(void);
 void Leave_LowPowerMode(void);
 void USB_Interrupts_Config(void);
 void USB_Cable_Config (FunctionalState NewState);
-void USART_Config_Default(void);
 _Bool USART_Config(void);
 void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
 #ifndef BOOTLOADER
@@ -66,13 +59,14 @@ uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
 #endif
 void USB_Tx_Reset(void);
+#if DOMOVOI_DIAG
 uint16_t USB_Send_Debug(uint8_t *data, uint16_t count);
+#endif
 uint8_t USB_Tx_Pending(void);
 uint16_t USB_Tx_Queued(void);
 void Handle_USBAsynchXfer (void);
 void Get_SerialNum(void);
 
-/* External variables --------------------------------------------------------*/
 
-#endif  /*__HW_CONFIG_H*/
+#endif
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

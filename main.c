@@ -1,9 +1,7 @@
 // Доработка: Кряжев А., 2026
-/*****************
-Основная программа
-Автор: Корякин С.А.
-Внешний источник частоты 12 МГц, системная частота 72 МГц
-*****************/
+// Старт периферии платы v5 и главный цикл приложения HYBRID/C.
+// Адреса заголовка и векторов сохраняют договор с загрузчиком.
+// Историческая задержка 500 мс оставлена до выяснения аппаратного назначения.
 
 #include "main.h"
 #include "Bootloader/app_update.h"
@@ -18,6 +16,7 @@ unsigned int loop_max_ms = 0, loop_stalls = 0;
  * вместе с прерываниями. ОЗУ не занимает. Доработка: Кряжев А., 2026 */
 #define STACK_PAINT 0x5A5AA5A5u
 #pragma section = "CSTACK"
+// Заполнить свободный стек шаблоном контроля запаса.
 void stack_paint(void)
 {
   uint32_t *p = (uint32_t*)__section_begin("CSTACK");
@@ -25,6 +24,7 @@ void stack_paint(void)
   while (p < end) *p++ = STACK_PAINT;
 }
 #if DOMOVOI_DIAG
+// Посчитать минимальный оставшийся запас стека.
 uint32_t stack_free_bytes(void)
 {
   const uint32_t *b = (const uint32_t*)__section_begin("CSTACK");
@@ -36,8 +36,8 @@ uint32_t stack_free_bytes(void)
 #endif
 
 // основная программа
-/* Stackless failure uses the same watchdog stop as fault_capture.
- * FLT1 word 1 = STAK; no exception frame is claimed. */
+
+// При повреждении стека записать STAK и ждать сторож без стека.
 __stackless void stack_canary_check(void)
 {
   if(*(volatile uint32_t*)__section_begin("CSTACK")==STACK_PAINT) return;
@@ -65,6 +65,7 @@ __stackless void stack_canary_check(void)
   );
 }
 
+// Инициализировать плату и выполнять обработчики приложения.
 void main()
 {
   stack_paint();
@@ -76,20 +77,21 @@ void main()
 
   // переносим таблицу прерываний, т.к. она уже начинается не с нулевого адреса
   __disable_interrupt(); // Запрещаем прерывания
-  NVIC_SetVectorTable(NVIC_VectTab_FLASH, APLICATION_ADDRESS);
+  SCB->VTOR = APLICATION_ADDRESS;
   __enable_interrupt();
-  
+
   // начальная индикация
   led_load(PWR_LED, LED_ON);
-  
+
   // настраиваем периферию
   timers_init(); // таймер временных интервалов
-  spi_init(); // spi
+  spi_init();
   adc_init(); // ацп
-  
+
+  // Назначение задержки не описано в истории: не сокращать без проверки платы.
   delay_ms(500);
   wdt_reload(); // сброс watchdog
- 
+
   // настраиваем usb при необходимости при подключенном кабеле
   if (USB_DETECT)
     usb_init();
@@ -99,7 +101,7 @@ void main()
 
   // Инициализация пользовательской программы
   user_init();
-    
+
   // включаем питание gsm модуля
 
   #if DOMOVOI_DIAG
@@ -139,5 +141,5 @@ void main()
       prof_loop = t;
     }
     #endif
-  } // while
-} // main
+  }
+}

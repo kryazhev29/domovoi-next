@@ -1,5 +1,7 @@
-// Модуль световой индикации
-// Автор: Корякин Сергей
+// Доработка: Кряжев А., 2026
+// Индикация платы v5: два используемых светодиода и 16-битные рисунки.
+// Сдвиг рисунка выполняется каждые 100 мс, перезагрузка — после 16 шагов.
+// Загрузка нового рисунка может быть временно запрещена владельцем.
 
 #include "indication.h"
 
@@ -8,17 +10,18 @@
 Int8U led_shiftindex[LEDSCOUNT]; // Индекс выбора состояния светодиода из регистра
 Int16U led_reg[LEDSCOUNT]; // Регистр состояния светодиодов
 Int16U led_set[LEDSCOUNT]; // Регистр установки значения
-Int8U leddisableloadregister = 0; // Запретить загрузку значения в регистр 
+Int8U leddisableloadregister = 0; // Запретить загрузку значения в регистр
 
 
 // Вызывается по прерываниям таймера раз в 100 мс
+// Обновить фазу индикации через 100 мс.
 void led_fun100ms (void)
 {
   Int8U i;
   Int8U k = 0;
 
   for (i=0; i<LEDSCOUNT; i++)
-  { 
+  {
     if (((led_reg[i]>>led_shiftindex[i]) & 1) == 1)
     {
       k |= (1<<i);
@@ -35,9 +38,10 @@ void led_fun100ms (void)
 }
 
 // Загрузка начального значения в регистр светодиода
+// Загрузить рисунок выбранного светодиода.
 void led_load (Int8U led, Int16U val)
 {
-  if (leddisableloadregister) return;  
+  if (leddisableloadregister) return;
   if (led >= LEDSCOUNT) return;
   if (led_set[led] != val){
     led_set[led] = val;
@@ -47,6 +51,7 @@ void led_load (Int8U led, Int16U val)
 
 // Загрузить состояние по всем светодиодам
 // используется при управлении светодиодами по трем проводам
+// Выставить уровни используемых светодиодов.
 void led_set_port (unsigned char data)
 {
   unsigned char i;
@@ -56,31 +61,32 @@ void led_set_port (unsigned char data)
     {
 
       case 0: // LED1
-#ifdef LED1_ON        
+#ifdef LED1_ON
         if(data & 1) LED1_ON;
         else LED1_OFF;
-#endif        
+#endif
       break;
 
       case 1: // LED2
-#ifdef LED2_ON        
+#ifdef LED2_ON
         if(data & 2) LED2_ON;
         else LED2_OFF;
-#endif        
+#endif
       break;
 
       case 2: // LED3
-#ifdef LED3_ON        
+#ifdef LED3_ON
         if(data & 4) LED3_ON;
         else LED3_OFF;
-#endif        
-      break;     
-      
+#endif
+      break;
+
       default: break;
     }
 }
 
 // Разрешить/запретить загрузку значения в регистр индикации
+// Разрешить или запретить перезагрузку рисунка.
 void led_disableloadregister (uint8_t d)
 {
   leddisableloadregister = d;

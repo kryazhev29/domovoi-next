@@ -1,124 +1,20 @@
-/*************************************************************************
- *    File name   : uart_stm32f10x.h for STM
- *    Description : UARTs module
- *    Author      : Sergey Koryakin
-**************************************************************************/
+// Доработка: Кряжев А., 2026
+// Интерфейс единственного RS-485 USART1, без ветвей других портов.
+// Буфер принадлежит вызывающему модулю, драйвер принимает и передаёт байты.
+// legacy_port не используется; его удаление требует правки чужого ABI.
 
 #ifndef __UART_H
 #define __UART_H
-
 #include "arm_comm.h"
-#include "stm32f10x_usart.h"
-#include "stm32f10x_gpio.h"
+#include "stm32f10x.h"
 
-/*************************************************************************
- * Функция обработки прерывания по UART1
-*************************************************************************/
 void USART1_IRQHandler(void);
-
-/*************************************************************************
- * Функция обработки прерывания по UART2
-*************************************************************************/
-void USART2_IRQHandler(void);
-
-/*************************************************************************
- * Функция обработки прерывания по UART3
-*************************************************************************/
-void USART3_IRQHandler(void);
-
-/*************************************************************************
- * Инициализация Uart
- * Uart - номер порта
- * Baudrate - скорость
- * Stopbits - количество стоп-битов
-*************************************************************************/
-bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbuffer, uint16_t bfsize);
-
-/************************************************************************
-* Функция отправки байта по UART
-* uart - номер порта
-* ch - символ
-*************************************************************************/
-static bool uart_sendbyte (Int8U uart, Int8U ch);
-uint8_t uart_tx_failed(uint8_t num);
-
-/************************************************************************
-* Функция отправки строки по UART
-* uart - номер порта
-* string - строка
-*************************************************************************/
-void uart_sendstr (Int8U uart, char* string);
-
-/************************************************************************
-* Функция отправки буфера определенной длины по UART
-* uart - номер порта
-* string - указатель на буфер
-* size - размер
-*************************************************************************/
-void uart_send (Int8U uart, pInt8U buf, Int16U size);
-
-/************************************************************************
-* Функция очистки буфера приема 
-* num - номер буфера
-*************************************************************************/
-void uart_clear (Int8U num);
-
-// Атомарно снять префикс; dst == NULL отбрасывает только этот снимок.
-uint16_t uart_takerx(Int8U num, uint8_t *dst, uint16_t capacity);
-uint16_t uart_rxview(Int8U num, uint8_t **buffer);
-uint8_t uart_rxoverflow(Int8U num);
-
-// Возвращает кол-во принятых байт в буфере
-Int16U uart_received (Int8U num);
-
-// Возвращает указатель на буфер
-pInt8U uart_getptr (Int8U num);
-
-// Возвращает true, если буфер готов
-Int8U uart_getstate (Int8U num);
-
-/************************************************************************
-* Задержка перед проверкой буфера приема, для того чтобы успеть принять
-* все символы. Вставить в обработку прерывания по таймеру с 50 мс интервалом
-*************************************************************************/
-void uart_timer1ms (void);
-
-// Ожидание ответа по порту UART
-// timeout - время, через которое выходим, если не получили ответа
-// uart - порт по которому ждем
-// pattern - то что ищем
-bool uart_waitresp(Int8U num, Int16U t_ms, char* pattern);
-
-// Включить порт
-void uart_on (Int8U port);
-
-// Выключить порт
-void uart_off (Int8U port);
-
-// добавляет байт в буфер
-bool uart_addbyte (Int8U num, Int8U data);
-
-// Узнать размер буфера
-Int16U uart_getbuffersize(Int8U num);
-
-// установить время ожидания буфера приемника
-void uart_setRecTimeout (unsigned char u, unsigned int t);
-
-// включаем обработку прерывания по приёму байт
-void NVIC_USART_Config (Int8U us);
-
-// проверить включен порт или нет
-Int8U uart_checkenable (Int8U p);
-
-void uart_setrxbuffer (uint8_t u, uint8_t* rxbuffer, uint16_t bfsize);
-
-// Отправляем строку и ждем ответ
-// timeout - время, через которое выходим, в мс
-// uart - порт по которому ждем
-// pattern - то что ищем
-bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, Int16U t_ms, char* pattern);
-
-// Проверить что идет прием или нет
-bool uart_isReceiving(uint8_t num);
-
+bool uart_init(uint8_t legacy_port, uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t bfsize);
+void uart_send(uint8_t legacy_port, uint8_t *buf, uint16_t size);
+void uart_clear(uint8_t legacy_port);
+uint16_t uart_received(uint8_t legacy_port);
+uint8_t uart_getstate(uint8_t legacy_port);
+void uart_timer1ms(void);
+void uart_setRecTimeout(uint8_t legacy_port, unsigned int t);
+bool uart_isReceiving(uint8_t legacy_port);
 #endif

@@ -1,3 +1,7 @@
+// Доработка: Кряжев А., 2026
+// Приём W26 по EXTI2/EXTI3, снимок кадра и проверка чётности.
+// После тишины больше 25 мс карта передаётся за текущий проход.
+// ISR владеет новым кадром; счётчик шума насыщается, исходный PRIMASK сохраняется.
 
 #include "wiegand.h"
 #include "prof.h"
@@ -5,31 +9,24 @@
 volatile uint32_t wgData = 0;
 volatile uint32_t wgTime = 0;
 volatile uint8_t wgBitCount = 0;
-bool wgDataAvalible = false;
 uint32_t wgID = 0;
 
 
 // >>> прерывания -------------------------------------------------------------------
 // WG26
+// Принять бит D0 и очистить аппаратный флаг фронта.
 void EXTI2_IRQHandler(void){
   // D0
   wgData <<= 1;
-  /*if (++wgBitCount == 26){
-    wgDataAvalible = true;
-    wgID = (wgData>>1) & 0x03FFFFFF;
-  }*/
   if (wgBitCount < 255) wgBitCount++; // Шум не должен снова стать кадром из 26 бит.
   wgTime = timers_getMillis();
   EXTI->PR = EXTI_Line2;
 }
 
+// Принять бит D1 и очистить аппаратный флаг фронта.
 void EXTI3_IRQHandler(void){
   // D1
   wgData = (wgData<<1) | 1;
-  /*if (++wgBitCount == 26){
-    wgDataAvalible = true;
-    wgID = (wgData>>1) & 0x03FFFFFF;
-  }*/
   if (wgBitCount < 255) wgBitCount++; // Шум не должен снова стать кадром из 26 бит.
   wgTime = timers_getMillis();
   EXTI->PR = EXTI_Line3;
@@ -37,35 +34,19 @@ void EXTI3_IRQHandler(void){
 // <<< прерывания -------------------------------------------------------------------
 
 // инициализация
-void WG_init(void){
-  EXTI_InitTypeDef EXTI_InitStruct;
-  
-  // прерывания на ножках D0 и D1
-  EXTI_InitStruct.EXTI_Line = EXTI_Line2 | EXTI_Line3;
-  EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
-  EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
-  EXTI_InitStruct.EXTI_LineCmd = ENABLE;
-  EXTI_Init(&EXTI_InitStruct);
-  
-  NVIC_InitTypeDef NVIC_InitStructure;
-
-  NVIC_InitStructure.NVIC_IRQChannel = EXTI2_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-
-  NVIC_InitStructure.NVIC_IRQChannel = EXTI3_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-  
+// Разрешить фронты D0/D1 и их прежние приоритеты.
+void WG_init(void)
+{
+  const uint32_t lines = EXTI_IMR_MR2 | EXTI_IMR_MR3;
+  board_exti_config(lines, 1);
+  // Группа приоритетов задаётся другими драйверами, как в исходной программе.
+  board_irq_enable(EXTI2_IRQn, 0x10u);
+  board_irq_enable(EXTI3_IRQn, 0x10u);
   wgData = 0;
   wgBitCount = 0;
 }
 
-/* Two 13-bit parity groups in separate lanes; no loop and no lookup table. */
+// Проверить две группы чётности W26 без цикла и таблицы.
 static bool wg_parity_valid(uint32_t data)
 {
   uint32_t p = (data & 0x1fffu) | ((data >> 13) << 16);
@@ -74,12 +55,8 @@ static bool wg_parity_valid(uint32_t data)
 }
 
 // обработчик
+// Передать завершённую карту в текущем проходе после атомарного снимка.
 void WG_process(void){
-  if (wgDataAvalible){
-    uint32_t id = wgID;
-    wgDataAvalible = false; // снимаем владение до вызова обработчика
-    PROF_STEP(PROF_WG_CALL, WG_readedID(id));
-  }
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
   uint32_t now = timers_getMillis();
@@ -96,16 +73,15 @@ void WG_process(void){
     wgBitCount = 0;
   }
   __set_PRIMASK(mask); // следующий фронт уже принадлежит следующему кадру
-  if (complete){
-    wgDataAvalible = (count == 26) && (!WG_PARITY || wg_parity_valid(data));
-    if (wgDataAvalible)
-      PROF_CARD_MARK();
-    if (wgDataAvalible)
-      wgID = (data>>1) & 0x03FFFFFF; // прежнее формирование ID сохранено
+  if (complete && count == 26 && (!WG_PARITY || wg_parity_valid(data))) {
+    wgID = (data >> 1) & 0x03FFFFFFu;
+    PROF_CARD_MARK();
+    PROF_STEP(PROF_WG_CALL, WG_readedID(wgID));
   }
 }
 
 // разбор принятых данных определяется пользователем ---------------------------
+// Передать карту пользовательскому обработчику, если он определён.
 __weak void WG_readedID(uint32_t id){
-  
+
 }

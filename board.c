@@ -1,75 +1,42 @@
-// Описание входов/выходов платы
+// Доработка: Кряжев А., 2026
+// Периферия платы v5: GPIO, контроль питания и резервные регистры.
+// Начальные уровни выходов задаются до запуска пользовательской программы.
+// Настройка через CMSIS сохраняет прежние режимы и приоритеты прерываний.
 
 #include "board.h"
 
-// инициализация
-void board_init (void)
+// Настроить фронт при закрытых масках, затем разрешить уже настроенную линию.
+void board_exti_config(uint32_t lines, uint8_t falling)
 {
-  GPIO_InitTypeDef GPIO_InitStruct;
+  EXTI->IMR &= ~lines;
+  EXTI->EMR &= ~lines;
+  EXTI->RTSR &= ~lines;
+  EXTI->FTSR &= ~lines;
+  if (falling) EXTI->FTSR |= lines;
+  else EXTI->RTSR |= lines;
+  EXTI->IMR |= lines;
+}
 
-  GPIO_StructInit(&GPIO_InitStruct);
+// Установить готовый приоритет и разрешить выбранное внутреннее прерывание.
+void board_irq_enable(uint8_t irq, uint8_t priority)
+{
+  NVIC->IP[irq] = priority;
+  NVIC->ISER[irq >> 5] = 1u << (irq & 31);
+}
 
-  // включаем управление портами
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | 
-                         RCC_APB2Periph_GPIOA | 
-                         RCC_APB2Periph_GPIOB | 
-                         RCC_APB2Periph_GPIOC, ENABLE);
-
-  // отключаем JTAG? т.к. ножки используются под 1-wire
-  //GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, ENABLE);
-
-  // Выходы Push-Pull
-  // USB_PULLUP, OUT2
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_0;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_Out_PP;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOA, &GPIO_InitStruct); 
-  // FLASHCS, RTS_G, OUT1, DATALED, NETLED, PWRLED
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_14 | GPIO_Pin_3 | GPIO_Pin_6 | GPIO_Pin_7 | GPIO_Pin_8;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_Out_PP;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOB, &GPIO_InitStruct);  
-  // GSM_PWR
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_13;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_Out_PP;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  // Open drain
-  // GSM_KEY
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_14;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_Out_OD;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  // Входы
-  // VCC_VOLTAGE
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_4;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AIN;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOA, &GPIO_InitStruct);
-  // Input 1,2
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AIN;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOB, &GPIO_InitStruct);
-  // USB_DET
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_15;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOB, &GPIO_InitStruct);
-  // 433RX, D0, D1
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOA, &GPIO_InitStruct);
-  // BOOT PIN
-  GPIO_InitStruct.GPIO_Pin = GPIO_Pin_13;
-  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;
-  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(GPIOA, &GPIO_InitStruct);
-    
-  // Начальные установки
+// Настроить входы, безопасные уровни выходов и детектор питания 2,5 В.
+void board_init(void)
+{
+  RCC->APB2ENR |= RCC_APB2ENR_AFIOEN | RCC_APB2ENR_IOPAEN |
+                  RCC_APB2ENR_IOPBEN | RCC_APB2ENR_IOPCEN;
+  // Режимы по 4 бита: 0 — аналог, 3 — выход 50 МГц, 7 — открытый сток, 8 — подтяжка.
+  // Маски затрагивают только ножки платы, остальные настройки принадлежат драйверам.
+  GPIOA->CRL = (GPIOA->CRL & ~0x000FFFFFu) | 0x00008883u;
+  GPIOA->CRH = (GPIOA->CRH & ~0x00F0000Fu) | 0x00800003u;
+  GPIOB->CRL = (GPIOB->CRL & ~0xFF00F0FFu) | 0x33003000u;
+  GPIOB->CRH = (GPIOB->CRH & ~0xFF0F000Fu) | 0x43030003u;
+  GPIOC->CRH = (GPIOC->CRH & ~0x0FF00000u) | 0x07300000u;
+  GPIOA->BSRR = GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_13;
   LED1_OFF;
   LED2_OFF;
   LED3_OFF;
@@ -80,65 +47,39 @@ void board_init (void)
   CSEL_HIGH;
   RTSG_LOW;
 
-  // подаём тактирование на модуль CRC
-  RCC_AHBPeriphClockCmd(RCC_AHBPeriph_CRC, ENABLE);
-  
-  // Включение тактирования Backup памяти
-  // Данные сохраняются пока есть внешнее питание, не зависимо от сброса
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_PWR | RCC_APB1Periph_BKP, ENABLE);
-  PWR_BackupAccessCmd(ENABLE);
-  
-  // детектор напряжения питания процессора
-  PWR_PVDLevelConfig(PWR_PVDLevel_2V5); // устанавливаем порог в 2,5 В
-  // разрешаем прерывание по нарастающему фронту PVDO
-  // PVDO растёт при падении питания: запускаем согласованный сброс ниже 2,5 В
-  EXTI_InitTypeDef EXTI_InitStructure;
-  EXTI_InitStructure.EXTI_Line = EXTI_Line16;
-  EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
-  EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-  EXTI_ClearITPendingBit(EXTI_Line16);
-  EXTI_Init(&EXTI_InitStructure);
-
-  NVIC_InitTypeDef NVIC_InitStructure;
-  
-  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0); // наивысший приоритет
-  NVIC_InitStructure.NVIC_IRQChannel = PVD_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-  PWR_PVDCmd(ENABLE);
+  RCC->AHBENR |= RCC_AHBENR_CRCEN;
+  RCC->APB1ENR |= RCC_APB1ENR_PWREN | RCC_APB1ENR_BKPEN;
+  PWR->CR = (PWR->CR & ~PWR_CR_PLS) | PWR_CR_DBP | 0x60u;
+  EXTI->PR = EXTI_PR_PR16;
+  board_exti_config(EXTI_IMR_MR16, 0);
+  SCB->AIRCR = 0x05FA0700u;
+  board_irq_enable(PVD_IRQn, 0);
+  // Детектор включается последним: EXTI/NVIC уже готовы принять низкое питание при старте.
+  PWR->CR |= PWR_CR_PVDE;
 }
 
-// деинициализировать периферию
-void board_deinit (void)
+// Отключить и сбросить GPIO и AFIO перед переходом к загрузчику.
+void board_deinit(void)
 {
-  // отключаем порты  
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, DISABLE);
-  // сбрасываем
-  RCC_APB2PeriphResetCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE);
-  RCC_APB2PeriphResetCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, DISABLE);
+  const uint32_t ports = RCC_APB2ENR_AFIOEN | RCC_APB2ENR_IOPAEN |
+                         RCC_APB2ENR_IOPBEN | RCC_APB2ENR_IOPCEN;
+  RCC->APB2ENR &= ~ports;
+  RCC->APB2RSTR |= ports;
+  RCC->APB2RSTR &= ~ports;
 }
 
-// перезагрузка
-void board_reset (void)
+// Запросить системный сброс с барьерами CMSIS.
+void board_reset(void)
 {
   NVIC_SystemReset();
 }
 
-// ожидание стабилизации питания
-void board_waitPowerStability (void)
+// Ограниченно ждать восстановления питания, обслуживая аппаратный сторож.
+void board_waitPowerStability(void)
 {
-  if (PWR_GetFlagStatus(PWR_FLAG_PVDO) != RESET)
-  {
-    uint32_t timeout = SystemCoreClock;
-    
-    do
-    {
-      IWDG_ReloadCounter();
-      timeout--;
-    }
-    while ((PWR_GetFlagStatus(PWR_FLAG_PVDO) != RESET) && (timeout != 0)); // ждем пока напряжение ниже порога
-  }  
+  uint32_t timeout = SystemCoreClock;
+  while ((PWR->CSR & PWR_CSR_PVDO) && timeout != 0) {
+    IWDG->KR = 0xAAAAu;
+    timeout--;
+  }
 }

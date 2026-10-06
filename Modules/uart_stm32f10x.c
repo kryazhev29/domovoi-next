@@ -1,548 +1,154 @@
-/*************************************************************************
- *    File name   : uart_stm32f10x.c for STM
- *    Description : UARTs module
- *    Author      : Sergey Koryakin
-**************************************************************************/
+// Доработка: Кряжев А., 2026
+// Единственный UART приложения — USART1 для RS-485.
+// ISR дописывает буфер, главный цикл разбирает его после межбайтовой тишины.
+// Граница приёма проверяет ёмкость; ожидание освобождения TX ограничено.
+// Неиспользуемый первый аргумент временно сохраняет ABI чужих C/ASM-модулей.
+
 #include "uart_stm32f10x.h"
-#include "timers.h"
-#include "string.h"
+#include <string.h>
 
-#define UART_BYTESTOP   3       // Байтовый промежуток между посылками
-#define UARTS           3       // количество портов
-
-typedef struct{
-  uint8_t* rxbuffer;
+typedef struct {
+  uint8_t *rxbuffer;
   uint16_t bfsize;
   uint16_t received;
   uint16_t timetowait;
   uint16_t twait;
   uint8_t state;
   uint8_t receiving;
-  uint8_t txfailed; // ошибка передачи, используется прежнее выравнивание
-  uint8_t rxoverflow; // потерян байт ISR: неполный поток не продолжаем
-}uart_t;
+  uint8_t txfailed;
+  uint8_t rxoverflow;
+} uart_t;
 
 #pragma data_alignment=4
-static volatile uart_t uart[UARTS];
+static volatile uart_t uart;
 
-/*************************************************************************
- * Функция обработки прерывания по UART1
-*************************************************************************/
-#pragma call_graph_root="interrupt"
-void USART1_IRQHandler(void)
+// Принять внешний байт; переполнение отмечает потерю части кадра.
+static bool uart_addbyte(uint8_t data)
 {
-  if ((USART1->SR & USART_FLAG_RXNE) != (uint16_t)RESET){
-    USART1->SR = (uint16_t)~USART_FLAG_RXNE;
-    uart_addbyte(0, USART1->DR);
-  } 
+  uint8_t *buffer = uart.rxbuffer;
+  if (buffer == NULL) return false;
+  uint16_t count = uart.received;
+  if (count < uart.bfsize) {
+    buffer[count] = data;
+    uart.received = count + 1u;
+    uart.twait = uart.timetowait;
+    uart.receiving = 1;
+    uart.state = 0;
+    return true;
+  }
+  uart.rxoverflow = 1;
+  return false;
 }
 
-/*************************************************************************
- * Функция обработки прерывания по UART2
-*************************************************************************/
 #pragma call_graph_root="interrupt"
-void USART2_IRQHandler(void)
+// Принять аппаратный байт RS-485 в единственный буфер.
+void USART1_IRQHandler(void)
 {
-  if ((USART2->SR & USART_FLAG_RXNE) != (uint16_t)RESET){
-    USART2->SR = (uint16_t)~USART_FLAG_RXNE;
-    uart_addbyte(1, USART2->DR);
+  if (USART1->SR & USART_SR_RXNE) {
+    USART1->SR = (uint16_t)~USART_SR_RXNE;
+    uart_addbyte(USART1->DR);
   }
 }
 
-/*************************************************************************
- * Функция обработки прерывания по UART3
-*************************************************************************/
-
-/*************************************************************************
- * Инициализация Uart
- * Uart - номер порта
- * Baudrate - скорость
- * Stopbits - количество стоп-битов 0 - один, 1 - два
- * Parity - чётность 0 - нет, 1 - чёт, 2 - нечёт 
-*************************************************************************/
-bool uart_init (uint8_t Uart, uint32_t Baudrate, uint8_t Stopbits, uint8_t* rxbuffer, uint16_t bfsize)
+// Настроить USART1 и передать ему приёмный буфер владельца RS-485.
+bool uart_init(uint8_t legacy_port, uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t bfsize)
 {
-  if (Uart >= UARTS) return false;   
-    
-  GPIO_InitTypeDef GPIO_InitStructure;
-  USART_InitTypeDef USART_InitStruct;
-
-  GPIO_StructInit(&GPIO_InitStructure);
-  USART_StructInit(&USART_InitStruct);
-
-  USART_InitStruct.USART_BaudRate = Baudrate;
-  if (Stopbits == 0) USART_InitStruct.USART_StopBits = USART_StopBits_1;
-  else USART_InitStruct.USART_StopBits = USART_StopBits_2;
-  USART_InitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
-  /*switch (Parity)
-   {
-   case 0: USART_InitStruct.USART_Parity = USART_Parity_No; break;
-   case 1: USART_InitStruct.USART_Parity = USART_Parity_Even; break;
-   case 2: USART_InitStruct.USART_Parity = USART_Parity_Odd; break;
-   }*/
-
-  // Alternate function clock
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
-
+  (void)legacy_port;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
-  uart[Uart].rxbuffer = rxbuffer;
-  uart[Uart].bfsize = bfsize;
-  uart[Uart].timetowait = 2;
-  uart[Uart].received = 0;
-  uart[Uart].twait = 0;
-  uart[Uart].state = 0;
-  uart[Uart].receiving = 0;
-  uart[Uart].rxoverflow = 0;
-  uart[Uart].txfailed = 0;
+  uart.rxbuffer = rxbuffer;
+  uart.bfsize = bfsize;
+  uart.timetowait = 2;
+  uart.received = uart.twait = 0;
+  uart.state = uart.receiving = uart.rxoverflow = uart.txfailed = 0;
   __set_PRIMASK(mask);
-  
-
-  switch (Uart)
-   {
-   case 0:
-     USART_DeInit(USART1);   
-     RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1 | RCC_APB2Periph_GPIOA, ENABLE);
-     // Rx pin
-     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
-     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-     GPIO_Init(GPIOA, &GPIO_InitStructure);
-     // Tx pin
-     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
-     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-     GPIO_Init(GPIOA, &GPIO_InitStructure);
-     
-     USART_Init(USART1, &USART_InitStruct);
-     USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
-     NVIC_USART_Config(USART1_IRQn);
-     USART_Cmd(USART1, ENABLE);
-     break;
-
-   case 1:
-     USART_DeInit(USART2);
-     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-      RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
-     // Rx pin
-     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
-     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-     GPIO_Init(GPIOA, &GPIO_InitStructure);
-     // Tx pin
-     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
-     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-     GPIO_Init(GPIOA, &GPIO_InitStructure);
-     
-     USART_Init(USART2, &USART_InitStruct);
-     USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
-     NVIC_USART_Config(USART2_IRQn);
-     USART_Cmd(USART2, ENABLE);
-     break;
-
-   case 2:
-     USART_DeInit(USART3);
-     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-      RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
-     // Rx pin
-     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
-     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-     GPIO_Init(GPIOB, &GPIO_InitStructure);
-     // Tx pin
-     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
-     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-     GPIO_Init(GPIOB, &GPIO_InitStructure);
-     
-     USART_Init(USART3, &USART_InitStruct);
-     USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
-     NVIC_USART_Config(USART3_IRQn);
-     USART_Cmd(USART3, ENABLE);
-     break;
-   }
+  RCC->APB2ENR |= RCC_APB2ENR_AFIOEN;
+  RCC->APB2RSTR |= RCC_APB2RSTR_USART1RST;
+  RCC->APB2RSTR &= ~RCC_APB2RSTR_USART1RST;
+  RCC->APB2ENR |= RCC_APB2ENR_USART1EN | RCC_APB2ENR_IOPAEN;
+  GPIOA->CRH = (GPIOA->CRH & ~0x00000FF0u) | 0x000008B0u;
+  GPIOA->BSRR = GPIO_Pin_10;
+  USART1->CR2 = Stopbits == 0 ? 0 : USART_CR2_STOP_1;
+  USART1->CR1 = USART_CR1_RE | USART_CR1_TE | USART_CR1_RXNEIE;
+  USART1->CR3 = 0;
+  // Делитель APB2 и округление дроби BRR повторяют StdPeriph побитно.
+  uint32_t prescaler = (RCC->CFGR & RCC_CFGR_PPRE2) >> 11;
+  uint32_t clock = SystemCoreClock >> (prescaler < 4 ? 0 : prescaler - 3);
+  uint32_t divider = (25u * clock) / (4u * Baudrate);
+  uint32_t integer = divider / 100u;
+  USART1->BRR = (integer << 4) | (((divider - 100u * integer) * 16u + 50u) / 100u & 15u);
+  SCB->AIRCR = 0x05FA0600u;
+  board_irq_enable(USART1_IRQn, 0xF0u);
+  USART1->CR1 |= USART_CR1_UE;
   return true;
 }
 
-/************************************************************************
-* Функция отправки байта по UART
-* uart - номер порта
-* ch - символ
-*************************************************************************/
-static bool uart_sendbyte(Int8U num, Int8U ch)
+// Передать байт с ограниченным ожиданием освобождения регистра.
+static bool uart_sendbyte(uint8_t ch)
 {
-  if (num >= UARTS) return false;
-  USART_TypeDef *port = num == 0 ? USART1 : (num == 1 ? USART2 : USART3);
   uint32_t budget = 32000u;
-  while (USART_GetFlagStatus(port, USART_FLAG_TXE) == RESET) {
-    if (--budget == 0) { uart[num].txfailed = 1; return false; }
+  while ((USART1->SR & USART_SR_TXE) == 0) {
+    if (--budget == 0) { uart.txfailed = 1; return false; }
   }
-  USART_SendData(port, ch); return true;
+  USART1->DR = ch;
+  return true;
 }
 
-/************************************************************************
-* Функция отправки строки по UART
-* uart - номер порта
-* string - строка
-*************************************************************************/
-uint8_t uart_tx_failed(uint8_t num) { return num >= UARTS || uart[num].txfailed; }
-
-void uart_sendstr(Int8U num, char *string)
+// Передать двоичный буфер; при отказе порта прекратить текущую посылку.
+void uart_send(uint8_t legacy_port, uint8_t *buf, uint16_t size)
 {
-  if (num >= UARTS) return;
-  uart[num].txfailed = 0;
-  if (!uart_checkenable(num) || string == NULL) { uart[num].txfailed = 1; return; }
-  while (*string) { if (!uart_sendbyte(num, *string++)) return; }
+  (void)legacy_port;
+  uart.txfailed = 0;
+  if (!(USART1->CR1 & USART_CR1_UE) || (size && buf == NULL)) { uart.txfailed = 1; return; }
+  for (uint16_t i = 0; i < size; ++i) if (!uart_sendbyte(buf[i])) return;
 }
 
-/************************************************************************
-* Функция отправки буфера определенной длины по UART
-* uart - номер порта
-* string - указатель на буфер
-* size - размер
-*************************************************************************/
-void uart_send(Int8U num, pInt8U buf, Int16U size)
+// Атомарно освободить принятый кадр относительно ISR.
+void uart_clear(uint8_t legacy_port)
 {
-  if (num >= UARTS) return;
-  uart[num].txfailed = 0;
-  if (!uart_checkenable(num) || (size && buf == NULL)) { uart[num].txfailed = 1; return; }
-  for (Int16U i = 0; i < size; ++i) if (!uart_sendbyte(num, buf[i])) return;
-}
-
-/************************************************************************
-* Функция очистки буфера приема 
-* num - номер буфера
-*************************************************************************/
-// Снимок и передача префикса main выполняются атомарно; новый хвост принадлежит ISR.
-// Снимок префикса: ISR только дописывает хвост, main освобождает после разбора.
-uint8_t uart_rxoverflow(Int8U num) { return num < UARTS && uart[num].rxoverflow; }
-
-uint16_t uart_rxview(Int8U num, uint8_t **buffer)
-{
-  if (num >= UARTS || buffer == NULL) return 0;
+  (void)legacy_port;
+  if (uart.rxbuffer == NULL) return;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
-  *buffer = uart[num].rxbuffer;
-  uint16_t count = *buffer == NULL ? 0 : uart[num].received;
-  __set_PRIMASK(mask);
-  return count;
-}
-
-uint16_t uart_takerx(Int8U num, uint8_t *dst, uint16_t capacity)
-{
-  if (num >= UARTS || capacity == 0) return 0;
-  uint32_t mask = __get_PRIMASK();
-  __disable_irq();
-  uint8_t *buffer = uart[num].rxbuffer;
-  uint16_t received = uart[num].received;
-  uint16_t count = received;
-  if (count > capacity) count = capacity;
-  if (buffer == NULL) count = 0;
-  if (count){
-    uint16_t left = (uint16_t)(received - count);
-    if (dst != NULL) memcpy(dst, buffer, count);
-    memmove(buffer, buffer + count, left);
-    memset(buffer + left, 0, count);
-    uart[num].received = left;
-    if (left == 0){
-      uart[num].twait = 0;
-      uart[num].state = 0;
-      uart[num].receiving = 0;
-    }
-  }
-  __set_PRIMASK(mask);
-  return count;
-}
-
-void uart_clear (Int8U num)
-{
-  if (num >= UARTS) return;
-  if (uart[num].rxbuffer == NULL) return;
-
-  uint32_t mask = __get_PRIMASK();
-  __disable_irq();
-  uint8_t *buffer = uart[num].rxbuffer;
-  uint16_t count = uart[num].received;
-  memset(buffer, 0, count);
-  uart[num].received = 0;
-  uart[num].twait = 0;
-  uart[num].state = 0;
-  uart[num].receiving = 0;
-  uart[num].rxoverflow = 0;
+  memset(uart.rxbuffer, 0, uart.received);
+  uart.received = uart.twait = 0;
+  uart.state = uart.receiving = uart.rxoverflow = 0;
   __set_PRIMASK(mask);
 }
 
-// Возвращает кол-во принятых байт в буфере
-Int16U uart_received (Int8U num)
+// Вернуть число байтов для разбора фотоответа.
+uint16_t uart_received(uint8_t legacy_port)
 {
-  if (num >= UARTS) return 0;  
-  
-  return uart[num].received;
+  (void)legacy_port;
+  return uart.received;
 }
 
-// Возвращает указатель на буфер
-pInt8U uart_getptr (Int8U num)
+// Разрешить разбор кадра после заданной межбайтовой тишины.
+uint8_t uart_getstate(uint8_t legacy_port)
 {
-  if (num >= UARTS) return NULL;  
-  
-  return uart[num].rxbuffer;
+  (void)legacy_port;
+  return uart.twait ? 0 : uart.state;
 }
 
-// Возвращает true, если буфер готов
-Int8U uart_getstate (Int8U num)
+// Отсчитать миллисекунду межбайтовой тишины единственного порта.
+void uart_timer1ms(void)
 {
-  if (num >= UARTS) return 0;  
-  if (uart[num].twait) return 0;
-  
-  return uart[num].state;
-}
-
-/************************************************************************
-* Обработчик подсчета времени.
-*************************************************************************/
-void uart_timer1ms (void)
-{
-  for (uint8_t i=0; i<UARTS; i++) // Цикл проверки всех задержек
-   {
-   if (uart[i].twait) // Задержка перед проверкой буфера приема
-     if (--uart[i].twait == 0){
-       uart[i].state = 1;   // Буфер готов
-       uart[i].receiving = 0;
-     }
-   }
-}
-
-// Ожидание ответа по порту UART
-// timeout - время, через которое выходим, в мс
-// uart - порт по которому ждем
-// pattern - то что ищем
-// Поиск ограничен снимком количества принятых байтов, завершающий NUL не требуется.
-static bool uart_matchresponse(Int8U num, uint16_t first, const char *pattern)
-{
-  uint16_t count = uart[num].received;
-  uint32_t n = strlen(pattern);
-  if (count > uart[num].bfsize) count = uart[num].bfsize;
-  if (first > count || n > (uint16_t)(count - first)) return false;
-  if (n == 0) return true;
-  for (uint16_t i = first; i <= (uint16_t)(count - n); i++){
-    if (memcmp(uart[num].rxbuffer + i, pattern, n) == 0) return true;
+  if (uart.twait && --uart.twait == 0) {
+    uart.state = 1;
+    uart.receiving = 0;
   }
-  return false;
 }
 
-bool uart_waitresp(Int8U num, Int16U t_ms, char* pattern)
+// Задать межбайтовую задержку, минимум 1 мс.
+void uart_setRecTimeout(uint8_t legacy_port, unsigned int t)
 {
-  if (num >= UARTS) return false;
-
-  uart[num].twait = 0;
-  uart[num].state = 0;
-
-  uint16_t startrec = uart[num].received;
-  uint32_t start = timers_getMillis();
- 
-  while ((timers_getMillis() - start) < t_ms){
-    // принят байт
-    // приняли
-    if (uart[num].state){  
-      if (pattern == NULL){
-        return true;
-      } else{
-        if (uart_matchresponse(num, startrec, pattern))
-          return true;
-        else
-          return false;
-      }
-    }
-  }
-  return false;
+  (void)legacy_port;
+  uart.timetowait = t == 0 ? 1 : t;
 }
 
-// Включить порт
-void uart_on (Int8U port)
+// Проверить, продолжается ли приём текущего кадра.
+bool uart_isReceiving(uint8_t legacy_port)
 {
-  switch (port)
-   {
-   case 0: 
-      USART_Cmd(USART1, ENABLE);
-      break;
-   case 1: 
-      USART_Cmd(USART2, ENABLE);
-      break;
-   case 2:
-      USART_Cmd(USART3, ENABLE);
-      break;
-   }
-}
-
-// Выключить порт
-void uart_off (Int8U port)
-{
-  switch (port)
-   {
-   case 0: 
-      USART_Cmd(USART1, DISABLE);
-      break;
-   case 1: 
-      USART_Cmd(USART2, DISABLE);
-      break;
-   case 2:
-      USART_Cmd(USART3, DISABLE);
-      break; 
-   }
-}
-
-// добавляет байт в буфер
-inline bool uart_addbyte (Int8U num, Int8U data)
-{
-  uint8_t *buffer = uart[num].rxbuffer;
-  if (buffer == NULL) return false;
-  uint16_t count = uart[num].received;
-  uint16_t capacity = uart[num].bfsize;
-  if (count < capacity){
-    buffer[count] = data;
-    uart[num].received = (uint16_t)(count + 1u);
-    uint16_t wait = uart[num].timetowait;
-    uart[num].twait = wait;
-    uart[num].receiving = 1;
-    uart[num].state = 0;
-    return true;
-  }
-  uart[num].rxoverflow = 1;
-  return false;
-}
-
-// Узнать размер буфера
-Int16U uart_getbuffersize(Int8U num)
-{
-  if (num >= UARTS) return 0;
-  if (uart[num].rxbuffer == NULL) return 0;
-  
-  return uart[num].bfsize;
-}
-
-// установить время ожидания буфера приемника
-void uart_setRecTimeout (unsigned char u, unsigned int t)
-{
-  if (u >= UARTS) return;
-  if (t == 0) t = 1;
-  
-  uart[u].timetowait = t;
-}
-
-// включаем обработку прерывания по приёму байт
-void NVIC_USART_Config (Int8U us)
-{
-  NVIC_InitTypeDef NVIC_InitStructure;
-
-  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
-  NVIC_InitStructure.NVIC_IRQChannel = us;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 7;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-}
-
-// проверить включен порт или нет
-Int8U uart_checkenable (Int8U p)
-{
-  switch (p)
-   {
-   case 0: if ((USART1->CR1&USART_CR1_UE) == USART_CR1_UE) return 1;
-     break;
-   case 1: if ((USART2->CR1&USART_CR1_UE) == USART_CR1_UE) return 1;
-     break;
-   case 2: if ((USART3->CR1&USART_CR1_UE) == USART_CR1_UE) return 1;
-     break;  
-   }
-  return 0;
-}
-
-/************************************************************************
-* Указать буфер приема
-* u - номер порта
-*************************************************************************/
-void uart_setrxbuffer (uint8_t u, uint8_t* rxbuffer, uint16_t bfsize)
-{
-  if (u >= UARTS) return;
-
-  uint32_t mask = __get_PRIMASK();
-  __disable_irq();
-  uart[u].rxbuffer = rxbuffer;
-  uart[u].bfsize = bfsize;
-  uart[u].received = 0;
-  uart[u].twait = 0;
-  uart[u].state = 0;
-  uart[u].receiving = 0;
-  __set_PRIMASK(mask);
-}
-
-// Отправляем строку и ждем ответ
-// timeout - время, через которое выходим, в мс
-// uart - порт по которому ждем
-// pattern - то что ищем
-bool uart_sendStrAndWaitResp(Int8U num, char *str, char *rec, Int16U recsize, Int16U t_ms, char* pattern)
-{
-  if (num >= UARTS) return false;
-
-  uint32_t start;
-  uint16_t first = uart_received(num); // прежние URC не являются ответом этой команды
-  
-  // чистим
-  // Предыдущий снимок уже снят gsm_stashurc; новый хвост UART сохраняется.
-
-  // отправляем
-  uart_sendstr(num, str);
-  if (uart[num].txfailed) return false;
-
-  if (rec != NULL)
-    *rec = 0;  
-  
-  if (t_ms == 0)
-    return true;
-  
-  start = timers_getMillis();
-
-  while ((timers_getMillis() - start) < t_ms){
-    if (uart[num].rxoverflow) return false;
-    // принят байт
-    // приняли
-    if (uart[num].state && uart[num].received > first){
-      // копируем в приемный буфер
-      if (rec != NULL){
-        // Ответ бывает длиннее приёмника: в кадр попадает URC с данными от сервера
-        Int16U total = uart[num].received;
-        Int16U len = total >= first ? (uint16_t)(total - first) : 0;
-
-        if (recsize == 0)
-          len = 0;
-        else if (len > (Int16U)(recsize - 1))
-          len = (Int16U)(recsize - 1);
-
-        memcpy(rec, &uart[num].rxbuffer[first], len);
-        rec[len] = 0;
-      }
-      
-      if (pattern == NULL){
-        return true;
-      } else{
-        if (uart_matchresponse(num, first, pattern))
-          return true;
-        else
-          return false;
-      }
-    }
-    wdt_reload();
-    delay_ms(1);
-  }
-  return false;
-}
-
-// Проверить что идет прием или нет
-bool uart_isReceiving(uint8_t num)
-{
-  if (num >= UARTS) return false;
-  if (uart[num].receiving != 0)
-    return true;
-  return false;
+  (void)legacy_port;
+  return uart.receiving != 0;
 }

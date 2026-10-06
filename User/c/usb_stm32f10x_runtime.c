@@ -1,3 +1,8 @@
+// Доработка: Кряжев А., 2026
+// USB CDC: приём одного проверенного кадра и очередь двоичной передачи.
+// Сторож восстанавливает зависший USB из главного цикла после записи хоста.
+// Рабочие таймауты есть всегда; счётчики и снимки доступны только DOMOVOI_DIAG.
+
 #include "domovoi_diag.h"
 // Доработка: Кряжев А., 2026
 #include "usb_stm32f10x.h"
@@ -14,11 +19,17 @@ volatile uint16_t usb_rx_silence = 0;
 /* Граница байта на момент истечения; поздний ввод не должен оживить этот префикс. */
 volatile uint16_t usb_rx_expired = 0;
 static void usb_rx_consume(uint16_t length);
+#if DOMOVOI_DIAG
 volatile uint32_t usb_rx_errors = 0;
+#endif
+// Эпоха USB-сессии нужна владельцам флеш для отмены ответа после сброса USB.
+volatile uint32_t usb_bus_resets = 0;
 uint8_t usb_enabled = 0;
+#if DOMOVOI_DIAG
 volatile uint32_t usb_tx_errors = 0;
 volatile uint32_t usb_debug_dropped = 0;
 volatile uint32_t usb_recovery_count = 0;
+#endif
 volatile uint8_t usb_recovery_pending = 0;
 volatile uint8_t usb_recovery_ms = 0;
 
@@ -28,9 +39,9 @@ volatile uint8_t usb_recovery_ms = 0;
  * ненастроенном USB. */
 #define USB_WATCH_MS 2000u
 #define USB_AGE_MAX 0xFFFFu
+#if DOMOVOI_DIAG
 volatile uint32_t usb_esof_forced = 0;
 volatile uint32_t usb_esof_timeouts = 0;
-volatile uint32_t usb_bus_resets = 0;
 volatile uint32_t usb_recovery_reason = 0;
 volatile uint32_t usb_watch_in_recoveries = 0;
 volatile uint32_t usb_watch_unconf_recoveries = 0;
@@ -39,6 +50,7 @@ volatile uint32_t usb_last_recovery[7];
 volatile uint16_t usb_in_ago = USB_AGE_MAX;
 volatile uint16_t usb_out_ago = USB_AGE_MAX;
 volatile uint16_t usb_sof_ago = USB_AGE_MAX;
+#endif
 volatile uint16_t usb_hung_ms = 0;
 volatile uint16_t usb_unconf_ms = 0;
 volatile uint8_t usb_hung_armed = 0;
@@ -50,17 +62,24 @@ volatile uint8_t usb_unconf_armed = 0;
 #define USB_REGS 9u
 extern volatile uint8_t USB_Tx_State;
 extern volatile uint32_t usb_in_armed;
+#if DOMOVOI_DIAG
 volatile uint32_t usb_in_taken = 0;
 uint32_t usb_last_regs[USB_REGS];
+#endif
 /* Прерывания ERR: нет ответа, ошибка CRC, битстаффинга или кадра на шине. */
+#if DOMOVOI_DIAG
 volatile uint32_t usb_bus_errors = 0;
 uint32_t usb_last_bus_errors = 0;
+#endif
 /* Регистр адреса устройства и EP0R: устройство, потерявшее адрес, по-прежнему видит SOF
  * (широковещательный), но не получает адресованных ему IN. */
+#if DOMOVOI_DIAG
 uint32_t usb_last_addr[2];
+#endif
 
 /* EP1R, EP3R, счётчик TX EP1, ISTR, CNTR, FNR, USB_Tx_State, IN выставлен, IN забран. */
 #if DOMOVOI_DIAG
+// Обработать usb_regs_read с прежним аппаратным контрактом.
 static void usb_regs_read(uint32_t *r)
 {
   r[0] = _GetENDPOINT(ENDP1);
@@ -76,9 +95,12 @@ static void usb_regs_read(uint32_t *r)
 #endif
 
 /* Прерывание USB: хост забрал пакет IN. */
+// Обработать usb_in_done с прежним аппаратным контрактом.
 void usb_in_done(void)
 {
+#if DOMOVOI_DIAG
   usb_in_ago = 0;
+#endif
   usb_hung_ms = 0;
 #if DOMOVOI_DIAG
   usb_in_taken++;
@@ -86,6 +108,7 @@ void usb_in_done(void)
 }
 
 /* Прерывание USB: ошибка шины. */
+// Обработать usb_bus_error_seen с прежним аппаратным контрактом.
 void usb_bus_error_seen(void)
 {
 #if DOMOVOI_DIAG
@@ -94,13 +117,17 @@ void usb_bus_error_seen(void)
 }
 
 /* Прерывание USB: начало кадра. */
+// Обработать usb_sof_seen с прежним аппаратным контрактом.
 void usb_sof_seen(void)
 {
+#if DOMOVOI_DIAG
   usb_sof_ago = 0;
+#endif
 }
 
 /* Вызывается при неустранимом таймауте сброса USB. Переподключение делается из главного цикла,
  * внутри прерывания USB никогда не ждать хоста или SysTick. */
+// Обработать usb_request_recovery с прежним аппаратным контрактом.
 void usb_request_recovery(void)
 {
   uint32_t mask = __get_PRIMASK();
@@ -120,7 +147,9 @@ void usb_request_recovery(void)
 #endif
   usb_hung_armed = usb_unconf_armed = 0;
   usb_hung_ms = usb_unconf_ms = 0;
+#if DOMOVOI_DIAG
   usb_out_ago = USB_AGE_MAX;
+#endif
   _SetCNTR(CNTR_FRES);
   USB_PULLUP_OFF;
   usb_enabled = 0;
@@ -137,10 +166,11 @@ void usb_request_recovery(void)
 
 
 // Инициализация --------------------------------------------------------------
+// Обработать usb_init с прежним аппаратным контрактом.
 void usb_init(void)
-{ 
+{
   USB_PULLUP_OFF; /* Подтяжка включается только после инициализации USB. */
-  
+
   Set_System();
   Set_USBClock();
   USB_Interrupts_Config();
@@ -150,6 +180,7 @@ void usb_init(void)
 }
 
 // Копируем даные из USB в буфер ----------------------------------------------
+// Обработать usb_datareceived с прежним аппаратным контрактом.
 void usb_datareceived (uint8_t* ptr, uint16_t len)
 {
   uint32_t mask = __get_PRIMASK();
@@ -158,7 +189,9 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
   __disable_irq();
   count = usb_buffer_count;
   if (len != 0) {
+#if DOMOVOI_DIAG
     usb_out_ago = 0;
+#endif
     if (bDeviceState != CONFIGURED) {
 #if DOMOVOI_DIAG
       usb_out_unconfigured++;
@@ -195,6 +228,7 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
 }
 
 /* Возвращает, принята ли очередь целиком; отказы также сохраняются для диагностики. */
+// Обработать usb_send с прежним аппаратным контрактом.
 uint8_t usb_send (uint8_t* ptr, uint16_t len)
 {
   if (usb_enabled && USB_DETECT && USART_To_USB_Send_Data(ptr, len)) return 1;
@@ -204,27 +238,28 @@ uint8_t usb_send (uint8_t* ptr, uint16_t len)
   return 0;
 }
 
+#if DOMOVOI_DIAG
+// Передать отладочную строку только в диагностическом профиле.
 void usb_sendstr (char* str)
 {
   uint16_t len = strlen(str), sent = 0;
   if (usb_enabled && USB_DETECT) sent = USB_Send_Debug((uint8_t*)str, len);
-#if DOMOVOI_DIAG
   usb_debug_dropped += len - sent;
-#else
-  (void)sent;
-#endif
 }
+#endif
 
-// check time proccess, 1 ms --------------------------------------------------
+// Обработать usb_timer1ms с прежним аппаратным контрактом.
 void usb_timer1ms (void)
 {
   uint32_t mask = __get_PRIMASK();
   uint16_t silence, count;
   __disable_irq();
   if (usb_recovery_ms != 0) --usb_recovery_ms;
+#if DOMOVOI_DIAG
   if (usb_in_ago < USB_AGE_MAX) usb_in_ago++;
   if (usb_out_ago < USB_AGE_MAX) usb_out_ago++;
   if (usb_sof_ago < USB_AGE_MAX) usb_sof_ago++;
+#endif
   if (!USB_Tx_Pending()) { usb_hung_armed = 0; usb_hung_ms = 0; }
   else if (usb_hung_armed && usb_hung_ms < USB_AGE_MAX) usb_hung_ms++;
   if (bDeviceState == CONFIGURED) { usb_unconf_armed = 0; usb_unconf_ms = 0; }
@@ -240,6 +275,7 @@ void usb_timer1ms (void)
 }
 
 /* Вызывается с запрещёнными прерываниями, после освобождения префикса, взятого разборщиком. */
+// Обработать usb_rx_consume с прежним аппаратным контрактом.
 static void usb_rx_consume(uint16_t length)
 {
   uint16_t count = usb_buffer_count, expired = usb_rx_expired;
@@ -250,7 +286,7 @@ static void usb_rx_consume(uint16_t length)
   if (count == 0) usb_rx_silence = 0;
 }
 
-// usb check data --------------------------------------------------------------
+// Обработать usb_check_data с прежним аппаратным контрактом.
 void usb_check_data (void)
 {
   extern uint8_t USB_Tx_CommandReady(void);
@@ -270,8 +306,6 @@ void usb_check_data (void)
   if (usb_hung_ms >= USB_WATCH_MS || usb_unconf_ms >= USB_WATCH_MS) {
 #if DOMOVOI_DIAG
     if (usb_hung_ms >= USB_WATCH_MS) { usb_recovery_reason = 2; usb_watch_in_recoveries++; }
-#endif
-#if DOMOVOI_DIAG
     else { usb_recovery_reason = 3; usb_watch_unconf_recoveries++; }
 #endif
     usb_request_recovery();
@@ -346,12 +380,14 @@ void usb_check_data (void)
 }
 
 // активен usb или нет ---------------------------------------------------------
+// Обработать usb_get_state с прежним аппаратным контрактом.
 uint8_t usb_get_state (void)
 {
   return usb_enabled;
 }
 
 // очистка буфера --------------------------------------------------------------
+// Обработать usb_clear_buffer с прежним аппаратным контрактом.
 void usb_clear_buffer (void)
 {
   uint32_t mask = __get_PRIMASK();
@@ -367,12 +403,14 @@ void usb_clear_buffer (void)
 }
 
 // разбор принятых данных определяется пользователем ---------------------------
+// Обработать usb_data_reading с прежним аппаратным контрактом.
 __weak void usb_data_reading(uint8_t* ptr, uint16_t len)
 {
 }
 
 /* Команда 111: 23 значения USB в порядке, описанном у user_send_usbDiag. */
 #if DOMOVOI_DIAG
+// Обработать usb_diag_fill с прежним аппаратным контрактом.
 void usb_diag_fill(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -402,6 +440,7 @@ void usb_diag_fill(uint32_t *v)
 /* Хвост команды 111 v2: 9 значений регистров на момент последнего восстановления, затем 9
  * текущих. */
 #if DOMOVOI_DIAG
+// Обработать usb_diag_fill_regs с прежним аппаратным контрактом.
 void usb_diag_fill_regs(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -415,6 +454,7 @@ void usb_diag_fill_regs(uint32_t *v)
 
 /* Хвост команды 111 v3: ошибки шины сейчас и на момент последнего восстановления. */
 #if DOMOVOI_DIAG
+// Обработать usb_diag_fill_errors с прежним аппаратным контрактом.
 void usb_diag_fill_errors(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -427,6 +467,7 @@ void usb_diag_fill_errors(uint32_t *v)
 
 /* Хвост команды 111 v4: DADDR и EP0R на момент последнего восстановления, затем текущие. */
 #if DOMOVOI_DIAG
+// Обработать usb_diag_fill_addr с прежним аппаратным контрактом.
 void usb_diag_fill_addr(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -439,6 +480,7 @@ void usb_diag_fill_addr(uint32_t *v)
 }
 #endif
 
-/* Shared source-ownership transport in all variants. */
+/* Очередь передачи сохраняет владение источником ответа во всех вариантах. */
 extern uint8_t USB_Tx_Try(const uint8_t *,uint16_t);
+// Обработать usb_try_send с прежним аппаратным контрактом.
 uint8_t usb_try_send(const uint8_t *ptr,uint16_t len) { return USB_Tx_Try(ptr,len); }

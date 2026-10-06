@@ -1,3 +1,7 @@
+// Доработка: Кряжев А., 2026
+// USB CDC платы v5: usb_istr.
+// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
+// Диагностические счётчики отделены от обязательных таймаутов восстановления.
 /**
   ******************************************************************************
   * @file    usb_istr.h
@@ -16,8 +20,8 @@
   *
   *        http://www.st.com/software_license_agreement_liberty_v2
   *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
@@ -25,22 +29,12 @@
   ******************************************************************************
   */
 
-
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USB_ISTR_H
 #define __USB_ISTR_H
 
-/* Includes ------------------------------------------------------------------*/
 #include "usb_conf.h"
 
-/* Exported types ------------------------------------------------------------*/
-/* Exported constants --------------------------------------------------------*/
-/* Exported macro ------------------------------------------------------------*/
-/* Exported functions ------------------------------------------------------- */
-
  void USB_Istr(void);
-
-/* function prototypes Automatically built defining related macros */
 
 void EP1_IN_Callback(void);
 void EP2_IN_Callback(void);
@@ -89,6 +83,6 @@ void SOF_Callback(void);
 #ifdef ESOF_CALLBACK
 void ESOF_Callback(void);
 #endif
-#endif /*__USB_ISTR_H*/
+#endif
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

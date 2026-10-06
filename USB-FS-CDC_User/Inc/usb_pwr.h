@@ -1,3 +1,7 @@
+// Доработка: Кряжев А., 2026
+// USB CDC платы v5: usb_pwr.
+// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
+// Диагностические счётчики отделены от обязательных таймаутов восстановления.
 /**
   ******************************************************************************
   * @file    usb_pwr.h
@@ -16,8 +20,8 @@
   *
   *        http://www.st.com/software_license_agreement_liberty_v2
   *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   * See the License for the specific language governing permissions and
   * limitations under the License.
@@ -25,13 +29,10 @@
   ******************************************************************************
   */
 
-
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USB_PWR_H
 #define __USB_PWR_H
 
-/* Includes ------------------------------------------------------------------*/
-/* Exported types ------------------------------------------------------------*/
+
 typedef enum _RESUME_STATE
 {
   RESUME_EXTERNAL,
@@ -54,9 +55,6 @@ typedef enum _DEVICE_STATE
   CONFIGURED
 } DEVICE_STATE;
 
-/* Exported constants --------------------------------------------------------*/
-/* Exported macro ------------------------------------------------------------*/
-/* Exported functions ------------------------------------------------------- */
 uint8_t USB_WaitReset(void);
 void Suspend(void);
 void Resume_Init(void);
@@ -64,14 +62,13 @@ void Resume(RESUME_STATE eResumeSetVal);
 RESULT PowerOn(void);
 RESULT PowerOff(void);
 
-/* External variables --------------------------------------------------------*/
-extern  __IO uint32_t bDeviceState; /* USB device status */
+extern  __IO uint32_t bDeviceState; /* Текущее состояние устройства USB. */
 #ifdef BOOTLOADER
 extern __IO bool fSuspendEnabled;
 #else
 extern __IO usb_bool_t fSuspendEnabled;
-#endif  /* true when suspend is possible */
+#endif  /* Разрешение аппаратной приостановки USB. */
 
-#endif  /*__USB_PWR_H*/
+#endif
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

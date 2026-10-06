@@ -1,130 +1,59 @@
-/******************************************************************************
-*    ADC functions
-******************************************************************************/
+// Доработка: Кряжев А., 2026
+// АЦП платы v5: аналоговые IN1/IN2 и внешний источник питания.
+// Три injected-канала измеряются по запросу; датчик температуры не используется.
+// Калибровка и преобразование ограничены по времени, отказ сохраняет прежние входы.
 
 #include "adc_stm32f10x.h"
 #include "board.h"
+// Проверить доступность измерений после калибровки.
 uint8_t adc_ready(void) { return (ADC1->CR2 & ADC_CR2_ADON) != 0; }
+// Дождаться аппаратного флага; при таймауте отключить недостоверные измерения.
 static uint8_t adc_wait(uint8_t flag)
 {
   uint32_t budget = 32000u;
-  while (ADC_GetFlagStatus(ADC1, flag) != SET) {
-    if (--budget == 0) { ADC_Cmd(ADC1, DISABLE); return 0; }
+  while ((ADC1->SR & flag) == 0) {
+    if (--budget == 0) { ADC1->CR2 &= ~ADC_CR2_ADON; return 0; }
   }
   return 1;
 }
 
-
-#define TS_V25          (int32_t)1430 // mV
-#define TS_AVGSLOPE     (int32_t)43 // mV/0C * 10
-
-
-// инициализация: 2 входа, сканируются по програмному запуску, используются регистры injected
-// датчик температуры по regular входу
-void adc_init (void)
+// Настроить три injected-канала и ограниченно ждать калибровку.
+void adc_init(void)
 {
-  GPIO_InitTypeDef        GPIO_InitStructure;
-  ADC_InitTypeDef         ADC_InitStruct;
-
-  ADC_DeInit(ADC1);
-
-  // включаем АЦП и входы
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1 | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
-
-  /* ADCCLK */
-  if (SystemCoreClock == 72000000) RCC_ADCCLKConfig(RCC_PCLK2_Div6); // 72 / 6 = 12 MHz
-  else RCC_ADCCLKConfig(RCC_PCLK2_Div4); // 48 / 4 = 12 MHz
-
-  GPIO_StructInit(&GPIO_InitStructure);
-
-  // VCC_VOLTAGE
-  GPIO_InitStructure.GPIO_Pin = VCC_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(VCC_PORT, &GPIO_InitStructure);
-  // Input 1
-  GPIO_InitStructure.GPIO_Pin = IN1_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(IN1_PORT, &GPIO_InitStructure);
-  // Input 2
-  GPIO_InitStructure.GPIO_Pin = IN2_PIN;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_Init(IN2_PORT, &GPIO_InitStructure);
-
-  ADC_InitStruct.ADC_Mode = ADC_Mode_Independent;
-  ADC_InitStruct.ADC_ScanConvMode = ENABLE; // сканирование каналов, если DISABLE - один канал
-  ADC_InitStruct.ADC_ContinuousConvMode = DISABLE; // режим циклического преобразования
-  ADC_InitStruct.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
-  ADC_InitStruct.ADC_DataAlign = ADC_DataAlign_Right; // выравнивание правое
-  ADC_InitStruct.ADC_NbrOfChannel = 1; // количество опрашиваемых каналов в режиме сканера
-  ADC_Init(ADC1, &ADC_InitStruct);
-
-  // Set regular chanels
-  ADC_RegularChannelConfig(ADC1, ADC_Channel_16, 1, ADC_SampleTime_239Cycles5);
-
-  // Set injected sequencer length
-  ADC_InjectedSequencerLengthConfig(ADC1, 3);
-  // ADC1 injected channel configuration 
-  ADC_InjectedChannelConfig(ADC1, IN1_CHANEL, 1, ADC_SampleTime_28Cycles5);
-  ADC_InjectedChannelConfig(ADC1, IN2_CHANEL, 2, ADC_SampleTime_28Cycles5);
-  ADC_InjectedChannelConfig(ADC1, VCC_CHANEL, 3, ADC_SampleTime_28Cycles5);
-
-  // ADC1 injected external trigger configuration
-  ADC_ExternalTrigInjectedConvConfig(ADC1, ADC_ExternalTrigInjecConv_None);
-
-  // Enable ADC1
-  ADC_Cmd(ADC1, ENABLE);  
-
-  // Enable ADC1 reset calibration register   
-  ADC_ResetCalibration(ADC1);
-  // Check the end of ADC1 reset calibration register
-  {
-    uint32_t budget = 32000u;
-    while (ADC_GetResetCalibrationStatus(ADC1)) {
-      if (--budget == 0) { ADC_Cmd(ADC1, DISABLE); return; }
-    }
+  RCC->APB2RSTR |= RCC_APB2RSTR_ADC1RST;
+  RCC->APB2RSTR &= ~RCC_APB2RSTR_ADC1RST;
+  RCC->APB2ENR |= RCC_APB2ENR_ADC1EN | RCC_APB2ENR_IOPAEN | RCC_APB2ENR_IOPBEN;
+  RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_ADCPRE) |
+              (SystemCoreClock == 72000000u ? RCC_CFGR_ADCPRE_DIV6 : RCC_CFGR_ADCPRE_DIV4);
+  GPIOA->CRL &= ~0x000F0000u;
+  GPIOB->CRL &= ~0x000000FFu;
+  ADC1->CR1 = ADC_CR1_SCAN;
+  ADC1->CR2 = ADC_CR2_EXTSEL | ADC_CR2_JEXTSEL | ADC_CR2_ADON;
+  ADC1->SMPR2 = (3u << 24) | (3u << 27) | (3u << 12);
+  // При длине 3 последовательность начинается с JSQ2, затем JSQ3 и JSQ4.
+  ADC1->JSQR = (2u << 20) | (IN1_CHANEL << 5) | (IN2_CHANEL << 10) | (VCC_CHANEL << 15);
+  ADC1->CR2 |= ADC_CR2_RSTCAL;
+  uint32_t budget = 32000u;
+  while (ADC1->CR2 & ADC_CR2_RSTCAL) {
+    if (--budget == 0) { ADC1->CR2 &= ~ADC_CR2_ADON; return; }
   }
-
-  // Start ADC1 calibration
-  ADC_StartCalibration(ADC1);
-  // Check the end of ADC1 calibration
-  {
-    uint32_t budget = 32000u;
-    while (ADC_GetCalibrationStatus(ADC1)) {
-      if (--budget == 0) { ADC_Cmd(ADC1, DISABLE); return; }
-    }
+  ADC1->CR2 |= ADC_CR2_CAL;
+  budget = 32000u;
+  while (ADC1->CR2 & ADC_CR2_CAL) {
+    if (--budget == 0) { ADC1->CR2 &= ~ADC_CR2_ADON; return; }
   }
-
-  // включаем датчик температуры
-  ADC_TempSensorVrefintCmd(ENABLE);
-}
-
-// узнать температуру контроллера
-// в градусах
-int8_t adc_gettemp (void)
-{
-  int32_t temp;
-  
-  adc_startRegularConvertion();
-
-  temp = ((int32_t)ADC_GetConversionValue(ADC1)*3300)/4096; // в милливольтах
-  temp = ((TS_V25 - temp)*10)/TS_AVGSLOPE;
-  temp += 25;
-
-  return (int8_t)temp;
 }
 
 // узнать значение входа в мВ
+// Вернуть напряжение injected-канала в милливольтах.
 uint16_t adc_getinjectedvalue_mV (uint8_t ind)
 {
   uint32_t temp = 0;
 
   switch (ind){
-   case IN1_CHANEL: temp = ADC_GetInjectedConversionValue(ADC1, ADC_InjectedChannel_1); break;
-   case IN2_CHANEL: temp = ADC_GetInjectedConversionValue(ADC1, ADC_InjectedChannel_2); break;
-   case VCC_CHANEL: temp = ADC_GetInjectedConversionValue(ADC1, ADC_InjectedChannel_3); break;
+   case IN1_CHANEL: temp = ADC1->JDR1; break;
+   case IN2_CHANEL: temp = ADC1->JDR2; break;
+   case VCC_CHANEL: temp = ADC1->JDR3; break;
    }
 
   if (ind != VCC_CHANEL) temp = temp * 33 * 1016;
@@ -135,18 +64,11 @@ uint16_t adc_getinjectedvalue_mV (uint8_t ind)
   return (uint16_t)temp;
 }
 
-uint8_t adc_startRegularConvertion(void)
-{
-  if (!adc_ready()) return 0;
-  if (ADC_GetSoftwareStartInjectedConvCmdStatus(ADC1) == SET && !adc_wait(ADC_FLAG_JEOC)) return 0;
-  ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-  return adc_wait(ADC_FLAG_EOC);
-}
-
+// Запустить измерение и ограниченно ждать готовность.
 uint8_t adc_startInjectedConvertion(void)
 {
   if (!adc_ready()) return 0;
-  if (ADC_GetSoftwareStartConvStatus(ADC1) == SET && !adc_wait(ADC_FLAG_EOC)) return 0;
-  ADC_SoftwareStartInjectedConvCmd(ADC1, ENABLE);
-  return adc_wait(ADC_FLAG_JEOC);
+  if ((ADC1->CR2 & ADC_CR2_SWSTART) && !adc_wait(ADC_SR_EOC)) return 0;
+  ADC1->CR2 |= ADC_CR2_JEXTTRIG | ADC_CR2_JSWSTART;
+  return adc_wait(ADC_SR_JEOC);
 }
