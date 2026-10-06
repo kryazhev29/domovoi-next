@@ -3,6 +3,9 @@
 // Плохие длина и CRC сдвигают поиск на байт; неполный кадр живёт не более 30 с.
 // Завершение QIRD разрешает разбор; новая TCP-сессия полностью сбрасывает RAM-буфер.
 #include "user_logic_internal.h"
+#include "fast_kernels.h"
+#include "../table_runtime.h"
+#include "photo_runtime.h"
 enum { SERVER_RX_CAPACITY = 2048u, SERVER_RX_TIMEOUT_MS = 30000u };
 static uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
 static uint16_t server_rx_count, server_rx_ready;
@@ -130,7 +133,7 @@ void user_comm_session(bool open)
   fw_service_quiet(CH_SERVER); upload_runtime_quiet(CH_SERVER);
   fw_async_quiet(CH_SERVER);
   table_runtime_quiet(CH_SERVER); service_crc_quiet(CH_SERVER);
-  device.connectionhandle = 0; device.registredOnServer = 0; device.answerTimeout = 0;
+  device.connectionhandle = 0; device.registredOnServer = 0;
   /* Поколение TCP отменяет неподтверждённый пакет; сохранённые курсоры и USB не трогаем. */
   if (store.job && store.channel == CH_SERVER) store.quiet = 1;
   log_unacked[1] = temp_unacked[1] = 0; store.seen &= 5u;

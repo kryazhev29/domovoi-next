@@ -3,6 +3,9 @@
 // Имя команды разбирается один раз, ПИН и формат проверяются на входе.
 // Занятая отправка оставляет SMS в SIM; очередь уведомления существует только в RAM.
 #include "user_logic_internal.h"
+#include "../user_format.h"
+#include "../../Modules/comm_server.h"
+#include "user_comm.h"
 enum { SMS_UNKNOWN, SMS_ADD, SMS_IMEI, SMS_STATUS, SMS_RESET, SMS_SETOUT, SMS_DEFAULT };
 static struct { char id[10]; uint8_t due; } unreg_sms_pending;
 
@@ -96,9 +99,6 @@ format_error:
 
 // Поставить SMS в очередь модема и записать событие принятия.
 void user_sendsms(char *mes, char *num){
-#ifdef DEBUG_USER
-  user_debug(">>U Sending SMS ...\r\n");
-#endif
   if (user_comm_sms(num, mes))
     log_addSystemEventID(LOG_SYS_SENDSMS, user_last10digitsnumber(num));
 }

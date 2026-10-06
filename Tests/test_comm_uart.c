@@ -1,4 +1,6 @@
-/* Доработка: Кряжев А., 2026. Модель регистров USART3, без платы. */
+/* Доработка: Кряжев А., 2026. Модель регистров USART3, без платы.
+   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
+   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -42,7 +44,7 @@ static uint8_t rx[512];
 #define tx_data uart_state.tx_ptr
 #define tx_count uart_state.tx_length
 #define tx_pos uart_state.tx_index
-/* HEADER */
+/* ЗАГОЛОВОК МОДУЛЯ */
 typedef struct { volatile uint32_t SR, DR, BRR, CR1, CR2, CR3; } USART_TypeDef;
 static USART_TypeDef regs;
 #define USART3 (&regs)
@@ -78,6 +80,7 @@ static uint32_t primask;
 static bool rts_stop;
 static unsigned rts_writes;
 #if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
+// Смоделировать линию RTS и записать её переход.
 static void set_rts(bool stop) { rts_stop=stop; rts_writes++; }
 #define RTSG_HIGH set_rts(true)
 #define RTSG_LOW set_rts(false)
@@ -91,11 +94,13 @@ static uint8_t wire[2048];
 void USART3_IRQHandler(void);
 void DMA1_Channel3_IRQHandler(void);
 static unsigned dma_irqs, uart_irqs;
+// Очистить флаги DMA в модели регистров.
 static void dma_clear_flags(void) {
   uint32_t flags=dma.IFCR;
   if (flags&DMA_IFCR_CGIF3) flags|=DMA_ISR_HTIF3|DMA_ISR_TCIF3|DMA_ISR_TEIF3;
   dma.ISR&=~flags; dma.IFCR=0;
 }
+// Передать один байт DMA в модель памяти.
 static void dma_byte(uint8_t b, bool service) {
   dma_clear_flags(); CHECK(dma_channel.CCR&DMA_CCR3_EN);
   CHECK(dma_channel.CNDTR && dma_channel.CNDTR<=512);
@@ -108,12 +113,16 @@ static void dma_byte(uint8_t b, bool service) {
 /* Старые границы проверяем при наблюдении каждого байта; новые потоки —
    с настоящими HT/TC и тиком раз в 12 байт, без RXNE IRQ. */
 static void interrupt_byte(uint8_t b, uint32_t flags);
+// Выдать маску прерываний модели процессора.
 static uint32_t __get_PRIMASK(void) { dma_clear_flags(); return primask; }
+// Запретить прерывания в модели процессора.
 static void __disable_irq(void) { primask=1; }
+// Восстановить маску прерываний модели процессора.
 static void __set_PRIMASK(uint32_t m) {
   primask=m;
   if (!m && pending_sr) { uint32_t sr=pending_sr; pending_sr=0; interrupt_byte(pending_byte,sr); comm_uart_tick(); }
 }
+// Обозначить барьер памяти в однопоточной модели.
 static void __DMB(void) {
   dma_clear_flags(); barriers++;
   if (edge_at && barriers==edge_at) {
@@ -128,7 +137,7 @@ static void board_irq_enable(uint8_t irq,uint8_t priority)
   CHECK(irq==USART3_IRQn || irq==DMA1_Channel3_IRQn);
   irq_priorities[irq]=priority; irq_enabled[irq/32] |= 1u<<(irq%32);
 }
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 /* Учесть аппаратные эффекты записи DR и чтения SR/DR после IRQ. */
 static void model_irq(uint32_t flags, uint8_t b)
 {
@@ -151,6 +160,7 @@ static void interrupt_byte(uint8_t b, uint32_t flags)
   model_irq(flags,b);
 }
 
+// Сбросить регистры и наблюдения модели UART.
 static void reset(void) {
   primask=0; pending_sr=0; edge_at=0; barriers=0; writes=reads=0;
   memset(&dma,0,sizeof(dma)); memset(&dma_channel,0,sizeof(dma_channel)); dma_irqs=uart_irqs=0;
@@ -169,6 +179,7 @@ static void reset(void) {
   CHECK(irq_enabled[USART3_IRQn/32]&(1u<<(USART3_IRQn%32)));
   CHECK(irq_enabled[DMA1_Channel3_IRQn/32]&(1u<<(DMA1_Channel3_IRQn%32)));
 }
+// Проверить приём UART и переполнение кольца.
 static void rx_tests(void) {
   const uint8_t *p=NULL; comm_uart_stats_t s;
   reset(); CHECK(comm_uart_peek(&p)==0 && p==NULL);
@@ -213,10 +224,12 @@ static bool owned_tx(const uint8_t *data, uint16_t count) {
   CHECK((data==at_command && count<=sizeof(at_command)) || (data==frame && count<=sizeof(frame)));
   return comm_uart_tx(data,count);
 }
+// Завершить DMA и физическую передачу UART.
 static void tx_finish(unsigned count) {
   for (unsigned i=0;i<count;i++) { regs.SR=USART_SR_TXE|USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(!comm_uart_tx_done()); }
   regs.SR=USART_SR_TC; model_irq(regs.SR,(uint8_t)regs.DR); CHECK(comm_uart_tx_done());
 }
+// Проверить очередь и завершение передачи UART.
 static void tx_tests(void) {
   const uint8_t *rxp; reset(); CHECK(!comm_uart_tx_done());
   at_command[0]='A'; at_command[1]='B'; at_command[2]='C';
@@ -254,6 +267,7 @@ static void tx_tests(void) {
   memset(at_command,0xa5,sizeof(at_command)); CHECK(owned_tx(at_command,sizeof(at_command)));
   tx_finish(sizeof(at_command)); comm_uart_init(115200); CHECK(uart_state.tx_ptr==NULL && !comm_uart_tx_done());
 }
+// Проверить управление потоком RTS/CTS.
 static void rts_tests(void) {
 #if DOMOVOI_APP_HW == 139 && !defined(BOARD_IP_V3)
   const uint8_t *p; comm_uart_stats_t stats; reset();
@@ -292,7 +306,7 @@ static void rts_tests(void) {
 }
 /* Берём настоящий обработчик тика из stm32_it.c при сборке модели. */
 static void timers_handle(void) {}
-/* TICK */
+/* ТИК */
 static unsigned drain(unsigned expected) {
   const uint8_t *p; uint16_t n;
   while ((n=comm_uart_peek(&p))!=0) {
@@ -301,6 +315,7 @@ static unsigned drain(unsigned expected) {
   }
   return expected;
 }
+// Проверить DMA, ошибки UART и сброс передачи.
 static void dma_tests(void) {
   const uint8_t *p; comm_uart_stats_t stats;
   /* Длинный непрерывный поток: два оборота счётчиков 16 бит,
@@ -382,4 +397,5 @@ static void dma_tests(void) {
   dma.ISR=DMA_ISR_TEIF3; DMA1_Channel3_IRQHandler();
   CHECK(comm_uart_errors()&COMM_UART_OVERFLOW); CHECK(comm_uart_peek(&p)==0);
 }
+// Запустить все сценарии этого стенда.
 int main(void) { rcc.AHBENR=0; dma_channel.CNDTR=0; SysTick_Handler(); CHECK(!uart_state.rx_write && !dma.IFCR && !rts_writes); rx_tests(); tx_tests(); rts_tests(); dma_tests(); puts("commuart: RX DMA/CNDTR/HT/TC/IDLE/tick, wrap/overrun/abort, TX/RTS/CTS PASS"); return 0; }

@@ -154,7 +154,7 @@ void comm_channel_priority(bool pending) { ch.flags.urgent = (uint8_t)pending; }
 /* Выдать свободный слот производителю кадра. */
 uint8_t *comm_tx_acquire(uint16_t *capacity)
 {
-  if (capacity) *capacity = sizeof(frame);
+  *capacity = sizeof(frame);
   if (!comm_channel_ready() || ch.tx_state != TX_FREE || ch.flags.urgent
       || ch.call.active) return NULL;
   ch.tx_state = TX_BUILD; ch.tx_since = ch.now; return frame;
@@ -213,7 +213,7 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
 {
   char cmd[128];
   if (op == OP_OPEN || op == OP_READ) {
-    const char *p = slm_commands + (op == OP_OPEN ? SLM_TCP_COMMAND : SLM_READ_COMMAND);
+    const char *p = op == OP_OPEN ? slm_tcp_command : slm_read_command;
     const char *host = NULL;
     uint16_t value = ch.capacity;
     if (op == OP_OPEN) {
@@ -368,8 +368,6 @@ void comm_channel_poll(uint32_t now_ms)
     char cmd[32]; uint16_t n = comm_at_copy(cmd, sizeof(cmd), 0, "AT+QISEND=0,");
     n = comm_at_decimal(cmd, sizeof(cmd), n, ch.frame_count);
     if (n < sizeof(cmd) && channel_command(cmd, COMM_AT_PROMPT, COMM_T_SEND_PROMPT, OP_PROMPT)) ch.tx_state = TX_PROMPT;
-  } else if (ch.tx_state == TX_PAYLOAD) {
-    if (channel_command(NULL, COMM_AT_SEND, COMM_T_SEND_RESULT, OP_SEND)) ch.tx_state = TX_SENDING;
   } else if (ch.tx_state == TX_ACK && (int32_t)(now_ms - ch.ack_next) >= 0)
     channel_command("AT+QISEND=0,0", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_ACK);
   else if (ch.tx_state == TX_FREE && ch.probe && !ch.probe_active) {

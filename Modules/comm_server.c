@@ -10,15 +10,16 @@
 #include <string.h>
 static struct {
   comm_server_handlers_t handlers;
-  uint32_t now, registration_since, status_since, stable_since, silent_since;
+  uint32_t now, registration_since, status_since, periodic_since, stable_since, silent_since;
   uint8_t state, registrations, misses, status_id, last_status_id, silent_step, address;
-  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1; } flags;
+  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1, first_status:1; } flags;
 } sv;
 enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
 /* Вне sv: переживают comm_server_init при перезапуске модема. */
 static void (*sv_no_internet)(void);
 static bool (*sv_link)(uint8_t, uint8_t);
 static uint8_t sv_noted; /* записано до исправления: биты 0/1 - ошибка адреса 0/1, 2 - нет сети, 3 - нет интернета */
+// Подключить восстановление при отсутствии интернета.
 void comm_server_no_internet(void (*handler)(void)) { sv_no_internet = handler; }
 /* Подключить запись изменений связи в журнал. */
 void comm_server_link(bool (*handler)(uint8_t, uint8_t)) { sv_link = handler; }
@@ -75,7 +76,8 @@ void comm_server_registered(uint8_t success)
   if (sv.state != SV_REG_WAIT) return;
   if (!success) { comm_channel_reopen(0); return; }
   comm_channel_registered(); sv.state = SV_ONLINE; sv.flags.traffic_event = sv.misses = sv.flags.status_wait = 0;
-  sv.flags.stable = 1; sv.stable_since = sv.status_since = sv.now;
+  sv.flags.stable = 1; sv.stable_since = sv.periodic_since = sv.now;
+  sv.flags.first_status = 1;
   server_link(COMM_LINK_UP, sv.address); sv_noted = 0;
 }
 /* Начать срок ожидания подтверждения отправленного статуса. */
@@ -101,11 +103,16 @@ void comm_server_poll(uint32_t now_ms)
 {
   sv.now = now_ms;
   if (comm_channel_call_pending() && comm_server_online()) sv.status_since = now_ms;
-  if (comm_server_online() && now_ms - sv.status_since >= comm_timeouts[COMM_T_STATUS]) {
-    if (sv.flags.status_wait && comm_channel_expected()) comm_channel_reopen(0);
-    else if (!sv.flags.status_due && sv.flags.status_wait && sv.misses < 3) ++sv.misses;
-    sv.flags.status_wait = 0; sv.flags.status_due = 1;
+  if (comm_server_online() && sv.flags.status_wait &&
+      now_ms - sv.status_since >= comm_timeouts[COMM_T_STATUS]) {
+    if (comm_channel_expected()) comm_channel_reopen(0);
+    else if (!sv.flags.status_due && sv.misses < 3) ++sv.misses;
+    sv.flags.status_wait = 0;
   }
+  /* Первый периодический статус — через 5 с регистрации, следующие — через 15 с.
+     У внеочередного статуса свой срок ACK: он не сдвигает периодический запрос. */
+  if (comm_server_online() && now_ms - sv.periodic_since >=
+      comm_timeouts[sv.flags.first_status ? COMM_T_SERVER_REPLY : COMM_T_STATUS]) sv.flags.status_due = 1;
   comm_channel_priority(sv.flags.status_due || sv.state == SV_REG);
   comm_channel_poll(now_ms);
   if (sv.state == SV_OFF) return;
@@ -113,15 +120,15 @@ void comm_server_poll(uint32_t now_ms)
     if (sv.registrations < 2) sv.state = SV_REG;
     else { comm_channel_reopen(0); return; }
   }
-  if (sv.state == SV_REG && !comm_tx_busy()) {
+  if (sv.state == SV_REG && !comm_tx_busy() && !comm_channel_call_pending()) {
     comm_channel_priority(false);
     sv.handlers.registration();
     if (comm_tx_busy()) { ++sv.registrations; sv.registration_since = now_ms; sv.state = SV_REG_WAIT; }
   }
-  if (sv.flags.status_due && !comm_tx_busy()) {
+  if (sv.flags.status_due && !comm_tx_busy() && !comm_channel_call_pending()) {
     comm_channel_priority(false);
     sv.handlers.status();
-    if (comm_tx_busy()) { sv.flags.status_due = 0; sv.status_since = now_ms; }
+    if (comm_tx_busy()) { sv.flags.status_due = sv.flags.first_status = 0; sv.periodic_since = now_ms; }
   }
   comm_channel_priority(sv.flags.status_due || sv.state == SV_REG);
   /* Обработка входящих подтверждений также ждёт освобождения слота. */

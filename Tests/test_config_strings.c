@@ -8,7 +8,7 @@ typedef uint8_t Int8U;
 typedef uint16_t Int16U;
 typedef uint32_t Int32U;
 typedef uint8_t *pInt8U;
-/* TYPES */
+/* рхош опнрнйнкю */
 #define PROTOCOL_VERSION 1
 static config_s config;
 static struct { uint8_t before[16]; device_s value; uint8_t after[16]; } dev;
@@ -16,7 +16,7 @@ static struct { uint8_t before[16]; device_s value; uint8_t after[16]; } dev;
 static struct { uint32_t start, size; } mem[16];
 static uint8_t flash[sizeof(config_s)+sizeof(device_s)];
 static unsigned reads, saves, defaults, resumes, acks, stamps;
-/* CRC */
+/* йнмрпнкэмюъ ясллю */
 static void wdt_reload(void) {}
 static void delay_ms(unsigned n) { CHECK(n == 10); }
 static void mem_read(uint32_t address, uint8_t *p, uint16_t n)
@@ -41,7 +41,7 @@ static char *checked_strcpy(char *dest, size_t capacity, const char *p, size_t s
 enum { SLM_IDLE };
 static uint8_t comm_modem_state(void) { return 2; }
 static void user_comm_boot(void) { CHECK(0); }
-/* PRODUCTION */
+/* йнд лндскъ */
 #undef strcpy
 static void init(void)
 {

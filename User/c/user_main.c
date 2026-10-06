@@ -3,6 +3,18 @@
 // Инициализация восстанавливает настройки до разрешения рабочих команд.
 // Запись флеша выполняют владельцы хранилища; после сброса сроки восстанавливаются из device.
 #include "user_logic_internal.h"
+#include "user_comm.h"
+#include "user_fw_reason.h"
+#include "../sched16.h"
+#include "photo.h"
+#include "photo_runtime.h"
+#include "../../Modules/comm_server.h"
+#include "../../Modules/comm_info.h"
+#include "../../Modules/comm_modem.h"
+#include "../../Bootloader/app_update.h"
+#ifndef RELEASE_BUILD
+#define DEBUG_USER
+#endif
 #pragma data_alignment=4
 uint8_t port_buffer[PORTBUFSIZE];
 #pragma data_alignment=4
@@ -66,7 +78,7 @@ void user_init(void)
   mem[MB_TEMPID].start = 1999872;
   mem[MB_TEMPID].size = 49152;
 
-  if (device.memID == 0x17C2){ // память 16 MBit
+  if (device.memID == 0x17C2){ // память 16 МиБ
     mem[MB_PHOTO].start = 2097152;
     mem[MB_PHOTO].size = 1048576;
   } else{
@@ -190,18 +202,16 @@ void user_loop(void)
     // уровень сигнала
     device.connected = comm_channel_ready();
     /* Статусы 1/2 и NextConfig: сигнал, регистрация CS/PS, тип сети (как у прежней связи). */
-    device.csq = comm_info()->csq;
-    device.creg = comm_info()->creg;
-    device.cgreg = comm_info()->cgreg;
-    device.netType = comm_info()->net;
+    const comm_info_t *info = comm_info();
+    device.csq = info->csq;
+    device.creg = info->creg;
+    device.cgreg = info->cgreg;
+    device.netType = info->net;
 
     // перезагрузка через заданный таймаут
     if (device.timeToReset){
       if (--device.timeToReset == 0){
         log_addSystemEvent(LOG_SYS_RESETONCMD);
-#ifdef DEBUG_USER
-  user_debug(">>U Reset on time\r\n");
-#endif
         user_savereset();
       }
     }
@@ -209,9 +219,6 @@ void user_loop(void)
     // сброс на заводские
     if (device.timeToDefault){
       if (--device.timeToDefault == 0){
-#ifdef DEBUG_USER
-  user_debug(">>U Factory on time\r\n");
-#endif
         user_factoryReset();
       }
     }
@@ -226,42 +233,6 @@ void user_loop(void)
       }
     }
     sync_end_tick(); // события 6-10
-
-    // время получения ответа от сервера при подключении
-    if (device.answerTimeout){
-      if (--device.answerTimeout == 0){
-        switch (device.answerID){
-        case 1:
-#ifdef DEBUG_USER
-  user_debug(">>U Not answer to reg pack\r\n");
-#endif
-          device.registredOnServer = 0;
-        comm_channel_reopen(0);
-          break;
-
-        case 2:
-          if (++device.lmCount >= MAXSTATUSANSWERERROR){
-#ifdef DEBUG_USER
-  user_debug(">>U Not answer to status\r\n");
-#endif
-            device.registredOnServer = 0;
-        comm_channel_reopen(0);
-          }
-          break;
-        }
-      }
-    }
-
-    // отправить live message
-    if (device.registredOnServer){
-      // отправка статуса
-      if (device.lmTimer){
-        if (--device.lmTimer == 0){
-          device.lmTimer = STATUSTIMERINTERVAL;
-          user_send_statusPack(CH_SERVER);
-        }
-      }
-    }
 
     // перезагрузиться в режим обновления FW
     if (device.rebootToUpdate){
@@ -285,9 +256,6 @@ void user_loop(void)
 
     // пробная прошивка после обновления так и не зарегистрировалась на сервере - откат
     if (app_trial_expired()){
-#ifdef DEBUG_USER
-  user_debug(">>U Trial expired, rollback\r\n");
-#endif
       app_trial_rollback();
       user_savereset();
     }
@@ -304,9 +272,6 @@ void user_loop(void)
     if (config.restartTime != 0){
       if (device.worktime >= ((uint32_t)config.restartTime*3600)){
         log_addSystemEvent(LOG_SYS_RESETONTIMER);
-#ifdef DEBUG_USER
-  user_debug(">>U Reset on work time\r\n");
-#endif
         user_savereset();
       }
     }
@@ -335,7 +300,7 @@ void user_indication (void)
 {
   // NET LED: на сервере - горит, модем в сети - мигает, выходит на связь - мигает часто
   if (comm_server_online()) led_load(NET_LED, LED_ON);
-  else if (modem_slm336_ready()) led_load(NET_LED, LED_FL1);
+  else if (comm_modem_ready()) led_load(NET_LED, LED_FL1);
   else led_load(NET_LED, LED_FL2);
 }
 

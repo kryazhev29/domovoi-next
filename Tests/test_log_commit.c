@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
-/* TYPES */
+/* рхош опнрнйнкю */
 enum {MB_LOG};
 static struct {uint32_t start,size;} mem[1]={{4096,4096}};
 static struct {uint32_t newAddressLog;struct {uint8_t readyLogData;} status;} device;
@@ -16,7 +16,7 @@ static bool mem_write(uint32_t a,uint8_t *p,uint16_t n){unsigned i,limit=n;CHECK
  for(i=0;i<limit;i++)flash[a-4096+i]&=p[i];
  return operation!=fail_operation;}
 static void wdt_reload(void){}
-/* PRODUCTION */
+/* йнд лндскъ */
 static void reset(void){memset(flash,255,sizeof(flash));device.newAddressLog=4096;device.status.readyLogData=0;operation=fail_operation=0;log_lastIndex=0;}
 int main(void){cellLog_s event,legacy;unsigned op,n;(void)wdt_reload;memset(&event,0,sizeof(event));event.index=event.datetime=1000;event.logType=33;
  reset();fail_operation=1;partial=4;CHECK(!log_addEvent(&event));CHECK(!device.status.readyLogData&&device.newAddressLog==4096);

@@ -1,4 +1,7 @@
-"""Actual FW caller + final image CRC in IAR ELF; modeled NOR, real allocator."""
+"""Доработка: Кряжев А., 2026.
+Приём блока и CRC готового образа на ELF с реальным распределителем памяти.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import argparse, hashlib, json, struct, sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent/'asm'))

@@ -5,7 +5,6 @@
 */
 #include "user_fun.h"
 #include "user_comm.h"
-#include <stddef.h>
 #include <string.h>
 #include "../../Modules/comm_server.h"
 #include "../../Modules/comm_channel.h"
@@ -28,14 +27,14 @@ static bool user_comm_no_traffic(void)
   /* Таблица заказчика: событие 13 «Нет трафика», аргументы нулевые. */
   return log_addSystemEvent((logSystem_e)13);
 }
-const comm_server_handlers_t handlers = {
+static const comm_server_handlers_t server_handlers = {
   user_comm_registration, user_comm_status, user_comm_session,
   server_rx_process, user_comm_no_traffic
 };
 /* После перезапуска модема сервер и канал - с начала. */
 static void user_comm_reset_session(void)
 {
-  comm_server_init(&handlers);
+  comm_server_init(&server_handlers);
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
 }
 /* Номер из CLIP - прежней проверке доступа; строка вызова только для чтения. */
@@ -73,6 +72,7 @@ void user_comm_poll(uint32_t now_ms)
   comm_recover_poll(now_ms);
   comm_info_poll(now_ms);
   comm_call_poll(now_ms, user_storage_flash_ready());
+  /* Обработчик вызова мог сменить владельца флеша: для SMS нужен свежий снимок. */
   if (user_storage_flash_ready()) comm_sms_poll(now_ms);
   comm_balance_poll(now_ms);
 }

@@ -3,6 +3,9 @@
 // Заголовок и CRC формирует packet.c; ответ 11 полностью формирует answer11.
 // Канал владеет TX после принятия; неподтверждённые данные остаются у своих владельцев.
 #include "user_logic_internal.h"
+#include "../../Modules/comm_server.h"
+#include "prof.h"
+enum { STATUS_EVENT_MASK = 0x08FFu, STATUS_EVENT_GAP_MS = 1000u };
 uint8_t sync_pending, sync_quiet;
 static struct { uint8_t due, percent, code, id; } fw_status_pending;
 static struct { uint8_t state; char id[10]; } reader_out;
@@ -45,11 +48,6 @@ void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cc
 
   if (send_buffer != NULL){
 
-#ifdef DEBUG_USER
-  sprintf(tempStrBuffer, ">>U Send any data (cmd %d)\r\n", id);
-  user_debug(tempStrBuffer);
-#endif
-
     // ------- меняемый блок ---------
     send_buffer[6] = 255; // таймаут актуальности команды
     send_buffer[7] = uniqId;
@@ -72,10 +70,6 @@ void user_send_registrationData(dataChanel_e cch){
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
   uint32_t tmp32;
-
-#ifdef DEBUG_USER
-  user_debug(">>U Send reg data (cmd 1)\r\n");
-#endif
 
   // ------- меняемый блок ---------
   send_buffer[6] = TIMETOREGRESPONSE; // таймаут актуальности команды
@@ -105,8 +99,6 @@ void user_send_registrationData(dataChanel_e cch){
     break;
 
   case CH_SERVER:
-    device.answerID = 1;
-    device.answerTimeout = TIMETOREGRESPONSE;
     packet_send(send_buffer, len, CH_SERVER);
     break;
 
@@ -121,10 +113,6 @@ void user_send_statusPack(dataChanel_e cch){
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
   uint32_t tmp32;
-
-#ifdef DEBUG_USER
-  user_debug(">>U Send status (cmd 2)\r\n");
-#endif
 
   // ------- меняемый блок ---------
   send_buffer[6] = TIMETOSTATUSRESPONSE; // таймаут актуальности команды
@@ -146,12 +134,6 @@ void user_send_statusPack(dataChanel_e cch){
     break;
 
   case CH_SERVER:
-    /* Внеочередной статус (таблица E92) не должен перезапускать уже идущее ожидание
-     * подтверждения: ожидание держит предел 15 с из таблицы A86. */
-    if (device.answerID != 2 || device.answerTimeout == 0){
-      device.answerID = 2;
-      device.answerTimeout = TIMETOSTATUSRESPONSE;
-    }
     comm_server_status_sent(send_buffer[7]);
     status_event_sent((uint16_t)(send_buffer[13] | (send_buffer[14] << 8)), timers_getMillis());
     packet_send(send_buffer, len, CH_SERVER);
@@ -168,10 +150,6 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
   uint32_t tmp32;
-
-#ifdef DEBUG_USER
-  user_debug(">>U Send status2 (cmd 3)\r\n");
-#endif
 
   // ------- меняемый блок ---------
   send_buffer[6] = 255; // таймаут актуальности команды
@@ -218,10 +196,6 @@ void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8
     }
     return;
   }
-
-#ifdef DEBUG_USER
-  user_debug(">>U Send status update (cmd 4)\r\n");
-#endif
 
   // ------- меняемый блок ---------
   send_buffer[6] = 255; // таймаут актуальности команды
@@ -287,9 +261,6 @@ void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_
   uint8_t local[19];
   uint8_t *buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(local)) : local;
   if (!buffer) return;
-#ifdef DEBUG_USER
-  user_debug(">>U Send answer (cmd 11)\r\n");
-#endif
   answer11(buffer, uniqId, cmd, (uint8_t)cc);
   if (cch == CH_USB) usb_send(buffer, sizeof(local));
   else if (cch == CH_SERVER) comm_tx_commit(sizeof(local));
@@ -302,10 +273,6 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
   uint8_t send_local[18];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
-
-#ifdef DEBUG_USER
-  user_debug(">>U Send timeshtamp (cmd 12)\r\n");
-#endif
 
   send_buffer[6] = 255; // таймаут актуальности команды
   send_buffer[7] = uniqId;
@@ -393,10 +360,6 @@ void user_send_configToConfigurator(dataChanel_e cch){
 
   if (send_buffer != NULL){
 
-#ifdef DEBUG_USER
-  user_debug(">>U Send sms to server (cmd 7)\r\n");
-#endif
-
     // ------- меняемый блок ---------
     send_buffer[6] = 255; // таймаут актуальности команды
     send_buffer[7] = 0;
@@ -418,13 +381,6 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return false;
   uint16_t len = 5;
-
-#ifdef DEBUG_USER
-  if (cch != CH_USB){
-    sprintf(tempStrBuffer,">>U Get FW block %d (cmd 13)\r\n", block);
-    user_debug(tempStrBuffer);
-  }
-#endif
 
   send_buffer[6] = 255; // таймаут актуальности команды
   send_buffer[7] = uniqIDCnt++;

@@ -42,12 +42,6 @@ static void sms_septet(uint8_t s)
   sms_char(s == 0 ? '@' : s == 2 ? '$' : s == 0x11 ? '_' : s == '\r' || s == '\n' ? (char)s
            : s < 0x20 || s == 0x24 || s == 0x40 || (s >= 0x5B && s <= 0x60) || s >= 0x7B ? '?' : (char)s);
 }
-/* UCS2 -> cp1251: ASCII, А..я, Ё/ё; остальное '?'. */
-static char sms_cp1251(uint16_t u)
-{
-  return u < 0x80 ? (char)u : u >= 0x410 && u <= 0x44F ? (char)(u - 0x410 + 0xC0)
-       : u == 0x401 ? (char)0xA8 : u == 0x451 ? (char)0xB8 : '?';
-}
 /* Разобрать накопленные семибитные символы PDU. */
 static void sms_unpack(uint8_t o)
 {
@@ -99,14 +93,11 @@ static void sms_octet(uint8_t o)
     else if (msg.coding == CODE_8BIT) sms_char((char)o);
     else if (msg.skip) --msg.skip;
     else if (!msg.half) { msg.hi = o; msg.half = 1; }
-    else { sms_char(sms_cp1251((uint16_t)(msg.hi << 8 | o))); msg.half = 0; }
+    else { sms_char(comm_at_cp1251((uint16_t)(msg.hi << 8 | o))); msg.half = 0; }
     if (!--msg.left) msg.field = P_END; break;
   default: msg.field = P_BAD; break; /* данные после конца */
   }
 }
-/* Преобразовать шестнадцатеричный символ PDU. */
-static uint8_t sms_hex(uint8_t c)
-{ return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10u : c >= 'a' && c <= 'f' ? c - 'a' + 10u : 16u; }
 /* Проверить индекс сообщения в ограниченном ответе SIM. */
 static uint8_t sms_index(const uint8_t *p, uint16_t n, uint16_t pos)
 {
@@ -134,7 +125,7 @@ static void sms_line(const uint8_t *p, uint16_t n, uint16_t detail)
     msg.field = P_SMSC_LEN; msg.nlen = msg.tlen = msg.half = msg.nib_half = msg.alpha = 0; return;
   }
   for (uint16_t i = 0; i < n && msg.field < P_END; ++i) {
-    uint8_t v = sms_hex(p[i]);
+    uint8_t v = comm_at_hex(p[i]);
     if (v > 15u) { msg.field = P_BAD; break; }
     if (!msg.nib_half) { msg.nib = v; msg.nib_half = 1; } else { msg.nib_half = 0; sms_octet((uint8_t)(msg.nib << 4 | v)); }
   }

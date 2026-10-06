@@ -81,4 +81,8 @@ bool comm_at_busy(void);
 bool comm_at_prompt(void);
 /* Только ATA/ATH: CHUP до ресинхронизации, поздние финалы ограждены CMEE. */
 bool comm_at_call_abort(uint32_t now_ms);
+/* Преобразовать шестнадцатеричную цифру PDU; 16 означает недопустимый символ. */
+uint8_t comm_at_hex(uint8_t value);
+/* Преобразовать UCS2 в поддерживаемый символ cp1251; остальные заменить вопросом. */
+char comm_at_cp1251(uint16_t value);
 #endif

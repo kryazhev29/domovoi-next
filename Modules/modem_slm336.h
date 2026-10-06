@@ -121,15 +121,4 @@ bool comm_modem_side_started(const comm_side_t *req, uint32_t *since);
 bool comm_modem_call_abort(uint32_t now_ms);
 /* UINT8_MAX - ещё в работе или не req; результат AT один раз, перезапуск даёт ERROR. */
 uint8_t comm_modem_side_result(const comm_side_t *req);
-/* Совместимость принятых слоёв; реализация общая, дополнительных функций нет. */
-#define modem_slm336_transport comm_modem_transport
-#define modem_slm336_command comm_modem_request
-#define modem_slm336_payload comm_modem_payload
-#define modem_slm336_reserve comm_modem_reserve
-#define modem_slm336_busy comm_modem_busy
-#define modem_slm336_poll comm_modem_poll
-#define modem_slm336_ready comm_modem_ready
-#define modem_slm336_diag comm_modem_diag
-#define modem_slm336_status comm_modem_status
-#define modem_slm336_off comm_modem_off
 #endif

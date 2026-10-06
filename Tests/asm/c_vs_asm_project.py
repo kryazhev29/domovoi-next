@@ -1,8 +1,7 @@
-"""Project-aware run_all entry point, with every generated host file under TEMP.
-
-Historical synchronous source-extraction fixtures cannot test the current ASM
-state machines. Those contracts are exercised by the existing linked-ELF tests
-listed explicitly below. Common driver/protocol tests still compile their inputs.
+"""Доработка: Кряжев А., 2026.
+Полный прогон выбранной прошивки; исходники стендов и результаты хранятся в TEMP.
+Исторические синхронные стенды дополняются проверками реальных автоматов на ELF.
+Смена проекта и профиля выбирает соответствующий образ и его смещения DWARF.
 """
 import argparse
 import json
@@ -75,7 +74,13 @@ def main():
     run('modem_sim',['-m','unittest','Tests/modem_sim.py'])
     run('comm_review',['Tests/comm_review_host.py'])
     run('uart arm',['Tests/build_comm_uart.py'])
-    # Runtime fixtures import production types/offsets from the selected ELF.
+    # Стенды читают типы и смещения полей из выбранного ELF.
+    if args.project in ('C', 'HYBRID'):
+        for name, script in [('settings ELF', 'test_comm_settings_elf.py'), ('app update ELF', 'test_app_update_elf.py')]:
+            run(name, ['Tests/' + script, '--build-root', str(base), '--variant', args.project, '--config', args.config])
+    if args.project in ('C', 'HYBRID'):
+        run('logic ELF', ['Tests/test_logic_cleanup.py', '--build-root', str(base), '--variant', args.project,
+                          '--config', args.config, '--output', str(base / ('logic-' + args.project + '-' + args.config + '.json'))])
     cases=list(CORE)+['event_append','fw_blocks','fw_bridge','usb_queue']
     if not args.fast:cases+=list(POWER)
     results.update(run_cases(cases))

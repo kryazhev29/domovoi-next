@@ -1,3 +1,6 @@
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,41 +28,41 @@ static uint16_t crc16_calc(uint8_t *p, uint16_t n) { (void)p; (void)n; return 0;
 static int8_t connection_send(int8_t h, uint8_t *p, uint16_t n) { (void)h; (void)p; (void)n; sent_server++; return 0; }
 static void comm_server_status_sent(uint8_t id) { (void)id; }
 static void usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; sent_usb++; }
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 static uint16_t bits(void) { uint16_t s; memcpy(&s, &device.status, 2); return s; }
 int main(void)
 {
   unsigned i;
 
-  /* Status 1 layout of table D433-D448: bit 0 output 2 ... bit 11 ready to update. */
+  /* Статус 1 по таблице D433–D448: бит 0 — выход 2, бит 11 — готовность обновления. */
   device.status.stateOut2 = 1; CHECK(bits() == 0x0001); device.status.stateOut2 = 0;
   device.status.readyToUpdate = 1; CHECK(bits() == 0x0800); device.status.readyToUpdate = 0;
 
-  /* Out of turn: inputs, outputs, triggers and bit 11; bits 8-10 and 12-15 wait for the schedule. */
+  /* Внеочередные изменения входов, выходов, триггеров и бита 11; биты 8–10 и 12–15 ждут периода. */
   now_ms = 5000; status_event_sent(0, 1000);
   CHECK(!status_event_due(0, now_ms));
   for (i = 0; i < 16; i++)
     CHECK((unsigned)status_event_due((uint16_t)(1u << i), now_ms) == ((0x08FFu >> i) & 1u));
-  /* At least a second between extra statuses, counted from the last status sent. */
+  /* Между внеочередными статусами не меньше секунды от последнего отправленного статуса. */
   status_event_sent(0x0001, 5000);
   CHECK(!status_event_due(0x0001, 5999) && !status_event_due(0x0003, 5999));
   CHECK(status_event_due(0x0003, 6000) && !status_event_due(0x1001, 6000));
-  now_ms = 0xFFFFFF00u; status_event_sent(0, now_ms); CHECK(status_event_due(1, 0x000002E8u)); /* millis wrap */
+  now_ms = 0xFFFFFF00u; status_event_sent(0, now_ms); CHECK(status_event_due(1, 0x000002E8u)); /* Переполнение счётчика миллисекунд. */
 
-  /* Every status to the server records what it reported; USB does not. */
+  /* Каждый серверный статус запоминает переданное состояние; USB этого не делает. */
   device.status.stateIn1 = 1; now_ms = 20000;
   user_send_statusPack(CH_USB); CHECK(sent_usb == 1 && status_event_due(bits(), now_ms) && device.answerTimeout == 0);
   user_send_statusPack(CH_SERVER); CHECK(sent_server == 1 && !status_event_due(bits(), now_ms + 5000));
-  /* A status with no wait running starts the 15 s wait. */
+  /* Статус без текущего ожидания запускает срок ответа 15 с. */
   CHECK(device.answerID == 2 && device.answerTimeout == 15);
-  /* An extra status does not restart a running wait. */
+  /* Внеочередной статус не перезапускает действующий срок. */
   device.answerTimeout = 7; user_send_statusPack(CH_SERVER); CHECK(device.answerTimeout == 7);
-  /* A registration wait ended by its answer is replaced. */
+  /* Окончившееся по ответу ожидание регистрации заменяется. */
   device.answerID = 1; device.answerTimeout = 3; user_send_statusPack(CH_SERVER);
   CHECK(device.answerID == 2 && device.answerTimeout == 15);
   device.status.stateIn1 = 0;
 
-  /* Bit 11 goes out of turn too: the server sees a download start at once (E95, item 5). */
+  /* Бит 11 тоже внеочередной: сервер сразу узнаёт о начале загрузки (E95, пункт 5). */
   now_ms = 40000; status_event_sent(bits(), 30000);
   device.status.readyToUpdate = 1; CHECK(status_event_due(bits(), now_ms)); device.status.readyToUpdate = 0;
 

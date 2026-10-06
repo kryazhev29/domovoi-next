@@ -1,10 +1,13 @@
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);} } while(0)
-/* TYPES */
+/* ТИПЫ ПРОТОКОЛА */
 #define MB_TEMPID 0
 static struct {uint32_t start,size;} mem[1]={{4096,96}};
 static struct {uint32_t newAddressTempID;struct {unsigned readyID;} status;} device;
@@ -12,7 +15,7 @@ static uint8_t flash[96];
 static unsigned writes,fail_read,fail_write;
 static bool mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a>=4096&&a+n<=4192);memcpy(p,flash+a-4096,n);return !fail_read;}
 static bool mem_write(uint32_t a,uint8_t *p,uint16_t n){CHECK(a>=4096&&a+n<=4192);if(fail_write)return false;memcpy(flash+a-4096,p,n);writes++;return true;}
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 int main(void){
  for(unsigned type=0;type<=CT_OTHER;type++){
   memset(flash,255,sizeof(flash));device.newAddressTempID=0;device.status.readyID=0;writes=0;

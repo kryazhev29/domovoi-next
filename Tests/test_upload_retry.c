@@ -1,10 +1,13 @@
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
-/* TYPES */
+/* ТИПЫ ПРОТОКОЛА */
 enum {MB_LOG,MB_TEMPID,MB_ID,MB_GROUP,MB_SHEDULE,MB_HOLIDAY,MB_PHOTO};
 enum {CE_OK=0,CE_BUSY=5};
 #define _1B(x) ((uint8_t)(x))
@@ -33,7 +36,7 @@ static bool mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a+n<=sizeof(flash))
 static bool send_frame(uint8_t *p,uint16_t n){CHECK(n<=sizeof(last_frame));attempts++;memcpy(last_frame,p,n);frame_size=n;return !fail_transport;}
 static uint8_t usb_send(uint8_t *p,uint16_t n){return send_frame(p,n);}
 static int8_t connection_send(int8_t h,uint8_t *p,uint16_t n){CHECK(h==2);return send_frame(p,n)?CE_OK:CE_BUSY;}
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 static void upload(unsigned cmd,dataChanel_e ch){if(cmd==10)user_send_logRecords(ch,42);else user_send_tempIDs(ch,42);}
 static unsigned cursor(unsigned cmd,dataChanel_e ch){return upload_index(cmd,ch);}
 static unsigned pending(unsigned cmd,dataChanel_e ch){return (cmd==10?log_unacked:temp_unacked)[ch==CH_USB?0:1];}

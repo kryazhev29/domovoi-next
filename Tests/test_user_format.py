@@ -1,4 +1,7 @@
-"""Compare production formatters byte for byte with the previous printf formats."""
+"""Доработка: Кряжев А., 2026.
+Сравнение десятичного форматирования C с независимым эталоном.
+Проверяются границы чисел, длина и прежний интерфейс сборки строк.
+"""
 import os
 from pathlib import Path
 import subprocess

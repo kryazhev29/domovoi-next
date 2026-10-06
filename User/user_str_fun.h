@@ -4,7 +4,7 @@
 // ћодуль не хранит состо€ние и не владеет пам€тью вызывающего.
 #ifndef USERSTRFUN_H
 #define USERSTRFUN_H
-#include "arm_comm.h"
+#include <stdbool.h>
 #include <stdint.h>
 // Ќайти указанный разделитель; при отсутствии вернуть исходный указатель.
 char *skipchar(char ch, char *text, unsigned char count);

@@ -158,7 +158,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
   uint8_t action = step >= SLM_AT_READY ? slm_steps[step - SLM_AT_READY].action & 15u : MODEM_OK;
   if (comm_at_parse(p,n,"+QIURC: \"pdpdeact\",\005",values) && values[0] == 1) {
     if (step >= SLM_ACTIVATE) slm_fail(SLM_ERR_PDP);
-  } else if (slm.attempt.status.state == SLM_STARTING) {
+  } else {
     switch (action) {
     case MODEM_NETWORK:
       /* ¬озврат сети будит обычный запуск, не ждЄт следующего секундного опроса. */
@@ -436,7 +436,7 @@ static uint8_t slm_issue(uint8_t step)
 {
   char cmd[128];
   uint16_t n = comm_modem_build(cmd, sizeof(cmd),
-    slm_commands + slm_steps[step - SLM_AT_READY].command, NULL, 0);
+    slm_steps[step - SLM_AT_READY].command, NULL, 0);
   if (n >= sizeof(cmd)) return COMM_AT_INVALID;
   comm_at_request_t req = {(const uint8_t *)cmd, n, COMM_AT_TEXT,
     comm_timeouts[slm_steps[step - SLM_AT_READY].timeout]};
@@ -459,7 +459,8 @@ static const char *slm_apn(void)
     {1, 0}, {2, 16}, {99, 25}, {20, 45}, {11, 63}
   };
   static const char apns[] = "internet.mts.ru\0internet\0internet.beeline.ru\0internet.tele2.ru\0internet.yota\0";
-  if (slm_text(SLM_CFG_APN)[0]) return slm_text(SLM_CFG_APN);
+  const char *configured = slm_text(SLM_CFG_APN);
+  if (*configured) return configured;
   for (uint8_t i = 0; i < sizeof(apn_map) / sizeof(apn_map[0]); ++i)
     if (slm.attempt.mnc == apn_map[i].mnc) return apns + apn_map[i].offset;
   return "";

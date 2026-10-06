@@ -3,6 +3,11 @@
 // ƒомен и порт разбираютс€ при старте и после сохранени€ команды 12.
 // Ќастройки хран€тс€ атомарно в хранилище; рабочие строки адаптера живут только в RAM.
 #include "user_logic_internal.h"
+#include "../../Modules/comm_call.h"
+#include "../../Modules/comm_server.h"
+#include "../../Modules/comm_modem.h"
+#include "user_comm.h"
+#include "../../Modules/comm_at.h"
 static char comm_host[2][32];
 static uint16_t comm_port[2];
 static char comm_credential[sizeof(config.netOperator)];
@@ -54,7 +59,13 @@ static void comm_split(uint8_t n, const char *server)
   len = colon ? (size_t)(colon - server) : (size_t)(p - server);
   if (len >= sizeof(comm_host[n])) len = sizeof(comm_host[n]) - 1u;
   memcpy(comm_host[n], server, len); comm_host[n][len] = 0;
-  comm_port[n] = colon ? (uint16_t)user_decimal(colon + 1) : 0;
+  comm_port[n] = 0;
+  if (colon) {
+    uint16_t pos = 0, count = (uint16_t)(p - colon - 1);
+    uint32_t port;
+    if (comm_at_number((const uint8_t *)colon + 1, count, &pos, UINT16_MAX, &port) && pos == count)
+      comm_port[n] = (uint16_t)port;
+  }
 }
 
 // —опоставить адрес канала с сервером настройки.
@@ -97,7 +108,9 @@ static uint16_t comm_number(uint8_t field)
     static const uint8_t rat[] = {0, 1, 0, 5, 3};
     return config.netType < sizeof(rat) ? rat[config.netType] : 0;
   }
-  case SLM_CFG_RESERVE: return config.useServer2 && comm_host[1][0] && comm_port[1];
+  /* ѕустой резерв разрешЄн протоколом; непустой провер€етс€ даже при порте 0.
+      огда выбран только сервер 2, второго адреса дл€ повтора нет. */
+  case SLM_CFG_RESERVE: return config.useServer1 && config.useServer2 && comm_host[1][0];
   /* –учной тип (команда 105) имеет приоритет; 0/255 - определить по AT+GMM. */
   case SLM_CFG_TYPE: return device.moduleType;
   default: return 0;

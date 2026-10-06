@@ -4,51 +4,21 @@
 // Общие курсоры и намерения находятся в device; после сброса их восстанавливает config.
 #ifndef USER_LOGIC_INTERNAL_H
 #define USER_LOGIC_INTERNAL_H
-#include "fast_kernels.h"
 #include "runtime_internal.h"
-#include "user_fw_reason.h"
-#include "prof.h"
-#include "../sched16.h"
-#include "../log_ring.h"
-#include "../user_format.h"
 #include "../domovoi_diag.h"
-#include "../table_runtime.h"
-#include "stm32_it.h"
-#include "user_fun.h"
-#include "photo.h"
-#include "photo_runtime.h"
-#include "user_comm.h"
-#include "../../Modules/comm_server.h"
-#include "../../Modules/comm_recover.h"
-#include "../../Modules/comm_info.h"
-#include "../../Modules/comm_uart.h"
-#include "../../Modules/comm_modem.h"
-#include "../../Modules/comm_call.h"
-#include "usb_istr.h"
-#include "../../Bootloader/app_update.h"
-#include "../../Bootloader/boot_manual.h"
-#ifndef RELEASE_BUILD
-#define DEBUG_USER
-#endif
 // Времена и значения полей определены протоколом, единицы — секунды или миллисекунды.
 enum {
-  UNIPASS_INITVALUE = 32768, TIMETOREGRESPONSE = 5, TIMETOSTATUSRESPONSE = 15,
-  STATUSTIMERINTERVAL = 15, MAXSTATUSANSWERERROR = 3, PROTOCOL_VERSION = 1, REG_UNKNOWN_IMEI = 4, REG_NOT_BOUND = 5,
+  TIMETOREGRESPONSE = 5, TIMETOSTATUSRESPONSE = 15,
+  PROTOCOL_VERSION = 1, REG_UNKNOWN_IMEI = 4, REG_NOT_BOUND = 5,
   USB_DIAG_COMMAND = 111, USB_COMM_DIAG_COMMAND = 112,
   FW_TIMEOUT_S = 600, FW_BLOCK_RETRY_MS = 20000, FW_WRITE_TRIES = 3,
   FW_BLOCK_PENDING = 252, FW_BLOCK_OK = 0, FW_BLOCK_END = 253,
   FW_BLOCK_BADWRITE = 254, FW_BLOCK_BADFRAME = 255,
   LOG_PENDING_MAX = 16, LOG_TIME_WAIT = 600, SYNC_QUIET_S = 30,
-  SYNC_CONFIG = 2,
-  US_SAVE=1, US_ACK, US_MARK, US_ERASE, US_CLEAN, US_CONFIG, US_RESET, US_REPLY,
-  US_COMMAND, US_RECOVER, US_RECOVER_CLEAN
+  SYNC_CONFIG = 2
 };
 #define ID_TIME_VALID 1600000000u
 #define ID_TIME_DONE 0x38u
-#define FW_HW_MARKER_OFFSET 0x20u
-#define FW_HW_MARKER_TAG 0x48570000u
-#define STATUS_EVENT_MASK 0x08FFu
-#define STATUS_EVENT_GAP_MS 1000u
 // Размещение долговечных намерений в резерве device задано прежним образом флеша.
 enum { DEVICE_UPLOAD_MARK_OFFSET = 0, DEVICE_LOG_USB_OFFSET = 4,
        DEVICE_TEMP_USB_OFFSET = 6, DEVICE_CLEAR_MARK_OFFSET = 8, DEVICE_CLEAR_END_OFFSET = 12 };
@@ -150,6 +120,8 @@ uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch);
 void fw_resume_after_boot(void);
 // Проверить текущую минуту по интервалу расписания.
 bool shedule_time_ok(const cellShedule_s *s);
+// Проверить день, время и праздничный режим прочитанного расписания.
+bool shedule_window_ok(const cellShedule_s *s);
 // Определить стёртую запись журнала.
 bool log_blank(const cellLog_s *cell);
 // Сообщить занятость владельца записи блока прошивки.

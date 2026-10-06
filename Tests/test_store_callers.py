@@ -1,4 +1,7 @@
-"""Real storage + upload continuations, NOR model; no device/network I/O."""
+"""Доработка: Кряжев А., 2026.
+Реальные продолжения хранения и выгрузки на модели NOR без платы и сети.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import pathlib, subprocess, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 ns={"__file__":str(ROOT/"Tests/run_host.py")}

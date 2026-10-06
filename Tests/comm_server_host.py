@@ -12,7 +12,7 @@ def source(name):
 
 def function(text, name):
     import re
-    m = re.search(r'(?m)^(?:static )?(?:void|bool|uint16_t|unsigned short)\s+' + name + r'\s*\([^;]*?\)\s*\{', text)
+    m = re.search(r'(?m)^(?:static )?(?:(?:void|bool|uint16_t|unsigned short)\s+|const char\s*\*\s*)' + name + r'\s*\([^;]*?\)\s*\{', text)
     assert m, name
     depth = 1; i = m.end()
     while depth:
@@ -47,10 +47,10 @@ def unit():
     if '/* >>> ответ считывателя' in user:
         producer_code += '\n' + user[user.index('/* >>> ответ считывателя'):user.index('/* <<< ответ считывателя */')]
     old += '\n#define table_runtime_quiet(ch) ((void)(ch))\n#define fw_async_quiet(ch) ((void)(ch))\n#define user_storage_command_ready() 1\n#define store_command_allowed(cmd) 1\nstatic struct {unsigned job,channel,quiet,seen;} store;\n'
-    # Storage state machines are tested against the linked ELF. Here the modem
-    # model only exercises notification of those owners on session changes.
+    # Автоматы хранения проверяются на связанном ELF; здесь модель модема
+    # проверяет уведомление владельцев при смене сеанса.
     old += '\n#define service_crc_quiet(ch) ((void)(ch))\n#define upload_runtime_quiet(ch) ((void)(ch))\n#define fw_service_quiet(ch) ((void)(ch))\n'
-    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* CRC */', function(source('Tests/asm/reference/User/crc.c'), 'crc16_calc')+'\n'+function(source('Tests/asm/reference/User/crc.c'), 'crc16_calcInit')).replace('/* RX */', rx).replace('/* PRODUCERS */', producer_code).replace('/* RECOVER */', source('Tests/test_comm_recover.c')).replace('/* CALL */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
+    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* КОНТРОЛЬНАЯ СУММА */', function(source('Tests/asm/reference/User/crc.c'), 'crc16_calc')+'\n'+function(source('Tests/asm/reference/User/crc.c'), 'crc16_calcInit')).replace('/* ПРИЁМ */', rx).replace('/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */', producer_code).replace('/* ВОССТАНОВЛЕНИЕ */', source('Tests/test_comm_recover.c')).replace('/* ВЫЗОВ */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):
     names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'Tests/asm/reference/User/user_comm.c')

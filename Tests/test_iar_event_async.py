@@ -1,4 +1,7 @@
-"""Event append caller in baseline/final ELF, modeled NOR; no hardware timings."""
+"""Доработка: Кряжев А., 2026.
+Запись события на ELF: моделируемый NOR; измерения относятся к эмулятору.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import argparse, hashlib, json, struct, sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent/'asm'))

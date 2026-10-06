@@ -3,6 +3,12 @@
 // Единственный владелец флеша завершает операцию до отправки её результата.
 // Маркеры публикуются до стирания и снимаются после сохранения новых курсоров.
 #include "user_logic_internal.h"
+#include "../log_ring.h"
+#include "../table_runtime.h"
+#include "photo_runtime.h"
+#include "../../Modules/comm_modem.h"
+enum { US_SAVE=1, US_ACK, US_MARK, US_ERASE, US_CLEAN, US_CONFIG, US_RESET, US_REPLY,
+       US_COMMAND, US_RECOVER, US_RECOVER_CLEAN };
 static void store_usb_session(void);
 uint8_t store_runtime, store_save_requested, store_reset_requested;
 store_state_s store;
@@ -71,7 +77,7 @@ void store_restore(const device_s *saved)
   limit = start + mem[cmd == 10 ? MB_LOG : MB_TEMPID].size;
   if (end < start || end > limit) return;
   store_marker(cmd, end); store.clear = store.cmd = cmd;
-  store.erase = start & ~4095u; store.end = end;
+  store.end = end;
   store.job = US_RECOVER; store.waiting = 0; store.quiet = 1;
   store.erase = start;
 }
@@ -278,5 +284,4 @@ void user_storage_poll(void)
     if (store_snapshot()) { store_save_requested = 0; store.job = US_SAVE; }
   }
 }
-
 

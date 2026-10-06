@@ -1,12 +1,17 @@
+/* Доработка: Кряжев А., 2026. Имитатор SLM336 на настоящих AT/UART.
+   Ответы и времена синтетические; границы канала и восстановления задаются явно.
+   Каждый сценарий начинает новый сеанс и проверяет физическую отправку команд. */
 /* Изолированный модем не имеет канала/восстановления: явные заглушки его границы. */
 #ifndef COMM_CHANNEL_MODEL
+// Обозначить отсутствие ожидаемого обрыва в изолированном модеме.
 bool comm_channel_expected(void) { return false; }
+// Обозначить границу восстановления изолированного модема.
 void comm_recover_failure(uint8_t step,uint8_t reason,uint32_t now) { (void)step; (void)reason; (void)now; }
 #endif
+// Обозначить неиспользуемую в изолированном стенде доставку событий.
 static void ignore_event(uint8_t k,const uint8_t *p,uint16_t n,uint16_t d) { (void)k; (void)p; (void)n; (void)d; }
+// Обозначить неиспользуемого в изолированном стенде получателя URC.
 static void ignore_urc(const uint8_t *p,uint16_t n) { (void)p; (void)n; }
-/* Доработка: Кряжев А., 2026. Имитатор SLM336 на настоящих AT/UART.
-   Ответы и времена — СИНТЕТИКА; SIM URC взяты из журнала без SIM этапа 2. */
 static uint32_t sim_now, reply_due;
 static unsigned sim_ticks, sim_commands, sim_gmm, sim_found, sim_qird, sim_done_reads;
 static uint16_t sim_body_count, sim_read_size;
@@ -40,6 +45,7 @@ static const char *sim_text(uint8_t field, uint16_t *capacity)
   default: *capacity = 0; return NULL;
   }
 }
+// Выдать числовую настройку имитатора модема.
 static uint16_t sim_number(uint8_t field)
 {
   if (field == SLM_CFG_NETWORK && sim_send_race && slm.attempt.status.step == SLM_RAT_SET) {
@@ -52,6 +58,7 @@ static uint16_t sim_number(uint8_t field)
 }
 static const slm_settings_t sim_settings = {sim_text, sim_number};
 
+// Запомнить переключение выводов питания модема.
 static void sim_gpio(uint8_t pin, bool high)
 {
   CHECK((pin == 13 || pin == 14) && power_events < sizeof(power_trace) / sizeof(power_trace[0]));
@@ -60,6 +67,7 @@ static void sim_gpio(uint8_t pin, bool high)
   power_trace[power_events++].high = (uint8_t)high;
 }
 #ifdef COMM_CHANNEL_MODEL
+// Запомнить двоичные данные QIRD имитатора.
 static uint16_t sim_binary(const uint8_t *p, uint16_t n)
 {
   CHECK(p >= rx && p < rx + sizeof(rx));
@@ -68,20 +76,24 @@ static uint16_t sim_binary(const uint8_t *p, uint16_t n)
   memcpy(sim_body + sim_body_count, p, n); sim_body_count = (uint16_t)(sim_body_count + n);
   return n;
 }
+// Запомнить завершение чтения имитатора.
 static void sim_read_done(uint16_t n, uint8_t reason)
 {
   CHECK(n <= sim_read_size); sim_read_reason = reason;
   ++sim_done_reads;
 }
 #endif
+// Запомнить обнаруженный тип модема.
 static void sim_type(uint8_t type) { CHECK(type == 2); ++sim_found; }
 static unsigned sim_imei_count;
+// Запомнить полученный IMEI.
 static void sim_imei(const char *imei) { CHECK(!strcmp(imei, "864180068438709")); ++sim_imei_count; }
 static const slm_handlers_t sim_handlers = {sim_gpio, sim_type, sim_imei};
 
+// Сбросить UART, время и наблюдения имитатора.
 static void sim_reset(void)
 {
-  modem_slm336_off();
+  comm_modem_off();
 #if DOMOVOI_DIAG
   memset(&slm.diag, 0, sizeof(slm.diag));
 #endif
@@ -101,17 +113,20 @@ static void sim_reset(void)
   sim_send_sim2 = 1; sim_nwinfo_error = 0; sim_csq = 22; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
   sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
 }
+// Передать ответ имитатора в приёмное кольцо UART.
 static void sim_feed(const char *s)
 {
   unsigned n = (unsigned)strlen(s);
   CHECK(n < sizeof(rx));
   for (unsigned i = 0; i < n; ++i) interrupt_byte((uint8_t)s[i], USART_SR_RXNE);
 }
+// Подготовить очередной ответ имитатора модема.
 static void sim_reply(const char *s, unsigned delay)
 {
   CHECK(!sim_pending[0] && strlen(s) < sizeof(sim_pending));
   memcpy(sim_pending, s, strlen(s) + 1u); reply_due = sim_now + delay;
 }
+// Обработать физически отправленную команду имитатора.
 static void sim_tx(void)
 {
   if (!(regs.CR1 & USART_CR1_TXEIE)) return;
@@ -163,6 +178,7 @@ static void sim_tx(void)
   } else sim_reply("OK\r\n", 30);
 }
 static void (*sim_poll)(uint32_t) = comm_modem_poll;
+// Продвинуть время, UART и модем на один шаг.
 static void sim_tick(void)
 {
   ++sim_ticks;
@@ -182,17 +198,20 @@ static void sim_tick(void)
   sim_tx();
   sim_now += 10;
 }
+// Продвинуть запуск до указанного шага таблицы.
 static void sim_until(uint32_t limit)
 {
   unsigned watchdog = 0;
   while (slm.attempt.status.state == SLM_STARTING && watchdog++ < limit / 10u) sim_tick();
   CHECK(watchdog < limit / 10u);
 }
+// Запустить реальный модем на функциях настроек имитатора.
 static void sim_start(void) { CHECK(modem_slm336_start(&sim_settings, &sim_handlers, sim_now)); }
+// Проверить штатные пути питания, SIM, сети и контекста данных.
 static void path_tests(void)
 {
   sim_reset(); sim_start(); sim_until(15000);
-  CHECK(modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_NONE && !sim_gmm);
+  CHECK(comm_modem_ready() && slm.attempt.status.reason == SLM_ERR_NONE && !sim_gmm);
   CHECK(sim_now >= 8000 && sim_now <= 11000 && sim_ticks > 800);
   DIAG_CHECK(slm.attempt.status.completed_phases == 31); DIAG_CHECK(!slm.diag.failure_count);
   DIAG_CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 700);
@@ -206,10 +225,10 @@ static void path_tests(void)
   CHECK(!strcmp(slm_apn(), "internet.mts.ru"));
   CHECK(sim_commands < 25); /* Нет команд регистрации на сервере. */
   sim_reset(); test_config.modem_type = 255; sim_start(); sim_until(15000);
-  CHECK(modem_slm336_ready() && sim_gmm == 1 && sim_found == 1);
+  CHECK(comm_modem_ready() && sim_gmm == 1 && sim_found == 1);
   sim_reset(); sim_port_change = sim_rat_change = sim_early_open = 1;
   memcpy(test_config.apn, "manual.apn", sizeof("manual.apn")); sim_start(); sim_until(15000);
-  CHECK(modem_slm336_ready() && !strcmp(slm_apn(),"manual.apn"));
+  CHECK(comm_modem_ready() && !strcmp(slm_apn(),"manual.apn"));
   DIAG_CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_URC_SET));
   DIAG_CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_RAT_SET));
   /* Выбор APN по IMSI для всех операторов и неизвестного профиля. */
@@ -220,26 +239,28 @@ static void path_tests(void)
   };
   for (uint8_t i = 0; i < sizeof(profiles) / sizeof(profiles[0]); ++i) {
     sim_reset(); sim_imsi = profiles[i].imsi; sim_start(); sim_until(15000);
-    CHECK(modem_slm336_ready() && !strcmp(slm_apn(), profiles[i].apn));
+    CHECK(comm_modem_ready() && !strcmp(slm_apn(), profiles[i].apn));
   }
-  sim_reset(); sim_trickle = 1; sim_start(); sim_until(20000); CHECK(modem_slm336_ready());
+  sim_reset(); sim_trickle = 1; sim_start(); sim_until(20000); CHECK(comm_modem_ready());
   /* DMA принял хвост CRLF между проверкой busy и постановкой команды. */
   sim_reset(); sim_rat_change = 1; sim_start(); sim_send_race = 1; sim_until(15000);
-  CHECK(modem_slm336_ready() && !sim_send_race); DIAG_CHECK(!slm.diag.failure_count);
+  CHECK(comm_modem_ready() && !sim_send_race); DIAG_CHECK(!slm.diag.failure_count);
   /* Незавершённая строка не должна удерживать запуск бесконечно. */
   sim_reset(); sim_rat_change = 1; sim_start(); sim_send_race = 2; sim_until(15000);
-  CHECK(!modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
+  CHECK(!comm_modem_ready() && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
 }
+// Проверить отказы отдельных шагов запуска.
 static void error_tests(void)
 {
   sim_reset(); sim_no_sim = 1; sim_start(); sim_until(15000);
-  CHECK(!modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_NO_SIM && slm.attempt.status.step == SLM_SIM);
+  CHECK(!comm_modem_ready() && slm.attempt.status.reason == SLM_ERR_NO_SIM && slm.attempt.status.step == SLM_SIM);
   DIAG_CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
   sim_reset(); sim_pin = 1; sim_start(); sim_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_PIN);
   sim_reset(); sim_error_step = SLM_ACTIVATE; sim_start(); sim_until(15000);
   CHECK(slm.attempt.status.reason == SLM_ERR_PDP && slm.attempt.status.step == SLM_ACTIVATE);
   sim_reset(); sim_network_wait = 1; sim_start(); sim_until(80000); CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_NETWORK);
 }
+// Проверить сроки ответов каждого шага таблицы.
 static void timeout_step_tests(void)
 {
   for (unsigned step = SLM_AT_READY; step <= SLM_DATA_ECHO; ++step) {
@@ -252,19 +273,20 @@ static void timeout_step_tests(void)
   }
   /* Питание: скачки тиков, wrap и точные границы без сжатия пауз. */
   sim_reset(); sim_now = UINT32_MAX - 999u; sim_start();
-  sim_now += 1999u; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_DISCHARGE);
-  ++sim_now; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_LEAD);
-  sim_now += 100000u; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_RAIL);
-  sim_now += 899u; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_RAIL);
-  ++sim_now; modem_slm336_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_KEY);
+  sim_now += 1999u; comm_modem_poll(sim_now); CHECK(slm.attempt.status.step == SLM_DISCHARGE);
+  ++sim_now; comm_modem_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_LEAD);
+  sim_now += 100000u; comm_modem_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_RAIL);
+  sim_now += 899u; comm_modem_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_RAIL);
+  ++sim_now; comm_modem_poll(sim_now); CHECK(slm.attempt.status.step == SLM_POWER_KEY);
 }
 
+// Проверить пограничные ответы и повторные запуски.
 static void edge_tests(void)
 {
   sim_reset(); sim_imsi = "999011234567890\r\nOK\r\n"; sim_start(); sim_until(15000);
-  CHECK(modem_slm336_ready() && !slm_apn()[0]);
+  CHECK(comm_modem_ready() && !slm_apn()[0]);
   sim_reset(); sim_activation_delay = 149000; sim_start(); sim_until(180000);
-  CHECK(modem_slm336_ready()); DIAG_CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 149000);
+  CHECK(comm_modem_ready()); DIAG_CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 149000);
   sim_reset(); memset(test_config.host,'h',sizeof(test_config.host)-1u);
   memset(test_config.apn,'a',sizeof(test_config.apn)-1u);
   memset(test_config.login,'l',sizeof(test_config.login)-1u);
@@ -272,10 +294,11 @@ static void edge_tests(void)
   sim_start();
   while (slm.attempt.status.state != SLM_READY && slm.attempt.status.state == SLM_STARTING) sim_tick();
   CHECK(slm.attempt.status.step == SLM_DATA_ECHO && slm.attempt.status.state == SLM_READY); /* Максимальный QICSGP помещается. */
-  modem_slm336_off();
+  comm_modem_off();
   sim_reset(); sim_start(); sim_until(15000);
-  sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(modem_slm336_ready());
+  sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(comm_modem_ready());
 }
+// Проверить сроки фаз и кольцо сбоев диагностики.
 static void diagnostic_tests(void)
 {
   sim_reset(); sim_start(); sim_until(15000);
@@ -285,23 +308,24 @@ static void diagnostic_tests(void)
   for (unsigned i = 0; i < 20; ++i) sim_tick();
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
   DIAG_CHECK(sizeof(slm.diag) <= 128);
-  modem_slm336_off(); sim_no_sim = 1; sim_start(); sim_until(15000);
+  comm_modem_off(); sim_no_sim = 1; sim_start(); sim_until(15000);
   CHECK(slm.attempt.status.reason == SLM_ERR_NO_SIM); DIAG_CHECK(slm.diag.steps[SLM_SIM] == 10);
   DIAG_CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
   DIAG_CHECK(slm.diag.steps[SLM_ACTIVATE] == 0 && slm.diag.phases[SLM_PHASE_TCP] == 0);
   /* Десять сбоев, оборачивание кольца и сохранение между попытками. */
   for (unsigned i = 0; i < 12; ++i) {
-    modem_slm336_off(); power_events = 0; sim_start(); sim_until(sim_now + 15000u);
+    comm_modem_off(); power_events = 0; sim_start(); sim_until(sim_now + 15000u);
   }
   DIAG_CHECK(slm.diag.failure_next == 3); DIAG_CHECK(slm.diag.failure_count == 10);
 #if DOMOVOI_DIAG
   for (unsigned i = 0; i < sizeof(slm.diag.failure_step); ++i)
     CHECK(slm.diag.failure_step[i] == SLM_SIM && slm.diag.failure_reason[i] == SLM_ERR_NO_SIM);
 #endif
-  sim_reset(); sim_start(); sim_now = 1500; modem_slm336_poll(sim_now);
+  sim_reset(); sim_start(); sim_now = 1500; comm_modem_poll(sim_now);
   DIAG_CHECK((slm.diag.steps[SLM_DISCHARGE] * 10u) == 1500 && (slm.diag.phases[SLM_PHASE_POWER] * 10u) == 1500);
   slm.attempt.now = slm.attempt.step_started + 1000000u; DIAG_CHECK(slm_elapsed(slm.attempt.step_started) == UINT16_MAX);
 }
+// Проверить отказ неверных настроек до запуска UART.
 static void settings_tests(void)
 {
   sim_reset(); test_config.modem_type = 3; CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
@@ -311,7 +335,7 @@ static void settings_tests(void)
   /* Геттеры читаются при составлении команды, копии настроек нет. */
   sim_reset(); sim_start();
   memcpy(test_config.apn, "changed.apn", sizeof("changed.apn"));
-  sim_until(15000); CHECK(modem_slm336_ready() && !strcmp(slm_apn(), "changed.apn"));
+  sim_until(15000); CHECK(comm_modem_ready() && !strcmp(slm_apn(), "changed.apn"));
   sim_reset(); sim_start(); CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
   /* Новый сеанс отменяет служебный запрос даже без снятия питания. */
   sim_reset(); sim_start(); sim_until(15000);
@@ -327,20 +351,21 @@ static void settings_tests(void)
   }
   slm.attempt.mnc = 88; CHECK(!slm_apn()[0]);
 }
+// Запустить все сценарии этого стенда.
 int main(void)
 {
   path_tests(); error_tests(); timeout_step_tests(); edge_tests(); diagnostic_tests(); settings_tests();
   for (unsigned net = 2; net <= 3; ++net) {
-    sim_reset(); sim_network_wait = net; sim_start(); sim_until(15000); CHECK(modem_slm336_ready());
+    sim_reset(); sim_network_wait = net; sim_start(); sim_until(15000); CHECK(comm_modem_ready());
   }
   sim_reset(); sim_network_wait = 4; sim_start(); sim_until(80000); CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT);
-  sim_reset(); sim_rat_change = 8; sim_start(); sim_until(15000); CHECK(modem_slm336_ready());
+  sim_reset(); sim_rat_change = 8; sim_start(); sim_until(15000); CHECK(comm_modem_ready());
   /* Шум выключения/включения не должен стать ошибкой уже новой попытки. */
   sim_reset(); sim_start();
   interrupt_byte(0, USART_SR_FE);
   for (unsigned i = 0; i < 520; ++i) interrupt_byte('Y', USART_SR_RXNE);
   sim_until(15000);
-  CHECK(modem_slm336_ready() && !comm_uart_errors()); DIAG_CHECK(!slm.diag.failure_count);
+  CHECK(comm_modem_ready() && !comm_uart_errors()); DIAG_CHECK(!slm.diag.failure_count);
   puts("comm_slm: power/setup/SIM1/SIM2/network/APN/QIACT/timeouts/timing PASS");
   return 0;
 }

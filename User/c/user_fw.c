@@ -3,7 +3,11 @@
 // W25 проверяет запись; продвижение номера блока происходит только после её завершения.
 // Обрыв восстанавливается по заголовку и сохранённому device; чужая прошивка не устанавливается.
 #include "user_logic_internal.h"
+#include "user_fw_reason.h"
+#include "../../Bootloader/app_update.h"
+#include "../../Bootloader/boot_manual.h"
 #include "../fw_crc.h"
+enum { FW_HW_MARKER_OFFSET = 0x20u, FW_HW_MARKER_TAG = 0x48570000u };
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel);
 uint8_t fw_write_errors;
 uint32_t fw_rollback_pos, fw_rollback_end;
@@ -198,6 +202,16 @@ static void fw_async_complete(uint8_t code)
   fw_job.code = code; fw_job.phase = FA_REPLY;
 }
 
+// Отменить загрузку после окончательного отказа, сохраняя владельца до передачи ответа.
+static void fw_failure_reply(fw_reason_e reason)
+{
+  fw_job.phase = 0;
+  flash_release(FO_FWBLOCK);
+  fw_cancel(reason);
+  flash_claim(FO_FWBLOCK);
+  fw_job.phase = FA_REPLY;
+}
+
 // Продвинуть проверенную запись блока и CRC полного образа.
 void fw_storage_poll(uint32_t now)
 {
@@ -266,9 +280,9 @@ void fw_storage_poll(uint32_t now)
 write_error:
   r = ++fw_write_errors < FW_WRITE_TRIES ? FW_BLOCK_BADWRITE : FW_BLOCK_END;
   fw_async_complete(r);
-  if (r == FW_BLOCK_END) { fw_job.phase = 0; flash_release(FO_FWBLOCK); fw_cancel(FW_REASON_WRITE); flash_claim(FO_FWBLOCK); fw_job.phase = FA_REPLY; }
+  if (r == FW_BLOCK_END) fw_failure_reply(FW_REASON_WRITE);
   return;
 read_error:
   fw_async_complete(FW_BLOCK_END);
-  fw_job.phase = 0; flash_release(FO_FWBLOCK); fw_cancel(FW_REASON_UNKNOWN); flash_claim(FO_FWBLOCK); fw_job.phase = FA_REPLY;
+  fw_failure_reply(FW_REASON_UNKNOWN);
 }

@@ -1,7 +1,7 @@
 # Доработка: Кряжев А., 2026
 import os, pathlib, subprocess, sys, tempfile, re
 from source_select import source_path, source_text, host_adapters
-# DOMOVOI_ROOT runs the tests against a copy, e.g. with a deliberate fault.
+# DOMOVOI_ROOT направляет проверки в копию, например с намеренно внесённой ошибкой.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
 ZIG=__import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
 ref=sys.argv[1] if len(sys.argv)>1 and sys.argv[1]!='work' else None
@@ -21,7 +21,7 @@ def function(text,name):
         body=source('User/c/service_ff.inc')+'\n'+body
     return body
 def typedefs(text,*names):
-    # Packed like structures.h, so the tests see the real layouts and numbers.
+    # Упаковка соответствует structures.h: стенд использует настоящие размеры и смещения.
     out=[]
     for name in names:
         m=re.search(r'typedef\s+(?:enum|struct)\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*'+name+r'\s*;',text)
@@ -41,7 +41,7 @@ def config_helpers(user):
 with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     d=pathlib.Path(d)
     if kind=='storage':
-        # Check physical erase-sector footprints, not just logical byte ranges.
+        # Проверить физические границы стираемых секторов, а не только логические диапазоны.
         mapping=source('Tests/asm/reference/User/user_fun.c')
         ranges=[]
         for name,start,size in re.findall(r'mem\[(MB_\w+)\]\.start = (\d+);\s*mem\[\1\]\.size = (\d+);',mapping):
@@ -121,18 +121,18 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='fwstart':
         user=source('Tests/asm/reference/User/user_fun.c')
         case=cases(user)
-        # Call sites: commands 19 and 20 go through the tested functions, command 4 carries their code.
+        # Команды 19 и 20 вызывают проверяемые функции; команда 4 передаёт их код.
         c19=case(19);c20=case(20)
         assert '(len - 3) == 16' in c19 and 'cmdCode_e started = fw_start(&ptr[5], cch);' in c19 and 'store_command_start(19, cch, uniqId)' in c19,'command 19'
         assert 'fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);' in c20 and 'FW_BLOCK_SKIP' not in user and 'user_send_statusUpdateFW(ptr[4], code, cch, uniqId);' in c20,'command 20'
-        # Command 2: a download is cancelled before the reset, a rollback or install is left alone;
-        # reset now goes through timeToReset so answer 11 is sent first.
+        # Команда 2 отменяет загрузку перед сбросом, но не установку или откат;
+        # timeToReset откладывает сброс до отправки ответа 11.
         c2=case(2)
         assert c2.index('if (device.rebootToUpdate){')<c2.index('fw_abort("CANCEL");')<c2.index('device.timeToReset = 2;'),'command 2 during an update'
-        # A failed install or trial goes to the journal after registration, command 4 is not sent.
+        # Ошибка установки или пробы попадает в журнал после регистрации; команда 4 не отправляется.
         c1=case(1)
         assert 'app_boot_error_text(reason);' in c1 and 'app_boot_error_reported();' in c1 and 'user_send_statusUpdateFW' not in c1,'boot error after registration'
-        # Timing: one command 13 in flight for 20 s, one 10-minute limit for the whole download, saved every minute.
+        # Запрос 13 ждёт 20 с; вся загрузка ограничена 10 мин; курсор сохраняется каждую минуту.
         assert '#define FW_BLOCK_RETRY_MS       20000u' in user and '#define FW_TIMEOUT_S            600u' in user,'timing constants'
         loop=function(user,'user_loop')
         assert '>= FW_BLOCK_RETRY_MS){' in loop and 'fw_end("TIMEOUT", uniqIDCnt++);' in loop and 'updateTimeout % 60u == 0' in loop and 'fw_end("INSTALL", uniqIDCnt++);' in loop,'loop'
@@ -156,28 +156,28 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='log':
         user=source('Tests/asm/reference/User/user_fun.c');st=source('structures.h')
         case=cases(user)
-        # The controller writes no command or exchange events (answers of 16.09, sheet E525).
+        # Контроллер не пишет события команд и обмена: ответы 16.09, лист E525.
         assert 'log_addComandEvent' not in user and 'log_addTransferEvent' not in user and 'LOG_CMD_' not in st and 'LOG_TR_' not in st and 'LT_SYSTEM' not in st,'command and exchange events'
-        # Command 8: the source picks the event before the outputs; the admin test is logged too.
+        # Команда 8 выбирает событие до переключения выходов; проверка администратора также записывается.
         c8=case(8)
         assert c8.index('server_out_event = cmd8_event(ptr[5]);')<c8.index('user_activateOut((ptr[6] == 1)'),'command 8 source'
-        # The source only picks the journal event: the admin test goes the same way as any source.
+        # Источник только выбирает событие журнала; проверка администратора идёт общим путём.
         assert 'LOG_CON_OUTONBYTEST' not in c8 and 'case 3: return LOG_CON_OUTONBYTEST;' in user,'admin test logged'
-        # Protokol2 row 135: registration answers 4 and 5 reset to factory settings; row 537: no code 5 in answer 11.
+        # Протокол2: строка 135 — ответы регистрации 4 и 5 сбрасывают настройки; строка 537 — в ответе 11 нет кода 5.
         assert '#define REG_UNKNOWN_IMEI        4' in user and '#define REG_NOT_BOUND           5' in user and 'case REG_UNKNOWN_IMEI:' in case(1) and 'case REG_NOT_BOUND:' in case(1) and 'CMD_UNDEFIMEI' not in case(1),'registration answers'
         assert function(user,'user_parse_comand').count('CMD_RUNNING')==1 and 'CMD_RUNNING' not in case(2),'no code 5 for delayed reset'
         assert 'device.protocolVersion = DV.protocolVersion;' not in user,'protocol version is constant'
-        # Protokol2 row 284: an expired ID does not open, 130 is gone (138 tells the end); a sync of the same card
-        # keeps the first pass and the 138 mark; the end is checked every second and recounted on new server time.
+        # Протокол2, строка 284: просроченный ID не открывает; вместо 130 конец сообщает 138. Синхронизация той же карты
+        # сохраняет первый проход и отметку 138; срок проверяется каждую секунду и пересчитывается при новом времени сервера.
         assert 'if (id_expired(&cellId)){' in user and 'LOG_CON_IDEXPIRED' not in user,'use time expired'
         sync_body=function(user,'sync_page') if 'static uint8_t sync_page(' in user else case(13)
         assert 'id_watch_end(id_time_end(old));' in sync_body and 'user_checkIdTimeEnd();' in user and 'id_endScan = true;' in function(user,'log_setTime'),'use time end checked'
         assert 'memcpy(old->reserve, first, 4); old->reserve[6] = done;' in sync_body and 'memcmp(old->ID,' in sync_body,'use time kept on sync'
         assert 'log_addControlEvent(server_out_event, id, cnt);' in function(user,'user_activateOut'),'server event from its source'
-        # Journal sheet 131: after every pass of an ID with limited passes; 129: photo number when the photo is stored.
+        # Журнал: 131 после каждого прохода ID с лимитом; 129 с номером фотографии после её сохранения.
         assert 'if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);' in function(user,'user_activateOut'),'pass counter event'
         assert 'log_addPhotoEvent(photo->stamp);' in source('Tests/asm/reference/User/photo.c'),'photo event'
-        # Journal upload: the empty answer is 3 bytes (0 left, 0 in packet), sent before the erase; used sectors only.
+        # Пустая выгрузка журнала содержит 3 байта и отправляется до стирания только использованных секторов.
         up=function(user,'user_send_logRecords')
         assert up.count('user_send_anyData(10, empty, sizeof(empty), cch, uniqId);')==1 and 'uint8_t empty[3] = {0, 0, 0};' in up and 'tmp16' not in up,'empty journal answer'
         assert up.index('upload_finish(10)')<up.index('user_send_anyData(10, empty'),'Q5: all records confirmed before erase/empty answer'
@@ -189,13 +189,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'cch == CH_USB ? log_usbReadIndex : device.readLogIDIndex' in function(user,'upload_index'),'separate USB journal position'
         assert 'if (!upload_ack(10, cch)) return;' in up and 'sent ? readIdx + cntId : 0' in up,'Q5: next request confirms, transport failure retains cursor'
         assert 'cmd == 10 ? log_clearLogBuffer() : user_clearTempIdBuffer()' in function(user,'upload_finish'),'Q5: both channels erase only after final ACK'
-        # USB commands other than ident, status, PIN and USB diagnostics need the PIN.
+        # USB-команды, кроме идентификации, статуса, ПИН и диагностики USB, требуют ПИН.
         pc=function(user,'user_parse_comand')
         assert pc.index('CMD_CRCERROR')<pc.index('if (cch == CH_USB && !device.userAutorized && !usb_cmd_without_pin(ptr[4])){')<pc.index('switch (ptr[4])'),'PIN gate'
         allowed = 'return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND'
         if '#define USB_COMM_DIAG_COMMAND ' in user: allowed += ' || cmd == USB_COMM_DIAG_COMMAND'
         assert allowed + ';' in user and 'device.userAutorized = 0; // кабель вынут' in user,'PIN scope'
-        # Command 8: a requested output that did not switch answers 2, not success.
+        # Команда 8 отвечает кодом 2, если запрошенный выход не переключился.
         assert 'res8 = CMD_RUNERROR;' in c8 and 'user_send_answer_comand(ptr[4], res8, cch, uniqId);' in c8 and 'CMD_SUCCESS, cch' not in c8,'command 8 answer'
         # Каждое событие листа (таблица test_log.c) где-то пишется. Вторые серверы и 7-10
         # получаются сдвигом от первого номера; 34 - функции нет в настройках и протоколе (вопрос заказчику).
@@ -216,7 +216,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         names=['log_blank','log_valid','log_uniqueIndex','log_addEvent','log_getRecordsCount','log_readRecords']
         code='static uint32_t log_lastIndex;\n'+function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
         code+='\n'.join(function(user,n) for n in names if re.search(r'(?m)^(?:static )?(?:bool|void|uint16_t) '+n+r'\(',user))
-        unit=(ROOT/'Tests/test_log_commit.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s')).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_log_commit.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellLog_s')).replace('/* КОД МОДУЛЯ */',code)
         if 'static bool log_readRecords(' not in user:
             unit=unit.replace('/* PRODUCTION */',code)
             unit=unit.replace('static void reset(void)', 'static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){return mem_read(4096+first*32,p,count*32);}\nstatic void reset(void)')
@@ -224,7 +224,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('Tests/asm/reference/User/user_fun.c')
         code='static uint32_t log_lastIndex;\n'+function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
         code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_getRecordsCount','user_getTempIDRecordsCount'])
-        unit=(ROOT/'Tests/test_count_ends.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s')).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_count_ends.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellLog_s','cellID_s')).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='access':
         user=source('Tests/asm/reference/User/user_fun.c');st=source('structures.h')
         case=cases(user)
@@ -234,7 +234,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'user_activateOut(0,' not in user and 'user_activateOut(1,' not in user and check.count('user_activateOut(onOut[0], onOut[1], tp, id);')==5 and check.count('user_activateOut(')==5,'requested relays only'
         c8=case(8)
         assert 'user_activateOut((ptr[6] == 1) && config.rele[0].onCmdServer,' in c8 and '(ptr[7] == 1) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer))' in c8,'command 8 outputs'
-        # Protokol2 rows 185-188: 0 switches an allowed output off; values above 1 are a parameter error.
+        # Протокол2, строки 185–188: 0 выключает разрешённый выход; значение больше 1 — ошибка параметра.
         assert 'if (ptr[6] == 0 && config.rele[0].onCmdServer) out_load(OUT1, OUT_OFF, 0, 0, 0);' in c8 and 'if (ptr[7] == 0 && config.rele[1].onCmdServer) out_load(OUT2, OUT_OFF, 0, 0, 0);' in c8 and 'res8 = CMD_PARAMERROR;' in c8,'command 8 off'
         # Schedule time (Д-09) in both places.
         assert 'flag = shedule_time_ok(&shedule);' in check and 'flag = shedule_time_ok(&shedule);' in function(user,'user_checkShedule') and 'device.minute >= shedule.startMinute' not in user,'schedule window'
@@ -249,26 +249,26 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert 'config.netType = 0;' in function(user,'user_setdefault') and 'NT_GSM' not in function(user,'user_setdefault'),'automatic network'
         init=function(user,'user_initvariables')
         assert '#define PROTOCOL_VERSION        (uint8_t)1' in user and init.index('user_readsavedinformation();')<init.index('device.protocolVersion = PROTOCOL_VERSION;'),'protocol version'
-        # Status answers: three misses in a row, an answer to status 1 restarts the run.
+        # Статус: три пропуска подряд; ответ на статус 1 начинает отсчёт заново.
         c24=user[user.index('    case 24:'):user.index('    case 27:')]
         assert '#define MAXSTATUSANSWERERROR    (uint8_t)3' in user and '++device.lmCount >= MAXSTATUSANSWERERROR' in user,'three misses'
         assert 'device.lmCount = 0;' in c24 and 'switch (ptr[5])' not in c24,'answer 24'
-        # Settings sector: device saves take the settings from RAM; the modem type is saved on a change only.
+        # Сохранение device берёт config из RAM; тип модема сохраняется только при изменении.
         assert 'user_writeConfigAndDevice();' in function(user,'user_saveindex') and 'mem_rewrite' not in function(user,'user_saveindex'),'saveindex from RAM'
         assert 'device.moduleType = type;' in user,'module type from the modem'
         types=typedefs(st,'logControl_e','codeType_e','releMode_s','cellShedule_s','cellID_s')
-        # Passes per day: the counter restores on the first pass of a new day; a record from the server is today's.
+        # Суточный счётчик восстанавливается при первом проходе нового дня; запись сервера относится к текущему дню.
         sync_body=function(user,'sync_page') if 'static uint8_t sync_page(' in user else cases(user)(13)
         assert 'user_reloadPassCounter' not in user and 'id_set_pass_day(old, id_today());' in sync_body,'passes per day'
         code=re.search(r'(?m)^static uint16_t id_cells_end;',user).group(0)+'\n'
         code+=user[user.index('/* >>> время действия ID'):user.index('/* <<< проходы в сутки */')]
         code+='\n'.join(function(user,n) for n in ['shedule_time_ok','user_findID','user_getNumbersCount','user_checkIdTimeEnd','user_activateOut'])
-        unit=(ROOT/'Tests/test_access.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_access.c').replace('/* ТИПЫ ПРОТОКОЛА */',types).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='rules':
         user=source('Tests/asm/reference/User/user_fun.c')
         rules=user[user.index('/* Статус 1 вне очереди (таблица E92'):user.index('/* Режим обновления, бит 11 статуса 1')]
         defines=[x for x in user.splitlines() if x.startswith('#define TIMETOSTATUSRESPONSE')][0]+'\n'
-        # Call sites: each rule must be applied where the table puts it.
+        # Каждое правило должно применяться в точке вызова, указанной таблицей.
         loop=function(user,'user_loop')
         assert loop.index('status_event_due(st, timers_getMillis())')>loop.index('device.status.stateOut2 = out_getstate(OUT2);'),'status out of turn after inputs and outputs are read'
         case=cases(user)
@@ -280,13 +280,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert all('strcmp(cmd, "%s") == 0'%c in gate for c in ('add','reset','setout','default')) and '"imei"' not in gate and '"status"' not in gate,'SMS control commands refused in update mode'
         call=user[user.index('bool user_incomingcall (char* num, uint8_t typ)'):user.index('void user_comanderror')]
         assert 'fw_update_quiet' not in call,'calls keep working in update mode'
-        # Events 6-10: settings count as a sync packet once saved; the quiet timer ticks every second.
+        # События 6–10: сохранённые настройки считаются пакетом синхронизации; тихий срок тикает каждую секунду.
         c12=case(12);assert 'store_config_start()' in c12 and 'sync_packet(SYNC_CONFIG);' in function(user,'store_config_complete') and 'if (result == 2)' in function(user,'user_storage_poll'),'event 7 after verified settings'
         assert 'sync_end_tick();' in loop,'sync end ticks in the main loop'
-        # Block request (13): the retry clock starts only when the request left; a busy slot retries in 50 ms, not 20 s.
+        # Запрос 13 запускает срок только после отправки; занятый слот повторяется через 50 мс.
         assert 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx))' in loop,'block request not lost'
-        # Update events of the journal sheet (system 1-5 struck out): 132 start, 133 failure with its
-        # reason code, 134 time limit, 135 just before the install restart, 136 trial confirmed, 137 rollback.
+        # Журнал обновления: 132 начало, 133 ошибка с причиной, 134 истечение срока,
+        # 135 перед перезапуском установки, 136 подтверждение пробы, 137 откат; системные 1–5 исключены.
         rest=user
         for n in ('ENDIDUPDATE','ENDCONFUPDATE','ENDGROUPUPDATE','ENDSHEDULEUPDATE','ENDHOLLIDAYUPDATE'): rest=rest.replace('LOG_SYS_'+n,'')
         assert 'UPDATE)' not in rest,'no system update events'
@@ -297,7 +297,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert source('DomovoiNext.ewp').count('<state>DOMOVOI_APP_HW=139</state>')==2 and 'DOMOVOI_APP_HW' not in source('Bootloader/DomovoiBoot.ewp'),'board marker only in the application build'
         # Только v5: сборок для других плат нет (решение владельца 03.10.2026).
         assert 'BOARD_IP_V3' not in source('DomovoiNext.ewp') and 'Release_140' not in source('DomovoiNext.ewp'),'v5 only'
-        unit=(ROOT/'Tests/test_update_rules.c').read_text().replace('/* PRODUCTION */',defines+rules+function(user,'user_send_statusPack'))
+        unit=source('Tests/test_update_rules.c').replace('/* КОД МОДУЛЯ */',defines+rules+function(user,'user_send_statusPack'))
     elif kind=='serverrx':
         user=source('Tests/asm/reference/User/user_fun.c')
         for name in ['user_comm_session','user_comm_rx_done']:
@@ -323,7 +323,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         assert len(selected)==len(wanted)
         defines='\n'.join(x for x in user.splitlines() if x.startswith(('#define REG_UNKNOWN_IMEI','#define REG_NOT_BOUND','#define USB_COMM_DIAG_COMMAND')))
         code=defines+'\n'+helper+function(user,'usb_cmd_without_pin')+'\n'+parse[:parse.index('  switch (ptr[4])')]+'  switch(ptr[4]){'+''.join(selected)+'default: abort(); }}'
-        unit=(ROOT/'Tests/test_command_lengths.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_command_lengths.c').replace('/* ТИПЫ ПРОТОКОЛА */',types).replace('/* КОНТРОЛЬНАЯ СУММА */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='cfgstrings':
         user=source('Tests/asm/reference/User/user_fun.c');case=cases(user)
         types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s','status_s','triggers_s','device_s','memBlock_e','dataChanel_e','cmdCode_e','shtamp_e')
@@ -337,14 +337,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             restore+=re.search(r'^#define SCHED16_MARK_OFFSET[^\n]*',schedule,re.M).group(0)+'\n'+function(schedule,'sched16_restore')+'\n'
         code=restore+config_helpers(user)+'\n'.join(function(user,n) for n in ('user_readconfig','user_readsavedinformation'))
         code+='\n'+sync_stub(user)+'void command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(12)+'default: abort(); }}'
-        unit=(ROOT/'Tests/test_config_strings.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_config_strings.c').replace('/* ТИПЫ ПРОТОКОЛА */',types).replace('/* КОНТРОЛЬНАЯ СУММА */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='sms':
         user=source('Tests/asm/reference/User/user_fun.c');strings=source('User/user_str_fun.c')
         code='\n'.join(function(strings,n) for n in ('skipchar','user_strcpy'))+'\n'
         code+='\n'.join(function(user,n) for n in ('user_last10digitsnumber','user_sendsms','user_comm_server','user_smsreceived','log_addSystemValue','user_comm_link','user_comm_balance','user_comm_low_signal'))
         links=re.search(r'enum \{ COMM_LINK_UP[^}]*\};',source('Modules/comm_server.h')).group(0)
         types=typedefs(source('structures.h'),'logSystem_e','logControl_e','codeType_e')+'\n'+links
-        unit=(ROOT/'Tests/test_sms.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_sms.c').replace('/* ТИПЫ ПРОТОКОЛА */',types).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='uarttimer':
         uart=source('Modules/uart_stm32f10x.c')
         types=typedefs(uart,'uart_t')+'\n'
@@ -360,7 +360,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='usbdesc':
         unit=(ROOT/'Tests/test_usb_descriptor.c').read_text().replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_GetStringDescriptor'))
     elif kind=='logupload':
-        unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('Tests/asm/reference/User/user_fun.c'),'user_send_logRecords'))
+        unit=source('Tests/test_log_upload.c').replace('/* КОД МОДУЛЯ */',function(source('Tests/asm/reference/User/user_fun.c'),'user_send_logRecords'))
     elif kind=='uploadretry':
         user=source('Tests/asm/reference/User/user_fun.c')
         code=function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'
@@ -369,14 +369,14 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         else:
             code+='static uint16_t log_usbReadIndex,temp_usbReadIndex,log_unacked[2],temp_unacked[2]; static void upload_reset(uint8_t cmd){(void)cmd;} static uint16_t upload_index(uint8_t cmd,dataChanel_e ch){return cmd==10?(ch==CH_USB?log_usbReadIndex:device.readLogIDIndex):device.readTempIDIndex;} static void upload_restore(const device_s *v){(void)v;} static void log_setReadIndex(dataChanel_e ch,uint16_t n){if(ch==CH_USB)log_usbReadIndex=n;else device.readLogIDIndex=n;}\n'
         code+='\n'.join(function(user,n) for n in ['log_blank','log_valid','log_readRecords','user_send_anyData','user_send_logRecords','user_send_tempIDs','user_factoryReset'])
-        unit=(ROOT/'Tests/test_upload_retry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellLog_s','cellID_s','dataChanel_e')).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_upload_retry.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellLog_s','cellID_s','dataChanel_e')).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='idindex':
         code=source('Tests/asm/reference/User/idindex.c').replace('#include "idindex.h"',source('User/idindex.h'))
         unit=(ROOT/'Tests/test_idindex.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='outs':
         import re as _re
         outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
-        # DWT is outside the host model; keep the real relay implementation.
+        # DWT вне модели; используется настоящая реализация реле.
         unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */','void prof_relay_on(void) {}\n'+outs)
     elif kind=='crcff':
         crc=source('Tests/asm/reference/User/crc.c')
@@ -394,10 +394,10 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         start=user.index('    case 103:')
         end=user.index('    case 104:',start) if '    case 104:' in user[start:] else user.index('    case 105:',start)
         code=function(user,'user_clearMemBlock')+'\nstatic void command(uint8_t *ptr,dataChanel_e cch,uint8_t uniqId){switch(ptr[4]){'+user[start:end]+'default:abort();}}'
-        unit=(ROOT/'Tests/test_flash_commands.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellMem_s','memBlock_e','dataChanel_e','cmdCode_e')).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_flash_commands.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellMem_s','memBlock_e','dataChanel_e','cmdCode_e')).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='w25':
         driver=source('Tests/asm/reference/User/flash_w25.c')
-        driver=driver.replace('__no_operation();','') # hardware CS delay, like the existing host NOP stub
+        driver=driver.replace('__no_operation();','') # Задержка аппаратного CS, как в существующей заглушке NOP.
         result='bool' if 'bool w25_write_data' in driver else 'void'
         protos='static uint8_t w25_busy(void); static inline void w25_delay_ON(void); static inline void w25_delay_OFF(void); static void w25_WREN(void); static void w25_WRDI(void); static '+result+' w25_page_program(Int32U,pInt8U,Int16U);\n'
         code=protos+re.sub(r'^#include[^\n]*','',driver,flags=re.M)
@@ -429,7 +429,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='commands':
         user=source('Tests/asm/reference/User/user_fun.c');case=cases(user)
         code=function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')+'\n'+config_helpers(user)+sync_stub(user)+'void command(uint8_t *ptr, uint16_t len, dataChanel_e cch, uint8_t uniqId) { switch(ptr[4]) {'+case(11)+case(12)+'default: abort(); }}'
-        unit=(ROOT/'Tests/test_commands.c').read_text().replace('/* CONFIG TYPES */',typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')).replace('/* PRODUCTION */',code)
+        unit=source('Tests/test_commands.c').replace('/* ТИПЫ НАСТРОЕК */',typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='wiegandirq':
         wg=source('User/wiegand.c')
         code='\n'.join(x for x in wg.splitlines() if re.match(r'^(?:volatile )?(?:uint32_t|uint8_t|bool) wg',x))+'\n'
@@ -444,7 +444,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_timers_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
     elif kind=='crc':
         user=source('Tests/asm/reference/User/user_fun.c')
-        # Compile the actual CRC gate; the command switch is unreachable here.
+        # Собрать настоящую проверку CRC; switch команд здесь не выполняется.
         code=user[user.index('void user_parse_comand'):]
         code=(function(user,'command_args_valid')+'\n' if 'static bool command_args_valid(' in user else '')+code[:code.index('  /* ПИН (команда 102)')]+'  (void)tmp32;\n}\n'
         unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
@@ -481,13 +481,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('Tests/asm/reference/User/user_fun.c')
         unit=(ROOT/'Tests/test_id_expiry.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s')).replace('/* PRODUCTION */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
     elif kind=='tempidmeta':
-        unit=(ROOT/'Tests/test_tempid_meta.c').read_text(encoding='utf-8').replace('/* TYPES */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* PRODUCTION */',function(source('Tests/asm/reference/User/user_fun.c'),'user_findTempID')+'\n'+function(source('Tests/asm/reference/User/user_fun.c'),'user_addIdToTempBuffer'))
+        unit=source('Tests/test_tempid_meta.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* КОД МОДУЛЯ */',function(source('Tests/asm/reference/User/user_fun.c'),'user_findTempID')+'\n'+function(source('Tests/asm/reference/User/user_fun.c'),'user_addIdToTempBuffer'))
     elif kind=='commuart':
         header=source('Modules/comm_uart.h')
         code=source('Modules/comm_uart.c')
         code='\n'.join(x for x in code.splitlines() if not x.startswith('#include'))
-        unit=source('Tests/test_comm_uart.c').replace('/* HEADER */',header).replace('/* PRODUCTION */',code)
-        unit=unit.replace('/* TICK */',function(source('stm32_it.c'),'SysTick_Handler'))
+        unit=source('Tests/test_comm_uart.c').replace('/* ЗАГОЛОВОК МОДУЛЯ */',header).replace('/* КОД МОДУЛЯ */',code)
+        unit=unit.replace('/* ТИК */',function(source('stm32_it.c'),'SysTick_Handler'))
         profile=sys.argv[3] if len(sys.argv)>3 else 'v5'
         defines={'v5':''}
         unit=defines[profile]+unit
@@ -503,13 +503,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         if 'usb_tx_source' in hw:
-            # Test the actual source owner and IRQ handlers from the linked ELF.
+            # Проверить настоящего владельца источника и обработчики IRQ из ELF.
             subprocess.run([sys.executable,str(ROOT/'Tests/asm/test_usb_source.py'),
                             '--scenario',sys.argv[3] if len(sys.argv)>3 else 'idle'],check=True)
             sys.exit(0)
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
         globals=hw[hw.index('uint8_t  USART_Rx_Buffer'):hw.index('static void IntToUnicode')]
-        # The first definition is the application's; the #else branch is the bootloader's.
+        # Первое определение относится к приложению, ветвь #else — к загрузчику.
         code=source('User/usb_ring_size.h')+'\n'+[x for x in header.splitlines() if x.startswith('#define USART_RX_DATA_SIZE')][0]+'\n'
         if 'uint8_t USART_To_USB_Send_Data' in hw:code+='#define HOST_FIXED 1\n'
         code+=globals+'\n'
@@ -552,11 +552,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#include <stdint.h>\n#include <stdbool.h>\nuint8_t mem_config_result(void);\nbool w25_async_active(void){return false;}\nbool w25_async_start(uint32_t a,const uint8_t*p,uint16_t n,uint32_t now){(void)a;(void)p;(void)n;(void)now;return false;}\nuint8_t w25_async_poll(uint32_t now){(void)now;return 3;}\n'+unit
     if kind == 'w25':
         unit='#include <stdint.h>\n#include <stdbool.h>\nbool w25_read_data(uint32_t,uint8_t*,uint16_t);\n'+unit
-    # Existing isolated tests cover synchronous startup/compatibility paths.
-    # Runtime continuations have their own real-code harness (test_store_callers.py).
+    # Изолированные тесты покрывают синхронные стартовые и совместимые пути.
+    # Продолжения runtime проверяются отдельным стендом настоящего кода test_store_callers.py.
     if ('store.' in unit or 'store_runtime' in unit or 'store_restore(' in unit or 'store_command_start(' in unit) and 'static uint8_t store_runtime' not in unit and 'unsigned job,channel,quiet,seen' not in unit:
         unit='#include <stdint.h>\n#include <stdbool.h>\nstatic uint8_t store_runtime __attribute__((unused)) = 0;\nstatic uint8_t store_save_requested __attribute__((unused)), store_reset_requested __attribute__((unused));\nstatic struct {uint8_t job,clear,channel,uniq,cmd,quiet,seen;} store __attribute__((unused));\n#define store_ack(a,b) false\n#define store_finish(a) false\n#define store_restore(a) ((void)0)\n#define store_upload_request(a,b,c) true\n#define store_command_start(a,b,c) user_send_answer_comand(a,CMD_SUCCESS,b,c)\n'+unit
-    # Legacy queue tests remain synchronous; the real runtime writer is tested separately.
+    # Исторические тесты очереди синхронны; настоящий владелец записи проверяется отдельно.
     if kind == 'log':
         unit=re.sub(r'/\* >>> Cooperative firmware block writer \*/.*?/\* <<< Cooperative firmware block writer \*/', '', unit, flags=re.S)
         unit=re.sub(r'/\* >>> Cooperative event writer \*/.*?/\* <<< Cooperative event writer \*/', '', unit, flags=re.S)

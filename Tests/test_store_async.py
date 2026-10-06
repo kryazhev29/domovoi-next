@@ -1,11 +1,14 @@
-"""Bounded config publication: real memory.c with a NOR/power-cut model."""
+"""Доработка: Кряжев А., 2026.
+Атомарная публикация настроек на модели NOR с обрывами питания.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import pathlib, subprocess, tempfile, re
 from source_select import source_path
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ZIG = __import__('os').environ.get('DOMOVOI_ZIG', r"C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe")
 def src(p): return source_path(ROOT,p).read_bytes().decode("cp1251")
 base = src("Tests/test_storage.c").split("/* PRODUCTION */")[0]
-# Original harness supplies NOR 1->0, partial operations, legacy CRC, heap checks.
+# Исходная модель даёт переходы NOR 1→0, неполные операции, прежний CRC и проверку памяти.
 base = base.replace("oplength[256]", "oplength[1024]")
 base = base.replace("bool w25_read_data(", "static unsigned read_fault, read_calls;\nbool w25_read_data(")
 base = base.replace("{CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);return true;}", "{if(read_fault && ++read_calls==read_fault)return false;CHECK(a+n<=sizeof(flash));memcpy(p,flash+a,n);return true;}")

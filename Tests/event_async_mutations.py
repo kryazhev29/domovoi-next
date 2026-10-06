@@ -1,4 +1,7 @@
-"""Event writer faults must be caught by real executable assertions."""
+"""Доработка: Кряжев А., 2026.
+Мутации писателя событий: каждый внесённый отказ должен обнаруживаться исполняемым тестом.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import pathlib, shutil, subprocess, sys, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CASES=(

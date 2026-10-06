@@ -31,6 +31,7 @@ void comm_recover_poll(uint32_t now_ms);
 void comm_recover_failure(uint8_t step, uint8_t reason, uint32_t now_ms);
 /* —обрать ступени и остаток паузы дл€ команды 112. */
 #if DOMOVOI_DIAG
+// ¬ыдать ступень восстановлени€ и оставшийс€ срок ожидани€.
 uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left);
 #endif
 /* —ервер молчит, ping и DNS не прошли: TCP заново, потом модем с AT, потом питание. */

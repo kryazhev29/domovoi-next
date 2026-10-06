@@ -7,13 +7,13 @@
 typedef uint8_t Int8U;
 typedef uint16_t Int16U;
 typedef uint32_t Int32U;
-/* TYPES */
+/* ТИПЫ ПРОТОКОЛА */
 #define USB_DIAG_COMMAND 111
 static config_s config;
 static device_s device;
 static unsigned effects, replies, reply_cmd, reply_code, reply_kind, crc_calls, crc_index;
 static int trial, boot_error;
-/* CRC */
+/* КОНТРОЛЬНАЯ СУММА */
 static void wdt_reload(void) {}
 static uint32_t timers_getMillis(void) { return 42; }
 static void user_send_answer_comand(uint8_t cmd,cmdCode_e code,dataChanel_e ch,uint8_t id)
@@ -30,13 +30,13 @@ static void app_boot_error_text(char *p) { strcpy(p,"TRIAL FAIL");effects++; }
 static void app_boot_error_reported(void) { boot_error=0;effects++; }
 static void fw_log(logUpdate_e event,const char *why) { (void)event;(void)why;effects++; }
 static void status_event_sent(uint16_t n,uint32_t now) { (void)n;CHECK(now==42);effects++; }
-/* РљРѕРјР°РЅРґР° 1: РёСЃС…РѕРґ СЂРµРіРёСЃС‚СЂР°С†РёРё РїРµСЂРµРґР°С‘С‚СЃСЏ СЃРµСЂРІРµСЂРЅРѕР№ С‡Р°СЃС‚Рё РЅРѕРІРѕР№ СЃРІСЏР·Рё. */
+/* Команда 1: исход регистрации передаётся серверной части новой связи. */
 static void comm_server_registered(uint8_t success) { (void)success;effects++; }
 static void comm_channel_reopen(uint32_t pause) { CHECK(pause==0);effects++; }
 static void user_factoryReset(void) { effects++; }
 static void user_savereset(void) { effects++; }
 static void fw_abort(const char *why) { CHECK(!strcmp(why,"CANCEL"));device.FWinProgress=0;effects++; }
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 static void init(void)
 {
     memset(&device,0,sizeof(device));memset(&config,0,sizeof(config));

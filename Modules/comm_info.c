@@ -55,7 +55,7 @@ static void info_line(const uint8_t *p, uint16_t n)
 void comm_info_poll(uint32_t now_ms)
 {
   /* Модем не на связи - цифры прошлого сеанса не показываем, опрос заново с начала. */
-  if (!modem_slm336_ready()) {
+  if (!comm_modem_ready()) {
     info.v.csq = 99; info.v.creg = info.v.cgreg = info.v.net = info.ps = 0;
     info.step = 0; info.next = now_ms; return;
   }

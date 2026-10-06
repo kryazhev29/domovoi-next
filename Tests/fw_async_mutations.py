@@ -1,4 +1,7 @@
-"""Runtime firmware continuation contract mutations in isolated copies."""
+"""Доработка: Кряжев А., 2026.
+Мутации продолжения загрузки прошивки в изолированных копиях исходников.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import pathlib, shutil, subprocess, sys, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CASES=(

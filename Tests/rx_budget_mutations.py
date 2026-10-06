@@ -1,4 +1,7 @@
-"""Mutate isolated copies, require executable assertions to catch each fault."""
+"""Доработка: Кряжев А., 2026.
+Мутации ограничения работы приёма в изолированных копиях исходников.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import os, pathlib, shutil, subprocess, sys, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CASES=(

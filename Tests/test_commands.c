@@ -10,7 +10,7 @@ typedef unsigned dataChanel_e;
 #define CMD_RUNERROR 2
 #define SHTAMP_CONFIG 3
 #define MB_CONFIG 0
-/* CONFIG TYPES */
+/* рхош мюярпней */
 static config_s config;
 static struct {uint32_t datetimeConfig;uint16_t crc;struct {int defaultConfig;} status;} device;
 static struct {uint32_t start,size;} mem[1]={{4096,512}};
@@ -28,7 +28,7 @@ enum { SLM_IDLE, SLM_STARTING, SLM_READY, SLM_FAILED };
 static unsigned comm_state, comm_boots;
 static uint8_t comm_modem_state(void) { return (uint8_t)comm_state; }
 static void user_comm_boot(void) { ++comm_boots; }
-/* PRODUCTION */
+/* йнд лндскъ */
 int main(void){uint8_t p[2052];unsigned n; (void)comm_modem_state; (void)user_comm_boot;
  strcpy(config.countryCode,"+7");
  for(n=3;n<14;n++){uint8_t *short_packet=malloc(n+4);CHECK(short_packet);memset(short_packet,0x41,n+4);short_packet[4]=11;sms=0;command(short_packet,n,1,42);CHECK(!sms&&answer==CMD_PARAMERROR);free(short_packet);}

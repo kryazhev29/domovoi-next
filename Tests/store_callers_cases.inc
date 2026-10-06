@@ -1,3 +1,6 @@
+/* ƒоработка:  р€жев ј., 2026. —ценарии логики на модели NOR.
+   ƒанные и отказы задаютс€ стендом; провер€етс€ реальный код модул€.
+   ѕроверки не используют физическую плату и сеть. */
 
 static void setup(void){
  memset(&log_job,0,sizeof(log_job)); log_timeKnown=1; host_boot(); memset(&cfg_job,0,sizeof(cfg_job)); held=0; memset(&store,0,sizeof(store));
@@ -17,14 +20,14 @@ static void setup(void){
 static void drain(void){unsigned n=0;while(store.job||mem_config_result()||store_save_requested||store_reset_requested){user_storage_poll();now++;CHECK(++n<20000);}}
 int main(void){
  setup();CHECK(store_command_allowed(12));store.job=US_SAVE;CHECK(store_command_allowed(24)&&store_command_allowed(27)&&!store_command_allowed(12));store.job=0;user_send_logRecords(CH_SERVER,7);CHECK(frames==1&&log_unacked[1]==32&&!store.job);
- user_send_logRecords(CH_SERVER,7);CHECK(frames==2&&!store.job&&device.readLogIDIndex==0); // retransmission
+ user_send_logRecords(CH_SERVER,7);CHECK(frames==2&&!store.job&&device.readLogIDIndex==0); // ѕовторна€ передача.
  user_send_logRecords(CH_SERVER,8);CHECK(store.job==US_ACK&&device.readLogIDIndex==0&&frames==2);
  for(unsigned i=0;i<12;i++){user_storage_poll();now++;CHECK(device.readLogIDIndex==0&&frames==2);}
  drain();CHECK(frames==3&&device.readLogIDIndex==32&&log_unacked[1]==40);
  user_send_logRecords(CH_SERVER,9);CHECK(!empty_frames);drain();CHECK(empty_frames==1&&!store.clear&&!device.logsCount);
  setup();user_send_logRecords(CH_SERVER,7);user_comm_session(false);user_send_logRecords(CH_SERVER,8);CHECK(!store.job&&device.readLogIDIndex==0&&log_unacked[1]==32);
  user_send_logRecords(CH_SERVER,9);CHECK(store.job==US_ACK);user_comm_session(false);unsigned sent=frames;drain();CHECK(frames==sent&&device.readLogIDIndex==32);
- setup();store_save_requested=1;user_storage_poll();CHECK(store.job==US_SAVE);device.FWblockIdx=99;drain();device_s saved_device;CHECK(mem_read(MEM_CONFIG_LEGACY+512,(uint8_t*)&saved_device,512));CHECK(saved_device.FWblockIdx==0); // owned snapshot
+ setup();store_save_requested=1;user_storage_poll();CHECK(store.job==US_SAVE);device.FWblockIdx=99;drain();device_s saved_device;CHECK(mem_read(MEM_CONFIG_LEGACY+512,(uint8_t*)&saved_device,512));CHECK(saved_device.FWblockIdx==0); // —нимок принадлежит операции.
  setup();store_reset_requested=1;user_storage_poll();CHECK(store.job==US_RESET&&!resets);drain();CHECK(resets==1);
  setup();store_reset_requested=1;user_storage_poll();
  memset(&log_pending[0],0,sizeof(log_pending[0]));log_pending[0].index=6789;log_pendingCount=1;
@@ -32,7 +35,7 @@ int main(void){
  drain();CHECK(resets==1&&!log_pendingCount&&log_getRecordsCount()==41);
  setup();config.datetime=42;device.datetimeConfig=42;store.cmd=12;store.channel=CH_SERVER;CHECK(store_config_start());CHECK(!stamps&&!syncs);txbusy=true;
  while(store.job!=US_REPLY){user_storage_poll();now++;}CHECK(syncs==1&&!stamps);user_storage_poll();CHECK(!stamps);txbusy=false;drain();CHECK(stamps==1);
- // Reboot after a verified cleanup intent, with a partially erased journal.
+ // ѕерезапуск после проверенного намерени€ очистки при частично стЄртом журнале.
  setup();user_send_logRecords(CH_SERVER,1);user_send_logRecords(CH_SERVER,2);drain();user_send_logRecords(CH_SERVER,3);
  while(store.job!=US_ERASE){user_storage_poll();now++;}CHECK(!empty_frames&&store.clear==10);
  CHECK(mem_read(MEM_CONFIG_LEGACY+512,(uint8_t*)&saved_device,512));
@@ -40,10 +43,10 @@ int main(void){
  memset(&store,0,sizeof(store));held=0;store_restore(&saved_device);CHECK(store.job==US_RECOVER&&store.quiet);
  cellLog_s pending;memset(&pending,0,sizeof(pending));CHECK(!log_addEvent(&pending));drain();CHECK(!store.clear&&!empty_frames);CHECK(log_addEvent(&pending));
 
- // A failed checkpoint cannot acknowledge or advance; same packet can be retried.
+ // Ќеудачное сохранение курсора не подтверждает и не продвигает выгрузку; пакет допускает повтор.
  setup();user_send_logRecords(CH_SERVER,1);user_send_logRecords(CH_SERVER,2);async_fail=1;drain();
  CHECK(device.readLogIDIndex==0&&frames==1&&log_unacked[1]==32);user_send_logRecords(CH_SERVER,2);drain();CHECK(device.readLogIDIndex==32&&frames==2);
- // Neither a failed intent nor failed erase admits new journal writes or an empty reply.
+ // ќтказ намерени€ или стирани€ не разрешает запись новых событий и пустой ответ.
  setup();user_send_logRecords(CH_SERVER,1);user_send_logRecords(CH_SERVER,2);drain();user_send_logRecords(CH_SERVER,3);
  while(store.job!=US_MARK){user_storage_poll();now++;}async_fail=1;
  while(mem_config_result()!=3){user_storage_poll();now++;}user_storage_poll();now++;
@@ -51,7 +54,7 @@ int main(void){
  while(store.job!=US_ERASE){user_storage_poll();now++;}async_fail=1;
  while(!store.waiting){user_storage_poll();now++;}
  while(store.waiting){user_storage_poll();now++;}CHECK(!empty_frames&&store.clear==10);drain();CHECK(empty_frames==1);
- // Every cleanup sector can be interrupted, without making remaining data look like a new queue.
+ // ќбрыв каждого сектора очистки не превращает остаток данных в новую очередь.
  for(unsigned sector=0;sector<25;sector++){
    setup();device.newAddressLog=mem[MB_LOG].start+mem[MB_LOG].size;device.logsCount=3072;store.cmd=10;store.channel=CH_SERVER;store.uniq=7;
    CHECK(!store_finish(10));while(store.job!=US_ERASE){user_storage_poll();now++;}
@@ -60,8 +63,8 @@ int main(void){
    memset(&store,0,sizeof(store));held=0;store_restore(&saved_device);drain();CHECK(!store.clear&&!empty_frames);
  }
 
- // The prior application can append after rollback while ignoring the intent.
- // The new application preserves that first sector and requires fresh ACKs.
+ // ѕрежнее приложение после отката может добавить данные, не понима€ намерени€ очистки.
+ // Ќовое приложение сохран€ет первый сектор и требует свежего подтверждени€.
  setup();store.cmd=10;store.channel=CH_SERVER;CHECK(!store_finish(10));
  while(store.job!=US_ERASE){user_storage_poll();now++;}
  CHECK(mem_read(MEM_CONFIG_LEGACY+512,(uint8_t*)&saved_device,512));

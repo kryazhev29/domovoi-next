@@ -19,9 +19,6 @@ static struct {
   char text[64];
   uint8_t state, got, menu;
 } bal;
-/* Преобразовать шестнадцатеричный символ внешнего ответа. */
-static uint8_t bal_hex(uint8_t c)
-{ return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10u : c >= 'a' && c <= 'f' ? c - 'a' + 10u : 16u; }
 /* +CUSD: <m>[,"<str>"[,<dcs>]] (27.007 §7.15); dcs 72 - UCS2 hex, иначе текст.
    Строка может быть обрезана движком AT (длинная реклама): без закрывающей кавычки. */
 static void bal_answer(const uint8_t *p, uint16_t n)
@@ -37,15 +34,14 @@ static void bal_answer(const uint8_t *p, uint16_t n)
   if (end + 1u < n && p[end + 1u] == ',') { pos = (uint16_t)(end + 2u); if (!comm_at_scan(p, n, &pos, 255u, &dcs)) dcs = 15; }
   if (end == n) { /* обрезана: кодировка не дошла - UCS2, если только hex четвёрками */
     uint16_t i = start;
-    while (i < end && bal_hex(p[i]) < 16u) ++i;
+    while (i < end && comm_at_hex(p[i]) < 16u) ++i;
     if (i == end && end - start >= 4u) dcs = 72;
   }
   if (dcs == 72u) {
     for (uint16_t i = start; i + 3u < end && len + 1u < sizeof(bal.text); i = (uint16_t)(i + 4u)) {
       uint16_t u = 0;
-      for (uint8_t k = 0; k < 4u; ++k) { uint8_t v = bal_hex(p[i + k]); if (v > 15u) { bal.text[len] = 0; return; } u = (uint16_t)(u << 4 | v); }
-      bal.text[len++] = u < 0x80 ? (char)u : u >= 0x410 && u <= 0x44F ? (char)(u - 0x410 + 0xC0)
-                      : u == 0x401 ? (char)0xA8 : u == 0x451 ? (char)0xB8 : '?';
+      for (uint8_t k = 0; k < 4u; ++k) { uint8_t v = comm_at_hex(p[i + k]); if (v > 15u) { bal.text[len] = 0; return; } u = (uint16_t)(u << 4 | v); }
+      bal.text[len++] = comm_at_cp1251(u);
     }
   } else for (uint16_t i = start; i < end && len + 1u < sizeof(bal.text); ++i) bal.text[len++] = (char)p[i];
   bal.text[len] = 0;

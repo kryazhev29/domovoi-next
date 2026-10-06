@@ -3,31 +3,28 @@
  * Внешний интерфейс логики: доступ, команды, журнал и периодическое обслуживание.
  * Запись флеш проходит через сервис хранилища; его журнал сохраняет восстановление после обрыва питания.
  */
-#include "includes.h"
 
 #ifndef USERFUN_H
 #define USERFUN_H
+#include <stdint.h>
+#include "arm_comm.h"
+#include "structures.h"
 
 /* Обычный RX 485; на время съёмки photo.c подключает буфер из heap. */
-#define PORTBUFSIZE             (uint16_t)32
+enum { PORTBUFSIZE = 32 };
 
 extern cellMem_s mem[10];
+// Передать отладочный текст по USB при разрешённой диагностике.
 void user_debug(char *text);
 
-// валиден ли IMEI
-Int8U user_imeivalid(void);
-// универсальный пароль на конфигурацию
-Int16U user_unipassword (void);
-// ожидание пока напряжение питания не станет выше порога
-
-// >>> переопределение функций --------------------------
-void user_errorconnection (int8_t handle);
+// Принять кадр канала после проверки его границы и контрольной суммы.
 void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz);
+// Принять SMS от модема и выполнить разрешённую текстовую команду.
 bool user_smsreceived (char* num, char* data);
+// Поставить исходящую SMS в очередь модема.
 void user_sendsms(char *mes, char *num);
-void user_smssended (void);
+// Проверить номер звонящего по правилам доступа.
 bool user_incomingcall (char* num, uint8_t typ);
-void user_comanderror (int16_t er);
 
 // инициализация
 void user_init (void);
@@ -40,7 +37,6 @@ void user_initvariables (void);
 // Чтение конфигурации с памяти
 void user_readconfig(void);
 // запись конфигурации в память
-void user_writeconfig (void);
 // Загрузить настройки по умолчанию
 void user_setdefault (void);
 // Сброс всего
@@ -120,14 +116,18 @@ uint16_t user_getTempIDRecordsCount(void);
 bool user_checkShedule(uint8_t shd);
 // обновить данные ID
 bool user_updateID(cellID_s *c);
+// Удалить истёкшие ID в фоновом проходе.
 void user_checkIdTimeEnd(void);
 
 // очистить буфер журнала
 bool log_clearLogBuffer(void);
 // добавить событие в буфер
 bool log_addEvent(cellLog_s *cl);
+// Перенести ожидающие события из ОЗУ в кольцевой журнал.
 void log_flushPending(void);
+// Подставить полученное время событиям, записанным до синхронизации.
 void log_setTime(uint32_t now);
+// Продвинуть накопленные события при освобождении флеша.
 void log_checkPending(void);
 // получаем кол-во записей в журнале
 uint16_t log_getRecordsCount(void);
@@ -137,15 +137,21 @@ bool log_addSystemEvent(logSystem_e num);
 bool log_addSystemEventID(logSystem_e num, char *id);
 // добавить событие доступа
 bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt);
+// Записать номер сохранённой фотографии.
 bool log_addPhotoEvent(uint32_t number);
+// Записать результат и причину обновления прошивки.
 bool log_addUpdateEvent(logUpdate_e num, uint32_t reason);
 
 
 bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc);
 
+// Продвинуть единственного активного владельца флеша.
 void user_storage_poll(void);
+// Разрешить новую команду записи при свободном хранилище.
 bool user_storage_command_ready(void);
+// Разрешить фоновую операцию без конфликта с командой.
 bool user_storage_background_ready(void);
+// Проверить, доступен ли флеш обработчикам вызова и SMS.
 bool user_storage_flash_ready(void);
 
 #endif

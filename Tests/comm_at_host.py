@@ -15,12 +15,12 @@ ZIG = __import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Cod
 def unit(root=ROOT):
     def source(name):
         return (root / name).read_bytes().decode('cp1251').replace('#include \"domovoi_diag.h\"','')
-    uart_test = source('Tests/test_comm_uart.c').split('/* PRODUCTION */', 1)[0]
+    uart_test = source('Tests/test_comm_uart.c').split('/* КОД МОДУЛЯ */', 1)[0]
     uart_test = uart_test.replace('static uint8_t at_command[128], frame[1040];', '')
-    uart_test = uart_test.replace('/* HEADER */', source('Modules/comm_uart.h'))
+    uart_test = uart_test.replace('/* ЗАГОЛОВОК МОДУЛЯ */', source('Modules/comm_uart.h'))
     code = '\n'.join(line for name in ('Modules/comm_uart.c', 'Modules/comm_at.c')
                      for line in source(name).splitlines() if not line.startswith('#include'))
-    model_irq = source('Tests/test_comm_uart.c').split('/* PRODUCTION */',1)[1].split('static void reset(void)',1)[0]
+    model_irq = source('Tests/test_comm_uart.c').split('/* КОД МОДУЛЯ */',1)[1].split('static void reset(void)',1)[0]
     return diagnostic_header(root) + uart_test + source('Modules/comm_at.h') + code + model_irq + c_header() + source('Tests/test_comm_at.c')
 
 

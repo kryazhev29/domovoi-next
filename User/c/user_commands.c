@@ -3,6 +3,16 @@
 // USB и сервер передают целый кадр с уже проверенной CRC.
 // Долговечность изменений и ответы после записи обеспечивают вызываемые автоматы.
 #include "user_logic_internal.h"
+#include "user_fw_reason.h"
+#include "../sched16.h"
+#include "../table_runtime.h"
+#include "photo.h"
+#include "photo_runtime.h"
+#include "../../Modules/comm_server.h"
+#include "../../Modules/comm_modem.h"
+#include "../../Bootloader/app_update.h"
+#include "../../Bootloader/boot_manual.h"
+#include "prof.h"
 
 // Определить команды USB, доступные до авторизации.
 static bool usb_cmd_without_pin(uint8_t cmd)
@@ -97,11 +107,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   switch (ptr[4]) // команда
   {
     case 1: // Ответ контроллеру на регистрацию
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd reg (cmd 1)\r\n");
-#endif
       if (cch != CH_SERVER) break; // ответ на регистрацию бывает только от сервера
-      device.answerTimeout = 0;
       comm_server_registered(ptr[5] == CMD_SUCCESS);
       switch ((cmdCode_e)ptr[5]){
       case CMD_SUCCESS:
@@ -119,8 +125,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           fw_event(code == FW_REASON_TRIAL_FAIL ? LOG_FW_ROLLBACK : LOG_FW_FAIL, code);
           app_boot_error_reported();
         }
-        device.lmTimer = 5;
-        device.lmCount = 0;
         {
           uint16_t st;
           memcpy((uint8_t*)&st, (uint8_t*)&device.status, 2);
@@ -151,9 +155,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 2: // перезагрузить
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd reset (cmd 2)\r\n");
-#endif
       /* Бит 11 (E440): перезагрузка отменяет загрузку; откат или установка, уже идущие в
          загрузчик, не трогаются. */
       if (device.rebootToUpdate){
@@ -172,9 +173,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 3: // команда установить заводские настройки
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd factory (cmd 3)\r\n");
-#endif
       if (ptr[5] == 0){
         user_factoryReset();
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
@@ -185,9 +183,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 5: // Установка состояния триггерных функций
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd triggers (cmd 5)\r\n");
-#endif
       if ((len - 3) == 16){
         memcpy((uint8_t*)&device.triggers, &ptr[5], 16);
 
@@ -244,9 +239,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 8: // управление выходами
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd set out (cmd 8)\r\n");
-#endif
       if (fw_update_quiet()){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
@@ -284,23 +276,14 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 9: // запрос журнала событий
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd get log (cmd 9)\r\n");
-#endif
       user_send_logRecords(cch, uniqId);
       break;
 
     case 10: // запрос ID добавленных через SMS или Авторегистрацию
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd get IDs (cmd 10)\r\n");
-#endif
       user_send_tempIDs(cch, uniqId);
       break;
 
     case 11: // отправить смс на заданный номер с заданным текстом
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd send sms (cmd 11)\r\n");
-#endif
       /* Номер занимает 10 байт. Текст ограничен длиной кадра, NUL на проводе необязателен.
        * Собственная копия не позволяет захватить CRC или соседний пакет в текст SMS. */
       if (len >= 14 && ptr[5] != 0 && ptr[15] != 0 &&
@@ -326,9 +309,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 12: // установка настроек контроллера
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd settings (cmd 12)\r\n");
-#endif
       if ((len - 3) == sizeof(config)){
         const config_s *received = (const config_s *)&ptr[5];
 
@@ -418,16 +398,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 17: // CRC всех 5-ти блоков данных
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd get crc (cmd 17)\r\n");
-#endif
       user_send_crcPack(cch, uniqId);
       break;
 
     case 18: // запрос CRC базы абонентов поблочно
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd crc ID (cmd 18)\r\n");
-#endif
       if (ptr[5] > 100) { // блоков 100: номер больше - чтение мимо базы
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         break;
@@ -436,10 +410,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 19: // Обновление прошивки
-#ifdef DEBUG_USER
-  if (cch != CH_USB)
-    user_debug(">>U Recv cmd fw update (cmd 19)\r\n");
-#endif
       if ((len - 3) == 16){
         (void)fw_service_begin(ptr+5,cch,uniqId);
       } else{
@@ -449,12 +419,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 20: // Блок прошивки, ответ командой 4
-#ifdef DEBUG_USER
-if (cch != CH_USB && len >= 5){
-  sprintf(tempStrBuffer, ">>U Recv FW block %u (cmd 20)\r\n", (unsigned)(ptr[5] | (ptr[6] << 8)));
-  user_debug(tempStrBuffer);
-}
-#endif
       {
         uint8_t code = fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);
         if (code == FW_BLOCK_PENDING) fw_async_reply(uniqId);
@@ -463,9 +427,6 @@ if (cch != CH_USB && len >= 5){
       break;
 
     case 21: // запрос фотографий
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd get photo (cmd 21)\r\n");
-#endif
       if (len == 3 || len == 9)
 
         photo_request_answer(cch,uniqId,ptr+5,(uint8_t)(len-3));
@@ -473,39 +434,23 @@ if (cch != CH_USB && len >= 5){
       break;
 
     case 22: // запрос статуса 2
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd get status (cmd 22)\r\n");
-#endif
       user_send_statusPackSecond(cch, uniqId);
       break;
 
     case 23: // установить время контроллера
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd set time (cmd 23)\r\n");
-#endif
       memcpy((uint8_t*)&tmp32, &ptr[5], 4);
       log_setTime(tmp32);
       user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
       break;
 
     case 24: // команда подтверждения приема команды от контроллера
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd answer (cmd 24)\r\n");
-#endif
       /* Ответ на статус 1 заканчивает ожидание и счёт пропущенных ответов. ptr[5] - уникальный
          номер подтверждаемого сообщения, а не команда: он не должен заканчивать ожидание ответа
          на регистрацию. */
       if (cch == CH_SERVER) comm_server_status_ack(ptr[5]);
-      if (device.answerID == 2){
-        device.answerTimeout = 0;
-        device.lmCount = 0;
-      }
       break;
 
     case 27: // произвольная команда
-#ifdef DEBUG_USER
-  user_debug(">>U Recv cmd (cmd 27)\r\n");
-#endif
       user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
       break;
 

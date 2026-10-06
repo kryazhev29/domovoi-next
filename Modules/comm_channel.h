@@ -29,6 +29,7 @@ bool comm_channel_fault(void);
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t));
 /* Собрать состояние канала для стендовой команды 112. */
 #if DOMOVOI_DIAG
+// Выдать состояние канала для стендовой команды 112.
 uint32_t comm_channel_diag(void);
 #endif
 /* Производитель пишет прямо сюда; capacity по sizeof слота. Занято/приоритет — NULL. */

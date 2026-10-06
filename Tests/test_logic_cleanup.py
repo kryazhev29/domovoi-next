@@ -1,5 +1,8 @@
 # Доработка: Кряжев А., 2026
-"""Проверки логики на связанном ELF: кадры, доступ и замер инструкций до/после."""
+"""Проверки логики на связанном ELF: кадры, доступ и замер инструкций до/после.
+Периферийные границы моделируются; разбор команд и скан таблиц исполняются из прошивки.
+Результаты и замеры сохраняются вне дерева исходников.
+"""
 import argparse
 import hashlib
 import json
@@ -15,7 +18,8 @@ from c_vs_asm_suite import select_image
 from c_vs_asm_compare import Profile
 from test_access_reads import AccessMachine
 from test_service_runtime import ServiceMachine
-from storage_machine import crc16
+from storage_machine import StorageMachine, crc16
+from iar_layout import fields
 from iar_image import image_paths
 
 
@@ -155,14 +159,45 @@ def measurements():
     return result
 
 
-# Проверить неизменность ПИН и размер тематических модулей по исходникам.
+# Проверить скан ID на границе страниц, оборванную ячейку и отказ чтения NOR.
+def startup_counts():
+    checks = 0
+    for fail_at in (0, 1, 2):
+        m = StorageMachine()
+        base = 0x41000
+        m.u.mem_write(m.addr('mem') + 2 * 8, struct.pack('<II', base, 512))
+        m.flash[base:base + 512] = b'\xff' * 512
+        for cell in (0, 7, 8):
+            record = bytearray(32)
+            struct.pack_into('<H', record, 0, cell + 1)
+            record[fields('cellID_s')['ID']:fields('cellID_s')['ID'] + 10] = b'1234567890'
+            m.flash[base + cell * 32:base + (cell + 1) * 32] = record
+        m.flash[base + 15 * 32 + 2] = 0  # Оборванная запись тоже занимает место.
+        if fail_at:
+            m.fault = ('read', fail_at)
+        count = m.checked('user_getNumbersCount')
+        assert count == (65535 if fail_at else 3), (fail_at, count)
+        if not fail_at:
+            assert int.from_bytes(m.u.mem_read(m.addr('id_cells_end'), 2), 'little') == 9
+            assert int.from_bytes(m.u.mem_read(m.addr('id_used_bytes'), 4), 'little') == 512
+        checks += 1
+    for count in (0, 7, 8, 9, 16):
+        m = StorageMachine()
+        base = 0x1e8000
+        m.u.mem_write(m.addr('mem') + 8 * 8, struct.pack('<II', base, 512))
+        m.flash[base:base + 512] = b'\xff' * 512
+        for cell in range(count):
+            m.flash[base + cell * 32:base + cell * 32 + 2] = struct.pack('<H', cell + 1)
+        assert m.checked('user_getTempIDRecordsCount') == count
+        assert int.from_bytes(m.u.mem_read(m.device + m.d['newAddressTempID'], 4), 'little') == base + count * 32
+        checks += 1
+    return checks
+
+
+# Проверить отсутствие мёртвого расчёта ПИН и размер тематических модулей.
 def source_contracts():
-    old = subprocess.check_output(['git', 'show', '97b05d6:User/c/user_fun_runtime.c'], cwd=ROOT).decode('cp1251')
     new = (ROOT / 'User/c/user_config.c').read_text(encoding='cp1251')
-    def pin(text):
-        start = text.index('Int16U user_unipassword'); end = text.index('\n}', start) + 2
-        return text[start:end].replace('\r\n', '\n')
-    assert pin(old) == pin(new), 'исходное тело универсального ПИН изменено'
+    assert 'user_unipassword' not in new and 'user_imeivalid' not in new
     assert not (ROOT / 'User/hybrid').exists()
     assert not (ROOT / 'User/c/user_fun_runtime.c').exists()
     for path in (ROOT / 'User/c').glob('user_*.c'):
@@ -183,7 +218,7 @@ def main():
     import os
     os.environ['DOMOVOI_COMPARE_CONFIG'] = args.config
     select_image(args.variant, args.build_root)
-    checks = 0 if args.baseline else source_contracts() + rx_contracts() + reader_contracts()
+    checks = 0 if args.baseline else source_contracts() + rx_contracts() + reader_contracts() + startup_counts()
     data = {'checks': checks, 'measurements': measurements(),
             'elf_sha256': hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
     args.output.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=lambda v: v.hex()) + '\n', encoding='utf-8')

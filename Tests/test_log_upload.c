@@ -1,3 +1,6 @@
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -34,5 +37,5 @@ static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){CHECK(firs
 static uint16_t crc16_calc(const uint8_t *p,uint16_t n){(void)p;CHECK(n==records*32+8);return 0x1234;}
 static uint8_t usb_send(uint8_t *p,uint16_t n){CHECK(n==records*32+14&&p[8]==10&&p[11]==records);sent++;return 1;}
 static int8_t connection_send(int8_t h,uint8_t *p,uint16_t n){CHECK(h==2);usb_send(p,n);return CE_OK;}
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 int main(void){unsigned count,ch;(void)bf;(void)test_memcpy;for(count=1;count<=32;count++){for(ch=0;ch<=1;ch++){records=count;log_usbReadIndex=device.readLogIDIndex=0;memset(log_unacked,0,sizeof(log_unacked));device.newAddressLog=4096+count*32;device.connectionhandle=2;user_send_logRecords(ch,42);CHECK((ch==CH_USB?log_usbReadIndex:device.readLogIDIndex)==0&&log_unacked[ch]==count);}}CHECK(sent==64&&!clears);puts("logupload: 1..32 records stay inside heap allocation passed");return 0;}
