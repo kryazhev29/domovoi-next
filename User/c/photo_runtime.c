@@ -43,7 +43,7 @@ static uint8_t photo_alloc(void)
 // Завершаем съёмку и возвращаем обычный приём RS485.
 static void photo_stop(void)
 {
-  uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
+  uart_init(rs485_baud(), 0, port_buffer, PORTBUFSIZE);
   photo->stage = P_IDLE;
   photo->used = 0;
   device.getPhoto = 0;
@@ -79,8 +79,8 @@ void rs485_init(void)
   }
   if (camera && other) user_debug("RS485: C328 exclusive, other devices ignored\r\n");
 #endif
-  uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
-  uart_setRecTimeout(PORT1_PORT, 10);
+  uart_init(rs485_baud(), 0, port_buffer, PORTBUFSIZE);
+  uart_setRecTimeout(10);
 }
 // Прерываем текущую съёмку при изменении параметров её шины.
 void rs485_set_config(const uint8_t *data)
@@ -129,7 +129,7 @@ static void photo_fail(const char *why)
 static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
   uint8_t p[6] = {0xAA, cmd, a, b, c, d};
-  uart_send(PHOTO_PORT, p, sizeof(p));
+  uart_send(p, sizeof(p));
   photo->last = timers_getMillis();
   photo->deadline = photo->last + 2000u;
 }

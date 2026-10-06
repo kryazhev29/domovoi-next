@@ -1,6 +1,8 @@
-// Доработка: Кряжев А., 2026
-// Пользовательские функции
-
+/*
+ * Доработка: Кряжев А., 2026
+ * Внешний интерфейс логики: доступ, команды, журнал и периодическое обслуживание.
+ * Запись флеш проходит через сервис хранилища; его журнал сохраняет восстановление после обрыва питания.
+ */
 #include "includes.h"
 
 #ifndef USERFUN_H
@@ -12,16 +14,12 @@
 extern cellMem_s mem[10];
 void user_debug(char *text);
 
-// > вспомогательные -----------------------------------------------------------
 // валиден ли IMEI
 Int8U user_imeivalid(void);
 // универсальный пароль на конфигурацию
 Int16U user_unipassword (void);
 // ожидание пока напряжение питания не станет выше порога
 void user_wait_stable_power(void);
-// Преобразует время в целочисленное
-uint32_t user_timeToInt(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec);
-// < ---------------------------------------------------------------------------
 
 // >>> переопределение функций --------------------------
 void user_errorconnection (int8_t handle);
@@ -31,9 +29,6 @@ void user_sendsms(char *mes, char *num);
 void user_smssended (void);
 bool user_incomingcall (char* num, uint8_t typ);
 void user_comanderror (int16_t er);
-void user_setconnections(void);
-void user_parseUSSD(char* ptr);
-// <<< переопределение функций --------------------------
 
 // инициализация
 void user_init (void);
@@ -65,8 +60,6 @@ void port_check_data(void);
 void gsm_check_data(void);
 // Отправка данных в формате протокола
 void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId);
-// расчет контрольной суммы структуры данных во flash
-uint16_t user_calcCRC16InFlash(uint32_t address, uint32_t crc);
 // Пакет 1 - пакет регистрации контроллера на сервере
 void user_send_registrationData(dataChanel_e cch);
 // Пакет 2 - пакет статуса 1
@@ -93,8 +86,6 @@ void user_send_logRecords(dataChanel_e cch, uint8_t uniqId);
 void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId);
 // Пакет 13 - Запрос конкретного блока прошивки
 bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block);
-// Пакет 14 - передача фотографии
-void user_send_Photos(dataChanel_e cch, uint8_t uniqId);
 // Разбор данных
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch);
 // индикация
@@ -107,11 +98,7 @@ char* user_last10digitsnumber (char* num);
 uint8_t user_getweakday (uint32_t t);
 
 // поиск ID в памяти, если есть то возвращаются параметры ячейки
-#if defined(C_RUNTIME) || defined(HYBRID_CARD)
 uint8_t user_findID(char *id, cellID_s *cell);
-#else
-bool user_findID(char *id, cellID_s *cell);
-#endif
 // поиск ID во временном буфере
 bool user_findTempID(char *id);
 // добавляет ID во временный буфер
@@ -125,13 +112,7 @@ bool user_getGroup(uint16_t num, cellGroup_s *group);
 // считать параметры расписания
 bool user_getShedule(uint16_t num, cellShedule_s *shedule);
 // проверить праздничный день
-#if defined(C_RUNTIME) || defined(HYBRID_CARD)
 uint8_t user_dayIsHoliday(void);
-#else
-bool user_dayIsHoliday(void);
-#endif
-// очистить буфер временных ID
-bool user_clearTempIdBuffer(void);
 // сколько номеров в памяти
 uint16_t user_getNumbersCount(void);
 // получаем кол-во ID во временном буфере и тут же обновляем адрес записи
@@ -160,10 +141,8 @@ bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt);
 bool log_addPhotoEvent(uint32_t number);
 bool log_addUpdateEvent(logUpdate_e num, uint32_t reason);
 
-// получаем кол-во фото в памяти
 
 bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc);
-uint32_t CRC32(uint32_t crc, uint32_t data);
 
 void user_storage_poll(void);
 bool user_storage_command_ready(void);

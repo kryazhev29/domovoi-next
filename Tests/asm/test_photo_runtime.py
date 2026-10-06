@@ -30,7 +30,7 @@ class PhotoMachine(StorageMachine):
         if 'usb_try_send' in self.symbols:
             self.stubs[self.addr('usb_try_send')]=self.usb_send
     def uart_send(self):
-        _,p,n,_=self.args();assert n<=6;self.commands.append(bytes(self.u.mem_read(p,n)));self.ret()
+        p,n,_,_=self.args();assert n<=6;self.commands.append(bytes(self.u.mem_read(p,n)));self.ret()
     def uart_clear(self):self.rx_count=0;self.ret()
     def event(self):self.events.append(self.args()[0]);self.ret()
     def usb_send(self):
