@@ -3489,16 +3489,16 @@
             <name>$PROJ_DIR$\User\asm\fast_kernels.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\flash_w25_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\flash_w25_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\indication.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\memory_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\memory_runtime.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\sector_journal_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\sector_journal_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\outs.c</name>

@@ -1,7 +1,7 @@
-/* Доработка: Кряжев А., 2026. */
-/* C oracle for the ASM runtime table command machine; included only by export.
- * CRC: 64-byte reads, <=4 chunks and one millisecond per poll.
- * No incoming pointer survives table_runtime_begin. */
+// Доработка: Кряжев А., 2026
+// Фоновая запись таблиц, пересчёт ID и ответы о результате.
+// Данные кадра копируются при запуске; внешние указатели не переживают приём.
+// CRC читается по 64 Б, до четырёх фрагментов и одной миллисекунды за проход.
 struct {
   uint8_t *records;
   uint32_t stamp, sector, start, offset, sum, used, reply_until;
@@ -10,16 +10,20 @@ struct {
 } table_job;
 uint8_t table_fault;
 
+// Сообщает, выполняется ли команда записи таблицы.
 bool table_runtime_active(void) { return table_job.phase!=0; }
+// Подавляет ответ команды для закрытого канала.
 void table_runtime_quiet(dataChanel_e channel)
 {
   if (table_job.phase && table_job.channel==channel) table_job.quiet=1;
 }
+// Запрашивает отмену записи таблиц и незавершённого журнала.
 void table_runtime_cancel(void)
 {
   if (!table_job.phase) return;
   table_job.cancelled=table_job.quiet=1; sj_runtime_cancel();
 }
+// Накладывает записи команды на фрагмент исходного сектора.
 static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
 {
   (void)context;
@@ -30,7 +34,7 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
     return 1;
   }
   if (table_job.cmd==14) {
-    /* The packet carries every schedule: cells it omits are erased. */
+    // Кадр задаёт все расписания; отсутствующие записи стираются.
     uint32_t rel=table_job.sector+off-table_job.start;
     if (rel<SCHED16_TAIL_OFFSET) memset(page,255,64);
     else if (rel==SCHED16_TAIL_OFFSET)
@@ -47,8 +51,8 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
     if (table_job.cmd==13) {
       cellID_s *old=(cellID_s*)(page+local);
       uint8_t first[4],done=old->reserve[6];
-      /* The reader runs twice: count only the journal preflight, once per
-       * sector. Publish the delta only after all sectors are verified. */
+      // Источник читается при сравнении и записи; изменение суммы считаем
+      // только в первом проходе. Публикуем сумму после завершения всех секторов.
       if (sjr.phase==16) {
         if (old->index==0xffff || old->reserve[9]==255) table_job.numbers++;
         else table_job.sum^=idindex_hash(index,(uint8_t*)old->ID);
@@ -65,6 +69,7 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
   }
   return 1;
 }
+// Проверяет кадр таблицы, копирует записи и начинает атомарную запись.
 bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
 {
   uint8_t cmd=ptr[4],mb=cmd==13 ? MB_ID : cmd==14 ? MB_SHEDULE : cmd==15 ? MB_GROUP : MB_HOLIDAY;
@@ -93,11 +98,12 @@ bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
   }
   return true;
 }
+// Готовит пересчёт ID после успешной записи таблиц.
 static void table_scan_begin(void)
 {
   table_job.phase=3; table_job.offset=0; table_job.crc=0xffff;
   table_job.sector=table_job.cmd==14 ? sched16_crc_size() : mem[table_job.mb].size;
-  /* batch/sector are dead after the journal: reuse as recount flag/read end. */
+  // После журнала эти поля хранят флаг пересчёта и конец чтения.
   table_job.batch=0;
   if (table_job.cmd==13) {
     if (!table_job.failed && !table_job.cancelled && id_used_bytes!=UINT32_MAX) {
@@ -113,6 +119,7 @@ static void table_scan_begin(void)
   if (table_job.cmd==13 && !table_job.batch && !table_job.failed && !table_job.cancelled &&
       idcrc_get(0,mem[MB_ID].size,&table_job.crc)) table_job.phase=4;
 }
+// Завершает запись, обновляет CRC и готовит ответ команды.
 static void table_runtime_finish(void)
 {
   uint8_t cmd=table_job.cmd;
@@ -128,9 +135,10 @@ static void table_runtime_finish(void)
     user_send_answer_comand(cmd,CMD_RUNERROR,(dataChanel_e)table_job.channel,table_job.uniq);
   work_release(table_job.records, WORK_TABLE); table_job.records=0; table_job.phase=0; flash_release(FO_TABLE);
 }
+// Делает шаг журнальной записи, пересчёта либо передачи результата.
 void table_runtime_poll(uint32_t now)
 {
-  /* Preflight the complete packet before programming any target. */
+  // Проверяем весь кадр до первой записи во флеш.
   if (table_job.phase==5) {
     uint16_t index; uint8_t old[32];
     memcpy(&index,table_job.records+32u*table_job.position,2);
@@ -200,7 +208,7 @@ void table_runtime_poll(uint32_t now)
     return;
   }
   if (table_job.phase==3) {
-    uint8_t *b=sjr.data, chunks=4; /* journal idle; no additional RAM */
+    uint8_t *b=sjr.data, chunks=4; // Журнал свободен: используем его буфер.
     uint32_t started=timers_getMillis();
     do {
       uint16_t n=64;

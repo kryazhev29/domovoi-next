@@ -1,4 +1,7 @@
-/* Доработка: Кряжев А., 2026. Command19/rollback, including owned error replies. */
+// Доработка: Кряжев А., 2026
+// Команда 19: начало загрузки, проверка резерва и откат прошивки.
+// W25 выполняет проверенные операции по 64 Б; заголовок и CRC прошивки проверяются на границе.
+// Сохранение настроек передаётся владельцу store; поля его состояния заданы общим типом.
 #include "runtime_internal.h"
 #include "../fw_crc.h"
 extern uint8_t fw_start_rejected(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t);
@@ -8,8 +11,8 @@ extern void fw_log(logUpdate_e,const char *),fw_abort(const char *);
 extern uint32_t fw_rollback_pos,fw_rollback_end;
 extern uint8_t fw_write_errors,store_save_requested;
 extern bool store_snapshot(void);
-/* Same store layout exported by user_fun; offsets are part of the ASM ABI. */
-extern uint8_t store[];
+// Определение хранится в user_fun; общий тип фиксирует поля и размеры.
+extern store_state_s store;
 typedef struct {
   uint8_t data[64],header[32];
   void *reserve;
@@ -21,27 +24,32 @@ typedef struct {
 } fw_service_s;
 RT_ASSERT(fw_service_size,sizeof(fw_service_s)==128);
 fw_service_s *fw_service_context;
+// Возвращает контекст занятого сервиса прошивки.
 void *fw_service_busy(void) { return fw_service_context; }
+// Учитывает передачу владения настройками автомату store.
 bool fw_service_active(void)
-{ return fw_service_context && (fw_service_context->phase!=8 || !store[18]); }
+{ return fw_service_context && (fw_service_context->phase!=8 || !store.job); }
+// Принимает результат сохранения настроек и возвращает владение флешем.
 void fw_service_config_result(uint8_t result)
 {
   if(fw_service_context && fw_service_context->phase==8 && (result==2 || result==3)) {
     fw_service_context->config_result=result; flash_claim(FO_FWSERVICE);
   }
 }
+// Подавляет ответ прошивки для закрытого канала.
 void fw_service_quiet(uint8_t channel)
 { if(fw_service_context && fw_service_context->channel==channel) fw_service_context->quiet=1; }
+// Отменяет сервис, сохраняя источник до завершения команды W25.
 void fw_service_cancel(void)
 {
   fw_service_s *p=fw_service_context; if(!p) return;
   p->cancel=p->quiet=1; if(p->pending) return;
   fw_service_context=NULL; flash_release(FO_FWSERVICE); work_release(p->reserve, WORK_FW_DATA); work_release(p, WORK_FW_CONTEXT);
 }
+// Проверяет команду 19 на границе и выбирает загрузку либо откат.
 bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
 {
   fw_service_s *p; const char *reason; uint8_t phase;
-  if(!store_runtime) return false;
   if(fw_service_context || !user_storage_command_ready() || !mem_tables_ready()) return true;
   if(fw_start_rejected(rt_get16(data),rt_get32(data+2),rt_get32(data+6),rt_get32(data+10),rt_get16(data+14))) {
     fw_log((logUpdate_e)133,"PARAM");
@@ -69,6 +77,7 @@ bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
   }
 publish: p->phase=phase; flash_claim(FO_FWSERVICE); fw_service_context=p; return true;
 }
+// Проверяет резерв, копирует прошивку и согласует сохранение со store.
 void fw_service_poll(void)
 {
   fw_service_s *p=fw_service_context; uint8_t phase,result,code=2;
@@ -128,10 +137,10 @@ handoff:
     fw_service_context=NULL; source=p->reserve; p->reserve=NULL; work_release(source, WORK_FW_DATA);
     flash_release(FO_FWSERVICE); saved=store_snapshot(); fw_service_context=p;
     if(!saved) { flash_claim(FO_FWSERVICE); goto io_error; }
-    store[21]=19; store[22]=p->channel; store[23]=p->uniq; store[24]=1; store[18]=9;
+    store.cmd=19; store.channel=p->channel; store.uniq=p->uniq; store.quiet=1; store.job=STORE_JOB_COMMAND;
     store_save_requested=0; p->phase=8; return;
   case 8:
-    if(store[18]) return;
+    if(store.job) return;
     if(p->config_result!=2) goto io_error;
     code=0; goto answer;
   case 18: code=p->config_result; goto answer;
@@ -155,9 +164,9 @@ error_log:
     fw_service_context=NULL; flash_release(FO_FWSERVICE); fw_abort(reason);
     flash_claim(FO_FWSERVICE); fw_service_context=p;
     if(p->channel && !device.registredOnServer) goto cancel;
-    rt_put32(p->data,0x4e444c53u); rt_put16(p->data+4,5); p->data[6]=255;
+    p->data[6]=255;
     p->data[7]=0; p->data[8]=4; p->data[9]=device.firmwarePercent; p->data[10]=253;
-    rt_put16(p->data+11,crc16_calc(p->data+4,7)); p->len=13; p->phase=16; return;
+    packet_frame(p->data,5); p->len=13; p->phase=16; return;
   }
   fw_log((logUpdate_e)133,reason);
 cleanup:

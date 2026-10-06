@@ -1,6 +1,7 @@
 // Доработка: Кряжев А., 2026
-/* Owned uploads. Log cursors are record numbers; temporary IDs retain their
- * existing ordinal cursor and ACK/cleanup machinery. Wire bytes are unchanged. */
+// Выгрузка журнала и временных ID с устойчивыми курсорами подтверждения.
+// Кадр принадлежит автомату до успешной передачи; общий формат задаёт packet.c.
+// Отмена освобождает память, не подтверждая неотправленные записи.
 #include "runtime_internal.h"
 #include "../log_ring.h"
 extern uint16_t log_unacked[2],temp_unacked[2];
@@ -13,27 +14,31 @@ extern void log_ring_sent(uint8_t,uint8_t,uint32_t);
 typedef struct {
   uint8_t *packet;
   uint32_t pos,limit,epoch;
-  uint16_t total,first,wanted,copied,seen,crc,offset,length;
+  uint16_t total,first,wanted,copied,seen,length;
   uint8_t command,channel,uniq,phase;
 } upload_s;
-RT_ASSERT(upload_size,sizeof(upload_s)==36);
+RT_ASSERT(upload_size,sizeof(upload_s)==32);
 upload_s *upload_runtime_context;
+// Сообщает, выполняется ли выгрузка.
 bool upload_runtime_active(void) { return upload_runtime_context!=NULL; }
+// Освобождает кадр и контекст без подтверждения неотправленных данных.
 void upload_runtime_cancel(void)
 {
   upload_s *p=upload_runtime_context; if(!p) return;
   upload_runtime_context=NULL; flash_release(FO_UPLOAD);
   if(p->packet) work_release(p->packet,WORK_UPLOAD_PACKET); work_release(p,WORK_UPLOAD_CONTEXT);
 }
+// Останавливает выгрузку при закрытии её канала.
 void upload_runtime_quiet(uint8_t channel)
 {
   log_ring_quiet(channel);
   if(upload_runtime_context && upload_runtime_context->channel==channel) upload_runtime_cancel();
 }
+// Принимает запрос выгрузки после старта и сохраняет подтверждённый курсор.
 bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
 {
   upload_s *p; unsigned part=command==10?7:8;
-  if((!store_runtime && command!=10) || channel>1) return false;
+  if(channel>1) return false;
   if(upload_runtime_context || !mem_tables_ready()) return true;
   p=work_acquire(sizeof *p,WORK_UPLOAD_CONTEXT); if(!p) return true;
   p->packet=work_acquire(1040,WORK_UPLOAD_PACKET);
@@ -49,11 +54,12 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
     if(!p->packet) { work_release(p,WORK_UPLOAD_CONTEXT); return true; }
   } else if(!work_upload_ack(command,(uint8_t)channel,p)) return true;
   p->first=command==10?0:upload_index(command,channel);
-  p->total=p->wanted=p->copied=p->seen=p->crc=p->offset=p->length=0;
+  p->total=p->wanted=p->copied=p->seen=p->length=0;
   p->command=command; p->channel=channel; p->uniq=uniq; p->phase=command==10?0:1; p->epoch=usb_bus_resets;
   p->pos=mem[part].start; p->limit=p->pos+mem[part].size;
   upload_runtime_context=p; flash_claim(FO_UPLOAD); return true;
 }
+// Считает записи, заполняет тело кадра и передаёт его выбранному каналу.
 void upload_runtime_poll(void)
 {
   upload_s *p=upload_runtime_context; uint32_t record[8]; uint8_t *b=(uint8_t *)record;
@@ -89,15 +95,14 @@ void upload_runtime_poll(void)
     if(p->total<=p->first) {
       upload_runtime_context=NULL; flash_release(FO_UPLOAD); done=upload_finish(command);
       flash_claim(FO_UPLOAD); upload_runtime_context=p; if(!done) goto cancel;
-      rt_put32(p->packet,0x4e444c53u); rt_put16(p->packet+4,6); p->length=14;
+      p->length=14;
       p->packet[6]=255; p->packet[7]=p->uniq; p->packet[8]=command;
       p->packet[9]=p->packet[10]=p->packet[11]=0; p->wanted=0;
-      p->crc=65535; p->offset=4; p->phase=4; return;
+      p->phase=4; return;
     }
     n=p->total-p->first; if(n>(command==10?32:100)) n=command==10?32:100;
     p->wanted=n; p->length=n*(command==10?32:10)+14; p->phase=2; return;
   case 2:
-    rt_put32(p->packet,0x4e444c53u); rt_put16(p->packet+4,p->length-8);
     p->packet[6]=255; p->packet[7]=p->uniq; p->packet[8]=command;
     rt_put16(p->packet+9,p->total-p->first-p->wanted); p->packet[11]=(uint8_t)p->wanted;
     p->pos=command==10?log_ring_first():mem[8].start+32u*p->first; p->phase=3; return;
@@ -111,14 +116,10 @@ void upload_runtime_poll(void)
       p->limit=record[0]+1u; record[6]=record[7]=0;
       memcpy(p->packet+12+32*p->copied,b,32);
     }
-    if(++p->copied>=p->wanted) { p->crc=65535; p->offset=4; p->phase=4; }
+    if(++p->copied>=p->wanted) { p->phase=4; }
     else if(command!=10) p->pos+=32;
     return;
-  case 4:
-    n=p->length-2-p->offset; if(n>64) n=64;
-    p->crc=crc16_calcInit(p->packet+p->offset,n,p->crc); p->offset+=n;
-    if(p->offset>=p->length-2) { rt_put16(p->packet+p->offset,p->crc); p->phase=5; }
-    return;
+  case 4: packet_frame(p->packet,p->length-8); p->phase=5; return;
   case 5:
     if(!reply_send(p->packet,p->length,p->channel)) return;
     if(!p->channel && p->epoch!=usb_bus_resets) goto cancel;

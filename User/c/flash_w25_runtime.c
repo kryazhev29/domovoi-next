@@ -1,27 +1,26 @@
-/* Доработка: Кряжев А., 2026. C equivalent of production ASM. */
-/******************************************************************************
-*    SPI functions
-*    Author      : Sergey Koryakin
-******************************************************************************/
+// Доработка: Кряжев А., 2026
+// Синхронный и фоновый доступ к W25 через SPI.
+// Одна команда находится в работе; источник записи сохраняется до проверки.
+// Драйвер читает назад каждую запись и стирание, а при старте может ждать BUSY.
 #include "flash_w25.h"
 #include <intrinsics.h>
 
-/* One NOR command in flight. No DMA and no callbacks into the main loop. */
+// В работе одна команда NOR, без DMA и обратных вызовов главного цикла.
 struct {
   const uint8_t *data;
   uint32_t address, started;
   uint16_t length, checked;
   uint8_t active;
 } w25_job;
+// Сообщает, принадлежит ли драйверу незавершённая команда.
 bool w25_async_active(void) { return w25_job.active != 0; }
-bool w25_read_available(void) { return spi_ready() && !(w25_read_status() & 1u) && spi_ready(); }
+// Читает BUSY один раз и проверяет работоспособность SPI после обмена.
+bool w25_read_available(void) { return !(w25_read_status() & 1u) && spi_ready(); }
 
+// Запускает проверенную внутренним владельцем запись или стирание.
 bool w25_async_start(uint32_t address, const uint8_t *src, uint16_t len, uint32_t now)
 {
-  if (address >= 0x1000000u || (uint32_t)len > 0x1000000u - address) return false;
   if (w25_job.active || !w25_read_available()) return false;
-  if (src && (!len || len > 64u || (address & 255u) + len > 256u)) return false;
-  if (!src && (address & 4095u)) return false;
   w25_WREN();
   if (!(w25_read_status() & 2u) || !spi_ready()) return false;
   w25_chip_ON(); w25_delay_ON();
@@ -37,6 +36,7 @@ bool w25_async_start(uint32_t address, const uint8_t *src, uint16_t len, uint32_
   w25_job.started = now; w25_job.active = 1;
   return true;
 }
+// Ждёт BUSY без блокировки и проверяет до 64 Б записанного результата.
 uint8_t w25_async_poll(uint32_t now)
 {
   uint8_t b[64], status;
@@ -45,7 +45,7 @@ uint8_t w25_async_poll(uint32_t now)
   status = w25_read_status();
   if (!spi_ready()) goto failed;
   if (status & 1u) {
-    /* Deadline applies to NOR BUSY, not to time spent waiting for poll calls. */
+    // Таймаут ограничивает BUSY, а не задержки между вызовами автомата.
     if ((uint32_t)(now - w25_job.started) >= (w25_job.data ? 20u : 1000u)) goto failed;
     return 1;
   }
@@ -66,8 +66,8 @@ failed:
 // Чтение данных с памяти -----------------------------------------------------
 bool w25_read_data (Int32U address, pInt8U dst, Int16U len)
 {
-  /* Startup may wait synchronously. Runtime samples BUSY exactly once, even
-   * after an uncertain I/O failure; no read may inherit the legacy spin loop. */
+  // При старте допустимо ожидание; в работе BUSY опрашивается один раз,
+  // включая повторное обращение после ошибки обмена.
   extern uint8_t store_runtime;
   if (store_runtime ? !w25_read_available() : (w25_busy() & 1u)) return false;
 
@@ -182,39 +182,6 @@ Int8U w25_read_status (void)
   w25_delay_OFF();
   
   return data;
-}
-
-// Сброс регистра статуса -----------------------------------------------------
-void w25_clear_status (void)
-{
-  w25_busy();  
-    
-  w25_chip_ON();
-  w25_delay_ON();
-
-  spi_send_byte(0x30);  // отправляем команду сброса статус регистра
-
-  w25_chip_OFF();
-  w25_delay_OFF();
-}
-
-// Стереть микросхему ---------------------------------------------------------
-void w25_erase_chip (void)
-{
-  w25_busy();
-
-  w25_WREN();
-
-  w25_chip_ON();
-  w25_delay_ON();
-
-  spi_send_byte(0x60);
-
-  w25_chip_OFF();
-  w25_delay_OFF();
-
-  w25_clear_status();
-  w25_WRDI();
 }
 
 // Ожидание завершения предыдущей команды -------------------------------------
