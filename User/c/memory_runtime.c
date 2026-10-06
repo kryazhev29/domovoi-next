@@ -28,9 +28,8 @@ void sj_io_service(void) { wdt_reload(); }
 bool mem_recover(void) { mem_storage_ready = sj_recover(); return mem_storage_ready; }
 #include "sector_runtime.h"
 extern uint8_t table_fault;
-extern uint8_t store_runtime; // Флаг завершения старта из user_fun.
 // Разрешает таблицы после восстановления и при свободной флеш-памяти.
-bool mem_tables_ready(void) { return flash_read_allowed() && !table_fault && !sj_runtime_blocked() && (mem_storage_ready || (!store_runtime && mem_recover())); }
+bool mem_tables_ready(void) { return flash_read_allowed() && !table_fault && !sj_runtime_blocked() && mem_storage_ready; }
 // Проверяет готовность таблиц, если диапазон затрагивает их сектора.
 static bool mem_guard(uint32_t adr, uint16_t n)
 {
@@ -112,16 +111,16 @@ static uint8_t cfg_valid(uint32_t address, uint32_t *generation)
   return 1;
 }
 // Выбирает самый новый целый слот и сохраняет его адрес и поколение.
-static uint32_t cfg_select(uint32_t *generation)
+static void cfg_select(void)
 {
   uint32_t a = 0, b = 0;
   uint8_t va = cfg_valid(MEM_CONFIG_SLOT0, &a);
   uint8_t vb = cfg_valid(MEM_CONFIG_SLOT1, &b);
   if (vb && (!va || (int32_t)(b - a) > 0)) {
-    *generation = cfg_cached_generation = b; cfg_cached_active = MEM_CONFIG_SLOT1; return MEM_CONFIG_SLOT1;
+    cfg_cached_generation = b; cfg_cached_active = MEM_CONFIG_SLOT1; return;
   }
-  if (va) { *generation = cfg_cached_generation = a; cfg_cached_active = MEM_CONFIG_SLOT0; return MEM_CONFIG_SLOT0; }
-  *generation = cfg_cached_generation = 0; cfg_cached_active = MEM_CONFIG_LEGACY; return MEM_CONFIG_LEGACY;
+  if (va) { cfg_cached_generation = a; cfg_cached_active = MEM_CONFIG_SLOT0; return; }
+  cfg_cached_generation = 0; cfg_cached_active = MEM_CONFIG_LEGACY;
 }
 // Сравнивает изменяемую часть, чтобы не стирать слот без изменений.
 static uint8_t cfg_same_part(uint32_t address, const uint8_t *data, uint16_t size)
@@ -159,11 +158,10 @@ static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint
 // Выбирает слот один раз при старте и переносит целые настройки старого формата.
 static uint8_t cfg_boot_select(void)
 {
-  uint32_t generation, active;
   uint8_t block[64];
   if (cfg_boot_done) return 1;
-  active = cfg_select(&generation);
-  if (active == MEM_CONFIG_LEGACY) {
+  cfg_select();
+  if (cfg_cached_active == MEM_CONFIG_LEGACY) {
     // CRC config и device проверяются на границе: старое место не имеет заголовка A/B.
     for (uint16_t part = 0; part < 1024; part += 512) {
       uint16_t crc = 0xFFFFu, expected;
@@ -177,7 +175,7 @@ static uint8_t cfg_boot_select(void)
       if (crc != expected) { cfg_boot_done = 1; return 1; }
     }
     mem_image_s image = {MEM_CONFIG_LEGACY, 0, NULL, NULL, 0, 0};
-    if (!cfg_publish_pages(&image, active, generation)) {
+    if (!cfg_publish_pages(&image, cfg_cached_active, cfg_cached_generation)) {
       DOMOVOI_DIAG_INC(mem_config_errors); return 0;
     }
   }
@@ -214,7 +212,6 @@ static bool cfg_read(uint32_t adr, uint8_t *buff, uint16_t size)
 // Чтение данных с памяти
 bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 {
-   
   if (cfg_range(adr, size)) return cfg_read(adr, buff, size);
   return mem_guard(adr, size) && w25_read_data(adr, buff, size);
 }
@@ -259,7 +256,10 @@ struct {
   uint16_t offset;
   uint8_t state, result, waiting, changed, first;
 } cfg_job;
-enum { CA_CHECK=1, CA_META, CA_DATA, CA_COPY, CA_HEADER, CA_DONE };
+enum {
+  CA_CHECK=1, CA_META, CA_DATA,
+  CA_COPY, CA_HEADER, CA_DONE
+};
 // Возвращает состояние публикации: 0 — нет, 1 — работа, 2 — готово, 3 — ошибка.
 uint8_t mem_config_result(void) { return cfg_job.result; }
 // Даёт владельцу сохранённый снимок для восстановления при ошибке.

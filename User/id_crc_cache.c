@@ -1,50 +1,56 @@
-/* Volatile raw-byte ID CRC. Power loss always discards the cache. */
+// Доработка: Кряжев А., 2026
+// Кэш CRC сырых байтов всей базы ID в ОЗУ.
+// После сброса CRC строится заново; запись сначала считывает прежние байты.
+// Разность CRC публикуется только после проверки команды W25.
 #define IDCRC_RAW_IO 1
 #include "c/runtime_internal.h"
 #include "id_crc_cache.h"
 
-/* Existing NOR job ABI, also exported by the frozen assembly driver.
- * An idle job holds the command while old bytes are read before raw start. */
-extern struct {
-  const uint8_t *data;
-  uint32_t address, started;
-  uint16_t length, checked;
-  uint8_t active;
-} w25_job;
+enum {
+  IC_UNKNOWN, IC_READY, IC_OLD,
+  IC_VERIFY, IC_PHASE_MASK=3, IC_CANCELLED=4
+};
 static struct {
   uint32_t scan;
   uint16_t crc, partial, delta;
-  uint8_t state; /* 0 unknown, 1 known, 2 old-byte scan, 3 NOR verify */
+  uint8_t state; // Младшие биты — фаза, IC_CANCELLED запрещает публикацию.
 } ic;
 RT_ASSERT(idcrc_ram, sizeof(ic)<=16);
 
-static void invalidate(void) { ic.state=0; ic.scan=0; }
+// Сбрасывает готовность и частичный проход после ошибки.
+static void invalidate(void) { ic.state=IC_UNKNOWN; ic.scan=0; }
+// Запрещает использовать CRC после отмены или неопределённого результата.
 void idcrc_unknown(void)
 {
-  /* A cancelled owner still drains its in-flight NOR command. Keep that state
-   * but forbid publishing its delta when verification completes. */
-  ic.state=ic.state>1?ic.state|4u:0; ic.scan=0;
+  // Отмена не прерывает команду W25, но запрещает публиковать её разность CRC.
+  ic.state=ic.state>IC_READY?ic.state|IC_CANCELLED:IC_UNKNOWN; ic.scan=0;
 }
+// Определяет, затрагивает ли операция только базу ID.
 static bool id_span(uint32_t a,uint32_t n)
 {
   uint32_t offset=a-mem[MB_ID].start;
   return n && offset<mem[MB_ID].size && n<=mem[MB_ID].size-offset;
 }
+// Резервирует прежние байты ID либо сразу передаёт команду драйверу.
 bool idcrc_io_start(uint32_t address,const uint8_t *source,uint16_t length,uint32_t now)
 {
   uint32_t n=source?length:4096u;
-  if(ic.state>1 || w25_async_active()) return false;
-  if(!id_span(address,n)) return w25_async_start(address,source,length,now);
-  ic.scan=0;
-  if(!ic.state) return w25_async_start(address,source,length,now);
-  w25_job.address=address; w25_job.data=source; w25_job.length=(uint16_t)n;
-  w25_job.checked=0; ic.delta=0; ic.state=2;
-  return true;
+  if(ic.state>IC_READY || w25_async_active()) return false;
+  if(id_span(address,n)) {
+    ic.scan=0;
+    if(ic.state) {
+      w25_job.address=address; w25_job.data=source; w25_job.length=(uint16_t)n;
+      w25_job.checked=0; ic.delta=0; ic.state=IC_OLD;
+      return true;
+    }
+  }
+  return w25_async_start(address,source,length,now);
 }
+// Считает разность сырых байтов и публикует её после проверки W25.
 uint8_t idcrc_io_poll(uint32_t now)
 {
   uint8_t b[64],r;
-  if((ic.state&3u)==2) {
+  if((ic.state&IC_PHASE_MASK)==IC_OLD) {
     uint16_t n=w25_job.length-w25_job.checked;
     if(n) {
       if(n>64) n=64;
@@ -55,32 +61,37 @@ uint8_t idcrc_io_poll(uint32_t now)
     }
     n=ic.delta;
     uint32_t tail=mem[MB_ID].size-(w25_job.address-mem[MB_ID].start)-w25_job.length;
+    // Одинаковый хвост FF сокращается: остаётся линейный сдвиг разности CRC.
     ic.delta=crc16_ffInit(tail,n)^crc16_ffInit(tail,0);
     if(!w25_async_start(w25_job.address,w25_job.data,w25_job.data?w25_job.length:0,now)) goto failed;
-    ic.state=(ic.state&4u)|3u; return 1;
+    ic.state=(ic.state&IC_CANCELLED)|IC_VERIFY; return 1;
   }
   r=w25_async_poll(now);
   if(r==3) goto failed;
-  if(r==2 && ic.state>1) {
-    if(ic.state&4u) ic.state=0;
-    else { ic.crc^=ic.delta; ic.state=1; }
+  if(r==2 && ic.state>IC_READY) {
+    if(ic.state&IC_CANCELLED) ic.state=IC_UNKNOWN;
+    else { ic.crc^=ic.delta; ic.state=IC_READY; }
   }
   return r;
 failed:
   invalidate(); return 3;
 }
-bool idcrc_io_active(void) { return ic.state>1 || w25_async_active(); }
+// Учитывает подготовку CRC и незавершённую команду W25.
+bool idcrc_io_active(void) { return ic.state>IC_READY || w25_async_active(); }
+// Сбрасывает CRC недоступной базы; ноль сохраняет контракт flash_release.
 uint8_t idcrc_release_tail(void)
 {
   if(!mem_tables_ready()) invalidate();
   return 0;
 }
+// Дожидается результата синхронного писателя с обслуживанием сторожевого таймера.
 static bool sync_finish(void)
 {
   uint8_t r;
   do { wdt_reload(); r=idcrc_io_poll(timers_getMillis()); } while(r==1);
   return r==2;
 }
+// Разбивает синхронную запись ID на фрагменты, учитываемые кэшем CRC.
 bool idcrc_write(uint32_t address,uint8_t *source,uint16_t length)
 {
   if(!id_span(address,source?length:4096u))
@@ -94,17 +105,18 @@ bool idcrc_write(uint32_t address,uint8_t *source,uint16_t length)
   } while(length);
   return true;
 }
+// Стирает сектор ID тем же путём учёта CRC.
 bool idcrc_erase(uint32_t address)
 {
   return idcrc_write(address,0,0);
 }
-bool idcrc_get(uint32_t offset,uint32_t length,uint16_t *crc)
+// Возвращает готовую CRC всей базы ID.
+bool idcrc_get(uint16_t *crc)
 {
-  if(offset || length!=mem[MB_ID].size || ic.state!=1) return false;
+  if(ic.state!=IC_READY) return false;
   *crc=ic.crc; return true;
 }
-/* One 64-byte read per pass, below 1 ms. Release ownership before another
- * storage task runs; a competing reader never restarts the scan. */
+// Читает до 64 Б за проход и возвращает владение; чужое чтение не сбрасывает скан.
 bool idcrc_background(void)
 {
   uint8_t b[64]; uint32_t end=id_used_bytes;
@@ -118,6 +130,6 @@ bool idcrc_background(void)
       ic.partial=crc16_calcInit(b,n,ic.partial); ic.scan+=n;
     } else ic.scan=0;
     flash_release(FO_CRC);
-  } else { ic.crc=crc16_ffInit(mem[MB_ID].size-ic.scan,ic.partial); ic.state=1; }
+  } else { ic.crc=crc16_ffInit(mem[MB_ID].size-ic.scan,ic.partial); ic.state=IC_READY; }
   return false;
 }

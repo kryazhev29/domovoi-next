@@ -1,9 +1,11 @@
-"""2 MiB NOR profile: explicit FF reads / refused writes outside the chip."""
+# Доработка: Кряжев А., 2026
+"""Профиль NOR 2 МиБ: чтение FF и отказ записи вне установленного чипа."""
 from storage_machine import struct
 LIMIT=0x200000
 
+# Выполняет настоящую инициализацию карты разделов устройства.
 def real_layout():
-    """Run production partition initialization, not the model's fixture map."""
+    """Выполняет настоящую инициализацию разделов вместо карты тестовой модели."""
     from storage_machine import StorageMachine
     layouts=[]
     for chip in (0x14c2,0x17c2):
@@ -22,6 +24,7 @@ def real_layout():
         layouts.append({'device_ID':hex(chip),'log':layout[7],'photo':layout[9]})
     return layouts
 
+# Ограничивает модель ёмкостью установленного чипа.
 def profile(m):
     m.flash=m.flash[:LIMIT]
     m.write(m.device+m.d['memID'],0x14c2,2)
@@ -29,6 +32,7 @@ def profile(m):
     m.outside=[]
     for name in ('w25_read_data','w25_write_data','w25_erase_sector','w25_async_start'):
         address=m.addr(name);original=m.stubs[address]
+        # Проверяет условие допуска операции до обращения к NOR.
         def guard(original=original,name=name):
             a,p,n,_=m.args();size=4096 if name=='w25_erase_sector' or (name=='w25_async_start' and not p) else n
             if a+size>LIMIT:
@@ -39,6 +43,7 @@ def profile(m):
         m.stubs[address]=guard
     return m
 
+# Проверяет основные сценарии модуля и возвращает результаты.
 def run():
     layout=real_layout()
     from test_id_sync_fast import SyncMachine,fixture,cell,BASE
@@ -50,9 +55,9 @@ def run():
     from test_photo_runtime import PhotoMachine
     m=profile(fixture(SyncMachine(),0,total=8192));m.command(13,b''.join(cell(i) for i in range(1,31)),30);m.drain();m.verify(30,8192)
     assert not m.checked('storage_has_index') and not m.outside
-    # All public entry points remain safe even with a stale READY state in RAM.
+    # Все публичные входы безопасны даже со старым состоянием IX_READY в ОЗУ.
     m.write(m.addr('ix')+10,3,1);m.u.mem_write(0x21000400,cell(1)[2:12])
-    for name,args in [('idindex_scanned',(0,30)),('idindex_poll',(BASE,)),('idindex_put',(1,0x21000400)),('idindex_commit',(0,30)),('idindex_table_commit',(0,30))]:
+    for name,args in [('idindex_scanned',(0,30)),('idindex_poll',(BASE,)),('idindex_table_commit',(0,30))]:
         if name in m.symbols:m.checked(name,*args)
     assert m.checked('idindex_find',BASE,0x21000400,0x21000600)&255==255 and not m.outside
     a=profile(AccessMachine());a.flash[:]=m.flash;a.write(a.addr('id_cells_end'),30,2)
@@ -67,7 +72,7 @@ def run():
     assert f.sent[0][9:11]==bytes((19,0)) and f.flash[0x1200:0x1200+payload_size]==f.image and not f.outside
     p=profile(PhotoMachine());p.packet(7,b'\5');p.drain()
     assert p.answers and p.answers[-1][1]!=0 and not p.active() and not p.outside
-    # The boundary itself is enforced (not a hidden 4 MiB backing store).
+    # Модель действительно ограничена ёмкостью чипа, без скрытой памяти 4 МиБ.
     m.u.mem_write(0x21000000,b'x');assert m.checked('w25_write_data',LIMIT,0x21000000,1)==0
     assert m.checked('w25_read_data',LIMIT,0x21000000,1)==1 and m.u.mem_read(0x21000000,1)==b'\xff'
     return {'bytes':LIMIT,'production_layout':layout,'base_functions':['ID sync','linear card search','journal','upload','configuration','firmware staging'],'firmware_payload_bytes':payload_size,'index':'disabled','photo':'error','outside_attempts_before_boundary_selftest':0}

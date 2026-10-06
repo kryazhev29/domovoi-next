@@ -1,8 +1,10 @@
+# Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
-"""Commands 13/14/15/16 -> main-loop -> real ASM journal, no hardware."""
+"""Команды 13–16 проходят настоящий цикл и журнал IAR; плата не используется."""
 import argparse,json,struct,hashlib,random
 from storage_machine import *
 
+# Создаёт последовательность записей таблицы.
 def rows(indices,size=32):
     out=bytearray()
     for i,index in enumerate(indices):
@@ -13,6 +15,7 @@ def rows(indices,size=32):
         out+=b
     return bytes(out)
 
+# Проверяет штатные операции, данные и ответы модуля.
 def test_normal(cmd=13,indices=(1,),repeat=False):
     m=StorageMachine();size=16 if cmd in (14,15) else 32;data=rows(indices,size)
     if cmd==14:data+=bytes(range(8))+b"\1"+bytes(7)
@@ -27,7 +30,7 @@ def test_normal(cmd=13,indices=(1,),repeat=False):
     else:
         for i,index in enumerate(indices):
             b=bytearray(data[i*size:(i+1)*size])
-            if cmd==13:b[26:28]=b'\0\0' # captured day with no valid clock
+            if cmd==13:b[26:28]=b'\0\0' # День прохода при ещё неустановленных часах.
             expected[(index-1)*size:index*size]=b
     if cmd==14:expected[1024:1040]=data[-16:]
     assert m.flash[base:base+len(expected)]==expected,(cmd,'image')
@@ -41,9 +44,10 @@ def test_normal(cmd=13,indices=(1,),repeat=False):
         assert m.flash[base:base+len(expected)]==expected,'retry changed image'
     return result
 
+# Проверяет отмену журнальной записи и смену канала.
 def test_cancel_and_reconnect():
     results=0
-    for stage in (1,2,3,5,6,8,9,10,12,14,15):
+    for stage in (1,2,3,5,6,8,10,12,15):
         m=StorageMachine();m.flash[0x4101f]=0;data=rows([1,129]);m.command(13,data,2,1)
         sj=fields('sj_runtime_state_s');at=m.addr('sjr')
         for _ in range(3000):
@@ -62,6 +66,7 @@ def test_cancel_and_reconnect():
     assert not m.timestamps;results+=1
     return results
 
+# Проверяет отказы каждой границы обмена и состояние после них.
 def test_faults():
     count=0
     for kind,points in [('start',(1,2,3,66,67,68,69,70,133,134)),
@@ -76,10 +81,12 @@ def test_faults():
     m.command(13,rows([1]),1);assert not m.active() and m.answers[-1][1]==2 and not any(m.counts.values())
     return count+1
 
+# Проверяет отказ на повреждённых устойчивых данных.
 def test_corrupt():
     # Порча во время проверки записи обнаруживается драйвером, не вторым CRC автомата.
     m=StorageMachine();m.flash[0x4101f]=0
     poll=m.poll
+    # Завершает модельную команду только после проверки её результата.
     def verified_poll():
         address,source,n,data,step=m.io
         if step>=2 and m.flash[address:address+len(data)]!=data:
@@ -96,6 +103,7 @@ def test_corrupt():
     assert m.flash[0x41000:0x42000]==b'\xff'*31+b'\0'+b'\xff'*(4096-32)
     return 1
 
+# Проверяет совместную работу автоматов без порчи общей памяти.
 def test_interaction_and_heap():
     m=StorageMachine();live=[(PHOTO,take(m,PHOTO))]
     assert all(p for slot,p in live)
@@ -114,6 +122,7 @@ def test_interaction_and_heap():
             'full_id_total_instructions':sum(m.costs),'full_id_stack':m.stack_peak,
             'simultaneous_workspace_payload':180+2016}
 
+# Проверяет устойчивые состояния каждого обрыва операции.
 def test_power():
     m=StorageMachine();m.flash[0x4101f]=0;m.record_changes=True;initial=bytes(m.flash);m.command(13,rows([1]),1);m.drain()
     final=bytes(m.flash[0x41000:0x42000]);flash=bytearray(initial);count=0

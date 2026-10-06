@@ -1,13 +1,16 @@
-"""Final-ELF sector ring, including old cursor-loss and torn-erase counterexamples."""
+# Доработка: Кряжев А., 2026
+"""Кольцо в связанном ELF, включая потерю курсора и обрыв стирания поколения."""
 from storage_machine import StorageMachine,struct
 from log_ring_fixture import install,valid,BASE,CAPACITY
 from test_upload_runtime import log
 
+# Выполняет восстановление журнала и измеряет объём стартового чтения.
 def boot(m):
     before=m.counts['read'];n=m.checked('log_getRecordsCount',budget=20000000)
     assert n!=65535
     return n,m.counts['read']-before
 
+# Записывает одно событие реальным автоматом журнала.
 def append(m,index):
     m.u.mem_write(0x21000400,log(index))
     m.checked('log_async_begin',0x21000400)
@@ -18,6 +21,7 @@ def append(m,index):
         assert r!=3,('append failure',m.now)
     raise AssertionError('append stuck')
 
+# Возвращает действующие логические записи кольца.
 def records(m):
     result=[];a=m.checked('log_ring_first')
     while a:
@@ -26,6 +30,7 @@ def records(m):
         a=m.checked('log_ring_next',a)
     return result
 
+# Проверяет основные сценарии модуля и возвращает результаты.
 def run():
     m=StorageMachine();assert boot(m)[0]==0
     append(m,1);assert records(m)==[1]
@@ -38,6 +43,7 @@ def run():
     result=records(m);assert result==list(range(255,CAPACITY+130))
     return {'capacity':CAPACITY,'boot_read_calls':reads,'rotations':2,'sequence':result[-1]}
 
+# Проверяет восстановление после обрывов изменяющих операций.
 def power():
     initial=StorageMachine();install(initial,[log(i) for i in range(1,CAPACITY+1)]);boot(initial)
     before=bytes(initial.flash);initial.record_changes=True;append(initial,CAPACITY+1)
@@ -54,6 +60,7 @@ def power():
         for j,v in enumerate(b):image[a+j]=v if kind=='erase' else image[a+j]&v
     return {'rotation_cuts':cuts}
 
+# Проверяет первый переход старой области к новому формату.
 def migration():
     totals=[]
     for count in (0,1,126,127,128,3048,3072):
@@ -68,10 +75,11 @@ def migration():
     return {'legacy_counts':totals}
 
 
+# Проверяет повтор выгрузки по логическому номеру после потери курсора.
 def cursor_loss():
     from test_upload_runtime import UploadMachine,wire
-    # Full-ring replacement erased the first sector. A stale logical cursor 129
-    # must upload record 129, not ordinal 129 of the surviving ring (=256).
+    # Ротация полного кольца стёрла первый сектор. Старый логический курсор 129
+    # должен выгрузить запись 129, а не 129-ю запись оставшегося кольца с номером 256.
     m=UploadMachine();m.cmd=10;m.base=BASE
     install(m,[log(i) for i in range(1,CAPACITY+1)]);boot(m);append(m,CAPACITY+1)
     m.write(m.addr('log_cursor32'),129)
@@ -84,15 +92,15 @@ def cursor_loss():
         if len(m.sent)==2:break
     else:raise AssertionError('logical ACK stuck')
     assert int.from_bytes(m.u.mem_read(m.addr('log_cursor32'),4),'little')==161
-    # Confirmed checkpoint is actually persisted and restored after reboot.
+    # Подтверждённый курсор действительно сохраняется и восстанавливается после сброса.
     r=UploadMachine();r.flash[:]=m.flash;r.cmd=10;r.base=BASE
-    selected=r.checked('cfg_select',0x21000000)
+    selected=r.select_config()
     assert selected
     r.u.mem_write(0x21000000,bytes(r.flash[selected+512:selected+1024]))
     r.checked('upload_restore',0x21000000)
     assert int.from_bytes(r.u.mem_read(r.addr('log_cursor32'),4),'little')==161
-    # Exact original example: numbers 1..128 are gone (1 was already absent,
-    # the 127-slot tail held 2..128). An erased cursor replays from 129, not 257.
+    # Исходный пример: записи 1..128 ушли; единицы уже не было,
+    # хвост на 127 мест содержал 2..128. Стёртый курсор повторяет с 129, а не с 257.
     t=UploadMachine();t.cmd=10;t.base=BASE
     install(t,[log(i) for i in range(2,CAPACITY+2)]);boot(t);append(t,CAPACITY+2)
     t.write(t.addr('log_cursor32'),1);t.request(0,7);t.drain_upload()
@@ -101,6 +109,7 @@ def cursor_loss():
             'lost_numbers_1_to_128_first_sent':129}
 
 
+# Проверяет восстановление старых сохранённых метаданных.
 def legacy_checkpoint():
     from test_upload_runtime import UploadMachine,wire
     m=UploadMachine();m.cmd=10;m.base=BASE
@@ -111,7 +120,7 @@ def legacy_checkpoint():
     m.u.mem_write(0x21000000,bytes(saved));m.checked('upload_restore',0x21000000)
     assert tuple(struct.unpack('<2I',m.u.mem_read(m.addr('log_cursor32'),8)))==(0,0)
     assert boot(m)[0]==0
-    # Formatting persists empty cursors and keeps any saved logical last index.
+    # Форматирование сохраняет пустые курсоры и прежний логический последний номер.
     for _ in range(2000):
         m.now+=1;m.checked('user_storage_poll')
         if not m.u.mem_read(m.addr('store_save_requested'),1)[0] and not m.checked('mem_config_result') and not m.u.mem_read(m.addr('flash_owner'),1)[0]:break
@@ -125,6 +134,7 @@ def legacy_checkpoint():
     return {'old_ordinals':'discarded','empty_upload':'verified','saved_last_index':900,'first_new':901}
 
 
+# Проверяет повтор перехода после каждого устойчивого обрыва.
 def migration_power():
     original=StorageMachine();original.flash[BASE:BASE+98304]=b'\x55'*98304
     before=bytes(original.flash);original.record_changes=True;assert boot(original)[0]==0
@@ -142,6 +152,7 @@ def migration_power():
     return {'format_erase_cuts':cuts,'surviving_records':0,'append_after_each_cut':'verified'}
 
 
+# Проверяет принятие только полностью зафиксированной записи журнала.
 def record_commit():
     original=StorageMachine();append(original,1);before=bytes(original.flash)
     original.record_changes=True;append(original,2);image=bytearray(before);cuts=0
@@ -157,13 +168,14 @@ def record_commit():
             cuts+=1
         for j,v in enumerate(b):image[a+j]&=v
     m=StorageMachine();install(m,[log(1,True),log(2)])
-    assert boot(m)[0]==1 # Old cells are rejected even inside a valid sector.
+    assert boot(m)[0]==1 # Старые ячейки отвергаются даже внутри целого сектора.
     m.flash[BASE+32+5]^=1;assert boot(m)[0]==1
     m.flash[BASE+64+5]^=1;assert boot(m)[0]==0
     m.fault=('read',m.counts['read']+1);assert m.checked('log_getRecordsCount')==65535
     return {'every_record_byte_cut':cuts,'legacy_cell':'rejected','wire_reserve':'zero','CRC_corruption':'rejected','read_error':'reported'}
 
 
+# Проверяет переход младшего байта поколения кольца.
 def generation_bytes():
     for seq in (234,255,65512,0xffffffb0):
         m=StorageMachine();install(m,[log(i) for i in range(1,CAPACITY+1)],first_seq=seq)
@@ -173,9 +185,11 @@ def generation_bytes():
         r=StorageMachine(m.flash);assert boot(r)[0]==len(expected) and records(r)==expected
     return {'first_generations':[234,255,65512,0xffffffb0],'full_NOR_generation':'preserved','low_byte_wrap':'verified'}
 
+# Проверяет сохранённые границы и число записей после старта.
 def count_ends():
     from test_upload_runtime import temp
     class BootMachine(StorageMachine):
+        # Читает модельную NOR с контролем диапазона и заданным отказом.
         def read(self):
             a,p,n,_=self.args()
             if n<=256:return super().read()
@@ -195,10 +209,11 @@ def count_ends():
     return {'counts':129,'ring_boundary':127,'temporary_ID_boundary':128}
 
 
+# Проверяет обрыв стирания номера поколения кольца.
 def erased_generation():
     m=StorageMachine();install(m,[log(i) for i in range(1,CAPACITY+1)])
-    # An interrupted NOR erase can set a zero bit in the old generation while
-    # retaining magic. With magic+seq only, sector 0 falsely overtakes seq 24.
+    # Обрыв стирания может поднять нулевой бит старого поколения,
+    # сохранив магию: без инверсий сектор 0 ошибочно обгонял бы поколение 24.
     m.flash[BASE+4]|=128
     bare=[struct.unpack_from('<II',m.flash,BASE+4096*s) for s in range(24)]
     assert max(range(24),key=lambda s:bare[s][1])==0

@@ -1,24 +1,29 @@
-"""Explicit owner compatibility, boundaries and byte preservation in linked code."""
+# Доработка: Кряжев А., 2026
+"""Совместимость владельцев, границы участков и сохранность байтов в связанном коде."""
 from storage_machine import StorageMachine
 
 PHOTO, PHOTO_PACKET, EXPIRY, FW_CONTEXT, FW_DATA, CONFIG, CLEAR, SERVICE, UP_CONTEXT, UP_PACKET, REPLY, SMS, FW_BLOCK, TABLE = range(1,15)
 SIZES = {PHOTO:180, PHOTO_PACKET:534, EXPIRY:132, FW_CONTEXT:128, FW_DATA:1024,
-         CONFIG:1024, CLEAR:56, SERVICE:312, UP_CONTEXT:32, UP_PACKET:1040,
+         CONFIG:1024, CLEAR:40, SERVICE:248, UP_CONTEXT:32, UP_PACKET:1040,
          REPLY:2032, SMS:2028, FW_BLOCK:1024, TABLE:2032}
 
 
+# Занимает участок реальным владельцем рабочей памяти.
 def take(m, slot, size=None):
     return m.checked('work_acquire', SIZES[slot] if size is None else size, slot)
 
 
+# Возвращает участок реальным владельцем рабочей памяти.
 def drop(m, slot, pointer):
     m.checked('work_release', pointer, slot)
 
 
+# Читает маску занятых участков рабочей памяти.
 def owned(m):
     return int.from_bytes(m.u.mem_read(m.addr('work_memory')+2216,2),'little')
 
 
+# Задаёт независимый эталон совместимости двух владельцев памяти.
 def compatible(a,b):
     if a==b:return False
     if PHOTO in (a,b):return True
@@ -27,6 +32,7 @@ def compatible(a,b):
         frozenset((FW_CONTEXT,CONFIG)),frozenset((UP_CONTEXT,UP_PACKET)))
 
 
+# Проверяет основные сценарии модуля и возвращает результаты.
 def run():
     pairs=allowed=0
     for a in SIZES:
@@ -52,7 +58,7 @@ def run():
         assert not take(m,slot)
         drop(m,slot,p);assert owned(m)==0
     assert not m.checked('work_acquire',1,0) and not m.checked('work_acquire',1,15)
-    # Full FW -> config handoff preserves the live context and photo state.
+    # Передача прошивки сохранению настроек сохраняет живые контексты прошивки и камеры.
     photo=take(m,PHOTO);ctx=take(m,FW_CONTEXT);reserve=take(m,FW_DATA)
     assert photo and ctx and reserve
     assert not take(m,CONFIG)

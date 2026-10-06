@@ -21,7 +21,7 @@ uint8_t sj_span(uint32_t address, uint16_t size)
          (sector == SJ_DATA || sector == SJ_META || sj_destination(sector));
 }
 // CRC32 с полиномом 0xEDB88320 без конечной инверсии.
- // Загрузчик и модель используют C, приложение — измеренное ядро ASM_CRC.
+// Загрузчик и модель используют C, приложение — измеренное ядро ASM_CRC.
 #ifndef ASM_CRC
 // Продолжает CRC32 без начальной и конечной инверсии.
 uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint16_t size)

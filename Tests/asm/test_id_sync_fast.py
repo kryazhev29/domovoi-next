@@ -1,10 +1,10 @@
-"""Linked C/ASM ID sync contracts and an explicit, NOR time model.
+# Доработка: Кряжев А., 2026
+"""Контракты синхронизации ID и модель времени NOR для связанного C/HYBRID.
 
-All generated files go to TEMP unless --output is given. No hardware is used.
-The model runs the linked journal/W25 code, with SPI byte boundaries emulated.
-CPU estimate: two cycles per instruction, including sampled linked SPI loops;
-SPI: 18 MHz; NOR program/erase: 0.7/45 ms; other main-loop work: 0.12 ms.
-These are stated estimates, not a silicon timing guarantee.
+Артефакты создаются в TEMP; --output задаёт явный путь. Плата не используется.
+Выполняются связанные журнал и W25, граница SPI побайтно моделируется.
+Оценка CPU: два такта на инструкцию, SPI 18 МГц, запись 0,7 мс,
+стирание 45 мс, прочая работа цикла 0,12 мс. Это оценка, не замер платы.
 """
 import argparse
 import hashlib
@@ -21,6 +21,7 @@ from iar_image import image_paths
 BASE, SIZE, CAPACITY = 0x41000, 1601536, 50048
 
 
+# Создаёт запись ID с заданным номером и содержимым.
 def cell(index, version=0):
     b = bytearray(32)
     struct.pack_into('<H', b, 0, index)
@@ -29,6 +30,7 @@ def cell(index, version=0):
     return bytes(b)
 
 
+# Считает независимый хеш номера и текста ID.
 def hash_id(index, record):
     h = 2166136261
     for b in struct.pack('<H', index) + record[2:12]:
@@ -36,6 +38,7 @@ def hash_id(index, record):
     return h
 
 
+# Готовит базу и метаданные заданного сценария.
 def fixture(m, count, unknown=False, total=SIZE):
     m.write(m.addr('mem') + 20, total)
     checksum = 0
@@ -52,6 +55,7 @@ def fixture(m, count, unknown=False, total=SIZE):
 
 
 class SyncMachine(StorageMachine):
+    # Готовит связанный образ, модель NOR и состояние сценария.
     def __init__(self, flash=None):
         super().__init__(flash)
         self.sent = []
@@ -60,16 +64,19 @@ class SyncMachine(StorageMachine):
         for name in ('usb_send', 'usb_try_send'):
             self.stubs[self.addr(name)] = self.send
 
+    # Моделирует передачу буфера по границе SPI.
     def send(self):
         p, n, _, _ = self.args()
         self.sent.append(bytes(self.u.mem_read(p, n)))
         self.ret(1)
 
+    # Читает модельную NOR с контролем диапазона и заданным отказом.
     def read(self):
         a, _, n, _ = self.args()
         self.ranges.append((a, n))
         super().read()
 
+    # Сверяет данные базы, счётчики и байты ответа с эталоном.
     def verify(self, count, total=SIZE):
         data = self.flash[BASE:BASE+total]
         expected_count = expected_last = used = checksum = 0
@@ -94,6 +101,7 @@ class SyncMachine(StorageMachine):
         return self.sent[-1]
 
 
+# Выполняет запись таблицы и сверяет её данные и ответ.
 def run_packet(m, indices=range(1, 31)):
     indices = list(indices)
     m.command(13, b''.join(cell(i, 1) for i in indices), len(indices))
@@ -101,8 +109,9 @@ def run_packet(m, indices=range(1, 31)):
     return m
 
 
+# Возвращает ответы и полные образы NOR для парного сравнения.
 def paired_scenarios():
-    """Called by --paired: actual reply bytes, metadata and full NOR images."""
+    """Возвращает для парного сравнения байты ответа, метаданные и полный образ NOR."""
     out = {}
     for count, unknown in ((0, False), (3000, False), (CAPACITY, False), (3000, True)):
         m = fixture(SyncMachine(), count, unknown)
@@ -112,12 +121,12 @@ def paired_scenarios():
             'result': {'sent': m.sent, 'nor': bytes(m.flash),
                        'index': bytes(m.u.mem_read(m.addr('ix'), 12))}}
     m = fixture(SyncMachine(), 0, total=8192)
-    m.flash[BASE+31] = 0  # torn cell selects sector-journal recovery
+    m.flash[BASE+31] = 0  # Оборванная ячейка выбирает восстановление через журнал секторов.
     m.record_changes = True
     initial = bytes(m.flash)
     run_packet(m)
     final = bytes(m.flash)
-    # Tear the destination write after the durable journal commit.
+    # Обрываем запись назначения после долговечной фиксации журнала.
     image = bytearray(initial)
     for kind, address, data in m.changes:
         if kind == 'write' and address == BASE:
@@ -142,8 +151,9 @@ def paired_scenarios():
     return out
 
 
+# Проверяет байты ID, ответы и ресурсные ограничения синхронизации.
 def contracts():
-    # Repeated indices, holes, a dirty cell with erased index, and a retry.
+    # Повторные номера, пропуски, грязная ячейка со стёртым номером и повтор команды.
     m = fixture(SyncMachine(), 1, total=8192)
     m.flash[BASE+127*32+12] = 0
     m.write(m.addr('id_used_bytes'), 4096)
@@ -154,7 +164,7 @@ def contracts():
     m.verify(4, 8192)
     assert not m.changes, 'identical packet changed flash'
     assert not any(a >= BASE+4128 and a < BASE+8192 for a, n in m.ranges[-65:])
-    # Unknown boundary is discovered once, including non-FF orphan bytes.
+    # Неизвестная граница определяется один раз, включая записанные осиротевшие байты.
     m = fixture(SyncMachine(), 1, True, total=8192)
     m.flash[BASE+4012] = 0
     run_packet(m, (1,))
@@ -166,8 +176,9 @@ def contracts():
     return {'metadata_duplicates_retry_unknown': 'PASS'}
 
 
+# Подменяет связанные инструкции и проверяет обнаружение неверного поведения.
 def mutations():
-    # Patch the linked instruction stream/data, never the production files.
+    # Меняем инструкции и данные связанного образа, сохраняя исходники продукта.
     from c_vs_asm_compare import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS
     md = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
     detected = {}
@@ -177,18 +188,18 @@ def mutations():
         m.command(13, b''.join(cell(i, 1) for i in range(1, 31)), 30)
         job = m.addr('table_job')
         for _ in range(4000):
-            if m.u.mem_read(job+50, 1) == b'\x03':
+            if m.u.mem_read(job+m.table['phase'], 1) == b'\x03':
                 break
             m.tick()
         else:
             raise AssertionError('CRC phase not reached')
         if mode == 'used-end':
-            assert m.u.mem_read(job+8, 4) == struct.pack('<I', 960)
-            m.write(job+8, 32)
+            assert m.u.mem_read(job+m.table['crc_limit'], 4) == struct.pack('<I', 960)
+            m.write(job+m.table['crc_limit'], 32)
         else:
             if mode == 'skip-tail':
                 address = m.addr('crc16_ffInit')
-                replacement = b'\x08\x46\x70\x47'  # return the input CRC
+                replacement = b'\x08\x46\x70\x47'  # Возвращаем входную CRC без расчёта.
             else:
                 address = m.addr('table_runtime_poll')
                 code = list(md.disasm(bytes(m.u.mem_read(address, 900)), address))
@@ -216,6 +227,7 @@ def mutations():
         elapsed = [0.0]
         if mode == 'millisecond-budget':
             original_read = m.read
+            # Добавляет задержку чтения для проверки миллисекундного бюджета.
             def slow_read():
                 elapsed[0] += 0.6
                 original_read()
@@ -236,6 +248,7 @@ def mutations():
 
 
 class TimedMachine(SyncMachine):
+    # Готовит связанный образ, модель NOR и состояние сценария.
     def __init__(self, gap_ms=0.12):
         self.cycles = 0
         super().__init__()
@@ -248,13 +261,15 @@ class TimedMachine(SyncMachine):
         self.spi_bytes = 0
         self.stubs[self.addr('timers_getMillis')] = lambda: self.ret(int(self.cycles//72000) & 0xffffffff)
 
+    # Перехватывает границы вызовов и проверяет соглашение ARM о стеке.
     def hook(self, u, a, n, unused):
         if a not in self.stubs:
             self.cycles += 2
         super().hook(u, a, n, unused)
 
+    # Подключает модель SPI к реальному драйверу W25.
     def install_nor(self):
-        # Sample CPU work in the actual SPI loops with immediately ready flags.
+        # Измеряем работу процессора в настоящих циклах SPI с готовыми флагами.
         probe = Machine(); probe.init()
         probe.write(0x40013000, 0x40, 2); probe.write(0x40013008, 3, 2)
         self.spi_steps = {}
@@ -270,11 +285,13 @@ class TimedMachine(SyncMachine):
                      'w25_async_active', 'w25_read_available'):
             self.stubs.pop(self.addr(name))
 
+        # Добавляет расчётную стоимость процессора или NOR.
         def charge(name, n=1):
             self.spi_bytes += n
             scale = n/64 if name in ('spi_read', 'spi_send') else 1
             self.cycles += 32*n + 2*self.spi_steps[name]*scale
 
+        # Моделирует границу выбора SPI-чипа и завершение команды NOR.
         def cs(u, access, address, size, value, unused):
             if value != 4096:
                 return
@@ -297,6 +314,7 @@ class TimedMachine(SyncMachine):
                         duration = 0.7
                     wire.update(wel=0, until=self.cycles + duration*72000)
 
+        # Моделирует команду, адрес и данные одного обмена SPI.
         def send_byte():
             b = self.args()[0] & 255
             charge('spi_send_byte')
@@ -308,11 +326,13 @@ class TimedMachine(SyncMachine):
                 wire['count'] += 1
             self.ret()
 
+        # Моделирует один байт ответа SPI.
         def read_byte():
             charge('spi_read_byte')
             assert wire['cmd'] == 5
             self.ret(wire['wel'] | (self.cycles < wire['until']))
 
+        # Читает модельную NOR с контролем диапазона и заданным отказом.
         def read():
             p, n, _, _ = self.args()
             charge('spi_read', n)
@@ -325,6 +345,7 @@ class TimedMachine(SyncMachine):
             wire['address'] += n
             self.ret()
 
+        # Моделирует передачу буфера по границе SPI.
         def send():
             p, n, _, _ = self.args()
             charge('spi_send', n)
@@ -337,10 +358,11 @@ class TimedMachine(SyncMachine):
                          ('spi_read', read), ('spi_send', send)):
             self.stubs[self.addr(name)] = fn
 
+    # Выполняет один проход хранения и проверяет его бюджет.
     def tick(self):
         self.cycles += self.gap
         before = self.cycles
-        phase = self.u.mem_read(self.addr('table_job')+50, 1)[0]
+        phase = self.u.mem_read(self.addr('table_job')+self.table['phase'], 1)[0]
         self.checked('user_storage_poll', budget=300000)
         cost = (self.cycles-before)/72000
         self.polls += 1
@@ -350,6 +372,7 @@ class TimedMachine(SyncMachine):
             self.crc_peak = max(self.crc_peak, cost)
 
 
+# Оценивает стоимость связанных путей CPU, SPI и NOR на заданной модели.
 def timing(count, unknown=False):
     m = fixture(TimedMachine(), count, unknown)
     m.command(13, b''.join(cell(i, 1) for i in range(1, 31)), 30)
@@ -364,6 +387,7 @@ def timing(count, unknown=False):
             'spi_loop_instructions': m.spi_steps, 'stack': m.stack_peak}
 
 
+# Запускает проверки модуля и сохраняет результаты в заданный файл.
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--variant', choices=('ASM', 'C'), required=True)

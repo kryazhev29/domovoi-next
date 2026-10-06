@@ -3,6 +3,10 @@
 // Запись завершённого прохода выполняется через журнал секторов.
 // Рабочая память и флеш освобождаются при отмене, ошибке или завершении.
 #include "runtime_internal.h"
+enum {
+  EXP_SCAN=1, EXP_DIRECT=2, EXP_SEARCH=3,
+  EXP_START=4, EXP_JOURNAL=5
+};
 extern uint8_t id_endScan;
 extern uint32_t id_nextEnd;
 extern uint32_t id_time_end(const cellID_s *);
@@ -33,7 +37,7 @@ bool expiry_runtime_begin(void)
   start=mem[MB_ID].start; size=mem[MB_ID].size; end=start+size; used=32u*id_cells_end;
   p=work_acquire(sizeof *p, WORK_EXPIRY); if(!p) { id_endScan=1; return false; }
   p->scan=p->start=start; p->snapshot_base=start-sizeof(p->snapshot); p->used_limit=start+used; p->partition_limit=end;
-  p->scan_time=now; p->phase=1; p->cancelled=0;
+  p->scan_time=now; p->phase=EXP_SCAN; p->cancelled=0;
   expiry_job=p; flash_claim(FO_EXPIRY); id_endScan=0; id_nextEnd=0; return true;
 }
 // Подставляет обновлённую запись ID в страницу журналируемого сектора.
@@ -50,18 +54,18 @@ void expiry_runtime_poll(uint32_t now)
   expiry_s *p=expiry_job; uint8_t scratch[64],*record; uint16_t index,got;
   uint32_t address,n,end; uint8_t result;
   if(!p) return;
-  if(p->phase==5) {
+  if(p->phase==EXP_JOURNAL) {
     if(p->cancelled) sj_runtime_cancel();
     result=sj_runtime_poll(now); if(result==1) return;
     sj_runtime_reset();
     if(result!=2) { if(sj_runtime_blocked()) mem_storage_ready=0; goto retry; }
-    p->phase=1; log_addControlEvent((logControl_e)138,(char *)p->record+2,255);
+    p->phase=EXP_SCAN; log_addControlEvent((logControl_e)138,(char *)p->record+2,255);
     if(p->cancelled) goto retry;
     return;
   }
   if(p->cancelled) goto retry;
   switch(p->phase) {
-  case 1:
+  case EXP_SCAN:
     if(p->scan>=p->used_limit) { expiry_release(); return; }
     n=p->scan-p->snapshot_base;
     if(n>=sizeof(p->snapshot)) {
@@ -75,27 +79,27 @@ void expiry_runtime_poll(uint32_t now)
     end=id_time_end((const cellID_s *)record); if(!end) return;
     if(p->scan_time<end) { id_watch_end(end); return; }
     if(end/86400u!=p->scan_time/86400u) return;
-    memcpy(p->record,record,32); p->record[28]=56; p->phase=2; return;
-  case 2:
+    memcpy(p->record,record,32); p->record[28]=56; p->phase=EXP_DIRECT; return;
+  case EXP_DIRECT:
     memcpy(&index,p->record,2);
     if(index && index!=65535 && 32u*(index-1)<p->partition_limit-p->start) {
       address=p->start+32u*(index-1);
       if(!w25_read_data(address,scratch,32)) goto retry;
       memcpy(&got,scratch,2); if(got==index && scratch[31]!=255) goto found;
     }
-    p->find=p->start; p->phase=3; return;
-  case 3:
+    p->find=p->start; p->phase=EXP_SEARCH; return;
+  case EXP_SEARCH:
     address=p->find; n=p->partition_limit-address; if(!n) goto retry;
     if(n>64) n=64;
     if(!w25_read_data(address,scratch,(uint16_t)n)) goto retry;
     memcpy(&index,p->record,2); memcpy(&got,scratch,2); if(got==index && scratch[31]!=255) goto found;
     if(n==64) { memcpy(&got,scratch+32,2); if(got==index && scratch[63]!=255) { address+=32; goto found; } }
     p->find+=n; return;
-  case 4:
+  case EXP_START:
     if(!sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
-    p->phase=5; return;
+    p->phase=EXP_JOURNAL; return;
   default: goto retry;
   }
-found: p->target=address; p->phase=4; return;
+found: p->target=address; p->phase=EXP_START; return;
 retry: idcrc_unknown(); id_endScan=1; expiry_release();
 }

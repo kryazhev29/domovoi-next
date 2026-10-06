@@ -1,10 +1,13 @@
-"""Physical sector fixtures; the oracle remains a list of logical records."""
+# Доработка: Кряжев А., 2026
+"""Физические сектора модели; эталон выгрузки остаётся списком логических записей."""
 import struct
 BASE=0x1d0000
 MAGIC=0xd74c4752
 CAPACITY=24*127
 
+# Упаковывает значение и инверсию по формату журнала.
 def pair(n):return n|((n^65535)<<16)
+# Размещает физические записи и их метаданные в NOR.
 def install(m,cells,first_seq=1):
     assert len(cells)<=CAPACITY
     m.flash[BASE:BASE+98304]=b'\xff'*98304
@@ -19,6 +22,7 @@ def install(m,cells,first_seq=1):
         for c in part:
             if valid(c):previous=max(previous,int.from_bytes(c[:4],'little'))
 
+# Проверяет запись независимым эталоном её формата и CRC.
 def valid(c):
     from storage_machine import crc16
     if len(c)!=32 or c==b'\xff'*32:return False

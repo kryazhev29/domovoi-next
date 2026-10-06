@@ -4654,9 +4654,6 @@
             <name>$PROJ_DIR$\User\table_runtime.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\id_cells.c</name>
-        </file>
-        <file>
             <name>$PROJ_DIR$\User\log_ring.c</name>
             <configuration>
                 <name>Release</name>

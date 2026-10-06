@@ -1,12 +1,16 @@
+# Доработка: Кряжев А., 2026
+# Поздние отказы прошивки и восстановление её сохранённых полей.
+# Выполняется связанный IAR-код; NOR и транспорт задаёт модель без платы.
 from test_work_memory import owned
-"""Targeted late-error and reboot-state checks after owned FW status changes."""
+"""Поздние ошибки прошивки и восстановление состояния после сброса."""
 from verification_fw_bridge import *
 
 
+# Проверяет поздний отказ CRC, удержание ответа и подавление закрытого канала.
 def late_case(ch,registered=True,quiet=False):
     m=FirmwareMachine();m.fixture();m.begin(1,ch,True);m.until(lambda:m.phase()==13)
     assert len(m.sent)==1 and not m.read_word(m.device+171,1)
-    m.flash[0x1200]&=0xfe # destination changed after all copy writes verified
+    m.flash[0x1200]&=0xfe # Назначение изменилось после проверки всех записей копии.
     m.write(m.device+133,int(registered),1)
     m.busy=ch==0;m.commit_fail=ch==1
     if not registered and ch:
@@ -19,8 +23,8 @@ def late_case(ch,registered=True,quiet=False):
     assert not m.read_word(m.device+164,1)
     assert m.read_word(m.ptr()+124,2)==13
     frame=bytes(m.u.mem_read(m.ptr(),13));assert frame[8]==4 and frame[10]==253
-    # Actual old helper is a separate wire oracle, exercised on an independent
-    # machine with equal progress; no duplicated Python packet interpretation.
+    # Прежний отправитель служит независимым эталоном байтов на отдельной модели
+    # с тем же процентом: Python не повторяет разбор полей пакета.
     old=FirmwareMachine();old.write(old.device+150,m.read_word(m.device+150,1),1)
     old.checked('user_send_statusUpdateFW',20,253,ch,0)
     assert old.sent==[frame],(ch,old.sent,frame)
@@ -37,6 +41,7 @@ def late_case(ch,registered=True,quiet=False):
         wire_matches_legacy_helper=True,owned_reply_bytes=13,busy_passes=4)
 
 
+# Проверяет копирование заголовка и сброс до окончательной проверки образа.
 def copy_header_and_power():
     m=FirmwareMachine();m.fixture(132)
     m.flash[0x1a000:0x1a004]=b'GOOD'
@@ -45,7 +50,7 @@ def copy_header_and_power():
     assert m.flash[0x1004:0x1020]==m.head[4:]
     assert not m.read_word(m.device+171,1)
     boot=FirmwareMachine();boot.flash=bytearray(m.flash)
-    selected=boot.checked('cfg_select',0x21000000)
+    selected=boot.select_config()
     boot.u.mem_write(boot.device,bytes(boot.flash[selected+512:selected+1024]))
     boot.checked('fw_resume_after_boot')
     assert not boot.read_word(boot.device+164,1) and not boot.read_word(boot.device+171,1)
@@ -55,11 +60,12 @@ def copy_header_and_power():
     return dict(header_marker='FFFFFFFF before final verification',rollback_power_cut='current app remains; explicit rollback retry required, as before',verified_copy_reboots=True)
 
 
+# Проверяет продолжение загрузки по долговечно сохранённому состоянию.
 def download_resume():
     m=FirmwareMachine();m.fixture(1028);m.begin(4,1,True);m.busy=True;m.until(lambda:m.phase()==16)
     assert not m.sent and m.checked('mem_config_result')==0
     boot=FirmwareMachine();boot.flash=bytearray(m.flash)
-    selected=boot.checked('cfg_select',0x21000000)
+    selected=boot.select_config()
     boot.u.mem_write(boot.device,bytes(boot.flash[selected+512:selected+1024]))
     boot.checked('fw_resume_after_boot')
     assert boot.read_word(boot.device+164,1)==1 and boot.read_word(boot.device+148,2)==2

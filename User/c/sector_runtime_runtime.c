@@ -12,24 +12,24 @@
 sj_runtime_state_s sjr;
 
 // Сообщает о незавершённом журнале или ошибке после фиксации.
-uint8_t sj_runtime_blocked(void) { return sjr.fault || (sjr.phase && sjr.phase < 30); }
+uint8_t sj_runtime_blocked(void) { return sjr.fault || (sjr.phase && sjr.phase < SJ_PHASE_DONE); }
 // Запрашивает отмену до фиксации образа.
 void sj_runtime_cancel(void) { sjr.cancelled = 1; }
 // Сбрасывает завершённый автомат, сохраняя запрет при неясном результате.
-void sj_runtime_reset(void) { if (!sjr.waiting) sjr.phase = 0; }
+void sj_runtime_reset(void) { if (!sjr.waiting) sjr.phase = SJ_PHASE_IDLE; }
 // Принимает проверенный адрес и источник при свободном журнале и W25.
 uint8_t sj_runtime_begin(uint32_t address, sj_chunk_reader reader, const void *context)
 {
   if (mem_config_result() || sjr.phase || sjr.fault || w25_async_active()) return 0;
   sjr.address=address; sjr.reader=reader; sjr.context=context;
   sjr.offset=0; sjr.expected=0xffffffffu; sjr.committed=sjr.cancelled=0;
-  sjr.changed=0; sjr.phase=16; return 1;
+  sjr.changed=0; sjr.phase=SJ_PHASE_COMPARE; return 1;
 }
 // Блокирует таблицы, если ошибка возникла после попытки фиксации.
 static void sjr_fail(void)
 {
   if (sjr.committed) sjr.fault=1; // Неясный результат разрешает только восстановление при старте.
-  sjr.phase=31;
+  sjr.phase=SJ_PHASE_ERROR;
 }
 // Запускает одну команду W25 и сохраняет следующий шаг.
 static void sjr_start(uint32_t address, const uint8_t *data, uint16_t n, uint32_t now, uint8_t after)
@@ -47,56 +47,53 @@ uint8_t sj_runtime_poll(uint32_t now)
     if (r==1) return 1;
     sjr.waiting=0;
     if (r!=2) sjr_fail(); else sjr.phase=sjr.after;
-    return sjr.phase==31 ? 3 : 1;
+    return sjr.phase==SJ_PHASE_ERROR ? 3 : 1;
   }
-  if (sjr.cancelled && !sjr.committed && sjr.phase<30) sjr.phase=31;
+  if (sjr.cancelled && !sjr.committed && sjr.phase<SJ_PHASE_DONE) sjr.phase=SJ_PHASE_ERROR;
   switch (sjr.phase) {
-  case 16:
+  case SJ_PHASE_COMPARE:
     if (!sjr.reader(sjr.context,sjr.offset,sjr.data) ||
         !w25_read_data(sjr.address+sjr.offset,check,64)) { sjr_fail(); break; }
     if (memcmp(sjr.data,check,64)) sjr.changed=1;
     sjr.offset+=64;
-    if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=sjr.changed ? 1 : 30; }
+    if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=sjr.changed ? SJ_PHASE_META_ERASE : SJ_PHASE_DONE; }
     break;
-  case 1: sjr_start(SJ_META,0,0,now,2); break;
-  case 2: sjr_start(SJ_DATA,0,0,now,3); break;
-  case 3:
+  case SJ_PHASE_META_ERASE: sjr_start(SJ_META,0,0,now,SJ_PHASE_DATA_ERASE); break;
+  case SJ_PHASE_DATA_ERASE: sjr_start(SJ_DATA,0,0,now,SJ_PHASE_SOURCE); break;
+  case SJ_PHASE_SOURCE:
     if (!sjr.reader(sjr.context,sjr.offset,sjr.data)) { sjr_fail(); break; }
     sjr.expected=crc32_update(sjr.expected,sjr.data,64);
-    sjr_start(SJ_DATA+sjr.offset,sjr.data,64,now,4); break;
-  case 4:
+    sjr_start(SJ_DATA+sjr.offset,sjr.data,64,now,SJ_PHASE_SOURCE_NEXT); break;
+  case SJ_PHASE_SOURCE_NEXT:
     sjr.offset+=64;
-    if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=5; }
-    else sjr.phase=3;
+    if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=SJ_PHASE_HEADER; }
+    else sjr.phase=SJ_PHASE_SOURCE;
     break;
-  case 5:
+  case SJ_PHASE_HEADER:
     // CRC уже посчитан по источнику, W25 проверил содержимое каждой записи.
     sjr.header[0]=SJ_MAGIC; sjr.header[1]=SJ_VERSION; sjr.header[2]=sjr.address;
     sjr.header[3]=SJ_SECTOR; sjr.header[4]=~sjr.expected; sjr.header[5]=sjr.expected;
     sjr.header[6]=~crc32_update(0xffffffffu,(uint8_t*)sjr.header,24);
-    sjr.header[7]=SJ_COMMIT; sjr.phase=6;
+    sjr.header[7]=SJ_COMMIT; sjr.phase=SJ_PHASE_HEADER_WRITE;
     break;
-  case 6: sjr_start(SJ_META,(uint8_t*)sjr.header,28,now,7); break;
-  case 7: sjr.phase=8; break;
-  case 8:
+  case SJ_PHASE_HEADER_WRITE: sjr_start(SJ_META,(uint8_t*)sjr.header,28,now,SJ_PHASE_COMMIT); break;
+  case SJ_PHASE_COMMIT:
     sjr.committed=1; // Метка могла попасть во флеш даже при ошибке проверки.
-    sjr_start(SJ_META+28,(uint8_t*)sjr.header+28,4,now,9); break;
-  case 9: sjr.phase=10; break;
-  case 10: sjr_start(sjr.address,0,0,now,11); break;
-  case 11: sjr.offset=0; sjr.phase=12; break;
-  case 12:
+    sjr_start(SJ_META+28,(uint8_t*)sjr.header+28,4,now,SJ_PHASE_TARGET_ERASE); break;
+  case SJ_PHASE_TARGET_ERASE:
+    sjr.offset=0; sjr_start(sjr.address,0,0,now,SJ_PHASE_COPY); break;
+  case SJ_PHASE_COPY:
     if (!w25_read_data(SJ_DATA+sjr.offset,sjr.data,64)) { sjr_fail(); break; }
-    sjr_start(sjr.address+sjr.offset,sjr.data,64,now,13); break;
-  case 13:
+    sjr_start(sjr.address+sjr.offset,sjr.data,64,now,SJ_PHASE_COPY_NEXT); break;
+  case SJ_PHASE_COPY_NEXT:
     sjr.offset+=64;
-    if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=14; }
-    else sjr.phase=12;
+    if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=SJ_PHASE_CLEAN; }
+    else sjr.phase=SJ_PHASE_COPY;
     break;
-  case 14: sjr.phase=15; break;
-  case 15: sjr_start(SJ_META,0,0,now,30); break;
-  case 30: return 2;
-  case 31: return 3;
+  case SJ_PHASE_CLEAN: sjr_start(SJ_META,0,0,now,SJ_PHASE_DONE); break;
+  case SJ_PHASE_DONE: return 2;
+  case SJ_PHASE_ERROR: return 3;
   default: sjr_fail(); break;
   }
-  return sjr.phase==31 ? 3 : 1;
+  return sjr.phase==SJ_PHASE_ERROR ? 3 : 1;
 }

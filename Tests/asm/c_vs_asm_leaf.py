@@ -17,7 +17,7 @@ PLANS={
  'log_addControlEvent':(71,B,1),'log_addEvent':(B,),
  'log_addPhotoEvent':(123,),'log_addSystemEvent':(13,),
  'log_addSystemEventID':(13,B),'log_addUpdateEvent':(130,0),
- 'log_checkPending':(),'log_clearLogBuffer':(),'log_flushPending':(),
+ 'log_checkPending':(),'log_flushPending':(),
  'log_getRecordsCount':(),'log_setTime':(1700000400,),
  'mem_erase_sector':(0x41000,),'mem_patch':(0x41000,B,32),
  'mem_patch2':(0x41000,B,16,B+16,16),'mem_recover':(),

@@ -10,9 +10,8 @@ typedef struct {
   uint8_t shared[2032];
   uint16_t owned;
   uint16_t usb_slot, usb_released;
-  uint8_t reserved[2];
 } work_memory_s;
-typedef char work_memory_size[(sizeof(work_memory_s)==2224)?1:-1];
+typedef char work_memory_size[(sizeof(work_memory_s)==2222)?1:-1];
 #pragma data_alignment=8
 static work_memory_s work_memory;
 
@@ -21,7 +20,7 @@ static work_memory_s work_memory;
 #define PACKET BIT(WORK_PHOTO_PACKET)
 #define FW (BIT(WORK_FW_CONTEXT)|BIT(WORK_FW_DATA)|BIT(WORK_CONFIG))
 #define UPLOAD (BIT(WORK_UPLOAD_CONTEXT)|BIT(WORK_UPLOAD_PACKET))
-static const uint16_t capacities[] = {0,180,534,132,128,1024,1024,56,312,32,1040,2032,2028,1024,2032};
+static const uint16_t capacities[] = {0,180,534,132,128,1024,1024,40,248,32,1040,2032,2028,1024,2032};
 // Выбирает фиксированный участок рабочей памяти по владельцу.
 static void *address(uint32_t slot)
 {
@@ -117,18 +116,4 @@ const uint8_t *work_usb_source(const uint8_t *source, uint16_t length)
   if(!copy) return NULL;
   memcpy(copy,source,length);
   work_memory.usb_slot=(uint16_t)copy_slot; work_memory.usb_released=1; return copy;
-}
-extern bool upload_ack(uint8_t command, dataChanel_e channel);
-// Сохраняет подтверждение выгрузки до повторного занятия её буфера.
-uint8_t work_upload_ack(uint8_t command, uint8_t channel, void *context)
-{
-  // Резерв буфера гарантирует место для ACK, но тела кадра ещё нет.
-  // Освобождаем резерв до снимка настроек. Успешный ACK не запускает сохранение,
-  // поэтому главный цикл получает те же адреса при повторном занятии.
-  work_release(*(void **)context, WORK_UPLOAD_PACKET);
-  work_release(context, WORK_UPLOAD_CONTEXT);
-  if(!upload_ack(command, (dataChanel_e)channel)) return 0;
-  context=work_acquire(32,WORK_UPLOAD_CONTEXT);
-  *(void **)context=work_acquire(1040,WORK_UPLOAD_PACKET);
-  return 1;
 }

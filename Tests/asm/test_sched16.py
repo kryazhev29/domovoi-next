@@ -1,4 +1,5 @@
-"""Command-14 wire/storage/access/migration oracles against the selected IAR ELF."""
+# Доработка: Кряжев А., 2026
+"""Эталоны кадров, хранения, доступа и перехода команды 14 для выбранного IAR ELF."""
 import hashlib
 import struct
 
@@ -10,14 +11,17 @@ BASE = 0x1ca800
 MARK = struct.pack('<II', 0x36314853, 0xc9ceb7ac)
 
 
+# Создаёт запись ID с заданным сроком и отметкой прохода.
 def record(index, start=(8, 30), stop=(18, 15), blocked=0, days=bytes([1])*7):
     return bytes([index, *start, *stop, blocked]) + days + b'\x91\x92\x93'
 
 
+# Возвращает общий хвост расписаний по протокольному эталону.
 def tail(scenes=bytes(range(1, 9)), holiday=1):
     return bytes(scenes) + bytes([holiday]) + bytes(range(0xa1, 0xa8))
 
 
+# Запускает настоящий разбор входной команды.
 def parse(m, command, payload, channel=0, uniq=37):
     body = struct.pack('<HBBB', len(payload)+3, 0, uniq, command) + payload
     packet = body + struct.pack('<H', crc16(body))
@@ -25,6 +29,7 @@ def parse(m, command, payload, channel=0, uniq=37):
     m.checked('user_parse_comand', 0x21000000, channel)
 
 
+# Проверяет длину, номера и точные байты кадров протокола.
 def protocol():
     cases = 0
     for count in (1, 25, 64):
@@ -46,8 +51,8 @@ def protocol():
                 assert m.flash[BASE:BASE+2048] == expected
                 assert m.flash[BASE-2048:BASE] == neighbor
                 cases += 1
-            # The packet carries every schedule: cells it omits are erased
-            # (a schedule deleted on the server must not survive in flash).
+            # Кадр задаёт все расписания: пропущенные ячейки стираются,
+            # чтобы удалённое на сервере расписание не осталось во флеше.
             payload = record(32, blocked=1) + record(1) + tail(bytes([64])*8, 3)
             m.command(14, payload, 2, channel, 38)
             m.drain()
@@ -58,7 +63,7 @@ def protocol():
             assert m.flash[BASE:BASE+2048] == expected
             assert m.timestamps[-1][2] == crc16(expected[:1040])
             cases += 1
-    # Strict count/length/index validation, rejected before any flash change.
+    # Длина, количество и номера проверяются до любого изменения флеша.
     invalid = []
     for count in (1,25,64):
         good=b''.join(record(i) for i in range(1,count+1))+tail()
@@ -71,13 +76,14 @@ def protocol():
         assert m.answers == [(14, 1, 0, 7)] and not m.active() and not m.timestamps
         assert bytes(m.flash) == before and not any(m.counts.values())
         cases += 1
-    # Duplicates retain the old last-record-wins semantics.
+    # Для повторных номеров сохранено правило последней записи кадра.
     m = StorageMachine()
     m.command(14, record(1)+record(1, blocked=1)+tail(), 2); m.drain()
     assert m.flash[BASE:BASE+16] == record(1, blocked=1)
     return {'wire_cases': cases+1, 'maximum_payload': 1045, 'crc_bytes': 1040}
 
 
+# Сверяет CRC расписаний во всех путях ответа протокола.
 def crc_paths():
     cases = 0
     for channel in (0, 1):
@@ -102,7 +108,7 @@ def crc_paths():
                     m.flash[BASE+1024:BASE+1040] = tail()
                     m.flash[BASE+1040:BASE+2048] = b'\x51'*1008
                 m.write(m.addr('store_runtime'), int(runtime), 1)
-                # Both direct entry and parser use the bounded CRC service.
+                # Прямой вызов и разбор кадра используют один ограниченный сервис CRC.
                 if not runtime:
                     m.checked('user_send_crcPack', channel, 73, budget=2000000)
                     assert not m.sent and m.active()
@@ -115,6 +121,7 @@ def crc_paths():
     return {'crc12_and_crc17_paths': cases}
 
 
+# Проверяет доступ через расписания, праздники и триггеры.
 def access():
     cases = 0
     for holiday in (1, 2, 3):
@@ -132,7 +139,7 @@ def access():
                     allowed = 8*60+30 <= minute <= 18*60+15 and (
                         holiday==1 or (holiday==2 and today_holiday) or (holiday==3 and not today_holiday))
                     assert bool(m.checked('user_checkShedule', 1)) == allowed, (holiday, today_holiday, day, minute)
-                    # Access through a group's schedule uses the same global holiday policy.
+                    # Доступ через расписание группы использует общую политику праздников.
                     m.put_group(1); m.put_id(1,b'1234567890')
                     m.flash[0x1c9000+fields('cellGroup_s')['sheduleNumber']] = 1
                     m.u.mem_write(0x21000600,b'1234567890')
@@ -149,7 +156,7 @@ def access():
         assert assembled[offsets['onHoliday']] == 3
     m.fail_read(2)
     assert not m.checked('user_getShedule',1,buf), 'tail read failure must deny access'
-    # Trigger 8: command 5 selects a schedule for opening to any ID.
+    # Триггер 8: команда 5 задаёт расписание открытия любому ID.
     m = AccessMachine(); m.flash[BASE:BASE+16] = record(1)
     m.flash[BASE+1024:BASE+1040] = tail()
     m.write(m.device+m.d['hour'],12,1)
@@ -163,7 +170,7 @@ def access():
     m.loads.clear(); m.flash[BASE+1024+8]=2
     m.checked('user_incomingcall',0x21000600,1)
     assert not m.loads
-    # Blocked days/records and overnight windows retain their established behavior.
+    # Запрещённые дни, записи и интервалы через полночь сохраняют прежнее поведение.
     for rec, hour, expected in ((record(1,blocked=1),12,False),
                                 (record(1,days=bytes(7)),12,False),
                                 (record(1,start=(22,0),stop=(6,0)),23,True),
@@ -174,13 +181,14 @@ def access():
     return {'access_cases':cases+9, 'scene_source':'shared tail; existing scene execution unchanged'}
 
 
+# Готовит сохранённые настройки и таблицу старого формата.
 def migration_machine(flash=None):
     m = StorageMachine(flash)
     m.write(m.addr('store_runtime'),0,1)
     m.u.mem_write(m.addr('mem')+6*8,struct.pack('<II',0x1cd400,4096))
     m.stubs[m.addr('fw_resume_after_boot')] = m.ret
     m.stubs[m.addr('timers_pause')] = m.ret
-    # Boot reads a complete device snapshot (512 B); runtime jobs remain bounded.
+    # При старте читается полный снимок устройства 512 Б; фоновые шаги ограничены.
     def read():
         a,p,n,_=m.args()
         assert 0<n<=1024 and a+n<=len(m.flash)
@@ -190,12 +198,14 @@ def migration_machine(flash=None):
     return m
 
 
+# Восстанавливает устойчивое состояние нового запуска.
 def restore(m):
     assert m.checked('mem_recover',budget=3000000)
     m.checked('user_readsavedinformation',budget=3000000)
     return m.checked('sched16_boot',budget=3000000)
 
 
+# Выполняет сохранившийся эталон старого входа.
 def legacy():
     m = migration_machine()
     m.flash[BASE-2048:BASE] = bytes((i*3+11)&255 for i in range(2048))
@@ -206,6 +216,7 @@ def legacy():
     return bytes(m.flash)
 
 
+# Проверяет итог завершённого перехода формата.
 def migrated(m, neighbor):
     assert m.flash[BASE:BASE+2048] == b'\xff'*2048
     assert m.flash[BASE-2048:BASE] == neighbor
@@ -213,12 +224,14 @@ def migrated(m, neighbor):
     assert bytes(m.u.mem_read(m.device+m.d['reserv']+32,8)) == MARK
 
 
+# Проверяет первый переход старой области к новому формату.
 def migration():
     initial = legacy(); neighbor=initial[BASE-2048:BASE]
     m=migration_machine(initial); assert restore(m); migrated(m,neighbor)
-    # Registration reads the zeroed timestamp from the restored device.
+    # Регистрация берёт нулевую отметку времени из восстановленного устройства.
     m=migration_machine(m.flash); assert restore(m); migrated(m,neighbor)
     sent=[]
+    # Моделирует передачу буфера по границе SPI.
     def send():
         p,n,_,_=m.args(); sent.append(bytes(m.u.mem_read(p,n))); m.ret(1)
     m.stubs[m.addr('usb_send')]=send
@@ -228,7 +241,7 @@ def migration():
     m.write(m.addr('store_runtime'),1,1)
     m.command(14,record(64)+tail(),1); m.drain()
     assert m.timestamps[-1][1]==123456
-    # Persist the new sync stamp and verify that the next boot keeps new data.
+    # Сохраняем новую отметку синхронизации и проверяем данные при следующем старте.
     m.write(m.addr('store_runtime'),0,1)
     assert m.checked('user_writeConfigAndDevice',budget=3000000)
     saved=bytes(m.flash[BASE:BASE+2048])
@@ -236,7 +249,7 @@ def migration():
     assert bytes(r.flash[BASE:BASE+2048])==saved
     assert int.from_bytes(r.u.mem_read(r.device+r.d['datetimeShedule'],4),'little')==123456
     assert r.checked('user_clearMemBlock',4,budget=3000000); migrated(r,neighbor)
-    # Read failure blocks table access and preserves a zero timestamp.
+    # Ошибка чтения закрывает доступ к таблице и сохраняет нулевую отметку времени.
     r=migration_machine(initial); r.fault=('read',1)
     assert not r.checked('sched16_boot',budget=3000000)
     assert not r.checked('mem_tables_ready')
@@ -244,8 +257,8 @@ def migration():
     r.stubs[r.addr('user_writeConfigAndDevice')]=lambda:r.ret(0)
     assert not restore(r) and not r.checked('mem_tables_ready')
     r=migration_machine(r.flash); assert restore(r); migrated(r,neighbor)
-    # Exercise the real user_init call site; peripherals and unrelated startup
-    # work are stubbed, device restoration itself was exercised above.
+    # Проверяем настоящий вызов user_init; периферия и прочая стартовая
+    # работа заменены заглушками, восстановление устройства проверено выше.
     r=migration_machine(initial)
     r.checked('user_readsavedinformation',budget=3000000)
     for name in ('user_initvariables','user_readconfig','app_boot_metadata','rs485_init','uart_setRecTimeout','WG_init'):
@@ -256,6 +269,7 @@ def migration():
             'registration_timestamp_zero':True,'actual_user_init_hook':True}
 
 
+# Проверяет повтор перехода после каждого устойчивого обрыва.
 def migration_power():
     initial=legacy(); neighbor=initial[BASE-2048:BASE]
     count=0; operations=0; distinct=0
@@ -279,14 +293,14 @@ def migration_power():
                     cut[address+i]=value if kind=='erase' else cut[address+i]&value
                 count+=1
                 fingerprint=hashlib.sha256(cut).digest()
-                # Erasing/programming FF can leave exactly the same persistent
-                # state at several cut points. Reboot each distinct image once.
+                # Стирание или запись FF иногда оставляют одинаковые устойчивые
+                # образы в разных точках обрыва; каждый образ перезапускаем один раз.
                 if fingerprint in seen:continue
                 seen.add(fingerprint); distinct+=1
                 r=migration_machine(cut)
                 assert restore(r),(factory,kind,hex(address),n)
-                # Before a factory-reset intent commits, the old new-format
-                # database may survive; after intent, it must finish clearing.
+                # До фиксации намерения заводской очистки прежние расписания
+                # могут сохраниться; после намерения очистка обязана завершиться.
                 if factory and r.flash[BASE:BASE+2048] != b'\xff'*2048:
                     assert r.flash[BASE:BASE+2048]==image[BASE:BASE+2048]
                 else:

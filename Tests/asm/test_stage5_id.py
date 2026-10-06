@@ -1,9 +1,11 @@
-"""Append-only ID commits in the linked image, including every body cut."""
+# Доработка: Кряжев А., 2026
+"""Допись ID с меткой фиксации в связанном образе и обрывы каждого тела."""
 from test_id_sync_fast import SyncMachine, fixture, cell, BASE, TimedMachine
 from test_access_reads import AccessMachine
 from storage_machine import crc16
 
 
+# Проверяет основные сценарии модуля и возвращает результаты.
 def run():
     records=b''.join(cell(i) for i in range(1,31))
     m=fixture(SyncMachine(),0,total=8192);m.record_changes=True
@@ -28,7 +30,7 @@ def run():
         a=AccessMachine();a.put_id(1,cell(1)[2:12]);a.flash[BASE+31]=marker
         a.u.mem_write(0x21000000,cell(1)[2:12])
         assert a.checked('user_findID',0x21000000,0x21000100)==1
-    # The all-target preflight must see later dirty cells before any append.
+    # Предварительная проверка всех назначений находит грязную ячейку до первой дописи.
     m=fixture(SyncMachine(),0,unknown=True,total=8192);m.flash[BASE+63]=0;m.record_changes=True
     m.command(13,cell(1)+cell(2),2);m.drain();m.verify(2,8192)
     first_id=next(k for k,a,b in m.changes if BASE<=a<BASE+8192)
@@ -36,8 +38,8 @@ def run():
     m=fixture(SyncMachine(),0,total=8192);m.write(m.device+m.d['datetime'],1790000000)
     m.command(13,cell(1),1);m.drain()
     assert m.flash[BASE:BASE+32]==cell(1),'append preserves all supplied reserve bytes'
-    # An incoming FF marker forces the journal and a logical recount, even
-    # when it replaces a formerly committed ID. Raw CRC still sees its body.
+    # Входная метка FF требует журнала и пересчёта даже при
+    # замене действующего ID; сырая CRC по-прежнему учитывает всё тело записи.
     for previous in (0,1):
         m=fixture(SyncMachine(),previous,total=8192);m.record_changes=True
         incoming=cell(1)[:31]+b'\xff'

@@ -1,10 +1,12 @@
+# Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
-"""Handwritten command19/start/rollback in final IAR ELF; no hardware timing claims."""
+"""Команда 19, загрузка и откат в связанном IAR ELF; время платы не измеряется."""
 import hashlib,json,struct
 from test_upload_runtime import UploadMachine,largest_free
 from storage_machine import *
 from unicorn import UC_HOOK_CODE
 
+# Считает независимую CRC образа прошивки.
 def fwcrc(data):
     c=0xffffffff
     for (v,) in struct.iter_unpack('<I',data):
@@ -12,12 +14,14 @@ def fwcrc(data):
         for _ in range(32):c=((c<<1)^ (0x04c11db7 if c&0x80000000 else 0))&0xffffffff
     return c
 
+# Создаёт заголовок с заданными полями и метками целостности.
 def header(image,number=4):
     b=bytearray(b'\xff'*32);b[4]=3
     struct.pack_into('<H',b,5,number);struct.pack_into('<II',b,8,len(image),fwcrc(image));struct.pack_into('<I',b,20,123456)
     return bytes(b)
 
 class FirmwareMachine(UploadMachine):
+    # Готовит связанный образ, модель NOR и состояние сценария.
     def __init__(self):
         super().__init__();self.stubs[self.addr('usb_try_send')]=self.usb
         self.u.mem_write(self.addr('mem'),struct.pack('<IIII',0x1000,0x19000,0x1a000,0x19000))
@@ -27,19 +31,24 @@ class FirmwareMachine(UploadMachine):
         self.stubs[self.addr('w25_erase_sector')]=lambda:(_ for _ in ()).throw(AssertionError('synchronous erase'))
         self.stubs[self.addr('w25_write_data')]=lambda:(_ for _ in ()).throw(AssertionError('synchronous write'))
         self.u.hook_add(UC_HOOK_CODE,self.allocator_trace)
+    # Собирает изменения выдачи и возврата памяти.
     def allocator_trace(self,u,a,n,x):
         if a==self.addr('work_acquire'):self.alloc_trace.append(('malloc',self.args()[0]))
         if a==self.addr('work_release'):self.alloc_trace.append(('free',self.args()[0]))
         if a==self.addr('store_snapshot'):
             self.alloc_trace.append(('snapshot',0));self.snapshot_ctx=self.read_word(self.addr('fw_service_context'))
         if a==self.addr('mem_config_begin'):self.alloc_trace.append(('config_begin',0))
+    # Читает адрес текущего контекста из связанного образа.
     def ptr(self):return self.read_word(self.addr('fw_service_context'))
+    # Читает фазу рабочего автомата.
     def phase(self):return self.read_word(self.ptr()+120,1) if self.ptr() else 0
+    # Готовит базу и метаданные заданного сценария.
     def fixture(self,size=132):
         self.image=bytes((i*17+3)&255 for i in range(size));self.head=header(self.image)
         self.flash[0x1a000:0x1a020]=self.head
         self.flash[0x1a200:0x1a200+size]=self.image
         self.flash[0x1000:0x1a000]=b'\x5a'*0x19000
+    # Передаёт команду реальному входу фонового автомата.
     def begin(self,number=1,ch=0,parser=False):
         req=struct.pack('<HIIIH',number,123456,len(self.image),fwcrc(self.image),(len(self.image)+1023)//1024)
         if parser:
@@ -48,6 +57,7 @@ class FirmwareMachine(UploadMachine):
         else:
             self.u.mem_write(0x21000000,req);assert self.checked('fw_service_begin',0x21000000,ch,7)==1
         self.u.mem_write(0x21000000,b'\xa5'*32)
+    # Выполняет один шаг сервиса прошивки.
     def tick_fw(self):
         phase=self.phase();owner=self.checked('fw_service_active');self.now+=1
         before=self.u.reg_read(UC_ARM_REG_PRIMASK)
@@ -58,13 +68,16 @@ class FirmwareMachine(UploadMachine):
         if owner:self.max_fw_read=max(self.max_fw_read,self.read_budget)
         assert not self.lease
         self.phase_costs[phase]=max(self.phase_costs.get(phase,0),self.steps)
+    # Продвигает автомат до выбранной точки сценария.
     def until(self,test,limit=50000):
         for i in range(limit):
             if test():return i
             self.tick_fw()
         raise AssertionError(('stuck',self.phase(),self.read_word(self.addr('store')+18,1),self.read_word(self.ptr()+127,1) if self.ptr() else 0))
+    # Доводит автомат до конца с ограничением числа проходов.
     def drain(self):return self.until(lambda:not self.ptr())
 
+# Проверяет обычную последовательность команды и её ответ.
 def normal():
     out={}
     for number,size,ch,parser in [(2,4,0,True),(4,1028,1,True),(1,4,0,True),(1,132,1,False),(1,4096,0,False),(1,97792,0,False)]:
@@ -81,6 +94,7 @@ def normal():
     return out
 
 
+# Проверяет резерв рабочей памяти до начала загрузки.
 def heap_reservation():
     m=FirmwareMachine();m.fixture();photo=take(m,PHOTO);assert photo;m.begin(2)
     ctx=m.ptr();reserve=m.read_word(ctx+96);assert reserve
@@ -97,12 +111,13 @@ def heap_reservation():
         drop(m,slot,held);assert owned(m)==0
     return {'context_config_handoff':True,'same_buffer':True,'conflict_cases':2,'storage_bytes':2224}
 
+# Проверяет границы заголовка прошивки и коды отказа.
 def boundaries_errors():
     count=0
     for number in (0,1,2):
         for size in (0,2,97796):
             m=FirmwareMachine();m.fixture(4);m.image=bytes(size);m.head=header(m.image[:size-size%4])
-            # For malformed backup headers preserve a bounded byte fixture.
+            # Повреждённые заголовки резерва остаются ограниченными размером образа.
             if number==1:
                 h=bytearray(m.head);struct.pack_into('<I',h,8,size);m.flash[0x1a000:0x1a020]=h
             req=struct.pack('<HIIIH',number,1,size,1,(size+1023)//1024)
@@ -110,21 +125,22 @@ def boundaries_errors():
             if m.ptr():m.drain();assert m.sent[-1][10]==(2 if number==1 else 1)
             else:assert m.answers and m.answers[-1][1]==1
             assert not m.counts['start'];count+=1
-    # Valid header with incorrect complete CRC, or erased header, never erases stage.
+    # Неверная полная CRC или стёртый заголовок резерва не разрешают стирание приложения.
     for erased in (False,True):
         m=FirmwareMachine();m.fixture();m.flash[0x1a200]^=1
         if erased:m.flash[0x1a000:0x1a020]=b'\xff'*32
         m.begin();m.drain();assert m.sent[-1][10]==2 and not m.counts['start'];count+=1
-    # Existing download retransmission preserves staging and publishes one verified ACK.
+    # Повтор загрузки сохраняет промежуточную область и публикует один проверенный ACK.
     m=FirmwareMachine();m.fixture();m.flash[0x1000:0x1020]=m.head
     m.write(m.device+164,1,1);m.write(m.device+178,1,1);m.write(m.device+148,1,2)
     before=bytes(m.flash[0x1000:0x1a000]);m.begin(4,1);m.drain()
     assert m.sent[-1][10]==0 and bytes(m.flash[0x1000:0x1a000])==before;count+=1
     return count
 
+# Проверяет каждый вид отказа обмена прошивки.
 def io_faults():
     count=0
-    # Fail each FW operation category, including verified completion errors.
+    # Отказываем каждой категории команд прошивки, включая ошибку обратной проверки.
     for mode,phase,kind in [(2,4,'start'),(2,4,'poll'),(2,5,'start'),(2,5,'poll'),
                              (1,1,'read'),(1,2,'read'),(1,10,'start'),(1,10,'poll'),
                              (1,11,'read'),(1,12,'start'),(1,12,'poll'),(1,13,'read'),(1,14,'read')]:
@@ -136,6 +152,7 @@ def io_faults():
         assert largest_free(m)==2032;count+=1
     return count
 
+# Проверяет ожидание занятости и безопасную отмену.
 def busy_cancel():
     count=0
     for number in (1,2):
@@ -151,15 +168,16 @@ def busy_cancel():
         if phase in (4,5,10,12):m.tick_fw();assert m.io
         m.checked('fw_cancel',0)
         m.until(lambda:not m.ptr());assert m.io is None and not m.read_word(m.addr('fw_rollback_end'))
-        # A cancelled config job has independent storage and must drain separately.
+        # Сохранение настроек имеет свой снимок и после отмены завершается отдельно.
         m.until(lambda:m.read_word(m.addr('store')+18,1)==0)
         assert largest_free(m)==2032;count+=1
     return count
 
 
+# Перезапускает каждый различающийся устойчивый образ после обрыва.
 def power_cuts():
     m=FirmwareMachine();m.fixture();m.flash[0x1000:0x1004]=b'\xff'*4
-    # A valid legacy configuration remains selectable until the successor commits.
+    # Целые старые настройки остаются доступны до фиксации нового слота.
     for name,off in [('config',0),('device',512)]:
         data=bytearray(m.u.mem_read(m.addr(name),512));data[510:512]=struct.pack('<H',crc16(data[:510]))
         m.flash[0x1cd400+off:0x1cd600+off]=data
@@ -175,14 +193,14 @@ def power_cuts():
             torn=bytearray(before);torn[a:a+cut]=m.flash[a:a+cut];images.append(bytes(torn))
         for flash in images:
             boot.u.mem_write(0x20000000,ram);boot.flash=bytearray(flash)
-            selected=boot.checked('cfg_select',0x21000000)
+            selected=boot.select_config()
             cfg=flash[selected:selected+1024]
             assert crc16(cfg[:510])==int.from_bytes(cfg[510:512],'little')
             assert crc16(cfg[512:1022])==int.from_bytes(cfg[1022:1024],'little')
             assert flash[0x1a000:0x33000]==backup,'rollback source destroyed'
             assert flash[0x1000:0x1004]==b'\xff'*4,'incomplete image got install marker'
             assert not boot.read_word(boot.device+171,1),'reset resumed unverified install'
-            # Copy destruction is strictly after durable command19 success.
+            # Область приложения стирается только после долговечного успешного ответа команды 19.
             if 0x1000<=a<0x1a000:assert m.sent and m.sent[0][10]==0
             count+=1
     else:raise AssertionError('power fixture stuck')
@@ -190,12 +208,14 @@ def power_cuts():
     return count
 
 
+# Проверяет прошивку через настоящие пути W25 и модель SPI.
 def real_spi():
     from unicorn import UC_HOOK_MEM_WRITE
     m=FirmwareMachine();m.fixture();m.write(0x40013000,0x40,2)
     wire=dict(cmd=0,address=0,address_bytes=0,wel=0,busy=0,read=0,status=0)
     for name in ('w25_read_data','w25_async_start','w25_async_poll','w25_async_active','w25_read_available'):
         del m.stubs[m.addr(name)]
+    # Моделирует границу выбора SPI-чипа и завершение команды NOR.
     def cs(u,access,a,n,value,unused):
         if a==0x40010c14 and value==4096:wire.update(cmd=0,address=0,address_bytes=0)
         if a==0x40010c10 and value==4096:
@@ -204,21 +224,25 @@ def real_spi():
             elif wire['cmd']==0x20:
                 assert wire['wel'] and not wire['address']&4095
                 a=wire['address'];m.flash[a:a+4096]=b'\xff'*4096;wire.update(wel=0,busy=3)
+    # Моделирует команду, адрес и данные одного обмена SPI.
     def send_byte():
         b=m.args()[0]&255
         if not wire['cmd']:wire['cmd']=b
         elif wire['cmd'] in (2,3,0x20) and wire['address_bytes']<3:
             wire['address']=(wire['address']<<8)|b;wire['address_bytes']+=1
         m.ret()
+    # Моделирует один байт ответа SPI.
     def read_byte():
         assert wire['cmd']==5
         wire['status']+=1;v=wire['wel']|bool(wire['busy'])
         if wire['busy']:wire['busy']-=1
         m.ret(v)
+    # Моделирует передачу буфера по границе SPI.
     def send():
         p,n,_,_=m.args();assert wire['cmd']==2 and wire['wel'] and n<=64
         for b in m.u.mem_read(p,n):m.flash[wire['address']]&=b;wire['address']+=1
         m.ret()
+    # Читает модельную NOR с контролем диапазона и заданным отказом.
     def read():
         p,n,_,_=m.args();assert wire['cmd']==3 and n<=256
         a=wire['address'];m.u.mem_write(p,bytes(m.flash[a:a+n]));wire['address']+=n;wire['read']+=n;m.ret()
@@ -236,6 +260,7 @@ def real_spi():
     assert m.read_word(m.device+171,1)==1
     return dict(polls=n,max_poll_instructions=max(m.poll_costs),total_poll_instructions=sum(m.poll_costs),max_instructions=max(m.costs),total_instructions=sum(m.costs),stack=m.stack_peak,spi_read_max=mxread,fw_spi_read_max=fwread,spi_status_max=mxstatus,phase_maximum=m.phase_costs)
 
+# Сверяет точные коды причин отказа в журнале прошивки.
 def exact_failure_logs():
     cases=[(1,1,'read',None),(1,2,'read',(133,7)),(2,4,'start',None),
            (1,11,'read',(133,30)),(1,13,'read',(133,8)),(1,14,'read',(133,8))]

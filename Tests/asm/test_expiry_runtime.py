@@ -1,11 +1,13 @@
+# Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
-"""Bounded background expiry against the preserved historical IAR body."""
+"""Ограниченная фоновая проверка сроков и сравнение с сохранённым эталоном."""
 import hashlib,json,struct
 from storage_machine import *
 
 BASE=0x41000;NOW=1700000400
 
 class ExpiryMachine(StorageMachine):
+    # Готовит связанный образ, модель NOR и состояние сценария.
     def __init__(self,flash=None):
         super().__init__(flash);self.expiry_events=[];self.runtime_costs=[];self.runtime_reads=[]
         self.stubs[self.addr('log_addControlEvent')]=self.expiry_event
@@ -14,43 +16,54 @@ class ExpiryMachine(StorageMachine):
         self.write(self.addr('id_endScan'),1,1)
         self.write(self.addr('mem')+2*8+4,8192)
         self.legacy=False
+    # Читает модельную NOR с контролем диапазона и заданным отказом.
     def read(self):
         a,p,n,_=self.args();self.read_budget+=n
         assert 0<n<=1024 and a+n<=len(self.flash),(hex(a),n)
         if self.failed('read'):self.ret(0);return
         self.u.mem_write(p,bytes(self.flash[a:a+n]));self.ret(1)
+    # Сохраняет параметры события завершённого срока ID.
     def expiry_event(self):
         code,p,value,_=self.args();self.expiry_events.append((code,bytes(self.u.mem_read(p,10)).hex(),value));self.ret(1)
+    # Размещает физические записи и их метаданные в NOR.
     def install(self,records,physical=None):
         cells=range(len(records)) if physical is None else physical
         for i,b in zip(cells,records):self.flash[BASE+i*32:BASE+(i+1)*32]=b
         self.write(self.addr('id_cells_end'),max(cells,default=-1)+1,2)
+    # Начинает проверку сроков через настоящий фоновый вход.
     def start_expiry(self):return self.checked('expiry_runtime_begin')
+    # Читает признак незавершённой проверки сроков.
     def expiry_active(self):return self.checked('expiry_runtime_active')!=0
+    # Выполняет шаг проверки сроков и контролирует бюджет обмена.
     def expiry_tick(self):
         self.now+=1;self.checked('expiry_runtime_poll',self.now)
         assert self.read_budget<=128 and self.io_budget<=1
         self.runtime_costs.append(self.steps);self.runtime_reads.append(self.read_budget)
+    # Доводит проверку сроков до конца с ограничением проходов.
     def expiry_drain(self,limit=10000):
         for _ in range(limit):
             if not self.expiry_active():return
             self.expiry_tick()
         raise AssertionError('expiry stuck')
+    # Выполняет эталон проверки сроков для сравнения результата.
     def legacy_run(self):
-        # The four-byte manual branch selects the new runtime implementation.
+        # Четырёхбайтовый переход выбирает текущую реализацию проверки сроков.
         self.symbols['expiry_legacy']=self.addr('user_checkIdTimeEnd')+4
         self.symboltypes['expiry_legacy']='STT_FUNC'
         self.checked('expiry_legacy',budget=5000000)
+    # Возвращает данные, события и метаданные для сравнения.
     def result(self):
         return (bytes(self.flash[BASE:BASE+8192]),self.expiry_events,
                 bytes(self.u.mem_read(self.addr('id_nextEnd'),4)),
                 bytes(self.u.mem_read(self.addr('id_endScan'),1)))
 
+# Создаёт запись ID с заданным сроком и отметкой прохода.
 def record(index=1,first=NOW-120,minutes=1,done=0,tag=b'abcdefghij'):
     b=bytearray(32);struct.pack_into('<H',b,0,index);b[2:12]=tag
     struct.pack_into('<H',b,17,minutes);struct.pack_into('<I',b,22,first);b[28]=done
     return bytes(b)
 
+# Сравнивает итог и события двух вариантов выполнения.
 def differential():
     scenarios=[([record()],None),([record(first=NOW,minutes=2)],None),
        ([record(done=56),record(2,first=NOW-86400)],None),
@@ -69,10 +82,11 @@ def differential():
                     'stack':new.stack_peak,'legacy_instructions':old.costs[-1],'legacy_stack':old.stack_peak})
     return out
 
+# Проверяет отмену в рабочих фазах и смену сеансов.
 def cancel_and_sessions():
     count=0
-    # Cancel scan/lookup before any journal work and every durability phase.
-    for phase in (0,16,1,2,3,5,6,8,9,10,12,14,15,30):
+    # Отменяем поиск до журнала и в каждой фазе долговечной записи.
+    for phase in (0,16,1,2,3,5,6,8,10,12,15,30):
         m=ExpiryMachine();m.install([record()]);assert m.start_expiry()
         if phase:
             for _ in range(3000):
@@ -81,7 +95,7 @@ def cancel_and_sessions():
             else:raise AssertionError(phase)
         m.checked('expiry_runtime_cancel');m.expiry_drain()
         assert m.io is None and m.u.mem_read(m.addr('id_endScan'),1)==b'\1'
-        if phase in (9,10,12,14,15,30):assert m.flash[BASE+28]==56 and len(m.expiry_events)==1
+        if phase in (10,12,15,30):assert m.flash[BASE+28]==56 and len(m.expiry_events)==1
         else:assert m.flash[BASE+28]==0 and not m.expiry_events
         assert not m.checked('mem_config_result')
         count+=1
@@ -93,6 +107,7 @@ def cancel_and_sessions():
     assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1';count+=1
     return count
 
+# Проверяет последствия отказов чтения, записи и обратной проверки.
 def faults():
     count=0
     for kind,points in [('read',(1,2,3,65,130,192,257)),('start',(1,2,3,66,68,100)),('poll',(1,10,200,390))]:
@@ -114,6 +129,7 @@ def faults():
     assert not m.start_expiry();count+=1
     return count
 
+# Проверяет восстановление после обрывов изменяющих операций.
 def power():
     m=ExpiryMachine();m.install([record()]);initial=bytes(m.flash);m.record_changes=True
     assert m.start_expiry();m.expiry_drain();final=bytes(m.flash[BASE:BASE+4096])
@@ -130,6 +146,7 @@ def power():
             for i,v in enumerate(data):state[a+i]&=v
     return count
 
+# Проверяет полный проход сроков без потери рабочей памяти.
 def full_scan_and_heap():
     from test_memory_runtime import heap_stats
     m=ExpiryMachine();m.write(m.addr('mem')+20,1601536)
