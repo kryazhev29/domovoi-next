@@ -14,8 +14,6 @@
 enum { PORTBUFSIZE = 32 };
 
 extern cellMem_s mem[10];
-// Передать отладочный текст по USB при разрешённой диагностике.
-void user_debug(char *text);
 
 // Принять кадр канала после проверки его границы и контрольной суммы.
 void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz);

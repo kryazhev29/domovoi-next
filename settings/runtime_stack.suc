@@ -27,7 +27,7 @@ possible calls slm_completed [comm_modem.o]: comm_type [user_modem.o];
 possible calls slm_event [comm_modem.o]: call_urc [comm_call.o], sms_urc [comm_sms.o], bal_answer [comm_balance.o], volte_line [comm_call.o], sms_line [comm_sms.o], bal_line [comm_balance.o], channel_at_event [comm_channel.o], comm_imei [user_modem.o], comm_number [user_modem.o];
 possible calls slm_text [comm_modem.o]: comm_text [user_modem.o];
 possible calls ?slm_values [comm_modem.o]: comm_number [user_modem.o];
-possible calls slm_valid_settings [comm_modem.o]: comm_number [user_modem.o], comm_text [user_modem.o];
+possible calls comm_modem_valid_settings [comm_modem.o]: comm_number [user_modem.o], comm_text [user_modem.o];
 
 // PROBE_DONE can reopen the channel, emitting one nested CLOSED event. CLOSED
 // resets session state and does not reopen the channel (comm_server.c:27-46).

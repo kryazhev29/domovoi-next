@@ -12,25 +12,11 @@
 #include "../../Modules/comm_info.h"
 #include "../../Modules/comm_modem.h"
 #include "../../Bootloader/app_update.h"
-#ifndef RELEASE_BUILD
-#define DEBUG_USER
-#endif
 #pragma data_alignment=4
 uint8_t port_buffer[PORTBUFSIZE];
 #pragma data_alignment=4
 char tempStrBuffer[128];
 uint8_t uniqIDCnt;
-
-// Передать разрешённый пользователем диагностический текст по USB.
-void user_debug(char* ptr)
-{
-#ifdef DEBUG_USER
-  if (device.logBits & 4)
-    usb_sendstr(ptr);
-#else
-  (void)ptr;
-#endif
-}
 
 // Вызвать обработчики миллисекундного тика драйверов.
 void timers_user_handle(void)

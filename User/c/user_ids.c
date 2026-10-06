@@ -184,7 +184,13 @@ uint16_t user_getNumbersCount(void){
   id_cells_end = 0;
   // по странично читаем
   for (adr = mem[MB_ID].start; adr < endAdr; adr += sizeof(tbuffer)){
-    if (!mem_read(adr, tbuffer, sizeof(tbuffer))) return UINT16_MAX;
+    if (!mem_read(adr, tbuffer, sizeof(tbuffer))) {
+      /* Флеш не прочиталась: индекс не публикуем, поиск идёт по всей базе,
+         чтобы ни один записанный ID не пропал из проверки доступа. */
+      id_cells_end = (uint16_t)(mem[MB_ID].size / sizeof(cellID_s));
+      id_used_bytes = UINT32_MAX;
+      return 0;
+    }
     // перебираем ячейки
     for (uint16_t a = 0; a < sizeof(tbuffer); a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
