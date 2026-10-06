@@ -29,8 +29,13 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
       page[i]=off+i<table_job.bytes ? table_job.records[off+i] : 255;
     return 1;
   }
-  if (table_job.cmd==14 && table_job.sector+off==table_job.start+SCHED16_TAIL_OFFSET)
-    memcpy(page,table_job.records+table_job.count*SCHED16_RECORD_SIZE,SCHED16_TAIL_SIZE);
+  if (table_job.cmd==14) {
+    /* The packet carries every schedule: cells it omits are erased. */
+    uint32_t rel=table_job.sector+off-table_job.start;
+    if (rel<SCHED16_TAIL_OFFSET) memset(page,255,64);
+    else if (rel==SCHED16_TAIL_OFFSET)
+      memcpy(page,table_job.records+table_job.count*SCHED16_RECORD_SIZE,SCHED16_TAIL_SIZE);
+  }
   for (uint16_t i=0;i<table_job.batch;i++) {
     const uint8_t *record=table_job.records+(uint32_t)(table_job.position+i)*table_job.cell_size;
     uint16_t index=record[0];

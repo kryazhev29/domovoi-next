@@ -46,10 +46,12 @@ def protocol():
                 assert m.flash[BASE:BASE+2048] == expected
                 assert m.flash[BASE-2048:BASE] == neighbor
                 cases += 1
-            # Partial update and a new complete tail; cells not supplied survive.
+            # The packet carries every schedule: cells it omits are erased
+            # (a schedule deleted on the server must not survive in flash).
             payload = record(32, blocked=1) + record(1) + tail(bytes([64])*8, 3)
             m.command(14, payload, 2, channel, 38)
             m.drain()
+            expected[:1024] = b'\xff'*1024
             expected[31*16:32*16] = record(32, blocked=1)
             expected[:16] = record(1)
             expected[1024:1040] = tail(bytes([64])*8, 3)
