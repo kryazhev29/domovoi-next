@@ -1,4 +1,6 @@
-/* Доработка: Кряжев А., 2026. Модель суток и серверных отказов; без платы. */
+/* Доработка: Кряжев А., 2026. Модель суток и серверных отказов; без платы.
+   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
+   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
 static struct {
   int8_t connectionhandle; uint8_t registredOnServer, answerTimeout, answerID;
   char IMEIGSM[16]; uint8_t protocolVersion, hardwareVersion;
@@ -21,6 +23,7 @@ static uint32_t dns_late, ping_reply_due;
 static unsigned ping_reply_kind, read_error, long_lines;
 static uint32_t open_times[64];
 static uint8_t open_addresses[64];
+// Выдать время модели для кадров приложения.
 static uint32_t timers_getMillis(void) { return sim_now; }
 /* Звонок: сколько раз сброшен, ответ модема на сброс, последняя команда перед данными. */
 static bool call_access_ready, call_registration_noise;
@@ -35,24 +38,29 @@ static unsigned cmgs_error, sms_received_count;
 static bool sms_received_model(char *number, char *text);
 /* VoLTE: настройка, состояние модема, ответ ERROR, счётчики запросов и записей. */
 static uint8_t volte_flag, volte_modem; static unsigned volte_error, volte_queries, volte_sets;
+// Выдать требуемую настройку VoLTE.
 static uint8_t volte_flag_model(void) { return volte_flag; }
 /* Баланс: ответ модели на AT+CUSD=1 (URC через 2 с или до OK), счётчики, итог. */
 static const char *cusd_reply, *ussd_code; static unsigned cusd_count, cusd_cancel, cusd_error, cusd_early, balance_count;
 static uint32_t cusd_due; static int32_t balance_value;
 static const char *ussd_model(void) { return ussd_code; }
+// Запомнить полученный баланс SIM.
 static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_count; }
+// Обозначить границу фото, не участвующую в данном сценарии.
 static void photo_connection_lost(void) {}
 static void user_parse_comand(uint8_t *p, unsigned channel);
 static void call_caller(const char *number);
-/* CRC */
-/* RX */
+/* КОНТРОЛЬНАЯ СУММА */
+/* ПРИЁМ */
 
+// Поставить входящий кадр сервера в модель TCP.
 static void enqueue(const uint8_t *p, uint16_t n)
 {
   CHECK(incoming_count + n <= sizeof(incoming));
   memcpy(incoming + incoming_count, p, n); incoming_count += n;
   sim_feed("+QIURC: \"recv\",0\r\n");
 }
+// Собрать независимый проверенный кадр команды сервера.
 static uint16_t server_frame(uint8_t *p, uint8_t cmd, uint8_t id, const uint8_t *args, uint16_t n)
 {
   uint16_t body = n + 3u; memcpy(p,"SLDN",4); p[4]=(uint8_t)body; p[5]=(uint8_t)(body>>8);
@@ -60,6 +68,7 @@ static uint16_t server_frame(uint8_t *p, uint8_t cmd, uint8_t id, const uint8_t 
   uint16_t crc=crc16_calc(p+4,body+2u); p[body+6]=(uint8_t)crc; p[body+7]=(uint8_t)(crc>>8);
   return body+8u;
 }
+// Принять моделируемые подтверждения регистрации и статуса.
 static void user_parse_comand(uint8_t *p, unsigned channel)
 {
   CHECK(channel == CH_SERVER && !comm_tx_busy() && server_rx_verified(p)); ++server_commands;
@@ -76,6 +85,7 @@ static const char *server_text(uint8_t f, uint16_t *capacity)
   if (f==SLM_CFG_HOST2) { *capacity=sizeof("backup.local"); return invalid_reserve == 1 ? "bad\"host" : "backup.local"; }
   return sim_text(f,capacity);
 }
+// Выдать числовые настройки канала модели.
 static uint16_t server_number(uint8_t f)
 { return f==SLM_CFG_RESERVE ? reserve_enabled : f==SLM_CFG_PORT2 ? (invalid_reserve == 2 ? 0 : 8888) : sim_number(f); }
 static const slm_settings_t server_settings={server_text,server_number};
@@ -90,31 +100,49 @@ typedef unsigned dataChanel_e;
 #define _2B(x) ((uint8_t)((x)>>8))
 static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
+// Обозначить границу USB, не участвующую в данном сценарии.
 static bool usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; return true; }
 /* Эталон: те же сборщики кадров пишут в отдельный буфер, кадр канала сверяется с ним байт в байт. */
 static uint8_t legacy_buffer[1040];
+// Выдать отдельный буфер для независимого эталона кадра.
 static uint8_t *legacy_acquire(uint16_t needed) { return needed <= sizeof(legacy_buffer) ? legacy_buffer : NULL; }
+// Выдать вместимость отдельного эталонного буфера.
 static uint8_t *legacy_tx_acquire(uint16_t *capacity) { *capacity = sizeof(legacy_buffer); return legacy_buffer; }
+// Запомнить длину эталонного кадра.
 static bool legacy_commit(uint16_t n) { CHECK(n<=sizeof(legacy_frame)); memcpy(legacy_frame,legacy_buffer,n); legacy_count=n; return true; }
 #define legacy_free(p, cch) ((void)(p), (void)(cch))
-/* PRODUCERS */
+/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */
+// Сверить кадр с эталоном и показать первое расхождение при отказе.
+static void compare_frame(void)
+{
+  if (ch.frame_count != legacy_count || memcmp(frame, legacy_frame, ch.frame_count)) {
+    fprintf(stderr, "wire sizes %u/%u state %u\n", ch.frame_count, legacy_count, sv.state);
+    for (unsigned i = 0; i < ch.frame_count; ++i)
+      if (frame[i] != legacy_frame[i]) { fprintf(stderr, "wire byte %u: %u/%u\n", i, frame[i], legacy_frame[i]); break; }
+  }
+  CHECK(ch.frame_count == legacy_count && !memcmp(frame, legacy_frame, ch.frame_count));
+}
+// Сравнить кадр регистрации с эталоном и передать его каналу.
 static void registration_producer(void)
 {
   uint8_t id=uniqIDCnt;
   legacy_user_send_registrationData(CH_SERVER); uniqIDCnt=id;
   user_send_registrationData(CH_SERVER);
-  CHECK(ch.frame_count==legacy_count && !memcmp(frame,legacy_frame,ch.frame_count));
+  compare_frame();
   ++registrations_sent;
 }
+// Сравнить кадр статуса с эталоном и запомнить уникальный номер.
 static void status_producer(void)
 {
   uint8_t id=uniqIDCnt;
   legacy_user_send_statusPack(CH_SERVER); uniqIDCnt=id;
   user_send_statusPack(CH_SERVER); last_status=frame[7];
-  CHECK(ch.frame_count==legacy_count && !memcmp(frame,legacy_frame,ch.frame_count));
+  compare_frame();
   ++statuses_sent;
 }
+// Передать смену TCP-сеанса реальному сборщику кадров.
 static void server_session(bool open) { ++server_sessions; user_comm_session(open); }
+// Смоделировать сохранение события отсутствия серверного трафика.
 static bool no_traffic(void)
 {
   if (event_retry) { --event_retry; return false; }
@@ -123,6 +151,7 @@ static bool no_traffic(void)
 static const comm_server_handlers_t test_server_handlers={registration_producer,status_producer,server_session,server_rx_process,no_traffic};
 /* События журнала связи по порядку: вид и адрес; link_refuse - журнал не принял, повтор при следующем случае. */
 static uint8_t link_kinds[256], link_addrs[256]; static unsigned links, link_refuse;
+// Запомнить события состояния серверной связи.
 static bool link_model(uint8_t kind, uint8_t address)
 {
   if (link_refuse) { --link_refuse; return false; }
@@ -137,6 +166,7 @@ static unsigned link_count(uint8_t kind, uint8_t address)
 }
 static const slm_handlers_t transport_handlers={sim_gpio,sim_type,sim_imei};
 
+// Ответить на физически отправленные команды и кадры модели.
 static void transport_tx(void)
 {
   if (!(regs.CR1 & USART_CR1_TXEIE)) return;
@@ -293,6 +323,7 @@ static void transport_tx(void)
   }
   legacy_sim_tx();
 }
+// Продвинуть UART, модем, канал и сервер на один шаг.
 static void transport_tick(unsigned increment)
 {
   writes = 0;
@@ -316,11 +347,14 @@ static void transport_tick(unsigned increment)
   if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
   transport_tx(); sim_now+=increment;
 }
+// Пройти заданный интервал с шагом модели 10 мс.
 static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<ms) transport_tick(10); }
+// Запросить обычное восстановление после отказа ping и DNS.
 static void server_no_internet(void) { comm_channel_reopen(0); }
+// Начать независимый сеанс модема и зарегистрироваться на сервере.
 static void server_reset(void)
 {
-  modem_slm336_transport(NULL); sim_reset();
+  comm_modem_transport(NULL); sim_reset();
   server_commands=server_sessions=event13=event_retry=registrations_sent=statuses_sent=opens=closes=pings=dns_requests=0;
   tx_unacked=drop_register=drop_status=close_error=send_silence=prompt_silence=reserve_enabled=junk_mode=0;
   ping_success=dns_success=1; unique=last_status=uniqIDCnt=0;
@@ -345,9 +379,10 @@ static void server_reset(void)
   comm_server_init(&test_server_handlers); links=link_refuse=0;
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
   for (unsigned i=0;!comm_server_online() && i<1500;++i) transport_tick(10);
-  CHECK(comm_server_online() && modem_slm336_ready() && sim_now<11000);
+  CHECK(comm_server_online() && comm_modem_ready() && sim_now<11000);
   advance(500); call_activations=call_net_queries=call_pdp_queries=call_tcp_queries=0;
 }
+// Проверить кадры, сроки статусов, регистрацию и отказы сервера.
 static void server_tests(void)
 {
   /* Резервный адрес и порт проверяются до первого построения команды TCP. */
@@ -372,8 +407,15 @@ static void server_tests(void)
   CHECK(ch.frame_count==1040 && !memcmp(frame,legacy_frame,1040)); advance(500);
   sms[1029]='S'; user_send_smsToServer(sms); CHECK(!comm_tx_busy());
   user_send_smsToServer(NULL); CHECK(!comm_tx_busy());
-  server_reset(); CHECK(comm_server_online() && registrations_sent==1); advance(16000);
-  CHECK(statuses_sent==1 && !sv.misses && !event13);
+  /* Первый период — 5 с; внеочередной статус не переносит следующий период 15 с. */
+  server_reset(); CHECK(comm_server_online() && registrations_sent==1);
+  advance(4490); CHECK(statuses_sent==0);
+  advance(10); CHECK(statuses_sent==1);
+  advance(500); CHECK(!comm_tx_busy());
+  advance(4500); user_send_statusPack(CH_SERVER); advance(500);
+  CHECK(statuses_sent==1);
+  advance(9490); CHECK(statuses_sent==1);
+  advance(10); CHECK(statuses_sent==2 && !sv.misses && !event13);
   uint8_t id=last_status; comm_server_status_ack(id+1u); CHECK(!sv.misses);
   server_reset(); drop_status=1;
   for (unsigned i=0;i<124;++i) {
@@ -415,8 +457,8 @@ static void server_tests(void)
   for (unsigned i=1;i<8;++i) CHECK(open_addresses[i]==((i-1u)/3u)%2u);
   CHECK(open_times[4]-open_times[3]>=comm_timeouts[COMM_T_SERVER_RETRY_1]);
   CHECK(open_times[7]-open_times[6]>=comm_timeouts[COMM_T_SERVER_RETRY_2]);
-  server_reset(); comm_channel_priority(true); CHECK(!comm_tx_acquire(NULL)); comm_channel_priority(false);
-  p=comm_tx_acquire(&cap); CHECK(p && !comm_tx_acquire(NULL));
+  server_reset(); comm_channel_priority(true); CHECK(!comm_tx_acquire(&cap)); comm_channel_priority(false);
+  p=comm_tx_acquire(&cap); CHECK(p && !comm_tx_acquire(&cap));
   CHECK(!comm_tx_commit(cap+1u)); comm_tx_release(); CHECK(!comm_tx_busy());
   uint8_t packet[24], args[1]={0}; uint16_t n=server_frame(packet,27,3,args,0);
   enqueue(packet,n); enqueue(packet,n); unsigned before=server_commands;
@@ -424,8 +466,8 @@ static void server_tests(void)
   CHECK(server_commands==before+1 && comm_tx_busy() && server_rx_ready);
   server_rx_process(); CHECK(server_commands==before+1);
   advance(1000); CHECK(server_commands==before+2);
-  server_reset(); advance(14000); p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
-  tx_unacked=1; advance(1500); CHECK(sv.flags.status_due && !comm_tx_acquire(NULL));
+  server_reset(); advance(4000); p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
+  tx_unacked=1; advance(1500); CHECK(sv.flags.status_due && !comm_tx_acquire(&cap));
   tx_unacked=0; advance(1500); CHECK(statuses_sent==1);
   server_reset(); prompt_silence=1; p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
   advance(4000); CHECK(closes>=1 && opens>=2);
@@ -433,7 +475,7 @@ static void server_tests(void)
     server_reset(); send_silence=failure; p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
     advance(6000); CHECK(closes>=1 && opens>=2);
   }
-  server_reset(); drop_status=1; ping_success=dns_success=0; advance(80000);
+  server_reset(); drop_status=1; ping_success=dns_success=0; advance(70000);
   CHECK(dns_requests==1 && statuses_sent==5 && ch.probe_active==COMM_CH_DNS && opens==1);
   advance(3000); CHECK(opens>=2 && event13==0);
   sim_feed("+QIURC: \"dnsgip\",0,1,60\r\n+QIURC: \"dnsgip\",\"1.2.3.4\"\r\n");
@@ -460,6 +502,7 @@ static void probe_overlap_tests(void)
     CHECK(sv.state==SV_SILENT && event13==1 && !ch.probe_active && !comm_tx_busy());
   }
 }
+// Проверить сутки случайного трафика и неизменность NOR.
 static void garbage_test(void)
 {
   server_reset();
@@ -468,19 +511,19 @@ static void garbage_test(void)
   uint32_t start=sim_now, random=17; unsigned overflows=0, fragments=0; long_lines=0;
   while (sim_now-start<86400000u) {
     random=random*1664525u+1013904223u;
-    if ((random&255u)==0 && !modem_slm336_busy() && !comm_tx_busy()) {
+    if ((random&255u)==0 && !comm_modem_busy() && !comm_tx_busy()) {
       /* Тело QIRD содержит управляющие слова, NUL и ложный SLDN/CRC. */
       uint8_t noise[256]; for (unsigned i=0;i<sizeof(noise);++i) noise[i]=(uint8_t)(random+i*11u);
       memcpy(noise+7,"OK\r\nERROR\r\nRING\r\nSLDN\0",23); enqueue(noise,sizeof(noise)); ++fragments;
     }
-    if ((random&8191u)==0 && !sim_pending[0] && !modem_slm336_busy()) {
+    if ((random&8191u)==0 && !sim_pending[0] && !comm_modem_busy()) {
       for (unsigned i=0;i<700;++i) interrupt_byte('X',USART_SR_RXNE);
       transport_tick(10); comm_uart_stats_t stats; comm_uart_stats(&stats); DIAG_CHECK(stats.overflow); ++overflows;
       /* Новая изолированная сессия модели; питание/восстановление этапа 5 не тестируются. */
       uint32_t saved=sim_now; unsigned saved_events=event13;
       server_reset(); sim_now=saved; sv.now=saved; sv.status_since=saved; event13=saved_events;
     }
-    if ((random&8191u)==4096u && !sim_pending[0] && !modem_slm336_busy()) {
+    if ((random&8191u)==4096u && !sim_pending[0] && !comm_modem_busy()) {
       for (unsigned i=0;i<240;++i) interrupt_byte('Y',USART_SR_RXNE);
       sim_feed("\r\n"); transport_tick(10); transport_tick(10);
       CHECK(ch.state==CH_FAULT); ++long_lines;
@@ -492,6 +535,7 @@ static void garbage_test(void)
   CHECK(!memcmp(flash_model,flash_before,sizeof(flash_model)));
   printf("comm_server garbage: 24 model hours, %u payloads, %u ring overflows, %u long lines, entire NOR unchanged PASS\n",fragments,overflows,long_lines);
 }
+// Дождаться серверной регистрации с ограничением времени модели.
 static void until_online(void) { for (unsigned i=0;!comm_server_online() && i<200000;++i) transport_tick(10); CHECK(comm_server_online()); }
 /* Лист «Журнал событий»: 14/15 подключён (сервер принял регистрацию), 16/17 ошибка соединения -
    один раз до удачного, 18/19 потеря связи после регистрации. Номер сервера - по адресу. */
@@ -537,6 +581,7 @@ static void unregistered_sms_tests(void)
   puts("unknown ID notification: waits for a free slot and is sent once PASS");
 }
 
+// Проверить сохранение ответа обновления до освобождения слота.
 static void pending_update_tests(void)
 {
   server_reset();uint16_t old=device.status;
@@ -554,6 +599,7 @@ static void pending_update_tests(void)
   puts("update result: busy slot keeps code, percent and ID until sent once PASS");
 }
 
+// Проверить однократную передачу ответов считывателя после занятости.
 static void reader_tests(void)
 {
   server_reset(); uint16_t cap; uint8_t *p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
@@ -569,7 +615,7 @@ static void reader_tests(void)
   CHECK(sent_frame[8]!=8);
   puts("reader reply: packet 8 waits for a free slot, timeout and card both delivered once PASS");
 }
-/* RECOVER */
-/* CALL */
+/* ВОССТАНОВЛЕНИЕ */
+/* ВЫЗОВ */
 int main(void)
 { CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }

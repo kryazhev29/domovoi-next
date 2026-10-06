@@ -432,3 +432,22 @@ bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uin
   }
   return pos == count;
 }
+
+/* Преобразовать цифру шестнадцатеричного тела SMS или USSD. */
+uint8_t comm_at_hex(uint8_t value)
+{
+  if (value >= '0' && value <= '9') return value - '0';
+  if (value >= 'A' && value <= 'F') return value - 'A' + 10u;
+  if (value >= 'a' && value <= 'f') return value - 'a' + 10u;
+  return 16;
+}
+
+/* Преобразовать общий для SMS и USSD алфавит UCS2 в cp1251. */
+char comm_at_cp1251(uint16_t value)
+{
+  if (value < 0x80) return (char)value;
+  if (value >= 0x410 && value <= 0x44F) return (char)(value - 0x410 + 0xC0);
+  if (value == 0x401) return (char)0xA8;
+  if (value == 0x451) return (char)0xB8;
+  return '?';
+}

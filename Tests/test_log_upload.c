@@ -1,4 +1,6 @@
-// Доработка: Кряжев А., 2026
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -24,26 +26,16 @@ static void *test_malloc(size_t n){allocation=malloc(n);allocation_size=n;return
 static void *test_memcpy(void *d,const void *s,size_t n){uintptr_t a=(uintptr_t)allocation,x=(uintptr_t)s;if(x>=a&&x<a+allocation_size)CHECK(n<=a+allocation_size-x);return memcpy(d,s,n);}
 #define malloc test_malloc
 #define memcpy test_memcpy
-// Проверяет сценарий upload_ack по независимым данным модуля.
 static bool upload_ack(unsigned cmd,dataChanel_e ch){(void)cmd;(void)ch;return true;}
-// Проверяет сценарий upload_index по независимым данным модуля.
 static uint16_t upload_index(unsigned cmd,dataChanel_e ch){(void)cmd;return ch==CH_USB?log_usbReadIndex:device.readLogIDIndex;}
-// Проверяет сценарий log_getRecordsCount по независимым данным модуля.
 static uint16_t log_getRecordsCount(void){return (uint16_t)records;}
-// Проверяет сценарий log_clearLogBuffer по независимым данным модуля.
 static void log_clearLogBuffer(void){clears++;}
-// Проверяет сценарий upload_finish по независимым данным модуля.
 static bool upload_finish(unsigned cmd){(void)cmd;log_clearLogBuffer();return true;}
-// Проверяет сценарий user_send_anyData по независимым данным модуля.
 static void user_send_anyData(unsigned cmd,uint8_t *p,uint16_t n,dataChanel_e ch,unsigned id){CHECK(cmd==10&&n==3&&p[0]==0&&(ch==CH_USB||ch==CH_SERVER)&&id==42);sent++;}
-// Проверяет сценарий mem_read по независимым данным модуля.
 static void mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a==mem[MB_LOG].start&&n==records*32);memset(p,0x5A,n);}
-// Проверяет сценарий log_readRecords по независимым данным модуля.
 static bool log_readRecords(uint16_t first,uint8_t *p,uint16_t count){CHECK(first==0&&count==records);mem_read(mem[MB_LOG].start,p,count*32);return true;}
-// Проверяет сценарий crc16_calc по независимым данным модуля.
 static uint16_t crc16_calc(const uint8_t *p,uint16_t n){(void)p;CHECK(n==records*32+8);return 0x1234;}
-// Проверяет сценарий usb_send по независимым данным модуля.
 static uint8_t usb_send(uint8_t *p,uint16_t n){CHECK(n==records*32+14&&p[8]==10&&p[11]==records);sent++;return 1;}
 static int8_t connection_send(int8_t h,uint8_t *p,uint16_t n){CHECK(h==2);usb_send(p,n);return CE_OK;}
-/* ИСХОДНИК */
+/* КОД МОДУЛЯ */
 int main(void){unsigned count,ch;(void)bf;(void)test_memcpy;for(count=1;count<=32;count++){for(ch=0;ch<=1;ch++){records=count;log_usbReadIndex=device.readLogIDIndex=0;memset(log_unacked,0,sizeof(log_unacked));device.newAddressLog=4096+count*32;device.connectionhandle=2;user_send_logRecords(ch,42);CHECK((ch==CH_USB?log_usbReadIndex:device.readLogIDIndex)==0&&log_unacked[ch]==count);}}CHECK(sent==64&&!clears);puts("logupload: 1..32 records stay inside heap allocation passed");return 0;}

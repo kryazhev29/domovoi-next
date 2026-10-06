@@ -3,6 +3,7 @@
 // ƒаты и часы используют местное врем€ контроллера; недоступна€ таблица запрещает проход.
 // ѕосто€нными таблицами и восстановлением после обрыва питани€ владеет хранилище.
 #include "user_logic_internal.h"
+#include "../sched16.h"
 
 // ¬ычислить день недели из времени контроллера.
 uint8_t user_getweakday (uint32_t t)
@@ -54,73 +55,22 @@ uint8_t data[64];
   return 0;
 }
 
-// ѕроверить разрешение прохода по дню и минуте расписани€.
-bool user_checkShedule(uint8_t shd){
-  if (!mem_tables_ready()) return false;
+// ѕроверить день, врем€ и праздничный режим прочитанного расписани€.
+bool shedule_window_ok(const cellShedule_s *s)
+{
+  if (!s->day[device.day] || !shedule_time_ok(s)) return false;
+  switch (s->onHoliday) {
+  case 1: return true;
+  case 2: return user_dayIsHoliday() == 1;
+  case 3: return user_dayIsHoliday() == 0;
+  default: return false;
+  }
+}
+
+// ѕрочитать разрешЄнное расписание и проверить его текущее окно.
+bool user_checkShedule(uint8_t number)
+{
   cellShedule_s shedule;
-
-  // расписание
-  if (user_getShedule(shd, &shedule) == false){
-#ifdef DEBUG_USER
-    user_debug(">>U Check Shedule: Undefine schedule\r\n");
-#endif
-    return false;
-  }
-
-  // включена блокировка расписани€
-  if (shedule.blocked){
-#ifdef DEBUG_USER
-    user_debug(">>U Check Shedule: Shedule is blocked\r\n");
-#endif
-    return false;
-  }
-
-  // проверим день
-  if (shedule.day[device.day] == 0)
-  {
-#ifdef DEBUG_USER
-    user_debug(">>U Check Shedule: Undefine day\r\n");
-#endif
-    return false;
-  }
-
-  bool flag = false;
-
-  // проверим врем€
-  flag = shedule_time_ok(&shedule);
-
-  // не прошли по времени
-  if (flag == false){
-#ifdef DEBUG_USER
-    user_debug(">>U Check Shedule: Disabled by time\r\n");
-#endif
-    return false;
-  }
-
-  // проверим праздничный день
-  flag = false;
-  switch (shedule.onHoliday){
-  case 0: // 0 - –езерв
-
-    break;
-  case 1: // 1 - »гнорировать праздничные дни
-    flag = true;
-    break;
-  case 2: // 2 - ¬ыполн€ть сценарии только в праздничные дни
-    flag = user_dayIsHoliday()==1;
-    break;
-  case 3: // 3 - ¬ыполн€ть сценарии во все дни, кроме праздничных
-    flag = !user_dayIsHoliday();
-    break;
-  }
-
-  // не прошли по празднику
-  if (flag == false){
-#ifdef DEBUG_USER
-    user_debug(">>U Check Shedule: Not check holiday\r\n");
-#endif
-    return false;
-  }
-
-  return true;
+  return mem_tables_ready() && user_getShedule(number, &shedule) &&
+    !shedule.blocked && shedule_window_ok(&shedule);
 }

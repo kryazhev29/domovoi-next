@@ -3,6 +3,10 @@
 // До конца user_init допускается только необходимый синхронный путь восстановления.
 // Атомарной записью и выбором долговечного образа владеет memory_runtime.
 #include "user_logic_internal.h"
+#include "../table_runtime.h"
+#include "../sched16.h"
+#include "photo_runtime.h"
+#include "../../Modules/comm_modem.h"
 #pragma data_alignment=4
 cellMem_s mem[10];
 #pragma data_alignment=4
@@ -10,54 +14,11 @@ config_s config;
 #pragma data_alignment=4
 device_s device;
 
-// Проверить наличие всех пятнадцати цифр IMEI.
-Int8U user_imeivalid(void)
-{
-  if (chkdigitstr(device.IMEIGSM, 15))
-    return 1;
-  return 0;
-}
-
-// Вычислить прежний универсальный ПИН без изменения его алгоритма.
-Int16U user_unipassword (void)
-{
-  Int16U p = UNIPASS_INITVALUE;
-  Int16U a,b,c,d;
-  char i,br[4];
-
-  if (user_imeivalid() == 0) return p; // не валидный
-
-  a = atoi((char*)&device.IMEIGSM[11]); // последние 4-ре цифры
-
-  for (i=0; i<3; i++)
-    br[i] = device.IMEIGSM[8+i];
-  br[i] = 0;
-  b = atoi(br); // 3-ри цифры с 8-й
-
-  for (i=0; i<3; i++)
-    br[i] = device.IMEIGSM[i];
-  br[i] = 0;
-  c = atoi(br); // 3-ри первые цифры
-
-  for (i=0; i<3; i++)
-    br[i] = device.IMEIGSM[3+i];
-  br[i] = 0;
-  d = atoi(br); // 3-ри цифры c 3-й
-
-  p = UNIPASS_INITVALUE + (2*a) + c - (3*b) - d;
-
-  return p;
-}
-
 // Стереть указанную область синхронно при стартовом восстановлении.
 bool user_clearMemBlock(memBlock_e mb){
   if (mb==MB_SHEDULE) return sched16_clear();
 
   if (mem[mb].size == 0) return true;
-
-#ifdef DEBUG_USER
-  user_debug(">>U Clear mem block ...\r\n");
-#endif
 
   uint32_t adr;
   uint32_t endAdr = mem[mb].start + mem[mb].size;
@@ -136,38 +97,20 @@ void config_terminate_strings(void)
 // Выбрать допустимый сохранённый config либо начальные настройки.
 void user_readconfig(void)
 {
-  uint8_t read_count = 20;
-
-#ifdef DEBUG_USER
-  user_debug(">>U Read config ...\r\n");
-#endif
-
-  // читаем
-  while (read_count){
-    wdt_reload();
-    mem_read(mem[MB_CONFIG].start, (pInt8U)&config, sizeof(config));
-    if (config.crc == crc16_calc((pInt8U)&config, sizeof(config)-2)) // контрольная сумма совпала
-      break;
-    delay_ms(10);
-    read_count--;
-  }
-
-  // исчерпали попытки
-  if (read_count == 0){
-    user_setdefault(); // грузим блок по умолчанию
+  wdt_reload();
+  if (mem_read(mem[MB_CONFIG].start, (uint8_t *)&config, sizeof(config)) &&
+      config.crc == crc16_calc((uint8_t *)&config, sizeof(config) - 2u)) {
+    config_terminate_strings();
+  } else {
+    user_setdefault();
     user_saveindex();
   }
-  else config_terminate_strings();
 }
 
 // Сформировать заводские настройки текущего профиля.
 void user_setdefault (void)
 {
   wdt_reload();
-
-#ifdef DEBUG_USER
-  user_debug(">>U Set default params ...\r\n");
-#endif
 
   // чистим
   memset((pInt8U)&config, 0, sizeof(config));
@@ -177,10 +120,8 @@ void user_setdefault (void)
   strcpy(config.server2, "gate.gsmgate.ru:15020");
   strcpy(config.countryCode, "+7");
   strcpy(config.netOperator, "internet,gdata,gdata");
-  config.netType = 0; // автоматически: плата с модемом 4G
   config.useServer1 = 1;
 
-  config.rele[0].mode = 0;
   config.rele[0].onCmdServer = 1;
   config.rele[0].onOther = 1;
   config.rele[0].tImpulse = 1;
@@ -198,9 +139,6 @@ void user_setdefault (void)
 // Передать согласованный протокольный сброс владельцу хранения.
 void user_factoryReset (void){
   fw_async_cancel();
-#ifdef DEBUG_USER
-  user_debug(">>U Factory reset\r\n");
-#endif
 
   // закрываем соединение с сервером
   upload_reset(10);
@@ -233,54 +171,44 @@ void user_factoryReset (void){
   // реинициализируем переменные
   user_initvariables();
 
-  // перезагружаем gsm
-  user_comm_boot();
 }
 
 // Восстановить устойчивые поля device и незавершённые действия.
 void user_readsavedinformation (void)
 {
   device_s DV;
-  uint8_t read_count = 10;
+  wdt_reload();
+  if (mem_read(mem[MB_CONFIG].start + sizeof(config), (uint8_t *)&DV, sizeof(DV)) &&
+    DV.crc == crc16_calc((uint8_t *)&DV, sizeof(DV) - 2u)) {
+    DV.IMEIGSM[sizeof(DV.IMEIGSM) - 1] = 0; // Завершаем после проверки CRC.
+    strcpy(device.IMEIGSM, DV.IMEIGSM); // восстанавливаем IMEI GSM
 
-  while (read_count--){
-    wdt_reload();
-    // Блок DEVICE
-    mem_read (mem[MB_CONFIG].start + sizeof(config), (pInt8U)&DV, sizeof(DV));
-    if (DV.crc == crc16_calc((pInt8U)&DV, sizeof(DV)-2)){ // контрольная сумма совпала
-      DV.IMEIGSM[sizeof(DV.IMEIGSM) - 1] = 0; // Завершаем после проверки CRC.
-      strcpy(device.IMEIGSM, DV.IMEIGSM); // восстанавливаем IMEI GSM
+    device.hardwareVersion = DV.hardwareVersion;
+    device.firmwareVersion = DV.firmwareVersion;
+    device.bootVersion = DV.bootVersion;
+    device.buildDate = DV.buildDate;
 
-      device.protocolVersion = PROTOCOL_VERSION; // всегда версия из таблицы (строка 426), не сохранённая
-      device.hardwareVersion = DV.hardwareVersion;
-      device.firmwareVersion = DV.firmwareVersion;
-      device.bootVersion = DV.bootVersion;
-      device.buildDate = DV.buildDate;
+    device.datetimeConfig = DV.datetimeConfig;
+    device.datetimeID = DV.datetimeID;
+    device.datetimeShedule = DV.datetimeShedule;
+    device.datetimeGroup = DV.datetimeGroup;
+    device.datetimeHoliday = DV.datetimeHoliday;
 
-      device.datetimeConfig = DV.datetimeConfig;
-      device.datetimeID = DV.datetimeID;
-      device.datetimeShedule = DV.datetimeShedule;
-      device.datetimeGroup = DV.datetimeGroup;
-      device.datetimeHoliday = DV.datetimeHoliday;
+    device.triggers = DV.triggers;
 
-      device.triggers = DV.triggers;
+    device.firmwareSize = DV.firmwareSize;
+    device.firmwareCRC = DV.firmwareCRC;
+    device.FWblockCount = DV.FWblockCount;
+    device.FWblockIdx = DV.FWblockIdx;
+    device.firmwarePercent = DV.firmwarePercent;
+    device.FWinProgress = DV.FWinProgress;
+    device.updateTimeout = DV.updateTimeout;
 
-      device.firmwareSize = DV.firmwareSize;
-      device.firmwareCRC = DV.firmwareCRC;
-      device.FWblockCount = DV.FWblockCount;
-      device.FWblockIdx = DV.FWblockIdx;
-      device.firmwarePercent = DV.firmwarePercent;
-      device.FWinProgress = DV.FWinProgress;
-      device.updateTimeout = DV.updateTimeout;
+    device.moduleType = DV.moduleType;
+    upload_restore(&DV);
+    store_restore(&DV);
+    sched16_restore(&DV);
 
-      device.moduleType = DV.moduleType;
-      upload_restore(&DV);
-      store_restore(&DV);
-      sched16_restore(&DV);
-
-      break;
-    }
-    delay_ms(10);
   }
   fw_resume_after_boot();
 }

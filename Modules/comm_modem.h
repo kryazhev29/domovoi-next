@@ -12,13 +12,12 @@ enum { MODEM_OK, MODEM_MODEL, MODEM_SIM, MODEM_PORT, MODEM_RAT,
    READY повторяет AT, NETWORK опрашивает сеть, остальные ошибки завершают
    попытку; PDP/TCP/SIM уточняют причину. next/alternate — успешные переходы. */
 typedef struct {
-  uint8_t command;
+  const char *command;
   uint8_t timeout, next, alternate, action;
 } comm_modem_step_t;
 /* Таблица команд и переходов единственного модема платы v5. */
-extern const char slm_commands[];
+extern const char slm_tcp_command[], slm_read_command[];
 extern const comm_modem_step_t slm_steps[];
-enum { SLM_TCP_COMMAND = 206, SLM_READ_COMMAND = 233 };
 /* Перезапуск по сохранённым настройкам: power - со снятием питания, иначе с AT. */
 bool comm_modem_restart(bool power, uint32_t now_ms);
 /* Выдать назначенные геттеры настроек. */

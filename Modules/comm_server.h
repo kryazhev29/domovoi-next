@@ -29,6 +29,7 @@ void comm_server_note(uint8_t kind); /* NO_NET, NO_INTERNET - от восстановления 
 uint8_t comm_server_address(void);
 /* Собрать состояние надзора для стендовой команды 112. */
 #if DOMOVOI_DIAG
+// Выдать состояние регистрации и счётчики надзора.
 uint32_t comm_server_diag(void);
 #endif
 /* Начать регистрацию нового сеанса канала. */

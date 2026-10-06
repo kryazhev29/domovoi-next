@@ -5,12 +5,16 @@ static struct { uint32_t at, ms; uint8_t power; unsigned opens; } rc_log[16];
 static unsigned rc_logged, rc_power_starts, rc_soft_starts;
 static uint32_t rc_last_since, rc_last_attempt, rc_clock = UINT32_MAX;
 static bool rc_busy_flag;
+// Запомнить новый сеанс восстановления.
 static void rc_session(void) { socket_model=false; comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done); }
+// Выдать моделируемое время восстановления.
 static uint32_t rc_time(void) { return rc_clock == UINT32_MAX ? UINT32_MAX : rc_clock + sim_now / 1000u; }
+// Сообщить о занятости вызовом или приложением.
 static bool rc_busy(void) { return rc_busy_flag; }
 static const comm_recover_hooks_t rc_hooks = {rc_session, rc_time, rc_busy};
 /* Шаг модели: связь, восстановление, учёт решений и перезапусков. */
 static void rc_note(void);
+// Продвинуть модем и восстановление на один шаг.
 static void rc_tick(unsigned ms)
 {
   power_events = 0; /* в трассе питания 16 мест, здесь считаем перезапуски сами */
@@ -20,6 +24,7 @@ static void rc_tick(unsigned ms)
   comm_recover_poll(sim_now);
   rc_note();
 }
+// Запомнить событие восстановления.
 static void rc_note(void)
 {
   if (rc.state == RC_WAIT && rc.wait_since != rc_last_since) {
@@ -47,6 +52,7 @@ static void rc_online(void)
 }
 /* Перезапуск со снятием питания, как после сбоя: дальше модем идёт уже с флагами сценария. */
 static void rc_fresh(void) { CHECK(comm_modem_restart(true, sim_now)); rc_session(); }
+// Проверить ожидаемую ступень и срок восстановления.
 static void rc_expect(unsigned i, uint32_t ms, uint8_t power)
 {
   CHECK(i < rc_logged && rc_log[i].ms == ms && rc_log[i].power == power);
@@ -54,7 +60,9 @@ static void rc_expect(unsigned i, uint32_t ms, uint8_t power)
 /* Сигнал, регистрация, тип сети: опрос через канал раз в 30 с, ERROR на запрос не рвёт TCP,
    без связи - «неизвестно». */
 static unsigned low_signals; static uint8_t low_csq;
+// Пройти штатный запуск модема без сервера.
 static void low_model(uint8_t csq) { ++low_signals; low_csq = csq; }
+// Проверить сигналы сети, время и информацию SIM.
 static void info_tests(void)
 {
   rc_online(); rc_run(40000u);
@@ -73,6 +81,7 @@ static void info_tests(void)
   CHECK(low_signals == 3 && low_csq == 14);
   sim_csq = 22;
 }
+// Проверить ступени восстановления при отказах и смене суток.
 static void recover_tests(void)
 {
   info_tests();

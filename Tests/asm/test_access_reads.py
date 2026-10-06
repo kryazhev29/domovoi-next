@@ -1,9 +1,7 @@
-"""Путь доступа на итоговом ELF: чтение группы/расписания/праздника и поиск ID отличают
-сбой чтения Flash от «нет данных» (05.10.2026).
-
-Было: user_getGroup/user_getShedule/user_dayIsHoliday не проверяли mem_read и сравнивали
-мусор со стека (1024 байта); сбой чтения в переборе user_findID становился «нет в базе»
-и событием 65, а повторный поиск в user_activateOut при сбое включал реле без счётчика."""
+"""Доработка: Кряжев А., 2026.
+Доступ на ELF: отказы чтения таблиц не используют старые данные стека.
+Проверяются события, выходы и счётчики на модели NOR без платы.
+"""
 import hashlib, json, struct
 from storage_machine import *
 
@@ -23,8 +21,8 @@ class AccessMachine(StorageMachine):
         self.write(self.addr('config') + fields('config_s')['rele'] + rele['onWiegand'], 1, 1)
 
     def read(self):
-        # The legacy synchronous scan of user_findID reads 1024 bytes at once (bounded
-        # runtime machines read <= 256); the NOR model itself does not care.
+        # Замороженный ASM читает до 1024 байт, текущий C — до 256 байт.
+        # Общая модель NOR допускает оба размера для исторических сравнений.
         a, p, n, _ = self.args(); self.read_budget += n
         assert 0 < n <= 1024 and a + n <= len(self.flash), (hex(a), n)
         if self.failed('read'): self.ret(0); return
@@ -67,7 +65,7 @@ def table_cells():
     assert m.checked('user_getGroup', 129, buf) == 0, 'outside the 2048-byte area'
     m.flash[GROUP + 6 * 16] = 9
     assert m.checked('user_getGroup', 7, buf) == 0, 'cell holds another number'
-    # Stale stack from a good read of the same group must not pass for a failed read.
+    # После удачного чтения отказ той же группы не должен использовать старые данные стека.
     assert m.checked('user_getGroup', 5, buf) == 1
     m.fail_read(); assert m.checked('user_getGroup', 5, buf) == 0, 'read error is not a group'
     assert m.checked('user_getShedule', 32, buf) == 1 and bytes(m.u.mem_read(buf, 32))[0] == 32

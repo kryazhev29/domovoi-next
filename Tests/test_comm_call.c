@@ -1,6 +1,9 @@
-/* Доработка: Кряжев А., 2026. Доступ до ATA, ограниченный ответ и возврат данных. */
+/* Доработка: Кряжев А., 2026. Доступ до ATA, ограниченный ответ и возврат данных.
+   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
+   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
 static unsigned calls, chups_at_call, answers_at_call, call_actions; static char call_seen[24];
 static uint32_t call_action_at;
+// Запомнить номер и результат проверки доступа до ответа.
 static void call_caller(const char *number)
 {
   ++calls; chups_at_call=chups; answers_at_call=answers; call_action_at=sim_now;
@@ -8,19 +11,25 @@ static void call_caller(const char *number)
   /* Модель допуска: скрытый и чужой номер не открывают. Производственный доступ прежний. */
   if (number[0] && strcmp(number,"+79990000000")) ++call_actions;
 }
+// Смоделировать занятость приложения обновлением прошивки.
 static bool user_comm_busy_model(void) { return comm_call_active(); }
+// Сбросить наблюдения и модель вызова.
 static void call_reset(void) { server_reset(); comm_recover_init(&rc_hooks,sim_now); calls=call_actions=0; call_seen[0]=0; call_action_at=0; }
+// Подать номер и сигнал входящего вызова.
 static void ring(const char *clip) { sim_feed("RING\r\n"); if (clip) sim_feed(clip); }
+// Продвинуть модель до физической отправки отбоя.
 static void call_until_hangup(void)
 {
   for (unsigned i=0; !aths && !chups; ++i) { CHECK(i<400); transport_tick(10); }
   CHECK(hangup_at-answer_at<=comm_timeouts[COMM_T_CALL_LIMIT]);
 }
+// Продвинуть модель до возврата серверной регистрации.
 static uint32_t call_until_registered(void)
 {
   for (unsigned i=0; !comm_server_online() || comm_channel_call_pending(); ++i) { CHECK(i<1200); transport_tick(10); comm_recover_poll(sim_now); }
   return sim_now-hangup_at;
 }
+// Проверить доступ, сроки ATA/ATH и восстановление данных после вызова.
 static void call_tests(void)
 {
   call_reset(); unsigned opened=opens;

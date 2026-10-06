@@ -16,14 +16,14 @@ HEADERS = ('Modules/comm_uart.h', 'Modules/comm_at.h', 'User/comm_timeouts.h',
 def unit(root=ROOT):
     def source(name):
         return (root / name).read_bytes().decode('cp1251')
-    model = source('Tests/test_comm_uart.c').split('/* PRODUCTION */', 1)[0]
+    model = source('Tests/test_comm_uart.c').split('/* КОД МОДУЛЯ */', 1)[0]
     model = model.replace('static uint8_t at_command[128], frame[1040];', '')
-    model = model.replace('/* HEADER */', source('Modules/comm_uart.h'))
+    model = model.replace('/* ЗАГОЛОВОК МОДУЛЯ */', source('Modules/comm_uart.h'))
     headers = '\n'.join(line for n in HEADERS[1:] for line in source(n).splitlines()
                         if not line.startswith('#include "'))
     sources = '\n'.join(line for n in ('Modules/comm_uart.c', 'Modules/comm_at.c', *MODULES)
                         for line in source(n).splitlines() if not line.startswith('#include'))
-    model_irq = source('Tests/test_comm_uart.c').split('/* PRODUCTION */',1)[1].split('static void reset(void)',1)[0]
+    model_irq = source('Tests/test_comm_uart.c').split('/* КОД МОДУЛЯ */',1)[1].split('static void reset(void)',1)[0]
     return diagnostic_header(root) + model + headers + sources + model_irq + '\n' + source('Tests/test_comm_slm.c')
 
 

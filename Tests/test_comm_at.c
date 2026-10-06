@@ -1,11 +1,14 @@
 /* Доработка: Кряжев А., 2026. AT на настоящем comm_uart с моделью IRQ.
-   Все ответы ниже, кроме scenarios из журналов, — СИНТЕТИКА. */
+   Все ответы ниже, кроме scenarios из журналов, — СИНТЕТИКА.
+   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
+   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
 static uint8_t received[1600];
 static unsigned binary_count, done_count, urc_count, line_events, no_answer;
 static unsigned binary_calls, rejected, sink_pause, sink_bad, inject_error, stream_errors;
 static uint16_t last_result, last_code;
 static uint32_t model_now;
 
+// Запомнить события AT для проверки результата и диагностики.
 static void on_event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t detail)
 {
   if (kind == COMM_AT_DONE) { done_count++; last_result = detail; last_code = count; }
@@ -17,6 +20,7 @@ static void on_event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t
   } else { CHECK(kind == COMM_AT_LINE && data && count && !detail); line_events++; }
 }
 
+// Сохранить принятый двоичный блок и проверить его границы.
 static uint16_t on_binary(const uint8_t *data, uint16_t count)
 {
   CHECK(data >= rx && data < rx + sizeof(rx)); /* Только вид UART, без копии. */
@@ -31,6 +35,7 @@ static uint16_t on_binary(const uint8_t *data, uint16_t count)
   return count;
 }
 
+// Начать новый сеанс AT с чистой моделью UART.
 static void reset_at(void)
 {
   comm_at_handlers_t callbacks = {on_event, on_binary};
@@ -43,6 +48,7 @@ static void reset_at(void)
   model_now = 0;
 }
 
+// Завершить передачу UART сигналом TC.
 static void tc(void)
 {
   while (regs.CR1 & USART_CR1_TXEIE) {
@@ -52,6 +58,7 @@ static void tc(void)
   interrupt_byte(0, USART_SR_TC);
 }
 
+// Запустить проверяемую команду AT.
 static uint8_t start(const char *text, uint8_t type, uint32_t now)
 {
   comm_at_request_t req = {(const uint8_t *)text, (uint16_t)strlen(text), type, 100};
@@ -59,8 +66,10 @@ static uint8_t start(const char *text, uint8_t type, uint32_t now)
   return comm_at_start(&req, now);
 }
 
+// Продвинуть модель AT до заданного времени.
 static void poll(void) { comm_at_poll(model_now); }
 
+// Передать моделируемые байты в приёмное кольцо UART.
 static void feed(const uint8_t *data, unsigned count, unsigned chunk)
 {
   if (!chunk) chunk = 400;
@@ -73,8 +82,10 @@ static void feed(const uint8_t *data, unsigned count, unsigned chunk)
   }
 }
 
+// Подать текстовый ответ модема в модель UART.
 static void text(const char *s) { feed((const uint8_t *)s, (unsigned)strlen(s), 0); }
 
+// Проверить ответы, разбитые на все возможные границы частей.
 static void split_tests(void)
 {
   const char *reply = "RING\r\nAT+CSQ\r\n+QIURC: \"recv\",0\r\n+CSQ: 15,0\r\n+CLIP: \"123\"\r\nOK\r\nSMS Ready\r\n";
@@ -100,6 +111,7 @@ static void split_tests(void)
   text("+CME ERROR: SIM not inserted\r\n"); CHECK(last_result == COMM_AT_CME && last_code == UINT16_MAX);
 }
 
+// Проверить приглашение отправки и передачу полезных данных.
 static void prompt_tests(void)
 {
   const char *reply = "AT+QISEND=0,5\r\nRING\r\n> ";
@@ -121,6 +133,7 @@ static void prompt_tests(void)
   text(">"); CHECK(done_count == 1 && last_result == COMM_AT_GOT_PROMPT);
 }
 
+// Проверить двоичное тело QIRD и его разделители.
 static void body_tests(void)
 {
   static const uint8_t body[] = {'O','K','\r','\n','E','R','R','O','R','\r','\n','R','I','N','G','\r','\n','S','L','D','N',0,'>'};
@@ -165,6 +178,7 @@ static void body_tests(void)
   CHECK(last_result == COMM_AT_BAD_FRAME && done_count == 1 && comm_at_busy());
 }
 
+// Проверить пределы длины команд и ответов.
 static void bounds_tests(void)
 {
   reset_at(); CHECK(start("AT", COMM_AT_TEXT, 0) == COMM_AT_ACCEPTED);
@@ -185,6 +199,7 @@ static void bounds_tests(void)
   text("O\rK\n"); CHECK(last_result == COMM_AT_BAD_FRAME);
 }
 
+// Проверить ограничение работы одного опроса.
 static void budget_tests(void)
 {
   reset_at(); CHECK(start("AT+QIRD=0,1500", COMM_AT_SLM_QIRD, 0) == COMM_AT_ACCEPTED); tc();
@@ -219,6 +234,7 @@ static void budget_tests(void)
   poll(); CHECK(urc_count == COMM_AT_POLL_BYTES / 6u);
 }
 
+// Проверить сборку URC между командами.
 static void idle_fragment_tests(void)
 {
   const char *fragments[] = {"\r", "+QIURC: \"recv\""};
@@ -235,6 +251,7 @@ static void idle_fragment_tests(void)
   CHECK(start("AT",COMM_AT_TEXT,model_now)==COMM_AT_ACCEPTED); tc(); text("OK\r\n");
   CHECK(done_count==1 && last_result==COMM_AT_OK);
 }
+// Проверить сроки ответа и восстановление границ потока.
 static void timeout_tests(void)
 {
   reset_at(); comm_at_init(&(comm_at_handlers_t){on_event, on_binary}, 2000);
@@ -290,6 +307,7 @@ static void late_marker_test(void)
   text("+CMEE: 2\r\nOK\r\n"); CHECK(!comm_at_busy() && !binary_count && done_count == 1);
 }
 
+// Проверить ответы из сохранённых журналов модема.
 static void capture_tests(void)
 {
   for (unsigned scenario = 0; scenario < sizeof(scenarios) / sizeof(scenarios[0]); ++scenario) {
@@ -329,6 +347,7 @@ static void octet_tests(void)
   CHECK(!comm_at_parse((const uint8_t *)text, (uint16_t)strlen(text), "\006.\006.\006.\006", ip));
 }
 
+// Запустить все сценарии этого стенда.
 int main(void)
 {
   octet_tests(); split_tests(); prompt_tests(); body_tests(); bounds_tests(); budget_tests(); idle_fragment_tests(); timeout_tests(); late_marker_test(); capture_tests();

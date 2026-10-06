@@ -1,4 +1,7 @@
-"""Required async contracts: each deliberate production fault must be detected."""
+"""Доработка: Кряжев А., 2026.
+Мутации асинхронного хранения: каждый нарушенный договор должен обнаруживаться.
+Источники данных и отказы задаются моделью; результат проверяется утверждениями.
+"""
 import pathlib, shutil, subprocess, sys, tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CASES=(

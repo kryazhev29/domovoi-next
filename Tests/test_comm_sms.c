@@ -4,6 +4,7 @@
 static char sms_got_number[24], sms_got_text[SMS_TEXT + 1u];
 static const char *sms_reply_to;
 static bool sms_hold;
+// Запомнить принятую SMS для сравнения с независимым эталоном.
 static bool sms_received_model(char *number, char *text)
 {
   if (sms_hold) return false;
@@ -21,6 +22,7 @@ static const char pdu_long7[] = "07919730071111F1040B919761000000F20000623001210
 static const char pdu_hello[] = "07917283010010F5040BC87238880900F10000993092516195800AE8329BFD4697D9EC37";
 static const char pdu_inject[] = "07919730071111F1040B919761000000F500006230012100002119AB213309D58144AB5B2E6683C16030182C2762C56835";
 static const char pdu_submit_type[] = "07919730071111F101000B919761214365F700000141";
+// Сбросить очередь и наблюдения модели SMS.
 static void sms_reset(void)
 {
   memset(sim_store, 0, sizeof(sim_store)); sms_reply_to=NULL; call_reset();
@@ -32,10 +34,12 @@ static void sms_arrive(unsigned cell, const char *pdu)
   char urc[32]; sim_store[cell]=pdu;
   snprintf(urc,sizeof(urc),"+CMTI: \"SM\",%u\r\n",cell); sim_feed(urc); advance(300);
 }
+// Проверить принятую SMS и необходимые операции SIM.
 static void sms_expect(const char *number, const char *text)
 {
   CHECK(sms_received_count==1 && !strcmp(sms_got_number,number) && !strcmp(sms_got_text,text));
 }
+// Проверить PDU, кодировки, границы и очередь отправки SMS.
 static void sms_tests(void)
 {
   /* Непринятое SMS остаётся на SIM и в текущем буфере до освобождения канала. */

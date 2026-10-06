@@ -1,3 +1,6 @@
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -5,7 +8,7 @@
 #include <string.h>
 #include <stdarg.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %d: %s\n", __LINE__, #x); exit(1); } } while (0)
-/* TYPES */
+/* ТИПЫ ПРОТОКОЛА */
 #define DEBUG_USER
 #define OUT1 0
 #define OUT2 1
@@ -94,7 +97,7 @@ static char *checked_strcat(char *dest, size_t capacity, const char *source, siz
 }
 #define sprintf(p, ...) checked_sprintf(p, __builtin_object_size(p, 1), __VA_ARGS__)
 #define strcat(p, s) checked_strcat(p, __builtin_object_size(p, 1), s, __builtin_object_size(s, 1))
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 #undef sprintf
 #undef strcat
 static void init(void)

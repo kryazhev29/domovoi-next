@@ -3,6 +3,7 @@
 // Только подтверждённые позиции записываются в device; отправку ведёт upload_runtime.
 // Намерение очистки сохраняется до стирания, поэтому обрыв допускает повтор, не пропуск.
 #include "user_logic_internal.h"
+#include "../log_ring.h"
 uint16_t log_usbReadIndex, temp_usbReadIndex;
 uint16_t log_unacked[2], temp_unacked[2];
 

@@ -157,12 +157,10 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
     if (cellId.index == 0xffff){
       memset(&cellId, 0, sizeof(cellId)); // нова€ запись без чужих флагов и резерва
       memcpy(cellId.ID, id, 10);
-      cellId.group = 0;
-      cellId.blockTime = 0;
       switch (tp){
         case CT_PHONE: cellId.isPhone = 1; break;
-            case CT_AUTO: cellId.isAuto = 1; break;
-            case CT_WIEGAND: cellId.isWiegand = 1; break;
+        case CT_AUTO: cellId.isAuto = 1; break;
+        case CT_WIEGAND: cellId.isWiegand = 1; break;
         default: break;
       }
       if (!mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
@@ -178,17 +176,17 @@ uint16_t user_getNumbersCount(void){
 
   uint32_t adr;
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
-  uint8_t tbuffer[1024];
+  uint8_t tbuffer[256];
   cellID_s *c;
   uint16_t cnt = 0, cell = 0, used = 0;
   uint32_t sum = 0;
 
   id_cells_end = 0;
   // по странично читаем
-  for (adr = mem[MB_ID].start; adr < endAdr; adr += 1024){
-    mem_read(adr, tbuffer, 1024);
+  for (adr = mem[MB_ID].start; adr < endAdr; adr += sizeof(tbuffer)){
+    if (!mem_read(adr, tbuffer, sizeof(tbuffer))) return UINT16_MAX;
     // перебираем €чейки
-    for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
+    for (uint16_t a = 0; a < sizeof(tbuffer); a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
       cell++;
       /* ѕоследн€€ €чейка, где есть хоть один записанный байт: за ней флеш стЄрта. */
@@ -219,15 +217,15 @@ uint16_t user_getTempIDRecordsCount(void){
 
   uint32_t adr;
   uint32_t endAdr = mem[MB_TEMPID].start + mem[MB_TEMPID].size;
-  uint8_t tbuffer[1024];
+  uint8_t tbuffer[256];
   cellID_s *c;
   uint16_t cnt = 0;
 
   // по странично читаем
-  for (adr = mem[MB_TEMPID].start; adr < endAdr; adr += 1024){
-    if (!mem_read(adr, tbuffer, 1024)) return 0xFFFFu;
+  for (adr = mem[MB_TEMPID].start; adr < endAdr; adr += sizeof(tbuffer)){
+    if (!mem_read(adr, tbuffer, sizeof(tbuffer))) return 0xFFFFu;
     // перебираем €чейки
-    for (uint16_t a = 0; a < 1024; a += sizeof(cellID_s)){
+    for (uint16_t a = 0; a < sizeof(tbuffer); a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
       // пуста€ €чейка
       if (c->index == 0xffff){

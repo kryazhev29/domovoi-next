@@ -3,6 +3,8 @@
 // Ќеизвестное врем€ замен€етс€ ровно один раз; владелец журнала выполн€ет запись.
 // ќчередь RAM тер€етс€ при сбросе, опубликованные записи восстанавливает кольцо журнала.
 #include "user_logic_internal.h"
+#include "../log_ring.h"
+#include "../user_format.h"
 uint32_t log_lastIndex;
 cellLog_s log_pending[LOG_PENDING_MAX];
 uint8_t log_pendingCount, log_timeKnown;
@@ -62,7 +64,6 @@ static bool log_put(cellLog_s *cell){
     log_flushPending();
     if (!log_pendingCount && log_addEvent(cell)) return true;
   }
-  if (!log_pendingCount == LOG_PENDING_MAX) log_flushPending();
   if (log_pendingCount == LOG_PENDING_MAX) return false;
   log_pending[log_pendingCount] = *cell;
   // до времени сервера datetime хранит uptime, затем переводитс€ один раз

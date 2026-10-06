@@ -1,4 +1,9 @@
-/* Разработчик: Кряжев А., 2026 */
+/* Доработка: Кряжев А., 2026.
+   Передаёт готовый образ загрузчику и ведёт подтверждение пробной прошивки.
+   Журнал загрузчика хранит результат, подтверждение и запрос отката после обрыва питания.
+   W25 проверяет каждую запись и стирание; здесь проверяются образ и прочитанные метки.
+   Ручная замена загрузчика ниже выполняется из ОЗУ и не меняет адреса приложения.
+*/
 #include "../includes.h"
 #include "app_update.h"
 #include "../User/c/user_fw_reason.h"
@@ -10,101 +15,119 @@
 #define __ramfunc __attribute__((section(".ramfunc"),noinline))
 #define __disable_interrupt __disable_irq
 #endif
-extern device_s device;
-/* Неподтверждённая проба просит откат через столько секунд. */
+/* Неподтверждённая проба длится 30 минут; таймер 6 принадлежит только ей. */
 #define TRIAL_SECONDS 1800u
 static uint8_t trial;
-// Таймер 6 отведён пробе; его 32-битный счётчик уже существует в timers.c
-static uint32_t crc_word(uint32_t c,uint32_t v) {
- unsigned i;c^=v;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0);return c;
+
+// Обновить контрольную сумму образа в порядке слов аппаратного CRC STM32.
+static uint32_t crc_word(uint32_t crc, uint32_t word)
+{
+  crc ^= word;
+  for (unsigned i = 0; i < 32; ++i)
+    crc = (crc << 1) ^ ((crc & 0x80000000u) ? 0x04c11db7u : 0);
+  return crc;
 }
-int app_boot_request(void) {
- BootHeader h;uint32_t crc=0xffffffffu,words[32],pos,n,i,magic=BOOT_MAGIC,check;
- if(BOOT_VER<BOOT_VERSION||*(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS!=BOOT_REQUIRED_FLASH_KIB)return 0;
- mem_read(BOOT_CANDIDATE,(uint8_t*)&h,sizeof(h));
- if(h.hardware!=BOOTHW_VER||h.size<8||h.size>BOOT_MAX_CODE||(h.size&3))return 0;
- for(pos=0;pos<h.size;pos+=n) {
-  n=h.size-pos;if(n>sizeof(words))n=sizeof(words);
-  mem_read(BOOT_HEADER_SIZE+pos,(uint8_t*)words,n);
-  if(pos==0&&(words[0]<0x20000008u||words[0]>0x20005000u||(words[0]&7u)||
-      !(words[1]&1u)||(words[1]&~1u)<BOOT_APP_VECTOR||(words[1]&~1u)>=BOOT_APP_VECTOR+h.size))return 0;
-  for(i=0;i<n/4;i++)crc=crc_word(crc,words[i]);wdt_reload();
- }
- if(crc!=h.crc)return 0;
- /* Журнал и резервная копия принадлежат идущей пробе, пока она не закончится. Метка
-    подготовленного кандидата остаётся стёртой, пока журнал не очищен: по ней загрузчик отличает
-    оборванное стирание журнала от пробы. */
- if(trial||h.magic!=0xffffffffu)return 0;
- mem_erase_sector(BOOT_JOURNAL);
- for(pos=0;pos<4096;pos+=sizeof(words)) {
-  mem_read(BOOT_JOURNAL+pos,(uint8_t*)words,sizeof(words));
-  for(i=0;i<32;i++)if(words[i]!=0xffffffffu)return 0;
- }
- mem_write(BOOT_CANDIDATE,(uint8_t*)&magic,4);
- mem_read(BOOT_CANDIDATE,(uint8_t*)&check,4);return check==magic;
+
+// Проверить образ и опубликовать кандидата только после проверенного стирания журнала.
+int app_boot_request(void)
+{
+  BootHeader header;
+  uint32_t crc = UINT32_MAX, words[32], count, magic = BOOT_MAGIC;
+  if (BOOT_VER < BOOT_VERSION ||
+      *(const volatile uint16_t *)BOOT_FLASH_SIZE_ADDRESS != BOOT_REQUIRED_FLASH_KIB) return 0;
+  if (!mem_read(BOOT_CANDIDATE, (uint8_t *)&header, sizeof(header))) return 0;
+  if (header.hardware != BOOTHW_VER || header.size < 8 ||
+      header.size > BOOT_MAX_CODE || (header.size & 3u)) return 0;
+  for (uint32_t pos = 0; pos < header.size; pos += count) {
+    count = header.size - pos;
+    if (count > sizeof(words)) count = sizeof(words);
+    if (!mem_read(BOOT_HEADER_SIZE + pos, (uint8_t *)words, count)) return 0;
+    if (!pos && (words[0] < 0x20000008u || words[0] > 0x20005000u || (words[0] & 7u) ||
+        !(words[1] & 1u) || (words[1] & ~1u) < BOOT_APP_VECTOR ||
+        (words[1] & ~1u) >= BOOT_APP_VECTOR + header.size)) return 0;
+    for (uint32_t i = 0; i < count / 4u; ++i) crc = crc_word(crc, words[i]);
+    wdt_reload();
+  }
+  /* Во время пробы журнал и резерв принадлежат загрузчику. Стёртая magic отличает
+     незавершённое стирание журнала от опубликованного кандидата. */
+  if (crc != header.crc || trial || header.magic != UINT32_MAX) return 0;
+  return mem_erase_sector(BOOT_JOURNAL) && mem_write(BOOT_CANDIDATE, (uint8_t *)&magic, sizeof(magic));
 }
-void app_boot_metadata(void) {
- timers_set(6,0);
- const BootHeader *h=(const BootHeader*)BOOT_APP_BASE;uint32_t result;
- device.bootVersion=BOOT_VER;
- /* Старые загрузчики не определяют плату надёжно. */
- device.hardwareVersion=(BOOT_VER>=BOOT_VERSION&&BOOT_VER!=0xffu)?BOOTHW_VER:0;
- if(h->magic==BOOT_MAGIC||h->magic==BOOT_LEGACY_MAGIC) {
-  device.firmwareVersion=(h->magic==BOOT_LEGACY_MAGIC)?(h->version&255u):h->version;device.buildDate=h->timestamp;
-  device.firmwareSize=h->size;device.firmwareCRC=h->crc;
- }
- if(BOOT_VER>=BOOT_VERSION&&BOOT_VER!=0xffu) {
-  uint32_t done,armed,confirmed;
-  mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
-  mem_read(BOOT_JOURNAL+4,(uint8_t*)&done,4);
-  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_TRIAL,(uint8_t*)&armed,4);
-  mem_read(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&confirmed,4);
-  /* То же правило, что в загрузчике: взводит и подтверждает только точный 0. */
-  trial=(done!=0xffffffffu&&armed==0&&confirmed!=0&&result==0xffffffffu)?1u:0u;
- }
+
+// Прочитать версию приложения и состояние пробы из долговечного журнала.
+void app_boot_metadata(void)
+{
+  const BootHeader *header = (const BootHeader *)BOOT_APP_BASE;
+  timers_set(6, 0);
+  device.bootVersion = BOOT_VER;
+  /* Старый загрузчик не определяет плату надёжно. */
+  bool current_boot = BOOT_VER >= BOOT_VERSION && BOOT_VER != 0xffu;
+  device.hardwareVersion = current_boot ? BOOTHW_VER : 0;
+  if (header->magic == BOOT_MAGIC || header->magic == BOOT_LEGACY_MAGIC) {
+    device.firmwareVersion = header->magic == BOOT_LEGACY_MAGIC ? header->version & 255u : header->version;
+    device.buildDate = header->timestamp;
+    device.firmwareSize = header->size;
+    device.firmwareCRC = header->crc;
+  }
+  if (current_boot) {
+    uint32_t journal[8];
+    if (!mem_read(BOOT_JOURNAL, (uint8_t *)journal, sizeof(journal))) {
+      /* Неизвестная проба запрещает новую установку до подтверждения сервером. */
+      trial = 1;
+      return;
+    }
+    /* Как в загрузчике: взводит и подтверждает только точный ноль. */
+    trial = journal[1] != UINT32_MAX && journal[BOOT_JOURNAL_TRIAL / 4u] == 0 &&
+      journal[BOOT_JOURNAL_CONFIRMED / 4u] != 0 && journal[3] == UINT32_MAX;
+  }
 }
-int app_trial_active(void) {return trial;}
-/* Записывается и читается обратно; если запись не удалась, пробу подтвердит следующий ответ на
- * регистрацию. */
-void app_trial_confirm(void) {
- uint32_t zero=0,check;
- if(!trial)return;
- mem_write(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&zero,4);
- mem_read(BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,(uint8_t*)&check,4);
- if(check==0)trial=0;
+
+// Сообщить, требует ли текущая проба подтверждения сервером.
+int app_trial_active(void) { return trial; }
+
+// Снять пробу только после записи подтверждения, проверенной драйвером W25.
+void app_trial_confirm(void)
+{
+  uint32_t zero = 0;
+  if (trial && mem_write(BOOT_JOURNAL + BOOT_JOURNAL_CONFIRMED, (uint8_t *)&zero, sizeof(zero))) trial = 0;
 }
-/* Загрузчик восстановит резервную копию при следующем старте. */
-void app_trial_rollback(void) {
- uint32_t zero=0;
- if(!trial)return;
- mem_write(BOOT_JOURNAL+BOOT_JOURNAL_ROLLBACK,(uint8_t*)&zero,4);
+
+// Запросить восстановление резервной копии при следующем старте загрузчика.
+void app_trial_rollback(void)
+{
+  uint32_t zero = 0;
+  if (trial) (void)mem_write(BOOT_JOURNAL + BOOT_JOURNAL_ROLLBACK, (uint8_t *)&zero, sizeof(zero));
 }
-int app_trial_expired(void) {
- if(!trial)return 0;
- return timers_get(6)>=TRIAL_SECONDS*1000u;
+
+// Проверить срок неподтверждённой пробы по выделенному таймеру.
+int app_trial_expired(void) { return trial && timers_get(6) >= TRIAL_SECONDS * 1000u; }
+
+// Найти ещё не переданную серверу ошибку; отказ чтения не считается событием.
+int app_boot_error_unreported(void)
+{
+  uint32_t result, reported;
+  if (BOOT_VER < BOOT_VERSION || BOOT_VER == 0xffu) return 0;
+  return mem_read(BOOT_JOURNAL + 12, (uint8_t *)&result, sizeof(result)) &&
+    mem_read(BOOT_JOURNAL + BOOT_JOURNAL_REPORTED, (uint8_t *)&reported, sizeof(reported)) &&
+    result != UINT32_MAX && reported == UINT32_MAX;
 }
-/* Вызывается после того, как ошибка обновления отправлена на сервер. Без отметки ошибка уходила
- * бы после каждого перезапуска. FF->00 не требует стирания; следующий запрос обновления стирает
- * журнал вместе с отметкой. */
-int app_boot_error_unreported(void) {
- uint32_t result,reported;
- if(BOOT_VER<BOOT_VERSION||BOOT_VER==0xffu)return 0;
- mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
- mem_read(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
- return result!=0xffffffffu&&reported==0xffffffffu;
+
+// Преобразовать код загрузчика, включая оборванную запись, в числовую причину события.
+uint32_t app_boot_error_code(void)
+{
+  uint32_t result;
+  if (!mem_read(BOOT_JOURNAL + 12, (uint8_t *)&result, sizeof(result))) return FW_REASON_UNKNOWN;
+  if (result == BOOT_TRIAL_FAILED) return FW_REASON_TRIAL_FAIL;
+  if (result == BOOT_BACKUP_ERROR) return FW_REASON_BACKUP;
+  return result <= 9u ? FW_REASON_BOOT_BASE + result : FW_REASON_UNKNOWN;
 }
-/* Ошибкой считается любой записанный код, в том числе оборванный пропаданием питания. */
-uint32_t app_boot_error_code(void) {
- uint32_t result;
- mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
- if(result==BOOT_TRIAL_FAILED)return FW_REASON_TRIAL_FAIL;
- if(result==BOOT_BACKUP_ERROR)return FW_REASON_BACKUP;
- return result<=9u ? FW_REASON_BOOT_BASE+result : FW_REASON_UNKNOWN;
-}
-void app_boot_error_reported(void) {
- uint32_t reported=0;
- if(!app_boot_error_unreported())return;
- mem_write(BOOT_JOURNAL+BOOT_JOURNAL_REPORTED,(uint8_t*)&reported,4);
+
+// Отметить переданную ошибку; запись FF в ноль не требует стирания журнала.
+void app_boot_error_reported(void)
+{
+  uint32_t reported = 0;
+  if (app_boot_error_unreported())
+    (void)mem_write(BOOT_JOURNAL + BOOT_JOURNAL_REPORTED, (uint8_t *)&reported, sizeof(reported));
 }
 /* Кандидат готовится через имеющийся драйвер внешней флеш-памяти работающей прошивки.
  * Встроенного образа загрузчика нет, автоматического запроса при старте нет. */
@@ -119,18 +142,22 @@ int manual_platform_supported(void) {
 int manual_board_hw(uint8_t hw) {
  return hw==(uint8_t)DOMOVOI_APP_HW;
 }
+// Прочитать часть подготовленного образа из внешнего флеша.
 int manual_stage_read(uint32_t off,void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
  mem_read(BOOT_CANDIDATE+off,data,n);return 1;
 }
+// Записать часть подготовленного образа с проверкой драйвером W25.
 int manual_stage_write(uint32_t off,const void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
  mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);return 1;
 }
+// Стереть сектор области подготовки образа.
 int manual_stage_erase(uint32_t off) {
  if(off>=MANUAL_BOOT_SIZE||(off&4095u))return 0;
  mem_erase_sector(BOOT_CANDIDATE+off);return 1;
 }
+// Обслужить сторожевой таймер во время ручного обновления.
 void manual_service(void) {wdt_reload();}
 /* Все функции, доступные после стирания первого сектора загрузчика, находятся в ОЗУ. SPI1 и
  * выбор микросхемы работающей прошивки уже настроены. */
@@ -193,6 +220,7 @@ __ramfunc static void replace_ram(const uint32_t *page_crc) {
  *(volatile uint32_t*)0xe000ed0cu=0x05fa0004u;
  for(;;){}
 }
+// Проверить подготовленный образ и перенести его во внутренний флеш.
 int manual_program(uint32_t expected_crc) {
  uint32_t page_crc[32],page,i,w,c,whole=0xffffffffu;uint8_t data[256];
  if(!manual_platform_supported())return 0;

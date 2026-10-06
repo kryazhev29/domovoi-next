@@ -1,3 +1,6 @@
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 
 static void boot_async(void) { held=0; host_boot(); memset(&cfg_job,0,sizeof(cfg_job)); mem_config_reset(); cfg_legacy_checked=0; }
 static void seed_async(void) {
@@ -38,7 +41,7 @@ int main(void) {
  while(mem_config_result()==1) mem_config_poll(ticks++);
  CHECK(mem_config_result()==3); mem_config_reset(); CHECK(!heap_used);
  boot_async();CHECK(mem_read(LEGACY,got,4096));CHECK(!memcmp(got,olddata,4096));
- /* No valid bank at startup: publish a bank before destroying the source mirror. */
+ /* Если при старте нет целого банка, публикация нового банка предшествует уничтожению исходного зеркала. */
  seed_async();memset(flash+MEM_CONFIG_SLOT0,255,MEM_CONFIG_SLOT_SIZE);memset(flash+MEM_CONFIG_SLOT1,255,MEM_CONFIG_SLOT_SIZE);
  cfg_cached_active=MEM_CONFIG_LEGACY;cfg_cached_generation=0;
  start_async();drain_async();CHECK(!memcmp(flash+LEGACY,newdata,4096));

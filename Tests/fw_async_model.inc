@@ -1,3 +1,6 @@
+/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
+   Данные и отказы задаются стендом; проверяется реальный код модуля.
+   Проверки не используют физическую плату и сеть. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -6,8 +9,8 @@
 #include <setjmp.h>
 typedef uint16_t Int16U;
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
-/* TYPES */
-/* DEFINES */
+/* ТИПЫ ПРОТОКОЛА */
+/* КОНСТАНТЫ МОДУЛЯ */
 #define FWBLOCK_OFFSET 512u
 enum {MB_FIRMWARE};
 static struct {uint32_t start,size;} mem[]={{0,131072}};
@@ -68,7 +71,7 @@ static uint8_t w25_async_poll(uint32_t t){
 }
 #define malloc take
 #define free release
-/* PRODUCTION */
+/* КОД МОДУЛЯ */
 #undef malloc
 #undef free
 static uint32_t reference_crc(const uint8_t *p,unsigned n){
@@ -95,10 +98,10 @@ int main(void){
  while(fw_job.phase!=FA_REPLY){step();if(fw_job.offset<1024)CHECK(!device.FWblockIdx&&!acks);}
  CHECK(!allocated&&device.FWblockIdx==1&&!memcmp(flash+512,original,1024));txbusy=1;
  for(unsigned i=0;i<10;i++)step();CHECK(!acks&&fw_async_active());txbusy=0;drain();CHECK(acks==1&&last_code==0&&last_id==42);
- start();CHECK(acks==2&&!fw_async_active()); /* duplicate below the verified cursor */
+ start();CHECK(acks==2&&!fw_async_active()); /* Повтор блока ниже подтверждённого курсора. */
  reset(3,5);memset(flash+4096,0,4096);start();drain();CHECK(device.FWblockIdx==4&&!memcmp(flash+3584,original,1024));
  for(unsigned i=4608;i<8192;i++)CHECK(flash[i]==255);
- /* At every error point, pending isn't a negative result or an ACK. */
+ /* На каждом отказе ожидание не превращается в отказ или подтверждение. */
  for(unsigned fail=1;fail<=17;fail++){
    reset(3,5);fail_start=fail;start();drain();CHECK(last_code==FW_BLOCK_BADWRITE&&device.FWblockIdx==3&&!allocated);
    fail_start=0;start();drain();CHECK(last_code==0&&device.FWblockIdx==4&&acks==2);
@@ -110,7 +113,7 @@ int main(void){
  reset(0,2);for(unsigned i=0;i<3;i++){fail_start=start_ops+1;start();drain();}
  CHECK(last_code==FW_BLOCK_END&&!device.FWinProgress&&!allocated);
  reset(0,2);alloc_fail=1;start();CHECK(!allocated&&!fw_async_active()&&last_code==FW_BLOCK_BADWRITE&&!device.FWblockIdx);
- /* Full-image CRC is chunked and checks the header size before reading. */
+ /* CRC всего образа считается частями; размер заголовка проверяется до чтения. */
  for(unsigned good=0;good<2;good++){
    reset(1,2);for(unsigned i=0;i<1024;i++)flash[512+i]=(uint8_t)i;
    memcpy(flash+1536,original,1024);header(2048,good);memset(flash+1536,255,1024);start();
@@ -123,7 +126,7 @@ int main(void){
    CHECK((fail<=17)==(last_code==FW_BLOCK_END));
  }
  reset(0,1);header(0,true);start();drain();CHECK(last_code==FW_BLOCK_END&&!device.rebootToUpdate);
- /* Disconnect quiets old replies; cancellation waits until NOR releases its source. */
+ /* Закрытие канала подавляет старые ответы; отмена ждёт освобождения источника данных NOR. */
  reset(0,2);start();while(!held)step();fw_async_quiet(CH_SERVER);drain();CHECK(!acks&&device.FWblockIdx==1);
  reset(0,2);device.cchFWupdate=CH_USB;start();while(!held)step();usb_bus_resets++;drain();CHECK(!acks&&device.FWblockIdx==1);
  reset(0,2);start();while(!held)step();fw_abort("TIMEOUT");CHECK(allocated&&held);drain();CHECK(!allocated&&!acks&&!device.FWblockIdx);
@@ -131,7 +134,7 @@ int main(void){
    reset(3,4);memcpy(flash+3584,original,1024);header(4096,true);memset(flash+3584,255,1024);start();
    while(fw_job.phase!=phase)step();fw_abort("CANCEL");drain();CHECK(!allocated&&!acks&&!device.FWblockIdx);
  }
- /* Every program byte boundary, plus representative interrupted erase bytes. */
+ /* Обрыв на каждой границе записываемого байта и на выбранных границах стирания. */
  for(int cut=0;cut<=1024;cut++){
    reset(0,2);cut_at=cut;
    if(!setjmp(power)){start();drain();}

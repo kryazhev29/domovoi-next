@@ -1,5 +1,8 @@
-/* Доработка: Кряжев А., 2026. TCP/QIRD перенесены из модели модема в канал. */
+/* Доработка: Кряжев А., 2026. TCP/QIRD перенесены из модели модема в канал.
+   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
+   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
 static unsigned channel_opened, channel_closed, channel_faults;
+// Запомнить открытие, потерю и отказ канала.
 static void channel_model_event(uint8_t kind, uint8_t value)
 {
   (void)value;
@@ -7,6 +10,7 @@ static void channel_model_event(uint8_t kind, uint8_t value)
   if (kind == COMM_CH_CLOSED) ++channel_closed;
   if (kind == COMM_CH_FAULT) ++channel_faults;
 }
+// Начать независимый сценарий канала.
 static void channel_model_reset(void)
 {
   sim_reset();
@@ -16,6 +20,7 @@ static void channel_model_reset(void)
   comm_channel_receive(sim_binary, sim_read_done);
   sim_poll = comm_channel_poll;
 }
+// Продвинуть модель до требуемого состояния канала.
 static void channel_until(uint32_t limit)
 {
   unsigned watchdog = 0;
@@ -23,6 +28,7 @@ static void channel_until(uint32_t limit)
       || ch.state == CH_PAUSE || ch.state == CH_OPENING) && watchdog++ < limit / 10u) sim_tick();
   CHECK(watchdog < limit / 10u);
 }
+// Проверить штатное открытие, передачу и закрытие TCP.
 static void channel_path_tests(void)
 {
   channel_model_reset();  channel_until(15000);
@@ -58,6 +64,7 @@ static void channel_path_tests(void)
   }
   channel_model_reset(); sim_trickle = 1;  channel_until(20000); CHECK(comm_channel_ready());
 }
+// Проверить чтение QIRD, включая двоичные данные.
 static void channel_read_tests(void)
 {
   channel_model_reset(); sim_empty_urc = 1;
@@ -83,6 +90,7 @@ static void channel_read_tests(void)
   for (unsigned i = 0; i < 110; ++i) sim_tick();
   CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_READ && sim_read_reason == SLM_ERR_TIMEOUT);
 }
+// Проверить отказы и поздние ответы операций канала.
 static void channel_error_tests(void)
 {
   channel_model_reset(); sim_open_delay = 149000;  channel_until(170000);
@@ -93,6 +101,7 @@ static void channel_error_tests(void)
   CHECK(!comm_channel_ready());
   channel_model_reset(); sim_open_error = 1;  channel_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_TCP && slm.attempt.status.modem_code == 566);
 }
+// Проверить границы очереди и запрет передачи при вызове.
 static void channel_edge_tests(void)
 {
   channel_model_reset();  channel_until(15000);
@@ -113,6 +122,7 @@ static void channel_edge_tests(void)
   CHECK(slm.attempt.status.reason == SLM_ERR_STREAM && sim_done_reads == 1 && sim_read_reason == SLM_ERR_STREAM);
   CHECK(!comm_channel_ready());
 }
+// Проверить снимок диагностики канала.
 static void channel_diagnostic_tests(void)
 {
   channel_model_reset();
@@ -128,6 +138,7 @@ static void channel_diagnostic_tests(void)
   for (unsigned i = 0; i < 20; ++i) sim_tick();
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
 }
+// Запустить проверки путей и отказов канала.
 static void channel_regressions(void)
 {
   channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests();

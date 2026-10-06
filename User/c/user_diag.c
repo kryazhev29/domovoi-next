@@ -3,7 +3,14 @@
 // Снимок снимается на запрос; CRC и заголовок формирует общий модуль packet.
 // Диагностика не меняет постоянные данные и исключается из профиля заказчика.
 #include "user_logic_internal.h"
+#include "prof.h"
+#include "../../Modules/comm_server.h"
+#include "../../Modules/comm_recover.h"
+#include "../../Modules/comm_uart.h"
+#include "../../Modules/comm_modem.h"
 #if DOMOVOI_DIAG
+// Прочитать окрашенный свободный стек; реализация принадлежит main.c.
+uint32_t stack_free_bytes(void);
 
 // Снять диагностические поля USB для ответа 111.
 void user_send_usbDiag(uint8_t uniqId)
@@ -41,8 +48,8 @@ void user_send_commDiag(uint8_t uniqId)
   uint32_t v[25 + SLM_STEP_COUNT];
   uint8_t send_buffer[8 + 3 + sizeof(v)];
   uint16_t len = 3 + sizeof(v);
-  const slm_status_t *s = modem_slm336_status();
-  const slm_diag_t *d = modem_slm336_diag();
+  const slm_status_t *s = comm_modem_status();
+  const slm_diag_t *d = comm_modem_diag();
   comm_uart_stats_t u;
   uint32_t now = timers_getMillis();
   comm_uart_stats(&u);

@@ -3,18 +3,17 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
-from comm_server_host import ROOT, ZIG, unit, source
+from comm_server_host import ROOT, ZIG, unit, source, function
 
 
 def review_unit():
     code = unit().replace('int main(void)', 'static int original_regressions(void)')
     code = code.replace('uint8_t protocolVersion, hardwareVersion;',
                         'uint8_t protocolVersion, hardwareVersion, moduleType;')
-    user = source('Tests/asm/reference/User/user_fun.c')
+    user = source('User/c/user_modem.c')
     code += '\nstatic struct { char netOperator[32], server1[32], server2[32]; uint8_t netType, useServer1, useServer2; } config;\n'
-    begin = 'static char comm_host[2][32]' if 'static char comm_host[2][32]' in user else 'char comm_host[2][32]'
-    end = 'static const slm_settings_t comm_settings' if 'static const slm_settings_t comm_settings' in user else 'const slm_settings_t comm_settings'
-    code += user[user.index(begin):user.index(end)]
+    code += user[user.index('static char comm_host'):user.index('// Обработчики')]
+    code += '\n'.join(function(user, name) for name in ('comm_split', 'comm_endpoints', 'comm_text', 'comm_number'))
     code += (ROOT / 'Tests/test_comm_review.c').read_bytes().decode('cp1251')
     return code.replace('\r\n', '\n')
 
