@@ -9,7 +9,7 @@ def real_layout():
     for chip in (0x14c2,0x17c2):
         m=StorageMachine();m.u.mem_write(m.addr('mem'),bytes(80))
         m.stubs[m.addr('w25_read_devID')]=lambda chip=chip:m.ret(chip)
-        for name in ('mem_recover','user_readconfig','user_initvariables',
+        for name in ('mem_recover','user_readconfig','user_initvariables','sched16_boot',
                      'app_boot_metadata','WG_init','rs485_init','uart_setRecTimeout'):
             m.stubs[m.addr(name)]=lambda:m.ret(1)
         m.checked('user_init')

@@ -1,6 +1,7 @@
 /* Доработка: Кряжев А., 2026. Bounded CRC jobs and owned replies. */
 #include "runtime_internal.h"
 #include "fast_kernels.h"
+#include "../sched16.h"
 typedef struct {
   uint32_t address,real,erased,datetime;
   uint16_t crc;
@@ -48,7 +49,7 @@ static void sc_setup(service_crc_s *p)
   if(p->kind==5) part=parts[p->segment];
   else if(p->kind==4) part=6;
   else { part=2; offset=16000u*(p->kind==15?p->index-1:p->segment); }
-  address=mem[part].start; size=mem[part].size;
+  address=mem[part].start; size=part==MB_SHEDULE ? sched16_crc_size() : mem[part].size;
   if(part==2) {
     if(p->kind!=5) size=16000;
     real=p->used<offset?0:p->used-offset; if(real>size) real=size;

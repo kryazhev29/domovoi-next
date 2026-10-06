@@ -14,7 +14,8 @@ def rows(indices,size=32):
     return bytes(out)
 
 def test_normal(cmd=13,indices=(1,),repeat=False):
-    m=StorageMachine();size=16 if cmd==15 else 32;data=rows(indices,size)
+    m=StorageMachine();size=16 if cmd in (14,15) else 32;data=rows(indices,size)
+    if cmd==14:data+=bytes(range(8))+b"\1"+bytes(7)
     mb=2 if cmd==13 else 4 if cmd==14 else 3 if cmd==15 else 5
     base={2:0x41000,4:0x1ca800,3:0x1c9000,5:0x1cc000}[mb]
     if cmd==16:data=b'\x01\x02\x03\x04'*2;indices=(1,2)
@@ -28,8 +29,9 @@ def test_normal(cmd=13,indices=(1,),repeat=False):
             b=bytearray(data[i*size:(i+1)*size])
             if cmd==13:b[26:28]=b'\0\0' # captured day with no valid clock
             expected[(index-1)*size:index*size]=b
+    if cmd==14:expected[1024:1040]=data[-16:]
     assert m.flash[base:base+len(expected)]==expected,(cmd,'image')
-    assert m.timestamps[0][2]==crc16(expected),(cmd,'crc')
+    assert m.timestamps[0][2]==crc16(expected[:1040] if cmd==14 else expected),(cmd,'crc')
     assert m.flash[0x1fa000:0x1fb000]==b'\xff'*4096
     result={'max_instructions':max(m.costs),'total_instructions':sum(m.costs),'passes':len(m.costs),
             'stack':m.stack_peak,'begin_instructions':m.costs[0],'max_poll_instructions':max(m.costs[1:])}

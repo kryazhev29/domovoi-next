@@ -38,6 +38,7 @@
         CFI EndCommon sc_frame
         EXTERN __aeabi_memclr4
         EXTERN __aeabi_memcpy
+        EXTERN sched16_crc_size
         EXTERN mem
         EXTERN config
         EXTERN device
@@ -263,7 +264,6 @@ service_crc_cancel:
 ; Only sc_poll calls setup, after acquiring the read owner. No NOR I/O here.
         CFI Block sc_setup_block Using sc_frame
         CFI Function sc_setup
-        CFI NoCalls
 sc_setup:
         PUSH {R4-R7,LR}
         SUB SP,SP,#4
@@ -318,6 +318,16 @@ sc_setup_part:
         ADD R2,R2,R7
         B sc_setup_store
 sc_setup_nonid:
+        CMP R0,#4
+        BNE sc_setup_nonid_other
+        PUSH {R0,R2}
+        CFI CFA R13+32
+        CFI FunCall sched16_crc_size
+        BL sched16_crc_size
+        MOV R3,R0
+        POP {R0,R2}
+        CFI CFA R13+24
+sc_setup_nonid_other:
         MOVS R1,#0
         STR R1,[R4,#8]
         CMP R0,#6

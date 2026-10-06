@@ -18,13 +18,14 @@ def run():
     # These are the actual protocol cell sizes used by the caller and callee.
     from iar_layout import fields
     assert fields('cellID_s')['ID'] == 2
-    for size in (32, 32, 16, 4):
+    for size in (32, 16, 16, 4):
         for count in range(1, 256):
             assert 0 < count * size < 65536
     killed = 0
     for command in (13, 14, 15):
         m = StorageMachine()
-        m.stubs[m.addr('sync_cells_valid')] = lambda: m.ret(1)
+        validator='sched16_valid' if command==14 else 'sync_cells_valid'
+        m.stubs[m.addr(validator)] = lambda: m.ret(1)
         m.command(command, b'', 0, 0, 29)
         # Disabling the remaining caller validator must break the oracle.
         assert m.answers != [(command, 1, 0, 29)]

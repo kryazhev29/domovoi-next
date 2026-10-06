@@ -4,6 +4,7 @@
 #include "prof.h"
 #include "../fw_crc.h"
 #include "../packet.h"
+#include "../sched16.h"
 #include "../log_ring.h"
 #include "../user_format.h"
 #include "../hybrid/string_select.h"
@@ -1070,6 +1071,7 @@ void user_init(void)
 
   // инициализация переменных
   user_initvariables();
+  (void)sched16_boot();
   // Сброс по питанию: одна запись; при отказе журнала сохраняем метку.
   if (BKP->DR1 == PVD_RESET_MARK && log_addSystemEvent(LOG_SYS_RESETONPOWER))
     BKP->DR1 = 0;
@@ -1089,6 +1091,7 @@ void user_init(void)
 // очистить блок памяти
 #ifndef HYBRID_CARD
 bool user_clearMemBlock(memBlock_e mb){
+  if (mb==MB_SHEDULE) return sched16_clear();
   
   if (mem[mb].size == 0) return true;
 
@@ -1594,6 +1597,7 @@ void user_readsavedinformation (void)
       device.moduleType = DV.moduleType;
       upload_restore(&DV);
       store_restore(&DV);
+      sched16_restore(&DV);
        
       break;
     }
@@ -2001,7 +2005,7 @@ void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
   crcData = user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size);
   memcpy(&send_buffer[11], (uint8_t*)&crcData, 2); // crc group
   
-  crcData = user_calcCRC16InFlash(mem[MB_SHEDULE].start, mem[MB_SHEDULE].size);
+  crcData = user_calcCRC16InFlash(mem[MB_SHEDULE].start, sched16_crc_size());
   memcpy(&send_buffer[13], (uint8_t*)&crcData, 2); // crc shedule
   
   crcData = user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size);
@@ -3454,7 +3458,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       
     case 14: // синхро. расписаний
       {
-        if (!sync_cells_valid(ptr, len, MB_SHEDULE, sizeof(cellShedule_s))){
+        if (!sched16_valid(ptr, len)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
         }
@@ -4282,11 +4286,7 @@ uint32_t offset;
 // считать параметры расписания
 #ifndef HYBRID_CARD
 bool user_getShedule(uint16_t num, cellShedule_s *shedule){
-uint32_t offset;
-  if(!num) return false;
-  offset=(uint32_t)(num-1)*sizeof(cellShedule_s);
-  if(offset+sizeof(cellShedule_s)>mem[MB_SHEDULE].size) return false;
-  return mem_read(mem[MB_SHEDULE].start+offset,(uint8_t *)shedule,sizeof(cellShedule_s)) && *(uint8_t *)shedule==num;
+  return sched16_get(num,shedule);
 }
 #endif
 

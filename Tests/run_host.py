@@ -332,6 +332,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             restore='static uint16_t log_usbReadIndex,temp_usbReadIndex;\n'+function(user,'upload_store')+'\n'+function(user,'upload_restore')+'\n'
         if 'log_ring_checkpoint(' in restore:
             restore='static void log_ring_checkpoint(void){}\nstatic void log_ring_restore(const device_s *p){(void)p;}\n'+restore
+        if 'sched16_restore(&DV)' in user:
+            schedule=source('User/table_runtime.c')
+            restore+=re.search(r'^#define SCHED16_MARK_OFFSET[^\n]*',schedule,re.M).group(0)+'\n'+function(schedule,'sched16_restore')+'\n'
         code=restore+config_helpers(user)+'\n'.join(function(user,n) for n in ('user_readconfig','user_readsavedinformation'))
         code+='\n'+sync_stub(user)+'void command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_config_strings.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)

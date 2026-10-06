@@ -58,7 +58,8 @@ class AccessMachine(StorageMachine):
 def table_cells():
     m = AccessMachine(); buf = 0x21000300
     m.put_group(5)
-    m.flash[SHEDULE + 31 * 32:SHEDULE + 32 * 32] = bytes([32]) + bytes(range(1, 32))
+    m.flash[SHEDULE + 31 * 16:SHEDULE + 32 * 16] = bytes([32]) + bytes(range(1, 16))
+    m.flash[SHEDULE + 1024:SHEDULE + 1040] = bytes(range(8)) + b"\1" + bytes(7)
     assert m.checked('user_getGroup', 5, buf) == 1 and bytes(m.u.mem_read(buf, 1)) == b'\5'
     assert m.counts['read'] == 1, 'one read at the cell, no 2 KiB scan'
     assert m.checked('user_getGroup', 6, buf) == 0, 'erased cell'

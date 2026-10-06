@@ -16,6 +16,12 @@
         PUBLIC id_time_end
         PUBLIC sync_pending
         PUBLIC sync_quiet
+        EXTERN sched16_valid
+        EXTERN sched16_restore
+        EXTERN sched16_boot
+        EXTERN sched16_clear
+        EXTERN sched16_crc_size
+        EXTERN sched16_get
         EXTERN table_fault
         EXTERN table_job
         EXTERN table_runtime_poll
@@ -4096,6 +4102,8 @@ user_init:
         BL       user_readconfig
           CFI FunCall user_initvariables
         BL       user_initvariables
+          CFI FunCall sched16_boot
+        BL       sched16_boot
         LDR.W    R4,??DataTable63_1
         LDRH     R1,[R4, #+0]
         MOVW     R0,#+20566
@@ -4133,6 +4141,9 @@ user_init:
           CFI Function user_clearMemBlock
         THUMB
 user_clearMemBlock:
+        CMP R0,#4
+        IT EQ
+        BEQ.W sched16_clear
         PUSH     {R4-R6,LR}
           CFI R14 Frame(CFA, -4)
           CFI R6 Frame(CFA, -8)
@@ -5614,6 +5625,9 @@ user_readsavedinformation:
         MOV      R0,SP
           CFI FunCall store_restore
         BL       store_restore
+        MOV R0,SP
+          CFI FunCall sched16_restore
+        BL sched16_restore
 ??user_readsavedinformation_2:
           CFI FunCall fw_resume_after_boot
         BL       fw_resume_after_boot
@@ -6980,7 +6994,9 @@ user_send_crcPack:
         ADD      R0,R4,#+11
         BL       ?Subroutine17
 ??CrossCallReturnLabel_34:
-        LDR      R1,[R6, #+36]
+          CFI FunCall sched16_crc_size
+        BL sched16_crc_size
+        MOV R1,R0
         LDR      R0,[R6, #+32]
           CFI FunCall user_calcCRC16InFlash
         BL       user_calcCRC16InFlash
@@ -12863,8 +12879,13 @@ user_parse_comand:
         MOVS     R2,#+2
         B.N      ??user_parse_comand_81
 ??user_parse_comand_22:
-        MOVS     R3,#+32
-        MOVS     R2,#+4
+        MOV R1,R4
+        MOV R0,R7
+          CFI FunCall sched16_valid
+        BL sched16_valid
+        CMP R0,#0
+        BEQ.W ??user_parse_comand_57
+        B.W ??user_parse_comand_82
 ??user_parse_comand_81:
         MOV      R1,R4
         MOV      R0,R7
@@ -14454,11 +14475,8 @@ table_cell:
         THUMB
 ; R0 = schedule number, R1 = 32-byte destination (command 14: at its number, as groups).
 user_getShedule:
-        MOVS     R2,#+32
-        LDR.W    R3,??DataTable138
-        ADDS     R3,R3,#+32
-          CFI FunCall table_cell
-        B.W      table_cell
+          CFI FunCall sched16_get
+        B.W sched16_get
           CFI EndBlock cfiBlock366
 
         SECTION `.text`:CODE:NOROOT(2)

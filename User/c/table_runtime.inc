@@ -29,6 +29,8 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
       page[i]=off+i<table_job.bytes ? table_job.records[off+i] : 255;
     return 1;
   }
+  if (table_job.cmd==14 && table_job.sector+off==table_job.start+SCHED16_TAIL_OFFSET)
+    memcpy(page,table_job.records+table_job.count*SCHED16_RECORD_SIZE,SCHED16_TAIL_SIZE);
   for (uint16_t i=0;i<table_job.batch;i++) {
     const uint8_t *record=table_job.records+(uint32_t)(table_job.position+i)*table_job.cell_size;
     uint16_t index=record[0];
@@ -61,9 +63,10 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
 bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
 {
   uint8_t cmd=ptr[4],mb=cmd==13 ? MB_ID : cmd==14 ? MB_SHEDULE : cmd==15 ? MB_GROUP : MB_HOLIDAY;
-  uint16_t size=cmd==13 ? sizeof(cellID_s) : cmd==14 ? sizeof(cellShedule_s) :
+  uint16_t size=cmd==13 ? sizeof(cellID_s) : cmd==14 ? SCHED16_RECORD_SIZE :
                 cmd==15 ? sizeof(cellGroup_s) : sizeof(cellHoliday_s);
   uint16_t bytes=(uint16_t)ptr[9]*size;
+  if (cmd==14) bytes+=SCHED16_TAIL_SIZE;
   if (!user_storage_command_ready() || !bytes || bytes>2048 || !mem_tables_ready()) return false;
   uint8_t *snapshot=work_acquire(bytes, WORK_TABLE);
   if (!snapshot) return false;
@@ -88,7 +91,7 @@ bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
 static void table_scan_begin(void)
 {
   table_job.phase=3; table_job.offset=0; table_job.crc=0xffff;
-  table_job.sector=mem[table_job.mb].size;
+  table_job.sector=table_job.cmd==14 ? sched16_crc_size() : mem[table_job.mb].size;
   /* batch/sector are dead after the journal: reuse as recount flag/read end. */
   table_job.batch=0;
   if (table_job.cmd==13) {
@@ -197,7 +200,8 @@ void table_runtime_poll(uint32_t now)
     do {
       uint16_t n=64;
       if (table_job.offset==table_job.sector) {
-        table_job.crc=crc16_ffInit(mem[table_job.mb].size-table_job.offset,table_job.crc);
+        uint32_t total=table_job.cmd==14 ? sched16_crc_size() : mem[table_job.mb].size;
+        table_job.crc=crc16_ffInit(total-table_job.offset,table_job.crc);
         if (table_job.batch) {
           device.numbersCount=table_job.numbers; id_cells_end=table_job.last; id_used_bytes=table_job.used;
           idindex_scanned(table_job.sum,table_job.last);

@@ -94,7 +94,7 @@ class ServiceMachine(StorageMachine):
     def expected(self, cmd, idx=0, uniq=73):
         def crc_region(mb, off=0, n=None):
             base, size = self.regions[mb]
-            n = size if n is None else n
+            n = (1040 if mb==4 else size) if n is None else n
             return crc16(self.flash[base+off:base+off+n])
         if cmd == 17:
             payload = b''.join(struct.pack('<H', crc_region(mb)) for mb in (2, 3, 4, 6, 5))

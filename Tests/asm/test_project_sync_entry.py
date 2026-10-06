@@ -5,8 +5,9 @@ from test_table_runtime import rows
 
 def run():
     cases = 0
-    for cmd, size, part in ((13, 32, 2), (14, 32, 4), (15, 16, 3), (16, 4, 5)):
+    for cmd, size, part in ((13, 32, 2), (14, 16, 4), (15, 16, 3), (16, 4, 5)):
         data = rows([1], size) if cmd != 16 else b'\1\2\3\4'
+        if cmd==14:data+=bytes(8)+b'\1'+bytes(7)
         for channel in (0, 1):
             for scenario in ('zero', 'short', 'second-index', 'media', 'oom', 'io', 'valid'):
                 m = StorageMachine()

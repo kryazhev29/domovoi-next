@@ -117,9 +117,24 @@ def scenarios(totals):
         return value
 
     for cmd,indices in ((13,[1,128,129]),(14,[1,64]),(15,[1,128]),(16,[1,2])):
-        m=StorageMachine();data=rows(indices,16 if cmd==15 else 32)
+        m=StorageMachine();data=rows(indices,16 if cmd in (14,15) else 32)
+        if cmd==14:data+=bytes(range(8))+b"\1"+bytes(7)
         if cmd==16:data=b'\x01\x02\x03\x04'*2
         execute('sync-'+str(cmd),m,lambda:(m.command(cmd,data,len(indices)),m.drain()))
+
+    from test_sched16 import record as schedule_record, tail, legacy, migration_machine, restore
+    for count in (1,25,64):
+        m=StorageMachine()
+        data=b''.join(schedule_record(i) for i in range(1,count+1))+tail()
+        execute('sched16-N'+str(count),m,lambda:(m.command(14,data,count),m.drain()))
+    execute('sched16-repeat64',m,lambda:(m.command(14,data,count),m.drain()))
+    execute('sched16-partial-tail',m,lambda:(m.command(14,schedule_record(64,blocked=1)+tail(bytes([64])*8,3),1),m.drain()))
+    def assembled():
+        assert m.checked('user_getShedule',64,0x21000300)
+        return bytes(m.u.mem_read(0x21000300,32))
+    execute('sched16-assembled',m,assembled)
+    m=migration_machine(legacy())
+    execute('sched16-migration',m,lambda:restore(m))
 
     from test_id_sync_fast import paired_scenarios
     out.update(paired_scenarios())
