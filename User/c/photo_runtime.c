@@ -1,7 +1,8 @@
 // Доработка: Кряжев А., 2026
-// C328/OV528: последовательность команд из старого Modules/jpeg.c.
+// Камера C328/OV528: съёмка по RS485 и поток пакетов 14.
+// Флеш обслуживает асинхронный автомат; каждое фото начинается с сектора.
+// Заголовок публикуется после данных, частичная докачка живёт только в RAM.
 #include "photo.h"
-#include "fast_kernels.h"
 #include "sector_journal.h"
 #include "../../Modules/comm_channel.h"
 extern device_s device;
@@ -10,7 +11,6 @@ extern uint8_t port_buffer[PORTBUFSIZE];
 #define PHOTO_PACKET 64u
 #define PHOTO_RX PHOTO_PACKET
 #define PHOTO_DATA (PHOTO_PACKET - 6u)
-#define PHOTO_LIMIT 65535u
 #define PHOTO_BLOCK 512u
 #define PHOTO_RESOLUTION 7u // C328: 5 = 320x240, 7 = 640x480
 #define PHOTO_PORT PORT1_PORT
@@ -30,17 +30,17 @@ typedef struct {
 photo_s *photo;
 // Служебное состояние хранится в статической RAM и не расходует heap.
 uint32_t photo_erased_to, photo_pending_since;
-static uint8_t photo_restore_phase;
-uint8_t photo_cleanup_active(void);
 enum { P_IDLE, P_SYNC, P_INIT, P_SIZE, P_SNAP, P_GET, P_DATA, P_PREP };
 #include "photo_runtime.inc"
 
 
+// Выделяем контекст камеры только на время работы.
 static uint8_t photo_alloc(void)
 {
   if (!photo) photo = work_acquire(sizeof(*photo), WORK_PHOTO_CONTEXT);
   return photo != NULL;
 }
+// Завершаем съёмку и возвращаем обычный приём RS485.
 static void photo_stop(void)
 {
   uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
@@ -59,22 +59,30 @@ uint32_t rs485_baud(void)
   default: return 115200;
   }
 }
+// Настраиваем RS485 и устраняем недопустимые значения конфигурации.
 void rs485_init(void)
 {
+#if DOMOVOI_DIAG
   uint8_t i, camera = 0, other = 0;
+#endif
   if (config.rs485Mode > 1) config.rs485Mode = 0;
   if (config.reserv[0] > 4) {
+#if DOMOVOI_DIAG
     user_debug("RS485: invalid baud code, using 115200\r\n");
+#endif
     config.reserv[0] = 0;
   }
+#if DOMOVOI_DIAG
   for (i = 0; i < 8; i++) {
     if (config.rs485Periphery[i].type == 3) camera = 1;
     else if (config.rs485Periphery[i].type) other = 1;
   }
   if (camera && other) user_debug("RS485: C328 exclusive, other devices ignored\r\n");
+#endif
   uart_init(PORT1_PORT, rs485_baud(), 0, port_buffer, PORTBUFSIZE);
   uart_setRecTimeout(PORT1_PORT, 10);
 }
+// Прерываем текущую съёмку при изменении параметров её шины.
 void rs485_set_config(const uint8_t *data)
 {
   const config_s *next = (const config_s *)data;
@@ -83,7 +91,9 @@ void rs485_set_config(const uint8_t *data)
     memcmp(config.rs485Periphery, next->rs485Periphery, sizeof(config.rs485Periphery)) != 0;
   // Не трогаем курсор и запросы выгрузки уже сохранённых фотографий.
   if (changed && photo && photo->stage) {
+#if DOMOVOI_DIAG
     user_debug("Photo: capture error, RS485 settings changed\r\n");
+#endif
     photo_stop();
   }
   memcpy(&config, data, sizeof(config));
@@ -91,6 +101,8 @@ void rs485_set_config(const uint8_t *data)
 }
 /* Съёмка не удалась: в отладку (бит 4) шаг, попытки и что пришло с 485 - по этому видно,
  * есть ли связь с камерой (28.09.2026). */
+#if DOMOVOI_DIAG
+// Показываем причину ошибки камеры только в диагностической сборке.
 static void photo_fail(const char *why)
 {
   static const char hex[] = "0123456789ABCDEF";
@@ -112,6 +124,8 @@ static void photo_fail(const char *why)
   user_debug(text);
   photo_stop();
 }
+#endif
+// Отправляем команду камеры и назначаем срок ожидания ответа.
 static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
   uint8_t p[6] = {0xAA, cmd, a, b, c, d};
@@ -119,64 +133,26 @@ static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t 
   photo->last = timers_getMillis();
   photo->deadline = photo->last + 2000u;
 }
+// Отправляем команду текущего шага съёмки.
 static void photo_issue(void)
 {
-  switch (photo->stage) {
-  case P_SYNC: photo_command(0x0D,0,0,0,0); break;
-  case P_INIT: photo_command(1,0,7,0,PHOTO_RESOLUTION); break; // JPEG
-  case P_SIZE: photo_command(6,8,PHOTO_PACKET,0,0); break;
-  case P_SNAP: photo_command(5,0,0,0,0); break;
-  case P_GET: photo_command(4,1,0,0,0); break;
-  case P_DATA: photo_command(0x0E,0,0,(uint8_t)photo->packet,(uint8_t)(photo->packet >> 8)); break;
+  static const uint8_t commands[5][5] = {
+    {0x0D,0,0,0,0}, {1,0,7,0,PHOTO_RESOLUTION},
+    {6,8,PHOTO_PACKET,0,0}, {5,0,0,0,0}, {4,1,0,0,0}
+  };
+  if (photo->stage==P_DATA) photo_command(0x0E,0,0,(uint8_t)photo->packet,(uint8_t)(photo->packet>>8));
+  else {
+    const uint8_t *cmd=commands[photo->stage-P_SYNC];
+    photo_command(cmd[0],cmd[1],cmd[2],cmd[3],cmd[4]);
   }
   if (photo->stage == P_SYNC) photo->deadline = photo->last + 50u;
 }
-cmdCode_e photo_start(uint8_t address)
-{
-  return pr_start(address);
-}
-/* Два последних сектора MB_PHOTO: копия начала общего сектора и журнал.
- * Это позволяет повторить запись после сброса без потери предыдущего фото. */
+// Вся область доступна для фото: резервных секторов больше нет.
 uint32_t photo_storage_end(void)
 {
-  return mem[MB_PHOTO].start + (mem[MB_PHOTO].size >= 8192u ? mem[MB_PHOTO].size - 8192u : 0);
+  return mem[MB_PHOTO].start + mem[MB_PHOTO].size;
 }
-static uint8_t photo_backup_crc(uint32_t address, uint16_t n, uint32_t *result)
-{
-  uint8_t b[64];
-  uint16_t step;
-  uint32_t crc = 0xFFFFFFFFu;
-  while (n) {
-    step = n > sizeof(b) ? sizeof(b) : n;
-    if (!mem_read(address, b, step)) return 0;
-    crc = crc32_update(crc, b, step);
-    wdt_reload(); address += step; n -= step;
-  }
-  *result = crc;
-  return 1;
-}
-uint8_t photo_cleanup_active(void)
-{
-  uint32_t marker, scratch = photo_storage_end();
-  if (mem[MB_PHOTO].size < 8192u) return 0;
-  if (!mem_read(scratch + MEMSECTORSIZE + 32u, (uint8_t*)&marker, 4)) return 2;
-  return marker == 0u;
-}
-uint8_t photo_recover(void)
-{
-  uint32_t h[4], crc, scratch = photo_storage_end();
-  if (mem[MB_PHOTO].size < 8192u || photo_cleanup_active()) return 0;
-  if (!mem_read(scratch + MEMSECTORSIZE, (uint8_t*)h, sizeof(h))) return 0;
-  if (h[3] != 0x50484F54u) return 1;
-  if (h[0] < mem[MB_PHOTO].start || h[0] >= scratch || (h[0] & 4095u) ||
-      !h[1] || h[1] >= MEMSECTORSIZE || (!photo_restore_phase && (!photo_backup_crc(scratch, (uint16_t)h[1], &crc) || crc != h[2]))) return 0;
-  return 0; // Копия восстанавливается по шагам из photo_poll.
-}
-static uint8_t photo_prepare(uint32_t size)
-{
-  return pr_prepare(size);
-}
-// Перед запросом пакета стираем только сектор, в который попадут его данные.
+// Разбираем собранный кадр камеры; запись выполняет автомат хранения.
 static void photo_frame(uint8_t *p, uint16_t n)
 {
   if (photo->stage == P_DATA) {
@@ -190,10 +166,12 @@ static void photo_frame(uint8_t *p, uint16_t n)
       if (!photo->syncAck || !photo->syncSeen) return;
       photo_command(0x0E,0x0D,0,0,0);
       photo->stage = P_INIT;
+#if DOMOVOI_DIAG
       user_debug("Photo: camera sync OK\r\n");
+#endif
     } else if (photo->stage == P_GET && p[1] == 0x0A && p[2] == 1) {
       uint32_t size = p[3] | ((uint32_t)p[4] << 8) | ((uint32_t)p[5] << 16);
-      if (!photo_prepare(size)) { photo_stop(); return; }
+      if (!pr_prepare(size)) { photo_stop(); return; }
     } else if (p[1] == 0x0E &&
               ((photo->stage == P_INIT && p[2] == 1) ||
                (photo->stage == P_SIZE && p[2] == 6) ||
@@ -203,40 +181,8 @@ static void photo_frame(uint8_t *p, uint16_t n)
   photo->retry = 0;
   photo->deadline = timers_getMillis();
 }
-/* В каждой записи 128 ячеек по 8 байт и отдельный байт полного подтверждения.
- * Ячейка содержит смещение, дополнение и фиксацию.
- * Недописанная ячейка не подтверждает данные. Повтор не расходует ячейку. */
-uint16_t photo_confirmed_offset(uint32_t address, uint16_t size)
-{
-  uint16_t i, done = 0, entry[4];
-  uint8_t full;
-  if (!mem_read(address + PHOTO_RECORD_HEAD - 1u, &full, 1)) return 0;
-  if (full == 0) return size;
-  for (i = 0; i < PHOTO_ACK_SLOTS; i++) {
-    if (!mem_read(address + sizeof(photoParam_s) + 8u * i, (uint8_t*)entry, sizeof(entry))) return 0;
-    if (entry[0] == 0xFFFFu && entry[1] == 0xFFFFu &&
-        entry[2] == 0xFFFFu && entry[3] == 0xFFFFu) break;
-    if (entry[2] == 0 && entry[3] == 0 &&
-        (uint16_t)(entry[0] ^ entry[1]) == 0xFFFFu &&
-        entry[0] <= size && entry[0] > done) done = entry[0];
-  }
-  return done;
-}
-/* Сектор фиксации стирается последним. После обрыва питания нулевой маркер
- * заставляет завершить очистку; до неё все записи уже подтверждены. */
-/* Сначала проверяем весь запрос и свободные ячейки, затем фиксируем префикс.
- * При сбое питания подтверждённым может стать только уже запрошенный префикс. */
-cmdCode_e photo_request(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
-{
-  return pr_request(channel,id,args,size);
-}
+// Останавливаем поток сервера, сохраняя принятый курсор докачки.
 void photo_connection_lost(void)
 {
-  if (photo && photo->channel == CH_SERVER) photo->pending = 0;
-  if (photo && photo->channel==CH_SERVER) pr.quiet=1;
+  if (photo && photo->channel==CH_SERVER) { photo->pending=0; pr.quiet=1; }
 }
-void photo_poll(void)
-{
-  pr_poll();
-}
-
