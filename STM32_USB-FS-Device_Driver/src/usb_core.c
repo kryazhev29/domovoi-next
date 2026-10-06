@@ -50,7 +50,11 @@
 /* Private variables ---------------------------------------------------------*/
 uint16_t_uint8_t StatusInfo;
 
+#ifdef BOOTLOADER
 bool Data_Mul_MaxPacketSize = FALSE;
+#else
+usb_bool_t Data_Mul_MaxPacketSize = FALSE;
+#endif
 /* Private function prototypes -----------------------------------------------*/
 static void DataStageOut(void);
 static void DataStageIn(void);

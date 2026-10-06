@@ -497,6 +497,11 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=server_unit()
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
+        if 'usb_tx_source' in hw:
+            # Test the actual source owner and IRQ handlers from the linked ELF.
+            subprocess.run([sys.executable,str(ROOT/'Tests/asm/test_usb_source.py'),
+                            '--scenario',sys.argv[3] if len(sys.argv)>3 else 'idle'],check=True)
+            sys.exit(0)
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
         globals=hw[hw.index('uint8_t  USART_Rx_Buffer'):hw.index('static void IntToUnicode')]
         # The first definition is the application's; the #else branch is the bootloader's.

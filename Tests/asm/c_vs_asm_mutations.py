@@ -102,8 +102,14 @@ def cases():
     def clear(m=m):
         m.checked('idclear_runtime_cancel');m.clear_drain();assert not m.wires
     add('clear-cancel',m,'idclear_runtime_cancel','no-op',clear)
-    m=UsbTryMachine();m.expected_stack=None;m.instruction_limit=None
-    def queue(m=m):assert m.run(inp=0,out=1,length=1)[0]==0
+    if 'USB_Tx_SourceBusy' in Machine().symbols:
+        from test_usb_source import SourceMachine
+        m=SourceMachine();m.u.mem_write(0x21000000,b'AB')
+        assert m.call('usb_try_send',0x21000000,1)
+        def queue(m=m):assert m.call('usb_try_send',0x21000001,1)==0
+    else:
+        m=UsbTryMachine();m.expected_stack=None;m.instruction_limit=None
+        def queue(m=m):assert m.run(inp=0,out=1,length=1)[0]==0
     add('usb-full-queue',m,'usb_try_send','return-one',queue)
     return result
 
@@ -124,7 +130,10 @@ def run(variant):
                 runpy.run_path(str(ROOT/'Tests/asm'/f'{name}.py'));legacy[name]='PASS'
             for name in ('test_idindex_asm_mutations','verification_service_mutations'):
                 legacy[name]=importlib.import_module(name).run()
-            legacy['usb_try']=importlib.import_module('verification_usb_try').mutations()
+            if 'USB_Tx_SourceBusy' not in Machine().symbols:
+                legacy['usb_try']=importlib.import_module('verification_usb_try').mutations()
+            else:
+                legacy['usb_try']='source admission covered by paired mutation'
     return {'paired':result,'legacy_asm_opcode_sets':legacy,
             'legacy_limit':'Original opcode signatures target ASM only; paired mutations above apply to both variants.'}
 

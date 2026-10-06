@@ -36,7 +36,10 @@ def build(variant, base, config='Release', mfc=False):
     result.check_returncode()
     commands = json.loads(database.read_text(encoding='utf-8-sig'))
     if mfc:
-        sources=[c for c in commands if Path(c['arguments'][0]).stem.lower()=='iccarm']
+        # Assembly-layout adapters intentionally describe storage as byte arrays.
+        # Keep them as separate translation units; group the typed application.
+        sources=[c for c in commands if Path(c['arguments'][0]).stem.lower()=='iccarm'
+                 and Path(c['file']).parent != ROOT/'User/c']
         first=sources[0]
         def options(c):
             args=c['arguments'].copy()
@@ -56,7 +59,9 @@ def build(variant, base, config='Release', mfc=False):
         commands.insert(0,combined)
         (folder/'mfc-commands.json').write_text(json.dumps(commands,indent=2),encoding='utf-8')
     def execute(command):
-        Path(command['output']).parent.mkdir(parents=True, exist_ok=True)
+        outputs = command.get('outputs') or [command['output']]
+        for output in outputs:
+            Path(output).parent.mkdir(parents=True, exist_ok=True)
         r = subprocess.run(command['arguments'], cwd=ROOT, capture_output=True)
         return command, r
     # Compiler/assembler commands are independent; linker and ielftool are not.
@@ -77,7 +82,7 @@ def build(variant, base, config='Release', mfc=False):
         if r.returncode:
             (folder/'direct-build.log').write_bytes(b'\n'.join(logs))
             print((r.stdout+r.stderr).decode(errors='replace')[-5000:])
-            raise RuntimeError(command.get('file', command['output']))
+            raise RuntimeError(command.get('file') or command.get('output') or command.get('outputs'))
     (folder/'direct-build.log').write_bytes(b'\n'.join(logs))
     print(variant, 'BIN', (folder/'ExePath'/(stem+'.bin')).stat().st_size, flush=True)
     return folder

@@ -51,10 +51,11 @@
 /* Private variables ---------------------------------------------------------*/
 USART_InitTypeDef USART_InitStructure;
 EXTI_InitTypeDef EXTI_InitStructure;
-uint8_t  USART_Rx_Buffer [USART_RX_DATA_SIZE]; 
-volatile uint32_t USART_Rx_ptr_in = 0;
-volatile uint32_t USART_Rx_ptr_out = 0;
-volatile uint32_t USART_Rx_length  = 0;
+static const uint8_t * volatile usb_tx_source;
+static volatile uint16_t usb_tx_length, usb_tx_offset;
+
+
+
 
 volatile uint8_t  USB_Tx_State = 0;
 volatile uint32_t usb_in_armed = 0; /* пакеты IN, отданные EP1, команда 111 */
@@ -246,7 +247,7 @@ void USART_Config_Default(void)
                     TRUE : configuration done with success
                     FALSE : configuration aborted.
 *******************************************************************************/
-bool USART_Config(void)
+_Bool USART_Config(void)
 {
 /*uint8_t stopbits = 0;
   
@@ -334,102 +335,74 @@ void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes)
 *******************************************************************************/
 void Handle_USBAsynchXfer (void)
 {
-  uint32_t in, out, count;
-  if (USB_Tx_State == 1 || bDeviceState != CONFIGURED) return;
-  in = USART_Rx_ptr_in;
-  out = USART_Rx_ptr_out;
-  if (out == USART_RX_DATA_SIZE) out = 0;
-  if (in == out) return;
-  count = out > in ? USART_RX_DATA_SIZE - out : in - out;
-  if (count > VIRTUAL_COM_PORT_DATA_SIZE) count = VIRTUAL_COM_PORT_DATA_SIZE;
-  UserToPMABufferCopy(&USART_Rx_Buffer[out], ENDP1_TXADDR, (uint16_t)count);
-  out += count;
-  if (out == USART_RX_DATA_SIZE) out = 0;
-  USART_Rx_ptr_out = out;
-  USART_Rx_length = 0;
-  USB_Tx_State = 1;
-  usb_in_armed++;
-  SetEPTxCount(ENDP1, (uint16_t)count);
-  SetEPTxValid(ENDP1);
+  uint16_t count,offset; const uint8_t *source;
+  if (USB_Tx_State || bDeviceState != CONFIGURED || !usb_tx_source) return;
+  source=usb_tx_source; count=usb_tx_length; offset=usb_tx_offset; count-=offset;
+  if(!count) { usb_tx_source=NULL; return; } /* last IN was acknowledged */
+  if(count>VIRTUAL_COM_PORT_DATA_SIZE) count=VIRTUAL_COM_PORT_DATA_SIZE;
+  UserToPMABufferCopy((uint8_t*)source+offset,ENDP1_TXADDR,count);
+  usb_tx_offset+=count;
+  USB_Tx_State=1; usb_in_armed++;
+  SetEPTxCount(ENDP1,count); SetEPTxValid(ENDP1);
 }
-/*******************************************************************************
-* Function Name  : UART_To_USB_Send_Data.
-* Description    : send the received data from UART 0 to USB.
-* Input          : None.
-* Return         : none.
-*******************************************************************************/
-/* Вызывается из прерывания сброса USB. Незаконченную очередь через сброс никогда не сохранять. */
 void USB_Tx_Reset(void)
 {
-  USB_Tx_State = 0;
-  USART_Rx_ptr_in = 0;
-  USART_Rx_ptr_out = 0;
-  USART_Rx_length = 0;
-  usb_tx_epoch++;
+  USB_Tx_State=0; usb_tx_source=NULL;
+  usb_tx_length=0; usb_tx_offset=0; usb_tx_epoch++;
 }
-static uint32_t usb_tx_space(void)
+uint8_t USB_Tx_SourceBusy(void) { return usb_tx_source!=NULL; }
+#include "work_memory.h"
+/* Main-context producer. Publish one complete, immutable source or nothing. */
+static uint8_t usb_tx_submit(const uint8_t *source,uint16_t length,uint32_t epoch)
 {
-  uint32_t out = USART_Rx_ptr_out;
-  if (out == USART_RX_DATA_SIZE) out = 0;
-  return (out + USART_RX_DATA_SIZE - USART_Rx_ptr_in - 1u) % USART_RX_DATA_SIZE;
+  const uint8_t *owned;
+  if(bDeviceState!=CONFIGURED || epoch!=usb_tx_epoch) return 0;
+  if(!length) return 1;
+  if(usb_tx_source) return 0;
+  if(!source || length>=USART_RX_DATA_SIZE) return 0;
+  owned=work_usb_source(source,length); if(!owned) return 0;
+  usb_tx_length=length; usb_tx_offset=0;
+  __DMB(); usb_tx_source=owned; return 1;
 }
-/* Вызывающий держит PRIMASK: данные и индекс записи публикуются вместе. */
-static void usb_tx_enqueue(uint8_t *p, uint16_t n)
+uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer,uint16_t Nb_bytes)
 {
-  uint32_t in = USART_Rx_ptr_in;
-  while (n--) {
-    USART_Rx_Buffer[in++] = *p++;
-    if (in == USART_RX_DATA_SIZE) in = 0;
-  }
-  __DMB();
-  USART_Rx_ptr_in = in;
-}
-/* Успех означает, что кадр целиком поставлен в очередь, а не подтверждён хостом. Один
- * ограниченный бюджет ожидания на весь вызов; сторожевой таймер здесь не перезаряжается.
- */
-uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
-{
-  uint32_t budget = 320000u, epoch = usb_tx_epoch;
-  if (Nb_bytes >= USART_RX_DATA_SIZE) return 0;
+  uint32_t budget=320000u,epoch=usb_tx_epoch;
+  if(Nb_bytes>=USART_RX_DATA_SIZE || (Nb_bytes && !data_buffer)) return 0;
   do {
-    uint32_t mask = __get_PRIMASK();
+    uint32_t mask=__get_PRIMASK(); uint8_t result;
     __disable_irq();
-    if (bDeviceState != CONFIGURED || epoch != usb_tx_epoch) {
-      __set_PRIMASK(mask); return 0;
-    }
-    if (usb_tx_space() >= Nb_bytes) {
-      usb_tx_enqueue(data_buffer, Nb_bytes);
-      __set_PRIMASK(mask); return 1;
-    }
+    if(bDeviceState!=CONFIGURED || epoch!=usb_tx_epoch) { __set_PRIMASK(mask); return 0; }
+    result=usb_tx_submit(data_buffer,Nb_bytes,epoch);
     __set_PRIMASK(mask);
-    if (mask) return 0; /* Потребитель не продвинется при запрещённых прерываниях. */
-    --budget;
-  } while (budget != 0);
+    if(result) return 1;
+    if(mask) return 0;
+  } while(--budget);
   return 0;
 }
-uint16_t USB_Send_Debug(uint8_t *data, uint16_t count)
+uint8_t USB_Tx_Try(const uint8_t *source,uint16_t length)
 {
-  uint32_t mask = __get_PRIMASK(), available;
-  __disable_irq();
-  available = bDeviceState == CONFIGURED ? usb_tx_space() : 0;
-  if (count > available) count = (uint16_t)available;
-  usb_tx_enqueue(data, count);
-  __set_PRIMASK(mask);
-  return count;
+  extern uint8_t usb_enabled; extern uint8_t store[];
+  extern volatile uint32_t usb_bus_resets;
+  uint32_t mask,epoch; uint8_t result=0;
+  if(length>=USART_RX_DATA_SIZE || (length && !source) || !usb_enabled || !(GPIOB->IDR&(1u<<15))) return 0;
+  mask=__get_PRIMASK(); __disable_irq(); memcpy(&epoch,store+12,4);
+  if(epoch==usb_bus_resets) result=usb_tx_submit(source,length,usb_tx_epoch);
+  __set_PRIMASK(mask); return result;
 }
-
-/* Сторож USB: данные ждут хоста или выставлен пакет IN. */
-uint8_t USB_Tx_Pending(void)
+uint16_t USB_Send_Debug(uint8_t *data,uint16_t count)
 {
-  uint32_t out = USART_Rx_ptr_out;
-  if (out == USART_RX_DATA_SIZE) out = 0;
-  return USB_Tx_State == 1 || USART_Rx_ptr_in != out;
+  uint32_t mask=__get_PRIMASK(); uint8_t result;
+  if(count>=USART_RX_DATA_SIZE) count=USART_RX_DATA_SIZE-1;
+  __disable_irq(); result=usb_tx_submit(data,count,usb_tx_epoch);
+  __set_PRIMASK(mask); return result?count:0;
 }
+uint8_t USB_Tx_Pending(void) { return USB_Tx_State || usb_tx_source!=NULL; }
 uint16_t USB_Tx_Queued(void)
 {
-  uint32_t out = USART_Rx_ptr_out;
-  if (out == USART_RX_DATA_SIZE) out = 0;
-  return (uint16_t)((USART_Rx_ptr_in + USART_RX_DATA_SIZE - out) % USART_RX_DATA_SIZE);
+  uint32_t mask=__get_PRIMASK(); uint16_t length,offset;
+  __disable_irq();
+  length=usb_tx_source ? usb_tx_length : 0; offset=usb_tx_offset;
+  __set_PRIMASK(mask); return length ? length-offset : 0;
 }
 /*******************************************************************************
 * Function Name  : Get_SerialNum.

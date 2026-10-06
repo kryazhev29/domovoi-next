@@ -23,6 +23,7 @@
 #include "../../Bootloader/boot_manual.h"
 
 // ************** Включить режим отладки **********
+#include "../hybrid/cold_declarations.h"
 #ifndef RELEASE_BUILD
 #define DEBUG_USER
 #endif
@@ -313,14 +314,14 @@ extern uint32_t stack_free_bytes(void);
 #else
 uint32_t stack_free_bytes(void);
 #endif // main.c: нетронутый снизу шаблон стека, байт
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
 #endif
-#ifndef HYBRID_CARD
-static void user_send_usbDiag(uint8_t uniqId);
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void user_send_usbDiag(uint8_t uniqId);
 #endif
-#ifndef HYBRID_CARD
-static void user_send_commDiag(uint8_t uniqId);
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void user_send_commDiag(uint8_t uniqId);
 #endif
 #ifndef HYBRID_CARD
 static void reader_reply_poll(void);
@@ -4108,7 +4109,7 @@ if (cch != CH_USB && len >= 5){
 #endif
 
 // индикация
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 void user_indication (void)
 {
   // NET LED: на сервере - горит, модем в сети - мигает, выходит на связь - мигает часто
@@ -4119,7 +4120,7 @@ void user_indication (void)
 #endif
 
 // опрос входов
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 void user_readinputs (void){
   // при отказе АЦП сохраняем последние состояния входов
   if (!adc_startInjectedConvertion()) return;
@@ -4182,7 +4183,7 @@ char* user_last10digitsnumber (char* num)
 
 // узнать текущий день недели 
 // 0 - Пн, 1 - Вт ...
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 uint8_t user_getweakday (uint32_t t)
 {
   // какой сейчас день по счету
@@ -4722,7 +4723,7 @@ uint8_t data[64];
 #endif
 
 // очистить буфер временных ID
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 bool user_clearTempIdBuffer(void){
 
   uint32_t adr;
@@ -4744,7 +4745,7 @@ bool user_clearTempIdBuffer(void){
 
 // сколько номеров в памяти
 /* Записанные ячейки по всей области, с пропусками; заодно находит конец базы для user_findID. */
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 uint16_t user_getNumbersCount(void){
 
   uint32_t adr;
@@ -4784,7 +4785,7 @@ uint16_t user_getNumbersCount(void){
 /* Окончание времени действия ID (Протокол2, строка 284): событие 138, если время вышло в сутки
  * первого прохода. Окончание прошлых суток (контроллер был выключен) не сообщается - такой ID
  * уже удаляет сервер. */
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 void user_checkIdTimeEnd(void){
 expiry_runtime_begin();
 }
@@ -5535,7 +5536,7 @@ bool log_addPhotoEvent(uint32_t number){
 // ********************** Память фото **************
 
 // получаем кол-во фото в памяти
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 uint16_t user_getPhotoCount(void)
 {
   uint32_t adr = mem[MB_PHOTO].start;
@@ -5566,7 +5567,7 @@ uint16_t user_getPhotoCount(void)
 
 
 // ************************ Прошивка ***********************
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
 
   if (!size || (size & 3u)) return false;
@@ -5610,7 +5611,7 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc){
 #endif
 
 #ifndef ASM_CRC
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 uint32_t CRC32(uint32_t crc, uint32_t data){
   crc = crc ^ data;
   for (uint8_t i = 0; i < 32; i++){
@@ -5639,8 +5640,8 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
  *  53 DADDR и 54 EP0R на момент последнего восстановления, 55 DADDR и 56 EP0R сейчас,
  *  57 минимальный запас стека за работу, байт (версия 5, 01.10.2026).
  */
-#ifndef HYBRID_CARD
-static void user_send_usbDiag(uint8_t uniqId)
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void user_send_usbDiag(uint8_t uniqId)
 {
   uint32_t v[58];
   uint8_t send_buffer[8 + 3 + sizeof(v)];
@@ -5687,8 +5688,8 @@ static void user_send_usbDiag(uint8_t uniqId)
  *  14 сбоев всего | следующий<<8 | последний код<<16,
  *  15..24 кольцо сбоев: шаг | причина<<8 | секунды<<16,
  *  25.. длительности шагов последней попытки, 10 мс (SLM_STEP_COUNT значений). */
-#ifndef HYBRID_CARD
-static void user_send_commDiag(uint8_t uniqId)
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void user_send_commDiag(uint8_t uniqId)
 {
   uint32_t v[25 + SLM_STEP_COUNT];
   uint8_t send_buffer[8 + 3 + sizeof(v)];
@@ -5718,19 +5719,19 @@ static void user_send_commDiag(uint8_t uniqId)
 #endif
 
 /* Часы прошивки - местное время (как у суток ID); до установки - недостоверно. */
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 uint32_t user_comm_local_time(void)
 { return device.datetime >= ID_TIME_VALID ? device.datetime : UINT32_MAX; }
 #endif
 /* Ночной перезапуск модема не рвёт обновление прошивки. */
 /* Баланс SIM (статус 2): USSD из настроек (команда 12) и разобранный ответ, рубли. */
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 const char *user_comm_ussd(void) { return config.ussdBalance; }
 #endif
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 uint8_t user_comm_volte(void) { return config.useVoLTE; }
 #endif
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 void user_comm_balance(int32_t rubles)
 {
   device.balance = rubles < 1 ? 1u : rubles > 65000 ? 65000u : (uint16_t)rubles; /* статус 2: 0 - не определён */
@@ -5738,12 +5739,12 @@ void user_comm_balance(int32_t rubles)
   if (rubles < 100) log_addSystemValue(LOG_SYS_LOWBALANCE, rubles);
 }
 #endif
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 void user_comm_low_signal(uint8_t csq) { log_addSystemValue(LOG_SYS_LOWSIGNAL, csq); }
 #endif
 /* Журнал связи: 14/15 подключён, 16/17 ошибка соединения, 18/19 потеря связи с сервером 1/2;
    11 нет регистрации в сети, 12 нет интернета. */
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 bool user_comm_link(uint8_t kind, uint8_t address)
 {
   static const uint8_t first[] = {LOG_SYS_CONNECT1, LOG_SYS_ERRCONNECT1, LOG_SYS_FAILCONNECT1, LOG_SYS_NOTGSMREG, LOG_SYS_NOTGPRSREG};
@@ -5754,7 +5755,7 @@ bool user_comm_link(uint8_t kind, uint8_t address)
 }
 #endif
 /* Ночной перезапуск модема ждёт конца загрузки FW и вызова. */
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 bool user_comm_busy(void) { return device.FWinProgress != 0 || comm_call_active(); }
 #endif
 
@@ -5774,8 +5775,8 @@ extern char comm_credential[sizeof(config.netOperator)];
 #else
 char comm_credential[sizeof(config.netOperator)];
 #endif
-#ifndef HYBRID_CARD
-static void comm_split(uint8_t n, const char *server)
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void comm_split(uint8_t n, const char *server)
 {
   const char *colon = strrchr(server, ':');
   size_t len = colon ? (size_t)(colon - server) : strlen(server);
@@ -5785,19 +5786,19 @@ static void comm_split(uint8_t n, const char *server)
 }
 #endif
 /* Адрес 0 - сервер 1, если он включён или выключены оба (как в comm_endpoint); адрес 1 - сервер 2. */
-#ifndef HYBRID_CARD
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 uint8_t user_comm_server(uint8_t address) { return address || (!config.useServer1 && config.useServer2); }
 #endif
 /* Читаем текущие настройки: команда 12 применяется без перезагрузки платы.
    Указатель живёт до следующего запроса поля; сборщик AT копирует его сразу. */
-#ifndef HYBRID_CARD
-static void comm_endpoint(uint8_t n)
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void comm_endpoint(uint8_t n)
 {
   comm_split(n, n || (!config.useServer1 && config.useServer2) ? config.server2 : config.server1);
 }
 #endif
-#ifndef HYBRID_CARD
-static const char *comm_text(uint8_t field, uint16_t *capacity)
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL const char *comm_text(uint8_t field, uint16_t *capacity)
 {
   static const char empty[1] = "";
   switch (field) {
@@ -5815,8 +5816,8 @@ static const char *comm_text(uint8_t field, uint16_t *capacity)
   }
 }
 #endif
-#ifndef HYBRID_CARD
-static uint16_t comm_number(uint8_t field)
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL uint16_t comm_number(uint8_t field)
 {
   switch (field) {
   case SLM_CFG_PORT: comm_endpoint(0); return comm_port[0];
@@ -5837,18 +5838,18 @@ static uint16_t comm_number(uint8_t field)
 const slm_settings_t comm_settings = {comm_text, comm_number};
 #endif
 /* v5: PC13 - питание модема, PC14 - ключ включения; high - физический уровень. */
-#ifndef HYBRID_CARD
-static void comm_gpio(uint8_t pin, bool high)
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void comm_gpio(uint8_t pin, bool high)
 {
   uint16_t bit = (uint16_t)(1u << pin);
   if (high) GPIOC->BSRR = bit; else GPIOC->BRR = bit;
 }
 #endif
-#ifndef HYBRID_CARD
-static void comm_type(uint8_t type) { device.moduleType = type; }
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void comm_type(uint8_t type) { device.moduleType = type; }
 #endif
-#ifndef HYBRID_CARD
-static void comm_imei(const char *imei) { memcpy(device.IMEIGSM, imei, 16); }
+#if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+HYBRID_LOCAL void comm_imei(const char *imei) { memcpy(device.IMEIGSM, imei, 16); }
 #endif
 /* Старт и повторный старт (заводские настройки) новой связи. */
 #ifndef HYBRID_CARD

@@ -66,7 +66,11 @@ RESULT PowerOff(void);
 
 /* External variables --------------------------------------------------------*/
 extern  __IO uint32_t bDeviceState; /* USB device status */
-extern __IO bool fSuspendEnabled;  /* true when suspend is possible */
+#ifdef BOOTLOADER
+extern __IO bool fSuspendEnabled;
+#else
+extern __IO usb_bool_t fSuspendEnabled;
+#endif  /* true when suspend is possible */
 
 #endif  /*__USB_PWR_H*/
 

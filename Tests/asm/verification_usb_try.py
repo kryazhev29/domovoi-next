@@ -11,7 +11,8 @@ def init_transport(m, *, inp=0, out=0, enabled=1, configured=5,
     """Initialize only linked transport state; works with any Machine subclass."""
     for name,value in [('USART_Rx_ptr_in',inp),('USART_Rx_ptr_out',out),
                        ('bDeviceState',configured),('usb_bus_resets',epoch)]:
-        m.write(m.addr(name),value)
+        if name in m.symbols:
+            m.write(m.addr(name),value)
     m.write(m.addr('usb_enabled'),enabled,1)
     m.write(m.addr('store')+12,epoch if stored_epoch is None else stored_epoch)
     m.write(0x40010c08,32768 if connected else 0)

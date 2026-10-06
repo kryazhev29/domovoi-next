@@ -57,7 +57,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='domovoi-format-') as tmp:
         folder=Path(tmp);source=folder/'format_test.c';exe=folder/'format_test.exe'
         source.write_text(C,encoding='utf-8')
-        zig=os.environ.get('DOMOVOI_ZIG',r'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe')
+        zig=os.environ.get('DOMOVOI_ZIG',r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
         command=[zig,'cc'] if Path(zig).name.lower()=='zig.exe' else [zig]
         subprocess.run([*command,'-std=c99','-O2','-Wall','-Wextra','-Werror',
                         '-I'+str(ROOT/'User'),str(source),str(ROOT/'User/user_format.c'),'-o',str(exe)],check=True)

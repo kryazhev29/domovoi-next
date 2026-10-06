@@ -1,5 +1,5 @@
-// Candidate callback targets, IAR EWARM 9.50; completeness not certified.
-// Full-graph linker trials failed internally; this file is disconnected.
+// IAR EWARM 9.50 callbacks; graph cut below is NOT a certified stack bound.
+// Retain CSTACK=4096 and the bottom canary until the cut is evaluated manually.
 // Modules/comm_* + User/{c,asm}/user_comm_runtime and user_fun_runtime.
 possible calls bal_finish [comm_balance.o]: user_comm_balance;
 possible calls comm_balance_poll: user_comm_ussd;
@@ -58,3 +58,8 @@ possible calls Standard_SetInterface: Virtual_Com_Port_Get_Interface_Setting, NO
 possible calls USB_Init: Virtual_Com_Port_init;
 possible calls USB_Istr: Virtual_Com_Port_Reset;
 possible calls Virtual_Com_Port_Data_Setup: Virtual_Com_Port_GetLineCoding, Virtual_Com_Port_SetLineCoding;
+
+// Three callback rules reproduce IAR AccessViolation (Tests/probe_stack.py).
+// The excluded event can issue one nested CLOSED event. The executable code is
+// unchanged; Ls014 and this cut prevent using the resulting size to shrink RAM.
+exclude server_channel_event [comm_server.o];

@@ -32,6 +32,35 @@ uint32_t stack_free_bytes(void)
 }
 
 // основна€ программа
+/* Stackless failure uses the same watchdog stop as fault_capture.
+ * FLT1 word 1 = STAK; no exception frame is claimed. */
+__stackless void stack_canary_check(void)
+{
+  if(*(volatile uint32_t*)__section_begin("CSTACK")==STACK_PAINT) return;
+  __asm(
+    "CPSID I\n"
+    "LDR R0, =fault_record\n"
+    "MOVS R1, #0\n"
+    "MOVS R2, #12\n"
+    "stack_canary_zero:\n"
+    "STR R1, [R0], #4\n"
+    "SUBS R2, R2, #1\n"
+    "BNE stack_canary_zero\n"
+    "LDR R0, =fault_record\n"
+    "LDR R1, =0x5354414B\n"
+    "STR R1, [R0, #4]\n"
+    "STR LR, [R0, #8]\n"
+    "MRS R1, MSP\n"
+    "STR R1, [R0, #12]\n"
+    "DSB\n"
+    "LDR R1, =0x31544C46\n"
+    "STR R1, [R0]\n"
+    "DSB\n"
+    "stack_canary_wait:\n"
+    "B stack_canary_wait\n"
+  );
+}
+
 void main()
 {
   stack_paint();
@@ -76,6 +105,7 @@ void main()
   // ¬ходим в основной цикл работы
   while (true)
   {
+    stack_canary_check();
     // порт - gsm
     PROF_STEP(PROF_GSM, gsm_check_data());
 

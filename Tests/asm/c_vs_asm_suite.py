@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / 'Tests'))
 import iar_irq_support  # Existing dependency discovery and selected ELF support.
 
 CASES = {
+    'stack canary': [('test_stack_canary','run')],
     'format ABI': [('test_user_format_runtime','run')],
     'workspace': [('test_work_memory', 'run')],
     'id_sync_fast': [('test_id_sync_fast', 'contracts'), ('test_id_sync_fast', 'mutations')],
@@ -43,7 +44,7 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CORE = ('format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
+CORE = ('stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 
 

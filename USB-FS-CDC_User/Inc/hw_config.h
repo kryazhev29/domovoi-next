@@ -58,7 +58,7 @@ void Leave_LowPowerMode(void);
 void USB_Interrupts_Config(void);
 void USB_Cable_Config (FunctionalState NewState);
 void USART_Config_Default(void);
-bool USART_Config(void);
+_Bool USART_Config(void);
 void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
 #ifndef BOOTLOADER
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);

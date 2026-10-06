@@ -184,6 +184,10 @@ def scenarios(totals):
                 if not m.active():break
                 m.now+=1;m.checked('user_storage_poll')
             else:raise AssertionError('service did not complete')
+            if 'usb_tx_source' in m.symbols:
+                p=int.from_bytes(m.u.mem_read(m.addr('usb_tx_source'),4),'little')
+                n=int.from_bytes(m.u.mem_read(m.addr('usb_tx_length'),2),'little')
+                return bytes(m.u.mem_read(p,n)) if p else b''
             n=int.from_bytes(m.u.mem_read(m.addr('USART_Rx_ptr_in'),4),'little')
             return bytes(m.u.mem_read(m.addr('USART_Rx_Buffer'),n))
         execute('packet-'+str(cmd)+'-usb-ring',m,server)
@@ -218,7 +222,7 @@ def main_iteration(totals):
     m=StorageMachine();p=Profile(m,totals)
     # Do not run hardware startup. Execute the actual main loop with initialized
     # runtime BSS/data, idle peripherals, no modem RX, no card and no storage job.
-    for name in ('stack_paint','board_init','NVIC_SetVectorTable','led_load',
+    for name in ('board_init','NVIC_SetVectorTable','led_load',
                  'timers_init','spi_init','adc_init','delay_ms','timers_pause','wdt_init','user_init','usb_init'):
         if name in m.symbols:m.stubs[m.addr(name)]=m.ret
     visits=[]

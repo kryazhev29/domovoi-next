@@ -1813,99 +1813,14 @@ usb_data_reading:
         DATA
         DS8 3
 
-; Hand-written nonblocking enqueue for operation-owned, retryable replies.
-; The producer publishes an entire packet atomically; the IRQ sees old or new
-; in-pointer, never a partial packet. No wait for the host; <=(USB_TX_RING_BYTES-1) copy bytes.
-; store_usb_session must run before the owning continuation. Recheck its epoch
-; with IRQ masked so a USB reset cannot enqueue a stale reply after reconnect.
+; Shared source-ownership transport; all validation is in USB_Tx_Try.
+        EXTERN USB_Tx_Try
         SECTION `.text`:CODE:NOROOT(2)
         THUMB
           CFI Block usb_try_block Using cfiCommon0
           CFI Function usb_try_send
-          CFI NoCalls
 usb_try_send:
-        PUSH {R4-R7}
-          CFI R4 Frame(CFA,-16)
-          CFI R5 Frame(CFA,-12)
-          CFI R6 Frame(CFA,-8)
-          CFI R7 Frame(CFA,-4)
-          CFI CFA R13+16
-        MOV R4,R0
-        UXTH R5,R1
-        CMP R5,#USB_TX_RING_BYTES
-        BHS usb_try_no
-        CMP R5,#0
-        IT NE
-        CMPNE R4,#0
-        BEQ usb_try_pointer_check
-        B usb_try_enabled
-usb_try_pointer_check:
-        CMP R5,#0
-        BNE usb_try_no
-usb_try_enabled:
-        LDR R2,=usb_enabled
-        LDRB R2,[R2]
-        CBZ R2,usb_try_no
-        LDR R2,=0x40010C08
-        LDR R2,[R2]
-        LSLS R2,R2,#16
-        BPL usb_try_no
-        MRS R7,PRIMASK
-        CPSID I
-        LDR R2,=bDeviceState
-        LDR R2,[R2]
-        CMP R2,#5
-        BNE usb_try_locked_no
-        LDR R2,=usb_bus_resets
-        LDR R2,[R2]
-        LDR R3,=store
-        LDR R3,[R3,#12]
-        CMP R2,R3
-        BNE usb_try_locked_no
-        LDR R2,=USART_Rx_ptr_out
-        LDR R2,[R2]
-        CMP R2,#USB_TX_RING_BYTES
-        IT EQ
-        MOVEQ R2,#0
-        BHI usb_try_locked_no
-        LDR R3,=USART_Rx_ptr_in
-        LDR R3,[R3]
-        CMP R3,#USB_TX_RING_BYTES
-        BHS usb_try_locked_no
-        ADD R2,R2,#(USB_TX_RING_BYTES-1)
-        SUB R2,R2,R3
-        CMP R2,#USB_TX_RING_BYTES
-        IT CS
-        SUBCS R2,R2,#USB_TX_RING_BYTES
-        CMP R2,R5
-        BLO usb_try_locked_no
-        LDR R6,=USART_Rx_Buffer
-        CBZ R5,usb_try_publish
-usb_try_copy:
-        LDRB R2,[R4],#1
-        STRB R2,[R6,R3]
-        ADDS R3,R3,#1
-        CMP R3,#USB_TX_RING_BYTES
-        IT EQ
-        MOVEQ R3,#0
-        SUBS R5,R5,#1
-        BNE usb_try_copy
-usb_try_publish:
-        DMB
-        LDR R2,=USART_Rx_ptr_in
-        STR R3,[R2]
-        MOVS R0,#1
-        B usb_try_unlock
-usb_try_locked_no:
-        MOVS R0,#0
-usb_try_unlock:
-        MSR PRIMASK,R7
-        POP {R4-R7}
-        BX LR
-usb_try_no:
-        MOVS R0,#0
-        POP {R4-R7}
-        BX LR
+          CFI FunCall USB_Tx_Try
+        B.W USB_Tx_Try
           CFI EndBlock usb_try_block
-        LTORG
         END

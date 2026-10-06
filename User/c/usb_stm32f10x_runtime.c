@@ -396,23 +396,6 @@ void usb_diag_fill_addr(uint32_t *v)
   __set_PRIMASK(mask);
 }
 
-/* Same bounded producer and single-publication contract as usb_try_send ASM. */
-extern uint8_t store[];
-extern volatile uint32_t USART_Rx_ptr_out,USART_Rx_ptr_in;
-extern uint8_t USART_Rx_Buffer[];
-uint8_t usb_try_send(const uint8_t *ptr,uint16_t len)
-{
-  uint32_t mask,in,out,space,epoch; uint8_t result=0;
-  if(len>=USB_TX_RING_BYTES || (len && !ptr) || !usb_enabled || !(GPIOB->IDR & (1u<<15))) return 0;
-  mask=__get_PRIMASK(); __disable_irq();
-  memcpy(&epoch,store+12,4);
-  if(bDeviceState!=CONFIGURED || epoch!=usb_bus_resets) goto done;
-  out=USART_Rx_ptr_out; if(out==USB_TX_RING_BYTES) out=0; else if(out>USB_TX_RING_BYTES) goto done;
-  in=USART_Rx_ptr_in; if(in>=USB_TX_RING_BYTES) goto done;
-  space=out+(USB_TX_RING_BYTES-1)-in; if(space>=USB_TX_RING_BYTES) space-=USB_TX_RING_BYTES;
-  if(space<len) goto done;
-  while(len--) { USART_Rx_Buffer[in++]=*ptr++; if(in==USB_TX_RING_BYTES) in=0; }
-  __DMB(); USART_Rx_ptr_in=in; result=1;
-done: __set_PRIMASK(mask); return result;
-}
-
+/* Shared source-ownership transport in all variants. */
+extern uint8_t USB_Tx_Try(const uint8_t *,uint16_t);
+uint8_t usb_try_send(const uint8_t *ptr,uint16_t len) { return USB_Tx_Try(ptr,len); }

@@ -18,6 +18,8 @@ def source_path(root, name):
 def source_text(root, name):
     """Select the ordinary C branch before extracting declaration fragments."""
     text=source_path(root,name).read_bytes().decode('cp1251')
+    # Ordinary C host fragments use the same local linkage as the C project.
+    text=text.replace('HYBRID_LOCAL ', 'static ')
     if '#include "../usb_ring_size.h"' in text:
         text=text.replace('#include "../usb_ring_size.h"',
                           (root/'User/usb_ring_size.h').read_bytes().decode('cp1251'))

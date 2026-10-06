@@ -18723,5 +18723,2292 @@
         }
       }
     }
+  },
+  "stage2": {
+    "base": "87d6f4d",
+    "build_root": "%TEMP%/domovoi-stage2-last",
+    "baseline": {
+      "ASM": {
+        "bin": 88265,
+        "free_ram_gap": 2184,
+        "bin_sha256": "cb0c6512c22e0a7a2173cb7d488e4eac6d2287ead17d1f87c0a49c11e62ef4bb",
+        "elf_sha256": "38e96925496ac66f494b63189ac8e8551108ba18c3b4778e0a1eddf181773cce"
+      },
+      "C": {
+        "bin": 86729,
+        "free_ram_gap": 2184,
+        "bin_sha256": "f2f30d9bf6de4942daf3b9230a4c5f97350b195d379e6252a2120afc70d3481e",
+        "elf_sha256": "5829047e30a87c9d189bb9a09c6c7bccf973352b564194208f870d4eb5be442d"
+      },
+      "HYBRID": {
+        "bin": 88765,
+        "free_ram_gap": 2184,
+        "bin_sha256": "81e063c77fde0271c7c02e5c2d241fa4538d2da827291a29aa5550f45c934317",
+        "elf_sha256": "a07ace8a05917bc5118f768a771fc00303957b50155d15e05c44f2ed5db69588"
+      }
+    },
+    "final": {
+      "ASM": {
+        "bin": 88513,
+        "bin_sha256": "5799dcb0d1e8c550bef79f5c10a75c559e73c0ed25268c0b47a24cebc587ddee",
+        "elf_sha256": "ad48ca9653471d6197cec46870a4a36b08ef05cb92dd671a66c5240c3a5f397c",
+        "stack_bottom": 536884000,
+        "stack_top": 536888096,
+        "fault_record": 536891328,
+        "vectors": 134251008,
+        "readonly_code": 83709,
+        "readonly_data": 4804,
+        "readwrite_code": 516,
+        "readwrite_data": 16713,
+        "free_ram_gap": 3232,
+        "warnings": [
+          "Ls014",
+          "Ls015"
+        ],
+        "errors": 0,
+        "modules": {
+          "app_update.o": {
+            "ro_code": 1094,
+            "rw_code": 516,
+            "ro_data": 519,
+            "rw_data": 1
+          },
+          "board.o": {
+            "ro_code": 408,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "boot_manual.o": {
+            "ro_code": 832,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 11
+          },
+          "main.o": {
+            "ro_code": 404,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 8
+          },
+          "stm32_it.o": {
+            "ro_code": 292,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 48
+          },
+          "startup_stm32f10x_md.o": {
+            "ro_code": 256,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "system_stm32f10x.o": {
+            "ro_code": 340,
+            "rw_code": 0,
+            "ro_data": 3,
+            "rw_data": 4
+          },
+          "user_format.o": {
+            "ro_code": 316,
+            "rw_code": 0,
+            "ro_data": 64,
+            "rw_data": 0
+          },
+          "work_memory.o": {
+            "ro_code": 628,
+            "rw_code": 0,
+            "ro_data": 32,
+            "rw_data": 2224
+          },
+          "adc_stm32f10x.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "comm_at.o": {
+            "ro_code": 3350,
+            "rw_code": 0,
+            "ro_data": 232,
+            "rw_data": 358
+          },
+          "comm_balance.o": {
+            "ro_code": 1022,
+            "rw_code": 0,
+            "ro_data": 72,
+            "rw_data": 128
+          },
+          "comm_call.o": {
+            "ro_code": 712,
+            "rw_code": 0,
+            "ro_data": 148,
+            "rw_data": 52
+          },
+          "comm_channel.o": {
+            "ro_code": 2912,
+            "rw_code": 0,
+            "ro_data": 240,
+            "rw_data": 1108
+          },
+          "comm_info.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 187,
+            "rw_data": 20
+          },
+          "comm_modem.o": {
+            "ro_code": 3090,
+            "rw_code": 0,
+            "ro_data": 208,
+            "rw_data": 212
+          },
+          "comm_power_v5.o": {
+            "ro_code": 156,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 9
+          },
+          "comm_recover.o": {
+            "ro_code": 1068,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 72
+          },
+          "comm_server.o": {
+            "ro_code": 1160,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 57
+          },
+          "comm_sms.o": {
+            "ro_code": 2404,
+            "rw_code": 0,
+            "ro_data": 160,
+            "rw_data": 524
+          },
+          "comm_uart.o": {
+            "ro_code": 1132,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 540
+          },
+          "modem_slm336.o": {
+            "ro_code": 16,
+            "rw_code": 0,
+            "ro_data": 608,
+            "rw_data": 0
+          },
+          "spi_stm32f10x_runtime.o": {
+            "ro_code": 516,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "timers.o": {
+            "ro_code": 300,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 44
+          },
+          "uart_stm32f10x.o": {
+            "ro_code": 1012,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 48
+          },
+          "usb_stm32f10x_runtime.o": {
+            "ro_code": 1828,
+            "rw_code": 0,
+            "ro_data": 6,
+            "rw_data": 2199
+          },
+          "wdt_stm32f10x.o": {
+            "ro_code": 48,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "misc.o": {
+            "ro_code": 132,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_adc.o": {
+            "ro_code": 538,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_exti.o": {
+            "ro_code": 168,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_gpio.o": {
+            "ro_code": 198,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_iwdg.o": {
+            "ro_code": 48,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_pwr.o": {
+            "ro_code": 60,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_rcc.o": {
+            "ro_code": 292,
+            "rw_code": 0,
+            "ro_data": 19,
+            "rw_data": 20
+          },
+          "stm32f10x_spi.o": {
+            "ro_code": 226,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_usart.o": {
+            "ro_code": 456,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_core.o": {
+            "ro_code": 2250,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 3
+          },
+          "usb_init.o": {
+            "ro_code": 52,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 43
+          },
+          "usb_int.o": {
+            "ro_code": 346,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "usb_mem.o": {
+            "ro_code": 88,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_regs.o": {
+            "ro_code": 512,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_sil.o": {
+            "ro_code": 74,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "hw_config.o": {
+            "ro_code": 718,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 25
+          },
+          "usb_desc.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 211,
+            "rw_data": 28
+          },
+          "usb_endp.o": {
+            "ro_code": 112,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 68
+          },
+          "usb_istr.o": {
+            "ro_code": 340,
+            "rw_code": 0,
+            "ro_data": 56,
+            "rw_data": 11
+          },
+          "usb_prop.o": {
+            "ro_code": 536,
+            "rw_code": 0,
+            "ro_data": 142,
+            "rw_data": 9
+          },
+          "usb_pwr.o": {
+            "ro_code": 52,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "comm_timeouts.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 196,
+            "rw_data": 0
+          },
+          "crc_asm.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "crc_runtime.o": {
+            "ro_code": 60,
+            "rw_code": 0,
+            "ro_data": 540,
+            "rw_data": 0
+          },
+          "expiry_runtime.o": {
+            "ro_code": 824,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "fast_kernels.o": {
+            "ro_code": 220,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "flash_w25_runtime.o": {
+            "ro_code": 1160,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 20
+          },
+          "fw_service_runtime.o": {
+            "ro_code": 1820,
+            "rw_code": 0,
+            "ro_data": 48,
+            "rw_data": 4
+          },
+          "id_hash_asm.o": {
+            "ro_code": 92,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "idclear_runtime.o": {
+            "ro_code": 516,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "idindex_runtime.o": {
+            "ro_code": 900,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 24
+          },
+          "indication.o": {
+            "ro_code": 192,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 11
+          },
+          "memory_runtime.o": {
+            "ro_code": 3358,
+            "rw_code": 0,
+            "ro_data": 4,
+            "rw_data": 55
+          },
+          "outs.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 2,
+            "rw_data": 19
+          },
+          "photo_runtime.o": {
+            "ro_code": 7572,
+            "rw_code": 0,
+            "ro_data": 332,
+            "rw_data": 132
+          },
+          "prof.o": {
+            "ro_code": 248,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 100
+          },
+          "runtime_layout.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 4,
+            "rw_data": 0
+          },
+          "sector_journal_runtime.o": {
+            "ro_code": 1176,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "sector_runtime_runtime.o": {
+            "ro_code": 1036,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 128
+          },
+          "service_runtime.o": {
+            "ro_code": 984,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "upload_runtime.o": {
+            "ro_code": 1056,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "user_comm_runtime.o": {
+            "ro_code": 256,
+            "rw_code": 0,
+            "ro_data": 32,
+            "rw_data": 0
+          },
+          "user_fun_runtime.o": {
+            "ro_code": 25676,
+            "rw_code": 0,
+            "ro_data": 623,
+            "rw_data": 4208
+          },
+          "user_str_fun.o": {
+            "ro_code": 86,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "wiegand.o": {
+            "ro_code": 312,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 14
+          },
+          "exit.o": {
+            "ro_code": 4,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "iar_Stoulx.o": {
+            "ro_code": 342,
+            "rw_code": 0,
+            "ro_data": 80,
+            "rw_data": 0
+          },
+          "strcat.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncat.o": {
+            "ro_code": 40,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncmp.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strrchr.o": {
+            "ro_code": 28,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strstr.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemclr.o": {
+            "ro_code": 6,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemclr4.o": {
+            "ro_code": 6,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemcpy.o": {
+            "ro_code": 166,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemmove.o": {
+            "ro_code": 150,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemset.o": {
+            "ro_code": 94,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemset48.o": {
+            "ro_code": 58,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "XXexit.o": {
+            "ro_code": 12,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cexit.o": {
+            "ro_code": 10,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cmain.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cstartup_M.o": {
+            "ro_code": 28,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "data_init.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "memchr.o": {
+            "ro_code": 88,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "memcmp.o": {
+            "ro_code": 104,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "packbits_init_single.o": {
+            "ro_code": 58,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strchr.o": {
+            "ro_code": 22,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strcmp.o": {
+            "ro_code": 18,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strcpy.o": {
+            "ro_code": 24,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strlen.o": {
+            "ro_code": 54,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncpy.o": {
+            "ro_code": 112,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "zero_init3.o": {
+            "ro_code": 56,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          }
+        },
+        "heap_present": false
+      },
+      "C": {
+        "bin": 86969,
+        "bin_sha256": "090587c4283fc6eb574fa342da341bd0ecca5ce80c0f3adbed475f4b2c4dff8e",
+        "elf_sha256": "9d651eb3a7208d9f0f0174f5fc5de369e8d39db3ae542744298bdb967f7a5ae0",
+        "stack_bottom": 536884000,
+        "stack_top": 536888096,
+        "fault_record": 536891328,
+        "vectors": 134251008,
+        "readonly_code": 82045,
+        "readonly_data": 4924,
+        "readwrite_code": 516,
+        "readwrite_data": 16713,
+        "free_ram_gap": 3232,
+        "warnings": [
+          "Ls015"
+        ],
+        "errors": 0,
+        "modules": {
+          "app_update.o": {
+            "ro_code": 1094,
+            "rw_code": 516,
+            "ro_data": 519,
+            "rw_data": 1
+          },
+          "board.o": {
+            "ro_code": 408,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "boot_manual.o": {
+            "ro_code": 832,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 11
+          },
+          "main.o": {
+            "ro_code": 404,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 8
+          },
+          "stm32_it.o": {
+            "ro_code": 292,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 48
+          },
+          "startup_stm32f10x_md.o": {
+            "ro_code": 256,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "system_stm32f10x.o": {
+            "ro_code": 340,
+            "rw_code": 0,
+            "ro_data": 3,
+            "rw_data": 4
+          },
+          "user_format.o": {
+            "ro_code": 316,
+            "rw_code": 0,
+            "ro_data": 64,
+            "rw_data": 0
+          },
+          "work_memory.o": {
+            "ro_code": 628,
+            "rw_code": 0,
+            "ro_data": 32,
+            "rw_data": 2224
+          },
+          "adc_stm32f10x.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "comm_at.o": {
+            "ro_code": 3350,
+            "rw_code": 0,
+            "ro_data": 232,
+            "rw_data": 358
+          },
+          "comm_balance.o": {
+            "ro_code": 1022,
+            "rw_code": 0,
+            "ro_data": 72,
+            "rw_data": 128
+          },
+          "comm_call.o": {
+            "ro_code": 712,
+            "rw_code": 0,
+            "ro_data": 148,
+            "rw_data": 52
+          },
+          "comm_channel.o": {
+            "ro_code": 2912,
+            "rw_code": 0,
+            "ro_data": 240,
+            "rw_data": 1108
+          },
+          "comm_info.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 187,
+            "rw_data": 20
+          },
+          "comm_modem.o": {
+            "ro_code": 3090,
+            "rw_code": 0,
+            "ro_data": 208,
+            "rw_data": 212
+          },
+          "comm_power_v5.o": {
+            "ro_code": 156,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 9
+          },
+          "comm_recover.o": {
+            "ro_code": 1068,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 72
+          },
+          "comm_server.o": {
+            "ro_code": 1160,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 57
+          },
+          "comm_sms.o": {
+            "ro_code": 2404,
+            "rw_code": 0,
+            "ro_data": 160,
+            "rw_data": 524
+          },
+          "comm_uart.o": {
+            "ro_code": 1132,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 540
+          },
+          "modem_slm336.o": {
+            "ro_code": 16,
+            "rw_code": 0,
+            "ro_data": 608,
+            "rw_data": 0
+          },
+          "spi_stm32f10x_runtime.o": {
+            "ro_code": 516,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "timers.o": {
+            "ro_code": 300,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 44
+          },
+          "uart_stm32f10x.o": {
+            "ro_code": 1012,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 48
+          },
+          "usb_stm32f10x_runtime.o": {
+            "ro_code": 1828,
+            "rw_code": 0,
+            "ro_data": 6,
+            "rw_data": 2199
+          },
+          "wdt_stm32f10x.o": {
+            "ro_code": 48,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "misc.o": {
+            "ro_code": 132,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_adc.o": {
+            "ro_code": 538,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_exti.o": {
+            "ro_code": 168,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_gpio.o": {
+            "ro_code": 198,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_iwdg.o": {
+            "ro_code": 48,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_pwr.o": {
+            "ro_code": 60,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_rcc.o": {
+            "ro_code": 292,
+            "rw_code": 0,
+            "ro_data": 19,
+            "rw_data": 20
+          },
+          "stm32f10x_spi.o": {
+            "ro_code": 226,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_usart.o": {
+            "ro_code": 456,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_core.o": {
+            "ro_code": 2250,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 3
+          },
+          "usb_init.o": {
+            "ro_code": 52,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 43
+          },
+          "usb_int.o": {
+            "ro_code": 346,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "usb_mem.o": {
+            "ro_code": 88,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_regs.o": {
+            "ro_code": 512,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_sil.o": {
+            "ro_code": 74,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "hw_config.o": {
+            "ro_code": 718,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 25
+          },
+          "usb_desc.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 211,
+            "rw_data": 28
+          },
+          "usb_endp.o": {
+            "ro_code": 112,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 68
+          },
+          "usb_istr.o": {
+            "ro_code": 340,
+            "rw_code": 0,
+            "ro_data": 56,
+            "rw_data": 11
+          },
+          "usb_prop.o": {
+            "ro_code": 536,
+            "rw_code": 0,
+            "ro_data": 142,
+            "rw_data": 9
+          },
+          "usb_pwr.o": {
+            "ro_code": 52,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "comm_timeouts.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 196,
+            "rw_data": 0
+          },
+          "crc_asm.o": {
+            "ro_code": 204,
+            "rw_code": 0,
+            "ro_data": 160,
+            "rw_data": 0
+          },
+          "crc_runtime.o": {
+            "ro_code": 60,
+            "rw_code": 0,
+            "ro_data": 540,
+            "rw_data": 0
+          },
+          "expiry_runtime.o": {
+            "ro_code": 862,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "fast_kernels.o": {
+            "ro_code": 244,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "flash_w25_runtime.o": {
+            "ro_code": 1160,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 20
+          },
+          "fw_service_runtime.o": {
+            "ro_code": 1828,
+            "rw_code": 0,
+            "ro_data": 48,
+            "rw_data": 4
+          },
+          "id_hash_asm.o": {
+            "ro_code": 92,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "idclear_runtime.o": {
+            "ro_code": 512,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "idindex_runtime.o": {
+            "ro_code": 812,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 24
+          },
+          "indication.o": {
+            "ro_code": 192,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 11
+          },
+          "memory_runtime.o": {
+            "ro_code": 3368,
+            "rw_code": 0,
+            "ro_data": 4,
+            "rw_data": 55
+          },
+          "outs.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 2,
+            "rw_data": 19
+          },
+          "photo_runtime.o": {
+            "ro_code": 7612,
+            "rw_code": 0,
+            "ro_data": 332,
+            "rw_data": 132
+          },
+          "prof.o": {
+            "ro_code": 248,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 100
+          },
+          "runtime_layout.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 4,
+            "rw_data": 0
+          },
+          "sector_journal_runtime.o": {
+            "ro_code": 1176,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "sector_runtime_runtime.o": {
+            "ro_code": 1028,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 128
+          },
+          "service_runtime.o": {
+            "ro_code": 1012,
+            "rw_code": 0,
+            "ro_data": 8,
+            "rw_data": 4
+          },
+          "upload_runtime.o": {
+            "ro_code": 1078,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "user_comm_runtime.o": {
+            "ro_code": 256,
+            "rw_code": 0,
+            "ro_data": 32,
+            "rw_data": 0
+          },
+          "user_fun_runtime.o": {
+            "ro_code": 24820,
+            "rw_code": 0,
+            "ro_data": 575,
+            "rw_data": 4208
+          },
+          "user_str_fun.o": {
+            "ro_code": 86,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "wiegand.o": {
+            "ro_code": 312,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 14
+          },
+          "exit.o": {
+            "ro_code": 4,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "iar_Stoulx.o": {
+            "ro_code": 342,
+            "rw_code": 0,
+            "ro_data": 80,
+            "rw_data": 0
+          },
+          "strcat.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncat.o": {
+            "ro_code": 40,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncmp.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strrchr.o": {
+            "ro_code": 28,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strstr.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemclr.o": {
+            "ro_code": 6,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemclr4.o": {
+            "ro_code": 6,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemcpy_small.o": {
+            "ro_code": 24,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemmove_small.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemset48.o": {
+            "ro_code": 58,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemset_small.o": {
+            "ro_code": 18,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "XXexit.o": {
+            "ro_code": 12,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cexit.o": {
+            "ro_code": 10,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cmain.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cstartup_M.o": {
+            "ro_code": 28,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "data_init.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "memchr_small.o": {
+            "ro_code": 24,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "memcmp_small.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "packbits_init_single.o": {
+            "ro_code": 58,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strchr.o": {
+            "ro_code": 22,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strcmp.o": {
+            "ro_code": 18,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strcpy.o": {
+            "ro_code": 24,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strlen_small.o": {
+            "ro_code": 20,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncpy_small.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "zero_init3.o": {
+            "ro_code": 56,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          }
+        },
+        "heap_present": false
+      },
+      "HYBRID": {
+        "bin": 88689,
+        "bin_sha256": "dfe29122abd882a7e28d0433dbab5c0a44f9b81bce2325bc50ab8b940a83f030",
+        "elf_sha256": "85fc9d4b3b0cd0df01afd1a0f6fdc79c585414a35a820a36a3733d6f38d352b6",
+        "stack_bottom": 536884000,
+        "stack_top": 536888096,
+        "fault_record": 536891328,
+        "vectors": 134251008,
+        "readonly_code": 83933,
+        "readonly_data": 4756,
+        "readwrite_code": 516,
+        "readwrite_data": 16713,
+        "free_ram_gap": 3232,
+        "warnings": [
+          "Ls014",
+          "Ls015"
+        ],
+        "errors": 0,
+        "modules": {
+          "app_update.o": {
+            "ro_code": 1094,
+            "rw_code": 516,
+            "ro_data": 519,
+            "rw_data": 1
+          },
+          "board.o": {
+            "ro_code": 408,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "boot_manual.o": {
+            "ro_code": 832,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 11
+          },
+          "main.o": {
+            "ro_code": 404,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 8
+          },
+          "stm32_it.o": {
+            "ro_code": 292,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 48
+          },
+          "startup_stm32f10x_md.o": {
+            "ro_code": 256,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "system_stm32f10x.o": {
+            "ro_code": 340,
+            "rw_code": 0,
+            "ro_data": 3,
+            "rw_data": 4
+          },
+          "user_format.o": {
+            "ro_code": 316,
+            "rw_code": 0,
+            "ro_data": 64,
+            "rw_data": 0
+          },
+          "work_memory.o": {
+            "ro_code": 628,
+            "rw_code": 0,
+            "ro_data": 32,
+            "rw_data": 2224
+          },
+          "user_fun_runtime.o": {
+            "ro_code": 3576,
+            "rw_code": 0,
+            "ro_data": 17,
+            "rw_data": 0
+          },
+          "adc_stm32f10x.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "comm_at.o": {
+            "ro_code": 3350,
+            "rw_code": 0,
+            "ro_data": 232,
+            "rw_data": 358
+          },
+          "comm_balance.o": {
+            "ro_code": 1022,
+            "rw_code": 0,
+            "ro_data": 72,
+            "rw_data": 128
+          },
+          "comm_call.o": {
+            "ro_code": 712,
+            "rw_code": 0,
+            "ro_data": 148,
+            "rw_data": 52
+          },
+          "comm_channel.o": {
+            "ro_code": 2912,
+            "rw_code": 0,
+            "ro_data": 240,
+            "rw_data": 1108
+          },
+          "comm_info.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 187,
+            "rw_data": 20
+          },
+          "comm_modem.o": {
+            "ro_code": 3090,
+            "rw_code": 0,
+            "ro_data": 208,
+            "rw_data": 212
+          },
+          "comm_power_v5.o": {
+            "ro_code": 156,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 9
+          },
+          "comm_recover.o": {
+            "ro_code": 1068,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 72
+          },
+          "comm_server.o": {
+            "ro_code": 1160,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 57
+          },
+          "comm_sms.o": {
+            "ro_code": 2404,
+            "rw_code": 0,
+            "ro_data": 160,
+            "rw_data": 524
+          },
+          "comm_uart.o": {
+            "ro_code": 1132,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 540
+          },
+          "modem_slm336.o": {
+            "ro_code": 16,
+            "rw_code": 0,
+            "ro_data": 608,
+            "rw_data": 0
+          },
+          "spi_stm32f10x_runtime.o": {
+            "ro_code": 516,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "timers.o": {
+            "ro_code": 300,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 44
+          },
+          "uart_stm32f10x.o": {
+            "ro_code": 1012,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 48
+          },
+          "usb_stm32f10x_runtime.o": {
+            "ro_code": 1828,
+            "rw_code": 0,
+            "ro_data": 6,
+            "rw_data": 2199
+          },
+          "wdt_stm32f10x.o": {
+            "ro_code": 48,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "misc.o": {
+            "ro_code": 132,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_adc.o": {
+            "ro_code": 538,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_exti.o": {
+            "ro_code": 168,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_gpio.o": {
+            "ro_code": 198,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_iwdg.o": {
+            "ro_code": 48,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_pwr.o": {
+            "ro_code": 60,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_rcc.o": {
+            "ro_code": 292,
+            "rw_code": 0,
+            "ro_data": 19,
+            "rw_data": 20
+          },
+          "stm32f10x_spi.o": {
+            "ro_code": 226,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "stm32f10x_usart.o": {
+            "ro_code": 456,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_core.o": {
+            "ro_code": 2250,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 3
+          },
+          "usb_init.o": {
+            "ro_code": 52,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 43
+          },
+          "usb_int.o": {
+            "ro_code": 346,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "usb_mem.o": {
+            "ro_code": 88,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_regs.o": {
+            "ro_code": 512,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "usb_sil.o": {
+            "ro_code": 74,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "hw_config.o": {
+            "ro_code": 718,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 25
+          },
+          "usb_desc.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 211,
+            "rw_data": 28
+          },
+          "usb_endp.o": {
+            "ro_code": 112,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 68
+          },
+          "usb_istr.o": {
+            "ro_code": 340,
+            "rw_code": 0,
+            "ro_data": 56,
+            "rw_data": 11
+          },
+          "usb_prop.o": {
+            "ro_code": 536,
+            "rw_code": 0,
+            "ro_data": 142,
+            "rw_data": 9
+          },
+          "usb_pwr.o": {
+            "ro_code": 52,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "comm_timeouts.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 196,
+            "rw_data": 0
+          },
+          "crc_asm.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "crc_runtime.o": {
+            "ro_code": 60,
+            "rw_code": 0,
+            "ro_data": 540,
+            "rw_data": 0
+          },
+          "expiry_runtime.o": {
+            "ro_code": 824,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "fast_kernels.o": {
+            "ro_code": 220,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "flash_w25_runtime.o": {
+            "ro_code": 1160,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 20
+          },
+          "fw_service_runtime.o": {
+            "ro_code": 1828,
+            "rw_code": 0,
+            "ro_data": 48,
+            "rw_data": 4
+          },
+          "id_hash_asm.o": {
+            "ro_code": 92,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "idclear_runtime.o": {
+            "ro_code": 512,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "idindex_runtime.o": {
+            "ro_code": 812,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 24
+          },
+          "indication.o": {
+            "ro_code": 192,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 11
+          },
+          "memory_runtime.o": {
+            "ro_code": 3358,
+            "rw_code": 0,
+            "ro_data": 4,
+            "rw_data": 55
+          },
+          "outs.o": {
+            "ro_code": 488,
+            "rw_code": 0,
+            "ro_data": 2,
+            "rw_data": 19
+          },
+          "photo_runtime.o": {
+            "ro_code": 7572,
+            "rw_code": 0,
+            "ro_data": 332,
+            "rw_data": 132
+          },
+          "prof.o": {
+            "ro_code": 248,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 100
+          },
+          "runtime_layout.o": {
+            "ro_code": 0,
+            "rw_code": 0,
+            "ro_data": 4,
+            "rw_data": 0
+          },
+          "sector_journal_runtime.o": {
+            "ro_code": 1176,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "sector_runtime_runtime.o": {
+            "ro_code": 1028,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 128
+          },
+          "service_runtime.o": {
+            "ro_code": 984,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "upload_runtime.o": {
+            "ro_code": 1056,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 4
+          },
+          "user_comm_runtime.o": {
+            "ro_code": 256,
+            "rw_code": 0,
+            "ro_data": 32,
+            "rw_data": 0
+          },
+          "user_fun_hot.o": {
+            "ro_code": 22384,
+            "rw_code": 0,
+            "ro_data": 558,
+            "rw_data": 4208
+          },
+          "user_str_fun.o": {
+            "ro_code": 86,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "wiegand.o": {
+            "ro_code": 312,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 14
+          },
+          "exit.o": {
+            "ro_code": 4,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "iar_Stoulx.o": {
+            "ro_code": 342,
+            "rw_code": 0,
+            "ro_data": 80,
+            "rw_data": 0
+          },
+          "strcat.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncat.o": {
+            "ro_code": 40,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncmp.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strrchr.o": {
+            "ro_code": 28,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strstr.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemclr.o": {
+            "ro_code": 6,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemclr4.o": {
+            "ro_code": 6,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemcpy.o": {
+            "ro_code": 166,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemmove.o": {
+            "ro_code": 150,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemset.o": {
+            "ro_code": 94,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "ABImemset48.o": {
+            "ro_code": 58,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "XXexit.o": {
+            "ro_code": 12,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cexit.o": {
+            "ro_code": 10,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cmain.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "cstartup_M.o": {
+            "ro_code": 28,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "data_init.o": {
+            "ro_code": 42,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "memchr.o": {
+            "ro_code": 88,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "memcmp.o": {
+            "ro_code": 104,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "memcmp_small.o": {
+            "ro_code": 30,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "packbits_init_single.o": {
+            "ro_code": 58,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strchr.o": {
+            "ro_code": 22,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strcmp.o": {
+            "ro_code": 18,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strcpy.o": {
+            "ro_code": 24,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strlen.o": {
+            "ro_code": 54,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "strncpy.o": {
+            "ro_code": 112,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          },
+          "zero_init3.o": {
+            "ro_code": 56,
+            "rw_code": 0,
+            "ro_data": 0,
+            "rw_data": 0
+          }
+        },
+        "heap_present": false
+      }
+    },
+    "changes": [
+      {
+        "step": "cold selection and split",
+        "hybrid_bin_delta": -324
+      },
+      {
+        "step": "USB source ownership",
+        "hybrid_bin_delta": 148,
+        "rw_data_delta": -1044,
+        "free_ram_delta": 1048
+      },
+      {
+        "step": "canary",
+        "bin_delta": 80,
+        "ram_delta": 0
+      },
+      {
+        "step": "healthy workspace fast path",
+        "bin_delta": 20
+      }
+    ],
+    "checks": {
+      "run_all": {
+        "ASM": {
+          "passed": 73,
+          "total": 73,
+          "elf_sha256": "ad48ca9653471d6197cec46870a4a36b08ef05cb92dd671a66c5240c3a5f397c",
+          "cases": {
+            "sources": "PASS",
+            "hybrid ASM split": "PASS",
+            "format oracle": "PASS",
+            "cfgstrings": "PASS",
+            "cmdlengths": "PASS",
+            "commands": "PASS",
+            "commat": "PASS",
+            "commserver": "PASS",
+            "commslm": "PASS",
+            "commuart": "PASS",
+            "countends": "PASS",
+            "crc": "PASS",
+            "crcff": "PASS",
+            "fwblockbounds": "PASS",
+            "idexpiry": "PASS",
+            "idtext": "PASS",
+            "logcommit": "PASS",
+            "outs": "PASS",
+            "persistence": "PASS",
+            "recovery": "PASS",
+            "rules": "PASS",
+            "rx": "PASS",
+            "sms": "PASS",
+            "sync": "PASS",
+            "tempidmeta": "PASS",
+            "timersirq": "PASS",
+            "uarttimer": "PASS",
+            "usbdesc": "PASS",
+            "usbresetwait": "PASS",
+            "usbresume": "PASS",
+            "usbsetupbounds": "PASS",
+            "w25": "PASS",
+            "wiegandirq": "PASS",
+            "tx idle": "PASS",
+            "tx reset": "PASS",
+            "tx esof": "PASS",
+            "tx busy": "PASS",
+            "tx large": "PASS",
+            "modem_sim": "PASS",
+            "comm_review": "PASS",
+            "uart arm": "PASS",
+            "stack canary": "PASS",
+            "format ABI": "PASS",
+            "workspace": "PASS",
+            "id_sync_fast": "PASS",
+            "access": "PASS",
+            "config": "PASS",
+            "index": "PASS",
+            "service": "PASS",
+            "upload": "PASS",
+            "clear": "PASS",
+            "expiry": "PASS",
+            "firmware": "PASS",
+            "photo": "PASS",
+            "photo_edges": "PASS",
+            "table": "PASS",
+            "owners": "PASS",
+            "owner_lifetimes": "PASS",
+            "usb_replies": "PASS",
+            "storage_boundary": "PASS",
+            "event_append": "PASS",
+            "fw_blocks": "PASS",
+            "fw_bridge": "PASS",
+            "usb_queue": "PASS",
+            "config_power": "PASS",
+            "index_power": "PASS",
+            "upload_power": "PASS",
+            "clear_power": "PASS",
+            "expiry_power": "PASS",
+            "firmware_power": "PASS",
+            "photo_power": "PASS",
+            "table_power": "PASS",
+            "paired mutations": "PASS"
+          }
+        },
+        "C": {
+          "passed": 73,
+          "total": 73,
+          "elf_sha256": "9d651eb3a7208d9f0f0174f5fc5de369e8d39db3ae542744298bdb967f7a5ae0",
+          "cases": {
+            "sources": "PASS",
+            "hybrid ASM split": "PASS",
+            "format oracle": "PASS",
+            "cfgstrings": "PASS",
+            "cmdlengths": "PASS",
+            "commands": "PASS",
+            "commat": "PASS",
+            "commserver": "PASS",
+            "commslm": "PASS",
+            "commuart": "PASS",
+            "countends": "PASS",
+            "crc": "PASS",
+            "crcff": "PASS",
+            "fwblockbounds": "PASS",
+            "idexpiry": "PASS",
+            "idtext": "PASS",
+            "logcommit": "PASS",
+            "outs": "PASS",
+            "persistence": "PASS",
+            "recovery": "PASS",
+            "rules": "PASS",
+            "rx": "PASS",
+            "sms": "PASS",
+            "sync": "PASS",
+            "tempidmeta": "PASS",
+            "timersirq": "PASS",
+            "uarttimer": "PASS",
+            "usbdesc": "PASS",
+            "usbresetwait": "PASS",
+            "usbresume": "PASS",
+            "usbsetupbounds": "PASS",
+            "w25": "PASS",
+            "wiegandirq": "PASS",
+            "tx idle": "PASS",
+            "tx reset": "PASS",
+            "tx esof": "PASS",
+            "tx busy": "PASS",
+            "tx large": "PASS",
+            "modem_sim": "PASS",
+            "comm_review": "PASS",
+            "uart arm": "PASS",
+            "stack canary": "PASS",
+            "format ABI": "PASS",
+            "workspace": "PASS",
+            "id_sync_fast": "PASS",
+            "access": "PASS",
+            "config": "PASS",
+            "index": "PASS",
+            "service": "PASS",
+            "upload": "PASS",
+            "clear": "PASS",
+            "expiry": "PASS",
+            "firmware": "PASS",
+            "photo": "PASS",
+            "photo_edges": "PASS",
+            "table": "PASS",
+            "owners": "PASS",
+            "owner_lifetimes": "PASS",
+            "usb_replies": "PASS",
+            "storage_boundary": "PASS",
+            "event_append": "PASS",
+            "fw_blocks": "PASS",
+            "fw_bridge": "PASS",
+            "usb_queue": "PASS",
+            "config_power": "PASS",
+            "index_power": "PASS",
+            "upload_power": "PASS",
+            "clear_power": "PASS",
+            "expiry_power": "PASS",
+            "firmware_power": "PASS",
+            "photo_power": "PASS",
+            "table_power": "PASS",
+            "paired mutations": "PASS"
+          }
+        },
+        "HYBRID": {
+          "passed": 73,
+          "total": 73,
+          "elf_sha256": "85fc9d4b3b0cd0df01afd1a0f6fdc79c585414a35a820a36a3733d6f38d352b6",
+          "cases": {
+            "sources": "PASS",
+            "hybrid ASM split": "PASS",
+            "format oracle": "PASS",
+            "cfgstrings": "PASS",
+            "cmdlengths": "PASS",
+            "commands": "PASS",
+            "commat": "PASS",
+            "commserver": "PASS",
+            "commslm": "PASS",
+            "commuart": "PASS",
+            "countends": "PASS",
+            "crc": "PASS",
+            "crcff": "PASS",
+            "fwblockbounds": "PASS",
+            "idexpiry": "PASS",
+            "idtext": "PASS",
+            "logcommit": "PASS",
+            "outs": "PASS",
+            "persistence": "PASS",
+            "recovery": "PASS",
+            "rules": "PASS",
+            "rx": "PASS",
+            "sms": "PASS",
+            "sync": "PASS",
+            "tempidmeta": "PASS",
+            "timersirq": "PASS",
+            "uarttimer": "PASS",
+            "usbdesc": "PASS",
+            "usbresetwait": "PASS",
+            "usbresume": "PASS",
+            "usbsetupbounds": "PASS",
+            "w25": "PASS",
+            "wiegandirq": "PASS",
+            "tx idle": "PASS",
+            "tx reset": "PASS",
+            "tx esof": "PASS",
+            "tx busy": "PASS",
+            "tx large": "PASS",
+            "modem_sim": "PASS",
+            "comm_review": "PASS",
+            "uart arm": "PASS",
+            "stack canary": "PASS",
+            "format ABI": "PASS",
+            "workspace": "PASS",
+            "id_sync_fast": "PASS",
+            "access": "PASS",
+            "config": "PASS",
+            "index": "PASS",
+            "service": "PASS",
+            "upload": "PASS",
+            "clear": "PASS",
+            "expiry": "PASS",
+            "firmware": "PASS",
+            "photo": "PASS",
+            "photo_edges": "PASS",
+            "table": "PASS",
+            "owners": "PASS",
+            "owner_lifetimes": "PASS",
+            "usb_replies": "PASS",
+            "storage_boundary": "PASS",
+            "event_append": "PASS",
+            "fw_blocks": "PASS",
+            "fw_bridge": "PASS",
+            "usb_queue": "PASS",
+            "config_power": "PASS",
+            "index_power": "PASS",
+            "upload_power": "PASS",
+            "clear_power": "PASS",
+            "expiry_power": "PASS",
+            "firmware_power": "PASS",
+            "photo_power": "PASS",
+            "table_power": "PASS",
+            "paired mutations": "PASS"
+          }
+        }
+      },
+      "paired_scenarios": 198,
+      "paired_mismatches": 0,
+      "baseline_deviations": 0,
+      "format_default_zig": "PASS 2097152 STATUS + 100000 regular cases",
+      "hybrid_original_instruction_lines": 13786
+    },
+    "cold_module_probes": [
+      {
+        "module": "spi_stm32f10x_runtime",
+        "selected": "ASM",
+        "selected_bin": 88689,
+        "alternative_bin": 88689,
+        "alternative_delta": 0
+      },
+      {
+        "module": "usb_stm32f10x_runtime",
+        "selected": "ASM",
+        "selected_bin": 88689,
+        "alternative_bin": 88689,
+        "alternative_delta": 0
+      },
+      {
+        "module": "expiry_runtime",
+        "selected": "ASM",
+        "selected_bin": 88689,
+        "alternative_bin": 88729,
+        "alternative_delta": 40
+      },
+      {
+        "module": "idclear_runtime",
+        "selected": "C",
+        "selected_bin": 88689,
+        "alternative_bin": 88693,
+        "alternative_delta": 4
+      },
+      {
+        "module": "photo_runtime",
+        "selected": "ASM",
+        "selected_bin": 88689,
+        "alternative_bin": 88729,
+        "alternative_delta": 40
+      },
+      {
+        "module": "fw_service_runtime",
+        "selected": "C",
+        "selected_bin": 88689,
+        "alternative_bin": 88729,
+        "alternative_delta": 40
+      },
+      {
+        "module": "upload_runtime",
+        "selected": "ASM",
+        "selected_bin": 88689,
+        "alternative_bin": 88713,
+        "alternative_delta": 24
+      },
+      {
+        "module": "idindex_runtime",
+        "selected": "C",
+        "selected_bin": 88689,
+        "alternative_bin": 88777,
+        "alternative_delta": 88
+      },
+      {
+        "module": "sector_runtime",
+        "selected": "C",
+        "selected_bin": 88689,
+        "alternative_bin": 88697,
+        "alternative_delta": 8
+      }
+    ],
+    "stack": {
+      "bytes": 4096,
+      "complete_graph": false,
+      "Ls016": false,
+      "excluded_cycle": "server_channel_event [comm_server.o]",
+      "callback_rules": 48,
+      "minimal_crash_rules": 3,
+      "reproducer": "Tests/probe_stack.py (real firmware objects)",
+      "canary_bin": 80,
+      "canary_healthy_instructions": 6,
+      "canary_fetch_estimate": 14,
+      "physical_cycles_measured": false,
+      "failure": "FLT1 record reason 0x5354414B, IRQ mask, stackless IWDG stop"
+    },
+    "USB": {
+      "ring_bytes": 0,
+      "descriptor_bytes": 8,
+      "workspace_bytes": 2224,
+      "loans": [
+        11,
+        2,
+        10,
+        8,
+        7
+      ],
+      "mutable_sources": "snapshot in existing WORK_REPLY or WORK_PHOTO_PACKET",
+      "max_packet": 1039,
+      "pending_packets": 1,
+      "release_until_final_ACK": "refused and deferred",
+      "collection": "conflicting allocation or release of pinned slot; explicit zero-size collection retained"
+    },
+    "MFC": {
+      "retained": false,
+      "measurements": {
+        "ASM": {
+          "bin": 89332,
+          "delta": 819
+        },
+        "C": {
+          "bin": 87784,
+          "delta": 815
+        },
+        "HYBRID": {
+          "bin": 89508,
+          "delta": 819
+        }
+      },
+      "ABI": "ST enum name changed, 0/1 and IAR one-byte enum preserved; USART_Config remains C _Bool"
+    },
+    "goals": {
+      "bin_limit": 87029,
+      "hybrid_bin": 88689,
+      "bin_met": false,
+      "bin_excess": 1660,
+      "free_ram_min": 3072,
+      "free_ram_met": true,
+      "hot_path_ratio_limit": 1.01,
+      "hot_paths_met": true
+    },
+    "limitations": [
+      "BIN goal not met",
+      "No complete stack/IRQ proof; stack unchanged 4096",
+      "No standalone minimal C crash reproducer",
+      "No physical device/server operations; PMA and cycles verified only in model",
+      "MFC is larger and disabled",
+      "tempStrBuffer remains necessary outside STATUS"
+    ]
   }
 }

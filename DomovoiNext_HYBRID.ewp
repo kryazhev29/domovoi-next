@@ -232,7 +232,8 @@
                     <state>ASM_FAST_KERNELS</state>
                     <state>STM32F10X_MD</state>
                     <state>USE_STDPERIPH_DRIVER</state>
-                <state>HYBRID_CARD</state><state>C_RUNTIME</state><state>ASM_RUNTIME</state></option>
+                <state>HYBRID_CARD</state>
+        <state>HYBRID_COLD</state><state>C_RUNTIME</state><state>ASM_RUNTIME</state></option>
                 <option>
                     <name>CCPreprocFile</name>
                     <state>0</state>
@@ -540,7 +541,8 @@
                 <option>
                     <name>ADefines</name>
                     <state>DOMOVOI_APP_HW=139</state>
-                <state>HYBRID_CARD</state></option>
+                <state>HYBRID_CARD</state>
+        <state>HYBRID_COLD</state></option>
                 <option>
                     <name>AList</name>
                     <state>0</state>
@@ -1327,7 +1329,8 @@
                     <state>ASM_FAST_KERNELS</state>
                     <state>STM32F10X_MD</state>
                     <state>USE_STDPERIPH_DRIVER</state>
-                <state>HYBRID_CARD</state><state>C_RUNTIME</state><state>ASM_RUNTIME</state><state>RELEASE_BUILD</state></option>
+                <state>HYBRID_CARD</state>
+        <state>HYBRID_COLD</state><state>C_RUNTIME</state><state>ASM_RUNTIME</state><state>RELEASE_BUILD</state></option>
                 <option>
                     <name>CCPreprocFile</name>
                     <state>0</state>
@@ -1635,7 +1638,8 @@
                 <option>
                     <name>ADefines</name>
                     <state>DOMOVOI_APP_HW=139</state>
-                <state>HYBRID_CARD</state><state>RELEASE_BUILD</state></option>
+                <state>HYBRID_CARD</state>
+        <state>HYBRID_COLD</state><state>RELEASE_BUILD</state></option>
                 <option>
                     <name>AList</name>
                     <state>0</state>
@@ -2054,7 +2058,7 @@
                 </option>
                 <option>
                     <name>IlinkStackControlFile</name>
-                    <state />
+                    <state>$PROJ_DIR$\settings\hybrid_stack.suc</state>
                 </option>
                 <option>
                     <name>IlinkStackCallGraphFile</name>
@@ -2353,7 +2357,7 @@
             <name>$PROJ_DIR$\User\asm\expiry_runtime.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\idclear_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\idclear_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\asm\photo_runtime.s</name>
@@ -2362,7 +2366,7 @@
             <name>$PROJ_DIR$\User\c\idindex_runtime.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\fw_service_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\fw_service_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\asm\upload_runtime.s</name>
@@ -2404,7 +2408,7 @@
             <name>$PROJ_DIR$\User\prof.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\user_fun_runtime.s</name>
+            <name>$PROJ_DIR$\User\hybrid\user_fun_hot.s</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\asm\service_runtime.s</name>

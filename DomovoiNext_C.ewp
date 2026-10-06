@@ -3149,7 +3149,7 @@
                 </option>
                 <option>
                     <name>IlinkStackControlFile</name>
-                    <state />
+                    <state>$PROJ_DIR$\settings\runtime_stack.suc</state>
                 </option>
                 <option>
                     <name>IlinkStackCallGraphFile</name>

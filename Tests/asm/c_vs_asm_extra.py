@@ -18,6 +18,10 @@ def fw_bridge():
     return {n:getattr(m,n)() for n in ('ack_order','config_failure','quiet_cases','abort_cases')}
 
 def usb_queue():
+    from iar_irq_support import Machine
+    if 'USB_Tx_SourceBusy' in Machine().symbols:
+        from test_usb_source import run
+        return run()
     from verification_usb_try import UsbTryMachine
     class PortableQueue(UsbTryMachine):
         expected_stack=None

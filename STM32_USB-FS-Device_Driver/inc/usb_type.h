@@ -39,12 +39,16 @@
 #define NULL ((void *)0)
 #endif
 
+#ifdef BOOTLOADER
 #ifndef FALSE
 typedef enum
 {
   FALSE = 0, TRUE  = !FALSE
 }
 bool;
+#endif
+#else
+#include "usb_bool.h"
 #endif
 
 /* Exported macro ------------------------------------------------------------*/

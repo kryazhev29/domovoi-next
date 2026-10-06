@@ -60,6 +60,7 @@ def main():
         print(results[name]['status'],name,flush=True)
         if not ok:print((r.stdout+r.stderr)[-1600:].decode('utf-8',errors='replace'),flush=True)
     run('sources',['Tests/check_comm_sources.py'])
+    run('hybrid ASM split',['Tests/test_hybrid_hot.py'])
     run('format oracle',['Tests/test_user_format.py'])
     for group in run_all.GROUPS:
         if group not in REPLACEMENTS:run(group,['Tests/run_host.py','work',group])

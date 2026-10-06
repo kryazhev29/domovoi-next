@@ -6,7 +6,8 @@
 #include "work_slots.h"
 /* Main-loop only. IRQ handlers never acquire or release this storage. */
 void *work_acquire(uint32_t size, uint32_t slot);
-void work_release(void *pointer, uint32_t slot);
+uint8_t work_release(void *pointer, uint32_t slot);
+const uint8_t *work_usb_source(const uint8_t *source, uint16_t length);
 uint16_t work_owned(void);
 uint32_t work_capacity(uint32_t slot);
 uint8_t work_upload_ack(uint8_t command, uint8_t channel, void *context);
