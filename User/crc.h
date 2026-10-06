@@ -13,6 +13,5 @@ unsigned short crc16_ffInit(unsigned long count, unsigned short init);
 
 // Вычисление контрольной суммы CRC Dallas
 // in - входной буфер, num - число байт
-unsigned char crc8_calc (unsigned char* in, unsigned char num);
 
 #endif

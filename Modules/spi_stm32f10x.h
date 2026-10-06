@@ -32,6 +32,5 @@ uint8_t spi_send_byte (uint8_t data);
 void spi_send (uint8_t* buf, uint32_t length);
 
 // Ожидание завершения передачи по SPI
-void spi_wait_busy (void);
 
 #endif
