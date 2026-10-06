@@ -16,7 +16,7 @@ typedef struct {
 RT_ASSERT(expiry_size,sizeof(expiry_s)==1092);
 expiry_s *expiry_job;
 bool expiry_runtime_active(void) { return expiry_job!=NULL; }
-void expiry_runtime_cancel(void) { if(expiry_job) expiry_job->cancelled=1; }
+void expiry_runtime_cancel(void) { if(expiry_job) { idcrc_unknown(); expiry_job->cancelled=1; } }
 static void expiry_release(void) { flash_release(FO_EXPIRY); work_release(expiry_job, WORK_EXPIRY); expiry_job=NULL; }
 bool expiry_runtime_begin(void)
 {
@@ -93,5 +93,5 @@ void expiry_runtime_poll(uint32_t now)
   default: goto retry;
   }
 found: p->target=address; p->phase=4; return;
-retry: id_endScan=1; expiry_release();
+retry: idcrc_unknown(); id_endScan=1; expiry_release();
 }

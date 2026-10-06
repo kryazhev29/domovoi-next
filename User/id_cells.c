@@ -38,22 +38,28 @@ bool stage5_user_updateID(cellID_s *c){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint8_t stored[32];
   uint16_t index;
+  uint32_t adr;
   /*  оманда 13 кладЄт €чейку на место еЄ номера: сначала провер€ем это место,
      перебор - только если там друга€ €чейка. */
   if (c->index != 0 && c->index != 0xffff){
-    uint32_t adr = mem[MB_ID].start + (uint32_t)(c->index - 1u) * sizeof(cellID_s);
+    adr = mem[MB_ID].start + (uint32_t)(c->index - 1u) * sizeof(cellID_s);
     if (adr + sizeof(cellID_s) <= endAdr){
-      if (!mem_read(adr, stored, 32)) return false;
+      if (!mem_read(adr, stored, 32)) { idcrc_unknown(); return false; }
       memcpy(&index,stored,2);
-      if (index == c->index && stored[31] != 255) return mem_patch(adr, (const uint8_t*)c, sizeof(cellID_s));
+      if (index == c->index && stored[31] != 255) goto update;
     }
   }
-  for (uint32_t adr = mem[MB_ID].start; adr + sizeof(cellID_s) <= endAdr; adr += sizeof(cellID_s)){
-    if (!mem_read(adr, stored, 32)) return false;
+  for (adr = mem[MB_ID].start; adr + sizeof(cellID_s) <= endAdr; adr += sizeof(cellID_s)){
+    if (!mem_read(adr, stored, 32)) { idcrc_unknown(); return false; }
       memcpy(&index,stored,2);
     if (index == c->index && stored[31] != 255){
-      return mem_patch(adr, (const uint8_t*)c, sizeof(cellID_s));
+      goto update;
     }
   }
-  return false;
+  idcrc_unknown(); return false;
+update: {
+  bool result=mem_patch(adr,(const uint8_t*)c,sizeof(cellID_s));
+  if(!result) idcrc_unknown();
+  return result;
+}
 }

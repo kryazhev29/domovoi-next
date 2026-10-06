@@ -5,7 +5,6 @@ from test_expiry_runtime import ExpiryMachine,record
 from test_idclear_runtime import ClearMachine
 from storage_machine import crc16
 import struct
-A,B=0x1fb000,0x1fc000
 
 def get(m):
     p=0x21000800
@@ -18,7 +17,7 @@ def warm(m):
         m.now+=1;m.checked('idcrc_background')
         value=get(m)
         if value is not None and not m.checked('idcrc_io_active'):return value
-    raise AssertionError('CRC cache did not become durable')
+    raise AssertionError('CRC cache did not become known')
 
 def run():
     m=fixture(SyncMachine(),0,total=8192);assert warm(m)==oracle(m)
@@ -40,10 +39,6 @@ def run():
 
 def power():
     m=fixture(SyncMachine(),0,total=8192);assert warm(m)==oracle(m)
-    checksum=oracle(m)
-    # Fill A so the following packet rotates through erase/header/carry/dirty.
-    for i in range(510):struct.pack_into('<IHH',m.flash,A+16+8*i,i+1,checksum,checksum^65535)
-    m=fixture(SyncMachine(m.flash),0,total=8192);assert warm(m)==oracle(m)
     initial=bytes(m.flash);m.record_changes=True
     m.command(13,cell(1),1);m.drain();assert warm(m)==oracle(m)
     image=bytearray(initial);cuts=0
@@ -61,11 +56,101 @@ def power():
             else:raise AssertionError('recovery did not finish')
             cuts+=1
         for i,v in enumerate(b):image[a+i]=v if kind=='erase' else image[a+i]&v
-    # Erasure may set sequence bits in the old bank while leaving its CRC pairs.
-    # The header complement prevents a false newer-bank selection.
-    corrupt=bytearray(m.flash);corrupt[A+4]|=2
-    r=fixture(SyncMachine(corrupt),1,total=8192);assert warm(r)==oracle(r)
-    return {'cuts':cuts,'old_bank_torn_generation':'rejected'}
+    assert all(not 0x1fb000<=a<0x1fe000 for _,a,_ in m.changes)
+    return {'cuts':cuts,'CRC_flash_writes':0}
+
+
+def background():
+    # Occupied raw bytes include torn cells. A known boundary reads only them.
+    counts=[]
+    for used in (0,1,63,64,65,8192,0xffffffff):
+        m=fixture(SyncMachine(),0,total=8192)
+        n=min(used,8192);m.flash[BASE:BASE+n]=bytes((i*17)&255 for i in range(n))
+        m.write(m.addr('id_used_bytes'),used);m.record_changes=True
+        assert get(m) is None
+        before=m.counts['read'];assert warm(m)==oracle(m)
+        assert m.counts['read']-before==(n+63)//64 and not m.changes
+        counts.append(used)
+    # Each completed scan chunk is a power-cut boundary: RAM must start unknown.
+    m=fixture(SyncMachine(),0,unknown=True,total=8192)
+    m.flash[BASE:BASE+8192]=bytes((i*13)&255 for i in range(8192))
+    expected=oracle(m)
+    for step in range(129):
+        m.now+=1;m.checked('idcrc_background');assert m.read_budget<=64
+        r=fixture(SyncMachine(m.flash),0,unknown=True,total=8192)
+        assert get(r) is None and warm(r)==expected
+    # Another Flash owner pauses without dropping the completed prefix.
+    m=fixture(SyncMachine(),0,unknown=True,total=8192);m.checked('idcrc_background')
+    before=m.counts['read'];m.write(m.addr('flash_owner'),1,1)
+    for _ in range(3):m.checked('idcrc_background')
+    assert m.counts['read']==before
+    m.write(m.addr('flash_owner'),0,1);assert warm(m)==oracle(m)
+    assert m.counts['read']==128
+    # A writer after a partial scan restarts it; a read failure retries as well.
+    m=fixture(SyncMachine(),0,unknown=True,total=8192);m.checked('idcrc_background')
+    m.command(13,cell(1),1);m.drain();assert get(m) is None and warm(m)==oracle(m)
+    m=fixture(SyncMachine(),0,unknown=True,total=8192);m.fault=('read',1)
+    m.checked('idcrc_background');assert get(m) is None
+    m.fault=None;assert warm(m)==oracle(m)
+    return {'occupied_boundaries':counts,'scan_power_cuts':129,'pause_resume':'prefix retained','writer_mid_scan':'restart','read_error':'retry','Flash_metadata':0}
+
+
+def cancellation():
+    for point in ('old_bytes','verify'):
+        m=fixture(SyncMachine(),1,total=8192);assert warm(m)==oracle(m)
+        m.u.mem_write(0x21000400,bytes(32))
+        assert m.checked('idcrc_io_start',BASE,0x21000400,32,m.now)
+        if point=='verify':
+            for _ in range(10):
+                m.now+=1;assert m.checked('idcrc_io_poll',m.now)==1
+                if m.io:break
+            else:raise AssertionError('NOR start not reached')
+        m.checked('idcrc_unknown');assert get(m) is None
+        for _ in range(10):
+            m.now+=1;r=m.checked('idcrc_io_poll',m.now)
+            if r==2:break
+            assert r==1
+        else:raise AssertionError('cancel did not drain NOR')
+        assert get(m) is None and warm(m)==oracle(m)
+    m=fixture(SyncMachine(),0,total=8192);assert warm(m)==oracle(m)
+    m.command(13,cell(1),1);m.checked('table_runtime_cancel');m.drain()
+    assert get(m) is None and warm(m)==oracle(m)
+    e=ExpiryMachine();e.install([record(1)],(0,));assert warm(e)==oracle(e)
+    e.start_expiry();e.checked('expiry_runtime_cancel');assert get(e) is None
+    e.expiry_drain();assert warm(e)==oracle(e)
+    e=ExpiryMachine();e.install([record(1)],(0,));assert warm(e)==oracle(e)
+    e.start_expiry();e.fault=('read',e.counts['read']+1);e.expiry_drain()
+    assert get(e) is None;e.fault=None;assert warm(e)==oracle(e)
+    c=ClearMachine();c.flash[BASE:BASE+32]=cell(1);assert warm(c)==oracle(c)
+    c.parse();c.checked('idclear_runtime_cancel');assert get(c) is None
+    c.clear_drain();assert warm(c)==oracle(c)
+    a=AccessMachine();a.put_id(1,b'0000000001');assert warm(a)==oracle(a)
+    a.u.mem_write(0x21000400,bytes(a.flash[BASE:BASE+32]))
+    a.fault=('read',a.counts['read']+1)
+    assert not a.checked('user_updateID',0x21000400,budget=5000000)
+    assert get(a) is None;a.fault=None;assert warm(a)==oracle(a)
+    a.u.mem_write(0x21000400,cell(2))
+    assert not a.checked('user_updateID',0x21000400,budget=5000000)
+    assert get(a) is None and warm(a)==oracle(a)
+    return {'cancel_before_write_and_during_verify':2,'writer_cancels':['packet13','expiry','clear'],'unknown_old_read':'recompute','expiry_read_failure':'recompute','missing_update_ID':'recompute'}
+
+
+def real_nor():
+    from test_id_sync_fast import TimedMachine
+    m=fixture(TimedMachine(),1,total=8192);m.install_nor();assert warm(m)==oracle(m)
+    m.u.mem_write(0x21000400,bytes(32));peaks=[]
+    for source,length in ((0x21000400,32),(0,0)):
+        assert m.checked('idcrc_io_start',BASE,source,length,int(m.cycles//72000))
+        for _ in range(1000):
+            m.cycles+=m.gap;before=m.cycles
+            r=m.checked('idcrc_io_poll',int(m.cycles//72000),budget=300000)
+            peaks.append((m.cycles-before)/72000)
+            if r==2:break
+            assert r==1
+        else:raise AssertionError('real NOR CRC operation stuck')
+        assert get(m)==oracle(m)
+    assert max(peaks)<1
+    return {'native_NOR_job_ABI':'verified','write_and_erase':'oracle equal','maximum_CRC_poll_ms':round(max(peaks),6),'timing':'modeled SPI/NOR'}
 
 
 def loader_recovery():

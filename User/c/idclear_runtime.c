@@ -8,7 +8,7 @@ typedef struct {
 RT_ASSERT(idclear_size, sizeof(idclear_s)==56);
 idclear_s *idclear_job;
 uint8_t idclear_runtime_active(void) { return idclear_job!=NULL; }
-void idclear_runtime_cancel(void) { if(idclear_job) idclear_job->cancel=idclear_job->quiet=1; }
+void idclear_runtime_cancel(void) { if(idclear_job) { idcrc_unknown(); idclear_job->cancel=idclear_job->quiet=1; } }
 void idclear_runtime_quiet(uint8_t channel) { if(!channel && idclear_job) idclear_job->quiet=1; }
 static void idclear_release(void) { idclear_s *p=idclear_job; idclear_job=NULL; work_release(p, WORK_IDCLEAR); }
 uint8_t idclear_runtime_begin(uint8_t channel,uint8_t uniq)

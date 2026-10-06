@@ -139,6 +139,18 @@ def scenarios(totals):
     from test_id_sync_fast import paired_scenarios
     out.update(paired_scenarios())
 
+    from test_id_sync_fast import SyncMachine,fixture,cell
+    from test_stage5_crc import warm,get
+    m=fixture(SyncMachine(),1,total=8192)
+    execute('CRC-RAM-cold',m,lambda:(get(m),warm(m)))
+    execute('CRC-RAM-delta',m,lambda:(m.command(13,cell(1,1),1),m.drain(),get(m)))
+    execute('CRC-RAM-cancel',m,lambda:(m.command(13,cell(1,2),1),m.checked('table_runtime_cancel'),m.drain(),get(m),warm(m)))
+    from test_stage5_log import boot,append,records
+    m=UploadMachine();m.cmd=10;m.base=0x1d0000
+    m.flash[0x1cf400:0x1cf400+128*32]=b''.join(log(i,True) for i in range(1,129))
+    execute('log-old-format-discard',m,lambda:(boot(m)[0],m.request(),m.drain_upload()))
+    execute('log-after-format-upload',m,lambda:(append(m,129),records(m),m.request(0,8),m.drain_upload()))
+
     # Compare actual persistent state after interruption of each journal action.
     m=StorageMachine();m.record_changes=True;initial=bytes(m.flash)
     m.command(13,rows([1]),1);m.drain();flash=bytearray(initial)

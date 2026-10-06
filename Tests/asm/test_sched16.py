@@ -102,13 +102,11 @@ def crc_paths():
                     m.flash[BASE+1024:BASE+1040] = tail()
                     m.flash[BASE+1040:BASE+2048] = b'\x51'*1008
                 m.write(m.addr('store_runtime'), int(runtime), 1)
-                # Synchronous CRC scans use the same real NOR contents.
+                # Both direct entry and parser use the bounded CRC service.
                 if not runtime:
-                    def read():
-                        a,p,n,_=m.args()
-                        m.u.mem_write(p,bytes(m.flash[a:a+n])); m.ret(1)
-                    m.stubs[m.addr('w25_read_data')] = read
                     m.checked('user_send_crcPack', channel, 73, budget=2000000)
+                    assert not m.sent and m.active()
+                    m.drain()
                 else:
                     m.packet(17, channel=channel); m.drain()
                 assert m.sent == [m.expected(17)]

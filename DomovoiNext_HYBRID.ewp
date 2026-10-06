@@ -3511,6 +3511,40 @@
         </file>
         <file>
             <name>$PROJ_DIR$\User\c\service_runtime.c</name>
+            <configuration>
+                <name>Release</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
+            <configuration>
+                <name>ReleaseCustomer</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
         </file>
         <file>
             <name>$PROJ_DIR$\User\user_str_fun.c</name>
@@ -3532,18 +3566,117 @@
         </file>
         <file>
             <name>$PROJ_DIR$\User\log_ring.c</name>
+            <configuration>
+                <name>Release</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
+            <configuration>
+                <name>ReleaseCustomer</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
         </file>
         <file>
             <name>$PROJ_DIR$\User\log_cursor.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\User\log_migration.c</name>
+            <configuration>
+                <name>Release</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
+            <configuration>
+                <name>ReleaseCustomer</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
         </file>
         <file>
             <name>$PROJ_DIR$\User\storage_profile.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\id_crc_cache.c</name>
+            <configuration>
+                <name>Release</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
+            <configuration>
+                <name>ReleaseCustomer</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
         </file>
     </group>
     <file>
@@ -3561,4 +3694,40 @@
     <file>
         <name>$PROJ_DIR$\Bootloader\boot_manual.c</name>
     </file>
-<group><name>HYBRID selection</name><file><name>$PROJ_DIR$\User\c\user_fun_runtime.c</name></file></group></project>
+<group><name>HYBRID selection</name>        <file>
+            <name>$PROJ_DIR$\User\c\user_fun_runtime.c</name>
+            <configuration>
+                <name>Release</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
+            <configuration>
+                <name>ReleaseCustomer</name>
+                <settings>
+                    <name>ICCARM</name>
+                    <archiveVersion>2</archiveVersion>
+                    <data>
+                        <version>38</version>
+                        <wantNonLocal>1</wantNonLocal>
+                        <debug>0</debug>
+                        <option>
+                            <name>CCAllowList</name>
+                            <version>1</version>
+                            <state>11111111</state>
+                        </option>
+                    </data>
+                </settings>
+            </configuration>
+        </file></group></project>

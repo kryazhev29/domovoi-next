@@ -56,12 +56,14 @@ def power():
 
 def migration():
     totals=[]
-    for count in (1,126,127,128,3048,3072):
+    for count in (0,1,126,127,128,3048,3072):
         m=StorageMachine();cells=[log(i) for i in range(1,count+1)]
         m.flash[0x1cf400:0x1cf400+count*32]=b''.join(cells)
-        n,_=boot(m);expected=list(range(max(1,count-CAPACITY+1),count+1))
-        assert n==len(expected) and records(m)==expected,(count,n)
-        r=StorageMachine(m.flash);assert boot(r)[0]==n and records(r)==expected
+        n,_=boot(m)
+        assert n==0 and records(m)==[],(count,n)
+        assert m.flash[BASE:BASE+98304]==b'\xff'*98304
+        append(m,count+1);assert records(m)==[count+1]
+        r=StorageMachine(m.flash);assert boot(r)[0]==1 and records(r)==[count+1]
         totals.append(count)
     return {'legacy_counts':totals}
 
@@ -107,36 +109,37 @@ def legacy_checkpoint():
     struct.pack_into('<IH',saved,off,0x314c5055,2)
     struct.pack_into('<H',saved,m.d['readLogIDIndex'],1)
     m.u.mem_write(0x21000000,bytes(saved));m.checked('upload_restore',0x21000000)
-    assert tuple(struct.unpack('<2I',m.u.mem_read(m.addr('log_cursor32'),8)))==(103,102)
-    assert boot(m)[0]==3
-    # The normal scheduler persists the upgraded checkpoint before upload.
+    assert tuple(struct.unpack('<2I',m.u.mem_read(m.addr('log_cursor32'),8)))==(0,0)
+    assert boot(m)[0]==0
+    # Formatting persists empty cursors and keeps any saved logical last index.
     for _ in range(2000):
         m.now+=1;m.checked('user_storage_poll')
         if not m.u.mem_read(m.addr('store_save_requested'),1)[0] and not m.checked('mem_config_result') and not m.u.mem_read(m.addr('flash_owner'),1)[0]:break
-    m.request();m.drain_upload();assert m.sent==[wire(10,7,0,[log(103)],1)]
-    return {'old_ordinals':[2,1],'new_record_numbers':[103,102]}
+    m.request();m.drain_upload();assert m.sent==[wire(10,7,0,[],0)]
+    saved=bytearray(512);struct.pack_into('<4I',saved,off+16,0x354c5055,103,102,900)
+    m=UploadMachine();m.cmd=10;m.base=BASE
+    m.u.mem_write(0x21000000,bytes(saved));m.checked('upload_restore',0x21000000)
+    assert boot(m)[0]==0
+    append(m,1);assert records(m)==[901]
+    m.request();m.drain_upload();assert m.sent==[wire(10,7,0,[struct.pack('<I',901)+log(1)[4:]],1)]
+    return {'old_ordinals':'discarded','empty_upload':'verified','saved_last_index':900,'first_new':901}
 
 
 def migration_power():
-    original=StorageMachine();original.flash[0x1cf400:0x1d0400]=b''.join(log(i) for i in range(1,129))
-    before=bytes(original.flash);original.record_changes=True;assert boot(original)[0]==128
-    image=bytearray(before);cuts=0;expected=list(range(1,129))
+    original=StorageMachine();original.flash[BASE:BASE+98304]=b'\x55'*98304
+    before=bytes(original.flash);original.record_changes=True;assert boot(original)[0]==0
+    image=bytearray(before);cuts=0
     for kind,a,b in original.changes:
-        # Sector-journal inner steps already have exhaustive linked coverage.
-        # Here exercise every migration intent transition and each transaction
-        # handoff, including a destination with only its first page restored.
-        critical=(0x1fd000<=a<0x1fd010 or a==0x1cf000 or
-                  (kind=='write' and a in (0x1fa01c,0x1d0000,0x1d1000)))
-        if critical:
-            for n in sorted({0,1,len(b)//2,len(b)}):
-                cut=bytearray(image)
-                for j,v in enumerate(b[:n]):cut[a+j]=v if kind=='erase' else cut[a+j]&v
-                m=StorageMachine(cut)
-                assert m.checked('sj_recover',budget=20000000)
-                count,_=boot(m);assert count==128 and records(m)==expected,(kind,hex(a),n,count)
-                cuts+=1
+        assert kind=='erase' and BASE<=a<BASE+98304 and len(b)==4096
+        for n in (0,1,2048,4095,4096):
+            cut=bytearray(image);cut[a:a+n]=b[:n]
+            m=StorageMachine(cut);count,_=boot(m)
+            assert count==0 and records(m)==[],(hex(a),n,count)
+            append(m,129);assert records(m)==[129]
+            cuts+=1
         for j,v in enumerate(b):image[a+j]=v if kind=='erase' else image[a+j]&v
-    return {'migration_handoff_cuts':cuts,'surviving_records':128}
+    assert cuts==120
+    return {'format_erase_cuts':cuts,'surviving_records':0,'append_after_each_cut':'verified'}
 
 
 def record_commit():
@@ -154,13 +157,21 @@ def record_commit():
             cuts+=1
         for j,v in enumerate(b):image[a+j]&=v
     m=StorageMachine();install(m,[log(1,True),log(2)])
-    assert boot(m)[0]==2
-    assert m.checked('log_readRecords',0,0x21000000,2)
-    assert bytes(m.u.mem_read(0x21000000,64))==b''.join(log(i)[:24]+bytes(8) for i in (1,2))
-    m.flash[BASE+32+5]^=1;assert boot(m)[0]==2 # legacy cells have no CRC
-    m.flash[BASE+64+5]^=1;assert boot(m)[0]==1 # committed-format CRC rejects corruption
+    assert boot(m)[0]==1 # Old cells are rejected even inside a valid sector.
+    m.flash[BASE+32+5]^=1;assert boot(m)[0]==1
+    m.flash[BASE+64+5]^=1;assert boot(m)[0]==0
     m.fault=('read',m.counts['read']+1);assert m.checked('log_getRecordsCount')==65535
-    return {'every_record_byte_cut':cuts,'legacy_wire':'unchanged','CRC_corruption':'rejected','read_error':'reported'}
+    return {'every_record_byte_cut':cuts,'legacy_cell':'rejected','wire_reserve':'zero','CRC_corruption':'rejected','read_error':'reported'}
+
+
+def generation_bytes():
+    for seq in (234,255,65512,0xffffffb0):
+        m=StorageMachine();install(m,[log(i) for i in range(1,CAPACITY+1)],first_seq=seq)
+        assert boot(m)[0]==CAPACITY
+        append(m,CAPACITY+1)
+        expected=list(range(128,CAPACITY+2));assert records(m)==expected
+        r=StorageMachine(m.flash);assert boot(r)[0]==len(expected) and records(r)==expected
+    return {'first_generations':[234,255,65512,0xffffffb0],'full_NOR_generation':'preserved','low_byte_wrap':'verified'}
 
 def count_ends():
     from test_upload_runtime import temp

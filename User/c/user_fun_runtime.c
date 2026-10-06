@@ -1980,102 +1980,14 @@ void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8
 #endif
 
 // Пакет 5 - контрольные суммы данных структур
-#ifndef HYBRID_CARD
 void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
-  if (store_runtime) { service_crc_begin_pack(cch,uniqId); return; }
-  uint16_t len = 13; // timeout comand + uniqId + id + payload
-  uint16_t crcData;
-  uint8_t send_local[21];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
-  if (!send_buffer) return;
-  
-#ifdef DEBUG_USER
-  user_debug(">>U Send crc data (cmd 5)\r\n"); 
-#endif    
-  
-  
-  // ------- меняемый блок ---------
-  send_buffer[6] = 255; // таймаут актуальности команды
-  send_buffer[7] = uniqId; // uniqId
-  send_buffer[8] = 5; // id
-  
-  crcData = id_crc16(0, mem[MB_ID].size);
-  memcpy(&send_buffer[9], (uint8_t*)&crcData, 2); // crc id
-  
-  crcData = user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size);
-  memcpy(&send_buffer[11], (uint8_t*)&crcData, 2); // crc group
-  
-  crcData = user_calcCRC16InFlash(mem[MB_SHEDULE].start, sched16_crc_size());
-  memcpy(&send_buffer[13], (uint8_t*)&crcData, 2); // crc shedule
-  
-  crcData = user_calcCRC16InFlash(mem[MB_CONFIG].start, mem[MB_CONFIG].size);
-  memcpy(&send_buffer[15], (uint8_t*)&crcData, 2); // crc conf
-  crcData = user_calcCRC16InFlash(mem[MB_HOLIDAY].start, mem[MB_HOLIDAY].size);
-  memcpy(&send_buffer[17], (uint8_t*)&crcData, 2); // crc holiday
-  // ------- меняемый блок ---------
-  
-  packet_send(send_buffer, len, (uint8_t)cch);
-
+  service_crc_begin_pack(cch,uniqId);
 }
-#endif
 
 // Пакет 6,15 -  пакет контрольные суммы стуктуры ID абонентов
-#ifndef HYBRID_CARD
 void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
-  if (store_runtime) { service_crc_begin_id(idx,cch,uniqId); return; }
-  uint16_t len; // timeout comand + , uint8_t uniqId + id + payload
-  uint16_t crcData;
-  uint32_t memAddress = mem[MB_ID].start;
-  uint32_t sizeBlock;
-  
-  /* Протокол2 E363-E365, E562-E566: 0 - пакет 6 со 100 CRC; 1-100 - пакет 15:
-     номер блока и CRC16 блока N (ячейки (N-1)*500+1 ... N*500). */
-  if (idx == 0){
-    len = 203;
-  } else{
-    len = 6;
-  }
-  
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : work_acquire(len + 8, WORK_REPLY);
-  
-  if (send_buffer != NULL){
-    
-    // ------- меняемый блок ---------
-    sizeBlock = 500 * sizeof(cellID_s);
-    
-    send_buffer[6] = 255; // таймаут актуальности команды
-    send_buffer[7] = uniqId; // uniqId
-    
-    if (idx == 0){ // все id
-      send_buffer[8] = 6; // id
- 
-#ifdef DEBUG_USER
-  user_debug(">>U Send crc data (cmd 6)\r\n"); 
-#endif        
-      
-      for (uint16_t i = 0; i < 100; i++){
-        crcData = id_crc16(memAddress - mem[MB_ID].start, sizeBlock);
-        memcpy(&send_buffer[9 + (i*2)], (uint8_t*)&crcData, 2); // crc id
-        memAddress += sizeBlock;
-      }
-    } else{ // конкретный id
-      send_buffer[8] = 15; // id
-      
-#ifdef DEBUG_USER
-  user_debug(">>U Send crc data (cmd 16)\r\n"); 
-#endif  
-      
-      crcData = id_crc16(sizeBlock * (uint32_t)(idx - 1u), sizeBlock);
-      send_buffer[9] = idx; // номер блока
-      memcpy(&send_buffer[10], (uint8_t*)&crcData, 2); // crc блока
-    }
-    // ------- меняемый блок ---------
-    
-    packet_send(send_buffer, len, (uint8_t)cch);
-    user_comm_free(send_buffer, cch);
-  }
+  service_crc_begin_id(idx,cch,uniqId);
 }
-#endif
 
 // Пакет 7 -  трансляция SMS
 #ifndef HYBRID_CARD
@@ -2130,6 +2042,8 @@ extern struct { char id[10]; uint8_t due; } unreg_sms_pending;
 #else
 struct { char id[10]; uint8_t due; } unreg_sms_pending;
 #endif
+/* Keep the existing modeled side-effect boundary when optimizing HYBRID C. */
+#pragma inline=never
 static void unreg_sms_note(const char *id)
 {
   memcpy(unreg_sms_pending.id, id, 10);
@@ -2337,88 +2251,9 @@ void user_send_configToConfigurator(dataChanel_e cch){
 
 /* USB читает журнал со своей позиции и не стирает его - стирает только выгрузка сервером.
    Раньше позиция была общей, и чтение по USB забирало события у сервера (18.09.2026). */
-#ifndef HYBRID_CARD
 void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
-  if (upload_runtime_begin(10,cch,uniqId)) return;
-  if (cch != CH_USB && cch != CH_SERVER) return;
-  if (store_runtime && !store_upload_request(10, cch, uniqId)) return;
-  if (!upload_ack(10, cch)) return;
-  uint16_t readIdx = upload_index(10, cch);
-
- 
-  // читаем кол-во записей в памяти
-  device.logsCount = log_getRecordsCount();
-  if (device.logsCount == 0xFFFFu) return; // чтение не завершилось, журнал не пустой
-
-  /* Пустой ответ по таблице (пакет 10): осталось записей 0 (2 байта) и записей
-     в пакете 0 (1 байт). Двухбайтовый ответ с остатком не 0 сервер принимал, но
-     не закрывал выгрузку журнала и переставал отвечать на статус (18.09.2026). */
-  uint8_t empty[3] = {0, 0, 0};
-
-  if (device.logsCount == 0 || readIdx >= device.logsCount){
-    if (!upload_finish(10)) return;
-    user_send_anyData(10, empty, sizeof(empty), cch, uniqId);
-    return; // пустой ответ данных не несёт; его доставки не ждём
-  }
-
-  uint16_t crc;  
-  uint16_t cntId = device.logsCount - readIdx;
-
-  if (cntId > 32) cntId = 32;
-  // выделим память 1 кБ под записи журнала (32 * 32)
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire((cntId * sizeof(cellLog_s)) + 16) : work_acquire((cntId * sizeof(cellLog_s)) + 16, WORK_REPLY);
-  uint16_t len = (cntId * sizeof(cellLog_s)) + 6;
-  uint16_t cntId2 = device.logsCount - readIdx - cntId;
-  
-  if (send_buffer != NULL){
-    
-#ifdef DEBUG_USER
-  user_debug(">>U Send log data (cmd 10)\r\n"); 
-#endif
-    
-    send_buffer[0] = 'S'; // идент
-    send_buffer[1] = 'L';
-    send_buffer[2] = 'D';
-    send_buffer[3] = 'N';
-    send_buffer[4] = _1B(len);  // длина
-    send_buffer[5] = _2B(len);
-    send_buffer[6] = 255; // таймаут актуальности команды
-    send_buffer[7] = uniqId; // uniqId   
-    send_buffer[8] = 10; // id 
-    send_buffer[9] = _1B(cntId2);  // остаток записей
-    send_buffer[10] = _2B(cntId2);
-    send_buffer[11] = cntId; // записей в текущем пакете
-    // читаем из памяти
-    if (!log_readRecords(readIdx, &send_buffer[12], cntId)) { user_comm_free(send_buffer, cch); return; }
-    
-    
-    crc = crc16_calc(&send_buffer[4], len + 2);
-    
-    send_buffer[len + 6] = crc&0xff; // crc
-    send_buffer[len + 7] = (crc>>8)&0xff;
-    
-    bool sent = false;
-    switch (cch){
-    case CH_USB:
-      sent = usb_send(send_buffer, len + 8) != 0;
-      break;
-      
-    case CH_SERVER:
-      sent = comm_tx_commit(len + 8);
-      break;
-      
-    case CH_SMS:
-      
-      break;
-    }    
-    
-    log_unacked[cch == CH_USB ? 0 : 1] = sent ? readIdx + cntId : 0;
-    if (cch != CH_USB) device.status.readyLogData = 1;
-    
-    user_comm_free(send_buffer, cch);
-  }
+  upload_runtime_begin(10,cch,uniqId);
 }
-#endif
 
 // Пакет 9 - выгрузка ID из временного буфера
 #ifndef HYBRID_CARD
@@ -4548,23 +4383,7 @@ bool log_blank(const cellLog_s *cell){
  * номер. Теперь он всегда больше предыдущего: по последней записи во флешке (переживает
  * перезапуск) и по последнему выданному (переживает стирание журнала) (18.09.2026). */
 // Старые записи с нулевым резервом читаются без миграции.
-#ifndef HYBRID_CARD
-bool log_valid(const cellLog_s *cell){
-  uint32_t mark;
-  uint16_t crc, inverse;
-  if (cell->index == 0xFFFFFFFFu) return false;
-  memcpy(&mark, cell->reserve + 4, 4);
-  if (mark == 0) {
-    for (uint8_t i = 0; i < sizeof(cell->reserve); i++) if (cell->reserve[i] != 0) return false;
-    return true;
-  }
-  if (mark != 0x32474F4Cu) return false;
-  memcpy(&crc, cell->reserve, 2);
-  memcpy(&inverse, cell->reserve + 2, 2);
-  return inverse == (uint16_t)~crc &&
-    crc == crc16_calc((uint8_t*)cell, sizeof(*cell) - sizeof(cell->reserve));
-}
-#endif
+extern bool log_valid(const cellLog_s *);
 
 #ifdef HYBRID_CARD
 extern uint32_t log_lastIndex;

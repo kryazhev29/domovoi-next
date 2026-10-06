@@ -22,6 +22,5 @@ def install(m,cells,first_seq=1):
 def valid(c):
     from storage_machine import crc16
     if len(c)!=32 or c==b'\xff'*32:return False
-    if c[24:]==bytes(8):return True
     crc=int.from_bytes(c[24:26],'little')
     return c[26:28]==(crc^65535).to_bytes(2,'little') and c[28:]==b'LOG2' and crc==crc16(c[:24])

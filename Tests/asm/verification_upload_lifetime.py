@@ -36,7 +36,8 @@ def durable_empty():
             assert not m.sent and m.cursor(channel)==0
             # Server keeps US_REPLY while busy; USB starts its privately owned
             # empty packet, which must survive SEND retries without new input.
-            for _ in range(100):
+            # Empty ring cleanup now formats all 24 sectors cooperatively.
+            for _ in range(400):
                 m.tick_upload()
                 if channel==0 and m.phase()==5:break
             assert not m.sent
@@ -46,7 +47,7 @@ def durable_empty():
                 for _ in range(8):m.tick_upload()
                 assert m.ptr()==ctx and bytes(m.u.mem_read(packet,1040))==before
             m.busy=False
-            for _ in range(100):
+            for _ in range(400):
                 m.tick_upload()
                 if m.sent:break
             assert m.sent==[wire(cmd,7,0,[])] and not m.ptr(),(cmd,channel,m.phase(),m.sent)

@@ -7,10 +7,20 @@
 #include "fast_kernels.h"
 extern bool log_blank(const cellLog_s *),log_valid(const cellLog_s *);
 extern uint32_t log_lastIndex;
+extern uint8_t store_save_requested;
+bool log_valid(const cellLog_s *cell)
+{
+  /* Ring callers use word-aligned 32-byte stack/NOR buffers. */
+  const uint32_t *words=(const uint32_t *)cell;
+  uint32_t value=words[6];
+  return words[0]!=0xffffffffu && words[7]==0x32474F4Cu &&
+    (uint16_t)value==(uint16_t)~(value>>16) && (uint16_t)value==crc16_calc((uint8_t *)cell,24);
+}
 log_job_s log_job;
 static struct {
-  uint32_t seq[24],maximum,header[8],word;
-  uint16_t count[24],position,low,high,scan;
+  uint32_t live,maximum,header[8],word;
+  uint8_t seq[24],count[24];
+  uint8_t position,low,high,scan;
   uint8_t head,target,forced,part,init,ready,after;
 } lr;
 #define NONE 255u
@@ -27,26 +37,41 @@ uint8_t log_ring_init_step(void)
 {
   uint32_t h[8]; cellLog_s cell;
   if(lr.ready) return 2;
-  if(!lr.init) {
+  if(!lr.init || lr.init==5) {
+    uint8_t format=lr.init==5;
     if((mem[MB_LOG].start&4095u) || mem[MB_LOG].size!=24u*4096u) return 3;
-    memset(lr.seq,0,sizeof(lr.seq)); memset(lr.count,0,sizeof(lr.count));
-    lr.head=lr.forced=NONE; lr.maximum=0; lr.part=0; lr.init=1;
+    memset(&lr,0,sizeof(lr));
+    lr.head=lr.forced=NONE; lr.init=format?4:1;
   }
   if(lr.init==1) {
     if(!w25_read_data(sector(lr.part),(uint8_t *)h,32)) return 3;
     if(header_valid(h)) {
-      lr.seq[lr.part]=h[1];
+      lr.live|=1u<<lr.part; lr.seq[lr.part]=(uint8_t)h[1];
       if(pair_valid(h[5]) && (uint16_t)h[5]<=127) lr.count[lr.part]=(uint16_t)h[5];
       if(h[1]>lr.maximum) { lr.maximum=h[1]; lr.head=lr.part; memcpy(lr.header,h,32); }
     }
     if(++lr.part<24) return 1;
-    if(lr.head==NONE) { lr.position=0; device.logsCount=0; device.newAddressLog=mem[MB_LOG].start+32u; device.status.readyLogData=0; lr.ready=1; return 2; }
+    if(lr.head==NONE) { lr.part=0; lr.scan=0; lr.init=4; return 1; }
     /* A verified intent removes the entire old tail, even when an interrupted
      * erase leaves its header intact. No record offset is used as an ACK. */
     if(pair_valid(lr.header[6]) && (uint16_t)lr.header[6]<24 && (uint16_t)lr.header[6]!=lr.head) {
-      lr.forced=(uint8_t)lr.header[6]; lr.seq[lr.forced]=0; lr.count[lr.forced]=0;
+      lr.forced=(uint8_t)lr.header[6]; lr.live&=~(1u<<lr.forced); lr.count[lr.forced]=0;
     }
     lr.low=0; lr.high=127; lr.init=2; return 1;
+  }
+  /* No header is published until all sectors have been erased. Every restart
+   * during formatting therefore repeats it, including a partially erased NOR. */
+  if(lr.init==4) {
+    if(lr.scan) {
+      uint8_t r=w25_async_poll(timers_getMillis());
+      if(r==1) return 1;
+      lr.scan=0; if(r!=2) return 3;
+      if(++lr.part<24) return 1;
+      log_ring_reset(); store_save_requested=1;
+      lr.position=0; goto ready;
+    }
+    if(!w25_async_start(sector(lr.part),0,0,timers_getMillis())) return 3;
+    lr.scan=1; return 1;
   }
   if(lr.init==2) {
     if(lr.low<lr.high) {
@@ -67,21 +92,28 @@ uint8_t log_ring_init_step(void)
     if(log_valid(&cell)) { lr.count[lr.head]++; if(log_lastIndex<cell.index) log_lastIndex=cell.index; }
     return 1;
   }
+ready:
   device.logsCount=0;
   for(uint8_t i=0;i<24;i++) device.logsCount+=lr.count[i];
-  device.newAddressLog=sector(lr.head)+32u+32u*lr.position;
+  device.newAddressLog=sector(lr.head==NONE?0:lr.head)+32u+32u*lr.position;
   device.status.readyLogData=device.logsCount!=0; lr.ready=1; return 2;
 }
-static uint8_t next_sector(uint32_t seq)
+/* At most 24 consecutive generations survive rotation. Only their low byte
+ * is needed in RAM; the complete generation and inversions stay on NOR. */
+static uint8_t next_sector(uint8_t current)
 {
   uint8_t found=NONE;
-  for(uint8_t i=0;i<24;i++)
-    if(lr.seq[i]>seq && (found==NONE || lr.seq[i]<lr.seq[found])) found=i;
+  uint8_t age=current==NONE?255u:(uint8_t)(lr.maximum-lr.seq[current]);
+  for(uint8_t i=0;i<24;i++) {
+    uint8_t candidate=(uint8_t)(lr.maximum-lr.seq[i]);
+    if((lr.live&(1u<<i)) && candidate<age &&
+       (found==NONE || candidate>(uint8_t)(lr.maximum-lr.seq[found]))) found=i;
+  }
   return found;
 }
 uint32_t log_ring_first(void)
 {
-  uint8_t n=next_sector(0); return n==NONE?0:sector(n)+32;
+  uint8_t n=next_sector(NONE); return n==NONE?0:sector(n)+32;
 }
 uint32_t log_ring_next(uint32_t address)
 {
@@ -89,28 +121,24 @@ uint32_t log_ring_next(uint32_t address)
   uint32_t offset=(address-mem[MB_LOG].start)&4095u;
   if(n>=24) return 0;
   if(offset+32u<4096u && (n!=lr.head || offset/32u<lr.position)) return address+32u;
-  n=next_sector(lr.seq[n]); return n==NONE?0:sector(n)+32u;
+  n=next_sector(n); return n==NONE?0:sector(n)+32u;
 }
-uint16_t log_getRecordsCount(void)
+static uint16_t log_wait(void)
 {
   uint8_t r;
-  if(!log_ring_migrate()) return 0xffff;
-  log_ring_invalidate();
   do { wdt_reload(); r=log_ring_init_step(); } while(r==1);
   return r==2?device.logsCount:0xffff;
 }
-bool log_readRecords(uint16_t first,uint8_t *data,uint16_t count)
+uint16_t log_getRecordsCount(void) { log_ring_invalidate(); return log_wait(); }
+
+/* Ring replacement no longer needs sector-journal authority. Retain the
+ * exported predicate for the frozen journal driver, for table/config writers. */
+uint8_t stage5_sj_destination(uint32_t address)
 {
-  cellLog_s cell; uint32_t a=log_ring_first();
-  while(a && count) {
-    if(!w25_read_data(a,(uint8_t *)&cell,32)) return false;
-    if(log_valid(&cell)) {
-      if(first) first--;
-      else { memset(cell.reserve,0,8); memcpy(data,&cell,32); data+=32; count--; }
-    }
-    a=log_ring_next(a);
-  }
-  return count==0;
+  if(address & 4095u) return 0;
+  return (address>=0x41000u && address<0x1C8000u) ||
+    address==0x1C9000u || address==0x1CA000u || address==0x1CC000u ||
+    (address>=0x1D0000u && address<0x1F5000u);
 }
 void log_uniqueIndex(cellLog_s *cell,uint32_t address)
 {
@@ -120,7 +148,7 @@ void log_uniqueIndex(cellLog_s *cell,uint32_t address)
 bool log_async_active(void) { return log_job.phase!=0; }
 void log_async_begin(const cellLog_s *cell)
 {
-  log_job.cell=*cell; log_job.previous=log_lastIndex; log_job.waiting=0;
+  log_job.cell=*cell; log_job.waiting=0;
   log_job.phase=flash_claim(FO_LOG)?1:0; log_job.result=log_job.phase?1:3;
 }
 static uint8_t fail(uint32_t now,bool rotation)
@@ -139,8 +167,8 @@ static void target_select(void)
 {
   uint8_t n=lr.forced;
   if(n==NONE) {
-    for(n=0;n<24;n++) if(!lr.seq[n]) break;
-    if(n==24) n=next_sector(0);
+    for(n=0;n<24;n++) if(!(lr.live&(1u<<n))) break;
+    if(n==24) n=next_sector(NONE);
   }
   lr.target=n;
 }
@@ -155,7 +183,7 @@ uint8_t log_async_step(uint32_t now)
     if(result!=2) return fail(now,log_job.phase>=10);
     log_job.phase=lr.after; return log_job.result=1;
   }
-  if(!w25_read_available()) return 1;
+  if(!w25_read_available() && !(log_job.phase==1 && lr.init==4 && lr.scan)) return 1;
   switch(log_job.phase) {
   case 1:
     result=log_ring_init_step(); if(result==3) return fail(now,true);
@@ -166,9 +194,9 @@ uint8_t log_async_step(uint32_t now)
       target_select(); log_job.phase=lr.head==NONE?12:10; return 1;
     }
     log_job.address=sector(lr.head)+32u+32u*lr.position;
-    if(!w25_read_data(log_job.address,(uint8_t *)&actual,32)) return fail(now,true);
-    if(!log_blank(&actual)) { lr.position++; return 1; }
-    log_uniqueIndex(&log_job.cell,log_job.address);
+    /* Init found the first empty slot; this owner alone advances position.
+     * Verification below still rejects any unexpected NOR contents. */
+    if(log_lastIndex && log_job.cell.index<=log_lastIndex) log_job.cell.index=log_lastIndex+1u;
     crc=crc16_calc((uint8_t *)&log_job.cell,24);
     memcpy(log_job.cell.reserve,&crc,2); crc=(uint16_t)~crc;
     memcpy(log_job.cell.reserve+2,&crc,2);
@@ -183,7 +211,8 @@ uint8_t log_async_step(uint32_t now)
   case 5:
   case 6:
     if(!w25_read_data(log_job.address,(uint8_t *)&actual,32)) return fail(now,false);
-    if(!memcmp(&actual,&log_job.cell,32) && log_valid(&actual)) {
+    /* Exact verified bytes already contain the CRC/inverse/magic made above. */
+    if(!memcmp(&actual,&log_job.cell,32) && actual.index!=0xffffffffu) {
       log_lastIndex=actual.index; lr.position++; lr.count[lr.head]++; device.logsCount++;
       device.newAddressLog=log_job.address+32; device.status.readyLogData=1;
       log_job.phase=0; flash_release(FO_LOG); return log_job.result=2;
@@ -204,7 +233,7 @@ uint8_t log_async_step(uint32_t now)
     return 1;
   case 12:
     if(!start(sector(lr.target),0,0,now,13)) return fail(now,true);
-    device.logsCount-=lr.count[lr.target]; lr.count[lr.target]=0; lr.seq[lr.target]=0;
+    device.logsCount-=lr.count[lr.target]; lr.count[lr.target]=0; lr.live&=~(1u<<lr.target);
     return 1;
   case 13:
     lr.header[0]=LOG_RING_MAGIC; lr.header[1]=lr.maximum+1u; lr.header[2]=~lr.header[1];
@@ -216,7 +245,7 @@ uint8_t log_async_step(uint32_t now)
     if(!start(sector(lr.target),(uint8_t *)lr.header,4,now,15)) return fail(now,true);
     return 1;
   case 15:
-    lr.head=lr.target; lr.maximum=lr.header[1]; lr.seq[lr.head]=lr.maximum;
+    lr.head=lr.target; lr.maximum=lr.header[1]; lr.seq[lr.head]=(uint8_t)lr.maximum; lr.live|=1u<<lr.head;
     lr.position=0; lr.count[lr.head]=0; lr.forced=NONE;
     log_job.phase=2; return 1;
   default: return fail(now,true);
@@ -235,7 +264,5 @@ bool log_addEvent(cellLog_s *cell)
 }
 bool log_clearLogBuffer(void)
 {
-  for(uint8_t i=0;i<24;i++) { if(!mem_erase_sector(sector(i))) return false; wdt_reload(); }
-  log_ring_reset(); device.logsCount=0; device.status.readyLogData=0;
-  device.newAddressLog=mem[MB_LOG].start+32; return true;
+  lr.ready=0; lr.init=5; return log_wait()==0;
 }

@@ -5,9 +5,11 @@
 bool idcrc_io_start(uint32_t,const uint8_t *,uint16_t,uint32_t);
 uint8_t idcrc_io_poll(uint32_t);
 bool idcrc_io_active(void);
+void idcrc_unknown(void);
 bool idcrc_write(uint32_t,uint8_t *,uint16_t);
 bool idcrc_erase(uint32_t);
-void idcrc_owner_released(void);
+uint8_t idcrc_release_tail(void);
+#define idcrc_owner_released() ((void)idcrc_release_tail())
 bool idcrc_background(void);
 bool idcrc_get(uint32_t,uint32_t,uint16_t *);
 #endif

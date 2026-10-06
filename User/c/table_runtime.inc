@@ -18,6 +18,7 @@ void table_runtime_quiet(dataChanel_e channel)
 void table_runtime_cancel(void)
 {
   if (!table_job.phase) return;
+  if(table_job.cmd==13) idcrc_unknown();
   table_job.cancelled=table_job.quiet=1; sj_runtime_cancel();
 }
 static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
@@ -100,6 +101,7 @@ static void table_scan_begin(void)
   /* batch/sector are dead after the journal: reuse as recount flag/read end. */
   table_job.batch=0;
   if (table_job.cmd==13) {
+    if(table_job.failed || table_job.cancelled) idcrc_unknown();
     if (!table_job.failed && !table_job.cancelled && id_used_bytes!=UINT32_MAX) {
       device.numbersCount+=table_job.numbers; id_cells_end=table_job.last;
       id_used_bytes=table_job.used; table_job.sector=table_job.used;

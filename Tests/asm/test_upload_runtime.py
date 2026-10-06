@@ -129,12 +129,12 @@ def test_normal():
     results = {}
     for cmd, n, first, ch in [(9,1,0,0),(9,1536,0,1),(9,1536,1500,0),
                              (10,1,0,0),(10,3048,0,1),(10,3048,3047,0)]:
-        m=UploadMachine(); cells=[(log(i+1, i%2==0) if cmd==10 else temp(i+1)) for i in range(n)]
+        m=UploadMachine(); cells=[(log(i+1) if cmd==10 else temp(i+1)) for i in range(n)]
         m.fixture(cmd,cells); m.set_cursor(ch,first)
         m.u.reg_write(UC_ARM_REG_PRIMASK,1)
         m.request(ch); assert m.ptr() and not m.sent and not m.counts['read']
         m.drain_upload(); limit=32 if cmd==10 else 100
-        assert m.sent == [wire(cmd,7,first,cells[first:first+limit],n)]
+        assert m.sent == [wire(cmd,7,first,cells[first:first+limit],n)], (cmd,n,first,ch,[p.hex() for p in m.sent])
         assert m.pending_cursor(ch)==min(n,first+limit)
         assert m.cursor(ch)==first, 'send advanced an unacknowledged cursor'
         results[str((cmd,n,first,ch))]=dict(passes=len(m.costs),maximum=max(m.costs),total=sum(m.costs),
@@ -195,7 +195,9 @@ def test_busy_empty_cancel():
             for empty in (False,True):
                 m=UploadMachine();cells=[] if empty else [log(1) if cmd==10 else temp(1)]
                 m.fixture(cmd,cells);m.busy=True;m.request(ch)
-                for _ in range(40):m.tick_upload()
+                for _ in range(400):
+                    m.tick_upload()
+                    if m.phase()==5:break
                 assert m.ptr() and m.phase()==5 and not m.sent and not m.pending_cursor(ch)
                 pointer=m.ptr();packet=m.read_word(pointer);before=bytes(m.u.mem_read(packet,1040))
                 m.request(ch);assert m.ptr()==pointer,'duplicate request replaced active snapshot'
