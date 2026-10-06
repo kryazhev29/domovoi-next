@@ -111,7 +111,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code=code.replace('#include "../Modules/comm_channel.h"','')
         code=source('Tests/comm_photo_slot.c')+'\n'+code
         code += '\n'+function(user,'user_send_Photos')+'\nstatic void command(uint8_t cmd,uint16_t len,uint8_t address,uint8_t uniqId){ uint8_t data[11]={0}; uint8_t *ptr=data; dataChanel_e cch=CH_SERVER; ptr[5]=address; switch(cmd){'+case(7)+case(21)+'default: break;}}'
-        unit=source('Tests/test_photo.c').replace('/* PRODUCTION */',function(user,'user_getPhotoCount')+'\n'+code)
+        unit=source('Tests/test_photo.c').replace('/* ЭТАЛОН ФОТО */',function(user,'user_getPhotoCount')+'\n'+code)
         if kind=='rs485cfg':
             types=typedefs(source('structures.h'),'releMode_s','rs485Periphery_s','config_s')
             unit=re.sub(r'typedef struct \{ uint8_t rs485Mode, reserv\[4\]; periphery_s rs485Periphery\[8\]; \} config_s;',types,unit)
