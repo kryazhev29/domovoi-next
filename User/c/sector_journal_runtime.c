@@ -7,7 +7,7 @@ uint8_t sj_destination(uint32_t address)
   if (address & (SJ_SECTOR - 1u)) return 0;
   return (address >= 0x41000u && address < 0x1C8000u) ||
          address == 0x1C9000u || address == 0x1CA000u || address == 0x1CC000u ||
-         (address >= 0x1E8000u && address < 0x1F5000u);
+         (address >= 0x1D0000u && address < 0x1F5000u);
 }
 uint8_t sj_span(uint32_t address, uint16_t size)
 {

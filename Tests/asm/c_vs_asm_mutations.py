@@ -21,11 +21,13 @@ from capstone import Cs,CS_ARCH_ARM,CS_MODE_THUMB,CS_MODE_MCLASS
 
 
 def patch(m,symbol,mode):
+    impl=symbol.replace("idindex_","idindex_impl_",1)
+    if mode in ("pending","verified") and impl in m.symbols:symbol=impl
     a=m.addr(symbol);code=bytes(m.u.mem_read(a,2048));offset=0
     if mode in ('return-zero','return-one','no-op'):
         replacement=b'\x01\x20\x70\x47' if mode=='return-one' else b'\x00\x20\x70\x47' if mode=='return-zero' else b'\x70\x47'
     else:
-        target=m.addr('w25_async_poll');seen=False;offset=None
+        target=m.addr('idcrc_io_poll' if 'idcrc_io_poll' in m.symbols else 'w25_async_poll');seen=False;offset=None
         md=Cs(CS_ARCH_ARM,CS_MODE_THUMB|CS_MODE_MCLASS)
         want=1 if mode=='pending' else 2
         for ins in md.disasm(code,a):
@@ -74,7 +76,7 @@ def cases():
         def index(m=m,expected=expected):
             m.drain_index();assert m.state()==3 and m.flash[0x300000:0x340000]==expected
         add('index-'+mode,m,'idindex_poll',mode,index)
-        m=StorageMachine();m.command(13,rows([1]),1)
+        m=StorageMachine();m.flash[0x4101f]=0;m.command(13,rows([1]),1)
         def table(m=m):m.drain();assert len(m.timestamps)==1
         add('journal-'+mode,m,'sj_runtime_poll',mode,table)
         m=PhotoMachine();m.boot_media()

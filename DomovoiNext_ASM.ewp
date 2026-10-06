@@ -3447,7 +3447,7 @@
             <name>$PROJ_DIR$\User\asm\sector_runtime_runtime.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\expiry_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\expiry_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\asm\idclear_runtime.s</name>
@@ -3462,7 +3462,7 @@
             <name>$PROJ_DIR$\User\asm\fw_service_runtime.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\upload_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\upload_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\comm_timeouts.c</name>
@@ -3504,7 +3504,7 @@
             <name>$PROJ_DIR$\User\asm\user_fun_runtime.s</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\User\asm\service_runtime.s</name>
+            <name>$PROJ_DIR$\User\c\service_runtime.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\User\user_str_fun.c</name>
@@ -3514,6 +3514,30 @@
         </file>
         <file>
             <name>$PROJ_DIR$\User\fw_crc.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\packet.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\table_runtime.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\id_cells.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\log_ring.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\log_cursor.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\log_migration.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\storage_profile.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\id_crc_cache.c</name>
         </file>
     </group>
     <file>

@@ -52,6 +52,7 @@ class StorageMachine(Machine):
             self.stubs[self.addr(name)]=fn
         self.write(self.addr('store_runtime'),1,1);self.write(self.addr('mem_storage_ready'),1,1)
         self.write(self.device+self.d['userAutorized'],1,1)
+        self.write(self.device+self.d['memID'],0x17c2,2)
         for mb,base,size in [(2,0x41000,8192),(3,0x1c9000,2048),(4,0x1ca800,2048),(5,0x1cc000,1024),
                              (7,0x1d0000,98304),(8,0x1e8000,53248),(9,0x200000,0x100000)]:
             self.u.mem_write(self.addr('mem')+mb*8,struct.pack('<II',base,size))
@@ -118,6 +119,14 @@ class StorageMachine(Machine):
         assert self.io_budget<=1,('one async action',self.io_budget)
     def drain(self,limit=10000):
         for _ in range(limit):
-            if not self.active():return
+            if not self.active():
+                self.settle_crc();return
             self.tick()
         raise AssertionError('operation did not terminate')
+
+    def settle_crc(self):
+        if "idcrc_io_active" not in self.symbols:return
+        for _ in range(1000):
+            if not self.checked("idcrc_io_active"):return
+            self.now+=1;self.checked("idcrc_background")
+        raise AssertionError("CRC metadata did not finish")

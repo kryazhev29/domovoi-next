@@ -1,0 +1,1116 @@
+{
+  "base_commit": "4cf9fa9",
+  "build_directory": "C:\\Users\\kryaz\\AppData\\Local\\Temp\\domovoi-stage5\\ready",
+  "builds": {
+    "ASM-Release": {
+      "BIN_bytes": 94525,
+      "BIN_sha256": "98a1ff4547dd0f0d7a289627e75f2ce7177365108ac11f51316407e3f3274ab3",
+      "ELF_sha256": "f903b822cea0dfe758c2bb751048a6b72e724dd626aa3eb81a84db1c83f47abb",
+      "readwrite_data": 17061,
+      "CSTACK_limit": "0x2000'4480"
+    },
+    "C-Release": {
+      "BIN_bytes": 92161,
+      "BIN_sha256": "24ca451c3b440a53506622049e914ebe9471f0d8d5edc4865c97bdade5dcba6b",
+      "ELF_sha256": "c59c608006f2605f6506565d82af5a2810c7929101f5db88098d7d8f312b6dd7",
+      "readwrite_data": 17061,
+      "CSTACK_limit": "0x2000'4480"
+    },
+    "HYBRID-Release": {
+      "BIN_bytes": 94517,
+      "BIN_sha256": "42d9333cc5633a4b48320d8891922ecbd2fa1e1b83e0bb5fbd8e2a179e2d7039",
+      "ELF_sha256": "23e2882081db022ab8e3e06822b7f57890109ac4c9fc3e4c59cba87db927652f",
+      "readwrite_data": 17061,
+      "CSTACK_limit": "0x2000'4480"
+    },
+    "ASM-ReleaseCustomer": {
+      "BIN_bytes": 92277,
+      "BIN_sha256": "d66c1820fe0763a2ae5504029f84a792b3c6dd0dc793d1fb7f47cf16c3d5b946",
+      "ELF_sha256": "3d7a8b12d7dee15923ad0caf68c4744dba0b70582c4437d45b825addb15fa2bd",
+      "readwrite_data": 16709,
+      "CSTACK_limit": "0x2000'4320"
+    },
+    "C-ReleaseCustomer": {
+      "BIN_bytes": 89821,
+      "BIN_sha256": "938e5e14d49ede4af4ffdc1d833c045e64380b8c3115f525936af30ca0e85fcd",
+      "ELF_sha256": "a5680a256332a6feb735aebb0ea1b3a4e2f13367986c2adbe4639921a2743422",
+      "readwrite_data": 16709,
+      "CSTACK_limit": "0x2000'4320"
+    },
+    "HYBRID-ReleaseCustomer": {
+      "BIN_bytes": 92265,
+      "BIN_sha256": "6cb0bf5ba66c75f3fd4ca826f582950db62bd86b0282cd255c7a0273446c0d43",
+      "ELF_sha256": "513863a79ddb5ea6b4bd969b8728ad28b6c50f4c257c7a9a5b2d932b9f21bd67",
+      "readwrite_data": 16709,
+      "CSTACK_limit": "0x2000'4320"
+    }
+  },
+  "stage_BIN_sizes": {
+    "baseline": {
+      "ASM-Release": 88345,
+      "C-Release": 86793,
+      "HYBRID-Release": 88521,
+      "ASM-ReleaseCustomer": 86097,
+      "C-ReleaseCustomer": 84465,
+      "HYBRID-ReleaseCustomer": 86269
+    },
+    "task1": {
+      "ASM-Release": 88397,
+      "C-Release": 86845,
+      "HYBRID-Release": 88573,
+      "ASM-ReleaseCustomer": 86149,
+      "C-ReleaseCustomer": 84517,
+      "HYBRID-ReleaseCustomer": 86321
+    },
+    "task5": {
+      "ASM-Release": 88357,
+      "C-Release": 86501,
+      "HYBRID-Release": 88533,
+      "ASM-ReleaseCustomer": 86109,
+      "C-ReleaseCustomer": 84181,
+      "HYBRID-ReleaseCustomer": 86281
+    },
+    "task3": {
+      "ASM-Release": 89501,
+      "C-Release": 87273,
+      "HYBRID-Release": 89501,
+      "ASM-ReleaseCustomer": 87253,
+      "C-ReleaseCustomer": 84953,
+      "HYBRID-ReleaseCustomer": 87249
+    },
+    "task4": {
+      "ASM-Release": 91461,
+      "C-Release": 89189,
+      "HYBRID-Release": 91461,
+      "ASM-ReleaseCustomer": 89213,
+      "C-ReleaseCustomer": 86869,
+      "HYBRID-ReleaseCustomer": 89209
+    },
+    "task2": {
+      "ASM-Release": 94013,
+      "C-Release": 91649,
+      "HYBRID-Release": 94005,
+      "ASM-ReleaseCustomer": 91765,
+      "C-ReleaseCustomer": 89309,
+      "HYBRID-ReleaseCustomer": 91753
+    },
+    "ready": {
+      "ASM-Release": 94525,
+      "C-Release": 92161,
+      "HYBRID-Release": 94517,
+      "ASM-ReleaseCustomer": 92277,
+      "C-ReleaseCustomer": 89821,
+      "HYBRID-ReleaseCustomer": 92265
+    }
+  },
+  "model": {
+    "CPU_MHz": 72,
+    "cycles_per_instruction": 2,
+    "SPI_MHz": 18,
+    "program_ms": 0.7,
+    "erase_ms": 45,
+    "other_loop_work_ms": 0.12
+  },
+  "W26_stage_only": {
+    "ASM": {
+      "baseline": 7814369,
+      "task1": 7814385,
+      "delta_pct": 0.00020475101700778708
+    },
+    "C": {
+      "baseline": 7010734,
+      "task1": 7010750,
+      "delta_pct": 0.00022822146725776093
+    },
+    "HYBRID": {
+      "baseline": 6813399,
+      "task1": 6813415,
+      "delta_pct": 0.0002348313961952897
+    }
+  },
+  "W26_final": {
+    "ASM": {
+      "baseline": 7814369,
+      "ready": 7517272,
+      "delta_pct": -3.801932056190338
+    },
+    "C": {
+      "baseline": 7010734,
+      "ready": 6710508,
+      "delta_pct": -4.282376139217381
+    },
+    "HYBRID": {
+      "baseline": 6813399,
+      "ready": 6716494,
+      "delta_pct": -1.422271028014066
+    }
+  },
+  "packet_17_18_final": {
+    "ASM-17": {
+      "baseline": 156915,
+      "ready": 156604,
+      "pct": -0.19819647579899513
+    },
+    "ASM-18": {
+      "baseline": 171401,
+      "ready": 170737,
+      "pct": -0.38739563946534883
+    },
+    "C-17": {
+      "baseline": 302584,
+      "ready": 302244,
+      "pct": -0.11236549189646006
+    },
+    "C-18": {
+      "baseline": 286304,
+      "ready": 285428,
+      "pct": -0.30596848105510777
+    },
+    "HYBRID-17": {
+      "baseline": 156847,
+      "ready": 156604,
+      "pct": -0.15492805090311368
+    },
+    "HYBRID-18": {
+      "baseline": 171167,
+      "ready": 170737,
+      "pct": -0.2512166480688416
+    }
+  },
+  "full_ID_sync_history": {
+    "ASM-baseline": {
+      "ms": 6278.789,
+      "polls": 10726,
+      "spi_bytes": 1824298,
+      "max_poll_ms": 0.763417,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "ASM-task3": {
+      "ms": 5794.777,
+      "polls": 8301,
+      "spi_bytes": 1756364,
+      "max_poll_ms": 0.763611,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "ASM-final2": {
+      "ms": 108.518,
+      "polls": 700,
+      "spi_bytes": 6401,
+      "max_poll_ms": 0.138317,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "C-baseline": {
+      "ms": 6606.905,
+      "polls": 9747,
+      "spi_bytes": 1824298,
+      "max_poll_ms": 0.83475,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "C-task3": {
+      "ms": 6121.01,
+      "polls": 7323,
+      "spi_bytes": 1756364,
+      "max_poll_ms": 0.834944,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "C-final2": {
+      "ms": 109.909,
+      "polls": 700,
+      "spi_bytes": 6401,
+      "max_poll_ms": 0.155289,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "HYBRID-baseline": {
+      "ms": 6278.205,
+      "polls": 10728,
+      "spi_bytes": 1824298,
+      "max_poll_ms": 0.763333,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "HYBRID-task3": {
+      "ms": 5794.331,
+      "polls": 8303,
+      "spi_bytes": 1756364,
+      "max_poll_ms": 0.763528,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "HYBRID-final2": {
+      "ms": 108.461,
+      "polls": 700,
+      "spi_bytes": 6401,
+      "max_poll_ms": 0.138234,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    }
+  },
+  "full_ID_sync_final": {
+    "ASM-ready": {
+      "ms": 108.336,
+      "polls": 700,
+      "spi_bytes": 6431,
+      "max_poll_ms": 0.138122,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "C-ready": {
+      "ms": 109.725,
+      "polls": 700,
+      "spi_bytes": 6431,
+      "max_poll_ms": 0.155095,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    },
+    "HYBRID-ready": {
+      "ms": 108.279,
+      "polls": 700,
+      "spi_bytes": 6431,
+      "max_poll_ms": 0.138039,
+      "CRC": "534c444e0a00ff070c0140e20100fad0cb5a"
+    }
+  },
+  "ring_boot_history": {
+    "ASM-baseline": {
+      "records": 3072,
+      "ms": 260.049,
+      "read_calls": 96,
+      "read_bytes": 98304,
+      "SPI_bytes": 98880
+    },
+    "ASM-complete": {
+      "records": 3048,
+      "ms": 16.706,
+      "read_calls": 160,
+      "read_bytes": 5104,
+      "SPI_bytes": 6064
+    },
+    "C-baseline": {
+      "records": 3072,
+      "ms": 280.784,
+      "read_calls": 96,
+      "read_bytes": 98304,
+      "SPI_bytes": 98880
+    },
+    "C-complete": {
+      "records": 3048,
+      "ms": 17.653,
+      "read_calls": 160,
+      "read_bytes": 5104,
+      "SPI_bytes": 6064
+    },
+    "HYBRID-baseline": {
+      "records": 3072,
+      "ms": 260.049,
+      "read_calls": 96,
+      "read_bytes": 98304,
+      "SPI_bytes": 98880
+    },
+    "HYBRID-complete": {
+      "records": 3048,
+      "ms": 16.706,
+      "read_calls": 160,
+      "read_bytes": 5104,
+      "SPI_bytes": 6064
+    }
+  },
+  "ring_boot_final": {
+    "ASM-ready": {
+      "records": 3048,
+      "ms": 16.706,
+      "read_calls": 160,
+      "read_bytes": 5104,
+      "SPI_bytes": 6064
+    },
+    "C-ready": {
+      "records": 3048,
+      "ms": 17.653,
+      "read_calls": 160,
+      "read_bytes": 5104,
+      "SPI_bytes": 6064
+    },
+    "HYBRID-ready": {
+      "records": 3048,
+      "ms": 16.706,
+      "read_calls": 160,
+      "read_bytes": 5104,
+      "SPI_bytes": 6064
+    }
+  },
+  "other_packets_full_time": {
+    "ASM-14": {
+      "baseline": {
+        "ms": 559.111,
+        "SPI_bytes": 74858,
+        "polls": 2883,
+        "response": [
+          "534c444e0a00ff070c0340e201003e00bbc6"
+        ]
+      },
+      "ready": {
+        "ms": 560.791,
+        "SPI_bytes": 74834,
+        "polls": 2870,
+        "response": [
+          "534c444e0a00ff070c0340e201003e00bbc6"
+        ]
+      },
+      "pct": 0.3
+    },
+    "ASM-15": {
+      "baseline": {
+        "ms": 559.082,
+        "SPI_bytes": 74858,
+        "polls": 2883,
+        "response": [
+          "534c444e0a00ff070c0240e2010054f545e1"
+        ]
+      },
+      "ready": {
+        "ms": 560.762,
+        "SPI_bytes": 74834,
+        "polls": 2870,
+        "response": [
+          "534c444e0a00ff070c0240e2010054f545e1"
+        ]
+      },
+      "pct": 0.3
+    },
+    "ASM-16": {
+      "baseline": {
+        "ms": 552.475,
+        "SPI_bytes": 72632,
+        "polls": 2873,
+        "response": [
+          "534c444e0a00ff070c0540e20100761a6a0d"
+        ]
+      },
+      "ready": {
+        "ms": 554.255,
+        "SPI_bytes": 72608,
+        "polls": 2861,
+        "response": [
+          "534c444e0a00ff070c0540e20100761a6a0d"
+        ]
+      },
+      "pct": 0.322
+    },
+    "C-14": {
+      "baseline": {
+        "ms": 560.821,
+        "SPI_bytes": 74858,
+        "polls": 2881,
+        "response": [
+          "534c444e0a00ff070c0340e201003e00bbc6"
+        ]
+      },
+      "ready": {
+        "ms": 562.747,
+        "SPI_bytes": 74834,
+        "polls": 2870,
+        "response": [
+          "534c444e0a00ff070c0340e201003e00bbc6"
+        ]
+      },
+      "pct": 0.343
+    },
+    "C-15": {
+      "baseline": {
+        "ms": 560.775,
+        "SPI_bytes": 74858,
+        "polls": 2881,
+        "response": [
+          "534c444e0a00ff070c0240e2010054f545e1"
+        ]
+      },
+      "ready": {
+        "ms": 562.701,
+        "SPI_bytes": 74834,
+        "polls": 2870,
+        "response": [
+          "534c444e0a00ff070c0240e2010054f545e1"
+        ]
+      },
+      "pct": 0.343
+    },
+    "C-16": {
+      "baseline": {
+        "ms": 553.843,
+        "SPI_bytes": 72632,
+        "polls": 2873,
+        "response": [
+          "534c444e0a00ff070c0540e20100761a6a0d"
+        ]
+      },
+      "ready": {
+        "ms": 555.625,
+        "SPI_bytes": 72608,
+        "polls": 2861,
+        "response": [
+          "534c444e0a00ff070c0540e20100761a6a0d"
+        ]
+      },
+      "pct": 0.322
+    },
+    "HYBRID-14": {
+      "baseline": {
+        "ms": 558.811,
+        "SPI_bytes": 74858,
+        "polls": 2882,
+        "response": [
+          "534c444e0a00ff070c0340e201003e00bbc6"
+        ]
+      },
+      "ready": {
+        "ms": 560.615,
+        "SPI_bytes": 74834,
+        "polls": 2870,
+        "response": [
+          "534c444e0a00ff070c0340e201003e00bbc6"
+        ]
+      },
+      "pct": 0.323
+    },
+    "HYBRID-15": {
+      "baseline": {
+        "ms": 558.783,
+        "SPI_bytes": 74858,
+        "polls": 2882,
+        "response": [
+          "534c444e0a00ff070c0240e2010054f545e1"
+        ]
+      },
+      "ready": {
+        "ms": 560.586,
+        "SPI_bytes": 74834,
+        "polls": 2870,
+        "response": [
+          "534c444e0a00ff070c0240e2010054f545e1"
+        ]
+      },
+      "pct": 0.323
+    },
+    "HYBRID-16": {
+      "baseline": {
+        "ms": 552.299,
+        "SPI_bytes": 72632,
+        "polls": 2873,
+        "response": [
+          "534c444e0a00ff070c0540e20100761a6a0d"
+        ]
+      },
+      "ready": {
+        "ms": 554.08,
+        "SPI_bytes": 72608,
+        "polls": 2861,
+        "response": [
+          "534c444e0a00ff070c0540e20100761a6a0d"
+        ]
+      },
+      "pct": 0.322
+    }
+  },
+  "paired_CPU_before_after": {
+    "ASM-Release": {
+      "upload-10-32": {
+        "HEAD": 39180,
+        "stage5": 63812,
+        "percent": 62.868811
+      },
+      "sync-16": {
+        "HEAD": 303249,
+        "stage5": 339889,
+        "percent": 12.08248
+      },
+      "upload-20-0": {
+        "HEAD": 1100,
+        "stage5": 1213,
+        "percent": 10.272727
+      },
+      "sync-13": {
+        "HEAD": 669034,
+        "stage5": 127153,
+        "percent": -80.994538
+      },
+      "sync-14": {
+        "HEAD": 302717,
+        "stage5": 340125,
+        "percent": 12.357416
+      },
+      "upload-10-0": {
+        "HEAD": 1362,
+        "stage5": 4745,
+        "percent": 248.384728
+      },
+      "upload-10-1": {
+        "HEAD": 2523,
+        "stage5": 10217,
+        "percent": 304.954419
+      },
+      "packet-17-usb-ring": {
+        "HEAD": 157122,
+        "stage5": 156811,
+        "percent": -0.197935
+      },
+      "sync-15": {
+        "HEAD": 301682,
+        "stage5": 339090,
+        "percent": 12.399812
+      },
+      "upload-20-1": {
+        "HEAD": 1411,
+        "stage5": 1594,
+        "percent": 12.969525
+      },
+      "packet-18-usb-ring": {
+        "HEAD": 172106,
+        "stage5": 171442,
+        "percent": -0.385809
+      },
+      "upload-20-32": {
+        "HEAD": 10489,
+        "stage5": 12373,
+        "percent": 17.961674
+      }
+    },
+    "C-Release": {
+      "upload-10-32": {
+        "HEAD": 69686,
+        "stage5": 101696,
+        "percent": 45.934621
+      },
+      "sync-16": {
+        "HEAD": 356406,
+        "stage5": 393086,
+        "percent": 10.291634
+      },
+      "upload-20-0": {
+        "HEAD": 1203,
+        "stage5": 1293,
+        "percent": 7.481297
+      },
+      "sync-13": {
+        "HEAD": 866673,
+        "stage5": 219244,
+        "percent": -74.7028
+      },
+      "sync-14": {
+        "HEAD": 377004,
+        "stage5": 414452,
+        "percent": 9.933051
+      },
+      "upload-10-0": {
+        "HEAD": 1466,
+        "stage5": 4802,
+        "percent": 227.557981
+      },
+      "upload-10-1": {
+        "HEAD": 3578,
+        "stage5": 11582,
+        "percent": 223.700391
+      },
+      "packet-17-usb-ring": {
+        "HEAD": 302791,
+        "stage5": 302451,
+        "percent": -0.112289
+      },
+      "sync-15": {
+        "HEAD": 375345,
+        "stage5": 412793,
+        "percent": 9.976955
+      },
+      "upload-20-1": {
+        "HEAD": 1615,
+        "stage5": 1769,
+        "percent": 9.535604
+      },
+      "packet-18-usb-ring": {
+        "HEAD": 287009,
+        "stage5": 286133,
+        "percent": -0.305217
+      },
+      "upload-20-32": {
+        "HEAD": 13834,
+        "stage5": 15596,
+        "percent": 12.736736
+      }
+    },
+    "HYBRID-Release": {
+      "upload-10-32": {
+        "HEAD": 39096,
+        "stage5": 63663,
+        "percent": 62.83763
+      },
+      "sync-16": {
+        "HEAD": 300931,
+        "stage5": 337571,
+        "percent": 12.175549
+      },
+      "upload-20-0": {
+        "HEAD": 1097,
+        "stage5": 1210,
+        "percent": 10.30082
+      },
+      "sync-13": {
+        "HEAD": 664314,
+        "stage5": 126877,
+        "percent": -80.90105
+      },
+      "sync-14": {
+        "HEAD": 300375,
+        "stage5": 337783,
+        "percent": 12.453766
+      },
+      "upload-10-0": {
+        "HEAD": 1359,
+        "stage5": 4718,
+        "percent": 247.167035
+      },
+      "upload-10-1": {
+        "HEAD": 2517,
+        "stage5": 10177,
+        "percent": 304.330552
+      },
+      "packet-17-usb-ring": {
+        "HEAD": 157054,
+        "stage5": 156811,
+        "percent": -0.154724
+      },
+      "sync-15": {
+        "HEAD": 299340,
+        "stage5": 336748,
+        "percent": 12.496826
+      },
+      "upload-20-1": {
+        "HEAD": 1405,
+        "stage5": 1588,
+        "percent": 13.024911
+      },
+      "packet-18-usb-ring": {
+        "HEAD": 171872,
+        "stage5": 171442,
+        "percent": -0.250186
+      },
+      "upload-20-32": {
+        "HEAD": 10416,
+        "stage5": 12300,
+        "percent": 18.087558
+      }
+    },
+    "ASM-ReleaseCustomer": {
+      "upload-10-32": {
+        "HEAD": 39180,
+        "stage5": 63812,
+        "percent": 62.868811
+      },
+      "sync-16": {
+        "HEAD": 303249,
+        "stage5": 339889,
+        "percent": 12.08248
+      },
+      "upload-20-0": {
+        "HEAD": 1100,
+        "stage5": 1213,
+        "percent": 10.272727
+      },
+      "sync-13": {
+        "HEAD": 669034,
+        "stage5": 127153,
+        "percent": -80.994538
+      },
+      "sync-14": {
+        "HEAD": 302717,
+        "stage5": 340125,
+        "percent": 12.357416
+      },
+      "upload-10-0": {
+        "HEAD": 1362,
+        "stage5": 4745,
+        "percent": 248.384728
+      },
+      "upload-10-1": {
+        "HEAD": 2523,
+        "stage5": 10217,
+        "percent": 304.954419
+      },
+      "packet-17-usb-ring": {
+        "HEAD": 157122,
+        "stage5": 156811,
+        "percent": -0.197935
+      },
+      "sync-15": {
+        "HEAD": 301682,
+        "stage5": 339090,
+        "percent": 12.399812
+      },
+      "upload-20-1": {
+        "HEAD": 1411,
+        "stage5": 1594,
+        "percent": 12.969525
+      },
+      "packet-18-usb-ring": {
+        "HEAD": 172106,
+        "stage5": 171442,
+        "percent": -0.385809
+      },
+      "upload-20-32": {
+        "HEAD": 10489,
+        "stage5": 12373,
+        "percent": 17.961674
+      }
+    },
+    "C-ReleaseCustomer": {
+      "upload-10-32": {
+        "HEAD": 69686,
+        "stage5": 101696,
+        "percent": 45.934621
+      },
+      "sync-16": {
+        "HEAD": 356406,
+        "stage5": 393086,
+        "percent": 10.291634
+      },
+      "upload-20-0": {
+        "HEAD": 1203,
+        "stage5": 1293,
+        "percent": 7.481297
+      },
+      "sync-13": {
+        "HEAD": 866673,
+        "stage5": 219244,
+        "percent": -74.7028
+      },
+      "sync-14": {
+        "HEAD": 377004,
+        "stage5": 414452,
+        "percent": 9.933051
+      },
+      "upload-10-0": {
+        "HEAD": 1466,
+        "stage5": 4802,
+        "percent": 227.557981
+      },
+      "upload-10-1": {
+        "HEAD": 3578,
+        "stage5": 11582,
+        "percent": 223.700391
+      },
+      "packet-17-usb-ring": {
+        "HEAD": 302791,
+        "stage5": 302451,
+        "percent": -0.112289
+      },
+      "sync-15": {
+        "HEAD": 375345,
+        "stage5": 412793,
+        "percent": 9.976955
+      },
+      "upload-20-1": {
+        "HEAD": 1615,
+        "stage5": 1769,
+        "percent": 9.535604
+      },
+      "packet-18-usb-ring": {
+        "HEAD": 287009,
+        "stage5": 286133,
+        "percent": -0.305217
+      },
+      "upload-20-32": {
+        "HEAD": 13834,
+        "stage5": 15596,
+        "percent": 12.736736
+      }
+    },
+    "HYBRID-ReleaseCustomer": {
+      "upload-10-32": {
+        "HEAD": 39096,
+        "stage5": 63663,
+        "percent": 62.83763
+      },
+      "sync-16": {
+        "HEAD": 300931,
+        "stage5": 337571,
+        "percent": 12.175549
+      },
+      "upload-20-0": {
+        "HEAD": 1097,
+        "stage5": 1210,
+        "percent": 10.30082
+      },
+      "sync-13": {
+        "HEAD": 664314,
+        "stage5": 126877,
+        "percent": -80.90105
+      },
+      "sync-14": {
+        "HEAD": 300375,
+        "stage5": 337783,
+        "percent": 12.453766
+      },
+      "upload-10-0": {
+        "HEAD": 1359,
+        "stage5": 4718,
+        "percent": 247.167035
+      },
+      "upload-10-1": {
+        "HEAD": 2517,
+        "stage5": 10177,
+        "percent": 304.330552
+      },
+      "packet-17-usb-ring": {
+        "HEAD": 157054,
+        "stage5": 156811,
+        "percent": -0.154724
+      },
+      "sync-15": {
+        "HEAD": 299340,
+        "stage5": 336748,
+        "percent": 12.496826
+      },
+      "upload-20-1": {
+        "HEAD": 1405,
+        "stage5": 1588,
+        "percent": 13.024911
+      },
+      "packet-18-usb-ring": {
+        "HEAD": 171872,
+        "stage5": 171442,
+        "percent": -0.250186
+      },
+      "upload-20-32": {
+        "HEAD": 10416,
+        "stage5": 12300,
+        "percent": 18.087558
+      }
+    }
+  },
+  "reserve_audit_HEAD": {
+    "User/c/user_fun_runtime.c": [
+      [
+        2812,
+        "memcpy(&t, c->reserve, 4);"
+      ],
+      [
+        2816,
+        "memcpy(c->reserve, &t, 4);"
+      ],
+      [
+        2827,
+        "if (c->useTime == 0 || first == 0 || c->reserve[6] == ID_TIME_DONE) return 0;"
+      ],
+      [
+        2852,
+        "memcpy(&d, &c->reserve[4], 2);"
+      ],
+      [
+        2856,
+        "memcpy(&c->reserve[4], &day, 2);"
+      ],
+      [
+        4792,
+        "memcpy(&mark, cell->reserve + 4, 4);"
+      ],
+      [
+        4794,
+        "for (uint8_t i = 0; i < sizeof(cell->reserve); i++) if (cell->reserve[i] != 0) return false;"
+      ],
+      [
+        4798,
+        "memcpy(&crc, cell->reserve, 2);"
+      ],
+      [
+        4799,
+        "memcpy(&inverse, cell->reserve + 2, 2);"
+      ],
+      [
+        4801,
+        "crc == crc16_calc((uint8_t*)cell, sizeof(*cell) - sizeof(cell->reserve));"
+      ],
+      [
+        4837,
+        "uint16_t crc = crc16_calc((uint8_t*)&cell, sizeof(cell) - sizeof(cell.reserve));"
+      ],
+      [
+        4840,
+        "memcpy(cell.reserve, &crc, 2);"
+      ],
+      [
+        4841,
+        "memcpy(cell.reserve + 2, &inverse, 2);"
+      ],
+      [
+        4842,
+        "memset(cell.reserve + 4, 0xFF, 4);"
+      ],
+      [
+        4896,
+        "memset(cell.reserve, 0, sizeof(cell.reserve)); // внутренние CRC/признак в кадр не входят"
+      ],
+      [
+        5147,
+        "crc = crc16_calc((uint8_t*)&log_job.cell, sizeof(actual) - sizeof(actual.reserve));"
+      ],
+      [
+        5149,
+        "memcpy(log_job.cell.reserve, &crc, 2); memcpy(log_job.cell.reserve + 2, &inverse, 2);"
+      ],
+      [
+        5150,
+        "memcpy(log_job.cell.reserve + 4, &mark, 4);"
+      ],
+      [
+        5810,
+        "/* An older application ignores the reserved intent and may have appended"
+      ],
+      [
+        5811,
+        "* after a rollback. Preserve a nonempty first sector; resend its records"
+      ]
+    ],
+    "User/c/table_runtime.inc": [
+      [
+        42,
+        "uint8_t first[4],done=old->reserve[6];"
+      ],
+      [
+        53,
+        "memcpy(first,old->reserve,4); memcpy(old,record,table_job.cell_size);"
+      ],
+      [
+        54,
+        "if (keep) { memcpy(old->reserve,first,4); old->reserve[6]=done; }"
+      ]
+    ],
+    "User/c/expiry_runtime.c": [
+      [
+        1,
+        "/* Доработка: Кряжев А., 2026. Preserve the historical 1024-byte scan snapshot. */"
+      ]
+    ],
+    "User/c/idindex_runtime.c": [],
+    "User/asm/user_fun_runtime.s": [
+      [
+        9945,
+        "id_time_end",
+        "LDRBNE   R0,[R4, #+28]"
+      ],
+      [
+        21748,
+        "ids___table_chunk_8",
+        "LDRB     R9,[R5, #+28]"
+      ],
+      [
+        21771,
+        "ids___table_chunk_11",
+        "LDR      R0,[R4, #+24]"
+      ],
+      [
+        21775,
+        "ids___table_chunk_11",
+        "STRCC    R7,[R4, #+24]"
+      ],
+      [
+        21802,
+        "ids___table_chunk_13",
+        "STRB     R9,[R5, #+28]"
+      ]
+    ],
+    "User/hybrid/user_fun_hot.s": [
+      [
+        9836,
+        "id_time_end",
+        "LDRBNE   R0,[R4, #+28]"
+      ],
+      [
+        19717,
+        "ids___table_chunk_8",
+        "LDRB     R9,[R5, #+28]"
+      ],
+      [
+        19740,
+        "ids___table_chunk_11",
+        "LDR      R0,[R4, #+24]"
+      ],
+      [
+        19744,
+        "ids___table_chunk_11",
+        "STRCC    R7,[R4, #+24]"
+      ],
+      [
+        19771,
+        "ids___table_chunk_13",
+        "STRB     R9,[R5, #+28]"
+      ]
+    ],
+    "User/asm/idindex_runtime.s": [],
+    "User/asm/expiry_runtime.s": []
+  },
+  "limits": {
+    "ID_30_programs": 60,
+    "minimum_ID_busy_ms": 42,
+    "ID_busy_20ms_met": false,
+    "reply12_warm_full_base_300ms_met": true,
+    "all_server_paths_CPU_plus_1_percent_met": false,
+    "board_tested": false,
+    "committed": false
+  },
+  "changed_source_sha256": {
+    "Tests/asm/log_ring_fixture.py": "615c15da69a67c67a19f4454f175ee062b00747d6ff10011b5a5939681fe6a0e",
+    "Tests/asm/test_stage5_capacity.py": "c436e67af1aed64e7769dede667ca2fc15c2bc5fb166ec7fe0506f5d84deb9cc",
+    "Tests/asm/test_stage5_crc.py": "b8da4b2b785b4f8181b8e713f3e7d2760e4a59b076d9e18e05869e2b34ef7f99",
+    "Tests/asm/test_stage5_id.py": "216f66ddc5715d47586e5a2b06f9c3020a224d1b2716e5564c946af0c2f0dab3",
+    "Tests/asm/test_stage5_log.py": "20d7da6bd0ce845c79d737c96cdb19e56ea88290be059b746d240c851637a5d8",
+    "Tests/asm/test_stage5_wiegand.py": "14dc3af9387880b823debe7eaf7fdc5f6e1e761fa7162220cde94342eaadbc95",
+    "User/id_cells.c": "8e8ccdd91dd282e76bca136e4c8422ea4d3a7807b77eebf61105a75f8f296827",
+    "User/id_crc_cache.c": "386ba7b95157bfae5300a9c8976860cb394ff99911e4238a91693a18a17e96f0",
+    "User/id_crc_cache.h": "5cfd13ea2940e4a19deadd07dea2872a8a376cdf8ed9dd1a3ddf45cea24ab080",
+    "User/id_crc_io.h": "20ea592b0425c71d7e4bbecf39b2c46227ea7067add9538219921ed79a44965b",
+    "User/log_cursor.c": "b9398c9e0535a5a9c7a26ab147467948212b4ef55de83d80de7b20e75cf134df",
+    "User/log_migration.c": "eb462d87d2a318669375b2da253f2edff5d6564f7d6971fc8c4ca8c8a07f5779",
+    "User/log_ring.c": "86d869d5b31d1e4eb4d86b2f1eaf893992bb6791f2daf4cada0245f4d4cc6b73",
+    "User/log_ring.h": "60aee64f979fe72a48c77bb936836137e65029d669a35e9edb53498f9515904c",
+    "User/packet.c": "ec7b67ceee67d3c7a69182ebdbe1196f0f9049726c4a37d47fd20c5541c704d9",
+    "User/packet.h": "a7639189db0fe118ce601641dff72b97390e1fef80a47299af3ae75bde0dd91a",
+    "User/storage_profile.c": "a7b2ba01bee34faa2e19fb4575e34eeba0d5e7551f1ac1fc9829dc2c92c8bd1f",
+    "User/table_runtime.c": "b0f8b047ada2f77a854d5d6d9caed6766832cd92f7f9a9e13b572955b2f04105",
+    "User/table_runtime.h": "7a4444dc67ec91372c0deecba6ff0b792146fa2555f21948051269e1a6921360",
+    "DomovoiNext_ASM.ewp": "d163e60836c291145ffc532fb9d45422aed95481f4606eb6f83275c4f096b266",
+    "DomovoiNext_C.ewp": "599949060f6c5ed3abcc66e15d4b5c4d54bb132f6984f80d581b1ecab1151d27",
+    "DomovoiNext_HYBRID.ewp": "c1152987ca2a0687356693f3f934a1bf65d405d870870afd7513b26e4012c711",
+    "Tests/asm/c_vs_asm_extra.py": "f7e6922d4e2f54682c6d70af6632980c53c3f30310eed544347aa670a9edaa8f",
+    "Tests/asm/c_vs_asm_mutations.py": "8a3adc551d09741a79a5911a445d74fe9cf45c1f2d653b3d7a6b6b1c24be75bd",
+    "Tests/asm/c_vs_asm_project.py": "ba6b235be024616b5f40b962d241fb0e34307f25d515fac765bbe560b178fc65",
+    "Tests/asm/c_vs_asm_suite.py": "e5fffb901fe768d337f19912f4317a3e803cb6cad86654d7c2eeb023fd0e61ce",
+    "Tests/asm/storage_machine.py": "9f028d376d631d594d4e9dbe89574fc163600850c16c572438430a62215cfd38",
+    "Tests/asm/test_id_sync_fast.py": "03b4b67d768a2976826b53f7f78c206beb077caf58dd5c26f4504d1654dc53e1",
+    "Tests/asm/test_idclear_runtime.py": "a6bd9548e12abd6d66d82330b4a37aba6209fc45405cb44b1858b02554cf4223",
+    "Tests/asm/test_idindex_asm_mutations.py": "ac8e96dd7ddb5a67fd0c7353670d398f8441061a428c4fd40483b41f9dd6cf05",
+    "Tests/asm/test_owner_integration.py": "e473b33b0b36842285b3f882eec60ce4d22349a598568f12f38bd992e643f99e",
+    "Tests/asm/test_photo_edges.py": "d5080b4d37eb9bd229f7f05974b0645c3b3ca447accea88584b758e3b15c3c94",
+    "Tests/asm/test_table_mutations.py": "0b54be60a0d3e36a87d2d5a1fffd23c43f7b38c1baed3b5b432e0db920204cb5",
+    "Tests/asm/test_table_runtime.py": "d317c6be7cf520dd751957d345821adbb3294ddfa7920b00d5b9992bac2586ca",
+    "Tests/asm/test_upload_runtime.py": "cb2df56b1ea12f2a82937374981e0132184aa761b7d98285aa5d06a711301115",
+    "Tests/asm/verification_service_mutations.py": "2f26040ea035e0f465291421f0fe268fe728f612c7f692cb7b0295bf503e2e94",
+    "Tests/asm/verification_upload_lifetime.py": "aae92547c026ead23ba699dd58653d0755f3b985f889b607c23bc499e4af8d84",
+    "Tests/comm_server_host.py": "595b43b1fb4ab84fe39022006e891723575708cd81a6e73ebd6ab182ed5d7d51",
+    "Tests/run_host.py": "bfcf085b58e3ecd0e31236ad8098d951f5f5789291d06f36a5778e913bb49625",
+    "Tests/test_iar_wiegand_irq.py": "bedf7af3d6f851fcf846ae439a1cc8e591715407e9639ea6f974cb4fde774eb7",
+    "Tests/test_wiegand_irq.c": "cb818b9467bb1e607729e0b25d639fc7c9af1cb34f50fcb015fe7b094268df08",
+    "User/asm/fw_service_runtime.s": "12764ebda8608db62efd98fd1a6b4b13c30dbf04489294d45eed5161baf6f0ee",
+    "User/asm/idclear_runtime.s": "c4c0763b4c8da1c2e3e54ec491c15d392faed6eb3fafc79f46095f76e9489e1e",
+    "User/asm/idindex_runtime.s": "19a1a9d94909c58c91c7320e5c204b57127b94e1c083d61721cec3cf6eafc77c",
+    "User/asm/memory_runtime.s": "50c7abc581ce52b369912277c9138507a9ca1890b8b5cf7e65c2ea7a398064fe",
+    "User/asm/photo_runtime.s": "703eef07e3ce897ceecfe24464ab090d4e76d24ce54912879182d92ea2a3ff4f",
+    "User/asm/sector_journal_runtime.s": "3e8dddab08466eff627a8e764f61fd4386a8a3592da3a1097d6b5d281e59a547",
+    "User/asm/sector_runtime_runtime.s": "f314b7782d862afd783b83b38780067f5f44cfc370540f58742d01feb842c0b8",
+    "User/asm/user_fun_runtime.s": "0aece8a458365b580e7dbace75fec68fca4ebf9c087e064147ef92e71083edc8",
+    "User/c/expiry_runtime.c": "e0b4161b04f8f297cae4ba6d9b48e37a9395e105d49738902398ab85aa53ddef",
+    "User/c/idindex_runtime.c": "d465931aeb34f84b3c134893939c7657c375685c88887c958664be5f7f60e166",
+    "User/c/memory_runtime.c": "6549961495d6ae1deefc012e159c4fd65e66ab663c555da214c66c026d880547",
+    "User/c/runtime_internal.h": "bc7c1db6cf0226ade7e53e85b1fee34f259eae1c1ed46069a8cca6091dc17b44",
+    "User/c/sector_journal_runtime.c": "3a56c9bf484868b1c4faa1df7c6aa88b93a33fcc1782c6e4405e2c3144b1e176",
+    "User/c/sector_runtime_runtime.c": "681da991d38f4f43938b470288fcafda43609eb5ab1a659079256b5abcf3678d",
+    "User/c/service_runtime.c": "c342b6648eabb1f23c4c6de86aacac079ad810c6dbe29433f15343622367eb3a",
+    "User/c/table_runtime.inc": "b42f36c792a958c0880802603e92c2fef7df620a8aecfd351d42e56aa7bf48a9",
+    "User/c/upload_runtime.c": "3b67226e61301746dae43396f47cc52efbe3b4e68b220512b8a3a79d74379603",
+    "User/c/user_fun_runtime.c": "5a9f7c32977c8bad12378fd871c213f72c537c49fcbe8aaab195728a51c665db",
+    "User/hybrid/user_fun_hot.s": "d07f68a17d99bc4dbb65cf08053cd8e136dfcf5f254b9aa42cdb3235103d16d0",
+    "User/wiegand.c": "1412552677174253a2b36c0cbfca56c25ce1fba422795c93fdc9b2b1fb8b2a0d",
+    "User/wiegand.h": "709ebe12276d675661c126cf6acbeef3ecf8bcf6c701c83d22cfe4ca21a7ac8a"
+  }
+}

@@ -51,7 +51,7 @@ def clear_scheduler():
     for action in ('complete', 'reset_before', 'reset_pending', 'usb_epoch'):
         m = ClearMachine(); m.parse(); assert m.clear_active()
         costs = []
-        for i in range(32):
+        for i in range(500):
             for gate in ('user_storage_command_ready', 'user_storage_flash_ready',
                          'user_storage_background_ready', 'mem_tables_ready'):
                 assert not m.checked(gate), (action, gate)
@@ -68,7 +68,7 @@ def clear_scheduler():
             if action == 'usb_epoch' and i == 1:
                 m.write(m.addr('usb_bus_resets'), 1)
             m.now += 1; m.checked('user_storage_poll'); costs.append(m.steps)
-            assert m.io_budget <= 1 and m.read_budget == 0
+            assert m.io_budget <= 1 and m.read_budget <= (64 if "idcrc_io_poll" in m.symbols else 0)
             if not m.clear_active(): break
         else: raise AssertionError(('clear scheduler stuck', action))
         assert m.io is None and owned(m)==0

@@ -27,8 +27,8 @@
         EXTERN fw_rollback_end
         EXTERN fw_write_errors
         EXTERN w25_read_data
-        EXTERN w25_async_start
-        EXTERN w25_async_poll
+        EXTERN idcrc_io_start
+        EXTERN idcrc_io_poll
         EXTERN timers_getMillis
         EXTERN fw_crc_begin
         EXTERN fw_crc_next
@@ -408,8 +408,8 @@ fw_service_poll:
         BEQ fsp_dispatch
         CFI FunCall timers_getMillis
         BL timers_getMillis
-        CFI FunCall w25_async_poll
-        BL w25_async_poll
+        CFI FunCall idcrc_io_poll
+        BL idcrc_io_poll
         CMP R0,#1
         BEQ.W fsp_return
         MOVS R1,#0
@@ -517,8 +517,8 @@ fsp_start:
         MOV R0,R6
         MOV R1,R7
         LDR R2,[SP]
-        CFI FunCall w25_async_start
-        BL w25_async_start
+        CFI FunCall idcrc_io_start
+        BL idcrc_io_start
         CMP R0,#0
         BEQ.W fsp_io_error
         MOVS R0,#1

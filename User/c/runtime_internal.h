@@ -42,5 +42,6 @@ static inline void rt_put16(uint8_t *p, uint16_t v) { p[0]=(uint8_t)v; p[1]=(uin
 static inline void rt_put32(uint8_t *p, uint32_t v) { memcpy(p,&v,4); }
 static inline uint16_t rt_get16(const uint8_t *p) { uint16_t v; memcpy(&v,p,2); return v; }
 static inline uint32_t rt_get32(const uint8_t *p) { uint32_t v; memcpy(&v,p,4); return v; }
+#include "../id_crc_io.h"
 #define RT_ASSERT(name, condition) typedef char name[(condition)?1:-1]
 #endif

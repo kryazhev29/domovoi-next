@@ -117,7 +117,7 @@ def ownership():
         m.now+=1;m.checked('user_storage_poll')
         assert m.read_budget <= (256 if crc_phase else 128) and m.io_budget<=1
     else:raise AssertionError('table sharing did not terminate')
-    m.port();m.drain();assert m.sent[-1][20:-2]==b'p'*116
+    m.settle_crc();m.port();m.drain();assert m.sent[-1][20:-2]==b'p'*116
     return 9
 
 def full_cleanup():

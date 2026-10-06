@@ -330,6 +330,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         restore=''
         if 'static void upload_restore(' in user:
             restore='static uint16_t log_usbReadIndex,temp_usbReadIndex;\n'+function(user,'upload_store')+'\n'+function(user,'upload_restore')+'\n'
+        if 'log_ring_checkpoint(' in restore:
+            restore='static void log_ring_checkpoint(void){}\nstatic void log_ring_restore(const device_s *p){(void)p;}\n'+restore
         code=restore+config_helpers(user)+'\n'.join(function(user,n) for n in ('user_readconfig','user_readsavedinformation'))
         code+='\n'+sync_stub(user)+'void command(uint8_t *ptr,uint16_t len,dataChanel_e cch,uint8_t uniqId){ switch(ptr[4]) {'+case(12)+'default: abort(); }}'
         unit=(ROOT/'Tests/test_config_strings.c').read_text().replace('/* TYPES */',types).replace('/* CRC */',function(source('Tests/asm/reference/User/crc.c'),'crc16_calc')).replace('/* PRODUCTION */',code)
@@ -428,8 +430,8 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='wiegandirq':
         wg=source('User/wiegand.c')
         code='\n'.join(x for x in wg.splitlines() if re.match(r'^(?:volatile )?(?:uint32_t|uint8_t|bool) wg',x))+'\n'
-        code+='\n'.join(function(wg,n) for n in ('EXTI2_IRQHandler','EXTI3_IRQHandler','WG_process'))
-        prof='uint32_t prof_card_mark;\n#define PROF_CARD_MARK() (prof_card_mark = PROF_NOW() | 1u)\n#define PROF_NOW() (0u)\n#define PROF_STEP(i, call) do { call; } while (0)\n'
+        code+='\n'.join(function(wg,n) for n in ('wg_parity_valid','EXTI2_IRQHandler','EXTI3_IRQHandler','WG_process'))
+        prof='#ifndef WG_PARITY\n#define WG_PARITY 1\n#endif\nuint32_t prof_card_mark;\n#define PROF_CARD_MARK() (prof_card_mark = PROF_NOW() | 1u)\n#define PROF_NOW() (0u)\n#define PROF_STEP(i, call) do { call; } while (0)\n'
         unit=(ROOT/'Tests/test_wiegand_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',prof+code)
     elif kind=='timersirq':
         timers=source('Modules/timers.c').replace('inline void timers_handle','void timers_handle')
@@ -592,6 +594,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit='#include "fast_kernels.h"\n'+unit.replace('#include "fast_kernels.h"','')
     unit=unit.replace('#include \"domovoi_diag.h\"','').replace('#include \"../domovoi_diag.h\"','')
     (d/'test.c').write_text(host_adapters(ROOT)+unit.replace('\r\n','\n'))
-    subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
+    flags=['-DWG_PARITY=0'] if kind=='wiegandirq' and sys.argv[3:]==['0'] else []
+    subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',*flags,str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)
     sys.exit(result.returncode)

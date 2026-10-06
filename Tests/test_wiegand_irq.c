@@ -30,5 +30,18 @@ int main(void){
   clock_ms+=25;WG_process();WG_process();CHECK(!seen);
   clock_ms+=1;WG_process();CHECK(wgDataAvalible);WG_process();CHECK(seen==1&&!wgDataAvalible);
   reset();bits(26);clock_ms=100+26;WG_process();WG_process();CHECK(seen==1); /* 26 мс после последнего бита - уже карта */
-  puts("wiegandirq: noise saturation, original ID mask/delivery, saved PRIMASK, wrap, 20 ms bit gap kept, 26 ms silence ends frame PASS");return 0;
+  for(unsigned bit=0;bit<26;bit++){
+    reset();wgData=1u^(1u<<bit);wgBitCount=26;clock_ms=400;
+    WG_process();CHECK(wgDataAvalible==!WG_PARITY);WG_process();CHECK(seen==!WG_PARITY);
+  }
+  for(uint32_t id=0;id<0x1000000u;id++){
+    unsigned upper=0,lower=0;
+    for(unsigned k=0;k<12;k++){upper^=(id>>(k+12))&1u;lower^=(id>>k)&1u;}
+    uint32_t frame=(upper<<25)|(id<<1)|(lower^1u);
+    CHECK(wg_parity_valid(frame));
+    wgData=frame;wgBitCount=26;wgTime=100;clock_ms=400;wgDataAvalible=false;
+    WG_process();CHECK(wgDataAvalible && wgID==((frame>>1)&0x03FFFFFFu));
+    for(unsigned bit=0;bit<26;bit++)CHECK(!wg_parity_valid(frame^(1u<<bit)));
+  }
+  puts("wiegandirq: 2^24 valid frames preserve original ID, all 26 single-bit errors rejected; noise, IRQ mask and timing PASS");return 0;
 }

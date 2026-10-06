@@ -33,10 +33,11 @@ def unit():
     helpers = user[user.index('/* Назначение кадра серверу'):user.index('void user_send_anyData(')]
     producers = ('user_send_registrationData', 'user_send_statusPack', 'user_send_anyData', 'user_send_smsToServer')
     legacy = '\n'.join(function(user, n).replace(n, 'legacy_' + n).replace('user_comm_acquire(', 'legacy_acquire(').replace('comm_tx_acquire(', 'legacy_tx_acquire(')
-                       .replace('comm_tx_commit(', 'legacy_commit(').replace('user_comm_free(', 'legacy_free(') for n in producers)
+                       .replace('comm_tx_commit(', 'legacy_commit(').replace('packet_send(', 'legacy_packet_send(').replace('user_comm_free(', 'legacy_free(') for n in producers)
     current = '\n'.join(function(user, n) for n in producers)
     status = user[user.index('#define STATUS_EVENT_MASK'):user.index('/* Режим обновления, бит 11 статуса 1')]
-    producer_code = status + helpers + legacy + '\n' + current
+    packet = function(source('User/packet.c'),'packet_send') if 'packet_send(' in current else ''
+    producer_code = status + helpers + packet + '\n' + packet.replace('packet_send(', 'legacy_packet_send(').replace('comm_tx_commit(', 'legacy_commit(') + '\n' + legacy + '\n' + current
     producer_code += '\n' + function(user, 'user_send_statusUpdateFW')
     if '/* >>> ход обновления */' in user:
         producer_code = user[user.index('/* >>> ход обновления */'):user.index('/* <<< ход обновления */')] + producer_code

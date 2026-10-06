@@ -4,6 +4,10 @@ import sys
 from iar_image import image_paths
 
 def event_append():
+    from iar_irq_support import Machine
+    if "log_ring_init_step" in Machine().symbols:
+        from test_stage5_log import run
+        return run()
     from test_iar_event_async import measure
     return [measure(image_paths()[0],True,n) for n in (0,3071)]
 

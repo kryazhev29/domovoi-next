@@ -67,7 +67,7 @@ void expiry_runtime_poll(uint32_t now)
     n=p->scan-p->snapshot_base;
     if(n>=1024) { p->snapshot_base=p->scan; p->fill_offset=0; p->phase=6; return; }
     record=p->snapshot+n; p->scan+=32;
-    memcpy(&index,record,2); if(index==65535) return;
+    memcpy(&index,record,2); if(index==65535 || record[31]==255) return;
     end=id_time_end((const cellID_s *)record); if(!end) return;
     if(p->scan_time<end) { id_watch_end(end); return; }
     if(end/86400u!=p->scan_time/86400u) return;
@@ -76,16 +76,16 @@ void expiry_runtime_poll(uint32_t now)
     memcpy(&index,p->record,2);
     if(index && index!=65535 && 32u*(index-1)<p->partition_limit-p->start) {
       address=p->start+32u*(index-1);
-      if(!w25_read_data(address,scratch,2)) goto retry;
-      memcpy(&got,scratch,2); if(got==index) goto found;
+      if(!w25_read_data(address,scratch,32)) goto retry;
+      memcpy(&got,scratch,2); if(got==index && scratch[31]!=255) goto found;
     }
     p->find=p->start; p->phase=3; return;
   case 3:
     address=p->find; n=p->partition_limit-address; if(!n) goto retry;
     if(n>64) n=64;
     if(!w25_read_data(address,scratch,(uint16_t)n)) goto retry;
-    memcpy(&index,p->record,2); memcpy(&got,scratch,2); if(got==index) goto found;
-    if(n==64) { memcpy(&got,scratch+32,2); if(got==index) { address+=32; goto found; } }
+    memcpy(&index,p->record,2); memcpy(&got,scratch,2); if(got==index && scratch[31]!=255) goto found;
+    if(n==64) { memcpy(&got,scratch+32,2); if(got==index && scratch[63]!=255) { address+=32; goto found; } }
     p->find+=n; return;
   case 4:
     if(!sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;

@@ -31,7 +31,7 @@ static bool mem_guard(uint32_t adr, uint16_t n)
 }
 static bool mem_reserved(uint32_t adr, uint16_t n)
 {
-  return n && (n > 0xFFFFFFFFu - adr || (adr < SJ_META + SJ_SECTOR && adr + n > SJ_DATA));
+  return n && (n > 0xFFFFFFFFu - adr || (adr < 0x1FE000u && adr + n > SJ_DATA));
 }
 bool mem_replace_sector(uint32_t adr, const uint8_t *image)
 {
@@ -451,6 +451,6 @@ uint8_t flash_claim(uint8_t owner) {
 }
 uint8_t flash_release(uint8_t owner) {
   if (!((flash_owner ^ owner) & 0x7fu)) flash_owner=0;
-  return 0;
+  idcrc_owner_released(); return 0;
 }
 uint8_t flash_read_allowed(void) { return !(flash_owner & 0x80u); }

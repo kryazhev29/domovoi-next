@@ -6,6 +6,7 @@
 #include "flash_w25.h"
 #include <string.h>
 #include "memory.h"
+#include "../id_crc_io.h"
 
 sj_runtime_state_s sjr;
 

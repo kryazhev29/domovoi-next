@@ -1,3 +1,4 @@
+        EXTERN stage5_sj_destination
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/User/sector_journal.c
 
@@ -78,6 +79,7 @@
           CFI NoCalls
         THUMB
 sj_destination:
+        B.W stage5_sj_destination
         LSLS     R1,R0,#+20
         BEQ.N    ??sj_destination_0
         MOVS     R0,#+0

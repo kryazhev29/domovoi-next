@@ -65,6 +65,14 @@ void WG_init(void){
   wgBitCount = 0;
 }
 
+/* Two 13-bit parity groups in separate lanes; no loop and no lookup table. */
+static bool wg_parity_valid(uint32_t data)
+{
+  uint32_t p = (data & 0x1fffu) | ((data >> 13) << 16);
+  p ^= p >> 8; p ^= p >> 4; p ^= p >> 2; p ^= p >> 1;
+  return (p & 0x10001u) == 1u;
+}
+
 // обработчик
 void WG_process(void){
   if (wgDataAvalible){
@@ -89,11 +97,11 @@ void WG_process(void){
   }
   __set_PRIMASK(mask); // следующий фронт уже принадлежит следующему кадру
   if (complete){
-    wgDataAvalible = (count == 26);
+    wgDataAvalible = (count == 26) && (!WG_PARITY || wg_parity_valid(data));
     if (wgDataAvalible)
       PROF_CARD_MARK();
     if (wgDataAvalible)
-      wgID = (data>>1) & 0x03FFFFFF; // прежнее формирование ID; паритет требует решения Q6
+      wgID = (data>>1) & 0x03FFFFFF; // прежнее формирование ID сохранено
   }
 }
 

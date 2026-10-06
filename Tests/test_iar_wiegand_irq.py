@@ -1,6 +1,6 @@
 """B38: EXTI D1 между всеми инструкциями передачи Wiegand, свежий ELF IAR."""
 from iar_irq_support import Machine,UC_ARM_REG_PRIMASK
-m=Machine();seed=0x0123456
+m=Machine();seed=0x0123457
 def setup():
     m.init();m.write(m.addr('wgData'),seed);m.write(m.addr('wgTime'),100);m.write(m.addr('wgBitCount'),26,1);m.write(m.addr('milliSeconds'),400)
 setup();m.call('WG_process');steps=m.steps;max_stack=0

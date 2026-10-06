@@ -19,6 +19,7 @@ sys.path.insert(0,str(ROOT/'Tests'))
 import run_all
 
 REPLACEMENTS={
+    'countends':'stage5 countends','logcommit':'stage5 logcommit',
     'sync':'sync entry',
     'access':'access','bootjournal':'config_power','crcblocks':'service',
     'flashcmds':'clear','fwstart':'firmware','idindex':'index',
@@ -70,6 +71,7 @@ def main():
     for group in run_all.GROUPS:
         if group not in REPLACEMENTS:run(group,['Tests/run_host.py','work',group])
     for scenario in run_all.TX:run('tx '+scenario,['Tests/run_host.py','work','tx',scenario])
+    run('WG parity off',['Tests/run_host.py','work','wiegandirq','0'])
     run('modem_sim',['-m','unittest','Tests/modem_sim.py'])
     run('comm_review',['Tests/comm_review_host.py'])
     run('uart arm',['Tests/build_comm_uart.py'])

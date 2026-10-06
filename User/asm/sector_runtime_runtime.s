@@ -16,9 +16,9 @@
         EXTERN mem_config_result
         EXTERN memcmp
         EXTERN sj_destination
-        EXTERN w25_async_active
-        EXTERN w25_async_poll
-        EXTERN w25_async_start
+        EXTERN idcrc_io_active
+        EXTERN idcrc_io_poll
+        EXTERN idcrc_io_start
         EXTERN w25_read_data
 
         PUBLIC sj_runtime_begin
@@ -161,8 +161,8 @@ sj_runtime_begin:
           CFI FunCall sj_destination
         BL       sj_destination
         CBZ.N    R0,??sj_runtime_begin_0
-          CFI FunCall w25_async_active
-        BL       w25_async_active
+          CFI FunCall idcrc_io_active
+        BL       idcrc_io_active
         CBZ.N    R0,??sj_runtime_begin_1
 ??sj_runtime_begin_0:
         MOVS     R0,#+0
@@ -209,8 +209,8 @@ sjr_start:
         PUSH     {R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+8
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         CBNZ.N   R0,??sjr_start_0
         POP      {R0,LR}
           CFI R14 SameValue
@@ -250,8 +250,8 @@ sj_runtime_poll:
         LDRB     R0,[R4, #+56]
         CBZ.N    R0,??sj_runtime_poll_2
         MOV      R0,R5
-          CFI FunCall w25_async_poll
-        BL       w25_async_poll
+          CFI FunCall idcrc_io_poll
+        BL       idcrc_io_poll
         CMP      R0,#+1
         BEQ.N    ??sj_runtime_poll_1
         MOVS     R1,#+0

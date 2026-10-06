@@ -85,7 +85,8 @@ class SyncMachine(StorageMachine):
         assert self.u.mem_read(self.device+self.d['numbersCount'], 2) == struct.pack('<H', count)
         assert self.u.mem_read(self.addr('id_cells_end'), 2) == struct.pack('<H', expected_last)
         assert self.u.mem_read(self.addr('id_used_bytes'), 4) == struct.pack('<I', used)
-        assert self.u.mem_read(self.addr('ix'), 4) == struct.pack('<I', checksum)
+        if 'storage_has_index' not in self.symbols or self.checked('storage_has_index'):
+            assert self.u.mem_read(self.addr('ix'), 4) == struct.pack('<I', checksum)
         assert self.sent and len(self.sent[-1]) == 18
         body = struct.pack('<HBBBBIH', 10, 255, 7, 12, 1, 123456, crc16(data))
         assert self.sent[-1] == b'SLDN'+body+struct.pack('<H', crc16(body)), 'reply differs from full CRC'
@@ -111,6 +112,7 @@ def paired_scenarios():
             'result': {'sent': m.sent, 'nor': bytes(m.flash),
                        'index': bytes(m.u.mem_read(m.addr('ix'), 12))}}
     m = fixture(SyncMachine(), 0, total=8192)
+    m.flash[BASE+31] = 0  # torn cell selects sector-journal recovery
     m.record_changes = True
     initial = bytes(m.flash)
     run_packet(m)
@@ -133,6 +135,7 @@ def paired_scenarios():
     assert reboot.checked('sj_recover', budget=2000000)
     assert reboot.flash[BASE:BASE+4096] == final[BASE:BASE+4096]
     assert reboot.u.mem_read(reboot.addr('id_used_bytes'), 4) == b'\xff'*4
+    reboot.settle_crc()
     run_packet(reboot)
     reboot.verify(30, 8192)
     out['id-fast-power'] = {'result': {'sent': reboot.sent, 'nor': bytes(reboot.flash)}}

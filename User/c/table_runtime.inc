@@ -10,12 +10,12 @@ struct {
 } table_job;
 uint8_t table_fault;
 
-static bool table_runtime_active(void) { return table_job.phase!=0; }
-static void table_runtime_quiet(dataChanel_e channel)
+bool table_runtime_active(void) { return table_job.phase!=0; }
+void table_runtime_quiet(dataChanel_e channel)
 {
   if (table_job.phase && table_job.channel==channel) table_job.quiet=1;
 }
-static void table_runtime_cancel(void)
+void table_runtime_cancel(void)
 {
   if (!table_job.phase) return;
   table_job.cancelled=table_job.quiet=1; sj_runtime_cancel();
@@ -43,13 +43,13 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
       /* The reader runs twice: count only the journal preflight, once per
        * sector. Publish the delta only after all sectors are verified. */
       if (sjr.phase==16) {
-        if (old->index==0xffff) table_job.numbers++;
+        if (old->index==0xffff || old->reserve[9]==255) table_job.numbers++;
         else table_job.sum^=idindex_hash(index,(uint8_t*)old->ID);
         table_job.sum^=idindex_hash(index,record+2);
         if (index>table_job.last) table_job.last=index;
         if ((uint32_t)index*32>table_job.used) table_job.used=(uint32_t)index*32;
       }
-      bool keep=old->index!=0xffff && !memcmp(old->ID,record+2,10);
+      bool keep=old->index!=0xffff && old->reserve[9]!=255 && !memcmp(old->ID,record+2,10);
       memcpy(first,old->reserve,4); memcpy(old,record,table_job.cell_size);
       if (keep) { memcpy(old->reserve,first,4); old->reserve[6]=done; }
       id_set_pass_day(old,table_job.day);
@@ -58,7 +58,7 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
   }
   return 1;
 }
-static bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
+bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
 {
   uint8_t cmd=ptr[4],mb=cmd==13 ? MB_ID : cmd==14 ? MB_SHEDULE : cmd==15 ? MB_GROUP : MB_HOLIDAY;
   uint16_t size=cmd==13 ? sizeof(cellID_s) : cmd==14 ? sizeof(cellShedule_s) :
@@ -76,6 +76,12 @@ static bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_
   if (cmd==13) {
     table_job.last=id_cells_end; table_job.used=id_used_bytes;
     idindex_runtime_suspend();
+    table_job.phase=5;
+    for (uint16_t i=0;i<table_job.count;i++) {
+      if (snapshot[32u*i+31]==255) { table_job.phase=1; id_used_bytes=UINT32_MAX; }
+      for (uint16_t j=0;j<i;j++)
+        if (!memcmp(snapshot+32u*i,snapshot+32u*j,2)) table_job.phase=1;
+    }
   }
   return true;
 }
@@ -96,6 +102,8 @@ static void table_scan_begin(void)
     }
   } else if (table_job.cmd==16 && !table_job.failed && !table_job.cancelled)
     table_job.sector=table_job.bytes;
+  if (table_job.cmd==13 && !table_job.batch && !table_job.failed && !table_job.cancelled &&
+      idcrc_get(0,mem[MB_ID].size,&table_job.crc)) table_job.phase=4;
 }
 static void table_runtime_finish(void)
 {
@@ -112,8 +120,44 @@ static void table_runtime_finish(void)
     user_send_answer_comand(cmd,CMD_RUNERROR,(dataChanel_e)table_job.channel,table_job.uniq);
   work_release(table_job.records, WORK_TABLE); table_job.records=0; table_job.phase=0; flash_release(FO_TABLE);
 }
-static void table_runtime_poll(uint32_t now)
+void table_runtime_poll(uint32_t now)
 {
+  /* Preflight the complete packet before programming any target. */
+  if (table_job.phase==5) {
+    uint16_t index; uint8_t old[32];
+    memcpy(&index,table_job.records+32u*table_job.position,2);
+    if (!w25_read_data(table_job.start+32u*(index-1),old,32)) {
+      table_job.failed=1; table_scan_begin(); return;
+    }
+    if (!fast_all_ff(old,32)) { table_job.position=0; table_job.phase=1; return; }
+    if (++table_job.position==table_job.count) { table_job.position=0; table_job.phase=6; }
+    return;
+  }
+  if (table_job.phase>=6 && table_job.phase<=9) {
+    uint8_t *record=table_job.records+32u*table_job.position;
+    uint16_t index; uint8_t result;
+    memcpy(&index,record,2);
+    if (table_job.phase==7 || table_job.phase==9) {
+      result=w25_async_poll(now); if (result==1) return;
+      if (result!=2) { table_job.failed=1; table_scan_begin(); return; }
+      if (table_job.phase==7) { table_job.phase=8; return; }
+      table_job.numbers++; table_job.sum^=idindex_hash(index,record+2);
+      if (index>table_job.last) table_job.last=index;
+      if (32u*index>table_job.used) table_job.used=32u*index;
+      id_watch_end(id_time_end((cellID_s *)record));
+      if (++table_job.position==table_job.count) table_scan_begin(); else table_job.phase=6;
+      return;
+    }
+    if (table_job.phase==6 && table_job.cancelled) { table_scan_begin(); return; }
+    if (table_job.phase==6 && !idindex_put(index,record+2)) {
+      table_job.failed=1; table_scan_begin(); return;
+    }
+    if (!w25_async_start(table_job.start+32u*(index-1)+(table_job.phase==8?31:0),
+                        record+(table_job.phase==8?31:0),table_job.phase==8?1:31,now)) {
+      table_job.failed=1; table_scan_begin(); return;
+    }
+    table_job.phase++; return;
+  }
   if (table_job.phase==1) {
     if (table_job.cancelled) { table_scan_begin(); return; }
     uint16_t index=table_job.records[(uint32_t)table_job.position*table_job.cell_size];
@@ -168,7 +212,7 @@ static void table_runtime_poll(uint32_t now)
       if (table_job.batch) for (uint16_t i=0;i<n;i+=32) {
         cellID_s *cell=(cellID_s*)(b+i);
         if (!fast_all_ff(b+i,32)) table_job.used=table_job.offset+i+32;
-        if (cell->index==0xffff) continue;
+        if (cell->index==0xffff || cell->reserve[9]==255) continue;
         uint16_t index=(uint16_t)((table_job.offset+i)/32+1);
         table_job.numbers++; table_job.last=index;
         table_job.sum^=idindex_hash(index,(uint8_t*)cell->ID);

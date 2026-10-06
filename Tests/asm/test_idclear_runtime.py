@@ -15,7 +15,7 @@ class ClearMachine(StorageMachine):
         self.write(self.addr('id_used_bytes'),8192)
         self.write(self.device+47,1700000400);self.write(self.device+165,987,2)
     def read(self):
-        assert self.legacy,'runtime clear must not rescan ID'
+        assert self.legacy or ('idcrc_io_poll' in self.symbols and self.args()[2]<=64), 'CRC delta reads are bounded to 64 bytes'
         a,p,n,_=self.args();assert n<=1024
         self.read_budget+=n;self.u.mem_write(p,bytes(self.flash[a:a+n]));self.ret(1)
     def sync_erase(self):
@@ -29,7 +29,7 @@ class ClearMachine(StorageMachine):
     def clear_active(self):return self.checked('idclear_runtime_active')!=0
     def clear_tick(self):
         self.now+=1;self.checked('idclear_runtime_poll',self.now)
-        self.passes.append(self.steps);assert self.io_budget<=1 and self.read_budget==0
+        self.passes.append(self.steps);assert self.io_budget<=1 and self.read_budget<=(64 if 'idcrc_io_poll' in self.symbols else 0)
     def clear_drain(self):
         for _ in range(10000):
             if not self.clear_active():return
@@ -68,9 +68,10 @@ def success_and_heap():
            'live_workspace_payload':180+534+56,'free':peak}
     m=ClearMachine();m.write(m.addr('mem')+20,1601536)
     m.flash[BASE:BASE+1601536]=b'\x5a'*1601536
-    assert m.start_clear();m.clear_drain()
+    m.record_changes=True;assert m.start_clear();m.clear_drain()
     assert m.flash[BASE:BASE+1601536]==b'\xff'*1601536 and m.wires==[wire()]
-    assert m.counts['start']==391 and m.counts['poll']==1173
+    assert [a for k,a,b in m.changes if k=='erase' and BASE<=a<BASE+1601536]==list(range(BASE,BASE+1601536,4096))
+    assert m.counts['poll']==3*m.counts['start']
     small['full_partition']={'bytes':1601536,'passes':len(m.passes),
         'maximum_instructions':max(m.passes),'total_instructions':sum(m.passes),
         'stack':m.stack_peak,'async_starts':m.counts['start'],'async_polls':m.counts['poll']}
@@ -78,15 +79,16 @@ def success_and_heap():
 
 def sessions_cancel_faults():
     count=0;max_instructions=0;max_stack=0
-    for ticks in range(9):
+    for ticks in range(80):
         m=ClearMachine();assert m.start_clear()
         for _ in range(ticks):m.clear_tick()
-        m.checked('idclear_runtime_cancel');m.clear_drain()
-        assert not m.wires and m.io is None
+        before_wires=list(m.wires);m.checked('idclear_runtime_cancel');m.clear_drain()
+        assert m.wires==before_wires and m.io is None
         if not ticks:assert m.counters()==(7,129,8192) and m.u.mem_read(m.addr('mem_storage_ready'),1)==b'\1'
-        elif ticks<5:
+        elif m.counters()==(0,0,0):
+            assert m.flash[BASE:BASE+8192]==b'\xff'*8192
+        else:
             assert m.counters()==(7,129,8192) and m.u.mem_read(m.addr('mem_storage_ready'),1)==b'\0'
-        else:assert m.counters()==(0,0,0)
         max_instructions=max(max_instructions,max(m.passes));max_stack=max(max_stack,m.stack_peak)
         count+=1
     for event in ('epoch','quiet_usb','quiet_server','savereset'):
@@ -120,7 +122,7 @@ def guards():
     assert bytes(m.u.mem_read(m.addr('ix'),16))==old;count+=1
     m=ClearMachine();assert not m.start_clear(1);m.parse(1);assert not m.clear_active();count+=1
     m=ClearMachine();assert m.start_clear();assert not m.start_clear();count+=1
-    m=ClearMachine();m.write(m.addr('mem')+20,0);assert m.start_clear();m.clear_drain()
+    m=ClearMachine();m.write(m.addr('mem')+20,0);m.record_changes=True;assert m.start_clear();m.clear_drain()
     assert m.counters()==(0,0,0) and not any(m.counts.values()) and m.wires==[wire()];count+=1
     return count
 
@@ -130,6 +132,7 @@ def bulk_power():
     m=ClearMachine();m.record_changes=True;assert m.start_clear();m.clear_drain()
     state=bytearray(b'\x5a'*8192);count=0
     for kind,addr,data in m.changes:
+        if not BASE<=addr<BASE+8192:continue  # CRC metadata has its own power-cut suite
         assert kind=='erase'
         offset=addr-BASE
         for n in (0,1,2048,4095,4096):

@@ -23,8 +23,8 @@
         EXTERN mem_tables_ready
         EXTERN idindex_runtime_suspend
         EXTERN idindex_scanned
-        EXTERN w25_async_start
-        EXTERN w25_async_poll
+        EXTERN idcrc_io_start
+        EXTERN idcrc_io_poll
         PUBLIC idclear_runtime_begin
         PUBLIC idclear_runtime_poll
         PUBLIC idclear_runtime_active
@@ -275,8 +275,8 @@ idclear_runtime_poll:
         CMP R0,#0
         BEQ ic_no_pending
         MOV R0,R5
-        CFI FunCall w25_async_poll
-        BL w25_async_poll
+        CFI FunCall idcrc_io_poll
+        BL idcrc_io_poll
         CMP R0,#1
         BEQ ic_done
         CMP R0,#2
@@ -298,8 +298,8 @@ ic_no_pending:
         MOVS R1,#0
         MOVS R2,#0
         MOV R3,R5
-        CFI FunCall w25_async_start
-        BL w25_async_start
+        CFI FunCall idcrc_io_start
+        BL idcrc_io_start
         CMP R0,#0
         BEQ ic_failed
         MOVS R0,#1

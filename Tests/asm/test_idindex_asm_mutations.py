@@ -14,7 +14,7 @@ def run():
     ):
         m = IndexMachine()
         expected, _, _ = m.setup((1, 2))
-        at = m.addr('idindex_poll')
+        at = m.addr('idindex_impl_poll' if 'idindex_impl_poll' in m.symbols else 'idindex_poll')
         code = bytes(m.u.mem_read(at, span))
         locations = [i for i in range(0, len(code) - 1, 2)
                      if code[i:i + 2] == pattern]

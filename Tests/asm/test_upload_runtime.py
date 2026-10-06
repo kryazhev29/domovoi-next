@@ -66,9 +66,12 @@ class UploadMachine(StorageMachine):
         return self.read_word(self.ptr()+35, 1) if self.ptr() else 0
 
     def fixture(self, cmd, slots):
-        self.cmd = cmd; self.base = 0x1cf400 if cmd == 10 else 0x1e8400
+        self.cmd = cmd; self.base = (0x1d0000 if "log_cursor32" in self.symbols else 0x1cf400) if cmd == 10 else 0x1e8400
         size = 98304 if cmd == 10 else 49152
         self.u.mem_write(self.addr('mem') + (7 if cmd == 10 else 8)*8, struct.pack('<II', self.base, size))
+        if cmd==10 and "log_cursor32" in self.symbols:
+            from log_ring_fixture import install
+            install(self,slots);return
         for i, cell in enumerate(slots):
             self.flash[self.base+i*32:self.base+(i+1)*32] = cell
 
@@ -93,7 +96,21 @@ class UploadMachine(StorageMachine):
             self.tick_upload()
         raise AssertionError(('upload stuck', self.phase()))
 
+    def set_cursor(self,channel,ordinal):
+        if self.cmd==10 and "log_cursor32" in self.symbols:self.write(self.addr("log_cursor32")+4*channel,ordinal+1 if ordinal else 0)
+        else:self.checked("upload_setIndex",self.cmd,channel,ordinal)
+
+    def cursor(self,channel=0):
+        if self.cmd==10 and "log_cursor32" in self.symbols:return max(0,self.read_word(self.addr("log_cursor32")+4*channel)-1)
+        return self.checked("upload_index",self.cmd,channel)
+
+    def seed_pending(self,ordinal):
+        if self.cmd==10 and "log_pending32" in self.symbols:self.write(self.addr("log_pending32"),ordinal+1)
+        else:self.write(self.addr("log_unacked" if self.cmd==10 else "temp_unacked"),ordinal,2)
+
     def pending_cursor(self, channel=0):
+        # Legacy wire scenarios use sequential record IDs, starting at 1.
+        if self.cmd==10 and "log_pending32" in self.symbols:return max(0,self.read_word(self.addr("log_pending32")+4*channel)-1)
         return self.read_word(self.addr('log_unacked' if self.cmd == 10 else 'temp_unacked')+channel*2, 2)
 
 
@@ -111,15 +128,15 @@ def wire(cmd, uniq, first, cells, total=None):
 def test_normal():
     results = {}
     for cmd, n, first, ch in [(9,1,0,0),(9,1536,0,1),(9,1536,1500,0),
-                             (10,1,0,0),(10,3072,0,1),(10,3072,3071,0)]:
+                             (10,1,0,0),(10,3048,0,1),(10,3048,3047,0)]:
         m=UploadMachine(); cells=[(log(i+1, i%2==0) if cmd==10 else temp(i+1)) for i in range(n)]
-        m.fixture(cmd,cells); m.checked('upload_setIndex',cmd,ch,first)
+        m.fixture(cmd,cells); m.set_cursor(ch,first)
         m.u.reg_write(UC_ARM_REG_PRIMASK,1)
         m.request(ch); assert m.ptr() and not m.sent and not m.counts['read']
         m.drain_upload(); limit=32 if cmd==10 else 100
         assert m.sent == [wire(cmd,7,first,cells[first:first+limit],n)]
         assert m.pending_cursor(ch)==min(n,first+limit)
-        assert m.checked('upload_index',cmd,ch)==first, 'send advanced an unacknowledged cursor'
+        assert m.cursor(ch)==first, 'send advanced an unacknowledged cursor'
         results[str((cmd,n,first,ch))]=dict(passes=len(m.costs),maximum=max(m.costs),total=sum(m.costs),
             stack=m.stack_peak,read_bytes=m.total_read,max_read=m.max_read)
     return results
@@ -221,17 +238,17 @@ def test_heap_ack():
     for slot in (REPLY,CONFIG,TABLE):
         m=UploadMachine();m.fixture(10,[log(1)])
         p=take(m,slot);assert p
-        m.write(m.addr('log_unacked'),1,2);before=bytes(m.flash);m.request()
+        m.seed_pending(1);before=bytes(m.flash);m.request()
         assert not m.ptr() and not any(m.counts.values()) and bytes(m.flash)==before
-        assert m.pending_cursor()==1 and m.checked('upload_index',10,0)==0
+        assert m.pending_cursor()==1 and m.cursor()==0
         drop(m,slot,p);assert owned(m)==0
     m=UploadMachine();m.fixture(10,[log(1),log(2)])
     photo=take(m,PHOTO);assert photo
     snapshots=[];release=m.addr('work_release')
     m.u.hook_add(UC_HOOK_CODE,lambda u,a,n,x:snapshots.append(owned(m)) if a==release else None)
-    m.write(m.addr('log_unacked'),1,2);m.request()
+    m.seed_pending(1);m.request()
     assert not m.ptr() and m.checked('mem_config_result')==1
-    assert m.checked('upload_index',10,0)==0 and m.pending_cursor()==1
+    assert m.cursor()==0 and m.pending_cursor()==1
     assert not m.sent and not m.counts['start']
     assert owned(m)==(1<<(PHOTO-1))|(1<<(CONFIG-1))
     # Upload buffers were admitted together, then released before snapshot.
@@ -239,7 +256,7 @@ def test_heap_ack():
     for _ in range(1000):
         m.tick_upload()
         if m.sent:break
-    assert m.sent and m.checked('upload_index',10,0)==1
+    assert m.sent and m.cursor()==1
     assert m.pending_cursor()==2 and m.sent[-1]==wire(10,7,1,[log(2)],2)
     drop(m,PHOTO,photo);assert owned(m)==0
     results.update(conflicts=3,preflight_slots=snapshots[0],storage_bytes=2224,
@@ -254,7 +271,7 @@ def test_ack_power():
         data=bytearray(m.u.mem_read(m.addr(name),512));data[510:512]=struct.pack('<H',crc16(data[:510]))
         m.flash[0x1cd400+off:0x1cd600+off]=data
     original=bytes(m.flash[m.base:m.base+64]);m.record_changes=True
-    m.write(m.addr('log_unacked'),1,2);m.request()
+    m.seed_pending(1);m.request()
     boot=UploadMachine();initial=bytes(boot.u.mem_read(0x20000000,0x5000));count=0;seen=0
     for _ in range(1500):
         before=bytes(m.flash);m.tick_upload()
@@ -268,13 +285,13 @@ def test_ack_power():
                 selected=boot.checked('cfg_select',0x21000000)
                 saved=image[selected+512:selected+1024]
                 assert crc16(saved[:510])==int.from_bytes(saved[510:512],'little')
-                cursor=int.from_bytes(saved[boot.d['reserv']+4:boot.d['reserv']+6],'little')
+                cursor=(max(0,int.from_bytes(saved[boot.d['reserv']+20:boot.d['reserv']+24],'little')-1) if 'log_cursor32' in m.symbols else int.from_bytes(saved[boot.d['reserv']+4:boot.d['reserv']+6],'little'))
                 assert cursor in (0,1),('torn ACK cursor',cursor)
                 assert image[m.base:m.base+64]==original,'ACK erased unacknowledged rows'
                 count+=1
         if m.sent:break
     else:raise AssertionError('ACK did not finish')
-    assert m.checked('upload_index',10,0)==1 and m.pending_cursor()==2
+    assert m.cursor()==1 and m.pending_cursor()==2
     assert m.sent[-1]==wire(10,7,1,[log(2)],2)
     return count
 

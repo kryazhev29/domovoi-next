@@ -1,3 +1,9 @@
+        EXTERN idindex_poll
+        EXTERN idindex_commit
+        EXTERN idindex_put
+        EXTERN idindex_find
+        EXTERN idindex_table_commit
+        EXTERN idindex_scanned
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/User/idindex.c
         PUBLIC ix
@@ -21,20 +27,20 @@
         EXTERN mem_read
         EXTERN mem_write
         EXTERN memcmp
-        EXTERN w25_async_start
-        EXTERN w25_async_poll
-        EXTERN w25_async_active
+        EXTERN idcrc_io_start
+        EXTERN idcrc_io_poll
+        EXTERN idcrc_io_active
         EXTERN w25_read_available
         EXTERN w25_read_data
         EXTERN timers_getMillis
 
-        PUBLIC idindex_commit
-        PUBLIC idindex_find
-        PUBLIC idindex_poll
-        PUBLIC idindex_put
+        PUBLIC idindex_impl_commit
+        PUBLIC idindex_impl_find
+        PUBLIC idindex_impl_poll
+        PUBLIC idindex_impl_put
         PUBLIC idindex_runtime_suspend
         PUBLIC idindex_runtime_active
-        PUBLIC idindex_scanned
+        PUBLIC idindex_impl_scanned
 
           CFI Names cfiNames0
           CFI StackFrame CFA R13 DATA
@@ -222,9 +228,9 @@ ix_last:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock4 Using cfiCommon0
-          CFI Function idindex_scanned
+          CFI Function idindex_impl_scanned
         THUMB
-idindex_scanned:
+idindex_impl_scanned:
         PUSH     {R3-R5,LR}
           CFI R14 Frame(CFA, -4)
           CFI R5 Frame(CFA, -8)
@@ -261,9 +267,9 @@ idindex_scanned:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock5 Using cfiCommon0
-          CFI Function idindex_find
+          CFI Function idindex_impl_find
         THUMB
-idindex_find:
+idindex_impl_find:
         PUSH     {R3-R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI R7 Frame(CFA, -8)
@@ -303,6 +309,9 @@ idindex_find:
           CFI FunCall mem_read
         BL       mem_read
         CBZ.N    R0,??idindex_find_0
+        LDRB     R0,[R5, #+31]
+        CMP      R0,#+255
+        BEQ.N    ??idindex_find_3
         LDRB     R0,[R5, #+0]
         CMP      R0,#+255
         ITT      EQ
@@ -406,9 +415,9 @@ ix_add:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock7 Using cfiCommon0
-          CFI Function idindex_put
+          CFI Function idindex_impl_put
         THUMB
-idindex_put:
+idindex_impl_put:
         PUSH     {R4,LR}
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
@@ -446,9 +455,9 @@ idindex_put:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock8 Using cfiCommon0
-          CFI Function idindex_commit
+          CFI Function idindex_impl_commit
         THUMB
-idindex_commit:
+idindex_impl_commit:
         PUSH     {R4,LR}
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
@@ -484,9 +493,9 @@ idindex_commit:
         ;          5 final log erase, 6 final mark. Only verified advances.
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock9 Using cfiCommon0
-          CFI Function idindex_poll
+          CFI Function idindex_impl_poll
         THUMB
-idindex_poll:
+idindex_impl_poll:
         PUSH     {R4-R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI R7 Frame(CFA, -8)
@@ -503,8 +512,8 @@ idindex_poll:
         BEQ.W    ix_poll_dispatch
           CFI FunCall timers_getMillis
         BL       timers_getMillis
-          CFI FunCall w25_async_poll
-        BL       w25_async_poll
+          CFI FunCall idcrc_io_poll
+        BL       idcrc_io_poll
         CMP      R0,#+1
         BEQ.W    ix_poll_return
         MOV      R5,R0
@@ -573,8 +582,8 @@ ix_poll_dispatch:
         CMP      R0,#+7
         BHI.W    ix_poll_return
 ix_poll_available:
-          CFI FunCall w25_async_active
-        BL       w25_async_active
+          CFI FunCall idcrc_io_active
+        BL       idcrc_io_active
         CMP      R0,#+0
         BNE.W    ix_poll_return
           CFI FunCall w25_read_available
@@ -598,7 +607,7 @@ ix_poll_available:
         SUBS     R0,R0,#+1
         ADD      R0,R6,R0, LSL #+5
         MOV      R1,SP
-        MOVS     R2,#+12
+        MOVS     R2,#+32
           CFI FunCall w25_read_data
         BL       w25_read_data
         CMP      R0,#+0
@@ -606,6 +615,9 @@ ix_poll_available:
         LDRH     R0,[SP, #+0]
         MOVW     R1,#+65535
         CMP      R0,R1
+        BEQ.W    ix_poll_advance
+        LDRB     R0,[SP, #+31]
+        CMP      R0,#+255
         BEQ.W    ix_poll_advance
         ADD      R0,SP,#+2
           CFI FunCall ix_bucket
@@ -701,8 +713,8 @@ ix_poll_start:
         MOV      R0,R6
         MOV      R1,R5
         LDR      R2,[SP, #+64]
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         CMP      R0,#+0
         BEQ.N    ix_poll_error
         ; Cannot fail: user_loop starts a step only with no owner.
@@ -780,12 +792,12 @@ idindex_runtime_suspend:
         DATA
         DC32 0
 
-        PUBLIC idindex_table_commit
+        PUBLIC idindex_impl_table_commit
         SECTION .text:CODE:NOROOT(2)
         CFI Block table_commit_block Using cfiCommon0
-        CFI Function idindex_table_commit
+        CFI Function idindex_impl_table_commit
         THUMB
-idindex_table_commit:
+idindex_impl_table_commit:
         LDR R2,=ix
         LDR R2,[R2]
         EORS R0,R0,R2

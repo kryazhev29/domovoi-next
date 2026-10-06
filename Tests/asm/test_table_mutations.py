@@ -7,6 +7,7 @@ for mode in ('pending','cancel','crc'):
     class Mutant(Original):
         def __init__(self):
             super().__init__()
+            self.flash[0x4101f]=0
             if mode=='cancel':
                 a=self.addr('sj_runtime_cancel');assert bytes(self.u.mem_read(a,2))==b'\x01\x21'
                 self.u.mem_write(a,b'\0\x21');applied.append(a);return

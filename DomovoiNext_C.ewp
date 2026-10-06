@@ -4610,6 +4610,30 @@
         <file>
             <name>$PROJ_DIR$\User\fw_crc.c</name>
         </file>
+        <file>
+            <name>$PROJ_DIR$\User\packet.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\table_runtime.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\id_cells.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\log_ring.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\log_cursor.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\log_migration.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\storage_profile.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\User\id_crc_cache.c</name>
+        </file>
     </group>
     <file>
         <name>$PROJ_DIR$\board.c</name>

@@ -1,3 +1,4 @@
+        EXTERN idcrc_release_tail
 #include "../domovoi_diag.h"
 #include "../work_slots.h"
         EXTERN work_acquire
@@ -38,12 +39,12 @@
         EXTERN sj_span
         EXTERN store_runtime
         EXTERN user_wait_stable_power
-        EXTERN w25_async_active
-        EXTERN w25_async_poll
-        EXTERN w25_async_start
-        EXTERN w25_erase_sector
+        EXTERN idcrc_io_active
+        EXTERN idcrc_io_poll
+        EXTERN idcrc_io_start
+        EXTERN idcrc_erase
         EXTERN w25_read_data
-        EXTERN w25_write_data
+        EXTERN idcrc_write
         EXTERN wdt_reload
 
         PUBLIC mem_config_begin
@@ -216,8 +217,8 @@ sj_io_erase:
         BL       sj_span
         CBZ.N    R0,??sj_io_erase_0
         MOV      R0,R4
-          CFI FunCall w25_erase_sector
-        BL       w25_erase_sector
+          CFI FunCall idcrc_erase
+        BL       idcrc_erase
         CBZ.N    R0,??sj_io_erase_1
         MOVS     R0,#+1
         POP      {R4,PC}
@@ -287,7 +288,6 @@ flash_claim:
 
           CFI Block cfiFoRelease Using cfiCommon0
           CFI Function flash_release
-          CFI NoCalls
 ; R0 = FO_* owner. Frees the byte only when this owner number holds it.
 ; Returns 0 (callers tail-call it from functions returning 0).
 flash_release:
@@ -297,8 +297,8 @@ flash_release:
         LSLS     R2,R2,#+25
         IT       EQ
         STRBEQ   R2,[R1, #+0]
-        MOVS     R0,#+0
-        BX       LR
+          CFI FunCall idcrc_release_tail
+        B.W idcrc_release_tail
           CFI EndBlock cfiFoRelease
 
           CFI Block cfiFoRead Using cfiCommon0
@@ -1025,8 +1025,8 @@ cfg_publish_pages:
         IT       EQ
         LDREQ.W  R6,??DataTable21_3
         ADD      R0,R6,#+4096
-          CFI FunCall w25_erase_sector
-        BL       w25_erase_sector
+          CFI FunCall idcrc_erase
+        BL       idcrc_erase
         CMP      R0,#+0
         BEQ.N    ??cfg_publish_pages_0
         MOVS     R2,#+16
@@ -1050,8 +1050,8 @@ cfg_publish_pages:
         CMNEQ    R0,#+1
         BNE.N    ??cfg_publish_pages_0
         MOV      R0,R6
-          CFI FunCall w25_erase_sector
-        BL       w25_erase_sector
+          CFI FunCall idcrc_erase
+        BL       idcrc_erase
         CMP      R0,#+0
         BEQ.N    ??cfg_publish_pages_0
         LDR.W    R0,??DataTable21_1
@@ -1084,8 +1084,8 @@ cfg_publish_pages:
         MOV      R2,#+256
         ADD      R1,SP,#+20
         ADDS     R0,R4,R6
-          CFI FunCall w25_write_data
-        BL       w25_write_data
+          CFI FunCall idcrc_write
+        BL       idcrc_write
         CBZ.N    R0,??cfg_publish_pages_0
         ADD      R4,R4,#+256
         CMP      R4,#+4096
@@ -1101,8 +1101,8 @@ cfg_publish_pages:
         MOVS     R2,#+16
         ADD      R1,SP,#+4
         ADD      R0,R6,#+4096
-          CFI FunCall w25_write_data
-        BL       w25_write_data
+          CFI FunCall idcrc_write
+        BL       idcrc_write
         CBZ.N    R0,??cfg_publish_pages_0
         MOV      R1,SP
         MOV      R0,R6
@@ -1359,8 +1359,8 @@ cfg_mirror:
 ??cfg_mirror_0:
         LDR.W    R5,??DataTable21_9
         MOV      R0,R5
-          CFI FunCall w25_erase_sector
-        BL       w25_erase_sector
+          CFI FunCall idcrc_erase
+        BL       idcrc_erase
         CMP      R0,#+0
         BEQ.N    ??cfg_mirror_2
         MOV      R0,R5
@@ -1369,8 +1369,8 @@ cfg_mirror:
         CMP      R0,#+0
         BEQ.N    ??cfg_mirror_2
         MOV      R0,#+1892352
-          CFI FunCall w25_erase_sector
-        BL       w25_erase_sector
+          CFI FunCall idcrc_erase
+        BL       idcrc_erase
         CMP      R0,#+0
         BEQ.N    ??cfg_mirror_2
         MOV      R0,#+1892352
@@ -1405,8 +1405,8 @@ cfg_mirror:
         MOV      R2,#+256
         ADD      R1,SP,#+32
         ADDS     R0,R4,R7
-          CFI FunCall w25_write_data
-        BL       w25_write_data
+          CFI FunCall idcrc_write
+        BL       idcrc_write
         CMP      R0,#+0
         BEQ.N    ??cfg_mirror_2
         ADD      R7,R7,#+256
@@ -1523,9 +1523,9 @@ cfg_mirror:
         MOV      R2,#+256
         ADD      R1,SP,#+32
         ADDS     R0,R4,R5
-          CFI (cfiCond39) FunCall cfg_mirror w25_write_data
-          CFI (cfiCond39) FunCall cfg_mirror w25_write_data
-        B.W      w25_write_data
+          CFI (cfiCond39) FunCall cfg_mirror idcrc_write
+          CFI (cfiCond39) FunCall cfg_mirror idcrc_write
+        B.W      idcrc_write
           CFI EndBlock cfiCond39
           CFI EndBlock cfiCond40
           CFI EndBlock cfiPicker41
@@ -1980,9 +1980,9 @@ mem_write:
         MOV      R2,R5
         MOV      R1,R4
         MOV      R0,R6
-          CFI (cfiCond61) FunCall sj_io_write w25_write_data
-          CFI (cfiCond62) FunCall mem_write w25_write_data
-        B.W      w25_write_data
+          CFI (cfiCond61) FunCall sj_io_write idcrc_write
+          CFI (cfiCond62) FunCall mem_write idcrc_write
+        B.W      idcrc_write
           CFI EndBlock cfiCond61
           CFI EndBlock cfiCond62
           CFI EndBlock cfiPicker63
@@ -2142,8 +2142,8 @@ mem_erase_sector:
         BL       mem_guard
         CBZ.N    R0,??mem_erase_sector_0
         LSLS     R0,R4,#+12
-          CFI FunCall w25_erase_sector
-        BL       w25_erase_sector
+          CFI FunCall idcrc_erase
+        BL       idcrc_erase
         CBZ.N    R0,??mem_erase_sector_1
         MOVS     R0,#+1
         POP      {R4,PC}
@@ -2274,8 +2274,8 @@ mem_config_begin:
         LDR.W    R6,??DataTable21_14
         LDRB     R0,[R6, #+35]
         CBNZ.N   R0,??mem_config_begin_0
-          CFI FunCall w25_async_active
-        BL       w25_async_active
+          CFI FunCall idcrc_io_active
+        BL       idcrc_io_active
         CBNZ.N   R0,??mem_config_begin_0
         LDR.W    R0,??DataTable21_8
         LDRB     R0,[R0, #+0]
@@ -2397,7 +2397,7 @@ cfg_async_page:
         DATA
 ??DataTable19_2:
         DATA32
-        DC32     0x1fb000
+        DC32     0x1fe000
 
         SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock77 Using cfiCommon0
@@ -2419,8 +2419,8 @@ mem_config_poll:
         LDRB     R0,[R4, #+36]
         CBZ.N    R0,??mem_config_poll_2
         MOV      R0,R5
-          CFI FunCall w25_async_poll
-        BL       w25_async_poll
+          CFI FunCall idcrc_io_poll
+        BL       idcrc_io_poll
         CMP      R0,#+1
         BEQ.N    ??mem_config_poll_1
         MOVS     R1,#+0
@@ -2529,8 +2529,8 @@ mem_config_poll:
         MOVS     R2,#+0
         MOVS     R1,#+0
         MOV      R0,R6
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         CMP      R0,#+0
 ??mem_config_poll_7:
         BEQ.W    ??mem_config_poll_4
@@ -2574,8 +2574,8 @@ mem_config_poll:
         LDR      R1,=sjr+61
         LDRH     R5,[R4, #+32]
         ADDS     R0,R5,R0
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         CMP      R0,#+0
         BEQ.N    ??mem_config_poll_21
         LDRB     R0,[R4, #+34]
@@ -2677,8 +2677,8 @@ mem_config_poll:
         ADD      R1,R4,#+12
         LDR      R0,[R4, #+8]
         ADD      R0,R0,#+4096
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         CBZ.N    R0,??mem_config_poll_4
         MOVS     R0,#+1
         STRB     R0,[R4, #+36]

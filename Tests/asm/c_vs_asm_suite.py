@@ -16,6 +16,15 @@ sys.path.insert(0, str(ROOT / 'Tests'))
 import iar_irq_support  # Existing dependency discovery and selected ELF support.
 
 CASES = {
+    'stage5 countends': [('test_stage5_log','count_ends')],
+    'stage5 logcommit': [('test_stage5_log','record_commit')],
+    'stage5 2MB': [('test_stage5_capacity','run')],
+    'stage5 log': [('test_stage5_log',n) for n in ('run','cursor_loss','migration','legacy_checkpoint')],
+    'stage5_log_power': [('test_stage5_log',n) for n in ('power','migration_power','erased_generation')],
+    'stage5 CRC': [('test_stage5_crc', 'run')],
+    'stage5_crc_power': [('test_stage5_crc', n) for n in ('power','loader_recovery','failed_commit_recovery')],
+    'stage5 ID': [('test_stage5_id', 'run')],
+    'stage5 Wiegand': [('test_stage5_wiegand', 'run')],
     'stage4 USB': [('test_stage4_usb', 'run')],
     'stage4 FW CRC': [('test_stage4_fw_crc', 'run')],
     'sync entry': [('test_project_sync_entry','run')],
@@ -49,7 +58,7 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CORE = ('stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
+CORE = ('stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 
 

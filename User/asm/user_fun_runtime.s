@@ -1,3 +1,29 @@
+        EXTERN log_ring_ack_poll
+        EXTERN log_ring_reset
+        EXTERN log_ring_restore
+        EXTERN log_ring_checkpoint
+        EXTERN log_job
+        EXTERN log_clearLogBuffer
+        EXTERN log_readRecords
+        EXTERN log_getRecordsCount
+        EXTERN log_addEvent
+        EXTERN log_uniqueIndex
+        EXTERN log_async_step
+        EXTERN log_async_begin
+        EXTERN log_async_active
+        EXTERN idcrc_background
+        EXTERN stage5_user_updateID
+        EXTERN stage5_user_getNumbersCount
+        PUBLIC id_time_end
+        PUBLIC sync_pending
+        PUBLIC sync_quiet
+        EXTERN table_fault
+        EXTERN table_job
+        EXTERN table_runtime_poll
+        EXTERN table_runtime_begin
+        EXTERN table_runtime_cancel
+        EXTERN table_runtime_quiet
+        EXTERN table_runtime_active
 #include "../domovoi_diag.h"
 #include "../work_slots.h"
 #ifndef RELEASE_BUILD
@@ -35,7 +61,7 @@
         EXTERN expiry_runtime_begin
         EXTERN expiry_runtime_cancel
         PUBLIC id_used_bytes
-        PUBLIC log_job
+
         PUBLIC log_lastIndex
         PUBLIC log_pending
         PUBLIC log_pendingCount
@@ -67,8 +93,6 @@
         PUBLIC store_save_requested
         PUBLIC sync_pending
         PUBLIC sync_quiet
-        PUBLIC table_fault
-        PUBLIC table_job
         PUBLIC temp_unacked
         PUBLIC temp_usbReadIndex
         PUBLIC unreg_sms_pending
@@ -98,6 +122,7 @@
         EXTERN service_crc_poll
         EXTERN service_crc_cancel
         EXTERN service_crc_quiet
+        EXTERN packet_send
         EXTERN fw_crc_begin
         EXTERN fw_crc_next
         EXTERN WG_init
@@ -248,9 +273,9 @@
         EXTERN user_comm_sms
         EXTERN user_comm_start
         EXTERN user_strcpy
-        EXTERN w25_async_active
-        EXTERN w25_async_poll
-        EXTERN w25_async_start
+        EXTERN idcrc_io_active
+        EXTERN idcrc_io_poll
+        EXTERN idcrc_io_start
         EXTERN w25_read_available
         EXTERN w25_read_data
         EXTERN w25_read_devID
@@ -281,15 +306,15 @@
         PUBLIC gsm_check_data
         PUBLIC gsm_user_debug
         PUBLIC log_addControlEvent
-        PUBLIC log_addEvent
+
         PUBLIC log_addPhotoEvent
         PUBLIC log_addSystemEvent
         PUBLIC log_addSystemEventID
         PUBLIC log_addUpdateEvent
         PUBLIC log_checkPending
-        PUBLIC log_clearLogBuffer
+
         PUBLIC log_flushPending
-        PUBLIC log_getRecordsCount
+
         PUBLIC log_setTime
         PUBLIC mem
         PUBLIC port_buffer
@@ -559,8 +584,8 @@ storage_idle:
         LDR      R0,=flash_owner
         LDRB     R0,[R0, #+0]
         CBNZ.N   R0,??storage_idle_0
-          CFI FunCall w25_async_active
-        BL       w25_async_active
+          CFI FunCall idcrc_io_active
+        BL       idcrc_io_active
         CBNZ.N   R0,??storage_idle_0
         POP      {R0,LR}
           CFI R14 SameValue
@@ -713,7 +738,11 @@ upload_store:
         STRB     R0,[R3, #+0]
         LDRB     R0,[R1, #+1]
         STRB     R0,[R3, #+1]
-        POP      {R0,R4,PC}
+        POP      {R0,R4,LR}
+          CFI R4 SameValue
+          CFI R14 SameValue
+          CFI CFA R13+0
+        B.W log_ring_checkpoint
           CFI EndBlock cfiBlock6
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -725,6 +754,9 @@ upload_restore:
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+16
+        MOV R4,R0
+        BL log_ring_restore
+        MOV R0,R4
         ADD      R4,R0,#+181
         LDR      R3,[R4, #+0]
         STR      R3,[SP, #+0]
@@ -794,6 +826,11 @@ upload_reset:
           CFI R4 Frame(CFA, -8)
           CFI CFA R13+8
         MOV      R4,R0
+        CMP R4,#+10
+        BNE stage5_upload_reset_temp
+        BL log_ring_reset
+        MOV R0,R4
+stage5_upload_reset_temp:
         MOVS     R2,#+0
         MOVS     R1,#+0
           CFI FunCall upload_setIndex
@@ -6299,7 +6336,7 @@ user_send_anyData:
         DATA
 ??DataTable61_8:
         DATA32
-        DC32     0x1cf400
+        DC32     0x1d0000
 
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
@@ -6679,7 +6716,6 @@ user_send_statusPackSecond:
 #else
 
 #endif
-        BL       ?Subroutine38
 ??CrossCallReturnLabel_126:
         MOVS     R0,#+24
         BL       ?Subroutine6
@@ -6713,22 +6749,13 @@ user_send_statusPackSecond:
         STR      R2,[R0, #+0]
         LDR      R2,[R3, #+4]
         STR      R2,[R0, #+4]
-        MOVS     R1,#+26
-        BL       ??Subroutine56_0
+        MOV      R0,R4
+        MOVW     R1,#+24
+        MOV      R2,R5
+          CFI FunCall packet_send
+        BL       packet_send
 ??CrossCallReturnLabel_198:
-        STRB     R0,[R4, #+30]
-        LSRS     R0,R0,#+8
-        STRB     R0,[R4, #+31]
-        CBZ.N    R5,??user_send_statusPackSecond_2
-        CMP      R5,#+1
-          CFI FunCall comm_tx_commit
-        ITT      EQ
-        MOVEQ    R0,#+32
-        BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_64
 ??user_send_statusPackSecond_2:
-        MOVS     R1,#+32
-        BL       ??Subroutine22_0
 ??CrossCallReturnLabel_64:
         ADD      SP,SP,#+40
           CFI CFA R13+16
@@ -7047,7 +7074,6 @@ user_send_crcPack:
 #else
 
 #endif
-        BL       ?Subroutine38
 ??CrossCallReturnLabel_128:
         MOVS     R0,#+13
         BL       ?Subroutine6
@@ -7097,22 +7123,13 @@ user_send_crcPack:
         STRB     R1,[R0, #+0]
         LDRB     R1,[SP, #+1]
         STRB     R1,[R0, #+1]
-        MOVS     R1,#+15
-        BL       ??Subroutine56_0
+        MOV      R0,R4
+        MOVW     R1,#+13
+        MOV      R2,R5
+          CFI FunCall packet_send
+        BL       packet_send
 ??CrossCallReturnLabel_197:
-        STRB     R0,[R4, #+19]
-        LSRS     R0,R0,#+8
-        STRB     R0,[R4, #+20]
-        CBZ.N    R5,??user_send_crcPack_2
-        CMP      R5,#+1
-          CFI FunCall comm_tx_commit
-        ITT      EQ
-        MOVEQ    R0,#+21
-        BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_62
 ??user_send_crcPack_2:
-        MOVS     R1,#+21
-        BL       ??Subroutine22_0
 ??CrossCallReturnLabel_62:
         ADD      SP,SP,#+32
           CFI CFA R13+16
@@ -7872,10 +7889,8 @@ user_send_answer_comand:
 #else
 
 #endif
-        BL       ?Subroutine38
 ??CrossCallReturnLabel_130:
-        MOVS     R0,#+11
-        BL       ?Subroutine65
+        MOVS     R0,#+0
 ??CrossCallReturnLabel_229:
         CMP      R7,#+7
         ITET     NE
@@ -7897,22 +7912,13 @@ user_send_answer_comand:
         LDRH     R0,[R0, #+165]
         BL       ?Subroutine8
 ??CrossCallReturnLabel_9:
-        MOVS     R1,#+13
-        BL       ??Subroutine56_0
+        MOV      R0,R4
+        MOVW     R1,#+11
+        MOV      R2,R5
+          CFI FunCall packet_send
+        BL       packet_send
 ??CrossCallReturnLabel_194:
-        STRB     R0,[R4, #+17]
-        LSRS     R0,R0,#+8
-        STRB     R0,[R4, #+18]
-        CBZ.N    R5,??user_send_answer_comand_2
-        CMP      R5,#+1
-          CFI FunCall comm_tx_commit
-        ITT      EQ
-        MOVEQ    R0,#+19
-        BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_60
 ??user_send_answer_comand_2:
-        MOVS     R1,#+19
-        BL       ??Subroutine22_0
 ??CrossCallReturnLabel_60:
         ADD      SP,SP,#+24
           CFI CFA R13+24
@@ -8378,7 +8384,6 @@ user_send_timeshtamp:
 #else
 
 #endif
-        BL       ?Subroutine38
 ??CrossCallReturnLabel_131:
         MOVS     R0,#+10
         BL       ??Subroutine7_0
@@ -8395,22 +8400,13 @@ user_send_timeshtamp:
         ADD      R0,R4,#+14
         BL       ?Subroutine14
 ??CrossCallReturnLabel_25:
-        MOVS     R1,#+12
-        BL       ??Subroutine56_0
+        MOV      R0,R4
+        MOVW     R1,#+10
+        MOV      R2,R6
+          CFI FunCall packet_send
+        BL       packet_send
 ??CrossCallReturnLabel_193:
-        STRB     R0,[R4, #+16]
-        LSRS     R0,R0,#+8
-        STRB     R0,[R4, #+17]
-        CBZ.N    R6,??user_send_timeshtamp_2
-        CMP      R6,#+1
-          CFI FunCall comm_tx_commit
-        ITT      EQ
-        MOVEQ    R0,#+18
-        BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_59
 ??user_send_timeshtamp_2:
-        MOVS     R1,#+18
-        BL       ??Subroutine22_0
 ??CrossCallReturnLabel_59:
         ADD      SP,SP,#+28
           CFI CFA R13+20
@@ -8448,10 +8444,8 @@ user_send_identPackToConfigurator:
         MOV      R4,SP
 ??user_send_identPackToConfigurator_1:
         CBZ.N    R4,??CrossCallReturnLabel_58
-        BL       ?Subroutine38
 ??CrossCallReturnLabel_132:
-        MOVS     R0,#+19
-        BL       ?Subroutine65
+        MOVS     R0,#+0
 ??CrossCallReturnLabel_230:
         STRB     R0,[R4, #+6]
         STRB     R0,[R4, #+7]
@@ -8469,22 +8463,13 @@ user_send_identPackToConfigurator:
         MOVEQ    R0,#+1
         MOVNE    R0,#+0
         STRB     R0,[R4, #+24]
-        MOVS     R1,#+21
-        BL       ??Subroutine56_0
+        MOV      R0,R4
+        MOVW     R1,#+19
+        MOV      R2,R5
+          CFI FunCall packet_send
+        BL       packet_send
 ??CrossCallReturnLabel_192:
-        STRB     R0,[R4, #+25]
-        LSRS     R0,R0,#+8
-        STRB     R0,[R4, #+26]
-        CBZ.N    R5,??user_send_identPackToConfigurator_2
-        CMP      R5,#+1
-          CFI FunCall comm_tx_commit
-        ITT      EQ
-        MOVEQ    R0,#+27
-        BLEQ     comm_tx_commit
-        B.N      ??CrossCallReturnLabel_58
 ??user_send_identPackToConfigurator_2:
-        MOVS     R1,#+27
-        BL       ??Subroutine22_0
 ??CrossCallReturnLabel_58:
         ADD      SP,SP,#+28
           CFI CFA R13+12
@@ -11959,12 +11944,12 @@ id_cells_end:
 
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
-table_job:
+stage4_unused_table_job:
         DS8 60
 
         SECTION `.bss`:DATA:REORDER:NOROOT(0)
         DATA
-table_fault:
+stage4_unused_table_fault:
         DS8 1
 
 
@@ -14052,8 +14037,8 @@ user_findID:
         CMP      R0,R8
         BCS.N    ??user_findID_7
         ADD      R5,SP,R7
-        LDRH     R1,[R5, #+0]
-        BL       ?Subroutine62
+        LDRB     R0,[R5, #+31]
+        CMP      R0,#+255
 ??CrossCallReturnLabel_216:
         BEQ.N    ??user_findID_5
         MOVS     R2,#+10
@@ -14063,6 +14048,10 @@ user_findID:
         BL       memcmp
         CMP      R0,#+0
         BNE.N    ??user_findID_5
+        LDRH     R0,[R5, #+0]
+        MOVW     R1,#+65535
+        CMP      R0,R1
+        BEQ.N    ??user_findID_5
         MOVS     R2,#+32
         MOV      R1,R5
         MOV      R0,R9
@@ -15545,6 +15534,7 @@ user_clearTempIdBuffer:
           CFI Function user_getNumbersCount
         THUMB
 user_getNumbersCount:
+        B.W stage5_user_getNumbersCount
         PUSH     {R3-R11,LR}
           CFI R14 Frame(CFA, -4)
           CFI R11 Frame(CFA, -8)
@@ -15944,6 +15934,7 @@ user_checkShedule:
           CFI Function user_updateID
         THUMB
 user_updateID:
+        B.W stage5_user_updateID
         PUSH     {R3-R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI R7 Frame(CFA, -8)
@@ -16064,9 +16055,9 @@ user_updateID:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock383 Using cfiCommon0
-          CFI Function log_clearLogBuffer
+          CFI Function stage4_unused_log_clearLogBuffer
         THUMB
-log_clearLogBuffer:
+stage4_unused_log_clearLogBuffer:
         PUSH     {R3-R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI R7 Frame(CFA, -8)
@@ -16230,9 +16221,9 @@ log_lastIndex:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock386 Using cfiCommon0
-          CFI Function log_uniqueIndex
+          CFI Function stage4_unused_log_uniqueIndex
         THUMB
-log_uniqueIndex:
+stage4_unused_log_uniqueIndex:
         PUSH     {R3-R5,LR}
           CFI R14 Frame(CFA, -4)
           CFI R5 Frame(CFA, -8)
@@ -16278,9 +16269,9 @@ log_uniqueIndex:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock387 Using cfiCommon0
-          CFI Function log_addEvent
+          CFI Function stage4_unused_log_addEvent
         THUMB
-log_addEvent:
+stage4_unused_log_addEvent:
         PUSH     {R3-R7,LR}
           CFI R14 Frame(CFA, -4)
           CFI R7 Frame(CFA, -8)
@@ -16454,9 +16445,9 @@ log_addEvent:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock388 Using cfiCommon0
-          CFI Function log_getRecordsCount
+          CFI Function stage4_unused_log_getRecordsCount
         THUMB
-log_getRecordsCount:
+stage4_unused_log_getRecordsCount:
         PUSH     {R3-R9,LR}
           CFI R14 Frame(CFA, -4)
           CFI R9 Frame(CFA, -8)
@@ -16545,9 +16536,9 @@ log_getRecordsCount:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock389 Using cfiCommon0
-          CFI Function log_readRecords
+          CFI Function stage4_unused_log_readRecords
         THUMB
-log_readRecords:
+stage4_unused_log_readRecords:
         PUSH     {R4-R10,LR}
           CFI R14 Frame(CFA, -4)
           CFI R10 Frame(CFA, -8)
@@ -16962,8 +16953,8 @@ fw_async_begin:
           CFI FunCall mem_config_result
         BL       mem_config_result
         CBNZ.N   R0,??fw_async_begin_0
-          CFI FunCall w25_async_active
-        BL       w25_async_active
+          CFI FunCall idcrc_io_active
+        BL       idcrc_io_active
         CBNZ.N   R0,??fw_async_begin_0
         LDR.W    R0,??DataTable160_1
         LDR      R1,[R0, #+0]
@@ -17213,8 +17204,8 @@ fw_storage_poll:
         LDRH     R5,[R4, #+28]
         ADDS     R0,R5,R0
 ??fw_storage_poll_13:
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         STRB     R0,[R4, #+33]
         CMP      R0,#+0
         BEQ.N    ??fw_storage_poll_9
@@ -17416,15 +17407,15 @@ fw_storage_poll:
 
         SECTION `.bss`:DATA:REORDER:NOROOT(2)
         DATA
-log_job:
+stage4_unused_log_job:
         DS8 48
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock410 Using cfiCommon0
-          CFI Function log_async_active
+          CFI Function stage4_unused_log_async_active
           CFI NoCalls
         THUMB
-log_async_active:
+stage4_unused_log_async_active:
         LDR.W    R0,??DataTable182
         LDRB     R0,[R0, #+44]
         B.N      ?Subroutine0
@@ -17432,9 +17423,9 @@ log_async_active:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock411 Using cfiCommon0
-          CFI Function log_async_begin
+          CFI Function stage4_unused_log_async_begin
         THUMB
-log_async_begin:
+stage4_unused_log_async_begin:
         PUSH     {R4,LR}
           CFI R14 Frame(CFA, -4)
           CFI R4 Frame(CFA, -8)
@@ -17499,9 +17490,9 @@ log_async_begin:
 
         SECTION `.text`:CODE:NOROOT(2)
           CFI Block cfiBlock412 Using cfiCommon0
-          CFI Function log_async_step
+          CFI Function stage4_unused_log_async_step
         THUMB
-log_async_step:
+stage4_unused_log_async_step:
         PUSH     {R4-R6,LR}
           CFI R14 Frame(CFA, -4)
           CFI R6 Frame(CFA, -8)
@@ -17670,8 +17661,8 @@ log_async_step:
         ADD      R1,R4,R1
         LDR      R6,[R4, #+32]
         ADDS     R0,R0,R6
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         STRB     R0,[R4, #+45]
         CMP      R0,#+0
         BNE.N    ??log_async_step_20
@@ -17779,7 +17770,7 @@ log_async_step:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond413 Using cfiCommon0
-          CFI Function log_async_step
+          CFI Function stage4_unused_log_async_step
           CFI Conditional ??CrossCallReturnLabel_236
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
@@ -17829,7 +17820,7 @@ log_async_step:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond418 Using cfiCommon0
-          CFI Function log_addEvent
+          CFI Function stage4_unused_log_addEvent
           CFI Conditional ??CrossCallReturnLabel_231
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
@@ -17860,7 +17851,7 @@ log_async_step:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond421 Using cfiCommon0
-          CFI Function log_async_step
+          CFI Function stage4_unused_log_async_step
           CFI Conditional ??CrossCallReturnLabel_157
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
@@ -17929,11 +17920,11 @@ log_async_step:
         THUMB
 ?Subroutine41:
         MOV      R0,R5
-          CFI (cfiCond424) FunCall fw_storage_poll w25_async_poll
-          CFI (cfiCond424) FunCall fw_storage_poll w25_async_poll
-          CFI (cfiCond426) FunCall log_async_step w25_async_poll
-          CFI (cfiCond427) FunCall user_storage_poll w25_async_poll
-        B.W      w25_async_poll
+          CFI (cfiCond424) FunCall fw_storage_poll idcrc_io_poll
+          CFI (cfiCond424) FunCall fw_storage_poll idcrc_io_poll
+          CFI (cfiCond426) FunCall log_async_step idcrc_io_poll
+          CFI (cfiCond427) FunCall user_storage_poll idcrc_io_poll
+        B.W      idcrc_io_poll
           CFI EndBlock cfiCond424
           CFI EndBlock cfiCond425
           CFI EndBlock cfiCond426
@@ -17942,7 +17933,7 @@ log_async_step:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond429 Using cfiCommon0
-          CFI Function log_addEvent
+          CFI Function stage4_unused_log_addEvent
           CFI Conditional ??CrossCallReturnLabel_31
           CFI R4 Frame(CFA, -20)
           CFI R5 Frame(CFA, -16)
@@ -18005,7 +17996,7 @@ log_storage_poll:
           CFI R14 SameValue
           CFI CFA R13+0
           CFI FunCall log_async_begin
-        B.N      log_async_begin
+        B.W      log_async_begin
           CFI R4 Frame(CFA, -12)
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
@@ -19884,7 +19875,7 @@ store_snapshot:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiCond497 Using cfiCommon0
-          CFI Function log_async_step
+          CFI Function stage4_unused_log_async_step
           CFI Conditional ??CrossCallReturnLabel_257
           CFI R4 Frame(CFA, -16)
           CFI R5 Frame(CFA, -12)
@@ -20378,7 +20369,7 @@ store_finish:
         CMP      R4,#+10
         LDR.N    R2,??DataTable193_1
         ITE      EQ
-        LDREQ    R2,[R2, #+91]
+        MOVEQ    R2,#+0
         LDRNE    R2,[R2, #+85]
         CMP      R0,R2
         BCS.N    ??store_finish_6
@@ -20788,6 +20779,25 @@ user_storage_poll:
           CFI CFA R13+80
           CFI FunCall store_usb_session
         BL       store_usb_session
+          CFI FunCall service_crc_active
+        BL service_crc_active
+        CBZ R0,stage5_no_crc_reply
+          CFI FunCall service_crc_poll
+        BL service_crc_poll
+        B.W ??user_storage_poll_1
+stage5_no_crc_reply:
+          CFI FunCall log_ring_ack_poll
+        BL log_ring_ack_poll
+        CMP R0,#+0
+        BNE stage5_storage_early_return
+          CFI FunCall idcrc_background
+        BL idcrc_background
+        CMP R0,#+0
+        BEQ stage5_normal_storage_poll
+stage5_storage_early_return:
+        ADD SP,SP,#+64
+        POP {R4-R6,PC}
+stage5_normal_storage_poll:
           CFI FunCall idindex_runtime_active
         BL idindex_runtime_active
         CBZ R0,ix_owner_poll_idle
@@ -20797,12 +20807,6 @@ user_storage_poll:
         BL idindex_poll
         B.W ??user_storage_poll_1
 ix_owner_poll_idle:
-          CFI FunCall service_crc_active
-        BL service_crc_active
-        CBZ R0,sc_storage_idle
-          CFI FunCall service_crc_poll
-        BL service_crc_poll
-        B.W ??user_storage_poll_1
 sc_storage_idle:
           CFI FunCall expiry_runtime_active
         BL expiry_runtime_active
@@ -20972,8 +20976,8 @@ fw_service_owner_idle:
         BL       ??Subroutine43_0
 ??CrossCallReturnLabel_153:
         LDR      R0,[R4, #+0]
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         MOVS     R1,R0
         ITT      EQ
         ADDEQ    R5,R5,#+1000
@@ -21626,10 +21630,10 @@ fw_service_owner_idle:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block ids_cfiBlock0 Using ids_cfiCommon0
-          CFI Function table_runtime_active
+          CFI Function stage4_unused_table_runtime_active
           CFI NoCalls
         THUMB
-table_runtime_active:
+stage4_unused_table_runtime_active:
         LDR.W    R0,ids___DataTable7
         LDRB     R0,[R0, #+50]
         CBZ.N    R0,ids___table_runtime_active_0
@@ -21640,10 +21644,10 @@ ids___table_runtime_active_0:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block ids_cfiBlock1 Using ids_cfiCommon0
-          CFI Function table_runtime_quiet
+          CFI Function stage4_unused_table_runtime_quiet
           CFI NoCalls
         THUMB
-table_runtime_quiet:
+stage4_unused_table_runtime_quiet:
         LDR.W    R2,ids___DataTable7
         LDRB     R1,[R2, #+50]
         CBZ.N    R1,ids___table_runtime_quiet_0
@@ -21658,9 +21662,9 @@ ids___table_runtime_quiet_0:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block ids_cfiBlock2 Using ids_cfiCommon0
-          CFI Function table_runtime_cancel
+          CFI Function stage4_unused_table_runtime_cancel
         THUMB
-table_runtime_cancel:
+stage4_unused_table_runtime_cancel:
         LDR.W    R1,ids___DataTable7
         LDRB     R0,[R1, #+50]
         CBZ.N    R0,ids___table_runtime_cancel_0
@@ -21873,9 +21877,9 @@ ids___table_chunk_12:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block ids_cfiBlock4 Using ids_cfiCommon0
-          CFI Function table_runtime_begin
+          CFI Function stage4_unused_table_runtime_begin
         THUMB
-table_runtime_begin:
+stage4_unused_table_runtime_begin:
         PUSH     {R3-R11,LR}
           CFI R14 Frame(CFA, -4)
           CFI R11 Frame(CFA, -8)
@@ -22162,9 +22166,9 @@ ids___table_runtime_finish_5:
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block ids_cfiBlock7 Using ids_cfiCommon0
-          CFI Function table_runtime_poll
+          CFI Function stage4_unused_table_runtime_poll
         THUMB
-table_runtime_poll:
+stage4_unused_table_runtime_poll:
         PUSH     {R2-R10,LR}
           CFI R14 Frame(CFA, -4)
           CFI R10 Frame(CFA, -8)

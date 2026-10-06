@@ -8,7 +8,9 @@ def rows(indices,size=32):
     for i,index in enumerate(indices):
         b=bytearray((x+i*7)&255 for x in range(size));b[0]=index&255
         if size==32:b[1]=index>>8
-        b[12]=1;out+=b
+        b[12]=1
+        if size==32:b[22:32]=bytes(10)
+        out+=b
     return bytes(out)
 
 def test_normal(cmd=13,indices=(1,),repeat=False):
@@ -40,7 +42,7 @@ def test_normal(cmd=13,indices=(1,),repeat=False):
 def test_cancel_and_reconnect():
     results=0
     for stage in (1,2,3,5,6,8,9,10,12,14,15):
-        m=StorageMachine();data=rows([1,129]);m.command(13,data,2,1)
+        m=StorageMachine();m.flash[0x4101f]=0;data=rows([1,129]);m.command(13,data,2,1)
         sj=fields('sj_runtime_state_s');at=m.addr('sjr')
         for _ in range(3000):
             if m.u.mem_read(at+sj['phase'],1)[0]==stage:break
@@ -49,7 +51,7 @@ def test_cancel_and_reconnect():
         m.checked('table_runtime_cancel');m.drain()
         assert not m.timestamps and not m.answers and m.io is None
         assert m.flash[0x42000:0x42020]==b'\xff'*32,'cancel applied another sector'
-        if stage<=8:assert m.flash[0x41000:0x41020]==b'\xff'*32
+        if stage<=8:assert m.flash[0x41000:0x41020]==b'\xff'*31+b'\0'
         else:assert m.flash[0x41000:0x41002]==b'\1\0'
         results+=1
     m=StorageMachine();m.command(13,rows([1]),1,1);m.checked('user_comm_session',0);m.drain()
@@ -73,7 +75,7 @@ def test_faults():
     return count+1
 
 def test_corrupt():
-    m=StorageMachine();m.command(13,rows([1]),1)
+    m=StorageMachine();m.flash[0x4101f]=0;m.command(13,rows([1]),1)
     offset=fields('sj_runtime_state_s')['phase'];at=m.addr('sjr')
     for _ in range(2000):
         if m.u.mem_read(at+offset,1)[0]==5:break
@@ -81,7 +83,7 @@ def test_corrupt():
     else:raise AssertionError('backup CRC phase missing')
     m.flash[0x1f9000]^=1;m.drain()
     assert not m.timestamps and m.answers[-1][1]==2
-    assert m.flash[0x41000:0x42000]==b'\xff'*4096
+    assert m.flash[0x41000:0x42000]==b'\xff'*31+b'\0'+b'\xff'*(4096-32)
     return 1
 
 def test_interaction_and_heap():
@@ -103,7 +105,7 @@ def test_interaction_and_heap():
             'simultaneous_workspace_payload':180+2016}
 
 def test_power():
-    m=StorageMachine();m.record_changes=True;initial=bytes(m.flash);m.command(13,rows([1]),1);m.drain()
+    m=StorageMachine();m.flash[0x4101f]=0;m.record_changes=True;initial=bytes(m.flash);m.command(13,rows([1]),1);m.drain()
     final=bytes(m.flash[0x41000:0x42000]);flash=bytearray(initial);count=0
     for kind,a,b in m.changes:
         for n in sorted(set((0,1,len(b)//2,len(b)-1,len(b)))):

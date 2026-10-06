@@ -83,7 +83,7 @@ static bool ix_last(uint32_t *sum)
   return valid;
 }
 
-void idindex_scanned(uint32_t sum, uint16_t cells_end)
+void idindex_impl_scanned(uint32_t sum, uint16_t cells_end)
 {
   uint32_t marked = 0;
   ix.sum = sum;
@@ -94,12 +94,12 @@ void idindex_scanned(uint32_t sum, uint16_t cells_end)
 }
 
 /* Table journal has suspended the index; rebuild from the committed delta. */
-void idindex_table_commit(uint32_t delta, uint16_t end)
+void idindex_impl_table_commit(uint32_t delta, uint16_t end)
 {
   idindex_scanned(ix.sum ^ delta, end);
 }
 
-int8_t idindex_find(uint32_t base, const uint8_t *id, uint8_t *cell)
+int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 {
   uint16_t e[IX_SLOTS];
   if (ix.state != IX_READY) return -1;
@@ -107,7 +107,7 @@ int8_t idindex_find(uint32_t base, const uint8_t *id, uint8_t *cell)
   for (uint8_t i = 0; i < IX_SLOTS && e[i] != 0xFFFFu; i++) {
     if (!e[i]) continue;
     if (!mem_read(base + (uint32_t)(e[i] - 1u) * IDINDEX_CELL, cell, IDINDEX_CELL)) return -1;
-    if ((cell[0] != 0xFF || cell[1] != 0xFF) && !memcmp(cell + 2, id, 10)) return 1;
+    if (cell[31]!=255 && (cell[0] != 0xFF || cell[1] != 0xFF) && !memcmp(cell + 2, id, 10)) return 1;
   }
   return 0;
 }
@@ -129,7 +129,7 @@ static bool ix_add(uint16_t index, const uint8_t *id)
   return false;
 }
 
-bool idindex_put(uint16_t index, const uint8_t *id)
+bool idindex_impl_put(uint16_t index, const uint8_t *id)
 {
   /* При стирании и выше шага пересборки ячейку подберёт сама пересборка. */
   if (ix.state != IX_READY && !(ix.state == IX_FILL && index < ix.step)) return true;
@@ -138,14 +138,14 @@ bool idindex_put(uint16_t index, const uint8_t *id)
   return false;
 }
 
-void idindex_commit(uint32_t delta, uint16_t cells_end)
+void idindex_impl_commit(uint32_t delta, uint16_t cells_end)
 {
   ix.sum ^= delta;
   if (cells_end > ix.end) ix.end = cells_end;
   if (ix.state == IX_READY && !ix_mark(true, ix.sum)) ix.state = IX_OFF;
 }
 
-void idindex_poll(uint32_t base)
+void idindex_impl_poll(uint32_t base)
 {
 uint16_t rows[32],n=0;
   uint8_t op=ix.pending,result; uint32_t address=0; const uint8_t *source=NULL;
@@ -184,8 +184,8 @@ uint16_t rows[32],n=0;
     goto error;
   }
   if(ix.step>ix.end) { ix.state=7; return; }
-  if(!w25_read_data(base+32u*(uint32_t)(ix.step-1),(uint8_t *)rows,12)) goto error;
-  if(rows[0]==65535) goto advance;
+  if(!w25_read_data(base+32u*(uint32_t)(ix.step-1),(uint8_t *)rows,32)) goto error;
+  if(rows[0]==65535 || ((uint8_t *)rows)[31]==255) goto advance;
   ix.bucket=ix_bucket((uint8_t *)rows+2); ix.state=6; return;
 advance:
   if(ix.step>=ix.end) ix.state=7; else { ix.step++; ix.state=2; } return;

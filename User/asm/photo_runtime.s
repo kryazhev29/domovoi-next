@@ -56,8 +56,8 @@
         EXTERN user_send_answer_comand
         EXTERN user_storage_background_ready
         EXTERN user_storage_command_ready
-        EXTERN w25_async_poll
-        EXTERN w25_async_start
+        EXTERN idcrc_io_poll
+        EXTERN idcrc_io_start
         EXTERN w25_read_data
         EXTERN wdt_reload
 
@@ -1133,8 +1133,8 @@ photo_storage_poll:
         LDRB     R0,[R7, #+108]
         CBZ.N    R0,??photo_storage_poll_4
         MOV      R0,R5
-          CFI FunCall w25_async_poll
-        BL       w25_async_poll
+          CFI FunCall idcrc_io_poll
+        BL       idcrc_io_poll
         CMP      R0,#+1
         BEQ.N    ??photo_storage_poll_1
         MOVS     R1,#+0
@@ -1222,8 +1222,8 @@ photo_storage_poll:
         LDR      R0,[R7, #+4]
         LDRH     R4,[R7, #+76]
         ADDS     R0,R4,R0
-          CFI FunCall w25_async_start
-        BL       w25_async_start
+          CFI FunCall idcrc_io_start
+        BL       idcrc_io_start
         CMP      R0,#+0
         BEQ.N    ??photo_storage_poll_6
         MOVS     R0,#+1

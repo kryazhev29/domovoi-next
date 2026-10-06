@@ -58,6 +58,7 @@ static void sc_setup(service_crc_s *p)
     if(part==6) address=address-0x1cd400u+cfg_cached_active;
   }
   p->address=address; p->real=size; p->power=p->waiting=0; p->crc=65535; p->phase=2;
+  if (part==MB_ID && p->kind==5 && idcrc_get(0,mem[MB_ID].size,&p->crc)) p->real=p->erased=0;
 }
 void service_crc_poll(void)
 {

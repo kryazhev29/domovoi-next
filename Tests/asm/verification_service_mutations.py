@@ -4,7 +4,41 @@ import json
 from test_service_runtime import *
 
 
+def patch_shared(m,mode):
+    from capstone import Cs,CS_ARCH_ARM,CS_MODE_THUMB,CS_MODE_MCLASS
+    name='reply_send' if mode=='commit-retry' else 'service_crc_quiet' if mode=='session-cancel' else 'service_crc_poll'
+    start=m.addr(name);code=bytes(m.u.mem_read(start,512));off=0
+    if mode=='commit-retry':replacement=b'\x01\x20\x70\x47'
+    elif mode=='session-cancel':replacement=b'\x70\x47'
+    else:
+        md=Cs(CS_ARCH_ARM,CS_MODE_THUMB|CS_MODE_MCLASS);instructions=list(md.disasm(code,start));places=[]
+        if mode=='read-budget':
+            for i in instructions:
+                if i.mnemonic.startswith('mov') and i.size==2 and i.op_str.endswith(', #0x40'):
+                    places.append(i)
+            assert len(places)==1,[(i.mnemonic,i.op_str) for i in places]
+            i=places[0];off=i.address-start
+            word=int.from_bytes(i.bytes,'little');assert word&0xf800==0x2000
+            replacement=((word&0xff00)|65).to_bytes(2,'little')
+            read=m.stubs[m.addr('w25_read_data')]
+            def bounded_read():
+                assert m.args()[2]<=64,'CRC service exceeded its 64-byte read contract'
+                read()
+            m.stubs[m.addr('w25_read_data')]=bounded_read
+        else:
+            target=m.addr('w25_read_data');after=False
+            for i in instructions:
+                if i.mnemonic=='bl' and int(i.op_str.lstrip('#'),0)==target:after=True;continue
+                if after and i.mnemonic.startswith('beq'):
+                    off=i.address-start;replacement=b'\x00\xbf'*(i.size//2);break
+            else:raise AssertionError('failed-read branch not found')
+    original=code[off:off+len(replacement)];assert original!=replacement
+    m.u.mem_write(start+off,replacement);m.u.ctl_remove_cache(start+off,start+off+len(replacement))
+    return dict(symbol=name,offset=off,original=original.hex(),replacement=replacement.hex())
+
+
 def patch(m, mode):
+    if 'idcrc_get' in m.symbols and mode!='ff-affine':return patch_shared(m,mode)
     if mode == 'commit-retry':
         # The commit result lives in reply_send (shared since 859c443): a failed
         # commit reported as sent loses the reply instead of retrying it.
