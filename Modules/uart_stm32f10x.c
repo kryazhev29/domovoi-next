@@ -14,14 +14,12 @@ typedef struct {
   uint16_t twait;
   uint8_t state;
   uint8_t receiving;
-  uint8_t txfailed;
-  uint8_t rxoverflow;
 } uart_t;
 
 #pragma data_alignment=4
 static volatile uart_t uart;
 
-// Принять внешний байт; переполнение отмечает потерю части кадра.
+// Принять внешний байт; при полном буфере не записывать за его границей.
 static bool uart_addbyte(uint8_t data)
 {
   uint8_t *buffer = uart.rxbuffer;
@@ -35,7 +33,6 @@ static bool uart_addbyte(uint8_t data)
     uart.state = 0;
     return true;
   }
-  uart.rxoverflow = 1;
   return false;
 }
 
@@ -58,7 +55,7 @@ bool uart_init(uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t 
   uart.bfsize = bfsize;
   uart.timetowait = 2;
   uart.received = uart.twait = 0;
-  uart.state = uart.receiving = uart.rxoverflow = uart.txfailed = 0;
+  uart.state = uart.receiving = 0;
   __set_PRIMASK(mask);
   RCC->APB2ENR |= RCC_APB2ENR_AFIOEN;
   RCC->APB2RSTR |= RCC_APB2RSTR_USART1RST;
@@ -86,7 +83,7 @@ static bool uart_sendbyte(uint8_t ch)
 {
   uint32_t budget = 32000u;
   while ((USART1->SR & USART_SR_TXE) == 0) {
-    if (--budget == 0) { uart.txfailed = 1; return false; }
+    if (--budget == 0) return false;
   }
   USART1->DR = ch;
   return true;
@@ -95,8 +92,7 @@ static bool uart_sendbyte(uint8_t ch)
 // Передать двоичный буфер; при отказе порта прекратить текущую посылку.
 void uart_send(uint8_t *buf, uint16_t size)
 {
-  uart.txfailed = 0;
-  if (!(USART1->CR1 & USART_CR1_UE) || (size && buf == NULL)) { uart.txfailed = 1; return; }
+  if (!(USART1->CR1 & USART_CR1_UE) || (size && buf == NULL)) return;
   for (uint16_t i = 0; i < size; ++i) if (!uart_sendbyte(buf[i])) return;
 }
 
@@ -108,7 +104,7 @@ void uart_clear(void)
   __disable_irq();
   memset(uart.rxbuffer, 0, uart.received);
   uart.received = uart.twait = 0;
-  uart.state = uart.receiving = uart.rxoverflow = 0;
+  uart.state = uart.receiving = 0;
   __set_PRIMASK(mask);
 }
 

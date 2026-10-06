@@ -13,31 +13,24 @@ Int16U out_time[OUTSCOUNT]={0};
 Int16U out_activpause = 0xFF; // битовая переменная (1-импульс 0-пауза)
 uint8_t out_st = 0; // состояние выходов
 
-
-// Перевод выхода в активное/неактивное состояние
-// 0 - неактивное, 1 - активное
 // Изменить аппаратный уровень проверенного выхода.
 static void out_set (Int8U out, Int8U set)
 {
 
   switch (out)
   {
-#ifdef OUT1_ON
   case 0:
     if (set != 0)
       OUT1_ON;
     else
       OUT1_OFF;
     break;
-#endif
-#ifdef OUT2_ON
   case 1:
     if (set != 0)
       OUT2_ON;
     else
       OUT2_OFF;
     break;
-#endif
   default: break;
   }
 
@@ -48,7 +41,6 @@ static void out_set (Int8U out, Int8U set)
     out_st &= ~(1<<out);
 }
 
-// Запрос состояния выхода
 // Прочитать аппаратное состояние выхода.
 Int8U out_getstate (Int8U out)
 {
@@ -56,20 +48,14 @@ Int8U out_getstate (Int8U out)
 
   switch (out)
   {
-#ifdef OUT1_IN
   case 0: o = OUT1_IN ? 1 : 0; break;
-#endif
-#ifdef OUT2_IN
   case 1: o = OUT2_IN ? 1 : 0; break;
-#endif
   default: break;
   }
 
   return o;
 }
 
-// Обработка выходов
-// обрабатывается раз в 100 мс
 // Обслужить импульсы и паузы каждые 100 мс.
 void out_process (void)
 {
@@ -99,8 +85,8 @@ void out_process (void)
           }
           else
           {
-          out_activpause &= ~(1<<i);
-          out_time[i] = out_timepause[i];
+            out_activpause &= ~(1<<i);
+            out_time[i] = out_timepause[i];
           }
         }
         else // загружаем активный уровень и проверяем число повторов
@@ -111,11 +97,10 @@ void out_process (void)
             out_period[i]--;
         }
       }
-    } // out_period
+    }
   }
 }
 
-// Активация выхода
 // Загрузить режим для уже проверенного индекса выхода.
 void out_load (Int8U out, Int8U mode, Int16U activ, Int16U pause, Int8U period)
 {
@@ -149,17 +134,12 @@ void out_load (Int8U out, Int8U mode, Int16U activ, Int16U pause, Int8U period)
   }
 }
 
-// узнаем выполняется алгоритм выхода или нет
 // Проверить активность алгоритма выбранного выхода.
 uint8_t out_getmodestate (uint8_t out)
 {
-  if (out_period[out])
-    return 1;
-  else
-    return 0;
+  return out_period[out] != 0;
 }
 
-// состояние всех выходов
 // Вернуть битовую маску состояния всех реле.
 uint8_t out_outstates (void)
 {

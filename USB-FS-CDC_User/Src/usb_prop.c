@@ -1,17 +1,11 @@
 // Доработка: Кряжев А., 2026
-// USB CDC платы v5: usb_prop.
-// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
-// Диагностические счётчики отделены от обязательных таймаутов восстановления.
+// Дескрипторы, управляющие запросы и параметры CDC.
+// Порядок событий и двоичные дескрипторы сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком.
+
 #include "../../User/domovoi_diag.h"
 // Доработка: Кряжев А., 2026
 /**
-  ******************************************************************************
-  * @file    usb_prop.c
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   All processing related to Virtual Com Port Demo
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
@@ -31,15 +25,12 @@
   ******************************************************************************
   */
 
-
 #include "usb_lib.h"
 #include "usb_conf.h"
 #include "usb_prop.h"
 #include "usb_desc.h"
 #include "usb_pwr.h"
 #include "hw_config.h"
-
-uint8_t Request = 0;
 
 LINE_CODING linecoding =
   {
@@ -48,10 +39,6 @@ LINE_CODING linecoding =
     0x00,
     0x08
   };
-
-/* -------------------------------------------------------------------------- */
-
-/* -------------------------------------------------------------------------- */
 
 const DEVICE Device_Table =
   {
@@ -63,28 +50,27 @@ const DEVICE_PROP Device_Property =
   {
     Virtual_Com_Port_init,
     Virtual_Com_Port_Reset,
-    Virtual_Com_Port_Status_In,
-    Virtual_Com_Port_Status_Out,
+    NOP_Process,
+    NOP_Process,
     Virtual_Com_Port_Data_Setup,
     Virtual_Com_Port_NoData_Setup,
     Virtual_Com_Port_Get_Interface_Setting,
     Virtual_Com_Port_GetDeviceDescriptor,
     Virtual_Com_Port_GetConfigDescriptor,
     Virtual_Com_Port_GetStringDescriptor,
-    0,
     0x40
   };
 
 const USER_STANDARD_REQUESTS User_Standard_Requests =
   {
-    Virtual_Com_Port_GetConfiguration,
+    NOP_Process,
     Virtual_Com_Port_SetConfiguration,
-    Virtual_Com_Port_GetInterface,
-    Virtual_Com_Port_SetInterface,
-    Virtual_Com_Port_GetStatus,
-    Virtual_Com_Port_ClearFeature,
-    Virtual_Com_Port_SetEndPointFeature,
-    Virtual_Com_Port_SetDeviceFeature,
+    NOP_Process,
+    NOP_Process,
+    NOP_Process,
+    NOP_Process,
+    NOP_Process,
+    NOP_Process,
     Virtual_Com_Port_SetDeviceAddress
   };
 
@@ -108,8 +94,7 @@ const ONE_DESCRIPTOR String_Descriptor[4] =
     {(uint8_t*)Virtual_Com_Port_StringSerial, VIRTUAL_COM_PORT_SIZ_STRING_SERIAL}
   };
 
-
-// Обслужить Virtual_Com_Port_init по контракту USB CDC.
+// Подготовить CDC и серийный номер перед подключением к хосту.
 void Virtual_Com_Port_init(void)
 {
 
@@ -117,23 +102,18 @@ void Virtual_Com_Port_init(void)
 
   pInformation->Current_Configuration = 0;
 
-
   PowerOn();
-
 
   USB_SIL_Init();
 
-
-
   bDeviceState = UNCONNECTED;
 }
-
 
 #ifndef BOOTLOADER
 extern void usb_clear_buffer(void);
 extern volatile uint32_t usb_bus_resets;
 #endif
-// Обслужить Virtual_Com_Port_Reset по контракту USB CDC.
+// Сбросить очередь и настроить точки EP0–EP3 для CDC.
 void Virtual_Com_Port_Reset(void)
 {
 #ifndef BOOTLOADER
@@ -146,14 +126,11 @@ void Virtual_Com_Port_Reset(void)
 
   pInformation->Current_Configuration = 0;
 
-
   pInformation->Current_Feature = Virtual_Com_Port_ConfigDescriptor[7];
-
 
   pInformation->Current_Interface = 0;
 
   SetBTABLE(BTABLE_ADDRESS);
-
 
   SetEPType(ENDP0, EP_CONTROL);
   SetEPTxStatus(ENDP0, EP_TX_STALL);
@@ -163,18 +140,15 @@ void Virtual_Com_Port_Reset(void)
   SetEPRxCount(ENDP0, Device_Property.MaxPacketSize);
   SetEPRxValid(ENDP0);
 
-
   SetEPType(ENDP1, EP_BULK);
   SetEPTxAddr(ENDP1, ENDP1_TXADDR);
   SetEPTxStatus(ENDP1, EP_TX_NAK);
   SetEPRxStatus(ENDP1, EP_RX_DIS);
 
-
   SetEPType(ENDP2, EP_INTERRUPT);
   SetEPTxAddr(ENDP2, ENDP2_TXADDR);
   SetEPRxStatus(ENDP2, EP_RX_DIS);
   SetEPTxStatus(ENDP2, EP_TX_NAK);
-
 
   SetEPType(ENDP3, EP_BULK);
   SetEPRxAddr(ENDP3, ENDP3_RXADDR);
@@ -182,50 +156,28 @@ void Virtual_Com_Port_Reset(void)
   SetEPRxStatus(ENDP3, EP_RX_VALID);
   SetEPTxStatus(ENDP3, EP_TX_DIS);
 
-
   SetDeviceAddress(0);
 
   bDeviceState = ATTACHED;
 }
 
-
-// Обслужить Virtual_Com_Port_SetConfiguration по контракту USB CDC.
+// Отметить выбранную хостом конфигурацию CDC.
 void Virtual_Com_Port_SetConfiguration(void)
 {
-  DEVICE_INFO *pInfo = &Device_Info;
-
-  if (pInfo->Current_Configuration != 0)
+  if (pInformation->Current_Configuration != 0)
   {
 
     bDeviceState = CONFIGURED;
   }
 }
 
-
-// Обслужить Virtual_Com_Port_SetDeviceAddress по контракту USB CDC.
+// Отметить назначение адреса устройства.
 void Virtual_Com_Port_SetDeviceAddress (void)
 {
   bDeviceState = ADDRESSED;
 }
 
-
-// Обслужить Virtual_Com_Port_Status_In по контракту USB CDC.
-void Virtual_Com_Port_Status_In(void)
-{
-  if (Request == SET_LINE_CODING)
-  {
-    USART_Config();
-    Request = 0;
-  }
-}
-
-
-// Обслужить Virtual_Com_Port_Status_Out по контракту USB CDC.
-void Virtual_Com_Port_Status_Out(void)
-{}
-
-
-// Обслужить Virtual_Com_Port_Data_Setup по контракту USB CDC.
+// Назначить данные GET/SET_LINE_CODING управляющего запроса.
 RESULT Virtual_Com_Port_Data_Setup(uint8_t RequestNo)
 {
   uint8_t    *(*CopyRoutine)(uint16_t);
@@ -245,7 +197,6 @@ RESULT Virtual_Com_Port_Data_Setup(uint8_t RequestNo)
     {
       CopyRoutine = Virtual_Com_Port_SetLineCoding;
     }
-    Request = SET_LINE_CODING;
   }
 
   if (CopyRoutine == NULL)
@@ -259,8 +210,7 @@ RESULT Virtual_Com_Port_Data_Setup(uint8_t RequestNo)
   return USB_SUCCESS;
 }
 
-
-// Обслужить Virtual_Com_Port_NoData_Setup по контракту USB CDC.
+// Принять поддерживаемый CDC-запрос без данных.
 RESULT Virtual_Com_Port_NoData_Setup(uint8_t RequestNo)
 {
 
@@ -279,19 +229,19 @@ RESULT Virtual_Com_Port_NoData_Setup(uint8_t RequestNo)
   return USB_UNSUPPORT;
 }
 
-
+// Выдать фрагмент дескриптора устройства.
 uint8_t *Virtual_Com_Port_GetDeviceDescriptor(uint16_t Length)
 {
   return Standard_GetDescriptorData(Length, &Device_Descriptor);
 }
 
-
+// Выдать фрагмент конфигурации CDC.
 uint8_t *Virtual_Com_Port_GetConfigDescriptor(uint16_t Length)
 {
   return Standard_GetDescriptorData(Length, &Config_Descriptor);
 }
 
-
+// Выдать существующую строку USB либо отклонить её индекс.
 uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t Length)
 {
   uint8_t wValue0 = pInformation->USBwValue0;
@@ -305,8 +255,7 @@ uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t Length)
   }
 }
 
-
-// Обслужить Virtual_Com_Port_Get_Interface_Setting по контракту USB CDC.
+// Разрешить два интерфейса CDC с нулевой альтернативой.
 RESULT Virtual_Com_Port_Get_Interface_Setting(uint8_t Interface, uint8_t AlternateSetting)
 {
   if (AlternateSetting > 0)
@@ -320,7 +269,7 @@ RESULT Virtual_Com_Port_Get_Interface_Setting(uint8_t Interface, uint8_t Alterna
   return USB_SUCCESS;
 }
 
-
+// Выдать текущие параметры виртуального порта.
 uint8_t *Virtual_Com_Port_GetLineCoding(uint16_t Length)
 {
   if (Length == 0)
@@ -331,7 +280,7 @@ uint8_t *Virtual_Com_Port_GetLineCoding(uint16_t Length)
   return(uint8_t *)&linecoding;
 }
 
-
+// Принять параметры в семибайтовое поле CDC.
 uint8_t *Virtual_Com_Port_SetLineCoding(uint16_t Length)
 {
   if (Length == 0)
@@ -343,4 +292,3 @@ uint8_t *Virtual_Com_Port_SetLineCoding(uint16_t Length)
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
-

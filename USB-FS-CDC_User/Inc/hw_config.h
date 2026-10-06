@@ -1,12 +1,9 @@
 // Доработка: Кряжев А., 2026
+// Очередь IN, приём OUT и серийный номер платы.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    hw_config.h
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   Hardware Configuration & Setup
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
@@ -33,10 +30,6 @@
 #include "stm32f10x.h"
 #include "usb_type.h"
 
-#define MASS_MEMORY_START     0x04002000
-#define BULK_MAX_PACKET_SIZE  0x00000040
-
-
 #ifndef BOOTLOADER
 /* Самый длинный ответ: 32 записи журнала, 1038 байт вместе с обрамлением. */
 #include "../../User/usb_ring_size.h"
@@ -45,28 +38,37 @@
 #define USART_RX_DATA_SIZE   512
 #endif
 
+// Настроить внутреннюю линию USB EXTI18.
 void Set_System(void);
+// Подать 48 МГц на USB от PLL платы.
 void Set_USBClock(void);
-void Enter_LowPowerMode(void);
-void Leave_LowPowerMode(void);
+// Назначить приоритеты и разрешить IRQ USB.
 void USB_Interrupts_Config(void);
-void USB_Cable_Config (FunctionalState NewState);
-_Bool USART_Config(void);
+// Передать принятые USB-байты разборщику приложения.
 void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
-#ifndef BOOTLOADER
+// Передать USB источник ответа с сохранением владения до завершения.
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
-#else
-uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
-#endif
+// Проверить владение источником ответа.
+uint8_t USB_Tx_SourceBusy(void);
+// Разрешить новую команду после освобождения ответа и рабочего хранилища.
+uint8_t USB_Tx_CommandReady(void);
+// Передать ответ только в исходную USB-сессию команды.
+uint8_t USB_Tx_Try(const uint8_t *source, uint16_t length);
+
+// Освободить источник передачи и пометить смену поколения очереди.
 void USB_Tx_Reset(void);
 #if DOMOVOI_DIAG
+// Принять диагностический текст в ту же очередь USB.
 uint16_t USB_Send_Debug(uint8_t *data, uint16_t count);
 #endif
+// Проверить наличие незавершённой передачи USB.
 uint8_t USB_Tx_Pending(void);
+// Вернуть оставшееся число байтов источника.
 uint16_t USB_Tx_Queued(void);
+// Выдать следующий пакет неизменяемого источника на EP1.
 void Handle_USBAsynchXfer (void);
+// Собрать постоянный серийный номер из заводского идентификатора МК.
 void Get_SerialNum(void);
-
 
 #endif
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

@@ -1,12 +1,9 @@
 // Доработка: Кряжев А., 2026
+// Передача IN и приём OUT по конечным точкам CDC.
+// Порядок событий и двоичные дескрипторы сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком.
+
 /**
-  ******************************************************************************
-  * @file    usb_endp.c
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   Endpoint routines
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
@@ -25,7 +22,6 @@
   *
   ******************************************************************************
   */
-
 
 #include "usb_lib.h"
 #include "usb_desc.h"
@@ -50,7 +46,7 @@ extern volatile uint32_t USART_Rx_length;
 extern volatile uint8_t  USB_Tx_State;
 #endif
 
-// Продолжить передачу после подтверждения хостом пакета IN.
+// Подтвердить пакет IN и передать следующую часть ответа.
 void EP1_IN_Callback (void)
 {
 #ifndef BOOTLOADER
@@ -76,24 +72,19 @@ void EP1_IN_Callback (void)
 #endif
 }
 
-
-// Принять OUT-пакет и вернуть готовность конечной точке.
+// Принять пакет OUT и снова разрешить приём точки.
 void EP3_OUT_Callback(void)
 {
   uint16_t USB_Rx_Cnt;
 
-
   USB_Rx_Cnt = USB_SIL_Read(EP3_OUT, USB_Rx_Buffer);
 
-
-
   USB_To_USART_Send_Data(USB_Rx_Buffer, USB_Rx_Cnt);
-
 
   SetEPRxValid(ENDP3);
 }
 
-// Отметить USB-кадр и обслужить очередь IN.
+// Отметить кадр USB и с заданным интервалом продвинуть очередь IN.
 void SOF_Callback(void)
 {
   static uint32_t FrameCount = 0;
@@ -108,10 +99,8 @@ void SOF_Callback(void)
 
       FrameCount = 0;
 
-
       Handle_USBAsynchXfer();
     }
   }
 }
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
-

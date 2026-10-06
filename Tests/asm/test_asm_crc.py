@@ -1,11 +1,10 @@
-"""Cortex-M3 CRC: IAR C/ASM equivalence, ABI, bounds and instruction counts.
-
-Run with Release/test-venv/Scripts/python.exe. No board or peripheral access.
-Counts are executed instructions in Unicorn, NOT measured hardware cycles.
-"""
+"""Проверяет совпадение CRC на Cortex-M3: IAR C/ASM, ABI и границы памяти.
+Инструкции считаются в Unicorn; это не измерение тактов на плате.
+Доработка: Кряжев А., 2026"""
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 import random
 import re
@@ -22,14 +21,16 @@ from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
     UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC)
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'Tests'))
 IAR = Path(os.environ.get('IAR_ARM_DIR', r'C:\Program Files\IAR Systems\Embedded Workbench 9.2\arm')) / 'bin'
 ARGS = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
 SAVED = (UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,
          UC_ARM_REG_R8, UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11)
-FUNCS = ('crc16_calc', 'crc16_calcInit', 'crc32_update', 'CRC32')
+FUNCS = ('crc16_calc', 'crc16_calcInit', 'crc32_update')
 BUF, STOP, STACK = 0x10000000, 0x0FFFFFF0, 0x20004000
 
 
+# Извлекает функцию из исходника для независимого эталона.
 def function(text, name):
     m = re.search(r'(?m)^(?:static )?(?:uint32_t|unsigned short) ' + name + r'\([^;]*?\)\s*\{', text)
     assert m, name
@@ -40,25 +41,22 @@ def function(text, name):
     return text[m.start():end]
 
 
+# Выполняет инструмент сборки и сообщает его ошибку.
 def run(cmd):
     p = subprocess.run([str(x) for x in cmd], cwd=ROOT, capture_output=True)
     if p.returncode:
         raise RuntimeError(p.stdout.decode('cp1251', errors='replace') + p.stderr.decode('cp1251', errors='replace'))
 
 
+# Строит независимый эталон CRC с обработкой полубайтов.
 def nibble_reference():
-    """Same table algorithm in C, to separate algorithm gain from assembly gain."""
+    """Тот же табличный алгоритм на C отделяет выигрыш алгоритма от выигрыша ASM."""
     tables = []
-    for name, poly in [('t16', 0xA001), ('t32', 0xEDB88320), ('tstm', 0x04C11DB7)]:
+    for name, poly in [('t16', 0xA001), ('t32', 0xEDB88320)]:
         values = []
         for i in range(16):
-            if name == 'tstm':
-                i <<= 28
             for _ in range(4):
-                if name == 'tstm':
-                    i = ((i << 1) ^ (poly if i & 0x80000000 else 0)) & 0xFFFFFFFF
-                else:
-                    i = (i >> 1) ^ (poly if i & 1 else 0)
+                i = (i >> 1) ^ (poly if i & 1 else 0)
             values.append(hex(i) + 'u')
         ctype = 'uint16_t' if name == 't16' else 'uint32_t'
         tables.append('static const ' + ctype + ' ' + name + '[] = {' + ','.join(values) + '};')
@@ -72,29 +70,24 @@ uint32_t nibble_crc32_update(uint32_t c, const uint8_t *p, uint16_t n) {
   while (n--) { c ^= *p++; c = (c >> 4) ^ t32[c & 15]; c = (c >> 4) ^ t32[c & 15]; }
   return c;
 }
-uint32_t nibble_CRC32(uint32_t c, uint32_t word) {
-  c ^= word;
-  for (unsigned i = 0; i < 8; i++) c = (c << 4) ^ tstm[c >> 28];
-  return c;
-}
 '''
 
 
+# Собирает эталон C и проверяемое ядро IAR в отдельной папке.
 def build(out):
     source = lambda p: (ROOT / p).read_text(encoding='cp1251')
     journal = source('User/sector_journal.c')
     name = 'crc32_update' if 'uint32_t crc32_update(' in journal else 'sj_crc'
     c = function(journal, name).replace('static ', '').replace(name, 'crc32_update')
-    c += '\n' + function(source('Tests/asm/reference/User/user_fun.c'), 'CRC32')
-    (out / 'ref.c').write_text('#include <stdint.h>\n' + c, encoding='ascii')
-    (out / 'nibble.c').write_text(nibble_reference(), encoding='ascii')
+    (out / 'ref.c').write_text('#include <stdint.h>\n' + c, encoding='utf-8')
+    (out / 'nibble.c').write_text(nibble_reference(), encoding='utf-8')
     objs = []
     for i, src in enumerate([ROOT / 'Tests/asm/reference/User/crc.c', out / 'ref.c', out / 'nibble.c']):
         obj = out / f'c{i}.o'
         run([IAR / 'iccarm.exe', src, '--cpu', 'Cortex-M3', '--thumb', '-Ohz', '-e',
              '-I', ROOT / 'User', *('-D' + f + '=ref_' + f for f in FUNCS), '-o', obj])
         objs.append(obj)
-    fast = ['crc16_calc', 'crc32_update', 'CRC32']
+    fast = ['crc16_calc', 'crc32_update']
     run([IAR / 'iccarm.exe', out / 'nibble.c', '--cpu', 'Cortex-M3', '--thumb', '-Ohs', '-e',
          *('-Dnibble_' + f + '=speed_' + f for f in fast), '-o', out / 'speed.o'])
     objs.append(out / 'speed.o')
@@ -106,6 +99,7 @@ def build(out):
 
 
 class Machine:
+    # Загружает ELF и создаёт изолированную память эмулятора.
     def __init__(self, path):
         self.uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
         self.uc.mem_map(0x08000000, 0x20000)
@@ -113,7 +107,7 @@ class Machine:
         self.uc.mem_map(0x40023000, 0x1000)
         from stm32_crc_model import CRCModel
         self.crc_model = CRCModel(self.uc)
-        # Separate synthetic input region covers the full uint16_t length contract.
+        # Отдельная область входа покрывает весь диапазон длины uint16_t.
         self.uc.mem_map(BUF, 0x11000)
         self.uc.mem_map(STOP & ~0xFFF, 0x1000)
         with open(path, 'rb') as f:
@@ -124,6 +118,7 @@ class Machine:
             self.sym = {s.name: s['st_value'] for s in elf.get_section_by_name('.symtab').iter_symbols()}
         self.checks = 0
 
+    # Вызывает ядро и проверяет сохранение регистров ABI.
     def call(self, name, *args, check_abi=False):
         for r, v in zip(ARGS, args):
             self.uc.reg_write(r, v)
@@ -138,6 +133,7 @@ class Machine:
             assert [self.uc.reg_read(r) for r in SAVED] == [0x12340000 + i for i in range(8)], name + ' broke ABI'
         return self.uc.reg_read(UC_ARM_REG_R0)
 
+    # Сравнивает результат ядра с независимым эталоном.
     def equal(self, name, args):
         result = self.call(name, *args, check_abi=True)
         assert result == self.call('ref_' + name, *args), (name, args)
@@ -145,6 +141,7 @@ class Machine:
         return result
 
 
+# Проверяет длины, начальные CRC и характерные данные.
 def cases(m):
     rng = random.Random(20261004)
     lengths = [0, 1, 2, 3, 7, 15, 16, 31, 32, 63, 64, 255, 256, 257, 1024, 2048, 4096, 65535]
@@ -164,19 +161,19 @@ def cases(m):
             assert m.call('crc16_calcInit', p + split, n - split, crc) == m.call('crc16_calcInit', p, n, initial)
             crc = m.call('crc32_update', initial32, p, split)
             assert m.call('crc32_update', crc, p + split, n - split) == value
-    for _ in range(3000):
-        m.equal('CRC32', (rng.getrandbits(32), rng.getrandbits(32)))
     m.uc.mem_write(BUF, b'123456789')
     assert m.call('crc16_calc', BUF, 9) == 0x4B37
     assert m.call('crc32_update', 0xFFFFFFFF, BUF, 9) ^ 0xFFFFFFFF == 0xCBF43926
-    assert m.call('CRC32', 0xFFFFFFFF, 0x12345678) == 0xDF8A8A2B
 
 
+# Проверяет точные границы чтения и записи ядра.
 def bounds(m):
-    """Assembly must not touch the stack, write memory or read outside the input."""
+    """Ядро не должно менять стек, писать память или читать за пределами входа."""
     allowed = [0, 0]
+    # Фиксирует чтение за разрешённой областью входа.
     def read(uc, access, address, size, value, user):
         assert 0x08000000 <= address < 0x08020000 or allowed[0] <= address and address + size <= allowed[1], hex(address)
+    # Фиксирует запись за разрешённой областью стека.
     def write(*args):
         raise AssertionError('CRC assembly wrote to memory')
     hooks = [m.uc.hook_add(UC_HOOK_MEM_READ, read), m.uc.hook_add(UC_HOOK_MEM_WRITE, write)]
@@ -186,22 +183,23 @@ def bounds(m):
                 p = BUF + a if n else 0
                 allowed[:] = [p, p + n]
                 for name, args in [('crc16_calc', (p, n)), ('crc16_calcInit', (p, n, 0x1234)),
-                                   ('crc32_update', (0x87654321, p, n)), ('CRC32', (0x87654321, 0x12345678))]:
+                                   ('crc32_update', (0x87654321, p, n))]:
                     m.call(name, *args, check_abi=True)
     finally:
         for h in hooks:
             m.uc.hook_del(h)
 
 
+# Считает выполненные инструкции для сравнения вариантов.
 def benchmark(m):
     m.uc.mem_write(BUF, random.Random(7).randbytes(2048))
     counts, rows = [0], []
+    # Подсчитывает инструкции одного вызова на заданных данных.
     def count(*args):
         counts[0] += 1
     hook = m.uc.hook_add(UC_HOOK_CODE, count)
     try:
-        for f, args in [('crc16_calc', (BUF, 2048)), ('crc32_update', (0xFFFFFFFF, BUF, 2048)),
-                        ('CRC32', (0xFFFFFFFF, 0x12345678))]:
+        for f, args in [('crc16_calc', (BUF, 2048)), ('crc32_update', (0xFFFFFFFF, BUF, 2048))]:
             row = {'function': f}
             names = [('C_bitwise', 'ref_' + f), ('ASM', f)]
             names += [('C_nibble_size', 'nibble_' + f), ('C_nibble_speed', 'speed_' + f)]
@@ -220,12 +218,13 @@ def benchmark(m):
     return rows
 
 
+# Проверяет, что тесты обнаруживают сломанное ядро.
 def mutations(elf):
-    # Force zero length (MOVS r1/r2,#0), or an early zero return (MOVS r0,#0; BX lr).
+    # Мутации обнуляют длину либо принудительно возвращают нулевой CRC.
     for name, patch, args in [
         ('crc16_calcInit', b'\x00\x21', (BUF, 1, 0)),
         ('crc32_update', b'\x00\x22', (0, BUF, 1)),
-        ('CRC32', b'\x00\x20\x70\x47', (0, 0x10000000)),
+        ('crc16_calc', b'\x00\x20\x70\x47', (BUF, 1)),
     ]:
         m = Machine(elf)
         m.uc.mem_write(BUF, b'\x01')
@@ -237,6 +236,7 @@ def mutations(elf):
         raise AssertionError('undetected machine-code mutation: ' + name)
 
 
+# Проверяет CRC после окончательной компоновки прошивки.
 def linked_firmware(path, reference):
     actual, rng = Machine(path), random.Random(17)
     checks = 0
@@ -247,20 +247,20 @@ def linked_firmware(path, reference):
         reference.uc.mem_write(pointer, data or b'\0')
         for name, args in [('crc16_calc', (pointer, len(data))),
                            ('crc16_calcInit', (pointer, len(data), initial & 0xFFFF)),
-                           ('crc32_update', (initial, pointer, len(data))),
-                           ('CRC32', (initial, rng.getrandbits(32)))]:
+                           ('crc32_update', (initial, pointer, len(data)))]:
             assert actual.call(name, *args, check_abi=True) == reference.call('ref_' + name, *args), name
             checks += 1
     bounds(Machine(path))
     return checks
 
 
+# Запускает проверки и сохраняет результаты сравнения.
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--json', type=Path)
     p.add_argument('--firmware', type=Path, help='Also check kernels relocated into the linked application ELF')
     args = p.parse_args()
-    project = ET.parse(ROOT / 'DomovoiNext.ewp').getroot()
+    project = ET.parse(ROOT / 'DomovoiNext_HYBRID.ewp').getroot()
     for config in project.findall('configuration'):
         defines = [s.text for o in config.findall('.//option') if o.findtext('name') == 'CCDefines' for s in o.findall('state')]
         assert 'ASM_CRC' in defines, config.findtext('name')
@@ -269,7 +269,7 @@ def main():
         elf = build(Path(t))
         m = Machine(elf)
         cases(m)
-        # Fresh engines ensure all translations are made with the active hooks.
+        # Новый эмулятор переводит инструкции уже с установленными перехватчиками.
         bounds(Machine(elf))
         rows = benchmark(Machine(elf))
         mutations(elf)

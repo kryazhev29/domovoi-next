@@ -1,4 +1,7 @@
-"""B34: stuck flags в настоящем коде IAR; отказ не становится успехом."""
+"""Доработка: Кряжев А., 2026.
+Зависшие флаги SPI/ADC/PLL в настоящем коде IAR.
+Отказ ограничен по времени и не становится успешным измерением или чтением.
+"""
 import re,sys
 from iar_irq_support import Machine
 from iar_layout import fields
@@ -17,6 +20,7 @@ if mode in ('adc','all'):
     assert not m.read(0x40012408)&1,'B34 failed calibration left ADC enabled'
     from unicorn import UC_HOOK_MEM_READ
     m=Machine();m.init()
+    # Снимает первый флаг калибровки, оставляя второй зависшим.
     def reset_calibration(u,access,a,n,value,_):
         if a==0x40012408:m.write(a,m.read(a)&~8)
     m.u.hook_add(UC_HOOK_MEM_READ,reset_calibration);m.call('adc_init',budget=1500000)
@@ -25,7 +29,7 @@ if mode in ('adc','all'):
         m=Machine();m.init();m.write(0x40012408,cr2)
         assert not m.call('adc_startInjectedConvertion',budget=1500000)
         assert not m.read(0x40012408)&1,'B34 failed conversion left ADC enabled'
-    print('B34 IAR ADC calibration/EOC/JEOC stuck: bounded, conversion rejected PASS')
+    print('B34 IAR ADC calibration/JEOC stuck: bounded, conversion rejected PASS')
 if mode in ('clock','all'):
     for cr in (0,0x20000,0x2020000):
         m=Machine();m.init();m.write(0x40021000,cr);resets=[]
@@ -39,6 +43,7 @@ if mode in ('healthy','all'):
     m=Machine();m.init();m.write(0x40013000,0x40,2);m.write(0x40013008,3,2)
     assert m.call('spi_send_byte',0x5a)==0x5a and m.call('spi_ready')
     m.call('spi_read',0x21000000,3);assert bytes(m.u.mem_read(0x21000000,3))==b'\xff'*3
+    # Моделирует успешную аппаратную калибровку.
     def calibration(u,access,a,n,value,_):
         if a==0x40012408:m.write(a,m.read(a)&~12)
     m.u.hook_add(UC_HOOK_MEM_READ,calibration);m.call('adc_init');assert m.call('adc_ready')
@@ -46,4 +51,4 @@ if mode in ('healthy','all'):
     m.write(0x40012400,0);before=bytes(m.u.mem_read(m.addr('device'),m.map_size('device')))
     m.call('user_readinputs',budget=1500000)
     assert bytes(m.u.mem_read(m.addr('device'),m.map_size('device')))==before
-    print('B34 IAR: healthy SPI/UART/ADC, input states retained on ADC failure PASS')
+    print('B34 IAR: healthy SPI/ADC, input states retained on ADC failure PASS')

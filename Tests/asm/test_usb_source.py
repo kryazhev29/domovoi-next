@@ -1,4 +1,6 @@
-"""Linked USB source ownership, PMA chunking and cancellation, without a board."""
+"""Проверяет владельца исходного буфера USB в скомпонованной прошивке.
+Проверяет блоки PMA, сброс и отмену передачи без платы.
+Доработка: Кряжев А., 2026"""
 import argparse
 from pathlib import Path
 import sys
@@ -8,6 +10,7 @@ from iar_irq_support import Machine, UC_ARM_REG_PRIMASK, UC_ARM_REG_R0, UC_ARM_R
 
 
 class SourceMachine(Machine):
+    # Готовит модель прошивки и перехватывает запись пакетов PMA.
     def __init__(self):
         super().__init__()
         self.init()
@@ -18,6 +21,7 @@ class SourceMachine(Machine):
             self.stubs[self.addr(name)] = lambda *args: self.ret()
         self.configure()
 
+    # Настраивает работающий сеанс CDC и маску прерываний.
     def configure(self, mask=0):
         self.write(self.addr('bDeviceState'), 5)
         self.write(self.addr('usb_enabled'), 1, 1)
@@ -26,6 +30,7 @@ class SourceMachine(Machine):
         self.write(0x40010c08, 32768)
         self.u.reg_write(UC_ARM_REG_PRIMASK, mask)
 
+    # Сохраняет очередной пакет, переданный аппаратной PMA.
     def pma(self):
         pointer = self.u.reg_read(UC_ARM_REG_R0)
         count = self.u.reg_read(UC_ARM_REG_R2)
@@ -33,20 +38,24 @@ class SourceMachine(Machine):
         self.packets.append(bytes(self.u.mem_read(pointer, count)))
         self.ret()
 
+    # Читает занятость источника или проверяет отказ при повторном занятии.
     def busy(self):
         return self.call('USB_Tx_SourceBusy')
 
+    # Завершает передачу и собирает пакеты в общий ответ.
     def drain(self):
         self.call('Handle_USBAsynchXfer')
         while self.busy():
             self.call('EP1_IN_Callback')
         return b''.join(self.packets)
 
+    # Читает владение рабочим буфером после отложенного освобождения.
     def owned(self):
-        self.call('work_acquire', 0, 11)  # collect completed deferred releases
+        self.call('work_acquire', 0, 11)  # Забрать завершённые отложенные освобождения.
         return self.read(self.addr('work_memory') + 2216, 2)
 
 
+# Проверяет приём, владение и завершение обычной передачи.
 def idle():
     cases = 0
     for mask in (0, 1):
@@ -58,7 +67,7 @@ def idle():
             assert accepted == int(length < 1040), (mask, length, accepted)
             assert m.u.reg_read(UC_ARM_REG_PRIMASK) == mask
             if accepted:
-                # Stack/transient data has become the owner's immutable packet.
+                # Временные данные уже скопированы в неизменяемый пакет владельца.
                 m.u.mem_write(0x21000000, b'X' * 1040)
                 assert m.drain() == payload[:length]
                 assert not m.owned()
@@ -77,6 +86,7 @@ def idle():
     return {'boundary_cases': cases}
 
 
+# Проверяет разбиение большого ответа на пакеты PMA.
 def large():
     cases = 0
     for slot, length in ((11, 1038), (2, 534), (10, 1038)):
@@ -101,13 +111,14 @@ def large():
             assert m.call('work_acquire', length, slot) == p
             assert m.u.reg_read(UC_ARM_REG_PRIMASK) == mask
             cases += 1
-    # An address released before submission must never become a valid loan.
+    # Освобождённый до отправки адрес нельзя снова занять под передачу.
     m = SourceMachine(); p = m.call('work_acquire', 1038, 11)
     assert m.call('work_release', p, 11)
     assert not m.call('usb_try_send', p, 1038)
     return {'owner_lifetime_cases': cases + 1}
 
 
+# Читает занятость источника или проверяет отказ при повторном занятии.
 def busy():
     m = SourceMachine(); m.u.mem_write(0x21000000, b'A' * 1038 + b'B')
     assert m.call('usb_try_send', 0x21000000, 1038)
@@ -122,6 +133,7 @@ def busy():
     return {'ordered_backpressure_retry': True}
 
 
+# Проверяет сброс между каждой парой инструкций начала передачи.
 def reset():
     cases = 0
     for copied in (0, 1, 2, 8, 16, 17):
@@ -137,7 +149,7 @@ def reset():
         before = list(m.packets); m.call('EP1_IN_Callback')
         assert m.packets == before
         cases += 1
-    # Inject the real USB reset at every admission instruction boundary.
+    # Вставить настоящий сброс USB между всеми инструкциями приёма буфера.
     m = SourceMachine(); p = m.call('work_acquire', 1038, 11)
     m.call('usb_try_send', p, 1038); steps = m.steps
     for point in range(steps):
@@ -149,10 +161,12 @@ def reset():
     return {'reset_chunk_cases': cases, 'reset_irq_boundaries': steps}
 
 
+# Проверяет готовность источника до видимости передачи из IRQ.
 def esof():
-    # Admission becomes visible only after source/length are initialized.
+    # Передача становится видимой после установки адреса и длины.
     m = SourceMachine(); m.u.mem_write(0x21000000, b'E' * 1038)
     published = []
+    # Проверяет целостность источника в каждой точке публикации.
     def observe(u, pc, size, unused):
         source = m.read(m.addr('usb_tx_source'))
         if source:
@@ -166,6 +180,7 @@ def esof():
     return {'atomic_source_publication': True}
 
 
+# Запускает выбранный сценарий и выводит результат.
 def run():
     return {name: globals()[name]() for name in ('idle', 'large', 'busy', 'reset', 'esof')}
 

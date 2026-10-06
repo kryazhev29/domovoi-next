@@ -1,15 +1,9 @@
 // Доработка: Кряжев А., 2026
-// USB CDC платы v5: usb_prop.
-// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
-// Диагностические счётчики отделены от обязательных таймаутов восстановления.
+// Управляющие запросы и состояние виртуального порта CDC.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    usb_prop.h
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   All processing related to Virtual COM Port Demo (Endpoint 0)
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
@@ -32,7 +26,6 @@
 #ifndef __usb_prop_H
 #define __usb_prop_H
 
-
 typedef struct
 {
   uint32_t bitrate;
@@ -41,42 +34,37 @@ typedef struct
   uint8_t datatype;
 }LINE_CODING;
 
-#define Virtual_Com_Port_GetConfiguration          NOP_Process
-#define Virtual_Com_Port_GetInterface              NOP_Process
-#define Virtual_Com_Port_SetInterface              NOP_Process
-#define Virtual_Com_Port_GetStatus                 NOP_Process
-#define Virtual_Com_Port_ClearFeature              NOP_Process
-#define Virtual_Com_Port_SetEndPointFeature        NOP_Process
-#define Virtual_Com_Port_SetDeviceFeature          NOP_Process
-
-#define SEND_ENCAPSULATED_COMMAND   0x00
-#define GET_ENCAPSULATED_RESPONSE   0x01
 #define SET_COMM_FEATURE            0x02
-#define GET_COMM_FEATURE            0x03
-#define CLEAR_COMM_FEATURE          0x04
 #define SET_LINE_CODING             0x20
 #define GET_LINE_CODING             0x21
 #define SET_CONTROL_LINE_STATE      0x22
-#define SEND_BREAK                  0x23
 
-
+// Подготовить CDC и серийный номер перед подключением к хосту.
 void Virtual_Com_Port_init(void);
+// Сбросить очередь и настроить точки EP0–EP3 для CDC.
 void Virtual_Com_Port_Reset(void);
+// Отметить выбранную хостом конфигурацию CDC.
 void Virtual_Com_Port_SetConfiguration(void);
+// Отметить назначение адреса устройства.
 void Virtual_Com_Port_SetDeviceAddress (void);
-void Virtual_Com_Port_Status_In (void);
-void Virtual_Com_Port_Status_Out (void);
+// Назначить данные GET/SET_LINE_CODING для управляющего запроса.
 RESULT Virtual_Com_Port_Data_Setup(uint8_t);
+// Принять поддерживаемый CDC-запрос без данных.
 RESULT Virtual_Com_Port_NoData_Setup(uint8_t);
+// Разрешить только два интерфейса CDC с нулевой альтернативой.
 RESULT Virtual_Com_Port_Get_Interface_Setting(uint8_t Interface, uint8_t AlternateSetting);
+// Выдать фрагмент дескриптора устройства.
 uint8_t *Virtual_Com_Port_GetDeviceDescriptor(uint16_t);
+// Выдать фрагмент конфигурации CDC.
 uint8_t *Virtual_Com_Port_GetConfigDescriptor(uint16_t);
+// Выдать существующую строку USB либо отклонить её индекс.
 uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t);
 
+// Выдать хосту текущие параметры виртуального порта.
 uint8_t *Virtual_Com_Port_GetLineCoding(uint16_t Length);
+// Принять параметры виртуального порта в семибайтовое поле CDC.
 uint8_t *Virtual_Com_Port_SetLineCoding(uint16_t Length);
 
 #endif
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
-

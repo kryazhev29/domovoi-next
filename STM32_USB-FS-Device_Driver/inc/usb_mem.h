@@ -1,11 +1,9 @@
+// Доработка: Кряжев А., 2026
+// Копирование между обычной памятью и разреженной PMA.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    usb_mem.h
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    28-August-2012
-  * @brief   Utility prototypes functions for memory/PMA transfers
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
@@ -25,21 +23,14 @@
   ******************************************************************************
   */
 
-
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __USB_MEM_H
 #define __USB_MEM_H
 
-/* Includes ------------------------------------------------------------------*/
-/* Exported types ------------------------------------------------------------*/
-/* Exported constants --------------------------------------------------------*/
-/* Exported macro ------------------------------------------------------------*/
-/* Exported functions ------------------------------------------------------- */
+// Скопировать ровно заданное число байтов в разреженную память USB.
 void UserToPMABufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNBytes);
+// Скопировать ровно заданное число байтов из разреженной памяти USB.
 void PMAToUserBufferCopy(uint8_t *pbUsrBuf, uint16_t wPMABufAddr, uint16_t wNBytes);
 
-/* External variables --------------------------------------------------------*/
-
-#endif  /*__USB_MEM_H*/
+#endif
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

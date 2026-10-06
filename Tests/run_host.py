@@ -8,6 +8,11 @@ ref=sys.argv[1] if len(sys.argv)>1 and sys.argv[1]!='work' else None
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return subprocess.check_output(['git','show',ref+':'+name.removeprefix('Tests/asm/reference/')],cwd=ROOT).decode('cp1251') if ref else source_text(ROOT,name)
+# Прочитать фикстуру блока в cp1251; русские маркеры остаются служебными точками вставки.
+def fixture(name):
+    text=(ROOT/name).read_bytes().decode('cp1251')
+    return text.replace('/* КОД */','/* PRODUCTION */').replace('/* ТИПЫ */','/* TYPES */')
+
 def function(text,name):
     m=re.search(r'(?m)^(?:static )?(?:const char \*|char\s*\*\s*|uint8_t\s*\*\s*|(?:void|bool|int|RESULT|uint8_t|uint16_t|uint32_t|unsigned short|unsigned int|pInt8U|Int8U|Int16U|cmdCode_e|logControl_e)\s+)'+name+r'\s*\([^;]*?\)\s*\{',text)
     assert m,name
@@ -349,16 +354,17 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         uart=source('Modules/uart_stm32f10x.c')
         types=typedefs(uart,'uart_t')+'\n'
         code='\n'.join(function(uart.replace('inline bool uart_addbyte','bool uart_addbyte'),n) for n in ('uart_addbyte','uart_getstate','uart_isReceiving','uart_timer1ms'))
-        unit=(ROOT/'Tests/test_uart_timer.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_uart_timer.c').replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idtext':
         user=source('Tests/asm/reference/User/user_fun.c')
         code='\n'.join(function(user,n) for n in ('reader_id','WG_readedID','RF433_readedID','RFID_readedID'))
         types='#include <stdbool.h>\n#include <stdint.h>\n'+typedefs(source('structures.h'),'codeType_e','logControl_e')+'\n'
         unit=types+(ROOT/'Tests/test_id_text.c').read_text().replace('/* PRODUCTION */',code)
     elif kind=='usbresume':
-        unit=(ROOT/'Tests/test_usb_resume.c').read_text().replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/hw_config.c'),'Leave_LowPowerMode'))
+        subprocess.run([sys.executable,str(ROOT/'Tests/test_iar_usb_idle_events.py')],check=True)
+        sys.exit(0)
     elif kind=='usbdesc':
-        unit=(ROOT/'Tests/test_usb_descriptor.c').read_text().replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_GetStringDescriptor'))
+        unit=fixture('Tests/test_usb_descriptor.c').replace('/* PRODUCTION */',function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_GetStringDescriptor'))
     elif kind=='logupload':
         unit=(ROOT/'Tests/test_log_upload.c').read_text().replace('/* PRODUCTION */',function(source('Tests/asm/reference/User/user_fun.c'),'user_send_logRecords'))
     elif kind=='uploadretry':
@@ -376,19 +382,19 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='outs':
         import re as _re
         outs=_re.sub(r'(?m)^#include.*$','',source('User/outs.c'))
-        # DWT is outside the host model; keep the real relay implementation.
-        unit=(ROOT/'Tests/test_outs.c').read_text(encoding='utf-8').replace('/* PRODUCTION */','void prof_relay_on(void) {}\n'+outs)
+        # В модели нет DWT; проверяем рабочую реализацию реле.
+        unit=fixture('Tests/test_outs.c').replace('/* PRODUCTION */','void prof_relay_on(void) {}\n'+outs)
     elif kind=='crcff':
         crc=source('Tests/asm/reference/User/crc.c')
         user=source('Tests/asm/reference/User/user_fun.c')
         code=chr(10).join(function(crc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])
         code+=chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'user_calcCRC16InFlash')+chr(10)+function(user,'id_crc16')
-        unit=(ROOT/'Tests/test_crc_ff.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_crc_ff.c').replace('/* PRODUCTION */',code)
     elif kind=='crcblocks':
         user=source('Tests/asm/reference/User/user_fun.c');crc=source('Tests/asm/reference/User/crc.c')
         code=chr(10).join(function(crc,n) for n in ['crc16_calcInit','gf2_apply','crc16_ffInit'])
         code+=chr(10)+'static uint32_t id_used_bytes = 0xFFFFFFFFu;'+chr(10)+function(user,'id_crc16')+chr(10)+function(user,'user_send_crcMemoryID')
-        unit=(ROOT/'Tests/test_crc_blocks.c').read_text().replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_crc_blocks.c').replace('/* PRODUCTION */',code)
     elif kind=='flashcmds':
         user=source('Tests/asm/reference/User/user_fun.c')
         start=user.index('    case 103:')
@@ -435,43 +441,43 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         code='\n'.join(x for x in wg.splitlines() if re.match(r'^(?:volatile )?(?:uint32_t|uint8_t|bool) wg',x))+'\n'
         code+='\n'.join(function(wg,n) for n in ('wg_parity_valid','EXTI2_IRQHandler','EXTI3_IRQHandler','WG_process'))
         prof='#ifndef WG_PARITY\n#define WG_PARITY 1\n#endif\nuint32_t prof_card_mark;\n#define PROF_CARD_MARK() (prof_card_mark = PROF_NOW() | 1u)\n#define PROF_NOW() (0u)\n#define PROF_STEP(i, call) do { call; } while (0)\n'
-        unit=(ROOT/'Tests/test_wiegand_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',prof+code)
+        unit=fixture('Tests/test_wiegand_irq.c').replace('/* PRODUCTION */',prof+code)
     elif kind=='timersirq':
         timers=source('Modules/timers.c').replace('inline void timers_handle','void timers_handle')
         code='\n'.join(x for x in timers.splitlines() if x.startswith(('unsigned int milliSeconds','unsigned int timer[','volatile unsigned int milliSeconds','volatile unsigned int timer[','#define timer_cnt')))+'\n'
         if 'static unsigned int timers_snapshot(' in timers:code+=function(timers,'timers_snapshot')+'\n'
-        code+='\n'.join(function(timers,n) for n in ('timers_set','timers_get','timers_handle','timers_pause','timers_getMillis'))
-        unit=(ROOT/'Tests/test_timers_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+        code+='\n'.join(function(timers,n) for n in ('timers_set','timers_get','timers_handle','timers_pause','timers_take','timers_getMillis'))
+        unit=fixture('Tests/test_timers_irq.c').replace('/* PRODUCTION */',code)
     elif kind=='crc':
         user=source('Tests/asm/reference/User/user_fun.c')
-        # Compile the actual CRC gate; the command switch is unreachable here.
+        # Собираем рабочую проверку CRC; диспетчер команд здесь недостижим.
         code=user[user.index('void user_parse_comand'):]
         code=(function(user,'command_args_valid')+'\n' if 'static bool command_args_valid(' in user else '')+code[:code.index('  /* ПИН (команда 102)')]+'  (void)tmp32;\n}\n'
-        unit=(ROOT/'Tests/test_crc.c').read_text().replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_crc.c').replace('/* PRODUCTION */',code)
     elif kind=='recovery':
         code=source('Tests/asm/reference/Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
         if 'uint8_t usb_try_send(' in code:code=code.replace(function(code,'usb_try_send'),'')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
+        code+=function(source('USB-FS-CDC_User/Src/usb_pwr.c'),'USB_WaitReset')+'\n'
         code+=function(source('USB-FS-CDC_User/Src/usb_istr.c'),'USB_Istr')
-        unit=(ROOT/'Tests/test_usb_recovery.c').read_text().replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_usb_recovery.c').replace('/* PRODUCTION */',code)
     elif kind=='rx':
         code=source('Tests/asm/reference/Modules/usb_stm32f10x.c').replace('#include "usb_stm32f10x.h"','').replace('#pragma data_alignment=4','')
         if 'uint8_t usb_try_send(' in code:code=code.replace(function(code,'usb_try_send'),'')
         code=re.sub(r'__weak void usb_data_reading[^}]+}', '', code)
         user=function(source('Tests/asm/reference/User/user_fun.c'),'usb_data_reading').replace('void usb_data_reading','void app_usb_data_reading')
-        unit=(ROOT/'Tests/test_rx.c').read_text().replace('/* PRODUCTION */',user+'\n'+code)
+        unit=fixture('Tests/test_rx.c').replace('/* PRODUCTION */',user+'\n'+code)
     elif kind=='usbresetwait':
         pwr=source('USB-FS-CDC_User/Src/usb_pwr.c');code=''
         if 'uint8_t USB_WaitReset(' in pwr:code+=function(pwr,'USB_WaitReset')+'\n'
-        code+=function(pwr,'Suspend')
-        unit=(ROOT/'Tests/test_usb_reset_wait.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_usb_reset_wait.c').replace('/* PRODUCTION */',code)
     elif kind=='usbsetupbounds':
         usb=source('STM32_USB-FS-Device_Driver/src/usb_core.c')
-        block=usb[usb.index('      Related_Endpoint = (pInformation->USBwIndex0 & 0x0f);'):usb.index('\r\n  /*GET CONFIGURATION*/')]
+        block=usb[usb.index('      Related_Endpoint = (pInformation->USBwIndex0 & 0x0f);'):usb.index('  else if (Request_No == GET_CONFIGURATION)')]
         block=block[:block.rfind('    }')]
         code='\n'.join(function(usb,n) for n in ('Standard_GetStatus','Standard_ClearFeature','Standard_SetEndPointFeature'))
         code+='\nstatic uint8_t *(*audit_getstatus(void))(uint16_t){\nuint32_t Related_Endpoint,Reserved,Status;\nuint8_t *(*CopyRoutine)(uint16_t)=NULL;\nif(pInformation->USBwIndex1)return NULL;\n'+block+'\nreturn CopyRoutine;\n}'
-        unit=(ROOT/'Tests/test_usb_setup_bounds.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_usb_setup_bounds.c').replace('/* PRODUCTION */',code)
     elif kind=='utcday':
         user=source('Tests/asm/reference/User/user_fun.c')
         clock=user[user.index('    device.day = user_getweakday'):user.index('    device.connected = comm_channel_ready();')]
@@ -503,13 +509,13 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='tx':
         hw=source('USB-FS-CDC_User/Src/hw_config.c')
         if 'usb_tx_source' in hw:
-            # Test the actual source owner and IRQ handlers from the linked ELF.
+            # Проверяем владельца исходного буфера и IRQ из скомпонованного ELF.
             subprocess.run([sys.executable,str(ROOT/'Tests/asm/test_usb_source.py'),
                             '--scenario',sys.argv[3] if len(sys.argv)>3 else 'idle'],check=True)
             sys.exit(0)
         header=source('USB-FS-CDC_User/Inc/hw_config.h')
         globals=hw[hw.index('uint8_t  USART_Rx_Buffer'):hw.index('static void IntToUnicode')]
-        # The first definition is the application's; the #else branch is the bootloader's.
+        # Первое определение относится к приложению, ветка #else — к загрузчику.
         code=source('User/usb_ring_size.h')+'\n'+[x for x in header.splitlines() if x.startswith('#define USART_RX_DATA_SIZE')][0]+'\n'
         if 'uint8_t USART_To_USB_Send_Data' in hw:code+='#define HOST_FIXED 1\n'
         code+=globals+'\n'
@@ -517,8 +523,9 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
             if re.search(r'(?m)^(?:static )?(?:void|uint8_t|uint16_t|uint32_t)\s+'+name+r'\s*\(',hw):code+=function(hw,name)+'\n'
         code+=function(source('USB-FS-CDC_User/Src/usb_endp.c'),'EP1_IN_Callback')+'\n'
         code+=function(source('USB-FS-CDC_User/Src/usb_prop.c'),'Virtual_Com_Port_Reset')+'\n'
+        code+=function(source('USB-FS-CDC_User/Src/usb_pwr.c'),'USB_WaitReset')+'\n'
         code+=function(source('USB-FS-CDC_User/Src/usb_istr.c'),'USB_Istr')+'\n'
-        unit=source('Tests/test_tx.c').replace('/* PRODUCTION */',code)
+        unit=fixture('Tests/test_tx.c').replace('/* PRODUCTION */',code)
     else:
         raise ValueError(kind)
     if 'idindex_' in unit and 'int8_t idindex_find(' not in unit:
@@ -593,7 +600,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=unit.replace('static void receive_config(',helper+'static void receive_config_step(')
         unit=unit.replace('static void test_rs485cfg(void)', 'static void receive_config(dataChanel_e cch,uint8_t code){staged_ok=false;receive_config_step(cch,code);if(staged_ok){store_config_complete();user_send_timeshtamp(SHTAMP_CONFIG,config.datetime,user_calcCRC16InFlash(mem[MB_CONFIG].start,mem[MB_CONFIG].size),cch,7);}}\nstatic void test_rs485cfg(void)')
     if 'fast_' in unit:
-        (d/'fast_kernels.h').write_text(source('User/fast_kernels.h'), encoding='ascii')
+        (d/'fast_kernels.h').write_text(source('User/fast_kernels.h'), encoding='utf-8')
         unit='#include "fast_kernels.h"\n'+unit.replace('#include "fast_kernels.h"','')
     unit=unit.replace('#include \"domovoi_diag.h\"','').replace('#include \"../domovoi_diag.h\"','')
     (d/'test.c').write_text(host_adapters(ROOT)+unit.replace('\r\n','\n'))

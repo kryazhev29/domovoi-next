@@ -1,15 +1,9 @@
 // Доработка: Кряжев А., 2026
-// USB CDC платы v5: usb_pwr.
-// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
-// Диагностические счётчики отделены от обязательных таймаутов восстановления.
+// Включение, отключение и ограниченное ожидание RESET.
+// Дескрипторы и порядок событий сохраняют протокол CDC.
+// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+
 /**
-  ******************************************************************************
-  * @file    usb_pwr.h
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   Connection/disconnection & power management header
-  ******************************************************************************
   * @attention
   *
   * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
@@ -32,19 +26,6 @@
 #ifndef __USB_PWR_H
 #define __USB_PWR_H
 
-
-typedef enum _RESUME_STATE
-{
-  RESUME_EXTERNAL,
-  RESUME_INTERNAL,
-  RESUME_LATER,
-  RESUME_WAIT,
-  RESUME_START,
-  RESUME_ON,
-  RESUME_OFF,
-  RESUME_ESOF
-} RESUME_STATE;
-
 typedef enum _DEVICE_STATE
 {
   UNCONNECTED,
@@ -55,19 +36,14 @@ typedef enum _DEVICE_STATE
   CONFIGURED
 } DEVICE_STATE;
 
+// Ограниченно ждать RESET; вызывающий код обрабатывает отказ.
 uint8_t USB_WaitReset(void);
-void Suspend(void);
-void Resume_Init(void);
-void Resume(RESUME_STATE eResumeSetVal);
+// Включить USB с аппаратным порядком сброса и начальной маской событий.
 RESULT PowerOn(void);
+// Выключить USB перед повторным подключением загрузчика.
 RESULT PowerOff(void);
 
 extern  __IO uint32_t bDeviceState; /* Текущее состояние устройства USB. */
-#ifdef BOOTLOADER
-extern __IO bool fSuspendEnabled;
-#else
-extern __IO usb_bool_t fSuspendEnabled;
-#endif  /* Разрешение аппаратной приостановки USB. */
 
 #endif
 

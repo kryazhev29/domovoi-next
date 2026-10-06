@@ -1,4 +1,7 @@
-; Cortex-M3 AAPCS leaf kernels. Byte inputs accept every alignment.
+; Доработка: Кряжев А., 2026
+; Быстрые листовые ядра Cortex-M3: FNV, матрица CRC, проверка FF и поиск SLDN.
+; Побайтовые входы допускают любое выравнивание, функции не используют стек.
+; Нулевая длина не читает память; просмотр ограничен переданным буфером.
         PRESERVE8
         CFI Names fast_names
         CFI StackFrame CFA R13 DATA
@@ -33,7 +36,8 @@
         CFI Function fast_fnv10
         CFI NoCalls
 fast_fnv10:
-; FNV-1a over exactly ten bytes. r0=p on entry, hash on return.
+; Вычислить FNV-1a ровно по десяти байтам: r0 — буфер, на выходе — хеш.
+; Развёрнутые шаги экономят ветви и счётчик короткого фиксированного ключа.
         MOV r1, r0
         LDR r0, =2166136261
         LDR r3, =16777619
@@ -78,9 +82,9 @@ fast_fnv10:
         CFI Function fast_gf2_apply
         CFI NoCalls
 fast_gf2_apply:
-; r0=16 halfword columns, r1=uint16_t vector, r0=result. Zero reads for x=0.
-; CTZ via RBIT/CLZ and x&(x-1) visit only set bits. No table or stack.
-; Dense vectors cost more than unrolling; CRC FF matrices favor this variant.
+; Применить 16 выровненных столбцов uint16_t к вектору r1; r0 возвращает результат.
+; RBIT/CLZ находят младший установленный бит, x&(x-1) удаляет его: нули пропускаются.
+; Разреженные векторы матриц CRC FF быстрее полного обхода всех 16 столбцов.
         MOVS r3, #0
         CBZ r1, gs_done
 gs_loop:
@@ -104,8 +108,8 @@ gs_done:
         CFI Function fast_all_ff
         CFI NoCalls
 fast_all_ff:
-; r0=p, r1=uint16_t length; return 0/1. No reads for zero length.
-; First dirty byte exits immediately. Align with bytes, then words and tail.
+; Проверить область r0 длиной r1 на FF; пустая область возвращает 1 без чтения.
+; Первый отличный байт завершает поиск; выравнивание и хвост читаются по байту.
         CBZ r1, ff_true
 ff_prefix:
         LDRB r2, [r0], #1
@@ -149,9 +153,9 @@ ff_false:
         CFI Function fast_sldn
         CFI NoCalls
 fast_sldn:
-; r0=p, r1=uint16_t length; return bytes safe to discard, in [0,length].
-; Preserve a complete signature OR matching partial suffix S/SL/SLD.
-; Every lookahead is length-guarded; advance one byte to retain overlaps.
+; Найти SLDN в r0 длиной r1 и вернуть число байтов, которые можно отбросить.
+; Полная сигнатура и совпавший хвост S/SL/SLD сохраняются для следующего приёма.
+; Проверка длины перед каждым чтением защищает край; шаг в байт сохраняет перекрытия.
         MOV r12, r0
         CBZ r1, sig_done
 sig_next:

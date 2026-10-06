@@ -7,14 +7,11 @@
 #define INPUTOUT_H
 #include "includes.h"
 
-#define OUTSCOUNT               (uint8_t)2
-#define INPUTFILTERSIZE         (uint8_t)10
-#define EXTINPUTSCOUNT          (uint8_t)0
+#define OUTSCOUNT (uint8_t)2
 
 typedef enum{
 OUT_OFF = 0, OUT_ON, OUT_INV, OUT_IMP
 }outmode_e;
-
 
 // Запрос состояния выхода
 Int8U out_getstate (Int8U out);

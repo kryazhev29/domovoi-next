@@ -1,4 +1,6 @@
-/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. CRC-16 С…РІРѕСЃС‚Р° РёР· 0xFF Р±РµР· С‡С‚РµРЅРёСЏ СЃРѕРІРїР°РґР°РµС‚ СЃ РїРѕР±Р°Р№С‚РѕРІС‹Рј СЂР°СЃС‡С‘С‚РѕРј. */
+/* Доработка: Кряжев А., 2026. CRC-16 хвоста из 0xFF без чтения совпадает с побайтовым расчётом. */
+// Проверка контрактов периферии без физической платы.
+// Зависимости моделируются, код проверяемого модуля вставляет стенд.
 #include <stdio.h>
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);return 1;}}while(0)
@@ -9,8 +11,10 @@ typedef struct {uint8_t b[32];} cellID_s;
 static struct {uint32_t start,size;} mem[1]={{4096,1601536}};
 static uint8_t flash[4096+1601536];
 static unsigned long read_bytes;
+// Прочитать заданную область модели флеш и отметить число чтений.
 static bool mem_read(uint32_t a,uint8_t *p,uint16_t n){memcpy(p,flash+a,n);read_bytes+=n;return true;}
-/* PRODUCTION */
+/* КОД */
+// Проверить все сценарии модуля и вернуть результат прогона.
 int main(void){
   static unsigned char ff[70000];
   unsigned long ns[]={0,1,2,3,7,8,255,256,1000,1536,16000,65535,65536,69999,1601536};
@@ -21,7 +25,7 @@ int main(void){
     while(n){unsigned short c=n>60000?60000:(unsigned short)n; ref=crc16_calcInit(ff,c,ref); n-=c;}
     CHECK(ref==crc16_ffInit(ns[i],inits[k]));
   }
-  /* Р’СЃСЏ РѕР±Р»Р°СЃС‚СЊ Р±Р°Р·С‹ РїСЂРѕС‚РёРІ Р·Р°РїРёСЃР°РЅРЅРѕР№ С‡Р°СЃС‚Рё + С…РІРѕСЃС‚Р° 0xFF: С‚РѕС‚ Р¶Рµ CRC, С‡РёС‚Р°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ Р·Р°РїРёСЃР°РЅРЅРѕРµ. */
+  /* Вся область базы против записанной части + хвоста 0xFF: тот же CRC, читается только записанное. */
   {static const uint32_t used[]={0,32,33*32,500*32,16000,16032,123457,1600000,1601536};
    static const uint32_t win[][2]={{0,1601536},{0,16000},{16000,16000},{1584000,16000},{16000*7,16000}};
    for(unsigned u=0;u<sizeof used/sizeof *used;u++){
@@ -38,7 +42,7 @@ int main(void){
     }}
    id_used_bytes=0xFFFFFFFFu;read_bytes=0;CHECK(id_crc16(0,16000)==crc16_calcInit(flash+4096,16000,0xFFFF)&&read_bytes==16000);
   }
-  /* Full uint32_t count range: composition, including the top bit and zero. */
+  /* Композиция проверяет весь диапазон uint32_t, включая старший бит и нуль. */
   { uint32_t seed=0x20261005u;
     for(unsigned i=0;i<128;i++) {
       seed=seed*1664525u+1013904223u; uint32_t a=seed;

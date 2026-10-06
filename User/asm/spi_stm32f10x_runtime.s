@@ -1,5 +1,7 @@
-; Cortex-M3 / IAR. Executable production module.
-; Reference: Tests/asm/reference/Modules/spi_stm32f10x.c
+; Доработка: Кряжев А., 2026
+; SPI1 внешней W25: старт и ограниченный обмен байтами/буферами.
+; Приём посылает FF; после последнего байта проверяется BSY.
+; Общие короткие подпрограммы сокращают повторяемый обмен, CFI описывает стек IAR.
 
         RTMODEL "__CPP_Runtime", "1"
         RTMODEL "__SystemLibrary", "DLib"
@@ -22,7 +24,6 @@
         EXTERN SPI_I2S_ReceiveData
         EXTERN SPI_Init
         EXTERN SPI_StructInit
-        EXTERN SystemCoreClock
 
         PUBLIC spi_init
         PUBLIC spi_initCS
@@ -31,7 +32,6 @@
         PUBLIC spi_ready
         PUBLIC spi_send
         PUBLIC spi_send_byte
-        PUBLIC spi_wait_busy
 
           CFI Names cfiNames0
           CFI StackFrame CFA R13 DATA
@@ -86,6 +86,7 @@
           CFI Function spi_ready
           CFI NoCalls
         THUMB
+; Проверить включение SPI1 перед обменом.
 spi_ready:
         LDR.N    R0,??DataTable6
         LDRH     R0,[R0, #+0]
@@ -99,6 +100,7 @@ spi_ready:
           CFI Block cfiBlock1 Using cfiCommon0
           CFI Function spi_wait_flag
         THUMB
+; Ограниченно ждать TXE/RXNE/BSY; отказ выключает недостоверный SPI.
 spi_wait_flag:
         PUSH     {R3-R5,LR}
           CFI R14 Frame(CFA, -4)
@@ -142,6 +144,7 @@ spi_wait_flag:
           CFI Block cfiBlock2 Using cfiCommon0
           CFI Function spi_init
         THUMB
+; Настроить SPI1 и выводы W25; частота платы 72/4 = 18 МГц.
 spi_init:
         PUSH     {R3-R5,LR}
           CFI R14 Frame(CFA, -4)
@@ -166,7 +169,7 @@ spi_init:
         MOVS     R0,#+160
         STRH     R0,[SP, #+0]
         MOVS     R0,#+24
-        BL       ?Subroutine3
+        BL       spi_gpio_mode
 ??CrossCallReturnLabel_9:
         LDR.N    R5,??DataTable6_2
         MOV      R1,SP
@@ -176,7 +179,7 @@ spi_init:
         MOVS     R0,#+64
         STRH     R0,[SP, #+0]
         MOVS     R0,#+72
-        BL       ?Subroutine3
+        BL       spi_gpio_mode
 ??CrossCallReturnLabel_10:
         MOV      R1,SP
         MOV      R0,R5
@@ -187,13 +190,8 @@ spi_init:
         BL       SPI_StructInit
         MOV      R0,#+260
         STRH     R0,[SP, #+6]
-        LDR.N    R0,??DataTable6_3
-        LDR      R1,[R0, #+0]
-        LDR.N    R0,??DataTable6_4
-        CMP      R1,R0
-        ITE      CS
-        MOVCS    R0,#+8
-        MOVCC    R0,#+0
+; Плата всегда работает на 72 МГц: предделитель SPI равен 4.
+        MOVS     R0,#+8
         STRH     R0,[SP, #+16]
         MOV      R0,#+512
         STRH     R0,[SP, #+14]
@@ -209,7 +207,7 @@ spi_init:
         MOV      R0,R4
           CFI FunCall SPI_Cmd
         BL       SPI_Cmd
-        BL       ?Subroutine1
+        BL       spi_wait_txe
 ??CrossCallReturnLabel_4:
         CBZ.N    R0,??spi_init_0
         MOV      R0,R4
@@ -225,6 +223,7 @@ spi_init:
           CFI Block cfiBlock3 Using cfiCommon0
           CFI Function spi_initCS
         THUMB
+; Поднять CS до запуска порта, чтобы флеш не приняла ложную команду.
 spi_initCS:
         PUSH     {R2-R4,LR}
           CFI R14 Frame(CFA, -4)
@@ -240,7 +239,7 @@ spi_initCS:
         MOV      R0,#+4096
         STRH     R0,[SP, #+0]
         MOVS     R0,#+16
-        BL       ?Subroutine3
+        BL       spi_gpio_mode
 ??CrossCallReturnLabel_11:
         LDR.N    R4,??DataTable6_5
         MOV      R1,SP
@@ -280,7 +279,8 @@ spi_initCS:
           CFI (cfiPicker7) NoFunction
           CFI (cfiPicker7) Picker
         THUMB
-?Subroutine3:
+; Заполнить режим GPIO и скорость 50 МГц в структуре на стеке.
+spi_gpio_mode:
         STRB     R0,[SP, #+3]
         MOVS     R0,#+3
         STRB     R0,[SP, #+2]
@@ -294,32 +294,11 @@ spi_initCS:
           CFI Block cfiBlock8 Using cfiCommon0
           CFI Function spi_read_byte
         THUMB
+; Принять байт через общий обмен FF: хвостовой переход не добавляет стек или вызов.
 spi_read_byte:
-        PUSH     {R4,LR}
-          CFI R14 Frame(CFA, -4)
-          CFI R4 Frame(CFA, -8)
-          CFI CFA R13+8
-        BL       ?Subroutine1
-??CrossCallReturnLabel_3:
-        CBZ.N    R0,??spi_read_byte_0
-        LDR.N    R4,??DataTable6_6
-        MOVS     R0,#+255
-        STRH     R0,[R4, #+0]
-        BL       ??Subroutine2_0
-??CrossCallReturnLabel_6:
-        CBZ.N    R0,??spi_read_byte_0
-        MOVS     R1,#+0
-        MOVS     R0,#+128
-          CFI FunCall spi_wait_flag
-        BL       spi_wait_flag
-        CBNZ.N   R0,??spi_read_byte_1
-??spi_read_byte_0:
-        MOVS     R0,#+255
-        POP      {R4,PC}
-??spi_read_byte_1:
-        LDRH     R0,[R4, #+0]
-        UXTB     R0,R0
-        POP      {R4,PC}
+        MOVS R0,#255
+          CFI FunCall spi_send_byte
+        B.N spi_send_byte
           CFI EndBlock cfiBlock8
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -327,6 +306,7 @@ spi_read_byte:
           CFI Function spi_read
           CFI NoCalls
         THUMB
+; Принять буфер без ожидания BSY между байтами, проверив его один раз в конце.
 spi_read:
         PUSH     {R3-R7,LR}
           CFI R14 Frame(CFA, -4)
@@ -335,12 +315,12 @@ spi_read:
           CFI R5 Frame(CFA, -16)
           CFI R4 Frame(CFA, -20)
           CFI CFA R13+24
-        BL       ?Subroutine4
+        BL       spi_buffer_regs
 ??CrossCallReturnLabel_12:
         B.N      ??spi_read_0
 ??spi_read_1:
         MOVS     R0,#+255
-        BL       ?Subroutine2
+        BL       spi_store_byte
 ??CrossCallReturnLabel_8:
         CBZ.N    R0,??spi_read_2
         LDRH     R0,[R6, #+0]
@@ -349,14 +329,14 @@ spi_read:
 ??spi_read_0:
         CMP      R7,R5
         BCS.N    ??spi_read_3
-        BL       ?Subroutine1
+        BL       spi_wait_txe
 ??CrossCallReturnLabel_2:
         CMP      R0,#+0
         BNE.N    ??spi_read_1
 ??spi_read_2:
         POP      {R0,R4-R7,PC}
 ??spi_read_3:
-        B.N      ?Subroutine0
+        B.N      spi_finish_buffer
           CFI EndBlock cfiBlock9
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -382,14 +362,9 @@ spi_read:
           CFI (cfiPicker12) NoFunction
           CFI (cfiPicker12) Picker
         THUMB
-?Subroutine2:
+; Записать байт в DR и перейти к общему ожиданию RXNE.
+spi_store_byte:
         STRH     R0,[R6, #+0]
-          CFI Block cfiCond13 Using cfiCommon0
-          CFI (cfiCond13) Function spi_read_byte
-          CFI (cfiCond13) Conditional ??CrossCallReturnLabel_6
-          CFI (cfiCond13) R4 Frame(CFA, -8)
-          CFI (cfiCond13) R14 Frame(CFA, -4)
-          CFI (cfiCond13) CFA R13+8
           CFI Block cfiCond14 Using cfiCommon0
           CFI (cfiCond14) Function spi_send_byte
           CFI (cfiCond14) Conditional ??CrossCallReturnLabel_5
@@ -397,18 +372,17 @@ spi_read:
           CFI (cfiCond14) R5 Frame(CFA, -8)
           CFI (cfiCond14) R14 Frame(CFA, -4)
           CFI (cfiCond14) CFA R13+16
-??Subroutine2_0:
+; Общий вход ожидания RXNE после записи DR.
+spi_wait_rxne:
         MOVS     R1,#+1
         MOVS     R0,#+1
           CFI (cfiCond10) FunCall spi_read spi_wait_flag
           CFI (cfiCond11) FunCall spi_send spi_wait_flag
-          CFI (cfiCond13) FunCall spi_read_byte spi_wait_flag
           CFI (cfiCond14) FunCall spi_send_byte spi_wait_flag
         B.N      spi_wait_flag
           CFI EndBlock cfiCond10
           CFI EndBlock cfiCond11
           CFI EndBlock cfiPicker12
-          CFI EndBlock cfiCond13
           CFI EndBlock cfiCond14
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -419,12 +393,6 @@ spi_read:
           CFI R5 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
           CFI CFA R13+40
-          CFI Block cfiCond16 Using cfiCommon0
-          CFI (cfiCond16) Function spi_read_byte
-          CFI (cfiCond16) Conditional ??CrossCallReturnLabel_3
-          CFI (cfiCond16) R4 Frame(CFA, -8)
-          CFI (cfiCond16) R14 Frame(CFA, -4)
-          CFI (cfiCond16) CFA R13+8
           CFI Block cfiCond17 Using cfiCommon0
           CFI (cfiCond17) Function spi_read
           CFI (cfiCond17) Conditional ??CrossCallReturnLabel_2
@@ -454,17 +422,16 @@ spi_read:
           CFI (cfiPicker20) NoFunction
           CFI (cfiPicker20) Picker
         THUMB
-?Subroutine1:
+; Общий вход ожидания TXE: экономит повторяемую настройку аргументов.
+spi_wait_txe:
         MOVS     R1,#+1
         MOVS     R0,#+2
           CFI (cfiCond15) FunCall spi_init spi_wait_flag
-          CFI (cfiCond16) FunCall spi_read_byte spi_wait_flag
           CFI (cfiCond17) FunCall spi_read spi_wait_flag
           CFI (cfiCond18) FunCall spi_send_byte spi_wait_flag
           CFI (cfiCond19) FunCall spi_send spi_wait_flag
         B.N      spi_wait_flag
           CFI EndBlock cfiCond15
-          CFI EndBlock cfiCond16
           CFI EndBlock cfiCond17
           CFI EndBlock cfiCond18
           CFI EndBlock cfiCond19
@@ -474,6 +441,7 @@ spi_read:
           CFI Block cfiBlock21 Using cfiCommon0
           CFI Function spi_send_byte
         THUMB
+; Обменять байт по SPI с ограниченным ожиданием всех флагов.
 spi_send_byte:
         PUSH     {R3-R5,LR}
           CFI R14 Frame(CFA, -4)
@@ -481,12 +449,12 @@ spi_send_byte:
           CFI R4 Frame(CFA, -12)
           CFI CFA R13+16
         MOV      R5,R0
-        BL       ?Subroutine1
+        BL       spi_wait_txe
 ??CrossCallReturnLabel_1:
         CBZ.N    R0,??spi_send_byte_0
         LDR.N    R4,??DataTable6_6
         STRH     R5,[R4, #+0]
-        BL       ??Subroutine2_0
+        BL       spi_wait_rxne
 ??CrossCallReturnLabel_5:
         CBZ.N    R0,??spi_send_byte_0
         MOVS     R1,#+0
@@ -508,6 +476,7 @@ spi_send_byte:
           CFI Function spi_send
           CFI NoCalls
         THUMB
+; Передать буфер, забирая ответные байты, чтобы не переполнить RX.
 spi_send:
         PUSH     {R3-R7,LR}
           CFI R14 Frame(CFA, -4)
@@ -516,12 +485,12 @@ spi_send:
           CFI R5 Frame(CFA, -16)
           CFI R4 Frame(CFA, -20)
           CFI CFA R13+24
-        BL       ?Subroutine4
+        BL       spi_buffer_regs
 ??CrossCallReturnLabel_13:
         B.N      ??spi_send_0
 ??spi_send_1:
         LDRB     R0,[R4], #+1
-        BL       ?Subroutine2
+        BL       spi_store_byte
 ??CrossCallReturnLabel_7:
         CBZ.N    R0,??spi_send_2
         LDRH     R0,[R6, #+0]
@@ -529,7 +498,7 @@ spi_send:
 ??spi_send_0:
         CMP      R7,R5
         BCS.N    ??spi_send_3
-        BL       ?Subroutine1
+        BL       spi_wait_txe
 ??CrossCallReturnLabel_0:
         CMP      R0,#+0
         BNE.N    ??spi_send_1
@@ -537,7 +506,7 @@ spi_send:
         POP      {R0,R4-R7,PC}
 ??spi_send_3:
           CFI EndBlock cfiBlock22
-        REQUIRE ?Subroutine0
+        REQUIRE spi_finish_buffer
 
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock23 Using cfiCommon0
@@ -549,7 +518,8 @@ spi_send:
           CFI R7 Frame(CFA, -8)
           CFI R14 Frame(CFA, -4)
         THUMB
-?Subroutine0:
+; Восстановить стек буферного обмена и хвостовым переходом дождаться BSY=0.
+spi_finish_buffer:
         MOVS     R1,#+0
         MOVS     R0,#+128
         POP      {R2,R4-R7,LR}
@@ -587,7 +557,8 @@ spi_send:
           CFI (cfiPicker26) NoFunction
           CFI (cfiPicker26) Picker
         THUMB
-?Subroutine4:
+; Удержать указатель, длину, счётчик и DR в регистрах внутреннего цикла.
+spi_buffer_regs:
         MOV      R4,R0
         MOV      R5,R1
         MOVS     R7,#+0
@@ -621,20 +592,6 @@ spi_send:
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
-??DataTable6_3:
-        DATA32
-        DC32     SystemCoreClock
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-??DataTable6_4:
-        DATA32
-        DC32     0x2dc6c00
-
-        SECTION `.text`:CODE:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
 ??DataTable6_5:
         DATA32
         DC32     0x40010c00
@@ -645,21 +602,5 @@ spi_send:
 ??DataTable6_6:
         DATA32
         DC32     0x4001300c
-
-        SECTION `.text`:CODE:NOROOT(1)
-          CFI Block cfiBlock27 Using cfiCommon0
-          CFI Function spi_wait_busy
-        THUMB
-spi_wait_busy:
-        MOVS     R1,#+0
-        MOVS     R0,#+128
-          CFI FunCall spi_wait_flag
-        B.N      spi_wait_flag
-          CFI EndBlock cfiBlock27
-
-        SECTION `.iar_vfe_header`:DATA:NOALLOC:NOROOT(2)
-        SECTION_TYPE SHT_PROGBITS, 0
-        DATA
-        DC32 0
 
         END
