@@ -1,15 +1,38 @@
-/* Shared framing only; the caller retains ownership of the buffer. */
+// Доработка: Кряжев А., 2026
+// Общая сборка SLDN: заголовок, длина, CRC и отправка по выбранному каналу.
+// Готовое тело начинается с байта 6; буфер всегда остаётся у вызывающего.
+// Фоновые ответы копируются в серверный TX или передаются USB с учётом владельца.
 #include "packet.h"
-#include "includes.h"
-#include "../Modules/comm_channel.h"
+#include "c/runtime_internal.h"
+
+// Дополняет готовое тело единственными общими заголовком и CRC SLDN.
+void packet_frame(uint8_t *buffer, uint16_t length)
+{
+  rt_put32(buffer,0x4e444c53u); rt_put16(buffer+4,length);
+  rt_put16(buffer+length+6,crc16_calc(buffer+4,length+2));
+}
+// Отправляет тело из буфера, уже подготовленного вызывающим для канала.
 bool packet_send(uint8_t *buffer, uint16_t length, uint8_t channel)
 {
-  uint16_t crc;
-  buffer[0]='S'; buffer[1]='L'; buffer[2]='D'; buffer[3]='N';
-  buffer[4]=(uint8_t)length; buffer[5]=(uint8_t)(length>>8);
-  crc=crc16_calc(buffer+4,length+2);
-  buffer[length+6]=(uint8_t)crc; buffer[length+7]=(uint8_t)(crc>>8);
+  packet_frame(buffer,length);
   if(channel==0) return usb_send(buffer,length+8)!=0;
   if(channel==1) return comm_tx_commit(length+8);
   return false;
+}
+// Отправляет уже собранный ответ автомата, сохраняя его при занятом канале.
+uint8_t reply_send(const uint8_t *packet, uint16_t size, uint8_t channel)
+{
+  uint8_t *out;
+  if(!channel) return usb_try_send(packet,size);
+  out=user_comm_acquire(size); if(!out) return 0;
+  memcpy(out,packet,size);
+  if(comm_tx_commit(size)) return 1;
+  comm_tx_release(); return 0;
+}
+// Заполняет единый ответ 11; время и свободный буфер фиксируются при создании.
+void answer11(uint8_t *packet,uint8_t uniq,uint8_t command,uint8_t code)
+{
+  packet[6]=(command==7 || command==21)?5:255; packet[7]=uniq; packet[8]=11; packet[9]=command; packet[10]=code;
+  rt_put32(packet+11,device.datetime); rt_put16(packet+15,device.freeBufferSize);
+  packet_frame(packet,11);
 }

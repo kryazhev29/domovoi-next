@@ -1,5 +1,7 @@
 // Доработка: Кряжев А., 2026
-// Общий журнал атомарной замены одного сектора таблиц.
+// Формат журнала и границы областей восстановления.
+// SJ_DATA сохраняет образ до очистки метки SJ_META.
+// Операции записи вызываются после стартового восстановления и проверяют данные в драйвере.
 #ifndef SECTOR_JOURNAL_H
 #define SECTOR_JOURNAL_H
 #include <stdint.h>
@@ -15,11 +17,10 @@ uint8_t sj_span(uint32_t address, uint16_t size);
 uint8_t sj_recover(void);
 typedef uint8_t (*sj_page_reader)(const void *context, uint16_t offset, uint8_t *page);
 uint8_t sj_replace_pages(uint32_t address, sj_page_reader reader, const void *context);
-uint8_t sj_replace(uint32_t address, const uint8_t *image);
 uint8_t sj_io_read(uint32_t address, uint8_t *data, uint16_t size);
 uint8_t sj_io_write(uint32_t address, const uint8_t *data, uint16_t size);
 uint8_t sj_io_erase(uint32_t address);
 void sj_io_service(void);
-/* Incremental CRC-32 for journal and config; caller owns initial/final XOR. */
+// Продолжает CRC32 журнала и настроек; начальную и конечную инверсию делает владелец.
 uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint16_t size);
 #endif

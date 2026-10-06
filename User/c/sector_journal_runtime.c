@@ -1,7 +1,11 @@
 // ƒоработка:  р€жев ј., 2026
+// ∆урнал замены сектора: резервный образ, заголовок и метка фиксации.
+// ѕосле обрыва CRC резервного образа провер€етс€ до стирани€ назначени€.
+// ¬о врем€ записи проверкой содержимого владеет драйвер W25.
 #include "sector_journal.h"
 #include <string.h>
 
+// ѕровер€ет адрес назначени€ из заголовка журнала после обрыва питани€.
 uint8_t sj_destination(uint32_t address)
 {
   if (address & (SJ_SECTOR - 1u)) return 0;
@@ -9,15 +13,17 @@ uint8_t sj_destination(uint32_t address)
          address == 0x1C9000u || address == 0x1CA000u || address == 0x1CC000u ||
          (address >= 0x1D0000u && address < 0x1F5000u);
 }
+// ќграничивает низкоуровневый доступ областью одного разрешЄнного сектора.
 uint8_t sj_span(uint32_t address, uint16_t size)
 {
   uint32_t sector = address & ~(SJ_SECTOR - 1u);
   return size != 0 && size <= SJ_SECTOR - (address - sector) &&
          (sector == SJ_DATA || sector == SJ_META || sj_destination(sector));
 }
-/* Shared storage CRC-32 (reflected 0xEDB88320), no final XOR.
-   Bootloader and host keep C; the application uses the ASM_CRC kernel. */
+// CRC32 с полиномом 0xEDB88320 без конечной инверсии.
+ // «агрузчик и модель используют C, приложение Ч измеренное €дро ASM_CRC.
 #ifndef ASM_CRC
+// ѕродолжает CRC32 без начальной и конечной инверсии.
 uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint16_t size)
 {
   uint8_t bit;
@@ -28,6 +34,7 @@ uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint16_t size)
   return crc;
 }
 #endif
+// ѕровер€ет CRC резервного образа при восстановлении после сброса.
 static uint8_t sj_flash_crc(uint32_t address, uint32_t *crc)
 {
   uint8_t page[SJ_PAGE];
@@ -39,17 +46,6 @@ static uint8_t sj_flash_crc(uint32_t address, uint32_t *crc)
     c = crc32_update(c, page, sizeof(page));
   }
   *crc = ~c;
-  return 1;
-}
-static uint8_t sj_blank(uint32_t address)
-{
-  uint8_t page[SJ_PAGE];
-  uint16_t off, i;
-  for (off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
-    sj_io_service();
-    if (!sj_io_read(address + off, page, sizeof(page))) return 0;
-    for (i = 0; i < sizeof(page); i++) if (page[i] != 0xFFu) return 0;
-  }
   return 1;
 }
 // ѕроверка страницы не требует второй страницы в ќ«”.
@@ -64,6 +60,7 @@ static uint8_t sj_page_equal(uint32_t address, const uint8_t *page, uint8_t *equ
   return 1;
 }
 
+// ¬ы€вл€ет неизменный сектор, чтобы сохранить ресурс флеш-пам€ти.
 static uint8_t sj_pages_equal(uint32_t address, sj_page_reader reader, const void *context, uint8_t *equal)
 {
   uint8_t page[SJ_PAGE], same;
@@ -75,6 +72,7 @@ static uint8_t sj_pages_equal(uint32_t address, sj_page_reader reader, const voi
   }
   return 1;
 }
+// —равнивает назначение с проверенным резервным образом при восстановлении.
 static uint8_t sj_flash_equal(uint32_t a, uint32_t b, uint8_t *equal)
 {
   uint8_t left[32], right[32];
@@ -88,48 +86,48 @@ static uint8_t sj_flash_equal(uint32_t a, uint32_t b, uint8_t *equal)
   *equal = 1;
   return 1;
 }
+// ѕровер€ет формат, адрес, CRC заголовка и метку фиксации.
 static uint8_t sj_header(const uint32_t *h)
 {
   return h[0] == SJ_MAGIC && h[1] == SJ_VERSION && sj_destination(h[2]) &&
          h[3] == SJ_SECTOR && h[5] == ~h[4] &&
          h[6] == ~crc32_update(0xFFFFFFFFu, (const uint8_t*)h, 24) && h[7] == SJ_COMMIT;
 }
+// ѕереносит проверенный резервный образ и очищает метку только после последней записи.
+static uint8_t sj_copy_data(uint32_t address)
+{
+  uint8_t page[SJ_PAGE];
+  if (!sj_io_erase(address)) return 0;
+  for (uint16_t off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
+    sj_io_service();
+    if (!sj_io_read(SJ_DATA + off, page, sizeof(page)) ||
+        !sj_io_write(address + off, page, sizeof(page))) return 0;
+  }
+  return sj_io_erase(SJ_META);
+}
+// «авершает зафиксированный перенос после обрыва и очищает метку.
 uint8_t sj_recover(void)
 {
   uint32_t h[8], crc;
   uint8_t equal;
-  uint8_t page[SJ_PAGE];
-  uint16_t off;
   if (!sj_io_read(SJ_META, (uint8_t*)h, sizeof(h))) return 0;
-  // ЌезавершЄнна€ запись или очистка metadata не разрешает стирание таблицы.
+  // ЌезавершЄнный заголовок не разрешает стирание назначени€.
   if (!sj_header(h)) return 1;
   if (!sj_flash_crc(SJ_DATA, &crc) || crc != h[4]) return 0;
-  if (!sj_flash_crc(h[2], &crc)) return 0;
-  if (crc == h[4] && !sj_flash_equal(h[2], SJ_DATA, &equal)) return 0;
-  if (crc != h[4] || !equal) {
-    if (!sj_io_erase(h[2]) || !sj_blank(h[2])) return 0;
-    for (off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
-      sj_io_service();
-      if (!sj_io_read(SJ_DATA + off, page, sizeof(page)) ||
-          !sj_io_write(h[2] + off, page, sizeof(page))) return 0;
-    }
-  }
-  if (!sj_flash_crc(h[2], &crc) || crc != h[4] ||
-      !sj_flash_equal(h[2], SJ_DATA, &equal) || !equal) return 0;
-  // ѕри обрыве очистки destination уже целый; scratch до этого момента не мен€лс€.
-  return sj_io_erase(SJ_META) && sj_blank(SJ_META);
+  // —равнение всех байтов с уже проверенным образом замен€ет второй CRC назначени€.
+  if (!sj_flash_equal(h[2], SJ_DATA, &equal)) return 0;
+  return equal ? sj_io_erase(SJ_META) : sj_copy_data(h[2]);
 }
+// «амен€ет сектор после стартового восстановлени€; W25 провер€ет каждую запись.
+// ћетка журнала ставитс€ последней, а стираетс€ после переноса проверенных данных.
 uint8_t sj_replace_pages(uint32_t address, sj_page_reader reader, const void *context)
 {
-  uint32_t h[8], check[8], crc, expected = 0xFFFFFFFFu;
+  uint32_t h[8], expected = 0xFFFFFFFFu;
   uint8_t equal, page[SJ_PAGE];
-  uint16_t off, i;
-  if (reader == NULL || !sj_destination(address)) return 0;
-  if (!sj_recover()) return 0;
+  uint16_t off;
   if (!sj_pages_equal(address, reader, context, &equal)) return 0;
   if (equal) return 1;
-  if (!sj_io_erase(SJ_META) || !sj_blank(SJ_META) ||
-      !sj_io_erase(SJ_DATA) || !sj_blank(SJ_DATA)) return 0;
+  if (!sj_io_erase(SJ_META) || !sj_io_erase(SJ_DATA)) return 0;
   for (off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
     sj_io_service();
     if (!reader(context, off, page)) return 0;
@@ -139,24 +137,7 @@ uint8_t sj_replace_pages(uint32_t address, sj_page_reader reader, const void *co
   h[0] = SJ_MAGIC; h[1] = SJ_VERSION; h[2] = address; h[3] = SJ_SECTOR;
   h[4] = ~expected; h[5] = ~h[4];
   h[6] = ~crc32_update(0xFFFFFFFFu, (const uint8_t*)h, 24); h[7] = SJ_COMMIT;
-  if (!sj_flash_crc(SJ_DATA, &crc) || crc != h[4] ||
-      !sj_pages_equal(SJ_DATA, reader, context, &equal) || !equal) return 0;
   if (!sj_io_write(SJ_META, (const uint8_t*)h, 28) ||
-      !sj_io_read(SJ_META, (uint8_t*)check, sizeof(check))) return 0;
-  for (i = 0; i < 7; i++) if (check[i] != h[i]) return 0;
-  if (check[7] != 0xFFFFFFFFu) return 0;
-  if (!sj_io_write(SJ_META + 28, (const uint8_t*)&h[7], 4) ||
-      !sj_io_read(SJ_META, (uint8_t*)check, sizeof(check)) || !sj_header(check)) return 0;
-  return sj_recover();
-}
-
-static uint8_t sj_ram_page(const void *image, uint16_t off, uint8_t *page)
-{
-  memcpy(page, (const uint8_t*)image + off, SJ_PAGE);
-  return 1;
-}
-
-uint8_t sj_replace(uint32_t address, const uint8_t *image)
-{
-  return image != NULL && sj_replace_pages(address, sj_ram_page, image);
+      !sj_io_write(SJ_META + 28, (const uint8_t*)&h[7], 4)) return 0;
+  return sj_copy_data(address);
 }

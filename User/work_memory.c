@@ -1,4 +1,7 @@
-/* Доработка: Кряжев А., 2026. Shared 2224-byte storage, without an allocator. */
+// Доработка: Кряжев А., 2026
+// Общая рабочая память 2224 Б и совместимость её владельцев.
+// Автоматы получают фиксированные участки без кучи и сохраняют их до завершения.
+// USB берёт буфер взаймы; память освобождается после окончания передачи.
 #include "work_memory.h"
 #include "includes.h"
 #include <string.h>
@@ -18,7 +21,8 @@ static work_memory_s work_memory;
 #define PACKET BIT(WORK_PHOTO_PACKET)
 #define FW (BIT(WORK_FW_CONTEXT)|BIT(WORK_FW_DATA)|BIT(WORK_CONFIG))
 #define UPLOAD (BIT(WORK_UPLOAD_CONTEXT)|BIT(WORK_UPLOAD_PACKET))
-static const uint16_t capacities[] = {0,180,534,1092,128,1024,1024,56,312,36,1040,2032,2028,1024,2032};
+static const uint16_t capacities[] = {0,180,534,132,128,1024,1024,56,312,32,1040,2032,2028,1024,2032};
+// Выбирает фиксированный участок рабочей памяти по владельцу.
 static void *address(uint32_t slot)
 {
   if(slot==WORK_PHOTO_CONTEXT) return work_memory.photo;
@@ -27,10 +31,12 @@ static void *address(uint32_t slot)
   if(slot==WORK_UPLOAD_PACKET) return work_memory.shared+40;
   return work_memory.shared;
 }
+// Возвращает допустимую вместимость рабочего слота.
 uint32_t work_capacity(uint32_t slot)
 { return slot>0 && slot<=WORK_TABLE ? capacities[slot] : 0; }
-/* USB IRQ owns only the transport descriptor. Workspace state stays in main. */
+// Прерывание USB владеет дескриптором; рабочей памятью управляет главный цикл.
 extern uint8_t USB_Tx_SourceBusy(void);
+// Возвращает память после завершения заимствованной USB-передачи.
 static void work_usb_collect(void)
 {
   if(work_memory.usb_slot && !USB_Tx_SourceBusy()) {
@@ -38,7 +44,9 @@ static void work_usb_collect(void)
     work_memory.usb_slot=work_memory.usb_released=0;
   }
 }
+// Возвращает занятые слоты, учитывая завершённую USB-передачу.
 uint16_t work_owned(void) { work_usb_collect(); return work_memory.owned; }
+// Выдаёт свободный слот с учётом совместимости остальных владельцев.
 void *work_acquire(uint32_t size, uint32_t slot)
 {
   uint16_t bit, live, compatible;
@@ -64,12 +72,13 @@ retry:
   if(slot==WORK_PHOTO_CONTEXT) memset(p,0,size);
   return p;
 blocked:
-  /* Retry only if a completed USB loan released the conflicting owner.
-   * The ordinary allocation path pays no transport bookkeeping. */
+  // Повторяем выдачу только после возврата памяти завершённой USB-передачей.
+  // Обычный путь не требует обслуживания транспортного состояния.
   work_usb_collect();
   if(live!=work_memory.owned) goto retry;
   return NULL;
 }
+// Освобождает слот сразу либо после завершения передачи USB.
 uint8_t work_release(void *pointer, uint32_t slot)
 {
   if(slot>0 && slot<=WORK_TABLE && pointer==address(slot)) {
@@ -81,9 +90,9 @@ uint8_t work_release(void *pointer, uint32_t slot)
   }
   return 0;
 }
-/* Called with PRIMASK set, before publishing the complete USB descriptor.
- * Existing packet owners lend immutable data; transient/stack replies become
- * WORK_REPLY packets. No unowned workspace address can be borrowed or copied. */
+// Вызывается с запрещёнными прерываниями до публикации дескриптора USB.
+// Владелец кадра отдаёт неизменяемый источник взаймы; временный ответ копируется.
+// Адрес рабочей памяти без владельца нельзя заимствовать или копировать.
 const uint8_t *work_usb_source(const uint8_t *source, uint16_t length)
 {
   uint32_t slot, start=(uint32_t)source, end=start+length;
@@ -110,16 +119,16 @@ const uint8_t *work_usb_source(const uint8_t *source, uint16_t length)
   work_memory.usb_slot=(uint16_t)copy_slot; work_memory.usb_released=1; return copy;
 }
 extern bool upload_ack(uint8_t command, dataChanel_e channel);
+// Сохраняет подтверждение выгрузки до повторного занятия её буфера.
 uint8_t work_upload_ack(uint8_t command, uint8_t channel, void *context)
 {
-  /* The preflight reservation protects ACK against a busy workspace. It has
-   * no initialized payload yet. Release it BEFORE the durable config snapshot.
-   * A true ACK result starts no config job; no IRQ touches this workspace, so
-   * re-acquisition is guaranteed to have the same addresses as the preflight. */
+  // Резерв буфера гарантирует место для ACK, но тела кадра ещё нет.
+  // Освобождаем резерв до снимка настроек. Успешный ACK не запускает сохранение,
+  // поэтому главный цикл получает те же адреса при повторном занятии.
   work_release(*(void **)context, WORK_UPLOAD_PACKET);
   work_release(context, WORK_UPLOAD_CONTEXT);
   if(!upload_ack(command, (dataChanel_e)channel)) return 0;
-  context=work_acquire(36,WORK_UPLOAD_CONTEXT);
+  context=work_acquire(32,WORK_UPLOAD_CONTEXT);
   *(void **)context=work_acquire(1040,WORK_UPLOAD_PACKET);
   return 1;
 }

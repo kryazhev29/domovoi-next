@@ -1,4 +1,7 @@
-/* Доработка: Кряжев А., 2026. Preserve the historical 1024-byte scan snapshot. */
+// Доработка: Кряжев А., 2026
+// Фоновая проверка сроков ID, чтение базы по 64 Б.
+// Запись завершённого прохода выполняется через журнал секторов.
+// Рабочая память и флеш освобождаются при отмене, ошибке или завершении.
 #include "runtime_internal.h"
 extern uint8_t id_endScan;
 extern uint32_t id_nextEnd;
@@ -7,17 +10,20 @@ extern void id_watch_end(uint32_t);
 typedef struct {
   uint32_t scan,used_limit,start,target,find,partition_limit;
   uint8_t phase,cancelled;
-  uint16_t fill_offset;
   uint32_t scan_time;
   uint8_t record[32];
   uint32_t snapshot_base;
-  uint8_t snapshot[1024];
+  uint8_t snapshot[64];
 } expiry_s;
-RT_ASSERT(expiry_size,sizeof(expiry_s)==1092);
+RT_ASSERT(expiry_size,sizeof(expiry_s)==132);
 expiry_s *expiry_job;
+// Сообщает, занят ли автомат проверки сроков.
 bool expiry_runtime_active(void) { return expiry_job!=NULL; }
+// Запрашивает отмену проверки сроков: CRC базы больше не известна.
 void expiry_runtime_cancel(void) { if(expiry_job) { idcrc_unknown(); expiry_job->cancelled=1; } }
+// Освобождает флеш и память завершённой проверки.
 static void expiry_release(void) { flash_release(FO_EXPIRY); work_release(expiry_job, WORK_EXPIRY); expiry_job=NULL; }
+// Начинает проход при наступлении ближайшего срока ID.
 bool expiry_runtime_begin(void)
 {
   uint32_t now,start,size,end,used; expiry_s *p;
@@ -25,12 +31,12 @@ bool expiry_runtime_begin(void)
   now=device.datetime; if(now<1600000000u) return false;
   if(!id_endScan && (!id_nextEnd || now<id_nextEnd)) return false;
   start=mem[MB_ID].start; size=mem[MB_ID].size; end=start+size; used=32u*id_cells_end;
-  if((start&31u) || (size&31u) || end<start || used>size) return false;
   p=work_acquire(sizeof *p, WORK_EXPIRY); if(!p) { id_endScan=1; return false; }
-  p->scan=p->start=p->snapshot_base=start; p->used_limit=start+used; p->partition_limit=end;
-  p->scan_time=now; p->phase=6; p->cancelled=0; p->fill_offset=0;
+  p->scan=p->start=start; p->snapshot_base=start-sizeof(p->snapshot); p->used_limit=start+used; p->partition_limit=end;
+  p->scan_time=now; p->phase=1; p->cancelled=0;
   expiry_job=p; flash_claim(FO_EXPIRY); id_endScan=0; id_nextEnd=0; return true;
 }
+// Подставляет обновлённую запись ID в страницу журналируемого сектора.
 static uint8_t expiry_chunk(const void *context,uint16_t offset,uint8_t *data)
 {
   const expiry_s *p=context; uint32_t address=(p->target&~4095u)+offset,diff=p->target-address;
@@ -38,6 +44,7 @@ static uint8_t expiry_chunk(const void *context,uint16_t offset,uint8_t *data)
   if(diff<=32) memcpy(data+diff,p->record,32);
   return 1;
 }
+// Читает два ID за фрагмент и журналирует завершённый проход.
 void expiry_runtime_poll(uint32_t now)
 {
   expiry_s *p=expiry_job; uint8_t scratch[64],*record; uint16_t index,got;
@@ -54,18 +61,15 @@ void expiry_runtime_poll(uint32_t now)
   }
   if(p->cancelled) goto retry;
   switch(p->phase) {
-  case 6:
-    n=p->used_limit-p->snapshot_base; if(n>1024) n=1024;
-    if(n!=p->fill_offset) {
-      end=n-p->fill_offset; if(end>64) end=64;
-      if(!w25_read_data(p->snapshot_base+p->fill_offset,p->snapshot+p->fill_offset,(uint16_t)end)) goto retry;
-      p->fill_offset+=(uint16_t)end; if(p->fill_offset<n) return;
-    }
-    p->phase=1; return;
   case 1:
     if(p->scan>=p->used_limit) { expiry_release(); return; }
     n=p->scan-p->snapshot_base;
-    if(n>=1024) { p->snapshot_base=p->scan; p->fill_offset=0; p->phase=6; return; }
+    if(n>=sizeof(p->snapshot)) {
+      p->snapshot_base=p->scan; n=p->used_limit-p->scan;
+      if(n>sizeof(p->snapshot)) n=sizeof(p->snapshot);
+      if(!w25_read_data(p->scan,p->snapshot,(uint16_t)n)) goto retry;
+      n=0;
+    }
     record=p->snapshot+n; p->scan+=32;
     memcpy(&index,record,2); if(index==65535 || record[31]==255) return;
     end=id_time_end((const cellID_s *)record); if(!end) return;

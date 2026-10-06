@@ -1,5 +1,7 @@
 // Доработка: Кряжев А., 2026
-// Индекс базы ID по корзинам. Устройство и правила - в idindex.h.
+// Индекс ID по корзинам и журнал его соответствия базе.
+// При изменении таблиц индекс приостанавливается и пересобирается в фоне.
+// Запись корзины проверяет W25; недоступный индекс допускает поиск по основной базе.
 #include "idindex.h"
 #include "runtime_internal.h"
 #include "fast_kernels.h"
@@ -28,17 +30,20 @@ struct {
 } ix;
 
 #ifndef ASM_ID_HASH
+// Продолжает хеш для записи ID.
 static uint32_t ix_fnv(uint32_t h, const uint8_t *p, uint8_t n)
 {
   while (n--) { h ^= *p++; h *= 16777619u; }
   return h;
 }
+// Считает хеш номера и текста ID для суммы базы.
 uint32_t idindex_hash(uint16_t index, const uint8_t *id)
 {
   uint8_t n[2] = {(uint8_t)index, (uint8_t)(index >> 8)};
   return ix_fnv(ix_fnv(2166136261u, n, 2), id, 10);
 }
 #endif
+// Выбирает корзину по хешу десяти байтов ID.
 static uint32_t ix_bucket(const uint8_t *id)
 {
   uint32_t h = fast_fnv10(id);
@@ -83,6 +88,7 @@ static bool ix_last(uint32_t *sum)
   return valid;
 }
 
+// Принимает итог сканирования основной базы и запускает индекс.
 void idindex_impl_scanned(uint32_t sum, uint16_t cells_end)
 {
   uint32_t marked = 0;
@@ -93,7 +99,7 @@ void idindex_impl_scanned(uint32_t sum, uint16_t cells_end)
   ix_rebuild();
 }
 
-/* Table journal has suspended the index; rebuild from the committed delta. */
+// Журнал таблиц приостановил индекс; новая сумма запускает пересборку.
 void idindex_impl_table_commit(uint32_t delta, uint16_t end)
 {
   idindex_scanned(ix.sum ^ delta, end);
@@ -122,13 +128,12 @@ static bool ix_add(uint16_t index, const uint8_t *id)
   for (uint8_t i = 0; i < IX_SLOTS; i++) {
     if (e[i] == index) return true;
     if (e[i] != 0xFFFFu) continue;
-    uint16_t back = 0;
-    return mem_write(at + i * 2u, (uint8_t*)&index, 2)
-        && mem_read(at + i * 2u, (uint8_t*)&back, 2) && back == index;
+    return mem_write(at + i * 2u, (uint8_t*)&index, 2);
   }
   return false;
 }
 
+// Добавляет ID или передаёт его фоновой пересборке.
 bool idindex_impl_put(uint16_t index, const uint8_t *id)
 {
   /* При стирании и выше шага пересборки ячейку подберёт сама пересборка. */
@@ -138,6 +143,7 @@ bool idindex_impl_put(uint16_t index, const uint8_t *id)
   return false;
 }
 
+// Публикует сумму базы после завершения записи ID.
 void idindex_impl_commit(uint32_t delta, uint16_t cells_end)
 {
   ix.sum ^= delta;
@@ -145,6 +151,7 @@ void idindex_impl_commit(uint32_t delta, uint16_t cells_end)
   if (ix.state == IX_READY && !ix_mark(true, ix.sum)) ix.state = IX_OFF;
 }
 
+// Делает ограниченный шаг проверки, стирания или заполнения индекса.
 void idindex_impl_poll(uint32_t base)
 {
 uint16_t rows[32],n=0;
@@ -195,6 +202,8 @@ start:
 error: ix.state=4;
 }
 
+// Приостанавливает индекс на время изменения основной базы.
 void idindex_runtime_suspend(void) { ix.state=IX_OFF; }
 
+// Сообщает, выполняется ли фоновая пересборка индекса.
 bool idindex_runtime_active(void) { return ix.pending!=0; }
