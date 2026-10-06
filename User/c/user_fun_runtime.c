@@ -78,7 +78,6 @@ device_s device;
 #endif
 
 /* >>> Cooperative storage callers */
-#ifdef ASM_RUNTIME
 #include "sector_runtime.h"
 #include "photo_runtime.h"
 #ifndef HYBRID_CARD
@@ -95,16 +94,6 @@ static void table_runtime_cancel(void);
 static void table_runtime_quiet(dataChanel_e channel);
 #endif
 void idindex_runtime_suspend(void);
-#else
-#define photo_storage_busy() 0
-#define photo_storage_cancel() ((void)0)
-#define photo_storage_poll(now) ((void)0)
-#define table_runtime_active() 0
-#define table_runtime_blocks_reads() 0
-#define table_runtime_poll(now) ((void)0)
-#define table_runtime_cancel() ((void)0)
-#define table_runtime_quiet(channel) ((void)0)
-#endif
 #ifndef HYBRID_CARD
 static bool fw_async_active(void);
 #endif
@@ -305,6 +294,7 @@ static void unreg_sms_poll(void);
 static void server_rx_reset(void);
 #endif
 /* Диагностика стенда, команда 111, только по USB, только чтение. */
+#include "../domovoi_diag.h"
 #define USB_DIAG_COMMAND 111u
 /* Диагностика связи, команда 112 (предложение для Протокол2), только по USB, только чтение. */
 #define USB_COMM_DIAG_COMMAND 112u
@@ -315,7 +305,9 @@ extern uint32_t stack_free_bytes(void);
 uint32_t stack_free_bytes(void);
 #endif // main.c: нетронутый снизу шаблон стека, байт
 #if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+#if DOMOVOI_DIAG
 static uint32_t diag_gsm_pwron = 0, diag_gsm_notanswer = 0, diag_heap_fail = 0;
+#endif
 #endif
 #if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
 HYBRID_LOCAL void user_send_usbDiag(uint8_t uniqId);
@@ -2790,11 +2782,7 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
 void user_send_Photos(dataChanel_e cch, uint8_t uniqId)
 {
 
-#ifdef ASM_RUNTIME
   photo_request_answer(cch,uniqId,NULL,0);
-#else
-  user_send_answer_comand(21, photo_request(cch, uniqId, NULL, 0), cch, uniqId);
-#endif
 }
 #endif
 
@@ -2880,7 +2868,11 @@ static bool id_new_day(cellID_s *c){
 #ifndef HYBRID_CARD
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
+#if DOMOVOI_DIAG
   return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND || cmd == USB_COMM_DIAG_COMMAND;
+#else
+  return cmd == 100 || cmd == 101 || cmd == 102;
+#endif
 }
 #endif
 
@@ -3343,35 +3335,6 @@ typedef struct {
   uint8_t ids;
 } sync_pages_s;
 
-#ifndef ASM_RUNTIME
-#ifndef HYBRID_CARD
-static uint8_t sync_page(const void *context, uint16_t off, uint8_t *page)
-{
-  const sync_pages_s *s = context;
-  if (!mem_read(s->sector + off, page, 256)) return 0;
-  for (uint16_t i = 0; i < s->count; i++) {
-    const uint8_t *record = s->records + (uint32_t)i * s->size;
-    uint16_t index = record[0];
-    if (s->ids) memcpy(&index, record, 2);
-    uint32_t address = s->start + (uint32_t)(index - 1u) * s->size;
-    if (address < s->sector + off || address >= s->sector + off + 256u) continue;
-    uint16_t local = (uint16_t)(address - s->sector - off);
-    if (s->size > 256u - local) return 0;
-    if (s->ids) {
-      cellID_s *old = (cellID_s*)(page + local);
-      uint8_t first[4], done = old->reserve[6];
-      bool keep = old->index != 0xffff && memcmp(old->ID, record + 2, 10) == 0;
-      memcpy(first, old->reserve, 4);
-      memcpy(old, record, s->size);
-      if (keep) { memcpy(old->reserve, first, 4); old->reserve[6] = done; }
-      id_set_pass_day(old, id_today());
-      id_watch_end(id_time_end(old));
-    } else memcpy(page + local, record, s->size);
-  }
-  return 1;
-}
-#endif
-#endif
 
 /* Номер последней записанной ячейки базы ID: граница поиска (user_findID). */
 #ifdef HYBRID_CARD
@@ -3382,88 +3345,15 @@ uint16_t id_cells_end;
 /* Сколько ID пакета команды 13 займут пустые ячейки (повторы номера считаются раз) и
  * наибольший номер. Читается по 2 байта на запись, а не вся база. UINT16_MAX - ошибка
  * чтения, тогда считаем по всей базе. */
-#ifndef ASM_RUNTIME
-#ifndef HYBRID_CARD
-static uint16_t sync_new_ids(const uint8_t *records, uint16_t count, uint16_t *last, uint32_t *delta)
-{
-  uint16_t added = 0, index;
-  for (uint16_t i = 0; i < count; i++){
-    const uint8_t *r = records + (uint32_t)i * sizeof(cellID_s);
-    uint8_t old[12];
-    memcpy(&index, r, 2);
-    if (index > *last) *last = index;
-    /* Номер в индекс до записи ячейки: лишний номер безвреден, пропавший - нет. */
-    (void)idindex_put(index, r + 2);
-    /* Прежнее содержимое: последняя ранняя запись пакета с тем же номером или флеш. */
-    int16_t j = (int16_t)i - 1;
-    while (j >= 0 && memcmp(records + (uint32_t)j * sizeof(cellID_s), &index, 2)) j--;
-    if (j >= 0) memcpy(old, records + (uint32_t)j * sizeof(cellID_s), 12);
-    else if (!mem_read(mem[MB_ID].start + (uint32_t)(index - 1u) * sizeof(cellID_s), old, 12))
-      return UINT16_MAX;
-    if (old[0] == 0xff && old[1] == 0xff) { if (j < 0) added++; }
-    else *delta ^= idindex_hash(index, old + 2);
-    *delta ^= idindex_hash(index, r + 2);
-  }
-  return added;
-}
-#endif
-#endif
 
-#ifndef ASM_RUNTIME
-#ifndef HYBRID_CARD
-static bool sync_write_cells(const uint8_t *records, uint16_t count, memBlock_e mb, uint16_t size)
-{
-  while (count) {
-    uint16_t index = records[0], n = 1;
-    if (mb == MB_ID) memcpy(&index, records, 2);
-    uint32_t sector = (mem[mb].start + (uint32_t)(index - 1u) * size) & ~4095u;
-    while (n < count) {
-      const uint8_t *next = records + (uint32_t)n * size;
-      index = next[0];
-      if (mb == MB_ID) memcpy(&index, next, 2);
-      if (((mem[mb].start + (uint32_t)(index - 1u) * size) & ~4095u) != sector) break;
-      n++;
-    }
-    sync_pages_s image = {records, sector, mem[mb].start, n, size, mb == MB_ID};
-    if (!mem_replace_pages(sector, sync_page, &image)) return false;
-    records += (uint32_t)n * size;
-    count -= n;
-  }
-  return true;
-}
-#endif
-#endif
 /* <<< Сборка таблиц страницами */
 
 /* >>> Праздники целиком: даты подряд с первой ячейки, остаток списка - 0xFF. */
 typedef struct { const uint8_t *dates; uint16_t bytes; } holiday_pages_s;
-#ifndef ASM_RUNTIME
-#ifndef HYBRID_CARD
-static uint8_t holiday_page(const void *context, uint16_t off, uint8_t *page)
-{
-  const holiday_pages_s *h = context;
-  if (!mem_read(mem[MB_HOLIDAY].start + off, page, 256)) return 0;
-  for (uint16_t i = 0; i < 256u && off + i < mem[MB_HOLIDAY].size; i++)
-    page[i] = off + i < h->bytes ? h->dates[off + i] : 0xFFu;
-  return 1;
-}
-#endif
-#endif
-#ifndef ASM_RUNTIME
-#ifndef HYBRID_CARD
-static bool holiday_write(const uint8_t *dates, uint8_t count)
-{
-  holiday_pages_s h = {dates, (uint16_t)(count * sizeof(cellHoliday_s))};
-  return mem_replace_pages(mem[MB_HOLIDAY].start, holiday_page, &h);
-}
-#endif
-#endif
 /* <<< Праздники целиком */
 
-#ifdef ASM_RUNTIME
 #ifndef HYBRID_CARD
 #include "table_runtime.inc"
-#endif
 #endif
 
 #ifndef HYBRID_CARD
@@ -3504,11 +3394,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     return;
   }
 
-#ifdef ASM_RUNTIME
   if (store_runtime && !store_command_allowed(ptr[4])) {
     user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId); return;
   }
-#endif
   switch (ptr[4]) // команда
   {
     case 1: // Ответ контроллеру на регистрацию
@@ -3796,34 +3684,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-#ifdef ASM_RUNTIME
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-#else
-        memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        {
-        uint16_t last = id_cells_end;
-        uint32_t delta = 0;
-        uint16_t added = sync_new_ids(&ptr[10], ptr[9], &last, &delta);
-        if (!sync_write_cells(&ptr[10], ptr[9], MB_ID, sizeof(cellID_s))) {
-          device.numbersCount = user_getNumbersCount(); /* часть секторов могла записаться */
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }
-        device.datetimeID = tmp32;
-        sync_packet(SYNC_ID);
-        /* Команда 13 только заполняет ячейки: счёт и конец базы - на ходу, без чтения 1,6 МБ. */
-        if (added == UINT16_MAX) device.numbersCount = user_getNumbersCount();
-        else {
-          device.numbersCount += added; id_cells_end = last;
-          idindex_commit(delta, last);
-          if (id_used_bytes != UINT32_MAX && id_used_bytes < (uint32_t)last * sizeof(cellID_s))
-            id_used_bytes = (uint32_t)last * sizeof(cellID_s);
-        }
-        }
-        user_send_timeshtamp(SHTAMP_ID, device.datetimeID,
-                           id_crc16(0, mem[MB_ID].size), cch, uniqId);
-#endif
 
       }
       break;
@@ -3838,21 +3700,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-#ifdef ASM_RUNTIME
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-#else
-        memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        if (!sync_write_cells(&ptr[10], ptr[9], MB_SHEDULE, sizeof(cellShedule_s))) {
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }
-        device.datetimeShedule = tmp32;
-        sync_packet(SYNC_SHEDULE);
-        user_send_timeshtamp(SHTAMP_SHEDULE, device.datetimeShedule,
-                           user_calcCRC16InFlash(mem[MB_SHEDULE].start, mem[MB_SHEDULE].size), cch, uniqId);
-
-#endif
 
       }      
       break;
@@ -3867,21 +3716,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-#ifdef ASM_RUNTIME
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-#else
-        memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        if (!sync_write_cells(&ptr[10], ptr[9], MB_GROUP, sizeof(cellGroup_s))) {
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }
-        device.datetimeGroup = tmp32;
-        sync_packet(SYNC_GROUP);
-        user_send_timeshtamp(SHTAMP_GROUP, device.datetimeGroup,
-                           user_calcCRC16InFlash(mem[MB_GROUP].start, mem[MB_GROUP].size), cch, uniqId);
-
-#endif
 
       }
       break;
@@ -3898,21 +3734,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
-#ifdef ASM_RUNTIME
         if (!table_runtime_begin(ptr,cch,uniqId))
           user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-#else
-        memcpy((uint8_t*)&tmp32, &ptr[5], 4);
-        if (!holiday_write(&ptr[10], ptr[9])) {
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
-          break;
-        }
-        device.datetimeHoliday = tmp32;
-        sync_packet(SYNC_HOLIDAY);
-        user_send_timeshtamp(SHTAMP_HOLIDAY, device.datetimeHoliday,
-                           user_calcCRC16InFlash(mem[MB_HOLIDAY].start, mem[MB_HOLIDAY].size), cch, uniqId);
-
-#endif
 
       }
       break;
@@ -3971,11 +3794,7 @@ if (cch != CH_USB && len >= 5){
 #endif 
       if (len == 3 || len == 9)
 
-#ifdef ASM_RUNTIME
         photo_request_answer(cch,uniqId,ptr+5,(uint8_t)(len-3));
-#else
-        user_send_answer_comand(21, photo_request(cch, uniqId, ptr + 5, (uint8_t)(len - 3)), cch, uniqId);
-#endif
       else user_send_answer_comand(21, CMD_PARAMERROR, cch, uniqId);
       break;      
       
@@ -4066,6 +3885,7 @@ if (cch != CH_USB && len >= 5){
       user_send_anyData(107, NULL, 0, cch, uniqId);
       break;
       
+    #if DOMOVOI_DIAG
     case USB_DIAG_COMMAND:
       if (cch == CH_USB)
         user_send_usbDiag(uniqId);
@@ -4074,6 +3894,7 @@ if (cch != CH_USB && len >= 5){
       if (cch == CH_USB) { user_send_commDiag(uniqId); prof_send(uniqId); }
       break;
 
+    #endif
     case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */
       uint8_t response[8];
       if (cch != CH_USB || len < 4) {
@@ -5102,7 +4923,6 @@ extern uint8_t log_timeKnown;
 #else
 uint8_t log_timeKnown;
 #endif
-#ifdef ASM_RUNTIME
 /* Pending foreground persistence runs before another photo background job. */
 #ifndef HYBRID_CARD
 bool user_storage_background_ready(void)
@@ -5110,7 +4930,6 @@ bool user_storage_background_ready(void)
   return user_storage_command_ready() && !store_save_requested &&
     !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
 }
-#endif
 #endif
 
 
@@ -5641,6 +5460,7 @@ uint32_t CRC32(uint32_t crc, uint32_t data){
  *  57 минимальный запас стека за работу, байт (версия 5, 01.10.2026).
  */
 #if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+#if DOMOVOI_DIAG
 HYBRID_LOCAL void user_send_usbDiag(uint8_t uniqId)
 {
   uint32_t v[58];
@@ -5679,6 +5499,7 @@ HYBRID_LOCAL void user_send_usbDiag(uint8_t uniqId)
   usb_send(send_buffer, len + 8);
 }
 #endif
+#endif
 
 /* Команда 112, версия 1: uint32 младшим байтом вперёд.
  *  0 версия, 1 мс,
@@ -5689,6 +5510,7 @@ HYBRID_LOCAL void user_send_usbDiag(uint8_t uniqId)
  *  15..24 кольцо сбоев: шаг | причина<<8 | секунды<<16,
  *  25.. длительности шагов последней попытки, 10 мс (SLM_STEP_COUNT значений). */
 #if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
+#if DOMOVOI_DIAG
 HYBRID_LOCAL void user_send_commDiag(uint8_t uniqId)
 {
   uint32_t v[25 + SLM_STEP_COUNT];
@@ -5716,6 +5538,7 @@ HYBRID_LOCAL void user_send_commDiag(uint8_t uniqId)
   send_buffer[len + 6] = crc & 0xff; send_buffer[len + 7] = (crc >> 8) & 0xff;
   usb_send(send_buffer, len + 8);
 }
+#endif
 #endif
 
 /* Часы прошивки - местное время (как у суток ID); до установки - недостоверно. */

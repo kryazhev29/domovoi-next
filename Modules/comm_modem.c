@@ -10,7 +10,11 @@ static struct {
     uint8_t done, result, answer, query, in_poll, recording;
     uint8_t net_registered, mnc;
     slm_status_t status;
-    uint32_t step_started, phase_started, attempt_started, now, next;
+    uint32_t step_started;
+#if DOMOVOI_DIAG
+    uint32_t phase_started, attempt_started;
+#endif
+    uint32_t now, next;
   } attempt;
   const comm_modem_profile_t *profile;
   slm_settings_t settings;
@@ -28,51 +32,72 @@ static struct {
 typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 128u) ? 1 : -1];
 
 /* „исло с проверкой границ; окончани€ провер€ет вызывающа€ сторона. */
+#if DOMOVOI_DIAG
 static uint16_t slm_elapsed(uint32_t start)
 {
   uint32_t ticks = (slm.attempt.now - start) / 10u;
   return ticks > UINT16_MAX ? UINT16_MAX : (uint16_t)ticks;
 }
+#endif
 /* ≈динственна€ запись длительностей, завершений и кольца сбоев.
    STEP_COUNT+1 Ч текущий снимок, STEP_COUNT Ч завершение без нового шага. */
 void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
 {
+#if DOMOVOI_DIAG
   if (slm.attempt.recording) {
     slm.diag.steps[slm.attempt.status.step] = slm_elapsed(slm.attempt.step_started);
     if (!(slm.attempt.status.completed_phases & (1u << slm.attempt.status.phase)))
       slm.diag.phases[slm.attempt.status.phase] = slm_elapsed(slm.attempt.phase_started);
   }
+#endif
   if (next > SLM_STEP_COUNT) return;
   slm.attempt.status.modem_code = code;
   slm.attempt.status.reason = reason;
+#if DOMOVOI_DIAG
   slm.attempt.status.completed_steps |= (uint32_t)1u << slm.attempt.status.step;
+#endif
   uint8_t phase = next == SLM_STEP_COUNT ? SLM_PHASE_COUNT
     : next < SLM_AT_READY ? SLM_PHASE_POWER : next >= SLM_TCP ? SLM_PHASE_TCP
     : (uint8_t)(slm.profile->steps[next - SLM_AT_READY].action >> 4);
   if (phase != slm.attempt.status.phase) {
+#if DOMOVOI_DIAG
     slm.attempt.status.completed_phases |= (uint8_t)(1u << slm.attempt.status.phase);
+#endif
     if (phase < SLM_PHASE_COUNT) {
-      slm.attempt.status.phase = phase; slm.attempt.phase_started = slm.attempt.now;
+      slm.attempt.status.phase = phase;
+#if DOMOVOI_DIAG
+      slm.attempt.phase_started = slm.attempt.now;
+#endif
+#if DOMOVOI_DIAG
       if (!(slm.attempt.status.completed_phases & (1u << phase))) slm.diag.phases[phase] = 0;
+#endif
     }
   }
   if (reason) {
     uint8_t slot = slm.diag.failure_next;
     if (slot >= sizeof(slm.diag.failure_step)) slot = 0;
+#if DOMOVOI_DIAG
     uint32_t seconds = (slm.attempt.now - slm.attempt.attempt_started) / 1000u;
     slm.diag.failure_seconds[slot] = seconds > UINT16_MAX ? UINT16_MAX : (uint16_t)seconds;
+#endif
     slm.diag.failure_step[slot] = slm.attempt.status.step;
     slm.diag.failure_reason[slot] = reason;
+#if DOMOVOI_DIAG
     slm.diag.last_code = code;
+#endif
     slm.diag.failure_next = slot + 1u == sizeof(slm.diag.failure_step) ? 0 : (uint8_t)(slot + 1u);
+#if DOMOVOI_DIAG
     if (slm.diag.failure_count < sizeof(slm.diag.failure_step)) ++slm.diag.failure_count;
+#endif
   }
   if (next == SLM_STEP_COUNT && slm.attempt.status.step == SLM_READ && !reason)
     slm.attempt.status.step = SLM_TCP;
   slm.attempt.recording = next < SLM_STEP_COUNT;
   if (slm.attempt.recording) {
     slm.attempt.status.step = next; slm.attempt.step_started = slm.attempt.now;
+#if DOMOVOI_DIAG
     slm.diag.steps[next] = 0;
+#endif
     slm.attempt.answer = slm.attempt.done = 0; slm.attempt.next = slm.attempt.now;
   }
 }
@@ -206,12 +231,18 @@ static void slm_side_cancel(void)
 static void slm_begin(bool power, uint32_t now_ms)
 {
   static const comm_at_handlers_t at_handlers = {slm_event, NULL};
+#if DOMOVOI_DIAG
   memset(slm.diag.steps, 0, sizeof(slm.diag.steps));
   memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
+#endif
   memset(&slm.attempt, 0, sizeof(slm.attempt));
   slm_side_cancel();
   ++slm.session;
+#if DOMOVOI_DIAG
   slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
+#else
+  slm.attempt.now = now_ms;
+#endif
   slm.attempt.status.state = SLM_STARTING; slm.attempt.recording = 1;
   comm_uart_abort();
   comm_uart_init(115200);

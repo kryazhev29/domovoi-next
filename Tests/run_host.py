@@ -429,7 +429,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         wg=source('User/wiegand.c')
         code='\n'.join(x for x in wg.splitlines() if re.match(r'^(?:volatile )?(?:uint32_t|uint8_t|bool) wg',x))+'\n'
         code+='\n'.join(function(wg,n) for n in ('EXTI2_IRQHandler','EXTI3_IRQHandler','WG_process'))
-        prof='uint32_t prof_card_mark;\n#define PROF_NOW() (0u)\n#define PROF_STEP(i, call) do { call; } while (0)\n'
+        prof='uint32_t prof_card_mark;\n#define PROF_CARD_MARK() (prof_card_mark = PROF_NOW() | 1u)\n#define PROF_NOW() (0u)\n#define PROF_STEP(i, call) do { call; } while (0)\n'
         unit=(ROOT/'Tests/test_wiegand_irq.c').read_text(encoding='utf-8').replace('/* PRODUCTION */',prof+code)
     elif kind=='timersirq':
         timers=source('Modules/timers.c').replace('inline void timers_handle','void timers_handle')
@@ -550,7 +550,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     # Existing isolated tests cover synchronous startup/compatibility paths.
     # Runtime continuations have their own real-code harness (test_store_callers.py).
     if ('store.' in unit or 'store_runtime' in unit or 'store_restore(' in unit or 'store_command_start(' in unit) and 'static uint8_t store_runtime' not in unit and 'unsigned job,channel,quiet,seen' not in unit:
-        unit='#include <stdint.h>\n#include <stdbool.h>\n#define store_runtime 0\nstatic uint8_t store_save_requested __attribute__((unused)), store_reset_requested __attribute__((unused));\nstatic struct {uint8_t job,clear,channel,uniq,cmd,quiet,seen;} store __attribute__((unused));\n#define store_ack(a,b) false\n#define store_finish(a) false\n#define store_restore(a) ((void)0)\n#define store_upload_request(a,b,c) true\n#define store_command_start(a,b,c) user_send_answer_comand(a,CMD_SUCCESS,b,c)\n'+unit
+        unit='#include <stdint.h>\n#include <stdbool.h>\nstatic uint8_t store_runtime __attribute__((unused)) = 0;\nstatic uint8_t store_save_requested __attribute__((unused)), store_reset_requested __attribute__((unused));\nstatic struct {uint8_t job,clear,channel,uniq,cmd,quiet,seen;} store __attribute__((unused));\n#define store_ack(a,b) false\n#define store_finish(a) false\n#define store_restore(a) ((void)0)\n#define store_upload_request(a,b,c) true\n#define store_command_start(a,b,c) user_send_answer_comand(a,CMD_SUCCESS,b,c)\n'+unit
     # Legacy queue tests remain synchronous; the real runtime writer is tested separately.
     if kind == 'log':
         unit=re.sub(r'/\* >>> Cooperative firmware block writer \*/.*?/\* <<< Cooperative firmware block writer \*/', '', unit, flags=re.S)
@@ -584,6 +584,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
     if 'fast_' in unit:
         (d/'fast_kernels.h').write_text(source('User/fast_kernels.h'), encoding='ascii')
         unit='#include "fast_kernels.h"\n'+unit.replace('#include "fast_kernels.h"','')
+    unit=unit.replace('#include \"domovoi_diag.h\"','').replace('#include \"../domovoi_diag.h\"','')
     (d/'test.c').write_text(host_adapters(ROOT)+unit.replace('\r\n','\n'))
     subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(d/'test.exe')],check=True)
     result=subprocess.run([str(d/'test.exe')]+sys.argv[3:],timeout=3 if kind=='tx' else 300)

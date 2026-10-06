@@ -1,3 +1,4 @@
+#include "../domovoi_diag.h"
 #include "../usb_ring_size.h"
 ; Cortex-M3 / IAR. Executable production module.
 ; Reference: Tests/asm/reference/Modules/usb_stm32f10x.c
@@ -58,17 +59,27 @@
         EXTERN user_storage_command_ready
 
         PUBLIC usb_buffer
+#if DOMOVOI_DIAG
         PUBLIC usb_bus_error_seen
+#endif
         PUBLIC usb_bus_resets
         PUBLIC usb_check_data
         PUBLIC usb_clear_buffer
         PUBWEAK usb_data_reading
         PUBLIC usb_datareceived
         PUBLIC usb_debug_dropped
+#if DOMOVOI_DIAG
         PUBLIC usb_diag_fill
+#endif
+#if DOMOVOI_DIAG
         PUBLIC usb_diag_fill_addr
+#endif
+#if DOMOVOI_DIAG
         PUBLIC usb_diag_fill_errors
+#endif
+#if DOMOVOI_DIAG
         PUBLIC usb_diag_fill_regs
+#endif
         PUBLIC usb_enabled
         PUBLIC usb_esof_forced
         PUBLIC usb_esof_timeouts
@@ -304,6 +315,7 @@ usb_last_bus_errors:
 usb_last_addr:
         DS8 8
 
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock0 Using cfiCommon0
           CFI Function usb_regs_read
@@ -350,6 +362,7 @@ usb_regs_read:
         BX       LR
           CFI EndBlock cfiBlock0
 
+#endif
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock1 Using cfiCommon0
           CFI Function usb_in_done
@@ -361,10 +374,15 @@ usb_in_done:
         STRH     R1,[R0, #+0]
         LDR.W    R0,??DataTable19_11
         STRH     R1,[R0, #+0]
+#if DOMOVOI_DIAG
         LDR.W    R1,??DataTable19_9
         B.N      ?Subroutine0
+#else
+        BX       LR
+#endif
           CFI EndBlock cfiBlock1
 
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock2 Using cfiCommon0
           CFI Function usb_bus_error_seen
@@ -375,6 +393,8 @@ usb_bus_error_seen:
           CFI EndBlock cfiBlock2
         REQUIRE ?Subroutine0
 
+#endif
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock3 Using cfiCommon0
           CFI NoFunction
@@ -386,6 +406,7 @@ usb_bus_error_seen:
         BX       LR
           CFI EndBlock cfiBlock3
 
+#endif
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock4 Using cfiCommon0
           CFI Function usb_sof_seen
@@ -412,6 +433,7 @@ usb_request_recovery:
           CFI CFA R13+24
         BL       ?Subroutine3
 ??CrossCallReturnLabel_0:
+#if DOMOVOI_DIAG
         LDR.W    R7,??DataTable19_14
         LDR.W    R0,??DataTable19_15
         LDR      R0,[R0, #+0]
@@ -450,6 +472,10 @@ usb_request_recovery:
         LDR      R1,[R1, #+0]
         UXTH     R1,R1
         STR      R1,[R0, #+4]
+#else
+        LDR.W    R5,??DataTable19_16
+        LDR.W    R6,??DataTable19_17
+#endif
         MOVS     R1,#+0
         LDR.W    R0,??DataTable19_23
         STRB     R1,[R0, #+0]
@@ -482,10 +508,12 @@ usb_request_recovery:
         MOVS     R1,#+1
         LDR.W    R0,??DataTable19_29
         STRB     R1,[R0, #+0]
+#if DOMOVOI_DIAG
         LDR.W    R0,??DataTable19_30
         LDR      R1,[R0, #+0]
         ADDS     R1,R1,#+1
         STR      R1,[R0, #+0]
+#endif
         MSR      PRIMASK,R4
         POP      {R0,R4-R7,PC}
           CFI EndBlock cfiBlock5
@@ -552,10 +580,12 @@ usb_datareceived:
         LDR      R0,[R0, #+0]
         CMP      R0,#+5
         BEQ.N    ??usb_datareceived_1
+#if DOMOVOI_DIAG
         LDR.W    R1,??DataTable19_34
         LDR      R0,[R1, #+0]
         ADDS     R0,R0,#+1
         STR      R0,[R1, #+0]
+#endif
         MOVS     R1,#+1
         LDR.W    R0,??DataTable19_23
         B.N      ??usb_datareceived_2
@@ -653,10 +683,12 @@ usb_send:
         MOVS     R0,#+1
         POP      {R1,PC}
 ??usb_send_0:
+#if DOMOVOI_DIAG
         LDR.W    R1,??DataTable19_40
         LDR      R0,[R1, #+0]
         ADDS     R0,R0,#+1
         STR      R0,[R1, #+0]
+#endif
         MOVS     R0,#+0
         POP      {R1,PC}
           CFI EndBlock cfiBlock8
@@ -689,12 +721,14 @@ usb_sendstr:
         BL       USB_Send_Debug
         MOV      R1,R0
 ??usb_sendstr_0:
+#if DOMOVOI_DIAG
         LDR.W    R2,??DataTable19_41
         LDR      R0,[R2, #+0]
         UXTH     R5,R5
         SUBS     R5,R5,R1
         ADDS     R5,R5,R0
         STR      R5,[R2, #+0]
+#endif
         POP      {R0,R4,R5,PC}
           CFI EndBlock cfiBlock9
 
@@ -976,6 +1010,7 @@ usb_check_data:
         LDRHCC   R2,[R2, #+0]
         CMPCC    R2,#+2000
         BCC.N    ??usb_check_data_3
+#if DOMOVOI_DIAG
         LDRH     R0,[R1, #+0]
         CMP      R0,#+2000
         BCC.N    ??usb_check_data_4
@@ -993,6 +1028,7 @@ usb_check_data:
         LDR      R0,[R1, #+0]
         ADDS     R0,R0,#+1
         STR      R0,[R1, #+0]
+#endif
           CFI FunCall usb_request_recovery
         BL       usb_request_recovery
         B.N      ??usb_check_data_2
@@ -1178,10 +1214,12 @@ usb_check_data:
           CFI (cfiPicker25) Picker
         THUMB
 ?Subroutine6:
+#if DOMOVOI_DIAG
         LDR.N    R1,??DataTable19_45
         LDR      R0,[R1, #+0]
         ADDS     R0,R0,#+1
         STR      R0,[R1, #+0]
+#endif
         BX       LR
           CFI EndBlock cfiCond22
           CFI EndBlock cfiCond23
@@ -1218,6 +1256,7 @@ usb_check_data:
           CFI (cfiCond28) R11 Frame(CFA, -8)
           CFI (cfiCond28) R14 Frame(CFA, -4)
           CFI (cfiCond28) CFA R13+40
+#if DOMOVOI_DIAG
           CFI Block cfiCond29 Using cfiCommon0
           CFI (cfiCond29) Function usb_diag_fill
           CFI (cfiCond29) Conditional ??CrossCallReturnLabel_3
@@ -1225,12 +1264,15 @@ usb_check_data:
           CFI (cfiCond29) R5 Frame(CFA, -8)
           CFI (cfiCond29) R14 Frame(CFA, -4)
           CFI (cfiCond29) CFA R13+16
+#endif
+#if DOMOVOI_DIAG
           CFI Block cfiCond30 Using cfiCommon0
           CFI (cfiCond30) Function usb_diag_fill_regs
           CFI (cfiCond30) Conditional ??CrossCallReturnLabel_4
           CFI (cfiCond30) R4 Frame(CFA, -8)
           CFI (cfiCond30) R14 Frame(CFA, -4)
           CFI (cfiCond30) CFA R13+8
+#endif
           CFI Block cfiPicker31 Using cfiCommon1
           CFI (cfiPicker31) NoFunction
           CFI (cfiPicker31) Picker
@@ -1242,8 +1284,12 @@ usb_check_data:
           CFI EndBlock cfiCond26
           CFI EndBlock cfiCond27
           CFI EndBlock cfiCond28
+#if DOMOVOI_DIAG
           CFI EndBlock cfiCond29
+#endif
+#if DOMOVOI_DIAG
           CFI EndBlock cfiCond30
+#endif
           CFI EndBlock cfiPicker31
 
         SECTION `.text`:CODE:NOROOT(1)
@@ -1286,6 +1332,7 @@ usb_clear_buffer:
         B.N      ?Subroutine1
           CFI EndBlock cfiBlock33
 
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock34 Using cfiCommon0
           CFI Function usb_diag_fill
@@ -1359,6 +1406,7 @@ usb_diag_fill:
           CFI EndBlock cfiBlock34
         REQUIRE ?Subroutine2
 
+#endif
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock35 Using cfiCommon0
           CFI NoFunction
@@ -1372,6 +1420,7 @@ usb_diag_fill:
         POP      {R0,R4,R5,PC}
           CFI EndBlock cfiBlock35
 
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock36 Using cfiCommon0
           CFI Function usb_diag_fill_regs
@@ -1398,6 +1447,8 @@ usb_diag_fill_regs:
         POP      {R4,PC}
           CFI EndBlock cfiBlock36
 
+#endif
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock37 Using cfiCommon0
           CFI Function usb_diag_fill_errors
@@ -1415,6 +1466,7 @@ usb_diag_fill_errors:
           CFI EndBlock cfiBlock37
         REQUIRE ?Subroutine1
 
+#endif
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock38 Using cfiCommon0
           CFI NoFunction
@@ -1424,6 +1476,7 @@ usb_diag_fill_errors:
         BX       LR
           CFI EndBlock cfiBlock38
 
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock39 Using cfiCommon0
           CFI Function usb_diag_fill_addr
@@ -1448,6 +1501,7 @@ usb_diag_fill_addr:
         B.N      ?Subroutine1
           CFI EndBlock cfiBlock39
 
+#endif
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA

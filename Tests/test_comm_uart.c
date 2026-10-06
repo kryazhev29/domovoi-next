@@ -166,7 +166,7 @@ static void rx_tests(void) {
   CHECK(comm_uart_consume(0)); CHECK(!comm_uart_consume(1));
   for (unsigned i=0;i<511;i++) interrupt_byte((uint8_t)i,USART_SR_RXNE);
   CHECK(comm_uart_peek(&p)==511); for (unsigned i=0;i<511;i++) CHECK(p[i]==(uint8_t)i);
-  interrupt_byte(0xee,USART_SR_RXNE); comm_uart_stats(&s); CHECK(s.overflow==1 && (s.errors&COMM_UART_OVERFLOW));
+  interrupt_byte(0xee,USART_SR_RXNE); comm_uart_stats(&s); CHECK((s.errors&COMM_UART_OVERFLOW)); DIAG_CHECK(s.overflow==1);
   CHECK(!comm_uart_consume(512));
   /* DMA не умеет отбрасывать новый байт: после обгона только abort. */
   CHECK(comm_uart_peek(&p)==0); comm_uart_abort();
@@ -186,15 +186,15 @@ static void rx_tests(void) {
   interrupt_byte('D',USART_SR_RXNE); CHECK(comm_uart_peek(&p)==1);
   interrupt_byte('E',USART_SR_RXNE); CHECK(!comm_uart_consume(2)); CHECK(comm_uart_consume(1));
   CHECK(comm_uart_peek(&p)==1 && *p=='E');
-  comm_uart_abort(); CHECK(comm_uart_peek(&p)==0); comm_uart_stats(&s); CHECK(s.overflow==1);
+  comm_uart_abort(); CHECK(comm_uart_peek(&p)==0); comm_uart_stats(&s); DIAG_CHECK(s.overflow==1);
   reset(); interrupt_byte(0,USART_SR_ORE); interrupt_byte(0,USART_SR_FE); interrupt_byte(0,USART_SR_NE);
   interrupt_byte('X',USART_SR_RXNE|USART_SR_ORE|USART_SR_FE|USART_SR_NE);
   CHECK(reads==4 && dma_channel.CNDTR==511 && comm_uart_peek(&p)==0); comm_uart_stats(&s);
-  CHECK(s.ore==2 && s.fe==2 && s.ne==2 && s.errors==(COMM_UART_ORE|COMM_UART_FE|COMM_UART_NE));
+  CHECK(s.errors==(COMM_UART_ORE|COMM_UART_FE|COMM_UART_NE)); DIAG_CHECK(s.ore==2 && s.fe==2 && s.ne==2);
   primask=1; CHECK(comm_uart_errors()==(COMM_UART_ORE|COMM_UART_FE|COMM_UART_NE) && primask==1); __set_PRIMASK(0);
-  CHECK(comm_uart_errors()==0); comm_uart_stats(&s); CHECK(s.ore==2 && s.fe==2 && s.ne==2 && s.errors==0);
+  CHECK(comm_uart_errors()==0); comm_uart_stats(&s); CHECK(s.errors==0); DIAG_CHECK(s.ore==2 && s.fe==2 && s.ne==2);
   for (unsigned i=0;i<70000;i++) interrupt_byte(0,USART_SR_ORE);
-  comm_uart_stats(&s); CHECK(s.ore==UINT16_MAX); comm_uart_stats(NULL);
+  comm_uart_stats(&s); DIAG_CHECK(s.ore==UINT16_MAX); comm_uart_stats(NULL);
   comm_uart_abort(); /* После ошибки линии DMA-данные недостоверны. */
   interrupt_byte('Z',USART_SR_RXNE); CHECK(comm_uart_peek(&p)==1 && *p=='Z');
   primask=1; comm_uart_abort(); CHECK(primask==1); __set_PRIMASK(0);
@@ -267,7 +267,7 @@ static void rts_tests(void) {
       if (rts_stop) in_flight--;
       interrupt_byte((uint8_t)sent++,USART_SR_RXNE);
     }
-    CHECK(sent-received==511); comm_uart_stats(&stats); CHECK(stats.errors==0 && stats.overflow==0);
+    CHECK(sent-received==511); comm_uart_stats(&stats); CHECK(stats.errors==0); DIAG_CHECK(stats.overflow==0);
     while (received<sent) {
       uint16_t n=comm_uart_peek(&p); CHECK(n);
       for (unsigned i=0;i<n;i++) CHECK(p[i]==(uint8_t)(received+i));
@@ -308,7 +308,7 @@ static void dma_tests(void) {
     if ((i+1)%96==0) received=drain(received);
   }
   received=drain(received); CHECK(received==131072 && !uart_irqs && dma_irqs==512);
-  comm_uart_stats(&stats); CHECK(!stats.errors && !stats.overflow);
+  comm_uart_stats(&stats); CHECK(!stats.errors); DIAG_CHECK(!stats.overflow);
   /* IDLE и новый RXNE при другом IRQ не должны читать DR вместо DMA. */
   reset(); unsigned sent=0; received=0;
   for (unsigned block=1;block<=73;block++) {
@@ -353,7 +353,7 @@ static void dma_tests(void) {
   CHECK(drain(0)==100);
   for (unsigned i=0;i<512;i++) dma_byte((uint8_t)i,false);
   SysTick_Handler(); comm_uart_stats(&stats);
-  CHECK(stats.overflow==1 && (comm_uart_errors()&COMM_UART_OVERFLOW));
+  CHECK((comm_uart_errors()&COMM_UART_OVERFLOW)); DIAG_CHECK(stats.overflow==1);
   CHECK(comm_uart_peek(&p)==0 && p==NULL && !comm_uart_consume(1));
   /* После снятия ошибки и даже оборота счётчика старый поток не выдаём. */
   for (unsigned i=0;i<65536;i++) { dma_byte((uint8_t)i,true); if (i%12==0) SysTick_Handler(); }

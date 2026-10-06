@@ -1,3 +1,4 @@
+#include "domovoi_diag.h"
 /* Доработка: Кряжев А., 2026. Протокол строят прежние производители. */
 #include "comm_server.h"
 #include "comm_channel.h"
@@ -54,8 +55,10 @@ void comm_server_init(const comm_server_handlers_t *handlers)
 }
 bool comm_server_online(void) { return sv.state >= SV_ONLINE; }
 /* Диагностика (команда 112): состояние, пропуски статуса, попытки регистрации. */
+#if DOMOVOI_DIAG
 uint32_t comm_server_diag(void)
 { return sv.state | (uint32_t)sv.misses << 8 | (uint32_t)sv.registrations << 16; }
+#endif
 void comm_server_registered(uint8_t success)
 {
   if (sv.state != SV_REG_WAIT) return;

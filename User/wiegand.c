@@ -91,7 +91,7 @@ void WG_process(void){
   if (complete){
     wgDataAvalible = (count == 26);
     if (wgDataAvalible)
-      prof_card_mark = PROF_NOW() | 1u;
+      PROF_CARD_MARK();
     if (wgDataAvalible)
       wgID = (data>>1) & 0x03FFFFFF; // прежнее формирование ID; паритет требует решения Q6
   }

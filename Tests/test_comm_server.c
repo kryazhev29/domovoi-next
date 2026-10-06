@@ -408,7 +408,7 @@ static void garbage_test(void)
     }
     if ((random&8191u)==0 && !sim_pending[0] && !modem_slm336_busy()) {
       for (unsigned i=0;i<700;++i) interrupt_byte('X',USART_SR_RXNE);
-      transport_tick(10); comm_uart_stats_t stats; comm_uart_stats(&stats); CHECK(stats.overflow); ++overflows;
+      transport_tick(10); comm_uart_stats_t stats; comm_uart_stats(&stats); DIAG_CHECK(stats.overflow); ++overflows;
       /* Новая изолированная сессия модели; питание/восстановление этапа 5 не тестируются. */
       uint32_t saved=sim_now; unsigned saved_events=event13;
       server_reset(); sim_now=saved; sv.now=saved; sv.status_since=saved; event13=saved_events;

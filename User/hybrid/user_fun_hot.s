@@ -1,3 +1,4 @@
+#include "../domovoi_diag.h"
 ; Generated from User/asm/user_fun_runtime.s; selected cold groups: diag, misc, modem, scanner
 #include "../work_slots.h"
 #ifndef RELEASE_BUILD
@@ -10002,9 +10003,11 @@ usb_cmd_without_pin:
         CMPNE    R0,#+101
         BEQ.N    ??usb_cmd_without_pin_0
         CMP      R0,#+102
+#if DOMOVOI_DIAG
         ITT      NE
         CMPNE    R0,#+111
         CMPNE    R0,#+112
+#endif
         BNE.N    ??usb_cmd_without_pin_1
 ??usb_cmd_without_pin_0:
         MOVS     R0,#+1
@@ -12270,10 +12273,12 @@ user_parse_comand:
         BEQ.W    ??user_parse_comand_41
         CMP      R0,#+110
         BEQ.W    ??user_parse_comand_42
+#if DOMOVOI_DIAG
         CMP      R0,#+111
         BEQ.W    ??user_parse_comand_43
         CMP      R0,#+112
         BEQ.W    ??user_parse_comand_44
+#endif
         B.N      ??user_parse_comand_45
 ??user_parse_comand_10:
 #ifdef DEBUG_USER
@@ -13267,6 +13272,7 @@ user_parse_comand:
           CFI FunCall user_send_anyData
         BL       user_send_anyData
         B.N      ??user_parse_comand_1
+#if DOMOVOI_DIAG
 ??user_parse_comand_43:
         CMP      R5,#+0
         BNE.N    ??user_parse_comand_1
@@ -13284,6 +13290,7 @@ user_parse_comand:
           CFI FunCall prof_send
         BL       prof_send
         B.N      ??user_parse_comand_1
+#endif
 ??user_parse_comand_42:
         MOVS     R0,R5
         BNE.N    ??user_parse_comand_95

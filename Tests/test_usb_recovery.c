@@ -56,35 +56,51 @@ uint16_t crc16_calc(uint8_t*p,uint16_t n){uint16_t c=0xffff;unsigned i;while(n--
 /* PRODUCTION */
 static void ticks(unsigned n){while(n--){usb_timer1ms();usb_check_data();}}
 static void settle(void){ticks(25);CHECK(pullup&&usb_enabled);bDeviceState=CONFIGURED;}
-static void usb_watch_test(void){uint32_t v[23];unsigned base;uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(frame+4,5);frame[9]=(uint8_t)crc;frame[10]=(uint8_t)(crc>>8);
- settle();base=usb_recovery_count;
+static void usb_watch_test(void){unsigned base;
+#if DOMOVOI_DIAG
+ uint32_t v[23];
+#endif
+uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(frame+4,5);frame[9]=(uint8_t)crc;frame[10]=(uint8_t)(crc>>8);
+ settle();base=tx_reset;
  usb_bus_error_seen();usb_bus_error_seen();usb_bus_error_seen();
  /* Data left for a closed port: no host write, no recovery. */
- tx_pending=1;ticks(5000);CHECK(pullup&&usb_recovery_count==base);
+ tx_pending=1;ticks(5000);CHECK(pullup&&tx_reset==base);
  /* Host writes while the answer is never taken: recover after 2 s, not before. */
- usb_datareceived(frame,11);ticks(1999);CHECK(pullup&&usb_recovery_count==base);
- ticks(1);CHECK(!pullup&&usb_recovery_count==base+1&&usb_watch_in_recoveries==1);
+ usb_datareceived(frame,11);ticks(1999);CHECK(pullup&&tx_reset==base);
+ ticks(1);CHECK(!pullup&&tx_reset==base+1); DIAG_CHECK(usb_watch_in_recoveries==1);
  /* Registers are captured before FRES: CNTR 0 then, FRES now. */
+#if DOMOVOI_DIAG
  {uint32_t r[18];usb_diag_fill_regs(r);CHECK(r[0]==1&&r[1]==3&&r[2]==18&&r[4]==0&&r[5]==FNR_RXDP&&r[6]==1&&r[7]==7&&r[8]==0);
   CHECK(r[9]==1&&r[10]==3&&r[13]==CNTR_FRES&&r[17]==0);}
+#endif
  /* Bus errors: the recovery keeps the count it saw, later errors only move the live one. */
+#if DOMOVOI_DIAG
  {uint32_t e[2];usb_bus_error_seen();usb_diag_fill_errors(e);CHECK(e[0]==4&&e[1]==3);}
+#endif
  /* Address captured by the recovery, the live value read now. */
+#if DOMOVOI_DIAG
  {uint32_t a[4];daddr=0;usb_diag_fill_addr(a);CHECK(a[0]==0x85&&a[1]==0&&a[2]==0&&a[3]==0);daddr=0x85;}
+#endif
+#if DOMOVOI_DIAG
  usb_diag_fill(v);CHECK(v[4]==1&&v[6]==2&&v[7]==CONFIGURED&&v[8]==1&&v[9]==42&&v[11]==2000);
- tx_pending=0;settle();base=usb_recovery_count;
+#endif
+ tx_pending=0;settle();base=tx_reset;
  /* Slow but moving transfer: every taken IN packet restarts the 2 s window. */
- tx_pending=1;usb_datareceived(frame,11);ticks(1500);usb_in_done();ticks(1500);usb_in_done();ticks(1500);CHECK(pullup&&usb_recovery_count==base);
+ tx_pending=1;usb_datareceived(frame,11);ticks(1500);usb_in_done();ticks(1500);usb_in_done();ticks(1500);CHECK(pullup&&tx_reset==base);
+#if DOMOVOI_DIAG
  {uint32_t r[18];usb_in_armed=9;usb_diag_fill_regs(r);CHECK(r[7]==7&&r[8]==0&&r[16]==9&&r[17]==2);}
+#endif
  /* Queue drained: disarm, a later pending answer without a new write stays quiet. */
- tx_pending=0;ticks(1);tx_pending=1;ticks(3000);CHECK(pullup&&usb_recovery_count==base);
+ tx_pending=0;ticks(1);tx_pending=1;ticks(3000);CHECK(pullup&&tx_reset==base);
  tx_pending=0;ticks(1);
  /* Host writes but the device believes it is not configured. */
- bDeviceState=ATTACHED;usb_datareceived(frame,11);ticks(1999);CHECK(pullup&&usb_recovery_count==base);
- ticks(1);CHECK(!pullup&&usb_watch_unconf_recoveries==1&&usb_out_unconfigured>=1);
+ bDeviceState=ATTACHED;usb_datareceived(frame,11);ticks(1999);CHECK(pullup&&tx_reset==base);
+ ticks(1);CHECK(!pullup); DIAG_CHECK(usb_watch_unconf_recoveries==1&&usb_out_unconfigured>=1);
+#if DOMOVOI_DIAG
  usb_diag_fill(v);CHECK(v[5]==1&&v[6]==3&&v[7]==ATTACHED);
+#endif
  settle();}
-int main(void){unsigned i;uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(frame+4,5);frame[9]=(uint8_t)crc;frame[10]=(uint8_t)(crc>>8);
+int main(void){unsigned i;(void)daddr;uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};uint16_t crc=crc16_calc(frame+4,5);frame[9]=(uint8_t)crc;frame[10]=(uint8_t)(crc>>8);
  /* Successful robustness reset must preserve the configured session. */
  usb_enabled=1;reset_after=3;esof_counter=4;USB_Istr();CHECK(bDeviceState==CONFIGURED&&pullup&&ep_restore==8&&!tx_reset);
  /* Missing RESET must return promptly and recover without a board reset. */
@@ -98,6 +114,6 @@ int main(void){unsigned i;uint8_t frame[11]={'S','L','D','N',3,0,0,0,101,0,0};ui
  usb_rx_processing=1;esof_counter=4;reset_poll=0;USB_Istr();CHECK(usb_rx_discard);
  for(i=0;i<20;i++)usb_timer1ms();usb_check_data();CHECK(init_count==1);
  usb_rx_processing=0;usb_check_data();CHECK(init_count==2&&mask==0);
- CHECK(usb_esof_forced==3&&usb_esof_timeouts==2&&usb_recovery_count==2);
+ DIAG_CHECK(usb_esof_forced==3&&usb_esof_timeouts==2&&usb_recovery_count==2);
  usb_watch_test();
  puts("PASS USB watch: IN not taken, silent host, progress, unconfigured OUT, command 111 values; ESOF success/timeout, 20 ms detach, cable wait, RX ownership, re-enumeration and command 101 RX/TX");return 0;}

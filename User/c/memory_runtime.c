@@ -1,3 +1,4 @@
+#include "../domovoi_diag.h"
 // Доработка: Кряжев А., 2026
 // Модуль работы с памятью
 // Автор: Корякин Сергей
@@ -13,14 +14,10 @@ uint8_t sj_io_write(uint32_t adr, const uint8_t *p, uint16_t n) { return sj_span
 uint8_t sj_io_erase(uint32_t adr) { return !(adr & 4095u) && sj_span(adr, 4096) && w25_erase_sector(adr); }
 void sj_io_service(void) { wdt_reload(); }
 bool mem_recover(void) { mem_check_power(); mem_storage_ready = sj_recover(); return mem_storage_ready; }
-#ifdef ASM_RUNTIME
 #include "sector_runtime.h"
 extern uint8_t table_fault;
 extern uint8_t store_runtime; /* Exported data symbol in the ASM module. */
 bool mem_tables_ready(void) { return flash_read_allowed() && !table_fault && !sj_runtime_blocked() && (mem_storage_ready || (!store_runtime && mem_recover())); }
-#else
-bool mem_tables_ready(void) { return mem_storage_ready || mem_recover(); }
-#endif
 static bool mem_guard(uint32_t adr, uint16_t n)
 {
   uint32_t sector, last;
@@ -201,7 +198,7 @@ static uint8_t cfg_prepare(void)
   if (cfg_legacy_crc(0) && (active == MEM_CONFIG_LEGACY || cfg_legacy_crc(512))) {
     if (active == MEM_CONFIG_LEGACY || !cfg_equal_flash(active, MEM_CONFIG_LEGACY)) {
       if (!cfg_publish(NULL, MEM_CONFIG_LEGACY, active, generation)) {
-        mem_config_errors++;
+        DOMOVOI_DIAG_INC(mem_config_errors);
         return 0;
       }
     }
@@ -252,14 +249,14 @@ static bool cfg_commit_parts(uint16_t offset, const uint8_t *first, uint16_t nfi
   mem_image_s image = {active, offset, first, second, nfirst, nsecond};
   if (active == MEM_CONFIG_LEGACY) {
     // При первом сохранении источник ещё в legacy: сначала переносим его в банк.
-    if (!cfg_publish_pages(&image, active, generation)) { mem_config_errors++; return false; }
+    if (!cfg_publish_pages(&image, active, generation)) { DOMOVOI_DIAG_INC(mem_config_errors); return false; }
     image.source = MEM_CONFIG_SLOT0;
-    if (!cfg_mirror(&image)) { mem_config_errors++; return false; }
+    if (!cfg_mirror(&image)) { DOMOVOI_DIAG_INC(mem_config_errors); return false; }
     return true;
   }
-  if (!cfg_mirror(&image)) { mem_config_errors++; return false; }
+  if (!cfg_mirror(&image)) { DOMOVOI_DIAG_INC(mem_config_errors); return false; }
   if (cfg_pages_equal(active, &image)) return true;
-  if (!cfg_publish_pages(&image, active, generation)) { mem_config_errors++; return false; }
+  if (!cfg_publish_pages(&image, active, generation)) { DOMOVOI_DIAG_INC(mem_config_errors); return false; }
   return true;
 }
 static uint8_t cfg_range(uint32_t adr, uint16_t size)
@@ -444,7 +441,7 @@ void mem_config_poll(uint32_t now)
   if (!w25_async_start(address, NULL, 0, now)) goto fail;
   cfg_job.waiting = 1; return;
 fail:
-  mem_config_errors++; cfg_job.result = 3;
+  DOMOVOI_DIAG_INC(mem_config_errors); cfg_job.result = 3;
 }
 /* <<< Cooperative config publication */
 

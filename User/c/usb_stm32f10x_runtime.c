@@ -1,3 +1,4 @@
+#include "domovoi_diag.h"
 // Доработка: Кряжев А., 2026
 #include "usb_stm32f10x.h"
 #include "../usb_ring_size.h"
@@ -59,6 +60,7 @@ uint32_t usb_last_bus_errors = 0;
 uint32_t usb_last_addr[2];
 
 /* EP1R, EP3R, счётчик TX EP1, ISTR, CNTR, FNR, USB_Tx_State, IN выставлен, IN забран. */
+#if DOMOVOI_DIAG
 static void usb_regs_read(uint32_t *r)
 {
   r[0] = _GetENDPOINT(ENDP1);
@@ -71,19 +73,24 @@ static void usb_regs_read(uint32_t *r)
   r[7] = usb_in_armed;
   r[8] = usb_in_taken;
 }
+#endif
 
 /* Прерывание USB: хост забрал пакет IN. */
 void usb_in_done(void)
 {
   usb_in_ago = 0;
   usb_hung_ms = 0;
+#if DOMOVOI_DIAG
   usb_in_taken++;
+#endif
 }
 
 /* Прерывание USB: ошибка шины. */
 void usb_bus_error_seen(void)
 {
+#if DOMOVOI_DIAG
   usb_bus_errors++;
+#endif
 }
 
 /* Прерывание USB: начало кадра. */
@@ -98,6 +105,7 @@ void usb_request_recovery(void)
 {
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
+#if DOMOVOI_DIAG
   usb_last_recovery[0] = usb_recovery_reason;
   usb_last_recovery[1] = bDeviceState;
   usb_last_recovery[2] = USB_Tx_Pending();
@@ -109,6 +117,7 @@ void usb_request_recovery(void)
   usb_last_bus_errors = usb_bus_errors;
   usb_last_addr[0] = _GetDADDR();
   usb_last_addr[1] = _GetENDPOINT(ENDP0);
+#endif
   usb_hung_armed = usb_unconf_armed = 0;
   usb_hung_ms = usb_unconf_ms = 0;
   usb_out_ago = USB_AGE_MAX;
@@ -120,7 +129,9 @@ void usb_request_recovery(void)
   bDeviceState = UNCONNECTED;
   usb_recovery_ms = 20;
   usb_recovery_pending = 1;
+#if DOMOVOI_DIAG
   usb_recovery_count++;
+#endif
   __set_PRIMASK(mask);
 }
 
@@ -148,7 +159,12 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
   count = usb_buffer_count;
   if (len != 0) {
     usb_out_ago = 0;
-    if (bDeviceState != CONFIGURED) { usb_out_unconfigured++; usb_unconf_armed = 1; }
+    if (bDeviceState != CONFIGURED) {
+#if DOMOVOI_DIAG
+      usb_out_unconfigured++;
+#endif
+      usb_unconf_armed = 1;
+    }
     else if (USB_Tx_Pending()) usb_hung_armed = 1;
   }
   if (usb_rx_discard || len == 0) { __set_PRIMASK(mask); return; }
@@ -165,7 +181,9 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
   }
   if (len > USBBUFFERSIZE - count) {
     usb_rx_discard = 1;
+#if DOMOVOI_DIAG
     usb_rx_errors++;
+#endif
     __set_PRIMASK(mask);
     return;
   }
@@ -180,7 +198,9 @@ void usb_datareceived (uint8_t* ptr, uint16_t len)
 uint8_t usb_send (uint8_t* ptr, uint16_t len)
 {
   if (usb_enabled && USB_DETECT && USART_To_USB_Send_Data(ptr, len)) return 1;
+#if DOMOVOI_DIAG
   usb_tx_errors++;
+#endif
   return 0;
 }
 
@@ -188,7 +208,11 @@ void usb_sendstr (char* str)
 {
   uint16_t len = strlen(str), sent = 0;
   if (usb_enabled && USB_DETECT) sent = USB_Send_Debug((uint8_t*)str, len);
+#if DOMOVOI_DIAG
   usb_debug_dropped += len - sent;
+#else
+  (void)sent;
+#endif
 }
 
 // check time proccess, 1 ms --------------------------------------------------
@@ -243,8 +267,12 @@ void usb_check_data (void)
     return;
   }
   if (usb_hung_ms >= USB_WATCH_MS || usb_unconf_ms >= USB_WATCH_MS) {
+#if DOMOVOI_DIAG
     if (usb_hung_ms >= USB_WATCH_MS) { usb_recovery_reason = 2; usb_watch_in_recoveries++; }
+#endif
+#if DOMOVOI_DIAG
     else { usb_recovery_reason = 3; usb_watch_unconf_recoveries++; }
+#endif
     usb_request_recovery();
     __set_PRIMASK(mask);
     return;
@@ -271,7 +299,9 @@ void usb_check_data (void)
   body = (uint16_t)usb_buffer[4] | ((uint16_t)usb_buffer[5] << 8);
   if (body < 3 || body > USBBUFFERSIZE - 8) {
     usb_rx_consume(1);
+#if DOMOVOI_DIAG
     usb_rx_errors++;
+#endif
     __set_PRIMASK(mask); return;
   }
   total = body + 8;
@@ -280,7 +310,9 @@ void usb_check_data (void)
     if (expired != 0 && expired < total) {
       /* Отбрасывается только истёкший незаконченный префикс, свежие байты сохраняются. */
       usb_rx_consume(expired);
+#if DOMOVOI_DIAG
       usb_rx_errors++;
+#endif
       __set_PRIMASK(mask); return;
     }
   }
@@ -293,7 +325,9 @@ void usb_check_data (void)
   if (crc == crc16_calc(usb_buffer + 4, body + 2)) {
     if (!usb_rx_discard) usb_data_reading(usb_buffer, total);
   } else {
+#if DOMOVOI_DIAG
     usb_rx_errors++;
+#endif
     total = 4; /* Заявленной длине доверять нельзя: поиск продолжается после этого SLDN. */
   }
   mask = __get_PRIMASK();
@@ -337,6 +371,7 @@ __weak void usb_data_reading(uint8_t* ptr, uint16_t len)
 }
 
 /* Команда 111: 23 значения USB в порядке, описанном у user_send_usbDiag. */
+#if DOMOVOI_DIAG
 void usb_diag_fill(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -361,9 +396,11 @@ void usb_diag_fill(uint32_t *v)
   v[22] = usb_out_unconfigured;
   __set_PRIMASK(mask);
 }
+#endif
 
 /* Хвост команды 111 v2: 9 значений регистров на момент последнего восстановления, затем 9
  * текущих. */
+#if DOMOVOI_DIAG
 void usb_diag_fill_regs(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -373,8 +410,10 @@ void usb_diag_fill_regs(uint32_t *v)
   usb_regs_read(&v[USB_REGS]);
   __set_PRIMASK(mask);
 }
+#endif
 
 /* Хвост команды 111 v3: ошибки шины сейчас и на момент последнего восстановления. */
+#if DOMOVOI_DIAG
 void usb_diag_fill_errors(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -383,8 +422,10 @@ void usb_diag_fill_errors(uint32_t *v)
   v[1] = usb_last_bus_errors;
   __set_PRIMASK(mask);
 }
+#endif
 
 /* Хвост команды 111 v4: DADDR и EP0R на момент последнего восстановления, затем текущие. */
+#if DOMOVOI_DIAG
 void usb_diag_fill_addr(uint32_t *v)
 {
   uint32_t mask = __get_PRIMASK();
@@ -395,6 +436,7 @@ void usb_diag_fill_addr(uint32_t *v)
   v[3] = _GetENDPOINT(ENDP0);
   __set_PRIMASK(mask);
 }
+#endif
 
 /* Shared source-ownership transport in all variants. */
 extern uint8_t USB_Tx_Try(const uint8_t *,uint16_t);

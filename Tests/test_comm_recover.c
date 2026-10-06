@@ -28,8 +28,8 @@ static void rc_note(void)
     ++rc_logged;
   }
   if (opens > 8) opens = 0; /* учёт модели, не поведение */
-  if (slm.attempt.attempt_started != rc_last_attempt) {
-    rc_last_attempt = slm.attempt.attempt_started;
+  if (slm.session != rc_last_attempt) {
+    rc_last_attempt = slm.session;
     socket_model = false; /* новая попытка модема: старого сокета нет */
     if (slm.attempt.status.step == SLM_DISCHARGE || slm.attempt.status.phase == SLM_PHASE_POWER) ++rc_power_starts; else ++rc_soft_starts;
   }
@@ -43,7 +43,7 @@ static void rc_online(void)
   comm_server_no_internet(comm_recover_no_internet);
   comm_recover_init(&rc_hooks, sim_now);
   rc_logged = rc_power_starts = rc_soft_starts = 0; rc_last_since = UINT32_MAX;
-  rc_last_attempt = slm.attempt.attempt_started; rc_clock = UINT32_MAX; rc_busy_flag = false;
+  rc_last_attempt = slm.session; rc_clock = UINT32_MAX; rc_busy_flag = false;
 }
 /* Перезапуск со снятием питания, как после сбоя: дальше модем идёт уже с флагами сценария. */
 static void rc_fresh(void) { CHECK(comm_modem_restart(true, sim_now)); rc_session(); }

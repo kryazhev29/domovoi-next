@@ -14,7 +14,7 @@ os.environ['ZIG_GLOBAL_CACHE_DIR']=str(out/'zig-global')
 os.environ['ZIG_LOCAL_CACHE_DIR']=str(out/'zig-local')
 flags=['-target','thumb-freestanding-eabi','-mcpu=cortex_m3','-mthumb','-Oz','-std=c99',
        '-Wall','-Wextra','-Werror','-DSTM32F10X_MD','-DUSE_STDPERIPH_DRIVER',
-       '-I.','-IModules','-ICMSIS/Include','-ICMSIS/STM32F10x/Include',
+       '-DDOMOVOI_DIAG='+os.environ.get('DOMOVOI_TEST_DIAG','1'),'-IUser','-I.','-IModules','-ICMSIS/Include','-ICMSIS/STM32F10x/Include',
        '-ISTM32F10x_StdPeriph_Driver/inc','-c']
 profiles={'v5':[]}  # только v5 (решение владельца 03.10.2026)
 # Сравниваем тем же компилятором, профилем и флагами, все выходы — в final.

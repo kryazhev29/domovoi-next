@@ -28,9 +28,9 @@ static void channel_path_tests(void)
   channel_model_reset();  channel_until(15000);
   CHECK(comm_channel_ready() && slm.attempt.status.reason == SLM_ERR_NONE && !sim_gmm);
   CHECK(sim_now >= 8000 && sim_now <= 11000 && sim_ticks > 800);
-  CHECK(slm.attempt.status.completed_phases == 63 && !slm.diag.failure_count);
-  CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 700);
-  CHECK((slm.diag.steps[SLM_TCP] * 10u) == 500);
+  DIAG_CHECK(slm.attempt.status.completed_phases == 63); DIAG_CHECK(!slm.diag.failure_count);
+  DIAG_CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 700);
+  DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == 500);
   CHECK(power_events == 5 && power_trace[0].pin == 13 && !power_trace[0].high);
   CHECK(power_trace[1].pin == 14 && power_trace[1].high);
   CHECK(power_trace[2].pin == 13 && power_trace[2].time == 2100 && power_trace[2].high);
@@ -44,8 +44,8 @@ static void channel_path_tests(void)
   channel_model_reset(); sim_port_change = sim_rat_change = sim_early_open = 1;
   memcpy(test_config.apn, "manual.apn", sizeof("manual.apn"));  channel_until(15000);
   CHECK(comm_channel_ready() && !strcmp(slm_apn(),"manual.apn"));
-  CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_URC_SET));
-  CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_RAT_SET));
+  DIAG_CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_URC_SET));
+  DIAG_CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_RAT_SET));
   /* Выбор APN по IMSI для всех операторов и неизвестного профиля. */
   static const struct { const char *imsi, *apn; } profiles[] = {
     {"250010123456789\r\nOK\r\n", "internet.mts.ru"}, {"250020123456789\r\nOK\r\n", "internet"},
@@ -64,11 +64,13 @@ static void channel_read_tests(void)
   while (slm.attempt.status.step != SLM_TCP) sim_tick();
   sim_feed("+QIURC: \"recv\",0\r\n"); channel_until(15000);
   CHECK(comm_channel_ready() && sim_qird == 0); /* Данные до TCP/вместимости не теряются. */
+#if DOMOVOI_DIAG
   uint16_t tcp_time = slm.diag.steps[SLM_TCP];
+#endif
   sim_read_size = 64; comm_channel_rx_capacity(sim_read_size);
   for (unsigned i = 0; i < 100; ++i) sim_tick();
   CHECK(sim_qird == 4 && sim_done_reads == 4 && sim_body_count == 7 && !sim_read_reason);
-  CHECK(slm.diag.steps[SLM_TCP] == tcp_time);
+  DIAG_CHECK(slm.diag.steps[SLM_TCP] == tcp_time);
   CHECK(!memcmp(sim_body, "OK\r\nXYZ", 7) && !comm_at_busy());
   sim_feed("+QIURC: \"recv\",1\r\n");
   for (unsigned i = 0; i < 10; ++i) sim_tick(); CHECK(sim_qird == 4);
@@ -82,7 +84,7 @@ static void channel_read_tests(void)
 static void channel_error_tests(void)
 {
   channel_model_reset(); sim_open_delay = 149000;  channel_until(170000);
-  CHECK(comm_channel_ready() && (slm.diag.steps[SLM_TCP] * 10u) == 149000);
+  CHECK(comm_channel_ready()); DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == 149000);
   channel_model_reset(); sim_open_delay = 151000;  channel_until(170000);
   CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_TCP);
   for (unsigned i = 0; i < 200; ++i) sim_tick();
@@ -114,13 +116,15 @@ static void channel_diagnostic_tests(void)
   channel_model_reset();
   while (slm.attempt.status.step != SLM_TCP) sim_tick();
   for (unsigned i = 0; i < 25; ++i) sim_tick();
-  CHECK(slm.diag.steps[SLM_TCP] == 25 && slm.diag.phases[SLM_PHASE_TCP] == 25);
+  DIAG_CHECK(slm.diag.steps[SLM_TCP] == 25 && slm.diag.phases[SLM_PHASE_TCP] == 25);
   channel_until(15000);
-  CHECK(channel_opened == 1 && slm.diag.steps[SLM_TCP] == 50);
+  CHECK(channel_opened == 1); DIAG_CHECK(slm.diag.steps[SLM_TCP] == 50);
   channel_model_reset();  channel_until(15000);
+#if DOMOVOI_DIAG
   uint32_t tcp_ms = (slm.diag.steps[SLM_TCP] * 10u);
+#endif
   for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
+  DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
 }
 static void channel_regressions(void)
 {

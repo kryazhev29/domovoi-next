@@ -1,6 +1,7 @@
 /* Замер времени по счётчику тактов ядра (DWT CYCCNT). Доработка: Кряжев А., 2026 */
 #include "includes.h"
 #include "prof.h"
+#if DOMOVOI_DIAG
 
 #define PROF_COMMAND 113u
 #define PROF_SUM_SHIFT 8u                // сумма в единицах 256 тактов: uint32 хватает на 4 ч
@@ -55,3 +56,5 @@ void prof_send(uint8_t uniqId)
   usb_send(b, len + 8);
   for (uint16_t k = 0; k < sizeof(prof); k++) ((uint8_t*)prof)[k] = 0;
 }
+
+#endif

@@ -6,6 +6,7 @@ import struct
 import subprocess
 import tempfile
 from comm_at_host import ROOT, ZIG
+from source_select import diagnostic_header
 
 MODULES = ('User/comm_timeouts.c', 'Modules/comm_power_v5.c', 'Modules/comm_modem.c', 'Modules/modem_slm336.c')
 HEADERS = ('Modules/comm_uart.h', 'Modules/comm_at.h', 'User/comm_timeouts.h',
@@ -22,7 +23,7 @@ def unit(root=ROOT):
                         if not line.startswith('#include "'))
     sources = '\n'.join(line for n in ('Modules/comm_uart.c', 'Modules/comm_at.c', *MODULES)
                         for line in source(n).splitlines() if not line.startswith('#include'))
-    return model + headers + sources + source('Tests/test_comm_slm.c')
+    return diagnostic_header(root) + model + headers + sources + '\n' + source('Tests/test_comm_slm.c')
 
 
 def memory(obj):
@@ -38,7 +39,7 @@ def arm(out):
     rows = []; stage_ram = 0
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         tmp = Path(tmp)
-        for name in HEADERS + MODULES + ('Modules/comm_at.c',):
+        for name in HEADERS + MODULES + ('Modules/comm_at.c','User/domovoi_diag.h'):
             (tmp / Path(name).name).write_text((ROOT / name).read_bytes().decode('cp1251').replace('\r\n', '\n'), encoding='utf-8', newline='\n')
         (tmp / 'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void*,const void*,size_t);\n'
                                     'void *memset(void*,int,size_t);\nint memcmp(const void*,const void*,size_t);\n'

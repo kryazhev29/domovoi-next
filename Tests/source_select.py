@@ -20,6 +20,7 @@ def source_text(root, name):
     text=source_path(root,name).read_bytes().decode('cp1251')
     # Ordinary C host fragments use the same local linkage as the C project.
     text=text.replace('HYBRID_LOCAL ', 'static ')
+    text=re.sub(r'^\s*#include [\"<][^\n]*domovoi_diag\.h[\">]\s*$', '', text, flags=re.M)
     if '#include "../usb_ring_size.h"' in text:
         text=text.replace('#include "../usb_ring_size.h"',
                           (root/'User/usb_ring_size.h').read_bytes().decode('cp1251'))
@@ -53,6 +54,10 @@ def source_text(root, name):
     return ''.join(out)
 
 
+def diagnostic_header(root):
+    return '#define DOMOVOI_HOST_TEST 1\n#define DOMOVOI_DIAG ' + os.environ.get('DOMOVOI_TEST_DIAG','1') + '\n' + (root/'User/domovoi_diag.h').read_text(encoding='ascii') + '\n#if DOMOVOI_DIAG\n#define DIAG_CHECK(x) CHECK(x)\n#else\n#define DIAG_CHECK(x) ((void)0)\n#endif\n'
+
+
 def host_adapters(root):
     # Extracted host protocol fixtures supply allocation/error stubs. Workspace
     # exclusion, real storage lifetimes and cancellation run on the linked ELF.
@@ -61,6 +66,6 @@ def host_adapters(root):
     # Private production helpers share this extracted fixture translation unit
     # with host stubs (comm_at's text, for example). Keep their names local.
     implementation=implementation.replace('text(', 'domovoi_format_text(').replace('decimal(', 'domovoi_format_decimal(')
-    return ('#ifndef DOMOVOI_HOST_ADAPTERS_DEFINED\n#define DOMOVOI_HOST_ADAPTERS_DEFINED\n'
+    return (diagnostic_header(root)+'#ifndef DOMOVOI_HOST_ADAPTERS_DEFINED\n#define DOMOVOI_HOST_ADAPTERS_DEFINED\n'
             '#define work_acquire(size,slot) malloc(size)\n'
             '#define work_release(ptr,slot) free(ptr)\n'+header+'\n'+implementation+'\n#endif\n')

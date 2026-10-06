@@ -9,7 +9,9 @@
 #include "Bootloader/app_update.h"
 #include "User/prof.h"
 
+#if DOMOVOI_DIAG
 unsigned int loop_max_ms = 0, loop_stalls = 0;
+#endif
 
 /* «амер стека (01.10.2026): при старте свободна€ часть CSTACK заполн€етс€ шаблоном; команда 111
  * отдаЄт, сколько байт шаблона снизу ни разу не тронуто - минимальный запас стека за работу,
@@ -22,6 +24,7 @@ void stack_paint(void)
   uint32_t *end = (uint32_t*)(__get_MSP() - 64u);
   while (p < end) *p++ = STACK_PAINT;
 }
+#if DOMOVOI_DIAG
 uint32_t stack_free_bytes(void)
 {
   const uint32_t *b = (const uint32_t*)__section_begin("CSTACK");
@@ -30,6 +33,7 @@ uint32_t stack_free_bytes(void)
   while (p < e && *p == STACK_PAINT) p++;
   return (uint32_t)(p - b) * 4u;
 }
+#endif
 
 // основна€ программа
 /* Stackless failure uses the same watchdog stop as fault_capture.
@@ -98,9 +102,11 @@ void main()
     
   // включаем питание gsm модул€
 
+  #if DOMOVOI_DIAG
   unsigned int loop_mark = timers_getMillis();
   prof_init();
   uint32_t prof_loop = PROF_NOW();
+  #endif
 
   // ¬ходим в основной цикл работы
   while (true)
@@ -119,6 +125,7 @@ void main()
     PROF_STEP(PROF_USER, user_loop());
     PROF_STEP(PROF_STORAGE, user_storage_poll());
 
+    #if DOMOVOI_DIAG
     /*  оманда 111: самый долгий проход главного цикла и проходы от 1 с. */
     {
       unsigned int now = timers_getMillis(), took = now - loop_mark;
@@ -131,5 +138,6 @@ void main()
       prof_add(PROF_LOOP, t - prof_loop);
       prof_loop = t;
     }
+    #endif
   } // while
 } // main

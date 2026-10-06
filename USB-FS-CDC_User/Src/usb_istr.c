@@ -1,3 +1,6 @@
+#ifndef BOOTLOADER
+#include "../../User/domovoi_diag.h"
+#endif
 // Доработка: Кряжев А., 2026
 /**
   ******************************************************************************
@@ -144,7 +147,9 @@ void USB_Istr(void)
   {
     _SetISTR((uint16_t)CLR_ERR);
 #ifndef BOOTLOADER
+#if DOMOVOI_DIAG
     usb_bus_error_seen();
+#endif
 #endif
 #ifdef ERR_CALLBACK
     ERR_Callback();
@@ -208,7 +213,9 @@ void USB_Istr(void)
         for (i=0;i<8;i++) EP[i] = _GetENDPOINT(i);
       
 #ifndef BOOTLOADER
+#if DOMOVOI_DIAG
         usb_esof_forced++;
+#endif
 #endif
         /*apply FRES */
         wCNTR|=CNTR_FRES;
@@ -226,8 +233,12 @@ void USB_Istr(void)
           if (budget == 0) {
             /* Один FRES оставляет порт мёртвым навсегда. Назначается ограниченное отключение и
              * переподключение; главный цикл и модем продолжают работать. */
+#if DOMOVOI_DIAG
             usb_esof_timeouts++;
+#endif
+#if DOMOVOI_DIAG
             usb_recovery_reason = 1u; /* таймаут сброса ESOF */
+#endif
             usb_request_recovery();
             esof_counter = 0;
             return;

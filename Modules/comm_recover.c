@@ -1,3 +1,4 @@
+#include "domovoi_diag.h"
 /* Доработка: Кряжев А., 2026. Восстановление связи. Устройство - в comm_recover.h. */
 #include "comm_recover.h"
 #include "comm_modem.h"
@@ -125,11 +126,13 @@ static void rc_night(void)
 }
 
 /* Диагностика (команда 112): ожидание, ступени питания/AT/интернета; остаток паузы, мс. */
+#if DOMOVOI_DIAG
 uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left)
 {
   *wait_left = rc.state == RC_WAIT && now_ms - rc.wait_since < rc.wait_ms ? rc.wait_ms - (now_ms - rc.wait_since) : 0;
   return rc.state | (uint32_t)rc.power << 4 | (uint32_t)rc.power_step << 8 | (uint32_t)rc.soft_step << 16 | (uint32_t)rc.net_step << 24;
 }
+#endif
 void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms)
 {
   memset(&rc, 0, sizeof(rc));

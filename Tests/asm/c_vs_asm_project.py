@@ -19,6 +19,7 @@ sys.path.insert(0,str(ROOT/'Tests'))
 import run_all
 
 REPLACEMENTS={
+    'sync':'sync entry',
     'access':'access','bootjournal':'config_power','crcblocks':'service',
     'flashcmds':'clear','fwstart':'firmware','idindex':'index',
     'idsync':'table','log':'upload','logupload':'upload','photo':'photo',
@@ -43,9 +44,13 @@ def main():
     sys.stdout.reconfigure(encoding='utf-8',errors='replace')
     p=argparse.ArgumentParser();p.add_argument('--project',choices=('ASM','C','HYBRID'),required=True)
     p.add_argument('--fast',action='store_true');p.add_argument('--output',type=Path)
-    args=p.parse_args();select_image(args.project)
+    p.add_argument('--config',choices=('Release','ReleaseCustomer'),default='Release')
+    args=p.parse_args()
+    os.environ['DOMOVOI_COMPARE_CONFIG']=args.config
+    os.environ['DOMOVOI_TEST_DIAG']='0' if args.config=='ReleaseCustomer' else '1'
+    select_image(args.project)
     base=Path(os.environ.get('DOMOVOI_COMPARE_BUILD',Path(tempfile.gettempdir())/'domovoi-c-asm'))
-    destination=base/('host-'+args.project);destination.mkdir(parents=True,exist_ok=True);mirror(destination)
+    destination=base/('host-'+args.project+'-'+args.config);destination.mkdir(parents=True,exist_ok=True);mirror(destination)
     env=os.environ.copy();env['DOMOVOI_SOURCES']=args.project.lower()
     env['PYTHONIOENCODING']='utf-8';env['PYTHONDONTWRITEBYTECODE']='1'
     env['PYTHONPATH']=os.pathsep.join((str(Path(tempfile.gettempdir())/'domovoi-c-asm-deps'),str(ROOT/'Tests'),env.get('PYTHONPATH','')))
@@ -54,7 +59,7 @@ def main():
     results={}
     def run(name,command):
         start=time.monotonic();r=subprocess.run([sys.executable,*command],cwd=destination,env=env,capture_output=True)
-        (base/(args.project+'-'+name.replace(' ','_')+'.log')).write_bytes(r.stdout+r.stderr)
+        (base/(args.project+'-'+args.config+'-'+name.replace(' ','_')+'.log')).write_bytes(r.stdout+r.stderr)
         ok=r.returncode==0 and b'FAIL' not in r.stdout
         results[name]={'status':'PASS' if ok else 'FAIL','seconds':round(time.monotonic()-start,3)}
         print(results[name]['status'],name,flush=True)
@@ -73,8 +78,8 @@ def main():
     if not args.fast:cases+=list(POWER)
     results.update(run_cases(cases))
     if not args.fast:
-        run('paired mutations',['Tests/asm/c_vs_asm_mutations.py','--variant',args.project,'--output',str(base/f'mutations-{args.project}.json')])
-    result={'variant':args.project,'cases':results,'legacy_contract_mapping':REPLACEMENTS,
+        run('paired mutations',['Tests/asm/c_vs_asm_mutations.py','--variant',args.project,'--output',str(base/f'mutations-{args.project}-{args.config}.json')])
+    result={'variant':args.project,'configuration':args.config,'diagnostic_skips':(['USB command 111','USB command 112','DWT packet 113','111: USB counters/register snapshots','112: modem timings/step history and UART cumulative counters'] if args.config=='ReleaseCustomer' else []),'cases':results,'legacy_contract_mapping':REPLACEMENTS,
             'elf_sha256':__import__('hashlib').sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()}
     output=args.output or base/f'run-all-{args.project}.json'
     output.write_text(json.dumps(result,indent=2,default=str)+'\n',encoding='utf-8')

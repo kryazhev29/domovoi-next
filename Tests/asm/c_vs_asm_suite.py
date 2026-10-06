@@ -16,6 +16,9 @@ sys.path.insert(0, str(ROOT / 'Tests'))
 import iar_irq_support  # Existing dependency discovery and selected ELF support.
 
 CASES = {
+    'sync entry': [('test_project_sync_entry','run')],
+    'stage3 input guards': [('test_stage3_entry_guards','run')],
+    'diagnostics config': [('test_diagnostics_config','run')],
     'stack canary': [('test_stack_canary','run')],
     'format ABI': [('test_user_format_runtime','run')],
     'workspace': [('test_work_memory', 'run')],
@@ -44,13 +47,13 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CORE = ('stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
+CORE = ('sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 
 
 def select_image(variant, build_root=None):
     base = Path(build_root or os.environ.get('DOMOVOI_COMPARE_BUILD', Path(tempfile.gettempdir()) / 'domovoi-c-asm'))
-    folder = base / ('C-ReleaseSpeed' if variant == 'C_SPEED' else variant + '-Release')
+    folder = base / ('C-ReleaseSpeed' if variant == 'C_SPEED' else variant + '-' + os.environ.get('DOMOVOI_COMPARE_CONFIG','Release'))
     stem = 'DomovoiNext_C' if variant.startswith('C') else 'DomovoiNext_' + variant
     os.environ.update(DOMOVOI_ELF=str(folder/'ExePath/DomovoiNext.out'),
                       DOMOVOI_BIN=str(folder/'ExePath'/f'{stem}.bin'),

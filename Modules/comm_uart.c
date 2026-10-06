@@ -1,3 +1,4 @@
+#include "domovoi_diag.h"
 /* Доработка: Кряжев А., 2026. USART3: кольцо RX, фоновая передача TX. */
 #include "comm_uart.h"
 #include "board.h"
@@ -12,14 +13,22 @@ static volatile struct {
   const uint8_t *tx_ptr;
   uint16_t rx_write, rx_read, rx_view, tx_length, tx_index;
   uint8_t tx_phase, tx_done;
+  #if DOMOVOI_DIAG
   comm_uart_stats_t counters;
+  #else
+  struct { uint16_t errors; } counters;
+  #endif
 } uart_state;
 enum { TX_IDLE, TX_SEND, TX_WAIT_TC };
 
+#if DOMOVOI_DIAG
 static void error_add(volatile uint16_t *count)
 {
   if (*count != UINT16_MAX) ++*count;
 }
+#else
+#define error_add(count) ((void)0)
+#endif
 
 /* RM0008 §13.3.3/§13.4: CNDTR и TC дают число записанных байт,
    а не только совпадение индексов. Обслуживать не реже половины круга
@@ -138,7 +147,11 @@ void comm_uart_init(uint32_t baud)
   DMA1_Channel3->CMAR = (uint32_t)(uintptr_t)rx;
   USART_DeInit(USART3);
   comm_uart_abort();
+#if DOMOVOI_DIAG
   uart_state.counters.errors = uart_state.counters.overflow = uart_state.counters.ore = uart_state.counters.fe = uart_state.counters.ne = 0;
+#else
+  uart_state.counters.errors = 0;
+#endif
   gpio.GPIO_Speed = GPIO_Speed_50MHz;
   gpio.GPIO_Pin = GPIO_Pin_11;
   gpio.GPIO_Pin |= GPIO_Pin_13;
@@ -236,11 +249,18 @@ uint16_t comm_uart_errors(void)
   return errors;
 }
 
+#if DOMOVOI_DIAG || defined(DOMOVOI_HOST_TEST)
 void comm_uart_stats(comm_uart_stats_t *stats)
 {
   if (stats == NULL) return;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
+#if DOMOVOI_DIAG
   *stats = uart_state.counters;
+#else
+  memset(stats,0,sizeof *stats); stats->errors = uart_state.counters.errors;
+#endif
   __set_PRIMASK(mask);
 }
+
+#endif

@@ -284,8 +284,10 @@ def main():
     parser.add_argument('--main-only',action='store_true')
     parser.add_argument('--coverage-only',action='store_true')
     parser.add_argument('--paired',action='store_true')
+    parser.add_argument('--config',choices=('Release','ReleaseCustomer'),default='Release')
     parser.add_argument('--variants',nargs='+',choices=('ASM','C','C_SPEED','HYBRID'),default=('ASM','C','C_SPEED'))
     args=parser.parse_args()
+    os.environ['DOMOVOI_COMPARE_CONFIG']=args.config
     if args.paired:
         all_results={};oracle=None
         for variant in args.variants:

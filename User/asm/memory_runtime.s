@@ -1,3 +1,4 @@
+#include "../domovoi_diag.h"
 #include "../work_slots.h"
         EXTERN work_acquire
         EXTERN work_release
@@ -1658,10 +1659,12 @@ cfg_commit_parts:
 ??cfg_commit_parts_3:
         MOVS     R1,R0
         BNE.N    ??cfg_commit_parts_6
+#if DOMOVOI_DIAG
         LDR.W    R2,??DataTable21_10
         LDR      R0,[R2, #+0]
         ADDS     R0,R0,#+1
         STR      R0,[R2, #+0]
+#endif
 ??cfg_commit_parts_6:
         MOVS     R0,R1
         BEQ.N    ??cfg_commit_parts_0
@@ -1698,10 +1701,12 @@ cfg_commit_parts:
           CFI (cfiPicker50) Picker
         THUMB
 ?Subroutine14:
+#if DOMOVOI_DIAG
         LDR.W    R1,??DataTable21_10
         LDR      R0,[R1, #+0]
         ADDS     R0,R0,#+1
         STR      R0,[R1, #+0]
+#endif
         MOVS     R0,#+0
         BX       LR
           CFI EndBlock cfiCond48
@@ -2701,10 +2706,12 @@ mem_config_poll:
         MOVS     R0,#+2
         B.N      ??mem_config_poll_32
 ??mem_config_poll_4:
+#if DOMOVOI_DIAG
         LDR.N    R1,??DataTable21_10
         LDR      R0,[R1, #+0]
         ADDS     R0,R0,#+1
         STR      R0,[R1, #+0]
+#endif
         MOVS     R0,#+3
 ??mem_config_poll_32:
         STRB     R0,[R4, #+35]

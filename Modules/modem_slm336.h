@@ -2,6 +2,7 @@
 #ifndef MODEM_SLM336_H
 #define MODEM_SLM336_H
 #include <stdint.h>
+#include "domovoi_diag.h"
 #include <stdbool.h>
 #include "comm_power_v5.h"
 #include "comm_at.h"
@@ -21,16 +22,28 @@ enum { SLM_ERR_NONE, SLM_ERR_TIMEOUT, SLM_ERR_AT, SLM_ERR_RESPONSE,
 /* Длительности последней попытки: 10 мс, насыщение при 655,35 с.
    Кольцо сбоев — единственная история; времена в секундах от старта попытки. */
 typedef struct {
+  #if DOMOVOI_DIAG
   uint16_t steps[SLM_STEP_COUNT], phases[SLM_PHASE_COUNT];
   uint16_t failure_seconds[10]; /* насыщение при 65535 с */
+  #endif
   uint8_t failure_step[10], failure_reason[10];
+  #if DOMOVOI_DIAG
   uint16_t last_code;
   uint8_t failure_next, failure_count;
+  #else
+  uint8_t failure_next;
+  #endif
 } slm_diag_t;
 typedef struct {
+#if DOMOVOI_DIAG
   uint32_t completed_steps;
+#endif
   uint16_t modem_code;
+#if DOMOVOI_DIAG
   uint8_t state, step, phase, reason, completed_phases, at_fault;
+#else
+  uint8_t state, step, phase, reason, at_fault;
+#endif
 } slm_status_t;
 /* Тип модема в настройках и статусе (Протокол2, команда 105): значения прежние. */
 enum { MODEM_TYPE_AUTO = 0, MODEM_TYPE_UG95 = 1, MODEM_TYPE_SLM336 = 2, MODEM_TYPE_M66 = 3,

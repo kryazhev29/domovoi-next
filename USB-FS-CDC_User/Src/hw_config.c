@@ -1,3 +1,6 @@
+#ifndef BOOTLOADER
+#include "../../User/domovoi_diag.h"
+#endif
 // Доработка: Кряжев А., 2026
 /**
   ******************************************************************************
@@ -342,7 +345,10 @@ void Handle_USBAsynchXfer (void)
   if(count>VIRTUAL_COM_PORT_DATA_SIZE) count=VIRTUAL_COM_PORT_DATA_SIZE;
   UserToPMABufferCopy((uint8_t*)source+offset,ENDP1_TXADDR,count);
   usb_tx_offset+=count;
-  USB_Tx_State=1; usb_in_armed++;
+  USB_Tx_State=1;
+#if DOMOVOI_DIAG
+  usb_in_armed++;
+#endif
   SetEPTxCount(ENDP1,count); SetEPTxValid(ENDP1);
 }
 void USB_Tx_Reset(void)

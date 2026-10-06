@@ -195,8 +195,6 @@ start:
 error: ix.state=4;
 }
 
-#ifdef ASM_RUNTIME
 void idindex_runtime_suspend(void) { ix.state=IX_OFF; }
-#endif
 
 bool idindex_runtime_active(void) { return ix.pending!=0; }

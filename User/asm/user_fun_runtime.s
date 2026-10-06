@@ -1,3 +1,4 @@
+#include "../domovoi_diag.h"
 #include "../work_slots.h"
 #ifndef RELEASE_BUILD
 #define DEBUG_USER
@@ -10110,9 +10111,11 @@ usb_cmd_without_pin:
         CMPNE    R0,#+101
         BEQ.N    ??usb_cmd_without_pin_0
         CMP      R0,#+102
+#if DOMOVOI_DIAG
         ITT      NE
         CMPNE    R0,#+111
         CMPNE    R0,#+112
+#endif
         BNE.N    ??usb_cmd_without_pin_1
 ??usb_cmd_without_pin_0:
         MOVS     R0,#+1
@@ -12378,10 +12381,12 @@ user_parse_comand:
         BEQ.W    ??user_parse_comand_41
         CMP      R0,#+110
         BEQ.W    ??user_parse_comand_42
+#if DOMOVOI_DIAG
         CMP      R0,#+111
         BEQ.W    ??user_parse_comand_43
         CMP      R0,#+112
         BEQ.W    ??user_parse_comand_44
+#endif
         B.N      ??user_parse_comand_45
 ??user_parse_comand_10:
 #ifdef DEBUG_USER
@@ -13375,6 +13380,7 @@ user_parse_comand:
           CFI FunCall user_send_anyData
         BL       user_send_anyData
         B.N      ??user_parse_comand_1
+#if DOMOVOI_DIAG
 ??user_parse_comand_43:
         CMP      R5,#+0
         BNE.N    ??user_parse_comand_1
@@ -13392,6 +13398,7 @@ user_parse_comand:
           CFI FunCall prof_send
         BL       prof_send
         B.N      ??user_parse_comand_1
+#endif
 ??user_parse_comand_42:
         MOVS     R0,R5
         BNE.N    ??user_parse_comand_95
@@ -18849,6 +18856,7 @@ user_checkFirmware:
         DATA32
         DC32     log_lastIndex
 
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock467 Using cfiCommon0
           CFI Function user_send_usbDiag
@@ -18944,6 +18952,7 @@ user_send_usbDiag:
         POP      {R4,R5,PC}
           CFI EndBlock cfiBlock467
 
+#endif
         SECTION `.text`:CODE:NOROOT(2)
         SECTION_TYPE SHT_PROGBITS, 0
         DATA
@@ -18972,6 +18981,7 @@ user_send_usbDiag:
         DATA32
         DC32     fw_job
 
+#if DOMOVOI_DIAG
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock468 Using cfiCommon0
           CFI Function user_send_commDiag
@@ -19108,6 +19118,7 @@ user_send_commDiag:
         POP      {R4-R8,PC}
           CFI EndBlock cfiBlock468
 
+#endif
         SECTION `.text`:CODE:NOROOT(1)
           CFI Block cfiBlock469 Using cfiCommon0
           CFI Function user_comm_local_time

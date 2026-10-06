@@ -1,3 +1,4 @@
+#include "domovoi_diag.h"
 /* Доработка: Кряжев А., 2026. Слот принадлежит каналу до TCP ACK/отмены. */
 #include "comm_channel.h"
 #include "comm_modem.h"
@@ -112,8 +113,10 @@ void comm_channel_rx_capacity(uint16_t count)
 bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
 bool comm_channel_fault(void) { return ch.state == CH_FAULT; }
 /* Диагностика (команда 112): состояние, слот, операция, подключений подряд. */
+#if DOMOVOI_DIAG
 uint32_t comm_channel_diag(void)
 { return ch.state | (uint32_t)ch.tx_state << 8 | (uint32_t)ch.operation << 16 | (uint32_t)ch.connections << 24; }
+#endif
 bool comm_tx_busy(void) { return ch.tx_state != TX_FREE; }
 void comm_channel_priority(bool pending) { ch.flags.urgent = (uint8_t)pending; }
 uint8_t *comm_tx_acquire(uint16_t *capacity)
