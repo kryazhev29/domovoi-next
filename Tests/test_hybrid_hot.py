@@ -19,6 +19,45 @@ def lines(path):
 def main():
     original=lines(ROOT/'User/asm/user_fun_runtime.s')
     hot=lines(ROOT/'User/hybrid/user_fun_hot.s')
+    # Проверяем точный дифф фото, затем сравниваем прочие инструкции с ASM.
+    text = '\n'.join(hot)
+    for added, original_photo in (
+        (
+            'BEQ.N    ??store_command_allowed_0\n'
+            'CMP      R0,#+21\n'
+            'BNE.N    ??store_command_allowed_photo_ready\n'
+            'BL       photo_empty_cleanup\n'
+            'CBNZ.N   R0,??store_command_allowed_0\n'
+            '??store_command_allowed_photo_ready:\n'
+            'BL       user_storage_command_ready'
+            ,
+            'BEQ.N    ??store_command_allowed_0\n'
+            'BL       user_storage_command_ready'
+            ,
+        ),
+        (
+            '??user_initvariables_1:\n'
+            'MOVS     R0,#+0\n'
+            'STRH     R0,[R4, #+155]\n'
+            'LDRH     R0,[R4, #+129]\n'
+            'BIC      R0,R0,#0x2000\n'
+            'STRH     R0,[R4, #+129]\n'
+            '??user_initvariables_2:'
+            ,
+            '??user_initvariables_1:\n'
+            'BL       user_getPhotoCount\n'
+            'STRH     R0,[R4, #+155]\n'
+            'CBZ.N    R0,??user_initvariables_2\n'
+            'LDRH     R0,[R4, #+129]\n'
+            'ORR      R0,R0,#0x2000\n'
+            'STRH     R0,[R4, #+129]\n'
+            '??user_initvariables_2:'
+            ,
+        ),
+    ):
+        assert text.count(added) == 1, 'unexpected photo ASM change'
+        text = text.replace(added, original_photo, 1)
+    hot = text.splitlines()
     position=0
     for line in hot:
         while position<len(original) and original[position]!=line:position+=1

@@ -225,11 +225,9 @@
         EXTERN out_getstate
         EXTERN out_load
         EXTERN out_process
-        EXTERN photo_cleanup_active
-        EXTERN photo_confirmed_offset
+        EXTERN photo_empty_cleanup
         EXTERN photo_connection_lost
         EXTERN photo_poll
-        EXTERN photo_recover
         EXTERN photo_request_answer
         EXTERN photo_start
         EXTERN photo_storage_busy
@@ -377,7 +375,6 @@
         PUBLIC user_getFWblockFromServer
         PUBLIC user_getGroup
         EXTERN user_getNumbersCount
-        EXTERN user_getPhotoCount
         PUBLIC user_getShedule
         PUBLIC user_getTempIDRecordsCount
         EXTERN user_getweakday
@@ -700,6 +697,12 @@ store_command_allowed:
         IT       NE
         CMPNE    R0,#+27
         BEQ.N    ??store_command_allowed_0
+        CMP      R0,#+21
+        BNE.N    ??store_command_allowed_photo_ready
+          CFI FunCall photo_empty_cleanup
+        BL       photo_empty_cleanup
+        CBNZ.N   R0,??store_command_allowed_0
+??store_command_allowed_photo_ready:
           CFI FunCall user_storage_command_ready
         BL       user_storage_command_ready
         CBZ.N    R0,??store_command_allowed_1
@@ -5025,12 +5028,11 @@ user_initvariables:
         ORR      R0,R0,#0x4000
         STRH     R0,[R4, #+129]
 ??user_initvariables_1:
-          CFI FunCall user_getPhotoCount
-        BL       user_getPhotoCount
+        ; Очередь фото восстановит асинхронный скан.
+        MOVS     R0,#+0
         STRH     R0,[R4, #+155]
-        CBZ.N    R0,??user_initvariables_2
         LDRH     R0,[R4, #+129]
-        ORR      R0,R0,#0x2000
+        BIC      R0,R0,#0x2000
         STRH     R0,[R4, #+129]
 ??user_initvariables_2:
         POP      {R4,PC}

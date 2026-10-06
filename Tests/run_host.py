@@ -347,7 +347,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=(ROOT/'Tests/test_sms.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='uarttimer':
         uart=source('Modules/uart_stm32f10x.c')
-        types=typedefs(uart,'uart_t')+'\n'+re.search(r'^#define UARTS[^\n]*',uart,re.M).group(0)+'\n'
+        types=typedefs(uart,'uart_t')+'\n'
         code='\n'.join(function(uart.replace('inline bool uart_addbyte','bool uart_addbyte'),n) for n in ('uart_addbyte','uart_getstate','uart_isReceiving','uart_timer1ms'))
         unit=(ROOT/'Tests/test_uart_timer.c').read_text().replace('/* TYPES */',types).replace('/* PRODUCTION */',code)
     elif kind=='idtext':

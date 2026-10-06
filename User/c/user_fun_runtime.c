@@ -170,7 +170,7 @@ store_usb_session(); return !store.job && !store_reset_requested && !mem_config_
 }
 #endif
 #ifndef HYBRID_CARD
-static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || user_storage_command_ready(); }
+static bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || (cmd == 21 && photo_empty_cleanup()) || user_storage_command_ready(); }
 #endif
 #ifndef HYBRID_CARD
 bool user_storage_flash_ready(void) {
@@ -1390,9 +1390,9 @@ void user_initvariables (void)
   device.tempIDsCount = user_getTempIDRecordsCount();
   if (device.tempIDsCount)
     device.status.readyID = 1;
-  device.countPhoto = user_getPhotoCount();
-  if (device.countPhoto)
-    device.status.readyPhoto = 1; 
+  // Очередь фото восстановит единственный асинхронный скан.
+  device.countPhoto = 0;
+  device.status.readyPhoto = 0;
 }
 #endif
 
@@ -4927,32 +4927,7 @@ bool log_addPhotoEvent(uint32_t number){
 
 // получаем кол-во фото в памяти
 #if !defined(HYBRID_CARD) || defined(HYBRID_COLD)
-uint16_t user_getPhotoCount(void)
-{
-  uint32_t adr = mem[MB_PHOTO].start;
-  uint32_t end = photo_storage_end();
-  uint16_t count = 0;
-  photoParam_s h;
-  uint8_t cleanup = photo_cleanup_active();
-  if (cleanup) {
-    device.newAddressPhoto = cleanup == 1 ? adr : UINT32_MAX; device.countPhoto = 0; device.status.readyPhoto = 0;
-    return 0;
-  }
-  if (!photo_recover()) { device.newAddressPhoto = UINT32_MAX; device.countPhoto = 0; device.status.readyPhoto = 0; return 0; }
-  while (adr + sizeof(h) <= end) {
-    if (!mem_read(adr, (uint8_t*)&h, sizeof(h))) { adr = UINT32_MAX; count = 0; break; }
-    if (h.datetime == 0xFFFFFFFFu) break;
-    if (!h.size || h.size > 65535u || end - adr < PHOTO_RECORD_HEAD ||
-        h.size > end - adr - PHOTO_RECORD_HEAD) {
-      adr = end; break; // повреждённую запись не обходим за границу области
-    }
-    if (photo_confirmed_offset(adr, (uint16_t)h.size) < h.size) count++;
-    adr += PHOTO_RECORD_HEAD + h.size;
-  }
-  device.newAddressPhoto = adr;
-  device.countPhoto = count; device.status.readyPhoto = count != 0;
-  return count;
-}
+
 #endif
 
 

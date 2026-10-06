@@ -71,7 +71,10 @@ def run():
             assert m.u.mem_read(m.addr(name), 1) == b'\0', name
         assert m.u.mem_read(m.addr('usb_recovery_pending'), 1) == b'\1'
         assert m.u.mem_read(m.addr('usb_recovery_ms'), 1) == b'\x14'
-        assert m.u.mem_read(m.addr('usb_out_ago'), 2) == b'\xff\xff'
+        if enabled:
+            assert m.u.mem_read(m.addr('usb_out_ago'), 2) == b'\xff\xff'
+        else:
+            assert 'usb_out_ago' not in m.symbols
     assert bytes(m.flash) == before
     return {'diagnostics': enabled, 'customer_cases': 12 if not enabled else 0,
             'bench_packets': [111, 112, 113] if enabled else [],

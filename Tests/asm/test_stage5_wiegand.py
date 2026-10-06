@@ -20,13 +20,12 @@ def run(parity=True):
                 m.write(m.addr('wgBitCount'), 26, 1)
                 m.write(m.addr('wgTime'), 100)
                 m.write(m.addr('milliSeconds'), 400)
-                m.write(m.addr('wgDataAvalible'), 0, 1)
                 m.u.reg_write(UC_ARM_REG_PRIMASK, mask)
+                before = len(ids)
                 m.call('WG_process'); maximum = max(maximum, m.steps)
                 assert m.u.reg_read(UC_ARM_REG_PRIMASK) == mask
                 accepted = int(bit < 0 or not parity)
-                assert m.read(m.addr('wgDataAvalible'), 1) == accepted
-                before = len(ids)
+                assert len(ids) == before + accepted
                 m.call('WG_process')
                 assert len(ids) == before + accepted
                 if accepted:
@@ -35,6 +34,7 @@ def run(parity=True):
             m.write(m.addr('wgData'), frame(0x123456))
             m.write(m.addr('wgBitCount'), count, 1)
             m.write(m.addr('wgTime'), 100)
+            before = len(ids)
             m.call('WG_process')
-            assert not m.read(m.addr('wgDataAvalible'), 1)
+            assert len(ids) == before
     return {'valid_cases': len(values) * 2, 'single_errors': len(values) * 52, 'maximum_snapshot_instructions': maximum, 'static_RAM_added': 0}

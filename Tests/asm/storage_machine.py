@@ -49,7 +49,8 @@ class StorageMachine(Machine):
           ('user_wait_stable_power',self.ret),('comm_tx_busy',lambda:self.ret(0)),
           ('user_send_answer_comand',self.answer),('user_send_timeshtamp',self.timestamp),
           ('user_debug',self.ret)]:
-            self.stubs[self.addr(name)]=fn
+            if name != 'user_debug' or name in self.symbols:
+                self.stubs[self.addr(name)]=fn
         self.write(self.addr('store_runtime'),1,1);self.write(self.addr('mem_storage_ready'),1,1)
         self.write(self.device+self.d['userAutorized'],1,1)
         self.write(self.device+self.d['memID'],0x17c2,2)

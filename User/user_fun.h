@@ -161,7 +161,6 @@ bool log_addPhotoEvent(uint32_t number);
 bool log_addUpdateEvent(logUpdate_e num, uint32_t reason);
 
 // получаем кол-во фото в памяти
-uint16_t user_getPhotoCount(void);
 
 bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc);
 uint32_t CRC32(uint32_t crc, uint32_t data);

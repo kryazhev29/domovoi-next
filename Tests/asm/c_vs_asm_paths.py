@@ -17,7 +17,10 @@ def run():
     m.put_id(50048,b'0000123456')
     m.write(m.addr('config')+fields('config_s')['rele']+fields('releMode_s')['mode'],1,1)
     for name in ('out_load','out_getmodestate'):m.stubs.pop(m.addr(name),None)
-    m.write(m.addr('wgID'),0x123456);m.write(m.addr('wgDataAvalible'),1,1)
+    value=0x123456
+    raw=(value<<1)|(((value&4095).bit_count()^1)&1)|(((value>>12).bit_count()&1)<<25)
+    m.write(m.addr('wgData'),raw);m.write(m.addr('wgBitCount'),26,1)
+    m.write(m.addr('wgTime'),100);m.write(m.addr('milliSeconds'),400)
     m.write(m.addr('prof_card_mark'),1)
     p=Profile(m,totals);relay=[]
     def gpio(u,access,a,n,value,_):
