@@ -33,6 +33,4 @@ void fw_cancel(fw_reason_e reason);
 void fw_stop(fw_reason_e reason, uint8_t uniqId);
 // Вернуть причину отказа запуска, не меняя состояние.
 fw_reason_e fw_refused(void);
-// Перевести строковый ABI внешнего сервиса; удаляется вместе с его диффом.
-fw_reason_e fw_legacy_reason(const char *text);
 #endif

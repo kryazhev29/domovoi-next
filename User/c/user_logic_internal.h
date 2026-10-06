@@ -187,7 +187,7 @@ bool user_comm_busy(void);
 // Сопоставить адрес канала с сервером настройки.
 uint8_t user_comm_server(uint8_t address);
 // Выбрать строку сервера и один раз разобрать её адрес.
-void comm_endpoint(uint8_t n);
+void comm_endpoints(void);
 // Подготовить адреса и запустить модем с обработчиками приложения.
 void user_comm_boot(void);
 // Передать снимок config/device атомарному сохранению.

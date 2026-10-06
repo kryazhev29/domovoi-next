@@ -7,27 +7,27 @@ possible calls call_volte [comm_call.o]: user_comm_volte;
 possible calls comm_call_poll: user_comm_call [user_comm_runtime.o];
 possible calls channel_at_event [comm_channel.o]: info_line [comm_info.o];
 possible calls channel_binary [comm_channel.o]: user_comm_rx;
-possible calls channel_command [comm_channel.o]: comm_text [user_fun_runtime.o], comm_number [user_fun_runtime.o];
+possible calls channel_command [comm_channel.o]: comm_text [user_modem.o], comm_number [user_modem.o];
 possible calls channel_emit [comm_channel.o]: server_channel_event [comm_server.o];
 possible calls channel_read_done [comm_channel.o]: user_comm_rx_done;
 possible calls comm_at_poll: channel_binary [comm_channel.o];
 possible calls event [comm_at.o]: slm_event [comm_modem.o];
 possible calls comm_info_poll: user_comm_low_signal;
-possible calls comm_modem_build: comm_number [user_fun_runtime.o];
-possible calls comm_modem_reserve: comm_number [user_fun_runtime.o];
-possible calls comm_power_v5_off: comm_gpio [user_fun_runtime.o];
-possible calls comm_power_v5_poll: comm_gpio [user_fun_runtime.o];
+possible calls comm_modem_build: comm_number [user_modem.o];
+possible calls comm_modem_reserve: comm_number [user_modem.o];
+possible calls comm_power_v5_off: comm_gpio [user_modem.o];
+possible calls comm_power_v5_poll: comm_gpio [user_modem.o];
 possible calls comm_recover_poll: user_comm_reset_session [user_comm_runtime.o];
 possible calls rc_night [comm_recover.o]: user_comm_local_time, user_comm_busy;
 possible calls server_link [comm_server.o]: user_comm_link;
 possible calls server_channel_event [comm_server.o]: user_comm_session, comm_recover_no_internet;
 possible calls comm_server_poll: user_comm_registration [user_comm_runtime.o], user_comm_status [user_comm_runtime.o], server_rx_process, user_comm_no_traffic [user_comm_runtime.o];
 possible calls comm_sms_poll: user_smsreceived;
-possible calls slm_completed [comm_modem.o]: comm_type [user_fun_runtime.o];
-possible calls slm_event [comm_modem.o]: call_urc [comm_call.o], sms_urc [comm_sms.o], bal_answer [comm_balance.o], volte_line [comm_call.o], sms_line [comm_sms.o], bal_line [comm_balance.o], channel_at_event [comm_channel.o], comm_imei [user_fun_runtime.o], comm_number [user_fun_runtime.o];
-possible calls slm_text [comm_modem.o]: comm_text [user_fun_runtime.o];
-possible calls ?slm_values [comm_modem.o]: comm_number [user_fun_runtime.o];
-possible calls slm_valid_settings [comm_modem.o]: comm_number [user_fun_runtime.o], comm_text [user_fun_runtime.o];
+possible calls slm_completed [comm_modem.o]: comm_type [user_modem.o];
+possible calls slm_event [comm_modem.o]: call_urc [comm_call.o], sms_urc [comm_sms.o], bal_answer [comm_balance.o], volte_line [comm_call.o], sms_line [comm_sms.o], bal_line [comm_balance.o], channel_at_event [comm_channel.o], comm_imei [user_modem.o], comm_number [user_modem.o];
+possible calls slm_text [comm_modem.o]: comm_text [user_modem.o];
+possible calls ?slm_values [comm_modem.o]: comm_number [user_modem.o];
+possible calls slm_valid_settings [comm_modem.o]: comm_number [user_modem.o], comm_text [user_modem.o];
 
 // PROBE_DONE can reopen the channel, emitting one nested CLOSED event. CLOSED
 // resets session state and does not reopen the channel (comm_server.c:27-46).
@@ -36,7 +36,7 @@ max recursion depth server_channel_event [comm_server.o]: 2;
 // Источник синхронного журнала: страницы образа mem_replace_pages.
 possible calls sj_pages_equal [sector_journal_runtime.o]: mem_image_page [memory_runtime.o];
 possible calls sj_replace_pages: mem_image_page [memory_runtime.o];
-possible calls sj_runtime_poll: table_chunk [user_fun_runtime.o], expiry_chunk [expiry_runtime.o];
+possible calls sj_runtime_poll: table_chunk [table_runtime.o], expiry_chunk [expiry_runtime.o];
 
 // USB Device_Property, User_Standard_Requests, CopyData, endpoint arrays.
 // USB-FS-CDC_User/{Src/usb_prop.c,Src/usb_istr.c,Inc/usb_prop.h,Inc/usb_conf.h}.

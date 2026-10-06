@@ -115,9 +115,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         /* Ќеудачна€ установка или проба до этого старта: только журнал, версию сервер видит в
            статусе 2 (E122). */
         if (app_boot_error_unreported()){
-          char reason[11];
-          app_boot_error_text(reason);
-          fw_reason_e code = fw_legacy_reason(reason);
+          fw_reason_e code = (fw_reason_e)app_boot_error_code();
           fw_event(code == FW_REASON_TRIAL_FAIL ? LOG_FW_ROLLBACK : LOG_FW_FAIL, code);
           app_boot_error_reported();
         }
@@ -345,11 +343,18 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           uint8_t olddefault = device.status.defaultConfig;
           config_exchange(&ptr[5]);
           config_terminate_strings();
+          /* Ќовый набор провер€етс€ до записи; отказ оставл€ет прежние настройки. */
+          comm_endpoints();
+          if (!comm_modem_valid_settings()) {
+            config_exchange(&ptr[5]); comm_endpoints();
+            user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+            break;
+          }
           device.datetimeConfig = config.datetime;
           device.status.defaultConfig = 0;
           store.channel = cch; store.uniq = uniqId; store.cmd = 12; store.quiet = 0;
           bool saved = store_config_start();
-          config_exchange(&ptr[5]);
+          config_exchange(&ptr[5]); comm_endpoints();
           device.datetimeConfig = oldtime;
           device.crc = oldcrc;
           device.status.defaultConfig = olddefault;

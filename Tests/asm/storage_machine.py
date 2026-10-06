@@ -46,7 +46,7 @@ class StorageMachine(Machine):
           ('w25_read_available',lambda:self.ret(self.io is None)),
           ('w25_write_data',self.sync_write),('w25_erase_sector',self.sync_erase),
           ('timers_getMillis',lambda:self.ret(self.now)),('wdt_reload',self.ret),
-          ('user_wait_stable_power',self.ret),('comm_tx_busy',lambda:self.ret(0)),
+          ('comm_tx_busy',lambda:self.ret(0)),
           ('user_send_answer_comand',self.answer),('user_send_timeshtamp',self.timestamp),
           ('user_debug',self.ret)]:
             if name != 'user_debug' or name in self.symbols:

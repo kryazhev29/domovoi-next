@@ -81,7 +81,7 @@ def abort_cases():
             m=FirmwareMachine();m.fixture();m.begin(number,1,True);m.until(lambda:m.phase()==phase)
             if phase in (4,5,10,12):m.tick_fw();assert m.io is not None
             was_pending=m.io is not None
-            m.checked('fw_abort',0)
+            m.checked('fw_cancel',0)
             if was_pending:assert m.ptr(),'pending source freed before driver drained'
             m.until(lambda:not m.ptr())
             assert m.io is None and not m.checked('fw_service_busy')

@@ -54,7 +54,7 @@ PLANS={
  'user_send_statusPackToConfigurator':(0,),'user_send_statusUpdateFW':(19,0,0,7),
  'user_send_timeshtamp':(0,1700000400,1234,0,7),'user_sendsms':(T,T),
  'user_setdefault':(),'user_smsreceived':(T,T),'user_updateID':(B,),
- 'user_wait_stable_power':(),'user_writeConfigAndDevice':(),
+'user_writeConfigAndDevice':(),
  'w25_erase_sector':(0x41000,),'w25_read_devID':(),'w25_write_data':(0x41000,B,0),
 }
 BOUNDARIES=('wdt_reload','timers_pause','Set_System','Set_USBClock','USB_Interrupts_Config','USB_Init')

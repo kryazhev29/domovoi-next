@@ -149,7 +149,7 @@ def busy_cancel():
         m=FirmwareMachine();m.fixture();m.begin(2 if phase in (4,5,6) else 1)
         m.until(lambda:m.phase()==phase)
         if phase in (4,5,10,12):m.tick_fw();assert m.io
-        m.checked('fw_abort',0)
+        m.checked('fw_cancel',0)
         m.until(lambda:not m.ptr());assert m.io is None and not m.read_word(m.addr('fw_rollback_end'))
         # A cancelled config job has independent storage and must drain separately.
         m.until(lambda:m.read_word(m.addr('store')+18,1)==0)

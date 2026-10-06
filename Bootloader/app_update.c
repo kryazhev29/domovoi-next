@@ -1,6 +1,7 @@
 /* Разработчик: Кряжев А., 2026 */
 #include "../includes.h"
 #include "app_update.h"
+#include "../User/c/user_fw_reason.h"
 #include "boot_core.h"
 #include "boot_manual.h"
 #ifdef __ICCARM__
@@ -93,13 +94,12 @@ int app_boot_error_unreported(void) {
  return result!=0xffffffffu&&reported==0xffffffffu;
 }
 /* Ошибкой считается любой записанный код, в том числе оборванный пропаданием питания. */
-void app_boot_error_text(char *text) {
+uint32_t app_boot_error_code(void) {
  uint32_t result;
  mem_read(BOOT_JOURNAL+12,(uint8_t*)&result,4);
- if(result==BOOT_TRIAL_FAILED){strcpy(text,"TRIAL FAIL");return;}
- if(result==BOOT_BACKUP_ERROR){strcpy(text,"BACKUP");return;}
- strcpy(text,"BOOT ?");
- if(result<=9u)text[5]=(char)('0'+result);
+ if(result==BOOT_TRIAL_FAILED)return FW_REASON_TRIAL_FAIL;
+ if(result==BOOT_BACKUP_ERROR)return FW_REASON_BACKUP;
+ return result<=9u ? FW_REASON_BOOT_BASE+result : FW_REASON_UNKNOWN;
 }
 void app_boot_error_reported(void) {
  uint32_t reported=0;

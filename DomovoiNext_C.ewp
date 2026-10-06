@@ -4601,7 +4601,6 @@
 <file><name>$PROJ_DIR$\User\c\user_modem.c</name></file>
 <file><name>$PROJ_DIR$\User\c\user_diag.c</name></file>
 <file><name>$PROJ_DIR$\User\c\user_rx.c</name></file>
-        <file><name>$PROJ_DIR$\User\c\user_fw_compat.c</name></file>
         <file>
             <name>$PROJ_DIR$\User\c\service_runtime.c</name>
             <configuration>

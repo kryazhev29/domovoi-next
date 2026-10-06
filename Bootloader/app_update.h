@@ -8,8 +8,8 @@ void app_boot_metadata(void);
 void app_boot_error_reported(void);
 /* Не ноль, пока в журнале есть ошибка, ещё не отправленная на сервер. */
 int app_boot_error_unreported(void);
-/* Причина этой ошибки для журнала событий: до 10 символов и завершающий ноль. */
-void app_boot_error_text(char *text);
+/* Числовая причина этой ошибки для аргумента 2 журнала событий. */
+uint32_t app_boot_error_code(void);
 /* Проба этой прошивки после обновления, читается в app_boot_metadata(). */
 int app_trial_active(void);
 void app_trial_confirm(void);

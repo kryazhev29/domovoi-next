@@ -19,7 +19,6 @@ Int8U user_imeivalid(void);
 // универсальный пароль на конфигурацию
 Int16U user_unipassword (void);
 // ожидание пока напряжение питания не станет выше порога
-void user_wait_stable_power(void);
 
 // >>> переопределение функций --------------------------
 void user_errorconnection (int8_t handle);

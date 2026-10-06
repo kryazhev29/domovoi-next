@@ -60,10 +60,11 @@ static void comm_split(uint8_t n, const char *server)
 // Сопоставить адрес канала с сервером настройки.
 uint8_t user_comm_server(uint8_t address) { return address || (!config.useServer1 && config.useServer2); }
 
-// Выбрать строку сервера и один раз разобрать её адрес.
-void comm_endpoint(uint8_t n)
+// Один раз разобрать адреса обоих серверов: основной (с учётом выбора) и резервный.
+void comm_endpoints(void)
 {
-  comm_split(n, n || (!config.useServer1 && config.useServer2) ? config.server2 : config.server1);
+  comm_split(0, config.useServer1 || !config.useServer2 ? config.server1 : config.server2);
+  comm_split(1, config.server2);
 }
 
 // Вернуть ограниченное строковое поле настройки модема.
@@ -96,7 +97,7 @@ static uint16_t comm_number(uint8_t field)
     static const uint8_t rat[] = {0, 1, 0, 5, 3};
     return config.netType < sizeof(rat) ? rat[config.netType] : 0;
   }
-  case SLM_CFG_RESERVE: comm_endpoint(1); return config.useServer2 && comm_host[1][0] && comm_port[1];
+  case SLM_CFG_RESERVE: return config.useServer2 && comm_host[1][0] && comm_port[1];
   /* Ручной тип (команда 105) имеет приоритет; 0/255 - определить по AT+GMM. */
   case SLM_CFG_TYPE: return device.moduleType;
   default: return 0;
@@ -119,8 +120,9 @@ static void comm_imei(const char *imei) { memcpy(device.IMEIGSM, imei, 16); }
 // Подготовить адреса и запустить модем с обработчиками приложения.
 void user_comm_boot(void)
 {
-  comm_endpoint(0); comm_endpoint(1);
   static const slm_handlers_t handlers = {comm_gpio, comm_type, comm_imei};
-  if (!user_comm_start(&comm_settings, &handlers, timers_getMillis()))
-    (void)comm_modem_restart(true, timers_getMillis());
+  comm_endpoints();
+  /* Неверные настройки не запускают модем: перезапуск с ними бессмыслен. */
+  if (comm_modem_state() != SLM_IDLE) comm_modem_off();
+  (void)user_comm_start(&comm_settings, &handlers, timers_getMillis());
 }

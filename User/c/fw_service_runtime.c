@@ -2,12 +2,10 @@
 //  оманда 19: начало загрузки, проверка резерва и откат прошивки.
 // W25 выполн€ет проверенные операции по 64 Ѕ; заголовок и CRC прошивки провер€ютс€ на границе.
 // —охранение настроек передаЄтс€ владельцу store; пол€ его состо€ни€ заданы общим типом.
-#include "runtime_internal.h"
+#include "user_fw_reason.h"
 #include "../fw_crc.h"
 extern uint8_t fw_start_rejected(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t);
-extern const char *fw_start_refused(void);
 extern uint8_t fw_same_download(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t,dataChanel_e);
-extern void fw_log(logUpdate_e,const char *),fw_abort(const char *);
 extern uint32_t fw_rollback_pos,fw_rollback_end;
 extern uint8_t fw_write_errors,store_save_requested;
 extern bool store_snapshot(void);
@@ -49,10 +47,10 @@ void fw_service_cancel(void)
 // ѕровер€ет команду 19 на границе и выбирает загрузку либо откат.
 bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
 {
-  fw_service_s *p; const char *reason; uint8_t phase;
+  fw_service_s *p; fw_reason_e reason; uint8_t phase;
   if(fw_service_context || !user_storage_command_ready() || !mem_tables_ready()) return true;
   if(fw_start_rejected(rt_get16(data),rt_get32(data+2),rt_get32(data+6),rt_get32(data+10),rt_get16(data+14))) {
-    fw_log((logUpdate_e)133,"PARAM");
+    fw_event((logUpdate_e)133,FW_REASON_PARAM);
     p=work_acquire(sizeof *p, WORK_FW_CONTEXT); if(!p) return true;
     p->reserve=NULL; memset(&p->phase,0,8); p->channel=channel; p->uniq=uniq;
     p->config_result=1; phase=18; goto publish;
@@ -63,9 +61,9 @@ bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
   if(rt_get16(data)!=1 && fw_same_download(rt_get16(data),rt_get32(data+2),rt_get32(data+6),rt_get32(data+10),rt_get16(data+14),channel)) {
     device.startWaitFWtime=0; phase=6; goto publish;
   }
-  reason=fw_start_refused();
+  reason=fw_refused();
   if(reason) {
-    fw_log((logUpdate_e)133,reason); work_release(p->reserve, WORK_FW_DATA); p->reserve=NULL;
+    fw_event((logUpdate_e)133,reason); work_release(p->reserve, WORK_FW_DATA); p->reserve=NULL;
     p->config_result=2; phase=18; goto publish;
   }
   if(rt_get16(data)==1) { p->mode=1; phase=1; }
@@ -81,7 +79,7 @@ publish: p->phase=phase; flash_claim(FO_FWSERVICE); fw_service_context=p; return
 void fw_service_poll(void)
 {
   fw_service_s *p=fw_service_context; uint8_t phase,result,code=2;
-  uint32_t address,n; uint8_t *source; bool saved; const char *reason;
+  uint32_t address,n; uint8_t *source; bool saved; fw_reason_e reason;
   if(!p) return; phase=p->phase;
   if(p->pending) {
     result=w25_async_poll(timers_getMillis()); if(result==1) return;
@@ -113,7 +111,7 @@ start:
   case 1: case 13:
     if(!w25_read_data(mem[phase==1?1:0].start,p->header,32)) goto read_error;
     if(rt_get32(p->header+20)==0xffffffffu || rt_get32(p->header+12)==0xffffffffu || rt_get16(p->header+5)==65535) {
-      reason=phase>=13?"CRC":"NO BACKUP"; goto error_log;
+      reason=phase>=13?FW_REASON_CRC:FW_REASON_NO_BACKUP; goto error_log;
     }
     p->expected=rt_get32(p->header+12); n=rt_get32(p->header+8);
     if(!n || (n&3u) || n>0x17e00u) goto bad_crc;
@@ -124,13 +122,13 @@ start:
     for(n=0;n<p->len;n+=4) p->crc=fw_crc_next(p->crc,rt_get32(p->data+n));
     p->pos+=p->len; if(p->pos<p->end) return;
     if(p->crc!=p->expected) goto bad_crc;
-    if(phase==14) { fw_rollback_end=0; fw_log((logUpdate_e)137,NULL); device.rebootToUpdate=1; goto cancel; }
+    if(phase==14) { fw_rollback_end=0; fw_event((logUpdate_e)137,FW_REASON_NONE); device.rebootToUpdate=1; goto cancel; }
     fw_rollback_end=p->end; fw_rollback_pos=0;
     device.cchFWupdate=p->channel; device.status.readyToUpdate=1; goto handoff;
   case 6:
     if(p->mode) {
       device.FWblockCount=p->blocks; device.FWblockIdx=0; device.firmwarePercent=0; device.startWaitFWtime=0;
-      fw_write_errors=0; device.cchFWupdate=p->channel; fw_log((logUpdate_e)132,NULL);
+      fw_write_errors=0; device.cchFWupdate=p->channel; fw_event((logUpdate_e)132,FW_REASON_NONE);
       if(p->channel) { device.FWinProgress=1; device.updateTimeout=600; device.status.readyToUpdate=1; }
     }
 handoff:
@@ -151,24 +149,24 @@ handoff:
   default: return;
   }
 read_error:
-  if(phase>=13) { reason="CRC"; goto error_log; }
+  if(phase>=13) { reason=FW_REASON_CRC; goto error_log; }
   if(phase==2) goto bad_crc;
   if(phase==1) goto cleanup;
-  reason="READ"; goto error_log;
-bad_crc: reason=phase==14?"CRC":"BAD BACKUP"; goto error_log;
+  reason=FW_REASON_UNKNOWN; goto error_log;
+bad_crc: reason=phase==14?FW_REASON_CRC:FW_REASON_BAD_BACKUP; goto error_log;
 io_error:
   if(p->phase<10) goto cleanup;
-  reason="WRITE";
+  reason=FW_REASON_WRITE;
 error_log:
   if(p->phase>=10 && p->phase<16) {
-    fw_service_context=NULL; flash_release(FO_FWSERVICE); fw_abort(reason);
+    fw_service_context=NULL; flash_release(FO_FWSERVICE); fw_cancel(reason);
     flash_claim(FO_FWSERVICE); fw_service_context=p;
     if(p->channel && !device.registredOnServer) goto cancel;
     p->data[6]=255;
     p->data[7]=0; p->data[8]=4; p->data[9]=device.firmwarePercent; p->data[10]=253;
     packet_frame(p->data,5); p->len=13; p->phase=16; return;
   }
-  fw_log((logUpdate_e)133,reason);
+  fw_event((logUpdate_e)133,reason);
 cleanup:
   fw_rollback_end=0; device.status.readyToUpdate=0; device.FWinProgress=0;
   device.updateTimeout=0; device.FWblockCount=0; device.FWblockIdx=0; fw_write_errors=0; code=2;

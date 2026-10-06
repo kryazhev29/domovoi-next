@@ -78,7 +78,7 @@ bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
                 cmd==15 ? sizeof(cellGroup_s) : sizeof(cellHoliday_s);
   uint16_t bytes=(uint16_t)ptr[9]*size;
   if (cmd==14) bytes+=SCHED16_TAIL_SIZE;
-  if (!user_storage_command_ready() || !bytes || bytes>2048 || !mem_tables_ready()) return false;
+  if (!bytes || bytes>2048 || !mem_tables_ready()) return false;
   uint8_t *snapshot=work_acquire(bytes, WORK_TABLE);
   if (!snapshot) return false;
   memcpy(snapshot,ptr+10,bytes);

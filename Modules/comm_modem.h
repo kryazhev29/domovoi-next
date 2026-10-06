@@ -23,6 +23,8 @@ enum { SLM_TCP_COMMAND = 206, SLM_READ_COMMAND = 233 };
 bool comm_modem_restart(bool power, uint32_t now_ms);
 /* Выдать назначенные геттеры настроек. */
 const slm_settings_t *comm_modem_settings(void);
+/* Проверить новый внешний набор настроек до сохранения команды 12. */
+bool comm_modem_valid_settings(void);
 /* Команда по шаблону профиля; возвращает длину, >= size — не поместилась. */
 uint16_t comm_modem_build(char *cmd, uint16_t size, const char *tpl, const char *host, uint16_t value);
 #endif

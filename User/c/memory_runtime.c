@@ -25,7 +25,7 @@ uint8_t sj_io_erase(uint32_t adr) { return mem_journal_result(w25_erase_sector(a
 // Поддерживает сторожевой таймер при синхронном восстановлении.
 void sj_io_service(void) { wdt_reload(); }
 // Восстанавливает журнал при старте и задаёт доступность таблиц.
-bool mem_recover(void) { mem_check_power(); mem_storage_ready = sj_recover(); return mem_storage_ready; }
+bool mem_recover(void) { mem_storage_ready = sj_recover(); return mem_storage_ready; }
 #include "sector_runtime.h"
 extern uint8_t table_fault;
 extern uint8_t store_runtime; // Флаг завершения старта из user_fun.
@@ -50,7 +50,6 @@ static bool mem_reserved(uint32_t adr, uint16_t n)
 // Заменяет сектор из источника страниц без копии 4 КиБ в ОЗУ.
 bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context)
 {
-  mem_check_power();
   mem_storage_ready = sj_replace_pages(adr, reader, context);
   return mem_storage_ready;
 }
@@ -215,7 +214,7 @@ static bool cfg_read(uint32_t adr, uint8_t *buff, uint16_t size)
 // Чтение данных с памяти
 bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 {
-  mem_check_power();  
+   
   if (cfg_range(adr, size)) return cfg_read(adr, buff, size);
   return mem_guard(adr, size) && w25_read_data(adr, buff, size);
 }
@@ -224,7 +223,6 @@ bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 // данные пишутся в предварительно стертый сектор
 bool mem_write (Int32U adr, pInt8U buff, Int16U size)
 {
-  mem_check_power();
   if (cfg_range(adr, size)) return mem_patch(adr, buff, size);
   return !mem_reserved(adr, size) && mem_guard(adr, size) && w25_write_data(adr, buff, size);
 }
@@ -233,7 +231,6 @@ bool mem_write (Int32U adr, pInt8U buff, Int16U size)
 bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *second, Int16U nsecond)
 {
   uint32_t size = (uint32_t)nfirst + nsecond;
-  mem_check_power();
   if (cfg_range(adr, (uint16_t)size)) return cfg_commit_parts((uint16_t)(adr - MEM_CONFIG_LEGACY), first, nfirst, second, nsecond);
   uint32_t sector = adr & ~4095u;
   if (!mem_tables_ready()) return false;
@@ -250,7 +247,6 @@ bool mem_patch(Int32U adr, const uint8_t *data, Int16U size)
 // Стирает обычный сектор, учитывая резерв и готовность таблиц.
 bool mem_erase_sector (Int32U adr)
 {
-  mem_check_power();
   adr &= ~4095u;
   return !mem_reserved(adr, MEMSECTORSIZE) && mem_guard(adr, MEMSECTORSIZE) && w25_erase_sector(adr);
 }

@@ -132,7 +132,7 @@ void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 static void store_config_complete(void)
 {
   rs485_set_config(mem_config_snapshot());
-  comm_endpoint(0); comm_endpoint(1);
+  comm_endpoints();
   device.datetimeConfig = config.datetime; device.status.defaultConfig = 0;
   sync_packet(SYNC_CONFIG);
   if (comm_modem_state() == SLM_IDLE) user_comm_boot();
@@ -279,5 +279,4 @@ void user_storage_poll(void)
   }
 }
 
-// Сохранить ABI mem_check_power до применения чужого диффа memory.h.
-void user_wait_stable_power(void) {}
+

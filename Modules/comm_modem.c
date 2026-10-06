@@ -225,7 +225,7 @@ static bool slm_valid_field(uint8_t field)
   return p && capacity && comm_at_field(p, capacity, field == SLM_CFG_HOST || field == SLM_CFG_HOST2);
 }
 /* Проверить внешние настройки один раз при запуске модема. */
-static bool slm_valid_settings(void)
+bool comm_modem_valid_settings(void)
 {
   uint16_t type = slm.settings.number(SLM_CFG_TYPE);
   if (!slm.settings.number(SLM_CFG_PORT) || (type != MODEM_TYPE_SLM336 && type != 0 && type != 255)
@@ -276,7 +276,7 @@ bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *ha
 {
   if (slm.attempt.status.state == SLM_STARTING || slm.attempt.status.state == SLM_READY) return false;
   slm.settings = *settings;
-  if (!slm_valid_settings()) return false;
+  if (!comm_modem_valid_settings()) return false;
   slm.type_found = handlers->type_found;
   slm.imei_found = handlers->imei_found;
   slm.gpio = handlers->gpio;
