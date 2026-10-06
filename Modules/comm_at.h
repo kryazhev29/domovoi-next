@@ -1,4 +1,8 @@
-/* Доработка: Кряжев А., 2026. Неблокирующий движок AT, без heap. */
+/* Доработка: Кряжев А., 2026.
+   Разбирает строки AT, приглашения и двоичное тело SLM336.
+   Проверяет внешние ответы один раз; внутренние команды уже собраны владельцем.
+   Обработчики принимают данные, следующий запрос запускает главный цикл.
+*/
 #ifndef COMM_AT_H
 #define COMM_AT_H
 #include <stdint.h>
@@ -7,9 +11,13 @@
 
 /* Общий разбор ограниченной строки; пробелы убираются только явно. */
 bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text);
+/* Найти точное совпадение среди коротких ответов. */
 uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names);
+/* Проверить начало ограниченной строки без выхода за границу. */
 bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text);
+/* Пропустить разрешённые пробелы перед полем ответа. */
 uint16_t comm_at_spaces(const uint8_t *data, uint16_t count, uint16_t pos);
+/* Прочитать число внешнего ответа с проверкой переполнения. */
 bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
                     uint32_t limit, uint32_t *value);
 /* Доверенный шаблон: 1 uint32 с пробелами, 2 uint32, 3 октет,
@@ -17,15 +25,16 @@ bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
 bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uint32_t *out);
 /* Общая сборка команды; count==capacity означает переполнение. */
 uint16_t comm_at_copy(char *out, uint16_t capacity, uint16_t pos, const char *text);
+/* Добавить десятичное число в ограниченный буфер команды. */
 uint16_t comm_at_decimal(char *out, uint16_t capacity, uint16_t pos, uint16_t value);
 /* Ответы модема разрешают пробел перед числом; команда QIRD — нет. */
 #define comm_at_scan(p,n,pos,limit,out) \
   (*(pos) = comm_at_spaces(p,n,*(pos)), comm_at_number(p,n,pos,limit,out))
 
 #define COMM_AT_POLL_BYTES 128u
-/* PDU - ответ SMS: строка за заголовком (+CMGR:/+CMGL:) идёт телом без разбора,
+/* PDU — ответ SMS: строка за заголовком (+CMGR:/+CMGL:) идёт телом без разбора,
    длинная - кусками по строке AT (LINE, detail=1 - будет продолжение). */
-enum { COMM_AT_TEXT, COMM_AT_PROMPT, COMM_AT_SLM_QIRD, COMM_AT_M66_QIRD, COMM_AT_SEND, COMM_AT_PDU, COMM_AT_CALL };
+enum { COMM_AT_TEXT, COMM_AT_PROMPT, COMM_AT_SLM_QIRD, COMM_AT_SEND, COMM_AT_PDU, COMM_AT_CALL };
 enum { COMM_AT_LINE, COMM_AT_URC, COMM_AT_DONE, COMM_AT_NO_ANSWER, COMM_AT_STREAM_ERROR };
 enum { COMM_AT_OK, COMM_AT_ERROR, COMM_AT_CME, COMM_AT_GOT_PROMPT,
        COMM_AT_TIMEOUT, COMM_AT_LINE_OVERFLOW, COMM_AT_UART_ERROR,
@@ -42,7 +51,7 @@ typedef struct {
      LINE/URC: detail=0; DONE: detail=результат, count=код CME.
      Текст CME выдаётся LINE, код неизвестен (UINT16_MAX).
      NO_ANSWER/STREAM_ERROR: detail=причина, data=NULL, count=0.
-     Нельзя запускать AT/poll из обработчика: движок отвергает рекурсию. */
+     Обработчики только принимают ответ; следующий AT запускает владелец из главного цикла. */
   void (*event)(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t detail);
   /* Тело предварительное: потребитель фиксирует его только после DONE OK.
      Возвращает принятое число, 0 — обратное давление. Копии в AT нет. */
@@ -55,13 +64,16 @@ typedef struct {
    Старые финалы до +CMEE: игнорируются, потерянный финал не задерживает запрос.
    Потеря границ блокирует движок; init не заменяет отмену UART/сеанса. */
 void comm_at_init(const comm_at_handlers_t *handlers, uint32_t recovery_ms);
+/* Скопировать готовую команду и начать её неблокирующую передачу. */
 uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms);
 /* После приглашения: данные живут до DONE/abort. finals: SEND - SEND OK/FAIL (QISEND,
    TCP ACK проверяет канал отдельно), TEXT - OK/ERROR/+CMS ERROR (CMGS). */
 uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint8_t finals, uint32_t timeout_ms, uint32_t now_ms);
+/* Обработать ограниченный объём RX и сроки текущего AT. */
 void comm_at_poll(uint32_t now_ms);
 /* Канал назначает приёмник после init AT, до первой операции чтения. */
 void comm_at_sink(uint16_t (*binary)(const uint8_t *, uint16_t));
+/* Один раз проверить строковую настройку на границе запуска. */
 bool comm_at_field(const char *text, size_t capacity, bool host);
 /* После ошибки границ/потери тела остаётся занят до init нового сеанса. */
 bool comm_at_busy(void);

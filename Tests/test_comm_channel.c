@@ -65,7 +65,9 @@ static void channel_read_tests(void)
   sim_feed("+QIURC: \"recv\",0\r\n"); channel_until(15000);
   CHECK(comm_channel_ready() && sim_qird == 0); /* Данные до TCP/вместимости не теряются. */
 #if DOMOVOI_DIAG
+#if DOMOVOI_DIAG
   uint16_t tcp_time = slm.diag.steps[SLM_TCP];
+#endif
 #endif
   sim_read_size = 64; comm_channel_rx_capacity(sim_read_size);
   for (unsigned i = 0; i < 100; ++i) sim_tick();
@@ -88,7 +90,7 @@ static void channel_error_tests(void)
   channel_model_reset(); sim_open_delay = 151000;  channel_until(170000);
   CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_TCP);
   for (unsigned i = 0; i < 200; ++i) sim_tick();
-  CHECK(!comm_channel_ready() && slm.diag.failure_reason[0] == SLM_ERR_TIMEOUT);
+  CHECK(!comm_channel_ready());
   channel_model_reset(); sim_open_error = 1;  channel_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_TCP && slm.attempt.status.modem_code == 566);
 }
 static void channel_edge_tests(void)

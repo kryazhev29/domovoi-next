@@ -1,4 +1,8 @@
-/* Доработка: Кряжев А., 2026. SMS в режиме PDU: приём по +CMTI, отправка, без кучи. */
+/* Доработка: Кряжев А., 2026.
+   Принимает и отправляет SMS в формате PDU.
+   Разбор проверяет внешний поток и преобразует GSM/UCS2 в cp1251.
+   Сообщение удаляется с SIM после чтения, приложение принимает его вне AT.
+*/
 #include "comm_sms.h"
 #include "comm_modem.h"
 #include "comm_timeouts.h"
@@ -24,6 +28,7 @@ static struct {
   char text[SMS_TEXT + 1u];
   uint8_t out[2u * (19u + SMS_UD) + 1u];
 } msg;
+/* Добавить декодированный символ в ограниченное поле SMS. */
 static void sms_char(char c)
 {
   if (msg.alpha) { if (msg.nlen + 1u < sizeof(msg.number)) msg.number[msg.nlen++] = c; }
@@ -43,6 +48,7 @@ static char sms_cp1251(uint16_t u)
   return u < 0x80 ? (char)u : u >= 0x410 && u <= 0x44F ? (char)(u - 0x410 + 0xC0)
        : u == 0x401 ? (char)0xA8 : u == 0x451 ? (char)0xB8 : '?';
 }
+/* Разобрать накопленные семибитные символы PDU. */
 static void sms_unpack(uint8_t o)
 {
   msg.acc |= (uint16_t)o << msg.bits; msg.bits = (uint8_t)(msg.bits + 8u);
@@ -50,6 +56,7 @@ static void sms_unpack(uint8_t o)
     sms_septet((uint8_t)(msg.acc & 0x7Fu)); msg.acc >>= 7; msg.bits = (uint8_t)(msg.bits - 7u); --msg.septets;
   }
 }
+/* Принять следующий октет внешней PDU по её полю. */
 static void sms_octet(uint8_t o)
 {
   switch (msg.field) {
@@ -97,19 +104,23 @@ static void sms_octet(uint8_t o)
   default: msg.field = P_BAD; break; /* данные после конца */
   }
 }
+/* Преобразовать шестнадцатеричный символ PDU. */
 static uint8_t sms_hex(uint8_t c)
 { return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10u : c >= 'a' && c <= 'f' ? c - 'a' + 10u : 16u; }
+/* Проверить индекс сообщения в ограниченном ответе SIM. */
 static uint8_t sms_index(const uint8_t *p, uint16_t n, uint16_t pos)
 {
   uint32_t v;
   return comm_at_scan(p, n, &pos, 255u, &v) && (pos == n || p[pos] == ',') ? (uint8_t)v : 0u;
 }
+/* Добавить новый индекс SIM без дубля или назначить повторный обзор. */
 static void sms_queue(uint8_t index)
 {
   for (uint8_t i = 0; i < msg.count; ++i) if (msg.queue[i] == index) return;
   if (msg.count < sizeof(msg.queue)) msg.queue[msg.count++] = index;
   else msg.scan = 1; /* не влезло - повторный обзор SIM после разбора очереди */
 }
+/* Разобрать заголовок или очередной кусок тела SMS. */
 static void sms_line(const uint8_t *p, uint16_t n, uint16_t detail)
 {
   (void)detail;
@@ -137,12 +148,14 @@ static void sms_urc(const uint8_t *p, uint16_t n)
   uint8_t i = pos ? sms_index(p, n, pos) : 0;
   if (i) sms_queue(i);
 }
+/* Назначить приём SMS приложением и начать новый сеанс. */
 void comm_sms_init(bool (*received)(char *, char *))
 {
   memset(&msg, 0, sizeof(msg));
   msg.received = received; msg.session = (uint8_t)(comm_modem_session() - 1u);
   comm_modem_listen(COMM_URC_SMS, sms_urc);
 }
+/* Занять служебный слот для операции SMS. */
 static bool sms_issue(uint8_t op, const char *cmd, uint8_t mode, uint8_t timeout)
 {
   msg.req.cmd = cmd; msg.req.mode = mode; msg.req.timeout = timeout;
@@ -150,12 +163,14 @@ static bool sms_issue(uint8_t op, const char *cmd, uint8_t mode, uint8_t timeout
   if (!comm_modem_side(&msg.req)) return false;
   msg.op = op; return true;
 }
+/* Собрать команду чтения, удаления или обзора SIM. */
 static void sms_command(uint8_t op, const char *at, uint8_t index, uint8_t mode, uint8_t timeout)
 {
   uint16_t n = comm_at_copy(msg.cmd, sizeof(msg.cmd), 0, at);
   if (index) n = comm_at_decimal(msg.cmd, sizeof(msg.cmd), n, index);
   (void)n; sms_issue(op, msg.cmd, mode, timeout);
 }
+/* Применить завершение настройки, чтения, удаления или отправки SMS. */
 static void sms_done(uint8_t r)
 {
   uint8_t op = msg.op;
@@ -167,12 +182,13 @@ static void sms_done(uint8_t r)
     /* Прочитанная или битая - стирается, иначе SIM заполнится и новые SMS не придут. */
     msg.erase = msg.queue[0];
     memmove(msg.queue, msg.queue + 1, --msg.count);
-    if (r == COMM_AT_OK && msg.field == P_END && msg.nlen && msg.received) {
+    if (r == COMM_AT_OK && msg.field == P_END && msg.nlen) {
       msg.number[msg.nlen] = 0; msg.text[msg.tlen] = 0; msg.deliver = 1;
     }
   } else if (op == SMS_OP_DELETE) msg.erase = 0;
   else if (op == SMS_OP_SEND) msg.tx = 0;
 }
+/* Продвинуть очередь SIM и передать готовое сообщение приложению. */
 void comm_sms_poll(uint32_t now_ms)
 {
   msg.now = now_ms;
@@ -198,6 +214,7 @@ void comm_sms_poll(uint32_t now_ms)
   else if (msg.count) sms_command(SMS_OP_READ, "AT+CMGR=", msg.queue[0], COMM_AT_PDU, COMM_T_SMS);
   else if (msg.scan) { msg.scan = 0; sms_command(SMS_OP_LIST, "AT+CMGL=4", 0, COMM_AT_PDU, COMM_T_SMS); }
 }
+/* Добавить октет в шестнадцатеричное тело исходящей SMS. */
 static void sms_put(uint8_t o)
 {
   static const char hex[] = "0123456789ABCDEF";
@@ -209,9 +226,10 @@ static uint8_t sms_gsm(uint8_t c)
   return c == '@' ? 0 : c == '$' ? 2 : c == '_' ? 0x11 : c == '\r' || c == '\n' ? c
        : c < 0x20 || (c >= 0x5B && c <= 0x5E) || c == 0x60 || c >= 0x7B ? '?' : c;
 }
+/* Проверить номер и собрать исходящую SMS в свободном слоте. */
 bool comm_sms_send(const char *number, const char *text)
 {
-  if (msg.tx || !number || !text) return false;
+  if (msg.tx) return false;
   uint8_t type = 0x81, n = 0, len = 0;
   if (*number == '+') { ++number; type = 0x91; }
   while (number[n]) { if (number[n] < '0' || number[n] > '9' || ++n > 20u) return false; }

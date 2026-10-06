@@ -20,6 +20,8 @@ profiles={'v5':[]}  # только v5 (решение владельца 03.10.2
 # Сравниваем тем же компилятором, профилем и флагами, все выходы — в final.
 baseline=out/'comm_uart-before.c'
 baseline.write_text(subprocess.check_output(['git','show','HEAD:Modules/comm_uart.c'],cwd=root).decode('cp1251'),encoding='utf-8',newline='')
+# Исторический драйвер собирается со своим заголовком, а не с новым контрактом.
+(out/'comm_uart.h').write_text(subprocess.check_output(['git','show','HEAD:Modules/comm_uart.h'],cwd=root).decode('cp1251'),encoding='utf-8',newline='')
 for name,defines in profiles.items():
     before=out/('comm_uart-before-'+name+'.o')
     after=out/('comm_uart-'+name+'.o')

@@ -1,4 +1,8 @@
-/* Доработка: Кряжев А., 2026. AT: строки, prompt и тело строго по длине. */
+/* Доработка: Кряжев А., 2026.
+   Разбирает строки AT, приглашения и двоичное тело SLM336.
+   Проверяет внешние ответы один раз; внутренние команды уже собраны владельцем.
+   Обработчики принимают данные, следующий запрос запускает главный цикл.
+*/
 #include "comm_at.h"
 #include "comm_uart.h"
 #include <string.h>
@@ -8,24 +12,27 @@ static comm_at_handlers_t handlers;
 static uint32_t started, timeout, recovery;
 static uint16_t remaining, read_limit, modem_code;
 static uint8_t command_count, line_count;
-static uint8_t state, mode, grammar, result, in_poll, cr, prompt_space, header, sync_seen;
+static uint8_t state, mode, grammar, result, cr, prompt_space, header, sync_seen;
 /* PDU: строка после заголовка ответа - тело SMS (hex), без разбора и кусками;
    1 - ждём тело, 2 - отдан кусок. */
 static uint8_t pdu_body;
 enum { IDLE, RUN, COMPLETE, DRAIN, CALL_DRAIN, SYNC_SEND, SYNC_WAIT, SYNC_COMPLETE, FAULT };
-enum { LINES, M66_HEADER, BODY, BODY_CR, BODY_LF };
+enum { LINES, BODY, BODY_CR, BODY_LF };
 
+/* Передать событие единственному обработчику AT. */
 static void event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t detail)
 {
-  if (handlers.event) handlers.event(kind, data, count, detail);
+  handlers.event(kind, data, count, detail);
 }
 
+/* Сравнить всю ограниченную строку с ожидаемым ответом. */
 bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text)
 {
   size_t n = strlen(text);
   return count == n && !memcmp(data, text, n);
 }
 
+/* Проверить начало ограниченной строки без выхода за границу. */
 bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text)
 {
   size_t n = strlen(text);
@@ -48,6 +55,7 @@ bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
   return *pos != begin;
 }
 
+/* Принять ожидаемый символ грамматики и сдвинуть позицию. */
 static bool take(const uint8_t *data, uint16_t count, uint16_t *pos, uint8_t c)
 {
   if (*pos >= count || data[*pos] != c) return false;
@@ -55,12 +63,14 @@ static bool take(const uint8_t *data, uint16_t count, uint16_t *pos, uint8_t c)
   return true;
 }
 
+/* Пропустить разрешённые пробелы перед полем ответа. */
 uint16_t comm_at_spaces(const uint8_t *data, uint16_t count, uint16_t pos)
 {
   while (pos < count && data[pos] == ' ') ++pos;
   return pos;
 }
 
+/* Очистить грамматику для нового запроса. */
 static void parser_reset(void)
 {
   line_count = remaining = 0;
@@ -68,6 +78,7 @@ static void parser_reset(void)
   cr = prompt_space = header = pdu_body = 0;
 }
 
+/* Зафиксировать потерю границ и запретить дальнейший разбор. */
 static void fault(uint8_t reason)
 {
   uint8_t kind = (state >= RUN && state <= COMPLETE) ? COMM_AT_DONE
@@ -77,31 +88,22 @@ static void fault(uint8_t reason)
   event(kind, NULL, 0, reason);
 }
 
+/* Проверить истечение срока с учётом оборота счётчика времени. */
 static bool expired(uint32_t now, uint32_t duration)
 {
   return (uint32_t)(now - started) >= duration;
 }
 
-/* Длина запроса QIRD — из собственной проверенной команды, не из URC. */
-static bool qird_request(uint8_t format)
+/* Размер тела известен из собственной команды канала. */
+static void qird_request(void)
 {
-  uint32_t values[4];
-  const char *pattern = format == COMM_AT_SLM_QIRD ? "AT+QIRD=\002,\002"
-    : "AT+QIRD=\002,\002,\002,\002";
-  if (!comm_at_parse(command,(uint16_t)(command_count - 1u),pattern,values)) return false;
-  uint8_t index = 1;
-  if (format == COMM_AT_M66_QIRD) {
-    if (values[0] > 1 || !values[1] || values[1] > 2 || values[2] > 5) return false;
-    index = 3;
-  } else if (values[0] > 7) return false;
-  if (!values[index] || values[index] > 1500) return false;
-  read_limit = (uint16_t)values[index]; return true;
+  const char *p = (const char *)command + sizeof("AT+QIRD=0,") - 1u;
+  while (*p >= '0' && *p <= '9') read_limit = (uint16_t)(read_limit * 10u + *p++ - '0');
 }
+/* Начать чистый AT после отмены прежнего UART. */
 void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
 {
-  if (in_poll) return;
-  memset(&handlers, 0, sizeof(handlers));
-  if (callbacks) handlers = *callbacks;
+  handlers = *callbacks;
   state = IDLE;
   command_count = read_limit = modem_code = result = 0;
   recovery = recovery_ms;
@@ -109,6 +111,7 @@ void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
   parser_reset();
 }
 
+/* Один раз проверить строковую настройку на границе запуска. */
 bool comm_at_field(const char *p, size_t size, bool host)
 {
   size_t i;
@@ -121,54 +124,48 @@ bool comm_at_field(const char *p, size_t size, bool host)
   }
   return false;
 }
+/* Назначить потребителя двоичного тела канала. */
 void comm_at_sink(uint16_t (*binary)(const uint8_t *, uint16_t))
-{ if (!in_poll) handlers.binary = binary; }
+{ handlers.binary = binary; }
 
+/* Сообщить, занят ли движок запросом или восстановлением границ. */
 bool comm_at_busy(void)
 {
-  return state != IDLE || in_poll;
+  return state != IDLE;
 }
+/* Сообщить, ждёт ли модем данные после приглашения. */
 bool comm_at_prompt(void) { return state == IDLE && result == COMM_AT_GOT_PROMPT; }
 
+/* Разрешить новый запрос только при пустом приёмном потоке. */
 static bool available(void)
 {
   const uint8_t *view;
   return !comm_at_busy() && !line_count && !cr && !comm_uart_peek(&view);
 }
+/* Начать ожидание ответа заданного режима. */
 static void run(uint8_t next_mode, uint32_t duration, uint32_t now_ms)
 {
   parser_reset(); modem_code = 0;
   mode = next_mode; started = now_ms; timeout = duration; state = RUN;
 }
+/* Скопировать готовую команду и начать её неблокирующую передачу. */
 uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
 {
-  uint16_t i;
   uint8_t trailing_space = prompt_space;
   if (!available()) return COMM_AT_BUSY;
-  if (!request || !request->command || request->count < 2u
-      || request->count >= sizeof(command) || request->mode == COMM_AT_SEND || request->mode > COMM_AT_CALL
-      || !request->timeout_ms || request->timeout_ms > INT32_MAX
-      || !recovery || recovery > INT32_MAX) return COMM_AT_INVALID;
-  if (request->command[0] != 'A' || request->command[1] != 'T') return COMM_AT_INVALID;
-  if (request->mode == COMM_AT_CALL && (request->count != 3u
-      || (memcmp(request->command, "ATA", 3u) && memcmp(request->command, "ATH", 3u)))) return COMM_AT_INVALID;
-  for (i = 0; i < request->count; ++i) {
-    uint8_t value = request->command[i];
-    if (value < ' ' || value > '~') return COMM_AT_INVALID;
-    command[i] = value;
-  }
+  memcpy(command, request->command, request->count);
   command[request->count] = '\r';
   command_count = (uint8_t)(request->count + 1u);
   mode = request->mode;
   read_limit = 0;
-  if ((mode == COMM_AT_SLM_QIRD || mode == COMM_AT_M66_QIRD)
-      && (!handlers.binary || !qird_request(mode))) return COMM_AT_INVALID;
+  if (mode == COMM_AT_SLM_QIRD) qird_request();
   if (!comm_uart_tx(command, command_count)) return COMM_AT_BUSY;
   run(mode, request->timeout_ms, now_ms);
   prompt_space = trailing_space;
   return COMM_AT_ACCEPTED;
 }
 
+/* Отличить ответ текущей команды от постороннего уведомления. */
 static bool solicited(void)
 {
   uint16_t n = 2;
@@ -189,6 +186,7 @@ uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names)
   }
   return 0;
 }
+/* Определить строку самостоятельного уведомления модема. */
 static bool urc(void)
 {
   return (line_count && line[0] == '+' && !solicited()) || (state != RUN && state != DRAIN)
@@ -196,46 +194,30 @@ static bool urc(void)
                                       "AT READY\0RDY\0SEND OK\0SEND FAIL\0");
 }
 
-/* M66 AT V2.1: IPv4:port,TCP|UDP,length; поля строго без пробелов. */
-static bool m66_length(uint16_t pos, uint32_t *length)
-{
-  uint32_t values[6];
-  const uint8_t *p = line + pos; uint16_t n = (uint16_t)(line_count - pos);
-  if (!comm_at_parse(p,n,"\003.\003.\003.\003:\004,TCP,\002",values)
-      && !comm_at_parse(p,n,"\003.\003.\003.\003:\004,UDP,\002",values)) return false;
-  *length = values[5];
-  return values[4] && values[5] <= read_limit;
-}
+/* Принять проверенную длину тела QIRD. */
 static void binary_header(void)
 {
-  uint16_t pos = grammar == M66_HEADER ? 0u : comm_at_spaces(line, line_count, 6);
+  uint16_t pos = comm_at_spaces(line, line_count, 6);
   uint32_t n;
   if (header) { fault(COMM_AT_BAD_FRAME); return; }
-  if (mode == COMM_AT_M66_QIRD && pos == line_count) {
-    grammar = M66_HEADER;
-    return;
+  if (!comm_at_number(line, line_count, &pos, read_limit, &n) || pos != line_count) {
+    fault(COMM_AT_BAD_LENGTH); return;
   }
-  if (mode == COMM_AT_SLM_QIRD) {
-    if (!comm_at_number(line, line_count, &pos, read_limit, &n) || pos != line_count) {
-      fault(COMM_AT_BAD_LENGTH); return;
-    }
-  } else if (!m66_length(pos, &n)) { fault(COMM_AT_BAD_LENGTH); return; }
   header = 1;
   remaining = (uint16_t)n;
   grammar = n ? BODY : LINES;
 }
 
+/* Передать данные после уже полученного приглашения. */
 uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint8_t finals, uint32_t timeout_ms, uint32_t now_ms)
 {
   if (!available()) return COMM_AT_BUSY;
-  if (!data || !count || !timeout_ms || timeout_ms > INT32_MAX || result != COMM_AT_GOT_PROMPT
-      || (finals != COMM_AT_SEND && finals != COMM_AT_TEXT))
-    return COMM_AT_INVALID;
   if (!comm_uart_tx(data, count)) return COMM_AT_BUSY;
   run(finals, timeout_ms, now_ms); prompt_space = 1; command_count = 0;
   return COMM_AT_ACCEPTED;
 }
 
+/* Распознать завершение команды и код ошибки модема. */
 static bool final(uint8_t *code)
 {
   uint16_t pos; uint32_t value;
@@ -261,6 +243,7 @@ static bool final(uint8_t *code)
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma inline=never
 #endif
+/* Разобрать законченную строку согласно текущей грамматике. */
 static void complete_line(void)
 {
   uint8_t code;
@@ -271,7 +254,7 @@ static void complete_line(void)
   if (pdu_body) { pdu_body = 0; event(COMM_AT_LINE, line, line_count, 0); return; }
   if (comm_at_prefix(line, line_count, "+QIRD:")
       && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
-          || (mode != COMM_AT_SLM_QIRD && mode != COMM_AT_M66_QIRD))) {
+          || mode != COMM_AT_SLM_QIRD)) {
     fault(COMM_AT_BAD_FRAME); return; /* Неожиданное тело не становится текстом. */
   }
   if (mode == COMM_AT_CALL && state == RUN && comm_at_equal(line, line_count, "NO CARRIER")) {
@@ -279,8 +262,7 @@ static void complete_line(void)
   }
   if (final(&code)) {
     if (state == RUN) {
-      if (code == COMM_AT_OK && ((mode == COMM_AT_SLM_QIRD && !header)
-          || grammar == M66_HEADER)) { fault(COMM_AT_BAD_FRAME); return; }
+      if (code == COMM_AT_OK && (mode == COMM_AT_SLM_QIRD && !header)) { fault(COMM_AT_BAD_FRAME); return; }
       if (code == COMM_AT_CME && modem_code == UINT16_MAX)
         event(COMM_AT_LINE, line, line_count, 0);
       result = code;
@@ -291,10 +273,8 @@ static void complete_line(void)
     return;
   }
   if ((state == RUN || (state >= DRAIN && state <= SYNC_WAIT))
-      && (mode == COMM_AT_SLM_QIRD || mode == COMM_AT_M66_QIRD)) {
-    if (comm_at_prefix(line, line_count, "+QIRD:") || grammar == M66_HEADER) {
-      if (grammar != M66_HEADER || !urc()) { binary_header(); return; }
-    }
+      && mode == COMM_AT_SLM_QIRD) {
+    if (comm_at_prefix(line, line_count, "+QIRD:")) { binary_header(); return; }
   }
   if (state == SYNC_WAIT && comm_at_prefix(line, line_count, "+CMEE:")) {
     uint16_t pos = comm_at_spaces(line, line_count, sizeof("+CMEE:") - 1u); uint32_t value;
@@ -307,6 +287,7 @@ static void complete_line(void)
   }
 }
 
+/* Принять один байт строки, приглашения или разделителя тела. */
 static void byte(uint8_t value)
 {
   if (grammar == BODY_CR || grammar == BODY_LF) {
@@ -353,15 +334,15 @@ bool comm_at_call_abort(uint32_t now_ms)
   if (running) event(COMM_AT_DONE, NULL, 0, COMM_AT_TIMEOUT);
   return true;
 }
+/* Обработать ограниченный объём RX и сроки текущего AT. */
 void comm_at_poll(uint32_t now_ms)
 {
   const uint8_t *view;
   uint16_t budget = COMM_AT_POLL_BYTES, count, used;
-  if (in_poll || state == FAULT) return;
-  in_poll = 1;
-  if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); goto end; }
+  if (state == FAULT) return;
+  if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); return; }
   if ((state >= RUN && state <= COMPLETE) && expired(now_ms, timeout)) {
-    if (mode == COMM_AT_CALL) { comm_at_call_abort(now_ms); goto end; }
+    if (mode == COMM_AT_CALL) { comm_at_call_abort(now_ms); return; }
     /* Отмена сохраняет грамматику и остаток тела: поиск OK внутри запрещён. */
     state = grammar != LINES || line_count || cr ? DRAIN : SYNC_SEND;
     sync_seen = 0;
@@ -372,7 +353,7 @@ void comm_at_poll(uint32_t now_ms)
       && expired(now_ms, recovery)) {
     state = FAULT;
     event(COMM_AT_NO_ANSWER, NULL, 0, COMM_AT_TIMEOUT);
-    goto end;
+    return;
   }
   while (budget && state != FAULT && (count = comm_uart_peek(&view)) != 0u) {
     if (count > budget) count = budget;
@@ -411,8 +392,6 @@ void comm_at_poll(uint32_t now_ms)
       if (comm_uart_tx(command, command_count)) { parser_reset(); state = SYNC_WAIT; }
     }
   }
-end:
-  in_poll = 0;
 }
 
 /* Возвращает capacity при переполнении; следующие куски ничего не пишут. */
@@ -422,6 +401,7 @@ uint16_t comm_at_copy(char *out, uint16_t capacity, uint16_t pos, const char *te
   if (pos < capacity) out[pos] = 0;
   return pos;
 }
+/* Добавить десятичное число в ограниченный буфер команды. */
 uint16_t comm_at_decimal(char *out, uint16_t capacity, uint16_t pos, uint16_t value)
 {
   uint16_t divisor = 10000u;

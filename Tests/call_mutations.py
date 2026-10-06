@@ -16,28 +16,28 @@ def main():
     faults = (
         ('hold-timer', 'now_ms - call.answered >= comm_timeouts[COMM_T_CALL_HOLD]', 'now_ms - call.answered >= comm_timeouts[COMM_T_STABLE]'),
         ('call-queue-delay', 'slm_side_issue(); return true;', 'return true;'),
-        ('startup-preempts-call', 'if (slm.call_phase == 1u && slm_side_allowed()) goto end;', ''),
+        ('startup-preempts-call', 'if (slm.call_active && slm_side_allowed()) return;', ''),
         ('absolute-limit', 'now_ms - call.since >= comm_timeouts[COMM_T_CALL_LIMIT]', 'now_ms - call.since >= comm_timeouts[COMM_T_STABLE]'),
-        ('ATA-timeout-before-resync', 'if (mode == COMM_AT_CALL) { comm_at_call_abort(now_ms); goto end; }', 'if (0) { comm_at_call_abort(now_ms); goto end; }'),
+        ('ATA-timeout-before-resync', 'if (mode == COMM_AT_CALL) { comm_at_call_abort(now_ms); return; }', 'if (0) { comm_at_call_abort(now_ms); return; }'),
         ('repeat-RING', 'if (call.state == CALL_IDLE) call_begin();', 'if (call.state == CALL_IDLE) call_begin(); else if (call.state == CALL_DONE) call.state = CALL_ANSWER;'),
         ('prompt-guard', 'comm_at_busy() || comm_at_prompt()) return;', 'comm_at_busy()) return;'),
-        ('fast-reopen', 'ch.operation_since = ch.now; ch.reopen_pause = 0;', 'ch.operation_since = ch.now; ch.reopen_pause = 30000;'),
-        ('expected-loss-count', 'if (ch.call_stage && ch.call_stage != DATA_REGISTER) { channel_call_loss(); return; }', 'if (0) { channel_call_loss(); return; }'),
-        ('PDP-context', 'v[0] == 1 && v[1] == 1 && v[2] >= 1', 'v[0] > 0 && v[1] == 1 && v[2] >= 1'),
-        ('TCP-context', 'v[2] == 2 && v[3] == 1;', 'v[2] == 2 && v[3] > 0;'),
-        ('registration-URC-leaks-answer', 'if (!urc) ch.answer = 1;', 'ch.answer = 1;'),
-        ('network-URC', 'if (ch.call_stage && kind == COMM_AT_URC) channel_call_net(p,n,true);', 'if (0) channel_call_net(p,n,true);'),
+        ('fast-reopen', 'if (ch.call.expected) ch.reopen_pause = 0;', 'if (ch.call.expected) ch.reopen_pause = 30000;'),
+        ('first-open-counted', 'if (!ch.call.expected) ++ch.connections;', '++ch.connections;'),
+        ('live-TCP-reopened', 'if (ch.call.lost) comm_channel_reopen(0);', 'comm_channel_reopen(0);'),
+        ('expected-PDP-pause', 'if (comm_channel_expected() && comm_modem_status()->reason == SLM_ERR_PDP) rc_schedule(false, 0);', 'if (0) rc_schedule(false, 0);'),
+        ('network-URC-ignored', 'if ((comm_at_parse(p,n,"+CGREG:\\005",values)', 'if (0 && (comm_at_parse(p,n,"+CGREG:\\005",values)'),
+        ('TCP-attempt-failure-free', 'if (!ch.call.expected) ++ch.connections;\n    ch.call.expected = ch.call.lost = 0;', 'if (!ch.call.expected) ++ch.connections;'),
     )
     changed = []
     for name, old, new in faults:
         assert old in code, (name, old)
         changed.append((name, code.replace(old, new)))
-    old = 'if (call.caller) call.caller(call.number);'
+    old = 'call.caller(call.number);'
     assert code.count(old) == 1
     mutant = code.replace(old, '')
     old = 'if (r == COMM_AT_OK) { call.answered = now_ms;'
     assert old in mutant
-    changed.append(('answer-before-action', mutant.replace(old, 'if (r == COMM_AT_OK) { if (call.caller) call.caller(call.number); call.answered = now_ms;', 1)))
+    changed.append(('answer-before-action', mutant.replace(old, 'if (r == COMM_AT_OK) { call.caller(call.number); call.answered = now_ms;', 1)))
     with tempfile.TemporaryDirectory(dir=out) as folder:
         folder = Path(folder)
         for name, mutant in changed:

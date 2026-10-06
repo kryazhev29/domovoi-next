@@ -1,4 +1,8 @@
-/* Доработка: Кряжев А., 2026. SLM336 до активного PDP, без протокола сервера. */
+/* Доработка: Кряжев А., 2026.
+   Описывает команды и шаги запуска SLM336 платы v5.
+   Переходы таблицы сохраняют порядок питания, SIM, сети и PDP.
+   Профилей других модемов и выбора драйвера нет.
+*/
 #ifndef MODEM_SLM336_H
 #define MODEM_SLM336_H
 #include <stdint.h>
@@ -19,21 +23,16 @@ enum { SLM_IDLE, SLM_STARTING, SLM_READY, SLM_FAILED };
 enum { SLM_ERR_NONE, SLM_ERR_TIMEOUT, SLM_ERR_AT, SLM_ERR_RESPONSE,
        SLM_ERR_NO_SIM, SLM_ERR_PIN, SLM_ERR_PUK, SLM_ERR_NETWORK,
        SLM_ERR_PDP, SLM_ERR_TCP, SLM_ERR_STREAM, SLM_ERR_NO_ANSWER, SLM_ERR_TYPE };
-/* Длительности последней попытки: 10 мс, насыщение при 655,35 с.
-   Кольцо сбоев — единственная история; времена в секундах от старта попытки. */
+#if DOMOVOI_DIAG
+/* Снимок команды 112: времена шагов и десять последних сбоев. */
 typedef struct {
-  #if DOMOVOI_DIAG
   uint16_t steps[SLM_STEP_COUNT], phases[SLM_PHASE_COUNT];
-  uint16_t failure_seconds[10]; /* насыщение при 65535 с */
-  #endif
+  uint16_t failure_seconds[10];
   uint8_t failure_step[10], failure_reason[10];
-  #if DOMOVOI_DIAG
   uint16_t last_code;
   uint8_t failure_next, failure_count;
-  #else
-  uint8_t failure_next;
-  #endif
 } slm_diag_t;
+#endif
 typedef struct {
 #if DOMOVOI_DIAG
   uint32_t completed_steps;
@@ -46,7 +45,7 @@ typedef struct {
 #endif
 } slm_status_t;
 /* Тип модема в настройках и статусе (Протокол2, команда 105): значения прежние. */
-enum { MODEM_TYPE_AUTO = 0, MODEM_TYPE_UG95 = 1, MODEM_TYPE_SLM336 = 2, MODEM_TYPE_M66 = 3,
+enum { MODEM_TYPE_AUTO = 0, MODEM_TYPE_SLM336 = 2,
        MODEM_TYPE_UNDEF = 255 };
 enum { SLM_CFG_HOST, SLM_CFG_APN, SLM_CFG_LOGIN, SLM_CFG_PASSWORD,
        SLM_CFG_PORT, SLM_CFG_TYPE, SLM_CFG_NETWORK, SLM_CFG_HOST2, SLM_CFG_PORT2, SLM_CFG_RESERVE };
@@ -64,24 +63,37 @@ typedef struct {
 /* Только для изолированного нового сеанса: отменяет UART и включает v5.
    Копируются только функции-геттеры, heap не используется. */
 bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms);
-/* Канал получает строки своей операции и URC; вызов AT из callback запрещён. */
+/* Канал получает строки своей операции и URC; вызов AT из обработчика запрещён. */
 void comm_modem_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t));
+/* Передать команду канала после завершения настройки модема. */
 uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms);
+/* Передать данные канала после приглашения QISEND. */
 uint8_t comm_modem_payload(const uint8_t *data, uint16_t count, uint32_t now_ms);
+/* Узнать, разрешён ли резервный адрес сервера. */
 bool comm_modem_reserve(void);
+/* Сообщить о занятом AT или восстановлении его границ. */
 bool comm_modem_busy(void);
+/* Продвинуть питание, AT и единственную попытку запуска. */
 void comm_modem_poll(uint32_t now_ms);
+/* Сообщить, готовы ли SIM, сеть и мобильный интернет. */
 bool comm_modem_ready(void);
+/* Выдать состояние запуска модема. */
 uint8_t comm_modem_state(void);
 /* UINT8_MAX означает, что DONE ещё не получен; результат забирается один раз. */
 uint8_t comm_modem_result(void);
 /* STEP_COUNT завершает текущий шаг, STEP_COUNT+1 обновляет снимок. */
 void comm_modem_record(uint8_t step, uint8_t reason, uint16_t code);
+#if DOMOVOI_DIAG
+/* Выдать стендовые времена шагов и историю отказов. */
 const slm_diag_t *comm_modem_diag(void);
+#endif
+/* Выдать текущее состояние и причину отказа модема. */
 const slm_status_t *comm_modem_status(void);
+/* Снять питание и отменить прежний сеанс UART. */
 void comm_modem_off(void);
 /* URC (RING, +CLIP, +CMTI) - слушателям при любом состоянии AT; AT из них нельзя. */
 enum { COMM_URC_CALL, COMM_URC_SMS, COMM_URC_BALANCE, COMM_URC_COUNT };
+/* Подключить постоянного потребителя уведомлений. */
 void comm_modem_listen(uint8_t slot, void (*urc)(const uint8_t *, uint16_t));
 /* Номер попытки запуска модема: изменился - модем настроен заново. */
 uint8_t comm_modem_session(void);
@@ -97,11 +109,15 @@ typedef struct {
 } comm_side_t;
 /* Одна в работе; false - занято, чужой результат не забран или модем не настроен. */
 bool comm_modem_side(const comm_side_t *req);
-/* Вызов владеет служебным слотом до отбоя; 2 - проверка данных после него. */
-void comm_modem_call(uint8_t phase);
+/* Голосовой вызов владеет служебным слотом до отбоя. */
+void comm_modem_call(bool active);
+/* Передать потерю мобильных данных обычному восстановлению. */
 void comm_modem_data_failed(uint8_t reason);
+/* Поставить голосовую команду с приоритетом над запуском данных. */
 bool comm_modem_call_side(const comm_side_t *req);
+/* Выдать время фактического начала голосовой команды. */
 bool comm_modem_side_started(const comm_side_t *req, uint32_t *since);
+/* Передать движку AT аварийный отбой. */
 bool comm_modem_call_abort(uint32_t now_ms);
 /* UINT8_MAX - ещё в работе или не req; результат AT один раз, перезапуск даёт ERROR. */
 uint8_t comm_modem_side_result(const comm_side_t *req);

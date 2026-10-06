@@ -1,4 +1,8 @@
-/* Доработка: Кряжев А., 2026. Баланс SIM: USSD раз в сутки, ответ оператора -> рубли. */
+/* Доработка: Кряжев А., 2026.
+   Запрашивает баланс SIM через USSD и разбирает ответ оператора.
+   Запрос идёт раз в сутки, отказ повторяется через заданную паузу.
+   Меню оператора закрывается после получения результата.
+*/
 #include "comm_balance.h"
 #include "comm_modem.h"
 #include "comm_timeouts.h"
@@ -15,6 +19,7 @@ static struct {
   char text[64];
   uint8_t state, got, menu;
 } bal;
+/* Преобразовать шестнадцатеричный символ внешнего ответа. */
 static uint8_t bal_hex(uint8_t c)
 { return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10u : c >= 'a' && c <= 'f' ? c - 'a' + 10u : 16u; }
 /* +CUSD: <m>[,"<str>"[,<dcs>]] (27.007 §7.15); dcs 72 - UCS2 hex, иначе текст.
@@ -45,6 +50,7 @@ static void bal_answer(const uint8_t *p, uint16_t n)
   } else for (uint16_t i = start; i < end && len + 1u < sizeof(bal.text); ++i) bal.text[len++] = (char)p[i];
   bal.text[len] = 0;
 }
+/* Передать строку ответа текущего запроса разборщику USSD. */
 static void bal_line(const uint8_t *p, uint16_t n, uint16_t detail) { (void)detail; bal_answer(p, n); }
 /* Сумма после "баланс"/"balance" (иначе первое число): "-12,30", "123.45 р". */
 bool comm_balance_parse(const char *t, int32_t *rubles)
@@ -60,16 +66,18 @@ bool comm_balance_parse(const char *t, int32_t *rubles)
   *rubles = minus ? -v : v;
   return true;
 }
+/* Выдать сумму и назначить следующий срок запроса. */
 static void bal_finish(bool ok)
 {
   int32_t v;
   bal.state = BAL_IDLE;
   if (ok && comm_balance_parse(bal.text, &v)) {
     bal.next = bal.now + comm_timeouts[COMM_T_DAY];
-    if (bal.result) bal.result(v);
+    bal.result(v);
   } else bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];
   if (bal.menu && comm_modem_side(&bal_cancel)) bal.state = BAL_CANCEL; /* меню оператора - закрыть */
 }
+/* Подключить настройки, результат и уведомления USSD. */
 void comm_balance_init(const char *(*code)(void), void (*result)(int32_t))
 {
   memset(&bal, 0, sizeof(bal));
@@ -77,15 +85,17 @@ void comm_balance_init(const char *(*code)(void), void (*result)(int32_t))
   bal.req.mode = COMM_AT_TEXT; bal.req.timeout = COMM_T_USSD; bal.req.line = bal_line; bal.req.cmd = bal.cmd;
   comm_modem_listen(COMM_URC_BALANCE, bal_answer);
 }
+/* Продвинуть запрос баланса, ожидание ответа или закрытие меню. */
 void comm_balance_poll(uint32_t now_ms)
 {
   uint8_t r;
   bal.now = now_ms;
   switch (bal.state) {
   case BAL_IDLE: {
-    const char *c = bal.code ? bal.code() : NULL;
+    if (!comm_modem_ready() || (int32_t)(now_ms - bal.next) < 0) return;
+    const char *c = bal.code();
+    if (!*c) return;
     uint8_t i = 0;
-    if (!c || !*c || (int32_t)(now_ms - bal.next) < 0 || !comm_modem_ready()) return;
     while (c[i] && i < 8u && ((c[i] >= '0' && c[i] <= '9') || c[i] == '*' || c[i] == '#')) ++i;
     if (c[i]) { bal.next = now_ms + comm_timeouts[COMM_T_DAY]; return; } /* не USSD - не спрашиваем */
     uint16_t k = comm_at_copy(bal.cmd, sizeof(bal.cmd), 0, "AT+CUSD=1,\"");

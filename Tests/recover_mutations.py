@@ -15,7 +15,7 @@ CASES = (
     ('repeat-power-no-pause', b'return rc.power_step ? rc_pause(COMM_T_POWER_1, (uint8_t)(rc.power_step - 1u)) : 0;', b'return 0;'),
     ('no-tcp-first', b'if (rc.net_step == 0u) comm_channel_reopen(0);', b'if (0) comm_channel_reopen(0);'),
     ('no-soft-step', b'else if (rc.net_step == 1u) rc_schedule(false, 0);', b'else if (rc.net_step == 1u) rc_schedule(true, 0);'),
-    ('early-counts-startup', b'if (step < SLM_TCP) continue;', b'if (step > 200u) continue;'),
+    ('early-counts-startup', b'if (step < SLM_TCP) return;', b'if (step > 200u) return;'),
     ('early-window', b'>= comm_timeouts[window]', b'>= comm_timeouts[window] * 10u'),
     ('night-busy-ignored', b'  if (busy) return;\r\n', b''),
     ('night-twice', b'&& day != rc.night_day', b''),
@@ -24,7 +24,7 @@ CASES = (
     ('query-error-reopens', b'  if (op == OP_QUERY) { query.cmd = NULL; return; }', b'  if (op == OP_QUERY) query.cmd = NULL;', CHANNEL),
     ('csq-not-parsed', b'info.v.csq = v[0] <= 99u ? (uint8_t)v[0] : 99u;', b'(void)v;', INFO),
     ('stale-info-offline', b'    info.v.csq = 99; info.v.creg', b'    info.v.csq = info.v.csq; info.v.creg', INFO),
-    ('no-session-reset', b'if (rc.hooks && rc.hooks->reset_session) rc.hooks->reset_session();', b''),
+    ('no-session-reset', b'rc.hooks->reset_session();', b''),
 )
 
 

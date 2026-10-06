@@ -1,3 +1,10 @@
+/* Изолированный модем не имеет канала/восстановления: явные заглушки его границы. */
+#ifndef COMM_CHANNEL_MODEL
+bool comm_channel_expected(void) { return false; }
+void comm_recover_failure(uint8_t step,uint8_t reason,uint32_t now) { (void)step; (void)reason; (void)now; }
+#endif
+static void ignore_event(uint8_t k,const uint8_t *p,uint16_t n,uint16_t d) { (void)k; (void)p; (void)n; (void)d; }
+static void ignore_urc(const uint8_t *p,uint16_t n) { (void)p; (void)n; }
 /* Доработка: Кряжев А., 2026. Имитатор SLM336 на настоящих AT/UART.
    Ответы и времена — СИНТЕТИКА; SIM URC взяты из журнала без SIM этапа 2. */
 static uint32_t sim_now, reply_due;
@@ -35,7 +42,7 @@ static const char *sim_text(uint8_t field, uint16_t *capacity)
 }
 static uint16_t sim_number(uint8_t field)
 {
-  if (field == SLM_CFG_PORT && sim_send_race && slm.attempt.status.step == SLM_RAT_QUERY) {
+  if (field == SLM_CFG_NETWORK && sim_send_race && slm.attempt.status.step == SLM_RAT_SET) {
     unsigned race = sim_send_race; sim_send_race = 0;
     interrupt_byte('\r', USART_SR_RXNE);
     if (race == 1) interrupt_byte('\n', USART_SR_RXNE);
@@ -75,7 +82,11 @@ static const slm_handlers_t sim_handlers = {sim_gpio, sim_type, sim_imei};
 static void sim_reset(void)
 {
   modem_slm336_off();
+#if DOMOVOI_DIAG
   memset(&slm.diag, 0, sizeof(slm.diag));
+#endif
+  comm_modem_transport(ignore_event);
+  for (uint8_t i=0;i<COMM_URC_COUNT;++i) comm_modem_listen(i,ignore_urc);
   memset(&slm.attempt.status, 0, sizeof(slm.attempt.status));
   memset(&test_config, 0, sizeof(test_config));
   memcpy(test_config.host, "test.local", sizeof("test.local"));
@@ -213,17 +224,17 @@ static void path_tests(void)
   }
   sim_reset(); sim_trickle = 1; sim_start(); sim_until(20000); CHECK(modem_slm336_ready());
   /* DMA принял хвост CRLF между проверкой busy и постановкой команды. */
-  sim_reset(); sim_start(); sim_send_race = 1; sim_until(15000);
+  sim_reset(); sim_rat_change = 1; sim_start(); sim_send_race = 1; sim_until(15000);
   CHECK(modem_slm336_ready() && !sim_send_race); DIAG_CHECK(!slm.diag.failure_count);
   /* Незавершённая строка не должна удерживать запуск бесконечно. */
-  sim_reset(); sim_start(); sim_send_race = 2; sim_until(15000);
+  sim_reset(); sim_rat_change = 1; sim_start(); sim_send_race = 2; sim_until(15000);
   CHECK(!modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
 }
 static void error_tests(void)
 {
   sim_reset(); sim_no_sim = 1; sim_start(); sim_until(15000);
   CHECK(!modem_slm336_ready() && slm.attempt.status.reason == SLM_ERR_NO_SIM && slm.attempt.status.step == SLM_SIM);
-  CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
+  DIAG_CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
   sim_reset(); sim_pin = 1; sim_start(); sim_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_PIN);
   sim_reset(); sim_error_step = SLM_ACTIVATE; sim_start(); sim_until(15000);
   CHECK(slm.attempt.status.reason == SLM_ERR_PDP && slm.attempt.status.step == SLM_ACTIVATE);
@@ -236,7 +247,7 @@ static void timeout_step_tests(void)
     test_config.modem_type = 255; sim_port_change = sim_rat_change = 1;
     sim_silence_step = (int)step; sim_start(); sim_until(180000);
     CHECK(slm.attempt.status.state == SLM_FAILED && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
-    CHECK(slm.attempt.status.step == step && slm.diag.failure_step[0] == step);
+    CHECK(slm.attempt.status.step == step); DIAG_CHECK(slm.diag.failure_step[0] == step);
     DIAG_CHECK((slm.diag.steps[step] * 10u) > 0);
   }
   /* Питание: скачки тиков, wrap и точные границы без сжатия пауз. */
@@ -263,7 +274,7 @@ static void edge_tests(void)
   CHECK(slm.attempt.status.step == SLM_DATA_ECHO && slm.attempt.status.state == SLM_READY); /* Максимальный QICSGP помещается. */
   modem_slm336_off();
   sim_reset(); sim_start(); sim_until(15000);
-  sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(slm.attempt.status.reason == SLM_ERR_PDP);
+  sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(modem_slm336_ready());
 }
 static void diagnostic_tests(void)
 {
@@ -273,18 +284,20 @@ static void diagnostic_tests(void)
 #endif
   for (unsigned i = 0; i < 20; ++i) sim_tick();
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
-  CHECK(sizeof(slm.diag) <= 128);
+  DIAG_CHECK(sizeof(slm.diag) <= 128);
   modem_slm336_off(); sim_no_sim = 1; sim_start(); sim_until(15000);
   CHECK(slm.attempt.status.reason == SLM_ERR_NO_SIM); DIAG_CHECK(slm.diag.steps[SLM_SIM] == 10);
-  CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
+  DIAG_CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
   DIAG_CHECK(slm.diag.steps[SLM_ACTIVATE] == 0 && slm.diag.phases[SLM_PHASE_TCP] == 0);
   /* Десять сбоев, оборачивание кольца и сохранение между попытками. */
   for (unsigned i = 0; i < 12; ++i) {
     modem_slm336_off(); power_events = 0; sim_start(); sim_until(sim_now + 15000u);
   }
-  CHECK(slm.diag.failure_next == 3); DIAG_CHECK(slm.diag.failure_count == 10);
+  DIAG_CHECK(slm.diag.failure_next == 3); DIAG_CHECK(slm.diag.failure_count == 10);
+#if DOMOVOI_DIAG
   for (unsigned i = 0; i < sizeof(slm.diag.failure_step); ++i)
     CHECK(slm.diag.failure_step[i] == SLM_SIM && slm.diag.failure_reason[i] == SLM_ERR_NO_SIM);
+#endif
   sim_reset(); sim_start(); sim_now = 1500; modem_slm336_poll(sim_now);
   DIAG_CHECK((slm.diag.steps[SLM_DISCHARGE] * 10u) == 1500 && (slm.diag.phases[SLM_PHASE_POWER] * 10u) == 1500);
   slm.attempt.now = slm.attempt.step_started + 1000000u; DIAG_CHECK(slm_elapsed(slm.attempt.step_started) == UINT16_MAX);
@@ -300,6 +313,12 @@ static void settings_tests(void)
   memcpy(test_config.apn, "changed.apn", sizeof("changed.apn"));
   sim_until(15000); CHECK(modem_slm336_ready() && !strcmp(slm_apn(), "changed.apn"));
   sim_reset(); sim_start(); CHECK(!modem_slm336_start(&sim_settings,&sim_handlers,0));
+  /* Новый сеанс отменяет служебный запрос даже без снятия питания. */
+  sim_reset(); sim_start(); sim_until(15000);
+  static const comm_side_t side = {"AT+CSQ", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_AT_SIMPLE};
+  CHECK(comm_modem_side(&side));
+  CHECK(comm_modem_restart(false,sim_now));
+  CHECK(comm_modem_side_result(&side) == COMM_AT_ERROR);
   sim_reset(); slm.settings = sim_settings;
   for (unsigned i = 0; i < 5; ++i) {
     static const uint8_t mncs[] = {1,2,99,20,11};

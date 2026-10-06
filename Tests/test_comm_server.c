@@ -10,7 +10,7 @@ static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)
 static unsigned server_commands, server_sessions, event13, event_retry;
 static unsigned registrations_sent, statuses_sent, opens, closes, pings, dns_requests;
 static unsigned tx_unacked, drop_register, drop_status, ping_success, dns_success, close_error;
-static unsigned send_silence, prompt_silence, reserve_enabled, junk_mode;
+static unsigned send_silence, prompt_silence, reserve_enabled, junk_mode, invalid_reserve;
 static uint8_t unique, last_status;
 static uint16_t incoming_count;
 static uint16_t log_unacked[2], temp_unacked[2];
@@ -73,11 +73,11 @@ static void user_parse_comand(uint8_t *p, unsigned channel)
 }
 static const char *server_text(uint8_t f, uint16_t *capacity)
 {
-  if (f==SLM_CFG_HOST2) { *capacity=sizeof("backup.local"); return "backup.local"; }
+  if (f==SLM_CFG_HOST2) { *capacity=sizeof("backup.local"); return invalid_reserve == 1 ? "bad\"host" : "backup.local"; }
   return sim_text(f,capacity);
 }
 static uint16_t server_number(uint8_t f)
-{ return f==SLM_CFG_RESERVE ? reserve_enabled : f==SLM_CFG_PORT2 ? 8888 : sim_number(f); }
+{ return f==SLM_CFG_RESERVE ? reserve_enabled : f==SLM_CFG_PORT2 ? (invalid_reserve == 2 ? 0 : 8888) : sim_number(f); }
 static const slm_settings_t server_settings={server_text,server_number};
 typedef unsigned dataChanel_e;
 #define CH_USB 0
@@ -235,7 +235,7 @@ static void transport_tx(void)
     uint8_t v=!strcmp(cmd,"AT+CGREG?") ? call_cgreg_model : !strcmp(cmd,"AT+CEREG?") ? call_cereg_model : call_creg_model;
     char reply[40]; CHECK(snprintf(reply,sizeof(reply),"%s: 1,%u\r\nOK\r\n",tag,v)>0); sim_reply(reply,30); return;
   }
-  if (comm_modem_ready() && (!strcmp(cmd,"AT+QIACT?") || !strcmp(cmd,"AT+QIACT=1"))) {
+  if (call_drop==2 && !strcmp(cmd,"AT+QIACT=1")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
     if (!strcmp(cmd,"AT+QIACT?")) {
@@ -252,7 +252,8 @@ static void transport_tx(void)
       || !strncmp(cmd,"AT+QIDNSGIP=",12) || !strncmp(cmd,"AT+QIRD=",8) || !strncmp(cmd,"AT+QIOPEN=",10) || !strcmp(cmd,"AT+QISTATE=0,1")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
-    if (!strcmp(cmd,"AT+QISEND=0,0")) sim_reply(tx_unacked ? "+QISEND: 48,0,48\r\nOK\r\n" : "+QISEND: 48,48,0\r\nOK\r\n",20);
+    if (!socket_model && !strncmp(cmd,"AT+QISEND=",10)) sim_reply("ERROR\r\n",20);
+    else if (!strcmp(cmd,"AT+QISEND=0,0")) sim_reply(tx_unacked ? "+QISEND: 48,0,48\r\nOK\r\n" : "+QISEND: 48,48,0\r\nOK\r\n",20);
     else if (!strncmp(cmd,"AT+QISEND=",10)) { if (!prompt_silence) sim_reply("> ",20); }
     else if (!strcmp(cmd,"AT+QICLOSE=0")) {
       ++closes; if (close_error!=1) socket_model=false;
@@ -271,7 +272,7 @@ static void transport_tx(void)
       open_times[opens]=sim_now; open_addresses[opens]=ch.address;
       socket_model=true; ++opens;
       CHECK(strstr(cmd,ch.address ? "backup.local" : "test.local"));
-      if (ch.call_stage==DATA_REGISTER) { sim_reply("OK\r\n",30); call_tcp_due=sim_now+300; }
+      if (call_drop) { sim_reply("OK\r\n",30); call_tcp_due=sim_now+300; }
       else sim_reply(sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
     } else if (!strncmp(cmd,"AT+QPING=",9)) {
       CHECK(!strcmp(cmd,"AT+QPING=1,\"ya.ru\",3,2")); ++pings;
@@ -301,7 +302,7 @@ static void transport_tick(unsigned increment)
   if (hangup_due && (int32_t)(sim_now-hangup_due)>=0) { hangup_due=0; sim_feed("OK\r\n"); }
   if (call_tcp_due && (int32_t)(sim_now-call_tcp_due)>=0) { call_tcp_due=0; sim_feed(sim_open_error ? "+QIOPEN: 0,566\r\n" : "+QIOPEN: 0,0\r\n"); }
   if (call_network_due && (int32_t)(sim_now-call_network_due)>=0) {
-    call_network_due=0; call_cereg_model=1; sim_feed("+CEREG: 1,\"1234\",\"ABCDEF\",7\r\n");
+    call_network_due=0; sim_network_wait=0; call_cereg_model=1; sim_feed("+CEREG: 1,\"1234\",\"ABCDEF\",7\r\n");
   }
   if (sim_pending[0] && (int32_t)(sim_now-reply_due)>=0) { sim_feed(sim_pending); sim_pending[0]=0; }
   if (dns_late && (int32_t)(sim_now-dns_late)>=0) { dns_late=0;
@@ -316,6 +317,7 @@ static void transport_tick(unsigned increment)
   transport_tx(); sim_now+=increment;
 }
 static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<ms) transport_tick(10); }
+static void server_no_internet(void) { comm_channel_reopen(0); }
 static void server_reset(void)
 {
   modem_slm336_transport(NULL); sim_reset();
@@ -339,15 +341,22 @@ static void server_reset(void)
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
   comm_balance_init(ussd_model, balance_model);
   /* ¬ыход к TCP Ч прин€той моделью этапа 3. */
-  comm_server_link(link_model);
+  comm_server_link(link_model); comm_server_no_internet(server_no_internet);
   comm_server_init(&test_server_handlers); links=link_refuse=0;
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
   for (unsigned i=0;!comm_server_online() && i<1500;++i) transport_tick(10);
   CHECK(comm_server_online() && modem_slm336_ready() && sim_now<11000);
-  advance(500);
+  advance(500); call_activations=call_net_queries=call_pdp_queries=call_tcp_queries=0;
 }
 static void server_tests(void)
 {
+  /* –езервный адрес и порт провер€ютс€ до первого построени€ команды TCP. */
+  sim_reset(); reserve_enabled=1; invalid_reserve=1;
+  CHECK(!modem_slm336_start(&server_settings,&sim_handlers,0));
+  invalid_reserve=2;
+  CHECK(!modem_slm336_start(&server_settings,&sim_handlers,0));
+  invalid_reserve=0;
+
   server_reset();
   uint8_t arbitrary[1029]; for (unsigned i=0;i<sizeof(arbitrary);++i) arbitrary[i]=(uint8_t)i;
   legacy_user_send_anyData(27,arbitrary,sizeof(arbitrary),CH_SERVER,42);

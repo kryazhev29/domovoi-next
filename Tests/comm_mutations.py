@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 from comm_at_host import ROOT, ZIG, unit as at_unit
+from source_select import diagnostic_header
 from comm_slm_host import unit as modem_unit
 from comm_server_host import unit as channel_unit
 
@@ -14,9 +15,12 @@ def uart_unit():
     source = lambda name: (ROOT / name).read_bytes().decode('cp1251')
     model = source('Tests/test_comm_uart.c')
     tick = 'void SysTick_Handler(void)' + source('stm32_it.c').split('void SysTick_Handler(void)', 1)[1].split('\n}', 1)[0] + '\n}'
-    return model.replace('/* TICK */', tick).replace('/* HEADER */', source('Modules/comm_uart.h')).replace(
-        '/* PRODUCTION */', '\n'.join(line for line in source('Modules/comm_uart.c').splitlines()
-                                      if not line.startswith('#include')))
+    # Чтение DR — аппаратный эффект; мутация IDLE обязана украсть байт в модели.
+    model = model.replace('    ++reads; regs.SR&=', '    regs.SR&=')
+    code = '\n'.join(line for line in source('Modules/comm_uart.c').splitlines() if not line.startswith('#include'))
+    code = code.replace('(void)USART3->DR;', '++reads; (void)USART3->DR;')
+    return diagnostic_header(ROOT) + model.replace('/* TICK */', tick).replace(
+        '/* HEADER */', source('Modules/comm_uart.h')).replace('/* PRODUCTION */', code)
 
 
 def run():
@@ -50,10 +54,9 @@ def run():
         ('uart', 'tx-not-atomic', '  __disable_irq();\n  uart_state.tx_ptr', '  uart_state.tx_ptr'),
         ('at', 'final-prefix', 'count == n && !memcmp(data, names, n)', 'count >= n && !memcmp(data, names, n)'),
         ('at', 'line-off-by-one', 'line_count >= sizeof(line)', 'line_count + 1u >= sizeof(line)'),
-        ('at', 'late-qird-as-text', '(state == RUN || (state >= DRAIN && state <= SYNC_WAIT))\n      && (mode == COMM_AT_SLM_QIRD', 'state == RUN\n      && (mode == COMM_AT_SLM_QIRD'),
+        ('at', 'late-qird-as-text', '(state == RUN || (state >= DRAIN && state <= SYNC_WAIT))\n      && mode == COMM_AT_SLM_QIRD', 'state == RUN\n      && mode == COMM_AT_SLM_QIRD'),
         ('at', 'late-body-to-sink', 'state != RUN ? count : handlers.binary(view, count)', 'handlers.binary(view, count)'),
         ('at', 'poll-unlimited', 'if (count > budget) count = budget;', ''),
-        ('at', 'callback-start', 'return state != IDLE || in_poll;', 'return state != IDLE;'),
         ('at', 'old-OK-sync', 'state == SYNC_WAIT && sync_seen && code == COMM_AT_OK', 'state == SYNC_WAIT && code == COMM_AT_OK'),
         ('channel', 'direct-push', ',0,0\\0"', ',0,1\\0"'),
         ('modem', 'QIACT-20s', '150000, /* COMM_T_QIACT */', '20000, /* COMM_T_QIACT */'),
@@ -64,8 +67,8 @@ def run():
         ('channel', 'TCP-time-overwritten-by-read', 'slm.attempt.recording = next < SLM_STEP_COUNT;', 'slm.attempt.recording = 1;'),
         # Этап 6, звонок без ответа.
         ('channel', 'call-command-after-prompt', 'comm_at_busy() || comm_at_prompt()) return;', 'comm_at_busy()) return;'),
-        ('channel', 'call-second-open', 'call.state != CALL_NUMBER && (call.state <= CALL_WAIT_NUMBER || strcmp(number, call.number))', 'call.state != CALL_NUMBER'),
-        ('channel', 'call-hidden-number-not-hung-up', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_HANGUP;', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_DONE;'),
+        ('channel', 'call-second-open', 'call.state != CALL_IDLE && call.state != CALL_WAIT_NUMBER && !strcmp(number, call.number)', 'call.state != CALL_IDLE && call.state != CALL_WAIT_NUMBER'),
+        ('channel', 'call-hidden-number-ignored', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_ANSWER;', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_DONE;'),
         ('channel', 'sms-long-body-fault', 'if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }', 'if (1) { fault(COMM_AT_LINE_OVERFLOW); return; }'),
         ('channel', 'sms-bad-cell-kept', 'msg.erase = msg.queue[0];', 'msg.erase = r == COMM_AT_OK ? msg.queue[0] : 0;'),
         ('channel', 'sms-udh-fill-bits', 'msg.skip = (uint8_t)(((o + 1u) * 8u + 6u) / 7u);', 'msg.skip = (uint8_t)(o + 1u);'),
@@ -82,7 +85,7 @@ def run():
         ('channel', 'volte-new-start-not-checked', 'call.session = session; call.volte_modem = VOLTE_UNKNOWN;', 'call.session = session;'),
         ('channel', 'call-side-kept-after-restart', '  memset(&slm.attempt, 0, sizeof(slm.attempt));\n  slm_side_cancel();', '  memset(&slm.attempt, 0, sizeof(slm.attempt));'),
         # Доводка этапа 6: журнал связи 11, 12, 14-19, 38.
-        ('channel', 'link-fail-every-time', 'if ((sv_noted & bit) || !sv_link) return;', 'if (!sv_link) return;'),
+        ('channel', 'link-fail-every-time', 'if ((sv_noted & bit)) return;', ''),
         ('channel', 'link-up-keeps-noted', 'server_link(COMM_LINK_UP, sv.address); sv_noted = 0;', 'server_link(COMM_LINK_UP, sv.address);'),
         ('channel', 'link-refused-not-retried', 'if (sv_link(kind, address)) sv_noted |= bit;', 'sv_link(kind, address); sv_noted |= bit;'),
         ('channel', 'link-open-failed-silent', 'channel_emit(COMM_CH_OPEN_FAILED, ch.address); comm_channel_reopen(0);', 'comm_channel_reopen(0);'),

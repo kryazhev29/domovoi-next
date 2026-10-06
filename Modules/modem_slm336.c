@@ -1,7 +1,11 @@
-/* Доработка: Кряжев А., 2026. Только таблица команд и ответов SLM336. */
+/* Доработка: Кряжев А., 2026.
+   Описывает команды и шаги запуска SLM336 платы v5.
+   Переходы таблицы сохраняют порядок питания, SIM, сети и PDP.
+   Профилей других модемов и выбора драйвера нет.
+*/
 #include "comm_modem.h"
 #include "comm_timeouts.h"
-static const char commands[] =
+const char slm_commands[] =
   "\0"
   "GMM\0"
   "E0\0"
@@ -26,7 +30,7 @@ static const char commands[] =
   "QIRD=0,\007\0"
   "GSN\0"
   "QISDE=0\0";
-static const comm_modem_step_t steps[] = {
+const comm_modem_step_t slm_steps[] = {
   {0, COMM_T_AT_SIMPLE, SLM_MODEL, SLM_IMEI, (SLM_PHASE_SETUP << 4) | MODEM_READY},
   {1, COMM_T_AT_SIMPLE, SLM_IMEI, SLM_IMEI, (SLM_PHASE_SETUP << 4) | MODEM_MODEL},
   /* IMEI нужен пакету регистрации на сервере (Протокол2, пакет 1). */
@@ -54,15 +58,5 @@ static const comm_modem_step_t steps[] = {
   /* ATE0 отключает только эхо команд; бинарное эхо QISEND выключается отдельно. */
   {246, COMM_T_AT_SIMPLE, SLM_STEP_COUNT, SLM_STEP_COUNT, (SLM_PHASE_PDP << 4) | MODEM_OK},
 };
-typedef char command_offsets_fit[(sizeof(commands) <= UINT8_MAX + 1u) ? 1 : -1];
-typedef char all_steps_present[(sizeof(steps) / sizeof(steps[0]) == SLM_DATA_ECHO + 1u - SLM_AT_READY) ? 1 : -1];
-static const comm_modem_profile_t slm_profile = {
-  commands, steps, "SLM336", "+QIURC: \"recv\",\005", "+QIURC: \"closed\",\005",
-  "+QIURC: \"pdpdeact\",\005", "+QIOPEN:\005,\005", "+QURCCFG: \"urcport\",",
-  "\"uart1\"", "+QCFG: \"nwscanmode\",\005",
-  {"CGREG?", "CEREG?"}, {"+CGREG:\005,\005|", "+CEREG:\005,\005|"}, 2, COMM_AT_SLM_QIRD, 206, 233
-};
-bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
-{
-  return comm_modem_start(&slm_profile, settings, handlers, now_ms);
-}
+typedef char command_offsets_fit[(sizeof(slm_commands) <= UINT8_MAX + 1u) ? 1 : -1];
+typedef char all_steps_present[(sizeof(slm_steps) / sizeof(slm_steps[0]) == SLM_DATA_ECHO + 1u - SLM_AT_READY) ? 1 : -1];
