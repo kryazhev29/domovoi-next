@@ -25,7 +25,7 @@ uint16_t comm_at_decimal(char *out, uint16_t capacity, uint16_t pos, uint16_t va
 #define COMM_AT_POLL_BYTES 128u
 /* PDU - ответ SMS: строка за заголовком (+CMGR:/+CMGL:) идЄт телом без разбора,
    длинна€ - кусками по строке AT (LINE, detail=1 - будет продолжение). */
-enum { COMM_AT_TEXT, COMM_AT_PROMPT, COMM_AT_SLM_QIRD, COMM_AT_M66_QIRD, COMM_AT_SEND, COMM_AT_PDU };
+enum { COMM_AT_TEXT, COMM_AT_PROMPT, COMM_AT_SLM_QIRD, COMM_AT_M66_QIRD, COMM_AT_SEND, COMM_AT_PDU, COMM_AT_CALL };
 enum { COMM_AT_LINE, COMM_AT_URC, COMM_AT_DONE, COMM_AT_NO_ANSWER, COMM_AT_STREAM_ERROR };
 enum { COMM_AT_OK, COMM_AT_ERROR, COMM_AT_CME, COMM_AT_GOT_PROMPT,
        COMM_AT_TIMEOUT, COMM_AT_LINE_OVERFLOW, COMM_AT_UART_ERROR,
@@ -67,4 +67,6 @@ bool comm_at_field(const char *text, size_t capacity, bool host);
 bool comm_at_busy(void);
 /* ѕосле приглашени€ '>' модем ждЄт данные: посторонн€€ команда стала бы их частью. */
 bool comm_at_prompt(void);
+/* “олько ATA/ATH: CHUP до ресинхронизации, поздние финалы ограждены CMEE. */
+bool comm_at_call_abort(uint32_t now_ms);
 #endif

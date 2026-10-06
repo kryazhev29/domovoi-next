@@ -30,5 +30,8 @@ void comm_channel_priority(bool pending);
 void comm_channel_reopen(uint32_t pause_ms);
 void comm_channel_registered(void);
 void comm_channel_stable(void);
+/* ¬ызов/проверка данных: ожидаемый обрыв не увеличивает ступени отката. */
+void comm_channel_call(bool active);
+bool comm_channel_call_pending(void);
 bool comm_channel_probe(uint8_t kind);
 #endif

@@ -80,6 +80,7 @@ def main():
     if not args.fast:cases+=list(POWER)
     results.update(run_cases(cases))
     if not args.fast:
+        run('call mutations',['Tests/call_mutations.py'])
         run('paired mutations',['Tests/asm/c_vs_asm_mutations.py','--variant',args.project,'--output',str(base/f'mutations-{args.project}-{args.config}.json')])
     result={'variant':args.project,'configuration':args.config,'diagnostic_skips':(['USB command 111','USB command 112','DWT packet 113','111: USB counters/register snapshots','112: modem timings/step history and UART cumulative counters'] if args.config=='ReleaseCustomer' else []),'cases':results,'legacy_contract_mapping':REPLACEMENTS,
             'elf_sha256':__import__('hashlib').sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()}

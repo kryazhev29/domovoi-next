@@ -85,6 +85,7 @@ void comm_server_status_ack(uint8_t unique_id)
 void comm_server_poll(uint32_t now_ms)
 {
   sv.now = now_ms;
+  if (comm_channel_call_pending() && comm_server_online()) sv.status_since = now_ms;
   if (comm_server_online() && now_ms - sv.status_since >= comm_timeouts[COMM_T_STATUS]) {
     if (!sv.flags.status_due && sv.flags.status_wait && sv.misses < 3) ++sv.misses;
     sv.flags.status_wait = 0; sv.flags.status_due = 1;
@@ -110,6 +111,7 @@ void comm_server_poll(uint32_t now_ms)
   /* Обработка входящих подтверждений также ждёт освобождения слота. */
   if (!comm_tx_busy() && !sv.flags.status_due && sv.handlers.process) sv.handlers.process();
   if (sv.flags.stable && now_ms - sv.stable_since >= comm_timeouts[COMM_T_STABLE]) { sv.silent_step = 0; sv.flags.stable = 0; comm_channel_stable(); }
+  if (comm_channel_call_pending()) return;
   if (sv.state == SV_ONLINE && sv.misses >= 3) { sv.state = SV_PING; sv.flags.stable = 0; }
   if ((sv.state == SV_PING || sv.state == SV_DNS) && !sv.flags.check_pending)
     sv.flags.check_pending = comm_channel_probe(sv.state == SV_PING ? COMM_CH_PING : COMM_CH_DNS);

@@ -32,7 +32,7 @@ def main():
     results.append(run("comm_review", ["Tests/comm_review_host.py"]))
     results.append(run("uart arm", ["Tests/build_comm_uart.py"]))
     if not fast:
-        for script in ("comm_mutations.py", "recover_mutations.py", "idindex_mutations.py", "store_async_mutations.py", "rx_budget_mutations.py", "event_async_mutations.py", "fw_async_mutations.py"):
+        for script in ("comm_mutations.py", "call_mutations.py", "recover_mutations.py", "idindex_mutations.py", "store_async_mutations.py", "rx_budget_mutations.py", "event_async_mutations.py", "fw_async_mutations.py"):
             results.append(run(script, ["Tests/" + script], timeout=3600))
     print("TOTAL %d/%d passed" % (sum(results), len(results)))
     sys.exit(0 if all(results) else 1)

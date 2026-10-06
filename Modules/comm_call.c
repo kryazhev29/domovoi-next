@@ -1,22 +1,24 @@
-/* Доработка: Кряжев А., 2026. Входящий вызов без ответа: номер, доступ, сброс. */
+/* Доработка: Кряжев А., 2026. Входящий вызов: доступ до ответа, короткое соединение и отбой. */
 #include "comm_call.h"
 #include "comm_modem.h"
+#include "comm_channel.h"
 #include "comm_timeouts.h"
 #include <string.h>
-/* WAIT_NUMBER - был RING, ждём CLIP; NUMBER - номер есть, проверить;
-   DONE - сброшен, повторные RING/CLIP того же вызова не открывают. */
-enum { CALL_IDLE, CALL_WAIT_NUMBER, CALL_NUMBER, CALL_HANGUP, CALL_HANGING, CALL_DONE };
+/* Действие и ответ независимы от очереди TCP; DONE ограждает повторы 8 с. */
+enum { CALL_IDLE, CALL_WAIT_NUMBER, CALL_NUMBER, CALL_ANSWER, CALL_QUEUED,
+       CALL_ANSWERING, CALL_HOLD, CALL_HANGUP, CALL_HANGING, CALL_ABORT, CALL_DONE };
 /* VoLTE модема: неизвестно до запроса, не поддержан - больше не спрашивать в этом запуске. */
 enum { VOLTE_UNKNOWN = 0xFF, VOLTE_UNSUPPORTED = 0xFE };
 static struct {
   void (*caller)(const char *);
   uint8_t (*volte)(void);
   const comm_side_t *volte_op;
-  uint32_t now, since, last;
+  uint32_t now, since, last, answered;
   char number[21];
-  uint8_t state, session, volte_modem, volte_read;
+  uint8_t state, session, volte_modem, volte_read, pending;
 } call;
-static const comm_side_t call_hangup = {"AT+CHUP", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_CALL_HANGUP};
+static const comm_side_t call_answer = {"ATA", NULL, NULL, 0, COMM_AT_CALL, COMM_T_CALL_ANSWER};
+static const comm_side_t call_hangup = {"ATH", NULL, NULL, 0, COMM_AT_CALL, COMM_T_CALL_ANSWER};
 /* +SETVOLTE: <0|1> (MEIG Common §11.11). */
 static void volte_line(const uint8_t *p, uint16_t n, uint16_t detail)
 {
@@ -40,22 +42,32 @@ static bool call_number(const uint8_t *p, uint16_t n, char *out)
   out[len] = 0;
   return pos < n;
 }
-/* Из разбора AT: только отметки, проверка и AT - в comm_call_poll. */
+/* URC только отмечают вызов: действие и команды выполняет главный цикл. */
+static void call_begin(void)
+{
+  call.state = CALL_WAIT_NUMBER; call.since = call.now; call.pending = 0;
+  call.number[0] = 0; comm_channel_call(true); comm_modem_call(1);
+}
 static void call_urc(const uint8_t *p, uint16_t n)
 {
   char number[sizeof(call.number)];
-  if (comm_at_equal(p, n, "RING")) {
-    call.last = call.now;
-    if (call.state == CALL_IDLE) { call.state = CALL_WAIT_NUMBER; call.since = call.now; }
-    else if (call.state == CALL_DONE) call.state = CALL_HANGUP; /* ещё звонит: сбросить снова */
+  if (comm_at_equal(p,n,"NO CARRIER")) {
+    if (call.state >= CALL_QUEUED && call.state <= CALL_HANGING) call.state = CALL_ABORT;
     return;
+  }
+  if (call.state == CALL_DONE && call.now - call.last >= comm_timeouts[COMM_T_CALL_QUIET]) {
+    call.state = CALL_IDLE; call.number[0] = 0;
+  }
+  if (comm_at_equal(p, n, "RING")) {
+    if (call.state == CALL_IDLE) call_begin();
+    call.last = call.now; return;
   }
   if (!comm_at_prefix(p, n, "+CLIP:") || !call_number(p, n, number)) return;
   call.last = call.now;
-  /* Новый номер - новый вызов; тот же номер в пределах вызова не открывает второй раз. */
-  if (call.state != CALL_NUMBER && (call.state <= CALL_WAIT_NUMBER || strcmp(number, call.number))) {
-    memcpy(call.number, number, sizeof(number)); call.state = CALL_NUMBER;
-  } else if (call.state == CALL_DONE) call.state = CALL_HANGUP;
+  if (call.state != CALL_IDLE && call.state != CALL_WAIT_NUMBER && !strcmp(number, call.number)) return;
+  if (call.state == CALL_IDLE || call.state == CALL_DONE) call_begin();
+  memcpy(call.number, number, strlen(number) + 1u); call.pending = 1;
+  if (call.state == CALL_WAIT_NUMBER) call.state = CALL_NUMBER;
 }
 void comm_call_init(void (*caller)(const char *), uint8_t (*volte)(void))
 {
@@ -86,27 +98,71 @@ static void call_volte(void)
   call.volte_read = VOLTE_UNKNOWN;
   if (op && comm_modem_side(op)) call.volte_op = op;
 }
-void comm_call_poll(uint32_t now_ms)
+/* Новый номер во время ответа обслуживается сразу; следующий ATA ждёт отбоя. */
+static void call_finished(void)
+{
+  if (call.pending) { call.state = CALL_NUMBER; return; }
+  call.state = CALL_DONE; comm_modem_call(2); comm_channel_call(false);
+}
+void comm_call_poll(uint32_t now_ms, bool access_ready)
 {
   call.now = now_ms;
+  if (comm_modem_session() != call.session && call.state != CALL_IDLE) {
+    comm_modem_side_result(&call_answer); comm_modem_side_result(&call_hangup);
+    call.pending = 0; call_finished();
+  }
   call_volte();
-  switch (call.state) {
-  case CALL_WAIT_NUMBER: /* номер скрыт или CLIP потерян: сброс без открытия */
-    if (now_ms - call.since >= comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_HANGUP;
-    break;
-  case CALL_NUMBER: /* сначала открыть, сброс - следующим шагом */
-    call.state = CALL_HANGUP;
+  /* Flash может отложить проверку номера, но уже снятая трубка ждёт только таймер. */
+  if (call.pending == 1u && access_ready) {
+    call.pending = 2;
     if (call.caller) call.caller(call.number);
+  }
+  switch (call.state) {
+  case CALL_WAIT_NUMBER:
+    if (now_ms - call.since >= comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_ANSWER;
     break;
+  case CALL_NUMBER:
+    if (call.pending == 2u) { call.pending = 0; call.state = CALL_ANSWER; }
+    break;
+  case CALL_ANSWER:
+    if (comm_modem_call_side(&call_answer)) call.state = CALL_QUEUED;
+    break;
+  case CALL_QUEUED:
+    if (!comm_modem_side_started(&call_answer, &call.since)) break;
+    call.state = CALL_ANSWERING;
+    /* fall through */
+  case CALL_ANSWERING: {
+    uint8_t r = comm_modem_side_result(&call_answer);
+    if (r == COMM_AT_OK) { call.answered = now_ms; call.state = CALL_HOLD; }
+    else if (r == COMM_AT_TIMEOUT) call_finished(); /* AT уже отправил CHUP перед CMEE */
+    else if (r != UINT8_MAX) call.state = CALL_ABORT;
+    break;
+  }
+  case CALL_HOLD:
+    if (now_ms - call.answered >= comm_timeouts[COMM_T_CALL_HOLD]) call.state = CALL_HANGUP;
+    /* fall through */
   case CALL_HANGUP:
-    if (comm_modem_side(&call_hangup)) call.state = CALL_HANGING;
-    else if (now_ms - call.last >= comm_timeouts[COMM_T_CALL_QUIET]) call.state = CALL_DONE;
+    if (now_ms - call.since >= comm_timeouts[COMM_T_CALL_LIMIT]) call.state = CALL_ABORT;
+    else if (call.state == CALL_HANGUP && comm_modem_call_side(&call_hangup)) call.state = CALL_HANGING;
     break;
-  case CALL_HANGING: /* любой исход: если вызов жив, следующий RING сбросит его снова */
-    if (comm_modem_side_result(&call_hangup) != UINT8_MAX) call.state = CALL_DONE;
+  case CALL_HANGING: {
+    uint8_t r = comm_modem_side_result(&call_hangup);
+    if (r == COMM_AT_OK || r == COMM_AT_TIMEOUT) call_finished();
+    else if (r != UINT8_MAX || now_ms - call.since >= comm_timeouts[COMM_T_CALL_LIMIT]) call.state = CALL_ABORT;
+    break;
+  }
+  case CALL_ABORT:
+    if (comm_modem_call_abort(now_ms)) {
+      comm_modem_side_result(&call_answer); comm_modem_side_result(&call_hangup);
+      call_finished();
+    }
     break;
   case CALL_DONE:
     if (now_ms - call.last >= comm_timeouts[COMM_T_CALL_QUIET]) { call.state = CALL_IDLE; call.number[0] = 0; }
     break;
+  }
+  /* ERROR/NO CARRIER и предел не получают лишний тик главного цикла. */
+  if (call.state == CALL_ABORT && comm_modem_call_abort(now_ms)) {
+    comm_modem_side_result(&call_answer); comm_modem_side_result(&call_hangup); call_finished();
   }
 }

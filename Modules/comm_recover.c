@@ -157,6 +157,7 @@ void comm_recover_poll(uint32_t now_ms)
   rc.now = now_ms;
   rc_expire(rc.at_times, 3, rc.at_i, &rc.at_count, COMM_T_EARLY_AT);
   rc_expire(rc.tcp_times, 5, rc.tcp_i, &rc.tcp_count, COMM_T_EARLY_TCP);
+  if (comm_channel_call_pending() && comm_modem_state() != SLM_FAILED) return;
   bool early = rc_early();
   if (comm_server_online()) {
     if (!rc.online) { rc.online = 1; rc.online_since = now_ms; }

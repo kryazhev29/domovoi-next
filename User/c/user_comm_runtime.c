@@ -61,7 +61,7 @@ void user_comm_poll(uint32_t now_ms)
   comm_server_poll(now_ms);
   comm_recover_poll(now_ms);
   comm_info_poll(now_ms);
-  if (user_storage_flash_ready()) comm_call_poll(now_ms);
+  comm_call_poll(now_ms, user_storage_flash_ready());
   if (user_storage_flash_ready()) comm_sms_poll(now_ms);
   comm_balance_poll(now_ms);
 }
