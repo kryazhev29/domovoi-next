@@ -243,8 +243,15 @@ void user_loop(void)
       }
     }
 
+    /* Прошивка дошла до сервера - проба подтверждается записью во флеш. Занятая флеш -
+       повтор через секунду: иначе через 30 мин загрузчик откатил бы годную прошивку (07.10). */
+    if (app_trial_active() && device.registredOnServer && user_storage_command_ready()){
+      app_trial_confirm();
+      if (!app_trial_active()) fw_event(LOG_FW_DONE, FW_REASON_NONE);
+    }
+
     // пробная прошивка после обновления так и не зарегистрировалась на сервере - откат
-    if (app_trial_expired()){
+    if (app_trial_expired() && user_storage_command_ready()){
       app_trial_rollback();
       user_savereset();
     }

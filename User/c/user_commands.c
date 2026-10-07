@@ -115,10 +115,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         log_setTime(tmp32);
         device.registredOnServer = 1;
         user_unblock_recheck(false);
-        if (app_trial_active()){
-          app_trial_confirm();
-          if (!app_trial_active()) fw_event(LOG_FW_DONE, FW_REASON_NONE);
-        } // прошивка дошла до сервера - обновление подтверждено
         /* Неудачная установка или проба до этого старта: только журнал, версию сервер видит в
            статусе 2 (E122). */
         if (app_boot_error_unreported()){
