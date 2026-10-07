@@ -1,13 +1,13 @@
-/* Доработка: Кряжев А., 2026.
-   Запрашивает баланс SIM через USSD и разбирает ответ оператора.
-   Запрос идёт раз в сутки, отказ повторяется через заданную паузу.
-   Меню оператора закрывается после получения результата.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   Р—Р°РїСЂР°С€РёРІР°РµС‚ Р±Р°Р»Р°РЅСЃ SIM С‡РµСЂРµР· USSD Рё СЂР°Р·Р±РёСЂР°РµС‚ РѕС‚РІРµС‚ РѕРїРµСЂР°С‚РѕСЂР°.
+   Р—Р°РїСЂРѕСЃ РёРґС‘С‚ СЂР°Р· РІ СЃСѓС‚РєРё, РѕС‚РєР°Р· РїРѕРІС‚РѕСЂСЏРµС‚СЃСЏ С‡РµСЂРµР· Р·Р°РґР°РЅРЅСѓСЋ РїР°СѓР·Сѓ.
+   РњРµРЅСЋ РѕРїРµСЂР°С‚РѕСЂР° Р·Р°РєСЂС‹РІР°РµС‚СЃСЏ РїРѕСЃР»Рµ РїРѕР»СѓС‡РµРЅРёСЏ СЂРµР·СѓР»СЊС‚Р°С‚Р°.
 */
 #include "comm_balance.h"
 #include "comm_modem.h"
 #include "comm_timeouts.h"
 #include <string.h>
-/* ASK - команда у модема, WAIT - ждём +CUSD (обычно после OK), CANCEL - закрыть меню. */
+/* ASK - РєРѕРјР°РЅРґР° Сѓ РјРѕРґРµРјР°, WAIT - Р¶РґС‘Рј +CUSD (РѕР±С‹С‡РЅРѕ РїРѕСЃР»Рµ OK), CANCEL - Р·Р°РєСЂС‹С‚СЊ РјРµРЅСЋ. */
 enum { BAL_IDLE, BAL_ASK, BAL_WAIT, BAL_CANCEL };
 static const comm_side_t bal_cancel = {"AT+CUSD=2", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_AT_SIMPLE};
 static struct {
@@ -19,8 +19,8 @@ static struct {
   char text[64];
   uint8_t state, got, menu;
 } bal;
-/* +CUSD: <m>[,"<str>"[,<dcs>]] (27.007 §7.15); dcs 72 - UCS2 hex, иначе текст.
-   Строка может быть обрезана движком AT (длинная реклама): без закрывающей кавычки. */
+/* +CUSD: <m>[,"<str>"[,<dcs>]] (27.007 В§7.15); dcs 72 - UCS2 hex, РёРЅР°С‡Рµ С‚РµРєСЃС‚.
+   РЎС‚СЂРѕРєР° РјРѕР¶РµС‚ Р±С‹С‚СЊ РѕР±СЂРµР·Р°РЅР° РґРІРёР¶РєРѕРј AT (РґР»РёРЅРЅР°СЏ СЂРµРєР»Р°РјР°): Р±РµР· Р·Р°РєСЂС‹РІР°СЋС‰РµР№ РєР°РІС‹С‡РєРё. */
 static void bal_answer(const uint8_t *p, uint16_t n)
 {
   uint16_t pos = sizeof("+CUSD:") - 1u, start, end, len = 0;
@@ -28,11 +28,11 @@ static void bal_answer(const uint8_t *p, uint16_t n)
   if ((bal.state != BAL_ASK && bal.state != BAL_WAIT) || !comm_at_prefix(p, n, "+CUSD:")
       || !comm_at_scan(p, n, &pos, 5u, &m)) return;
   bal.got = 1; bal.menu = m == 1; bal.text[0] = 0;
-  if (m > 1 || pos + 1u >= n || p[pos] != ',' || p[pos + 1u] != '"') return; /* 2/4/5 - отказ сети */
+  if (m > 1 || pos + 1u >= n || p[pos] != ',' || p[pos + 1u] != '"') return; /* 2/4/5 - РѕС‚РєР°Р· СЃРµС‚Рё */
   start = end = (uint16_t)(pos + 2u);
   while (end < n && p[end] != '"') ++end;
   if (end + 1u < n && p[end + 1u] == ',') { pos = (uint16_t)(end + 2u); if (!comm_at_scan(p, n, &pos, 255u, &dcs)) dcs = 15; }
-  if (end == n) { /* обрезана: кодировка не дошла - UCS2, если только hex четвёрками */
+  if (end == n) { /* РѕР±СЂРµР·Р°РЅР°: РєРѕРґРёСЂРѕРІРєР° РЅРµ РґРѕС€Р»Р° - UCS2, РµСЃР»Рё С‚РѕР»СЊРєРѕ hex С‡РµС‚РІС‘СЂРєР°РјРё */
     uint16_t i = start;
     while (i < end && comm_at_hex(p[i]) < 16u) ++i;
     if (i == end && end - start >= 4u) dcs = 72;
@@ -46,12 +46,12 @@ static void bal_answer(const uint8_t *p, uint16_t n)
   } else for (uint16_t i = start; i < end && len + 1u < sizeof(bal.text); ++i) bal.text[len++] = (char)p[i];
   bal.text[len] = 0;
 }
-/* Передать строку ответа текущего запроса разборщику USSD. */
+/* РџРµСЂРµРґР°С‚СЊ СЃС‚СЂРѕРєСѓ РѕС‚РІРµС‚Р° С‚РµРєСѓС‰РµРіРѕ Р·Р°РїСЂРѕСЃР° СЂР°Р·Р±РѕСЂС‰РёРєСѓ USSD. */
 static void bal_line(const uint8_t *p, uint16_t n, uint16_t detail) { (void)detail; bal_answer(p, n); }
-/* Сумма после "баланс"/"balance" (иначе первое число): "-12,30", "123.45 р". */
+/* РЎСѓРјРјР° РїРѕСЃР»Рµ "Р±Р°Р»Р°РЅСЃ"/"balance" (РёРЅР°С‡Рµ РїРµСЂРІРѕРµ С‡РёСЃР»Рѕ): "-12,30", "123.45 СЂ". */
 bool comm_balance_parse(const char *t, int32_t *rubles)
 {
-  static const char *const words[] = {"\xE0\xEB\xE0\xED\xF1", "alance"}; /* [Бб]аланс, [Bb]alance */
+  static const char *const words[] = {"\xE0\xEB\xE0\xED\xF1", "alance"}; /* [Р‘Р±]Р°Р»Р°РЅСЃ, [Bb]alance */
   const char *s = t;
   for (uint8_t w = 0; w < 2u; ++w) { const char *f = strstr(t, words[w]); if (f) { s = f; break; } }
   while (*s && (*s < '0' || *s > '9')) ++s;
@@ -62,7 +62,7 @@ bool comm_balance_parse(const char *t, int32_t *rubles)
   *rubles = minus ? -v : v;
   return true;
 }
-/* Выдать сумму и назначить следующий срок запроса. */
+/* Р’С‹РґР°С‚СЊ СЃСѓРјРјСѓ Рё РЅР°Р·РЅР°С‡РёС‚СЊ СЃР»РµРґСѓСЋС‰РёР№ СЃСЂРѕРє Р·Р°РїСЂРѕСЃР°. */
 static void bal_finish(bool ok)
 {
   int32_t v;
@@ -71,9 +71,9 @@ static void bal_finish(bool ok)
     bal.next = bal.now + comm_timeouts[COMM_T_DAY];
     bal.result(v);
   } else bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];
-  if (bal.menu && comm_modem_side(&bal_cancel)) bal.state = BAL_CANCEL; /* меню оператора - закрыть */
+  if (bal.menu && comm_modem_side(&bal_cancel)) bal.state = BAL_CANCEL; /* РјРµРЅСЋ РѕРїРµСЂР°С‚РѕСЂР° - Р·Р°РєСЂС‹С‚СЊ */
 }
-/* Подключить настройки, результат и уведомления USSD. */
+/* РџРѕРґРєР»СЋС‡РёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё, СЂРµР·СѓР»СЊС‚Р°С‚ Рё СѓРІРµРґРѕРјР»РµРЅРёСЏ USSD. */
 void comm_balance_init(const char *(*code)(void), void (*result)(int32_t))
 {
   memset(&bal, 0, sizeof(bal));
@@ -81,7 +81,7 @@ void comm_balance_init(const char *(*code)(void), void (*result)(int32_t))
   bal.req.mode = COMM_AT_TEXT; bal.req.timeout = COMM_T_USSD; bal.req.line = bal_line; bal.req.cmd = bal.cmd;
   comm_modem_listen(COMM_URC_BALANCE, bal_answer);
 }
-/* Продвинуть запрос баланса, ожидание ответа или закрытие меню. */
+/* РџСЂРѕРґРІРёРЅСѓС‚СЊ Р·Р°РїСЂРѕСЃ Р±Р°Р»Р°РЅСЃР°, РѕР¶РёРґР°РЅРёРµ РѕС‚РІРµС‚Р° РёР»Рё Р·Р°РєСЂС‹С‚РёРµ РјРµРЅСЋ. */
 void comm_balance_poll(uint32_t now_ms)
 {
   uint8_t r;
@@ -93,7 +93,7 @@ void comm_balance_poll(uint32_t now_ms)
     if (!*c) return;
     uint8_t i = 0;
     while (c[i] && i < 8u && ((c[i] >= '0' && c[i] <= '9') || c[i] == '*' || c[i] == '#')) ++i;
-    if (c[i]) { bal.next = now_ms + comm_timeouts[COMM_T_DAY]; return; } /* не USSD - не спрашиваем */
+    if (c[i]) { bal.next = now_ms + comm_timeouts[COMM_T_DAY]; return; } /* РЅРµ USSD - РЅРµ СЃРїСЂР°С€РёРІР°РµРј */
     uint16_t k = comm_at_copy(bal.cmd, sizeof(bal.cmd), 0, "AT+CUSD=1,\"");
     k = comm_at_copy(bal.cmd, sizeof(bal.cmd), k, c);
     comm_at_copy(bal.cmd, sizeof(bal.cmd), k, "\",15");

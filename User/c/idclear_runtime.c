@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Фоновая очистка базы ID по секторам с ответом на команду 103.
-// Стирание проверяет W25; при частичной очистке таблицы блокируются.
-// Смена USB-сеанса подавляет ответ, сохраняя завершение текущей команды W25.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р¤РѕРЅРѕРІР°СЏ РѕС‡РёСЃС‚РєР° Р±Р°Р·С‹ ID РїРѕ СЃРµРєС‚РѕСЂР°Рј СЃ РѕС‚РІРµС‚РѕРј РЅР° РєРѕРјР°РЅРґСѓ 103.
+// РЎС‚РёСЂР°РЅРёРµ РїСЂРѕРІРµСЂСЏРµС‚ W25; РїСЂРё С‡Р°СЃС‚РёС‡РЅРѕР№ РѕС‡РёСЃС‚РєРµ С‚Р°Р±Р»РёС†С‹ Р±Р»РѕРєРёСЂСѓСЋС‚СЃСЏ.
+// РЎРјРµРЅР° USB-СЃРµР°РЅСЃР° РїРѕРґР°РІР»СЏРµС‚ РѕС‚РІРµС‚, СЃРѕС…СЂР°РЅСЏСЏ Р·Р°РІРµСЂС€РµРЅРёРµ С‚РµРєСѓС‰РµР№ РєРѕРјР°РЅРґС‹ W25.
 #include "runtime_internal.h"
 enum {
   IDC_ERASE=1, IDC_DONE=2, IDC_ERROR=3
@@ -13,15 +13,15 @@ typedef struct {
 } idclear_s;
 RT_ASSERT(idclear_size, sizeof(idclear_s)==40);
 idclear_s *idclear_job;
-// Сообщает, выполняется ли очистка базы.
+// РЎРѕРѕР±С‰Р°РµС‚, РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Р»Рё РѕС‡РёСЃС‚РєР° Р±Р°Р·С‹.
 uint8_t idclear_runtime_active(void) { return idclear_job!=NULL; }
-// Запрашивает отмену очистки и подавляет ответ: CRC базы больше не известна.
+// Р—Р°РїСЂР°С€РёРІР°РµС‚ РѕС‚РјРµРЅСѓ РѕС‡РёСЃС‚РєРё Рё РїРѕРґР°РІР»СЏРµС‚ РѕС‚РІРµС‚: CRC Р±Р°Р·С‹ Р±РѕР»СЊС€Рµ РЅРµ РёР·РІРµСЃС‚РЅР°.
 void idclear_runtime_cancel(void) { if(idclear_job) { idcrc_unknown(); idclear_job->cancel=idclear_job->quiet=1; } }
-// Подавляет ответ для завершившегося USB-сеанса.
+// РџРѕРґР°РІР»СЏРµС‚ РѕС‚РІРµС‚ РґР»СЏ Р·Р°РІРµСЂС€РёРІС€РµРіРѕСЃСЏ USB-СЃРµР°РЅСЃР°.
 void idclear_runtime_quiet(uint8_t channel) { if(!channel && idclear_job) idclear_job->quiet=1; }
-// Освобождает память автомата после ответа или отмены.
+// РћСЃРІРѕР±РѕР¶РґР°РµС‚ РїР°РјСЏС‚СЊ Р°РІС‚РѕРјР°С‚Р° РїРѕСЃР»Рµ РѕС‚РІРµС‚Р° РёР»Рё РѕС‚РјРµРЅС‹.
 static void idclear_release(void) { idclear_s *p=idclear_job; idclear_job=NULL; work_release(p, WORK_IDCLEAR); }
-// Начинает разрешённую USB-команду очистки всей базы ID.
+// РќР°С‡РёРЅР°РµС‚ СЂР°Р·СЂРµС€С‘РЅРЅСѓСЋ USB-РєРѕРјР°РЅРґСѓ РѕС‡РёСЃС‚РєРё РІСЃРµР№ Р±Р°Р·С‹ ID.
 uint8_t idclear_runtime_begin(uint8_t channel,uint8_t uniq)
 {
   uint32_t start=mem[MB_ID].start,size=mem[MB_ID].size,end=start+size;
@@ -34,13 +34,13 @@ uint8_t idclear_runtime_begin(uint8_t channel,uint8_t uniq)
   packet_frame(p->response,3);
   idindex_runtime_suspend(); flash_claim(FO_IDCLEAR); idclear_job=p; return 1;
 }
-// Блокирует частично очищенную базу и готовит ответ об ошибке.
+// Р‘Р»РѕРєРёСЂСѓРµС‚ С‡Р°СЃС‚РёС‡РЅРѕ РѕС‡РёС‰РµРЅРЅСѓСЋ Р±Р°Р·Сѓ Рё РіРѕС‚РѕРІРёС‚ РѕС‚РІРµС‚ РѕР± РѕС€РёР±РєРµ.
 static void idclear_error(idclear_s *p)
 {
   mem_storage_ready=0; p->waiting=0; p->phase=IDC_ERROR;
   answer11(p->response,p->uniq,103,2);
 }
-// Стирает один сектор за шаг и отправляет итог через общий кадр.
+// РЎС‚РёСЂР°РµС‚ РѕРґРёРЅ СЃРµРєС‚РѕСЂ Р·Р° С€Р°Рі Рё РѕС‚РїСЂР°РІР»СЏРµС‚ РёС‚РѕРі С‡РµСЂРµР· РѕР±С‰РёР№ РєР°РґСЂ.
 void idclear_runtime_poll(uint32_t now)
 {
   idclear_s *p=idclear_job; uint8_t result;

@@ -1,32 +1,5 @@
-/**
-  ******************************************************************************
-  * @file    stm32f10x_bkp.h
-  * @author  MCD Application Team
-  * @version V3.6.1
-  * @date    05-March-2012
-  * @brief   This file contains all the functions prototypes for the BKP firmware 
-  *          library.
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
 
-/* Define to prevent recursive inclusion -------------------------------------*/
+
 #ifndef __STM32F10x_BKP_H
 #define __STM32F10x_BKP_H
 
@@ -34,31 +7,10 @@
  extern "C" {
 #endif
 
-/* Includes ------------------------------------------------------------------*/
 #include "stm32f10x.h"
-
-/** @addtogroup STM32F10x_StdPeriph_Driver
-  * @{
-  */
-
-/** @addtogroup BKP
-  * @{
-  */
-
-/** @defgroup BKP_Exported_Types
-  * @{
-  */
 
 /**
   * @}
-  */
-
-/** @defgroup BKP_Exported_Constants
-  * @{
-  */
-
-/** @defgroup Tamper_Pin_active_level 
-  * @{
   */
 
 #define BKP_TamperPinLevel_High           ((uint16_t)0x0000)
@@ -67,10 +19,6 @@
                                         ((LEVEL) == BKP_TamperPinLevel_Low))
 /**
   * @}
-  */
-
-/** @defgroup RTC_output_source_to_output_on_the_Tamper_pin 
-  * @{
   */
 
 #define BKP_RTCOutputSource_None          ((uint16_t)0x0000)
@@ -83,10 +31,6 @@
                                           ((SOURCE) == BKP_RTCOutputSource_Second))
 /**
   * @}
-  */
-
-/** @defgroup Data_Backup_Register 
-  * @{
   */
 
 #define BKP_DR1                           ((uint16_t)0x0004)
@@ -156,36 +100,15 @@
   * @}
   */
 
-/** @defgroup BKP_Exported_Macros
-  * @{
-  */
-
 /**
   * @}
   */
-
-/** @defgroup BKP_Exported_Functions
-  * @{
-  */
-
-void BKP_DeInit(void);
-void BKP_TamperPinLevelConfig(uint16_t BKP_TamperPinLevel);
-void BKP_TamperPinCmd(FunctionalState NewState);
-void BKP_ITConfig(FunctionalState NewState);
-void BKP_RTCOutputConfig(uint16_t BKP_RTCOutputSource);
-void BKP_SetRTCCalibrationValue(uint8_t CalibrationValue);
-void BKP_WriteBackupRegister(uint16_t BKP_DR, uint16_t Data);
-uint16_t BKP_ReadBackupRegister(uint16_t BKP_DR);
-FlagStatus BKP_GetFlagStatus(void);
-void BKP_ClearFlag(void);
-ITStatus BKP_GetITStatus(void);
-void BKP_ClearITPendingBit(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __STM32F10x_BKP_H */
+#endif
 /**
   * @}
   */
@@ -197,5 +120,3 @@ void BKP_ClearITPendingBit(void);
 /**
   * @}
   */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

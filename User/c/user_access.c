@@ -1,12 +1,12 @@
-// Доработка: Кряжев А., 2026
-// Wiegand и звонок: проверка ID, групп, расписаний и управление реле.
-// При ошибке чтения разрешение не выдаётся; ограничения выходов действуют для всех путей.
-// Счётчики проходов сохраняет модуль ID, событие принимает очередь журнала.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Wiegand Рё Р·РІРѕРЅРѕРє: РїСЂРѕРІРµСЂРєР° ID, РіСЂСѓРїРї, СЂР°СЃРїРёСЃР°РЅРёР№ Рё СѓРїСЂР°РІР»РµРЅРёРµ СЂРµР»Рµ.
+// РџСЂРё РѕС€РёР±РєРµ С‡С‚РµРЅРёСЏ СЂР°Р·СЂРµС€РµРЅРёРµ РЅРµ РІС‹РґР°С‘С‚СЃСЏ; РѕРіСЂР°РЅРёС‡РµРЅРёСЏ РІС‹С…РѕРґРѕРІ РґРµР№СЃС‚РІСѓСЋС‚ РґР»СЏ РІСЃРµС… РїСѓС‚РµР№.
+// РЎС‡С‘С‚С‡РёРєРё РїСЂРѕС…РѕРґРѕРІ СЃРѕС…СЂР°РЅСЏРµС‚ РјРѕРґСѓР»СЊ ID, СЃРѕР±С‹С‚РёРµ РїСЂРёРЅРёРјР°РµС‚ РѕС‡РµСЂРµРґСЊ Р¶СѓСЂРЅР°Р»Р°.
 #include "user_logic_internal.h"
 #include "../user_format.h"
 logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 
-// Превратить код Wiegand в десятибайтовый ID и проверить доступ.
+// РџСЂРµРІСЂР°С‚РёС‚СЊ РєРѕРґ Wiegand РІ РґРµСЃСЏС‚РёР±Р°Р№С‚РѕРІС‹Р№ ID Рё РїСЂРѕРІРµСЂРёС‚СЊ РґРѕСЃС‚СѓРї.
 void WG_readedID(uint32_t id){
   char tb[11];
 
@@ -19,43 +19,43 @@ void WG_readedID(uint32_t id){
   user_checkIdAndControl(tb, CT_WIEGAND);
 }
 
-// Нормализовать номер звонящего и проверить доступ.
+// РќРѕСЂРјР°Р»РёР·РѕРІР°С‚СЊ РЅРѕРјРµСЂ Р·РІРѕРЅСЏС‰РµРіРѕ Рё РїСЂРѕРІРµСЂРёС‚СЊ РґРѕСЃС‚СѓРї.
 bool user_incomingcall (char* num, uint8_t typ)
 {
 
   if (typ == CT_PHONE){
 
-    // номер звонящего: длиннее поля не пишем
+    // РЅРѕРјРµСЂ Р·РІРѕРЅСЏС‰РµРіРѕ: РґР»РёРЅРЅРµРµ РїРѕР»СЏ РЅРµ РїРёС€РµРј
     strncpy(device.callingnumber, num, sizeof(device.callingnumber) - 1u);
     device.callingnumber[sizeof(device.callingnumber) - 1u] = 0;
   }
 
-  // 10 цифр номера
+  // 10 С†РёС„СЂ РЅРѕРјРµСЂР°
   char *ldn = user_last10digitsnumber(num);
 
-  // проверить номер
+  // РїСЂРѕРІРµСЂРёС‚СЊ РЅРѕРјРµСЂ
   user_checkIdAndControl(ldn, (codeType_e)typ);
 
   return true;
 }
 
-// Проверить все условия доступа ID до включения выходов.
+// РџСЂРѕРІРµСЂРёС‚СЊ РІСЃРµ СѓСЃР»РѕРІРёСЏ РґРѕСЃС‚СѓРїР° ID РґРѕ РІРєР»СЋС‡РµРЅРёСЏ РІС‹С…РѕРґРѕРІ.
 void user_checkIdAndControl(char *id, codeType_e tp){
   if (!mem_tables_ready()) return;
 
-  // проверяем что блокировка не включена
+  // РїСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ Р±Р»РѕРєРёСЂРѕРІРєР° РЅРµ РІРєР»СЋС‡РµРЅР°
   if (device.status.unblockHand)
   {
-    return; // ручная разблокировка включена
+    return; // СЂСѓС‡РЅР°СЏ СЂР°Р·Р±Р»РѕРєРёСЂРѕРІРєР° РІРєР»СЋС‡РµРЅР°
   }
   if (device.status.unblockOnScene)
   {
-    return; // разблокировка по сценарию включена
+    return; // СЂР°Р·Р±Р»РѕРєРёСЂРѕРІРєР° РїРѕ СЃС†РµРЅР°СЂРёСЋ РІРєР»СЋС‡РµРЅР°
   }
 
   bool onOut[2] = {false, false};
 
-  // проверим можно ли управлять этим способом: настройки реле действуют для любого пути открытия
+  // РїСЂРѕРІРµСЂРёРј РјРѕР¶РЅРѕ Р»Рё СѓРїСЂР°РІР»СЏС‚СЊ СЌС‚РёРј СЃРїРѕСЃРѕР±РѕРј: РЅР°СЃС‚СЂРѕР№РєРё СЂРµР»Рµ РґРµР№СЃС‚РІСѓСЋС‚ РґР»СЏ Р»СЋР±РѕРіРѕ РїСѓС‚Рё РѕС‚РєСЂС‹С‚РёСЏ
   for (uint8_t i = 0; i < 2; i++){
     if (config.rele[i].useInBlock == 0){
       switch (tp){
@@ -78,67 +78,67 @@ void user_checkIdAndControl(char *id, codeType_e tp){
     }
   }
 
-  // проверяем ID из временного буфера
+  // РїСЂРѕРІРµСЂСЏРµРј ID РёР· РІСЂРµРјРµРЅРЅРѕРіРѕ Р±СѓС„РµСЂР°
   if (user_findTempID(id)){
     user_activateOut(onOut[0], onOut[1], tp, id);
     return;
   }
 
-  // авторегистрация
+  // Р°РІС‚РѕСЂРµРіРёСЃС‚СЂР°С†РёСЏ
   if (device.status.autoRegistration){
     user_addIdToTempBuffer(id, tp);
     log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0);
   }
 
-  // открывать всем без разбора
+  // РѕС‚РєСЂС‹РІР°С‚СЊ РІСЃРµРј Р±РµР· СЂР°Р·Р±РѕСЂР°
   if (device.status.openAnyUser){
     user_activateOut(onOut[0], onOut[1], tp, id);
     return;
   }
 
-  // открывать всем по расписанию
+  // РѕС‚РєСЂС‹РІР°С‚СЊ РІСЃРµРј РїРѕ СЂР°СЃРїРёСЃР°РЅРёСЋ
   if (device.triggers.openAllByShedule){
-    // проверяем рассписание
-    // проходим по расписанию
+    // РїСЂРѕРІРµСЂСЏРµРј СЂР°СЃСЃРїРёСЃР°РЅРёРµ
+    // РїСЂРѕС…РѕРґРёРј РїРѕ СЂР°СЃРїРёСЃР°РЅРёСЋ
     if (user_checkShedule(device.triggers.openAllByShedule) == true){
       user_activateOut(onOut[0], onOut[1], tp, id);
     }
     return;
   }
 
-  // можно, ищем ID
+  // РјРѕР¶РЅРѕ, РёС‰РµРј ID
   if (onOut[0] || onOut[1]){
     cellID_s cellId;
 
-    // ID найден
+    // ID РЅР°Р№РґРµРЅ
     uint8_t found=user_findID(id,&cellId);
     if(found>1) return;
     if (found){
-      // проверим разрешение по дате запрета
+      // РїСЂРѕРІРµСЂРёРј СЂР°Р·СЂРµС€РµРЅРёРµ РїРѕ РґР°С‚Рµ Р·Р°РїСЂРµС‚Р°
       if ((cellId.blockTime != 0) && (cellId.blockTime < device.datetime))
       {
         return;
       }
-      // время действия истекло (строка 284): не открываем; об окончании уже сообщило событие 138
+      // РІСЂРµРјСЏ РґРµР№СЃС‚РІРёСЏ РёСЃС‚РµРєР»Рѕ (СЃС‚СЂРѕРєР° 284): РЅРµ РѕС‚РєСЂС‹РІР°РµРј; РѕР± РѕРєРѕРЅС‡Р°РЅРёРё СѓР¶Рµ СЃРѕРѕР±С‰РёР»Рѕ СЃРѕР±С‹С‚РёРµ 138
       if (id_expired(&cellId)){
         return;
       }
 
       cellGroup_s group;
 
-      // принадлежность к группе
+      // РїСЂРёРЅР°РґР»РµР¶РЅРѕСЃС‚СЊ Рє РіСЂСѓРїРїРµ
       if (user_getGroup(cellId.group, &group) == false)
       {
         return;
       }
 
-      // включена блокировка группы
+      // РІРєР»СЋС‡РµРЅР° Р±Р»РѕРєРёСЂРѕРІРєР° РіСЂСѓРїРїС‹
       if (group.blocked){
         log_addControlEvent(LOG_CON_IDBLOCKED, id, 0);
         return;
       }
 
-      // разрешение на управление данным типом
+      // СЂР°Р·СЂРµС€РµРЅРёРµ РЅР° СѓРїСЂР°РІР»РµРЅРёРµ РґР°РЅРЅС‹Рј С‚РёРїРѕРј
       switch (tp){
       case CT_PHONE:
         if (group.onPhone == 0) return;
@@ -153,7 +153,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
         break;
       }
 
-      // расписание не задано, круглосуточно - управляем
+      // СЂР°СЃРїРёСЃР°РЅРёРµ РЅРµ Р·Р°РґР°РЅРѕ, РєСЂСѓРіР»РѕСЃСѓС‚РѕС‡РЅРѕ - СѓРїСЂР°РІР»СЏРµРј
       if (group.sheduleNumber == 0){
         user_activateOut(onOut[0], onOut[1], tp, id);
         return;
@@ -161,13 +161,13 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 
       cellShedule_s shedule;
 
-      // расписание
+      // СЂР°СЃРїРёСЃР°РЅРёРµ
       if (user_getShedule(group.sheduleNumber, &shedule) == false)
       {
         return;
       }
 
-      // включена блокировка расписания
+      // РІРєР»СЋС‡РµРЅР° Р±Р»РѕРєРёСЂРѕРІРєР° СЂР°СЃРїРёСЃР°РЅРёСЏ
       if (shedule.blocked){
         log_addControlEvent(LOG_CON_IDBLOCKED, id, 0);
         return;
@@ -177,7 +177,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 
       user_activateOut(onOut[0], onOut[1], tp, id);
     } else{
-      // ID не найден - включено информирование админа
+      // ID РЅРµ РЅР°Р№РґРµРЅ - РІРєР»СЋС‡РµРЅРѕ РёРЅС„РѕСЂРјРёСЂРѕРІР°РЅРёРµ Р°РґРјРёРЅР°
       log_addControlEvent(LOG_CON_IDNOTINBASE, id, 0);
       if (device.triggers.smsUnreg){
         unreg_sms_note(id);
@@ -186,7 +186,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   }
 }
 
-// Сохранить счётчики проходов, включить разрешённые реле и записать событие.
+// РЎРѕС…СЂР°РЅРёС‚СЊ СЃС‡С‘С‚С‡РёРєРё РїСЂРѕС…РѕРґРѕРІ, РІРєР»СЋС‡РёС‚СЊ СЂР°Р·СЂРµС€С‘РЅРЅС‹Рµ СЂРµР»Рµ Рё Р·Р°РїРёСЃР°С‚СЊ СЃРѕР±С‹С‚РёРµ.
 bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 
   bool run[2];
@@ -199,32 +199,32 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
     return false;
   }
 
-  // проверим счетчик проходов
+  // РїСЂРѕРІРµСЂРёРј СЃС‡РµС‚С‡РёРє РїСЂРѕС…РѕРґРѕРІ
   uint8_t cnt = 255;
   bool started = false;
   cellID_s cellId;
-  /* Проходы считаются только по заданному ID. Команда 8 без ID (короткий пакет) открывает
-     по настройкам реле: пустой ID совпадал с ячейкой базы, где ID из нулей, и по её счётчику
-     команда молча не выполнялась или списывала проходы чужому абоненту (18.09.2026). */
+  /* РџСЂРѕС…РѕРґС‹ СЃС‡РёС‚Р°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РїРѕ Р·Р°РґР°РЅРЅРѕРјСѓ ID. РљРѕРјР°РЅРґР° 8 Р±РµР· ID (РєРѕСЂРѕС‚РєРёР№ РїР°РєРµС‚) РѕС‚РєСЂС‹РІР°РµС‚
+     РїРѕ РЅР°СЃС‚СЂРѕР№РєР°Рј СЂРµР»Рµ: РїСѓСЃС‚РѕР№ ID СЃРѕРІРїР°РґР°Р» СЃ СЏС‡РµР№РєРѕР№ Р±Р°Р·С‹, РіРґРµ ID РёР· РЅСѓР»РµР№, Рё РїРѕ РµС‘ СЃС‡С‘С‚С‡РёРєСѓ
+     РєРѕРјР°РЅРґР° РјРѕР»С‡Р° РЅРµ РІС‹РїРѕР»РЅСЏР»Р°СЃСЊ РёР»Рё СЃРїРёСЃС‹РІР°Р»Р° РїСЂРѕС…РѕРґС‹ С‡СѓР¶РѕРјСѓ Р°Р±РѕРЅРµРЅС‚Сѓ (18.09.2026). */
   uint8_t found=(id!=NULL && id[0]!=0)?user_findID(id,&cellId):0;
   if(found>1) return false;
   if (found){
     bool save = false;
-    // задано кол-во проходов
+    // Р·Р°РґР°РЅРѕ РєРѕР»-РІРѕ РїСЂРѕС…РѕРґРѕРІ
     if (cellId.cntPassOnDay != 255){
       if (id_new_day(&cellId)) save = true;
-      // есть проходы
+      // РµСЃС‚СЊ РїСЂРѕС…РѕРґС‹
       if (cellId.cntPass != 0){
         cellId.cntPass -= 1;
         cnt = cellId.cntPass;
         save = true;
       }
       else{
-        if (save) user_updateID(&cellId); // день отмечен: завтра остаток восстановится
+        if (save) user_updateID(&cellId); // РґРµРЅСЊ РѕС‚РјРµС‡РµРЅ: Р·Р°РІС‚СЂР° РѕСЃС‚Р°С‚РѕРє РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЃСЏ
         return false;
       }
     }
-    // первый проход ID со временем действия - начало отсчёта
+    // РїРµСЂРІС‹Р№ РїСЂРѕС…РѕРґ ID СЃРѕ РІСЂРµРјРµРЅРµРј РґРµР№СЃС‚РІРёСЏ - РЅР°С‡Р°Р»Рѕ РѕС‚СЃС‡С‘С‚Р°
     if (cellId.useTime != 0 && id_first_pass(&cellId) == 0 && device.datetime >= ID_TIME_VALID){
       id_set_first_pass(&cellId, device.datetime);
       id_watch_end(id_time_end(&cellId));
@@ -233,15 +233,15 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
     if (save && !user_updateID(&cellId)) return false;
   }
 
-  /* Реле - сразу после решения (счётчик проходов уже сохранён, B25), журнал - после:
-     запись событий не задерживает щелчок. */
+  /* Р РµР»Рµ - СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ СЂРµС€РµРЅРёСЏ (СЃС‡С‘С‚С‡РёРє РїСЂРѕС…РѕРґРѕРІ СѓР¶Рµ СЃРѕС…СЂР°РЅС‘РЅ, B25), Р¶СѓСЂРЅР°Р» - РїРѕСЃР»Рµ:
+     Р·Р°РїРёСЃСЊ СЃРѕР±С‹С‚РёР№ РЅРµ Р·Р°РґРµСЂР¶РёРІР°РµС‚ С‰РµР»С‡РѕРє. */
   for (out = 0; out < 2; out++){
     if (!run[out]) continue;
-    // импульс
+    // РёРјРїСѓР»СЊСЃ
     if (config.rele[out].mode == 0){
       out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
     } else{
-      // уровень: проход ID переключает выход, команда сервера 8 включает (строка 186)
+      // СѓСЂРѕРІРµРЅСЊ: РїСЂРѕС…РѕРґ ID РїРµСЂРµРєР»СЋС‡Р°РµС‚ РІС‹С…РѕРґ, РєРѕРјР°РЅРґР° СЃРµСЂРІРµСЂР° 8 РІРєР»СЋС‡Р°РµС‚ (СЃС‚СЂРѕРєР° 186)
       out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
     }
   }
@@ -261,14 +261,14 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
   default:
     break;
   }
-  // проходы ограничены: сервер раздаёт остаток остальным контроллерам объекта
+  // РїСЂРѕС…РѕРґС‹ РѕРіСЂР°РЅРёС‡РµРЅС‹: СЃРµСЂРІРµСЂ СЂР°Р·РґР°С‘С‚ РѕСЃС‚Р°С‚РѕРє РѕСЃС‚Р°Р»СЊРЅС‹Рј РєРѕРЅС‚СЂРѕР»Р»РµСЂР°Рј РѕР±СЉРµРєС‚Р°
   if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);
-  if (cnt == 0) log_addControlEvent(LOG_CON_PASSLIMIT, id, 0); // 79: последний проход суток
+  if (cnt == 0) log_addControlEvent(LOG_CON_PASSLIMIT, id, 0); // 79: РїРѕСЃР»РµРґРЅРёР№ РїСЂРѕС…РѕРґ СЃСѓС‚РѕРє
   if (started) log_addControlEvent(LOG_CON_IDTIMESTART, id, 255);
   return true;
 }
 
-// Вернуть последние десять символов телефонного номера.
+// Р’РµСЂРЅСѓС‚СЊ РїРѕСЃР»РµРґРЅРёРµ РґРµСЃСЏС‚СЊ СЃРёРјРІРѕР»РѕРІ С‚РµР»РµС„РѕРЅРЅРѕРіРѕ РЅРѕРјРµСЂР°.
 char* user_last10digitsnumber (char* num)
 {
   uint16_t l = strlen(num);

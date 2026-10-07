@@ -46,13 +46,13 @@ C_FILES=(
     'Tests/test_comm_volte.c',
     'Tests/test_sms.c',
     'Tests/test_tempid_meta.c',
-    'User/c/crc_asm.c',
+    'Tests/reference/crc_asm.c',
     'User/c/crc_runtime.c',
     'User/c/expiry_runtime.c',
     'User/c/fast_kernels.c',
     'User/c/flash_w25_runtime.c',
     'User/c/fw_service_runtime.c',
-    'User/c/id_hash_asm.c',
+    'User/c/id_hash.c',
     'User/c/idclear_runtime.c',
     'User/c/idindex_runtime.c',
     'User/c/memory_runtime.c',
@@ -96,7 +96,7 @@ C_FILES=(
     'stm32_it.c',
 )
 PY_FILES=(
-    'Tests/asm/c_vs_asm_project.py',
+    'Tests/run_all.py',
     'Tests/asm/test_access_reads.py',
     'Tests/build_comm_uart.py',
     'Tests/call_mutations.py',
@@ -124,16 +124,17 @@ def comments(text):
 
 
 # Проверить кодировку, оформление и договор внешних границ модулей.
-def check(fix=False):
+def check():
+    all_sources=[p for p in ROOT.rglob('*') if p.suffix.lower() in ('.c','.h','.s','.inc','.py') and '.git' not in p.parts]
+    for path in all_sources:
+        data=path.read_bytes();data.decode('utf-8')
+        assert not data.startswith(b'\xef\xbb\xbf'), path
+        assert b'\n' not in data.replace(b'\r\n',b''), path
+        assert b'\r' not in data.replace(b'\r\n',b''), path
     for name in (*C_FILES,*PY_FILES):
         p=ROOT/name; data=p.read_bytes()
-        if fix:
-            try: text=data.decode('utf-8')
-            except UnicodeDecodeError: text=data.decode('cp1251')
-            data=text.replace('\r\n','\n').replace('\n','\r\n').encode('cp1251' if name in C_FILES else 'utf-8')
-            p.write_bytes(data)
         assert b'\n' not in data.replace(b'\r\n',b'') and b'\r' not in data.replace(b'\r\n',b''), name
-        text=data.decode('cp1251' if name in C_FILES else 'utf-8')
+        text=data.decode('utf-8')
         assert 'Доработка: Кряжев А., 2026' in text[:350], name
         owned = (name.startswith('User/c/user_') or name.startswith('Modules/comm_')
                  or name.startswith('Modules/modem_slm336') or name.startswith('User/comm_timeouts')
@@ -151,11 +152,11 @@ def check(fix=False):
             assert not re.search(r'\b(?:asm|__asm)\s*\(',text), ('inline assembler in C mirror',name)
     for name in ('Modules/comm_uart.c','Modules/comm_at.c','Modules/comm_modem.c','Modules/modem_slm336.c',
                  'Modules/comm_channel.c','Modules/comm_server.c','Modules/comm_recover.c','Modules/comm_call.c','Modules/comm_sms.c','Modules/comm_balance.c','User/c/user_comm_runtime.c'):
-        text=(ROOT/name).read_bytes().decode('cp1251')
+        text=(ROOT/name).read_bytes().decode('utf-8')
         assert not any(word in text for word in ('malloc(', 'calloc(', 'realloc(', 'snprintf(')), name
         # Этап 5: связь никогда не перезагружает процессор.
         assert not any(word in text for word in ('NVIC_SystemReset', 'user_savereset', 'app_trial_rollback')), name
-    print('comm sources: cp1251 C, UTF-8 Python, CRLF, author headers, new modules without heap and without CPU reset PASS')
+    print('comm sources: UTF-8 C/Python, CRLF, author headers, new modules without heap and without CPU reset PASS')
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--fix',action='store_true'); check(p.parse_args().fix)
+    check()

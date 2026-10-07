@@ -1,34 +1,7 @@
-/* Разработчик: Кряжев А., 2026 */
-/**
-  ******************************************************************************
-  * @file    hw_config.c
-  * @author  MCD Application Team
-  * @version V4.0.0
-  * @date    21-January-2013
-  * @brief   Hardware Configuration & Setup
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+/* Р Р°Р·СЂР°Р±РѕС‚С‡РёРє: РљСЂСЏР¶РµРІ Рђ., 2026 */
 
 #include "includes.h"
 
-/* Includes ------------------------------------------------------------------*/
 #include "stm32_it.h"
 #include "usb_lib.h"
 #include "usb_prop.h"
@@ -40,16 +13,11 @@
 #define         ID2          (0x1FFFF7EC)
 #define         ID3          (0x1FFFF7F0)
 
-//#define USB_DISCONNECT_PIN                    GPIO_Pin_14
-//#define USB_DISCONNECT                        GPIOB
-//#define RCC_APB2Periph_GPIO_DISCONNECT        RCC_APB2Periph_GPIOB
-//#define FULL_CDC_MODULE
+/* РўРёРїС‹ ---------------------------------------------------------------------- */
+/* РћРїСЂРµРґРµР»РµРЅРёСЏ --------------------------------------------------------------- */
+/* РњР°РєСЂРѕСЃС‹ ------------------------------------------------------------------- */
+/* РџРµСЂРµРјРµРЅРЅС‹Рµ ---------------------------------------------------------------- */
 
-/* Типы ---------------------------------------------------------------------- */
-/* Определения --------------------------------------------------------------- */
-/* Макросы ------------------------------------------------------------------- */
-/* Переменные ---------------------------------------------------------------- */
-USART_InitTypeDef USART_InitStructure;
 EXTI_InitTypeDef EXTI_InitStructure;
 uint8_t  USART_Rx_Buffer [USART_RX_DATA_SIZE];
 volatile uint32_t USART_Rx_ptr_in = 0;
@@ -58,40 +26,35 @@ volatile uint32_t USART_Rx_length  = 0;
 
 volatile uint8_t  USB_Tx_State = 0;
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len);
-/* Внешние переменные -------------------------------------------------------- */
+/* Р’РЅРµС€РЅРёРµ РїРµСЂРµРјРµРЅРЅС‹Рµ -------------------------------------------------------- */
 
 extern LINE_CODING linecoding;
 
-/* Прототипы функций --------------------------------------------------------- */
-/* Функции ------------------------------------------------------------------- */
-/*******************************************************************************
-* Function Name  : Set_System
-* Description    : Configures Main system clocks & power
-* Input          : None.
-* Return         : None.
-*******************************************************************************/
+/* РџСЂРѕС‚РѕС‚РёРїС‹ С„СѓРЅРєС†РёР№ --------------------------------------------------------- */
+/* Р¤СѓРЅРєС†РёРё ------------------------------------------------------------------- */
+
 void Set_System(void)
 {
-  /*!< К этому моменту тактирование микроконтроллера уже настроено функцией
-       SystemInit(), которая вызывается из файла startup (startup_stm32f10x_xx.s)
-       до перехода в main. Чтобы изменить настройки SystemInit(), смотрите
+  /*!< Рљ СЌС‚РѕРјСѓ РјРѕРјРµРЅС‚Сѓ С‚Р°РєС‚РёСЂРѕРІР°РЅРёРµ РјРёРєСЂРѕРєРѕРЅС‚СЂРѕР»Р»РµСЂР° СѓР¶Рµ РЅР°СЃС‚СЂРѕРµРЅРѕ С„СѓРЅРєС†РёРµР№
+       SystemInit(), РєРѕС‚РѕСЂР°СЏ РІС‹Р·С‹РІР°РµС‚СЃСЏ РёР· С„Р°Р№Р»Р° startup (startup_stm32f10x_xx.s)
+       РґРѕ РїРµСЂРµС…РѕРґР° РІ main. Р§С‚РѕР±С‹ РёР·РјРµРЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё SystemInit(), СЃРјРѕС‚СЂРёС‚Рµ
        system_stm32f10x.c
      */
 
 #ifdef USB_DISCONNECT_PIN
   GPIO_InitTypeDef GPIO_InitStructure;
 
-  /* Включить тактирование порта USB_DISCONNECT */
+  /* Р’РєР»СЋС‡РёС‚СЊ С‚Р°РєС‚РёСЂРѕРІР°РЅРёРµ РїРѕСЂС‚Р° USB_DISCONNECT */
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIO_DISCONNECT, ENABLE);
 
-  /* Настроить вывод подтяжки USB */
+  /* РќР°СЃС‚СЂРѕРёС‚СЊ РІС‹РІРѕРґ РїРѕРґС‚СЏР¶РєРё USB */
   GPIO_InitStructure.GPIO_Pin = USB_DISCONNECT_PIN;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(USB_DISCONNECT, &GPIO_InitStructure);
 #endif
 
-  /* Настроить линию EXTI 18, внутренне подключённую к блоку USB */
+  /* РќР°СЃС‚СЂРѕРёС‚СЊ Р»РёРЅРёСЋ EXTI 18, РІРЅСѓС‚СЂРµРЅРЅРµ РїРѕРґРєР»СЋС‡С‘РЅРЅСѓСЋ Рє Р±Р»РѕРєСѓ USB */
   EXTI_ClearITPendingBit(EXTI_Line18);
   EXTI_InitStructure.EXTI_Line = EXTI_Line18;
   EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
@@ -99,68 +62,20 @@ void Set_System(void)
   EXTI_Init(&EXTI_InitStructure);
 }
 
-/*******************************************************************************
-* Function Name  : Set_USBClock
-* Description    : Configures USB Clock input (48MHz)
-* Input          : None.
-* Return         : None.
-*******************************************************************************/
 void Set_USBClock(void)
 {
-  /* Выбрать источник USBCLK */
-  if (SystemCoreClock == 72000000) RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_1Div5); // если частота 72 МГц
-  else RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_Div1); // если частота 48 МГц
-  /* Включить тактирование USB */
+  /* Р’С‹Р±СЂР°С‚СЊ РёСЃС‚РѕС‡РЅРёРє USBCLK */
+  if (SystemCoreClock == 72000000) RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_1Div5); // РµСЃР»Рё С‡Р°СЃС‚РѕС‚Р° 72 РњР“С†
+  else RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_Div1); // РµСЃР»Рё С‡Р°СЃС‚РѕС‚Р° 48 РњР“С†
+  /* Р’РєР»СЋС‡РёС‚СЊ С‚Р°РєС‚РёСЂРѕРІР°РЅРёРµ USB */
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_USB, ENABLE);
 }
 
-/*******************************************************************************
-* Function Name  : Enter_LowPowerMode
-* Description    : Power-off system clocks and power while entering suspend mode
-* Input          : None.
-* Return         : None.
-*******************************************************************************/
-void Enter_LowPowerMode(void)
-{
-  /* Перевести устройство в состояние suspend */
-  bDeviceState = SUSPENDED;
-}
-
-/*******************************************************************************
-* Function Name  : Leave_LowPowerMode
-* Description    : Restores system clocks and power while exiting suspend mode
-* Input          : None.
-* Return         : None.
-*******************************************************************************/
-void Leave_LowPowerMode(void)
-{
-  DEVICE_INFO *pInfo = &Device_Info;
-
-  /* Вернуть устройство в нужное состояние */
-  if (pInfo->Current_Configuration != 0)
-  {
-    /* Устройство настроено */
-    bDeviceState = CONFIGURED;
-  }
-  else
-  {
-    bDeviceState = ATTACHED;
-  }
-  /* Включить SystemCoreClock */
-  SystemInit();
-}
-
-/*******************************************************************************
-* Function Name  : USB_Interrupts_Config
-* Description    : Configures the USB interrupts
-* Input          : None.
-* Return         : None.
-*******************************************************************************/
 void USB_Interrupts_Config(void)
 {
   NVIC_InitTypeDef NVIC_InitStructure;
 
-  /* 2 бита приоритета вытеснения, 2 бита подприоритета */
+  /* 2 Р±РёС‚Р° РїСЂРёРѕСЂРёС‚РµС‚Р° РІС‹С‚РµСЃРЅРµРЅРёСЏ, 2 Р±РёС‚Р° РїРѕРґРїСЂРёРѕСЂРёС‚РµС‚Р° */
   NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
 
   NVIC_InitStructure.NVIC_IRQChannel = USB_LP_CAN1_RX0_IRQn;
@@ -169,141 +84,12 @@ void USB_Interrupts_Config(void)
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&NVIC_InitStructure);
 
-    /* Разрешить прерывание пробуждения USB */
+    /* Р Р°Р·СЂРµС€РёС‚СЊ РїСЂРµСЂС‹РІР°РЅРёРµ РїСЂРѕР±СѓР¶РґРµРЅРёСЏ USB */
   NVIC_InitStructure.NVIC_IRQChannel = USBWakeUp_IRQn;
   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
   NVIC_Init(&NVIC_InitStructure);
 }
 
-/*******************************************************************************
-* Function Name  : USB_Cable_Config
-* Description    : Software Connection/Disconnection of USB Cable
-* Input          : None.
-* Return         : Status
-*******************************************************************************/
-void USB_Cable_Config (FunctionalState NewState)
-{
-#ifdef USB_DISCONNECT_PIN
-  if (NewState != DISABLE)
-  {
-  // подключить
-  //GPIO_ResetBits(USB_DISCONNECT, USB_DISCONNECT_PIN);
-  GPIO_SetBits(USB_DISCONNECT, USB_DISCONNECT_PIN);
-  }
-  else
-  {
-  // отключить
-  //GPIO_SetBits(USB_DISCONNECT, USB_DISCONNECT_PIN);
-  GPIO_ResetBits(USB_DISCONNECT, USB_DISCONNECT_PIN);
-  }
-#endif
-}
-
-/*******************************************************************************
-* Function Name  :  USART_Config_Default.
-* Description    :  configure the EVAL_COM1 with default values.
-* Input          :  None.
-* Return         :  None.
-*******************************************************************************/
-void USART_Config_Default(void)
-{
-#ifdef FULL_CDC_MODULE
-  /* Настройка EVAL_COM1 по умолчанию */
-  /* EVAL_COM1 настроен так:
-        - скорость 9600 бод
-        - 8 бит данных
-        - один стоп-бит
-        - контроль нечётности
-        - без аппаратного управления потоком
-        - приём и передача включены
-  */
-  USART_InitStructure.USART_BaudRate = 9600;
-  USART_InitStructure.USART_WordLength = USART_WordLength_8b;
-  USART_InitStructure.USART_StopBits = USART_StopBits_1;
-  USART_InitStructure.USART_Parity = USART_Parity_Odd;
-  USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-  USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
-
-  /* Настроить и включить USART */
-  STM_EVAL_COMInit(COM1, &USART_InitStructure);
-
-  /* Разрешить прерывание приёма USART */
-  USART_ITConfig(EVAL_COM1, USART_IT_RXNE, ENABLE);
-#endif
-}
-
-/*******************************************************************************
-* Function Name  :  USART_Config.
-* Description    :  Configure the EVAL_COM1 according to the line coding structure.
-* Input          :  None.
-* Return         :  Configuration status
-                    TRUE : configuration done with success
-                    FALSE : configuration aborted.
-*******************************************************************************/
-bool USART_Config(void)
-{
-/*uint8_t stopbits = 0;
-
-  // set the Stop bit
-  switch (linecoding.format)
-  {
-    case 0:
-      stopbits = 0;
-      break;
-    case 2:
-      stopbits = 1;
-      break;
-    default :
-    {
-      //USART_Config_Default();
-      return (FALSE);
-    }
-  }*/
-
-  // задать бит чётности
-  /*switch (linecoding.paritytype)
-  {
-    case 0:
-      parity = 0;
-      break;
-    case 1:
-      parity = 1;
-      break;
-    case 2:
-      parity = 2;
-      break;
-    default :
-    {
-      //USART_Config_Default();
-      return (FALSE);
-    }
-  }*/
-
-  // задать размер данных: поддерживаются только 8 и 9 бит
-  /*switch (linecoding.datatype)
-  {
-    //case 0x07:
-      // With this configuration a parity (Even or Odd) should be set
-      //USART_InitStructure.USART_WordLength = USART_WordLength_8b;
-      //break;
-    case 0x08:
-      break;
-    default :
-    {
-      //USART_Config_Default();
-      return (FALSE);
-    }
-  }*/
-return (TRUE);
-}
-
-/*******************************************************************************
-* Function Name  : USB_To_USART_Send_Data.
-* Description    : send the received data from USB to the UART 0.
-* Input          : data_buffer: data address.
-                   Nb_bytes: number of bytes to send.
-* Return         : none.
-*******************************************************************************/
 void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes)
 {
 #ifdef FULL_CDC_MODULE
@@ -315,17 +101,11 @@ void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes)
     while(USART_GetFlagStatus(EVAL_COM1, USART_FLAG_TXE) == RESET);
   }
 #else
-  /* Прототип пользовательской функции */
+  /* РџСЂРѕС‚РѕС‚РёРї РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРѕР№ С„СѓРЅРєС†РёРё */
   usb_datareceived(data_buffer, Nb_bytes);
 #endif
 }
 
-/*******************************************************************************
-* Function Name  : Handle_USBAsynchXfer.
-* Description    : send data to USB.
-* Input          : None.
-* Return         : none.
-*******************************************************************************/
 void USB_Tx_Reset(void)
 {
  uint32_t mask = __get_PRIMASK(); __disable_irq();
@@ -350,12 +130,7 @@ void Handle_USBAsynchXfer (void)
  }
  __set_PRIMASK(mask);
 }
-/*******************************************************************************
-* Function Name  : UART_To_USB_Send_Data.
-* Description    : send the received data from UART 0 to USB.
-* Input          : None.
-* Return         : none.
-*******************************************************************************/
+
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
 {
 #ifdef FULL_CDC_MODULE
@@ -370,14 +145,14 @@ uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
 
   USART_Rx_ptr_in++;
 
-  /* Чтобы не переполнить буфер */
+  /* Р§С‚РѕР±С‹ РЅРµ РїРµСЂРµРїРѕР»РЅРёС‚СЊ Р±СѓС„РµСЂ */
   if(USART_Rx_ptr_in == USART_RX_DATA_SIZE)
   {
     USART_Rx_ptr_in = 0;
   }
   return 1;
 #else
-  // публикуем весь кадр одним снимком, без частичной записи при отказе
+  // РїСѓР±Р»РёРєСѓРµРј РІРµСЃСЊ РєР°РґСЂ РѕРґРЅРёРј СЃРЅРёРјРєРѕРј, Р±РµР· С‡Р°СЃС‚РёС‡РЅРѕР№ Р·Р°РїРёСЃРё РїСЂРё РѕС‚РєР°Р·Рµ
   if (Nb_bytes == 0) return 1;
   if (!data_buffer || Nb_bytes >= USART_RX_DATA_SIZE) return 0;
   uint32_t budget = 32000u;
@@ -393,7 +168,7 @@ uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
       }
       __DMB(); USART_Rx_ptr_in = in; __set_PRIMASK(mask); return 1;
     }
-    // очередь без активного IN тоже должна получать продвижение
+    // РѕС‡РµСЂРµРґСЊ Р±РµР· Р°РєС‚РёРІРЅРѕРіРѕ IN С‚РѕР¶Рµ РґРѕР»Р¶РЅР° РїРѕР»СѓС‡Р°С‚СЊ РїСЂРѕРґРІРёР¶РµРЅРёРµ
     if (USB_Tx_State == 0) Handle_USBAsynchXfer();
     __set_PRIMASK(mask); --budget;
   }
@@ -401,13 +176,6 @@ uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes)
 #endif
 }
 
-/*******************************************************************************
-* Function Name  : Get_SerialNum.
-* Description    : Create the serial number string descriptor.
-* Input          : None.
-* Output         : None.
-* Return         : None.
-*******************************************************************************/
 void Get_SerialNum(void)
 {
   uint32_t Device_Serial0, Device_Serial1, Device_Serial2;
@@ -425,13 +193,6 @@ void Get_SerialNum(void)
   }
 }
 
-/*******************************************************************************
-* Function Name  : HexToChar.
-* Description    : Convert Hex 32Bits value into char.
-* Input          : None.
-* Output         : None.
-* Return         : None.
-*******************************************************************************/
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len)
 {
   uint8_t idx = 0;
@@ -452,5 +213,3 @@ static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len)
     pbuf[ 2* idx + 1] = 0;
   }
 }
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

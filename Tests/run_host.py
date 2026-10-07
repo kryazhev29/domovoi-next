@@ -3,15 +3,15 @@ import os, pathlib, subprocess, sys, tempfile, re
 from source_select import source_text, host_adapters
 # DOMOVOI_ROOT направляет проверки в копию, например с намеренно внесённой ошибкой.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
-ZIG=__import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
+ZIG=__import__('os').environ.get('DOMOVOI_ZIG', str(pathlib.Path(__import__('tempfile').gettempdir())/'codex-zig/zig.exe'))
 if len(sys.argv) > 1 and sys.argv[1] != 'work':
     sys.exit('Проверяется рабочий код: используйте run_host.py work <группа>.')
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
 def source(name):
     return source_text(ROOT,name)
-# Прочитать фикстуру блока в cp1251; русские маркеры остаются служебными точками вставки.
+# Прочитать фикстуру блока в UTF-8; русские маркеры остаются служебными точками вставки.
 def fixture(name):
-    text=(ROOT/name).read_bytes().decode('cp1251')
+    text=(ROOT/name).read_bytes().decode('utf-8')
     return text.replace('/* КОД */','/* PRODUCTION */').replace('/* ТИПЫ */','/* TYPES */')
 
 def function(text,name):
@@ -35,8 +35,8 @@ def typedefs(text,*names):
 from contract_mapping import REPLACEMENTS
 if kind in REPLACEMENTS:
     sys.path.insert(0, str(ROOT/'Tests/asm'))
-    from c_vs_asm_suite import select_image, run_cases
-    select_image(os.environ.get('DOMOVOI_TEST_PROJECT', 'HYBRID'))
+    from firmware_suite import select_image, run_cases
+    select_image()
     target = REPLACEMENTS[kind]
     if target == 'commserver':
         from comm_server_host import run
@@ -52,8 +52,8 @@ if kind in REPLACEMENTS:
 if kind == 'tx':
     sys.path.insert(0, str(ROOT/'Tests/asm'))
     if 'DOMOVOI_ELF' not in os.environ:
-        from c_vs_asm_suite import select_image
-        select_image(os.environ.get('DOMOVOI_TEST_PROJECT', 'HYBRID'))
+        from firmware_suite import select_image
+        select_image()
     import test_usb_source
     scenario = sys.argv[3] if len(sys.argv) > 3 else None
     result = getattr(test_usb_source, scenario)() if scenario else test_usb_source.run()
@@ -110,7 +110,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=fixture('Tests/test_usb_setup_bounds.c').replace('/* PRODUCTION */',code)
     elif kind=='idexpiry':
         user=source('User/c/user_*.c')
-        unit=(ROOT/'Tests/test_id_expiry.c').read_bytes().decode('cp1251').replace('/* ТИПЫ */',typedefs(source('structures.h'),'cellID_s')).replace('/* ИСХОДНИК */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
+        unit=(ROOT/'Tests/test_id_expiry.c').read_bytes().decode('utf-8').replace('/* ТИПЫ */',typedefs(source('structures.h'),'cellID_s')).replace('/* ИСХОДНИК */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
     elif kind=='tempidmeta':
         unit=source('Tests/test_tempid_meta.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* КОД МОДУЛЯ */',function(source('User/c/user_*.c').replace('static inline bool id_equal','static bool id_equal'),'id_equal')+'\n'+function(source('User/c/user_*.c'),'user_findTempID')+'\n'+function(source('User/c/user_*.c'),'user_addIdToTempBuffer'))
     elif kind=='commuart':

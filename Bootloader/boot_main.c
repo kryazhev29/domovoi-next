@@ -1,4 +1,4 @@
-/* Разработчик: Кряжев А., 2026 */
+/* Р Р°Р·СЂР°Р±РѕС‚С‡РёРє: РљСЂСЏР¶РµРІ Рђ., 2026 */
 #include "boot_core.h"
 #ifdef BOOT_HOST_TEST
 #include <string.h>
@@ -50,7 +50,7 @@ static void dispatch(const uint8_t *p,uint16_t n) {
  cmd=p[1];
  switch(cmd) {
  case 0:status=boot_platform_supported()?BOOT_OK:BOOT_UNSUPPORTED_FLASH;break;
- case 0x20: /* size:u32, CRC:u32, имя HW.FW.TIMESTAMP.bin с завершающим нулём */
+ case 0x20: /* size:u32, CRC:u32, РёРјСЏ HW.FW.TIMESTAMP.bin СЃ Р·Р°РІРµСЂС€Р°СЋС‰РёРј РЅСѓР»С‘Рј */
   session=0;received=0;
   if(!boot_platform_supported()){status=BOOT_UNSUPPORTED_FLASH;break;}
   if(n<12||p[n-1]!=0||memchr(p+10,0,n-10)!=p+n-1)break;
@@ -60,7 +60,7 @@ static void dispatch(const uint8_t *p,uint16_t n) {
   status=(uint8_t)boot_prepare();if(status)break;
   status=(uint8_t)boot_stage_header(&h);if(status)break;
   expected=h.size;session=1;break;
- case 0x21: /* offset:u32, 1..256 байт данных; по порядку, можно повторять */
+ case 0x21: /* offset:u32, 1..256 Р±Р°Р№С‚ РґР°РЅРЅС‹С…; РїРѕ РїРѕСЂСЏРґРєСѓ, РјРѕР¶РЅРѕ РїРѕРІС‚РѕСЂСЏС‚СЊ */
   if(!session||n<7||n>262)break;
   offset=read_le32(p+2);
   if(offset>expected||(uint32_t)(n-6)>expected-offset)break;
@@ -103,9 +103,9 @@ void main(void) {
  int held,result;
  boot_platform_init();held=boot_button();
  if(boot_platform_supported())(void)boot_run();
- /* boot_start_app() сам проверяет CRC и векторы. Целая прошивка запускается при любом итоге
-    boot_run(), чтобы неисправная внешняя флеш-память не оставляла прибор без связи в
-    загрузчике. */
+ /* boot_start_app() СЃР°Рј РїСЂРѕРІРµСЂСЏРµС‚ CRC Рё РІРµРєС‚РѕСЂС‹. Р¦РµР»Р°СЏ РїСЂРѕС€РёРІРєР° Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ РїСЂРё Р»СЋР±РѕРј РёС‚РѕРіРµ
+    boot_run(), С‡С‚РѕР±С‹ РЅРµРёСЃРїСЂР°РІРЅР°СЏ РІРЅРµС€РЅСЏСЏ С„Р»РµС€-РїР°РјСЏС‚СЊ РЅРµ РѕСЃС‚Р°РІР»СЏР»Р° РїСЂРёР±РѕСЂ Р±РµР· СЃРІСЏР·Рё РІ
+    Р·Р°РіСЂСѓР·С‡РёРєРµ. */
  if(!held)boot_start_app();
  boot_usb_init();
  for(;;) {
@@ -118,6 +118,5 @@ void main(void) {
   }
  }
 }
-
 
 #endif

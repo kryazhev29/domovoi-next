@@ -37,15 +37,14 @@ int main(void){
  assert(call(1,&cancel,1)==0);begin(139);send_all();assert(call(1,&commit,1)==0);assert(launches==0);
  assert(call(1,&cancel,1)==MANUAL_BUSY);stage[123]^=1;assert(boot_manual_apply()==MANUAL_CRC&&launches==0);
  powercycle();make_image(11);begin(11);send_all();assert(call(1,&commit,1)==0);assert(boot_manual_apply()==0&&launches==1);
- /* Every prefix of an upload, including accepted COMMIT, loses its volatile
-    authorization on reset. No bootloader programming is resumed by startup. */
+
  for(cut=0;cut<=128;cut++){
   powercycle();make_image(139);begin(139);
   for(off=0;off<cut*256;off+=256)block(off);
   if(cut==128)assert(call(1,&commit,1)==0);
   powercycle();assert(!boot_manual_busy());assert(boot_manual_apply()==MANUAL_DENIED&&launches==1);
  }
- /* A v5 application refuses a MINI bootloader before touching the candidate slot. */
+
  powercycle();v5_only=1;make_image(11);before=writes;
  put32(p+1,32768);put32(p+5,checksum());p[0]=0;p[9]=11;
  assert(call(1,p,10)==MANUAL_BAD&&writes==before&&!boot_manual_busy());

@@ -1,32 +1,5 @@
-/**
-  ******************************************************************************
-  * @file    stm32f10x_dbgmcu.h
-  * @author  MCD Application Team
-  * @version V3.6.1
-  * @date    05-March-2012
-  * @brief   This file contains all the functions prototypes for the DBGMCU 
-  *          firmware library.
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
 
-/* Define to prevent recursive inclusion -------------------------------------*/
+
 #ifndef __STM32F10x_DBGMCU_H
 #define __STM32F10x_DBGMCU_H
 
@@ -34,27 +7,10 @@
  extern "C" {
 #endif
 
-/* Includes ------------------------------------------------------------------*/
 #include "stm32f10x.h"
-
-/** @addtogroup STM32F10x_StdPeriph_Driver
-  * @{
-  */
-
-/** @addtogroup DBGMCU
-  * @{
-  */
-
-/** @defgroup DBGMCU_Exported_Types
-  * @{
-  */
 
 /**
   * @}
-  */
-
-/** @defgroup DBGMCU_Exported_Constants
-  * @{
   */
 
 #define DBGMCU_SLEEP                 ((uint32_t)0x00000001)
@@ -83,33 +39,21 @@
 #define DBGMCU_TIM9_STOP             ((uint32_t)0x10000000)
 #define DBGMCU_TIM10_STOP            ((uint32_t)0x20000000)
 #define DBGMCU_TIM11_STOP            ((uint32_t)0x40000000)
-                                              
+
 #define IS_DBGMCU_PERIPH(PERIPH) ((((PERIPH) & 0x800000F8) == 0x00) && ((PERIPH) != 0x00))
 /**
   * @}
-  */ 
-
-/** @defgroup DBGMCU_Exported_Macros
-  * @{
   */
 
 /**
   * @}
   */
-
-/** @defgroup DBGMCU_Exported_Functions
-  * @{
-  */
-
-uint32_t DBGMCU_GetREVID(void);
-uint32_t DBGMCU_GetDEVID(void);
-void DBGMCU_Config(uint32_t DBGMCU_Periph, FunctionalState NewState);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __STM32F10x_DBGMCU_H */
+#endif
 /**
   * @}
   */
@@ -121,5 +65,3 @@ void DBGMCU_Config(uint32_t DBGMCU_Periph, FunctionalState NewState);
 /**
   * @}
   */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

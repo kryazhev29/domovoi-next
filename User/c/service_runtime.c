@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Фоновые CRC таблиц, настроек и сегментов ID.
-// Чтение ограничено фрагментами 64 Б и временем одного прохода.
-// Собственный ответ ждёт свободного канала; SLDN собирает packet.c.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р¤РѕРЅРѕРІС‹Рµ CRC С‚Р°Р±Р»РёС†, РЅР°СЃС‚СЂРѕРµРє Рё СЃРµРіРјРµРЅС‚РѕРІ ID.
+// Р§С‚РµРЅРёРµ РѕРіСЂР°РЅРёС‡РµРЅРѕ С„СЂР°РіРјРµРЅС‚Р°РјРё 64 Р‘ Рё РІСЂРµРјРµРЅРµРј РѕРґРЅРѕРіРѕ РїСЂРѕС…РѕРґР°.
+// РЎРѕР±СЃС‚РІРµРЅРЅС‹Р№ РѕС‚РІРµС‚ Р¶РґС‘С‚ СЃРІРѕР±РѕРґРЅРѕРіРѕ РєР°РЅР°Р»Р°; SLDN СЃРѕР±РёСЂР°РµС‚ packet.c.
 #include "runtime_internal.h"
 #include "fast_kernels.h"
 #include "../sched16.h"
@@ -25,18 +25,18 @@ typedef struct {
 } service_crc_s;
 RT_ASSERT(service_crc_size,sizeof(service_crc_s)==248);
 service_crc_s *service_crc_job;
-// Возвращает владельца текущего запроса CRC.
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ РІР»Р°РґРµР»СЊС†Р° С‚РµРєСѓС‰РµРіРѕ Р·Р°РїСЂРѕСЃР° CRC.
 void *service_crc_active(void) { return service_crc_job; }
-// Освобождает флеш и буфер ответа CRC.
+// РћСЃРІРѕР±РѕР¶РґР°РµС‚ С„Р»РµС€ Рё Р±СѓС„РµСЂ РѕС‚РІРµС‚Р° CRC.
 void service_crc_cancel(void)
 {
   service_crc_s *p;
   flash_release(FO_CRC); p=service_crc_job; service_crc_job=NULL; work_release(p, WORK_SERVICE);
 }
-// Отменяет запрос CRC закрывшегося канала.
+// РћС‚РјРµРЅСЏРµС‚ Р·Р°РїСЂРѕСЃ CRC Р·Р°РєСЂС‹РІС€РµРіРѕСЃСЏ РєР°РЅР°Р»Р°.
 void service_crc_quiet(uint8_t channel)
 { if(service_crc_job && service_crc_job->channel==channel) service_crc_cancel(); }
-// Создаёт запрос CRC и готовит общие поля тела ответа.
+// РЎРѕР·РґР°С‘С‚ Р·Р°РїСЂРѕСЃ CRC Рё РіРѕС‚РѕРІРёС‚ РѕР±С‰РёРµ РїРѕР»СЏ С‚РµР»Р° РѕС‚РІРµС‚Р°.
 static uint8_t sc_begin(uint8_t kind,uint8_t channel,uint8_t uniq,uint8_t index)
 {
   service_crc_s *p;
@@ -52,13 +52,13 @@ static uint8_t sc_begin(uint8_t kind,uint8_t channel,uint8_t uniq,uint8_t index)
   if(kind==SC_ID_BLOCK) p->packet[9]=index;
   service_crc_job=p; flash_claim(FO_CRC); return 1;
 }
-// Начинает расчёт CRC всех таблиц для команды 17.
+// РќР°С‡РёРЅР°РµС‚ СЂР°СЃС‡С‘С‚ CRC РІСЃРµС… С‚Р°Р±Р»РёС† РґР»СЏ РєРѕРјР°РЅРґС‹ 17.
 uint8_t service_crc_begin_pack(uint8_t channel,uint8_t uniq) { return sc_begin(SC_TABLES,channel,uniq,0); }
-// Начинает CRC всей базы или выбранного сегмента ID.
+// РќР°С‡РёРЅР°РµС‚ CRC РІСЃРµР№ Р±Р°Р·С‹ РёР»Рё РІС‹Р±СЂР°РЅРЅРѕРіРѕ СЃРµРіРјРµРЅС‚Р° ID.
 uint8_t service_crc_begin_id(uint8_t index,uint8_t channel,uint8_t uniq) { return sc_begin(index?SC_ID_BLOCK:SC_ID_BLOCKS,channel,uniq,index); }
-// Начинает CRC выбранного образа настроек.
+// РќР°С‡РёРЅР°РµС‚ CRC РІС‹Р±СЂР°РЅРЅРѕРіРѕ РѕР±СЂР°Р·Р° РЅР°СЃС‚СЂРѕРµРє.
 uint8_t service_crc_begin_config(uint8_t channel,uint8_t uniq) { return sc_begin(SC_CONFIG,channel,uniq,0); }
-// Выбирает область очередного CRC, учитывая пустой хвост базы ID.
+// Р’С‹Р±РёСЂР°РµС‚ РѕР±Р»Р°СЃС‚СЊ РѕС‡РµСЂРµРґРЅРѕРіРѕ CRC, СѓС‡РёС‚С‹РІР°СЏ РїСѓСЃС‚РѕР№ С…РІРѕСЃС‚ Р±Р°Р·С‹ ID.
 static void sc_setup(service_crc_s *p)
 {
   static const uint8_t parts[5]={MB_ID,MB_GROUP,MB_SHEDULE,MB_CONFIG,MB_HOLIDAY};
@@ -78,7 +78,7 @@ static void sc_setup(service_crc_s *p)
   p->address=address; p->real=size; p->waiting=0; p->crc=65535; p->phase=SC_READ;
   if (part==MB_ID && p->kind==SC_TABLES && idcrc_get(&p->crc)) p->real=p->erased=0;
 }
-// Считает CRC в пределах бюджета и повторяет отправку при занятом канале.
+// РЎС‡РёС‚Р°РµС‚ CRC РІ РїСЂРµРґРµР»Р°С… Р±СЋРґР¶РµС‚Р° Рё РїРѕРІС‚РѕСЂСЏРµС‚ РѕС‚РїСЂР°РІРєСѓ РїСЂРё Р·Р°РЅСЏС‚РѕРј РєР°РЅР°Р»Рµ.
 void service_crc_poll(void)
 {
   service_crc_s *p=service_crc_job; uint32_t now,n,started=timers_getMillis(); uint8_t scratch[64],*out,chunks=4;

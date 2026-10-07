@@ -1,17 +1,17 @@
-// Модуль расчета контрольной суммы
+// РњРѕРґСѓР»СЊ СЂР°СЃС‡РµС‚Р° РєРѕРЅС‚СЂРѕР»СЊРЅРѕР№ СЃСѓРјРјС‹
 
 #ifndef CRC_H
 #define CRC_H
 
-// Расчет CRC-16 ModBus
+// Р Р°СЃС‡РµС‚ CRC-16 ModBus
 unsigned short crc16_calc(unsigned char* buf, unsigned short size);
-// Расчет CRC-16 ModBus с инициализацией начального значения
+// Р Р°СЃС‡РµС‚ CRC-16 ModBus СЃ РёРЅРёС†РёР°Р»РёР·Р°С†РёРµР№ РЅР°С‡Р°Р»СЊРЅРѕРіРѕ Р·РЅР°С‡РµРЅРёСЏ
 unsigned short crc16_calcInit(unsigned char* buf, unsigned short size, unsigned short init);
 
-// CRC-16 ModBus после count байт 0xFF, начиная с init (без чтения байт)
+// CRC-16 ModBus РїРѕСЃР»Рµ count Р±Р°Р№С‚ 0xFF, РЅР°С‡РёРЅР°СЏ СЃ init (Р±РµР· С‡С‚РµРЅРёСЏ Р±Р°Р№С‚)
 unsigned short crc16_ffInit(unsigned long count, unsigned short init);
 
-// Вычисление контрольной суммы CRC Dallas
-// in - входной буфер, num - число байт
+// Р’С‹С‡РёСЃР»РµРЅРёРµ РєРѕРЅС‚СЂРѕР»СЊРЅРѕР№ СЃСѓРјРјС‹ CRC Dallas
+// in - РІС…РѕРґРЅРѕР№ Р±СѓС„РµСЂ, num - С‡РёСЃР»Рѕ Р±Р°Р№С‚
 
 #endif

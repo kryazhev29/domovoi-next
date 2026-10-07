@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Миллисекундный SysTick и программные счётчики интервалов.
-// ISR увеличивает счётчики; индексы 0–5 и ненулевой период задаёт приложение.
-// Задержки обслуживают сторож, исходный PRIMASK сохраняется.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РњРёР»Р»РёСЃРµРєСѓРЅРґРЅС‹Р№ SysTick Рё РїСЂРѕРіСЂР°РјРјРЅС‹Рµ СЃС‡С‘С‚С‡РёРєРё РёРЅС‚РµСЂРІР°Р»РѕРІ.
+// ISR СѓРІРµР»РёС‡РёРІР°РµС‚ СЃС‡С‘С‚С‡РёРєРё; РёРЅРґРµРєСЃС‹ 0вЂ“5 Рё РЅРµРЅСѓР»РµРІРѕР№ РїРµСЂРёРѕРґ Р·Р°РґР°С‘С‚ РїСЂРёР»РѕР¶РµРЅРёРµ.
+// Р—Р°РґРµСЂР¶РєРё РѕР±СЃР»СѓР¶РёРІР°СЋС‚ СЃС‚РѕСЂРѕР¶, РёСЃС…РѕРґРЅС‹Р№ PRIMASK СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ.
 
 #include "timers.h"
 
@@ -10,7 +10,7 @@
 volatile unsigned int milliSeconds = 0;
 volatile unsigned int timer[timer_cnt];
 
-// Настроить SysTick на 1 мс с прежним низшим приоритетом.
+// РќР°СЃС‚СЂРѕРёС‚СЊ SysTick РЅР° 1 РјСЃ СЃ РїСЂРµР¶РЅРёРј РЅРёР·С€РёРј РїСЂРёРѕСЂРёС‚РµС‚РѕРј.
 void timers_init(void)
 {
   SysTick->LOAD = SystemCoreClock / 1000u - 1u;
@@ -19,7 +19,7 @@ void timers_init(void)
   SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk;
 }
 
-// Атомарно снять счётчик, сохранив исходный PRIMASK.
+// РђС‚РѕРјР°СЂРЅРѕ СЃРЅСЏС‚СЊ СЃС‡С‘С‚С‡РёРє, СЃРѕС…СЂР°РЅРёРІ РёСЃС…РѕРґРЅС‹Р№ PRIMASK.
 static unsigned int timers_snapshot(volatile unsigned int *value)
 {
   uint32_t mask = __get_PRIMASK();
@@ -29,7 +29,7 @@ static unsigned int timers_snapshot(volatile unsigned int *value)
   return result;
 }
 
-// Атомарно задать значение программного счётчика.
+// РђС‚РѕРјР°СЂРЅРѕ Р·Р°РґР°С‚СЊ Р·РЅР°С‡РµРЅРёРµ РїСЂРѕРіСЂР°РјРјРЅРѕРіРѕ СЃС‡С‘С‚С‡РёРєР°.
 void timers_set(unsigned char t, unsigned int vl)
 {
   uint32_t mask = __get_PRIMASK();
@@ -38,12 +38,12 @@ void timers_set(unsigned char t, unsigned int vl)
   __set_PRIMASK(mask);
 }
 
-// Вернуть атомарный снимок заданного счётчика.
+// Р’РµСЂРЅСѓС‚СЊ Р°С‚РѕРјР°СЂРЅС‹Р№ СЃРЅРёРјРѕРє Р·Р°РґР°РЅРЅРѕРіРѕ СЃС‡С‘С‚С‡РёРєР°.
 unsigned int timers_get(unsigned char t){
   return timers_snapshot(&timer[t]);
 }
 
-// Обслужить очередной тик и пользовательский обработчик.
+// РћР±СЃР»СѓР¶РёС‚СЊ РѕС‡РµСЂРµРґРЅРѕР№ С‚РёРє Рё РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёР№ РѕР±СЂР°Р±РѕС‚С‡РёРє.
 inline void timers_handle(void){
   milliSeconds++;
   for (unsigned char i = 0; i < timer_cnt; i++)
@@ -51,7 +51,7 @@ inline void timers_handle(void){
   timers_user_handle();
 }
 
-// Выдержать задержку, обслуживая сторож.
+// Р’С‹РґРµСЂР¶Р°С‚СЊ Р·Р°РґРµСЂР¶РєСѓ, РѕР±СЃР»СѓР¶РёРІР°СЏ СЃС‚РѕСЂРѕР¶.
 void timers_pause(const unsigned int msec){
   unsigned int start = timers_getMillis();
 
@@ -59,7 +59,7 @@ void timers_pause(const unsigned int msec){
     wdt_reload();
 }
 
-// Забрать целые периоды, сохранив остаток времени.
+// Р—Р°Р±СЂР°С‚СЊ С†РµР»С‹Рµ РїРµСЂРёРѕРґС‹, СЃРѕС…СЂР°РЅРёРІ РѕСЃС‚Р°С‚РѕРє РІСЂРµРјРµРЅРё.
 unsigned int timers_take(unsigned char t, unsigned int period)
 {
   uint32_t mask = __get_PRIMASK();
@@ -70,7 +70,7 @@ unsigned int timers_take(unsigned char t, unsigned int period)
   return count;
 }
 
-// Вернуть атомарный снимок миллисекундного времени.
+// Р’РµСЂРЅСѓС‚СЊ Р°С‚РѕРјР°СЂРЅС‹Р№ СЃРЅРёРјРѕРє РјРёР»Р»РёСЃРµРєСѓРЅРґРЅРѕРіРѕ РІСЂРµРјРµРЅРё.
 unsigned int timers_getMillis(void){
   return timers_snapshot(&milliSeconds);
 }

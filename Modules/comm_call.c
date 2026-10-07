@@ -1,17 +1,17 @@
-/* Доработка: Кряжев А., 2026.
-   Обрабатывает входящий номер и короткий голосовой ответ.
-   Проверка доступа предшествует ATA; таймеры отбоя не зависят от занятости флеш.
-   Голос ждёт свободного AT, а настройка VoLTE выполняется вне вызова.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   РћР±СЂР°Р±Р°С‚С‹РІР°РµС‚ РІС…РѕРґСЏС‰РёР№ РЅРѕРјРµСЂ Рё РєРѕСЂРѕС‚РєРёР№ РіРѕР»РѕСЃРѕРІРѕР№ РѕС‚РІРµС‚.
+   РџСЂРѕРІРµСЂРєР° РґРѕСЃС‚СѓРїР° РїСЂРµРґС€РµСЃС‚РІСѓРµС‚ ATA; С‚Р°Р№РјРµСЂС‹ РѕС‚Р±РѕСЏ РЅРµ Р·Р°РІРёСЃСЏС‚ РѕС‚ Р·Р°РЅСЏС‚РѕСЃС‚Рё С„Р»РµС€.
+   Р“РѕР»РѕСЃ Р¶РґС‘С‚ СЃРІРѕР±РѕРґРЅРѕРіРѕ AT, Р° РЅР°СЃС‚СЂРѕР№РєР° VoLTE РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РІРЅРµ РІС‹Р·РѕРІР°.
 */
 #include "comm_call.h"
 #include "comm_modem.h"
 #include "comm_channel.h"
 #include "comm_timeouts.h"
 #include <string.h>
-/* Действие и ответ независимы от очереди TCP; DONE ограждает повторы 8 с. */
+/* Р”РµР№СЃС‚РІРёРµ Рё РѕС‚РІРµС‚ РЅРµР·Р°РІРёСЃРёРјС‹ РѕС‚ РѕС‡РµСЂРµРґРё TCP; DONE РѕРіСЂР°Р¶РґР°РµС‚ РїРѕРІС‚РѕСЂС‹ 8 СЃ. */
 enum { CALL_IDLE, CALL_WAIT_NUMBER, CALL_NUMBER, CALL_ANSWER, CALL_QUEUED,
        CALL_ANSWERING, CALL_HOLD, CALL_HANGUP, CALL_HANGING, CALL_ABORT, CALL_DONE };
-/* VoLTE модема: неизвестно до запроса, не поддержан - больше не спрашивать в этом запуске. */
+/* VoLTE РјРѕРґРµРјР°: РЅРµРёР·РІРµСЃС‚РЅРѕ РґРѕ Р·Р°РїСЂРѕСЃР°, РЅРµ РїРѕРґРґРµСЂР¶Р°РЅ - Р±РѕР»СЊС€Рµ РЅРµ СЃРїСЂР°С€РёРІР°С‚СЊ РІ СЌС‚РѕРј Р·Р°РїСѓСЃРєРµ. */
 enum { VOLTE_UNKNOWN = 0xFF, VOLTE_UNSUPPORTED = 0xFE };
 static struct {
   void (*caller)(const char *);
@@ -23,7 +23,7 @@ static struct {
 } call;
 static const comm_side_t call_answer = {"ATA", NULL, NULL, 0, COMM_AT_CALL, COMM_T_CALL_ANSWER};
 static const comm_side_t call_hangup = {"ATH", NULL, NULL, 0, COMM_AT_CALL, COMM_T_CALL_ANSWER};
-/* Ответ настройки +SETVOLTE: <0|1>, руководство MeiG, раздел 11.11. */
+/* РћС‚РІРµС‚ РЅР°СЃС‚СЂРѕР№РєРё +SETVOLTE: <0|1>, СЂСѓРєРѕРІРѕРґСЃС‚РІРѕ MeiG, СЂР°Р·РґРµР» 11.11. */
 static void volte_line(const uint8_t *p, uint16_t n, uint16_t detail)
 {
   uint16_t pos = sizeof("+SETVOLTE:") - 1u; uint32_t v;
@@ -34,7 +34,7 @@ static const comm_side_t volte_query = {"AT+SETVOLTE?", NULL, volte_line, 0, COM
 static const comm_side_t volte_set[2] = {
   {"AT+SETVOLTE=0", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_VOLTE},
   {"AT+SETVOLTE=1", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_VOLTE}};
-/* +CLIP: "<номер>",<тип>,... (27.007 §7.18); номер - цифры и '+', может быть пустым. */
+/* +CLIP: "<РЅРѕРјРµСЂ>",<С‚РёРї>,... (27.007 В§7.18); РЅРѕРјРµСЂ - С†РёС„СЂС‹ Рё '+', РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј. */
 static bool call_number(const uint8_t *p, uint16_t n, char *out)
 {
   uint16_t pos = comm_at_spaces(p, n, sizeof("+CLIP:") - 1u), len = 0;
@@ -46,13 +46,13 @@ static bool call_number(const uint8_t *p, uint16_t n, char *out)
   out[len] = 0;
   return pos < n;
 }
-/* URC только отмечают вызов: действие и команды выполняет главный цикл. */
+/* URC С‚РѕР»СЊРєРѕ РѕС‚РјРµС‡Р°СЋС‚ РІС‹Р·РѕРІ: РґРµР№СЃС‚РІРёРµ Рё РєРѕРјР°РЅРґС‹ РІС‹РїРѕР»РЅСЏРµС‚ РіР»Р°РІРЅС‹Р№ С†РёРєР». */
 static void call_begin(void)
 {
   call.state = CALL_WAIT_NUMBER; call.since = call.now; call.pending = 0;
   call.number[0] = 0; comm_channel_call(true); comm_modem_call(true);
 }
-/* Принять звонок, номер или потерю голосового соединения. */
+/* РџСЂРёРЅСЏС‚СЊ Р·РІРѕРЅРѕРє, РЅРѕРјРµСЂ РёР»Рё РїРѕС‚РµСЂСЋ РіРѕР»РѕСЃРѕРІРѕРіРѕ СЃРѕРµРґРёРЅРµРЅРёСЏ. */
 static void call_urc(const uint8_t *p, uint16_t n)
 {
   char number[sizeof(call.number)];
@@ -74,7 +74,7 @@ static void call_urc(const uint8_t *p, uint16_t n)
   memcpy(call.number, number, strlen(number) + 1u); call.pending = 1;
   if (call.state == CALL_WAIT_NUMBER) call.state = CALL_NUMBER;
 }
-/* Назначить обработчик доступа и настройку VoLTE. */
+/* РќР°Р·РЅР°С‡РёС‚СЊ РѕР±СЂР°Р±РѕС‚С‡РёРє РґРѕСЃС‚СѓРїР° Рё РЅР°СЃС‚СЂРѕР№РєСѓ VoLTE. */
 void comm_call_init(void (*caller)(const char *), uint8_t (*volte)(void))
 {
   memset(&call, 0, sizeof(call));
@@ -82,9 +82,9 @@ void comm_call_init(void (*caller)(const char *), uint8_t (*volte)(void))
   call.session = (uint8_t)(comm_modem_session() - 1u);
   comm_modem_listen(COMM_URC_CALL, call_urc);
 }
-/* Сообщить, продолжается ли вызов или его тихое завершение. */
+/* РЎРѕРѕР±С‰РёС‚СЊ, РїСЂРѕРґРѕР»Р¶Р°РµС‚СЃСЏ Р»Рё РІС‹Р·РѕРІ РёР»Рё РµРіРѕ С‚РёС…РѕРµ Р·Р°РІРµСЂС€РµРЅРёРµ. */
 bool comm_call_active(void) { return call.state != CALL_IDLE; }
-/* Настройка VoLTE: в каждом запуске модема после SIM, вне вызова; меняется только при расхождении. */
+/* РќР°СЃС‚СЂРѕР№РєР° VoLTE: РІ РєР°Р¶РґРѕРј Р·Р°РїСѓСЃРєРµ РјРѕРґРµРјР° РїРѕСЃР»Рµ SIM, РІРЅРµ РІС‹Р·РѕРІР°; РјРµРЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё СЂР°СЃС…РѕР¶РґРµРЅРёРё. */
 static void call_volte(void)
 {
   uint8_t session = comm_modem_session();
@@ -105,13 +105,13 @@ static void call_volte(void)
   call.volte_read = VOLTE_UNKNOWN;
   if (op && comm_modem_side(op)) call.volte_op = op;
 }
-/* Новый номер во время ответа обслуживается сразу; следующий ATA ждёт отбоя. */
+/* РќРѕРІС‹Р№ РЅРѕРјРµСЂ РІРѕ РІСЂРµРјСЏ РѕС‚РІРµС‚Р° РѕР±СЃР»СѓР¶РёРІР°РµС‚СЃСЏ СЃСЂР°Р·Сѓ; СЃР»РµРґСѓСЋС‰РёР№ ATA Р¶РґС‘С‚ РѕС‚Р±РѕСЏ. */
 static void call_finished(void)
 {
   if (call.pending) { call.state = CALL_NUMBER; return; }
   call.state = CALL_DONE; comm_channel_call(false);
 }
-/* Проверить доступ, ответить и выдержать сроки отбоя. */
+/* РџСЂРѕРІРµСЂРёС‚СЊ РґРѕСЃС‚СѓРї, РѕС‚РІРµС‚РёС‚СЊ Рё РІС‹РґРµСЂР¶Р°С‚СЊ СЃСЂРѕРєРё РѕС‚Р±РѕСЏ. */
 void comm_call_poll(uint32_t now_ms, bool access_ready)
 {
   call.now = now_ms;
@@ -120,7 +120,7 @@ void comm_call_poll(uint32_t now_ms, bool access_ready)
     call.pending = 0; call_finished();
   }
   call_volte();
-  /* Флеш может отложить проверку номера, но уже снятая трубка ждёт только таймер. */
+  /* Р¤Р»РµС€ РјРѕР¶РµС‚ РѕС‚Р»РѕР¶РёС‚СЊ РїСЂРѕРІРµСЂРєСѓ РЅРѕРјРµСЂР°, РЅРѕ СѓР¶Рµ СЃРЅСЏС‚Р°СЏ С‚СЂСѓР±РєР° Р¶РґС‘С‚ С‚РѕР»СЊРєРѕ С‚Р°Р№РјРµСЂ. */
   if (call.pending == 1u && access_ready) {
     call.pending = 2;
     call.caller(call.number);
@@ -138,17 +138,17 @@ void comm_call_poll(uint32_t now_ms, bool access_ready)
   case CALL_QUEUED:
     if (!comm_modem_side_started(&call_answer, &call.since)) break;
     call.state = CALL_ANSWERING;
-    /* Продолжаем в следующем состоянии без лишнего тика. */
+    /* РџСЂРѕРґРѕР»Р¶Р°РµРј РІ СЃР»РµРґСѓСЋС‰РµРј СЃРѕСЃС‚РѕСЏРЅРёРё Р±РµР· Р»РёС€РЅРµРіРѕ С‚РёРєР°. */
   case CALL_ANSWERING: {
     uint8_t r = comm_modem_side_result(&call_answer);
     if (r == COMM_AT_OK) { call.answered = now_ms; call.state = CALL_HOLD; }
-    else if (r == COMM_AT_TIMEOUT) call_finished(); /* AT уже отправил CHUP перед CMEE */
+    else if (r == COMM_AT_TIMEOUT) call_finished(); /* AT СѓР¶Рµ РѕС‚РїСЂР°РІРёР» CHUP РїРµСЂРµРґ CMEE */
     else if (r != UINT8_MAX) call.state = CALL_ABORT;
     break;
   }
   case CALL_HOLD:
     if (now_ms - call.answered >= comm_timeouts[COMM_T_CALL_HOLD]) call.state = CALL_HANGUP;
-    /* Продолжаем в следующем состоянии без лишнего тика. */
+    /* РџСЂРѕРґРѕР»Р¶Р°РµРј РІ СЃР»РµРґСѓСЋС‰РµРј СЃРѕСЃС‚РѕСЏРЅРёРё Р±РµР· Р»РёС€РЅРµРіРѕ С‚РёРєР°. */
   case CALL_HANGUP:
     if (now_ms - call.since >= comm_timeouts[COMM_T_CALL_LIMIT]) call.state = CALL_ABORT;
     else if (call.state == CALL_HANGUP && comm_modem_call_side(&call_hangup)) call.state = CALL_HANGING;
@@ -163,7 +163,7 @@ void comm_call_poll(uint32_t now_ms, bool access_ready)
     if (now_ms - call.last >= comm_timeouts[COMM_T_CALL_QUIET]) { call.state = CALL_IDLE; call.number[0] = 0; }
     break;
   }
-  /* ERROR/NO CARRIER и предел не получают лишний тик главного цикла. */
+  /* ERROR/NO CARRIER Рё РїСЂРµРґРµР» РЅРµ РїРѕР»СѓС‡Р°СЋС‚ Р»РёС€РЅРёР№ С‚РёРє РіР»Р°РІРЅРѕРіРѕ С†РёРєР»Р°. */
   if (call.state == CALL_ABORT && comm_modem_call_abort(now_ms)) {
     comm_modem_side_result(&call_answer); comm_modem_side_result(&call_hangup); call_finished();
   }

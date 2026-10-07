@@ -1,7 +1,7 @@
-/* Доработка: Кряжев А., 2026.
-   Описывает команды и шаги запуска единственного SLM336 платы v5.
-   Каждая строка задаёт команду, срок и два успешных перехода.
-   Открытие TCP и чтение данных выполняет канал после завершения запуска.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   РћРїРёСЃС‹РІР°РµС‚ РєРѕРјР°РЅРґС‹ Рё С€Р°РіРё Р·Р°РїСѓСЃРєР° РµРґРёРЅСЃС‚РІРµРЅРЅРѕРіРѕ SLM336 РїР»Р°С‚С‹ v5.
+   РљР°Р¶РґР°СЏ СЃС‚СЂРѕРєР° Р·Р°РґР°С‘С‚ РєРѕРјР°РЅРґСѓ, СЃСЂРѕРє Рё РґРІР° СѓСЃРїРµС€РЅС‹С… РїРµСЂРµС…РѕРґР°.
+   РћС‚РєСЂС‹С‚РёРµ TCP Рё С‡С‚РµРЅРёРµ РґР°РЅРЅС‹С… РІС‹РїРѕР»РЅСЏРµС‚ РєР°РЅР°Р» РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ Р·Р°РїСѓСЃРєР°.
 */
 #include "comm_modem.h"
 #include "comm_timeouts.h"
@@ -10,7 +10,7 @@ const char slm_read_command[] = "QIRD=0,\007";
 const comm_modem_step_t slm_steps[] = {
   {"", COMM_T_AT_SIMPLE, SLM_MODEL, SLM_IMEI, (SLM_PHASE_SETUP << 4) | MODEM_READY},
   {"GMM", COMM_T_AT_SIMPLE, SLM_IMEI, SLM_IMEI, (SLM_PHASE_SETUP << 4) | MODEM_MODEL},
-  /* IMEI нужен пакету регистрации на сервере (Протокол2, пакет 1). */
+  /* IMEI РЅСѓР¶РµРЅ РїР°РєРµС‚Сѓ СЂРµРіРёСЃС‚СЂР°С†РёРё РЅР° СЃРµСЂРІРµСЂРµ (РџСЂРѕС‚РѕРєРѕР»2, РїР°РєРµС‚ 1). */
   {"GSN", COMM_T_AT_SIMPLE, SLM_ECHO, SLM_ECHO, (SLM_PHASE_SETUP << 4) | MODEM_IMEI},
   {"E0", COMM_T_AT_SIMPLE, SLM_CMEE, SLM_CMEE, (SLM_PHASE_SETUP << 4) | MODEM_OK},
   {"CMEE=1", COMM_T_AT_SIMPLE, SLM_IFC, SLM_IFC, (SLM_PHASE_SETUP << 4) | MODEM_OK},
@@ -28,10 +28,10 @@ const comm_modem_step_t slm_steps[] = {
   {"\011", COMM_T_AT_SIMPLE, SLM_IMSI, SLM_APN, (SLM_PHASE_NETWORK << 4) | MODEM_NETWORK},
   {"CIMI", COMM_T_AT_SIMPLE, SLM_APN, SLM_APN, (SLM_PHASE_PDP << 4) | MODEM_IMSI},
   {"QICSGP=1,1,\"\002\",\"\003\",\"\004\",\010", COMM_T_AT_SIMPLE, SLM_DEACT, SLM_DEACT, (SLM_PHASE_PDP << 4) | MODEM_OK},
-  /* Сбросить оставшийся активным контекст перед QIACT; неактивный также даёт OK. */
+  /* РЎР±СЂРѕСЃРёС‚СЊ РѕСЃС‚Р°РІС€РёР№СЃСЏ Р°РєС‚РёРІРЅС‹Рј РєРѕРЅС‚РµРєСЃС‚ РїРµСЂРµРґ QIACT; РЅРµР°РєС‚РёРІРЅС‹Р№ С‚Р°РєР¶Рµ РґР°С‘С‚ OK. */
   {"QIDEACT=1", COMM_T_QIDEACT, SLM_ACTIVATE, SLM_ACTIVATE, (SLM_PHASE_PDP << 4) | MODEM_ANY},
   {"QIACT=1", COMM_T_QIACT, SLM_DATA_ECHO, SLM_DATA_ECHO, (SLM_PHASE_PDP << 4) | MODEM_PDP},
-  /* ATE0 отключает эхо команд; бинарное эхо QISEND выключается отдельно. */
+  /* ATE0 РѕС‚РєР»СЋС‡Р°РµС‚ СЌС…Рѕ РєРѕРјР°РЅРґ; Р±РёРЅР°СЂРЅРѕРµ СЌС…Рѕ QISEND РІС‹РєР»СЋС‡Р°РµС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕ. */
   {"QISDE=0", COMM_T_AT_SIMPLE, SLM_STEP_COUNT, SLM_STEP_COUNT, (SLM_PHASE_PDP << 4) | MODEM_OK},
 };
 typedef char all_steps_present[(sizeof(slm_steps) / sizeof(slm_steps[0]) == SLM_DATA_ECHO + 1u - SLM_AT_READY) ? 1 : -1];

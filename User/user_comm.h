@@ -1,4 +1,4 @@
-/* Доработка: Кряжев А., 2026. Стык нового канала; main подключается после этапа 6. */
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. РЎС‚С‹Рє РЅРѕРІРѕРіРѕ РєР°РЅР°Р»Р°; main РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ РїРѕСЃР»Рµ СЌС‚Р°РїР° 6. */
 #ifndef USER_COMM_H
 #define USER_COMM_H
 #include "../Modules/modem_slm336.h"
@@ -9,19 +9,19 @@ uint16_t user_comm_rx_capacity(void);
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count);
 void user_comm_rx_done(uint16_t count, uint8_t reason);
 void user_comm_session(bool open);
-/* Для восстановления связи (user_fun.c): местное время, с (UINT32_MAX - часы не
-   установлены) и занятость обменом, который нельзя рвать перезапуском модема. */
+/* Р”Р»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ СЃРІСЏР·Рё (user_fun.c): РјРµСЃС‚РЅРѕРµ РІСЂРµРјСЏ, СЃ (UINT32_MAX - С‡Р°СЃС‹ РЅРµ
+   СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹) Рё Р·Р°РЅСЏС‚РѕСЃС‚СЊ РѕР±РјРµРЅРѕРј, РєРѕС‚РѕСЂС‹Р№ РЅРµР»СЊР·СЏ СЂРІР°С‚СЊ РїРµСЂРµР·Р°РїСѓСЃРєРѕРј РјРѕРґРµРјР°. */
 uint32_t user_comm_local_time(void);
-/* SMS на номер; false - не принято к отправке. */
+/* SMS РЅР° РЅРѕРјРµСЂ; false - РЅРµ РїСЂРёРЅСЏС‚Рѕ Рє РѕС‚РїСЂР°РІРєРµ. */
 bool user_comm_sms(const char *number, const char *text);
 bool user_comm_busy(void);
 const char *user_comm_ussd(void);
 uint8_t user_comm_volte(void);
-/* Баланс в рублях (минус - долг): статус 2 и событие 37. */
+/* Р‘Р°Р»Р°РЅСЃ РІ СЂСѓР±Р»СЏС… (РјРёРЅСѓСЃ - РґРѕР»Рі): СЃС‚Р°С‚СѓСЃ 2 Рё СЃРѕР±С‹С‚РёРµ 37. */
 void user_comm_balance(int32_t rubles);
-/* Журнал связи: события 11, 12, 14-19 (comm_server.h), 38 - сигнал ниже 15. */
+/* Р–СѓСЂРЅР°Р» СЃРІСЏР·Рё: СЃРѕР±С‹С‚РёСЏ 11, 12, 14-19 (comm_server.h), 38 - СЃРёРіРЅР°Р» РЅРёР¶Рµ 15. */
 bool user_comm_link(uint8_t kind, uint8_t address);
 void user_comm_low_signal(uint8_t csq);
-/* Номер сервера по адресу канала: 0 - сервер 1, 1 - сервер 2. */
+/* РќРѕРјРµСЂ СЃРµСЂРІРµСЂР° РїРѕ Р°РґСЂРµСЃСѓ РєР°РЅР°Р»Р°: 0 - СЃРµСЂРІРµСЂ 1, 1 - СЃРµСЂРІРµСЂ 2. */
 uint8_t user_comm_server(uint8_t address);
 #endif

@@ -1,15 +1,13 @@
-"""Run the IAR-built bootloader binary in Unicorn with register models of RCC, GPIO,
-SPI1 + W25 external Flash and the internal Flash controller. Never touches hardware."""
 import struct, sys
 from pathlib import Path
 from unicorn import Uc, UcError, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_HOOK_CODE
 from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_PC, UC_ARM_REG_MSP
 
-R = Path(__file__).resolve().parents[2]  # project root; run after IAR Release builds of the application and the bootloader
+R = Path(__file__).resolve().parents[2]
 BOOT = (R / "Bootloader/build/Release/Exe/DomovoiBoot.bin").read_bytes()
 APP = (R / "Release/Exe/DomovoiNext.bin").read_bytes()
 APP += b"\xff" * ((-len(APP)) % 4)
-APP51 = APP + bytes(4)  # a different image: same code, 4 more bytes
+APP51 = APP + bytes(4)
 assert len(BOOT) == 32768
 
 def crc32(data):
@@ -53,8 +51,8 @@ class Board:
                 v = struct.unpack("<I", uc.mem_read(addr, 4))[0]; uc.mem_write(addr, struct.pack("<I", (v & ~0xC) | ((v & 3) << 2)))
             elif addr == 0x40013008: uc.mem_write(addr, struct.pack("<I", 3))
             elif addr == 0x4001300C: uc.mem_write(addr, struct.pack("<I", st["resp"]))
-            elif addr == 0x40010808: uc.mem_write(addr, struct.pack("<I", 1 << 13))   # PA13 high: button released
-            elif addr == 0x4002200C: uc.mem_write(addr, struct.pack("<I", 0))          # FLASH_SR: never busy
+            elif addr == 0x40010808: uc.mem_write(addr, struct.pack("<I", 1 << 13))
+            elif addr == 0x4002200C: uc.mem_write(addr, struct.pack("<I", 0))
             elif addr == TICKS:
                 t = struct.unpack("<I", uc.mem_read(TICKS, 4))[0]; uc.mem_write(TICKS, struct.pack("<I", (t + 1) & 0xFFFFFFFF))
 
@@ -79,7 +77,7 @@ class Board:
             if addr == 0x4001300C: spi(value & 0xFF)
             elif addr == 0x40010C14 and value & (1 << 12): st["buf"] = []; st["sel"] = True
             elif addr == 0x40010C10 and value & (1 << 12): deselect(); st["sel"] = False
-            elif addr == 0x40022010 and (value & 0x42) == 0x42:                        # PER|STRT
+            elif addr == 0x40022010 and (value & 0x42) == 0x42:
                 page = struct.unpack("<I", uc.mem_read(0x40022014, 4))[0]
                 assert 0x08008000 <= page < 0x08020000 and not page & 1023, hex(page)
                 uc.mem_write(page, b"\xff" * 1024)
@@ -119,7 +117,7 @@ def expect_start(board, st, vtor, msp):
     assert msp == sp, (hex(msp), hex(sp))
 
 stamp = 1789400000
-# 1. Plain start: the installed legacy FW 50 (as the old loader stores it), empty external Flash.
+
 b = Board()
 b.flash[0x8000:0x8000 + 512 + len(APP)] = header(LEGACY, 139, 50, APP, stamp) + APP
 st, vtor, msp = b.boot()
@@ -127,7 +125,7 @@ expect_start(b, st, vtor, msp)
 assert st["erases"] == 0 and st["programs"] == 0
 print(f"1 plain start: jumped to app reset 0x{st['app']:08x}, VTOR 0x{vtor:08x}, no external writes")
 
-# 2. Published candidate FW 51 with the trial marker: backup, trial armed, install, first launch.
+
 b.ext[0:512 + len(APP)] = header(NEW, 139, 51, APP51, stamp + 1) + APP51
 st, vtor, msp = b.boot()
 expect_start(b, st, vtor, msp)
@@ -137,20 +135,20 @@ assert b.word(0) == 0x494E5354 and b.word(4) == 0 and b.word(24) == 0 and b.word
 assert struct.unpack_from("<I", b.ext, 0)[0] == 0
 print(f"2 install: FW 51 installed, backup FW 50, trial armed, launch mask {b.word(32):08x}")
 
-# 3. Two more unconfirmed starts.
+
 for i in range(2):
     st, vtor, msp = b.boot(); expect_start(b, st, vtor, msp)
 assert b.app_version() == (NEW, 139, 51) and b.word(32) == 0xFFFFFFF8
 print(f"3 launches 2 and 3: FW 51 started, mask {b.word(32):08x}")
 
-# 4. Fourth start: rollback to FW 50, error 8, start of the restored FW.
+
 st, vtor, msp = b.boot(); expect_start(b, st, vtor, msp)
 assert b.app_version() == (LEGACY, 139, 50) and b.word(12) == 8, (b.app_version(), hex(b.word(12)))
 st, vtor, msp = b.boot(); expect_start(b, st, vtor, msp)
 assert b.app_version() == (LEGACY, 139, 50) and st["erases"] == 0 and st["programs"] == 0
 print("4 rollback: FW 50 restored, +12=8, next start runs FW 50 without Flash writes")
 
-# 5. Confirmed trial stays.
+
 c = Board()
 c.flash[0x8000:0x8000 + 512 + len(APP)] = header(LEGACY, 139, 50, APP, stamp) + APP
 c.ext[0:512 + len(APP)] = header(NEW, 139, 51, APP51, stamp + 1) + APP51

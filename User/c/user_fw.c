@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Загрузка прошивки: проверка блока, запись порциями и завершение по числовой причине.
-// W25 проверяет запись; продвижение номера блока происходит только после её завершения.
-// Обрыв восстанавливается по заголовку и сохранённому device; чужая прошивка не устанавливается.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р—Р°РіСЂСѓР·РєР° РїСЂРѕС€РёРІРєРё: РїСЂРѕРІРµСЂРєР° Р±Р»РѕРєР°, Р·Р°РїРёСЃСЊ РїРѕСЂС†РёСЏРјРё Рё Р·Р°РІРµСЂС€РµРЅРёРµ РїРѕ С‡РёСЃР»РѕРІРѕР№ РїСЂРёС‡РёРЅРµ.
+// W25 РїСЂРѕРІРµСЂСЏРµС‚ Р·Р°РїРёСЃСЊ; РїСЂРѕРґРІРёР¶РµРЅРёРµ РЅРѕРјРµСЂР° Р±Р»РѕРєР° РїСЂРѕРёСЃС…РѕРґРёС‚ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ РµС‘ Р·Р°РІРµСЂС€РµРЅРёСЏ.
+// РћР±СЂС‹РІ РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚СЃСЏ РїРѕ Р·Р°РіРѕР»РѕРІРєСѓ Рё СЃРѕС…СЂР°РЅС‘РЅРЅРѕРјСѓ device; С‡СѓР¶Р°СЏ РїСЂРѕС€РёРІРєР° РЅРµ СѓСЃС‚Р°РЅР°РІР»РёРІР°РµС‚СЃСЏ.
 #include "user_logic_internal.h"
 #include "user_fw_reason.h"
 #include "../../Bootloader/app_update.h"
@@ -10,7 +10,7 @@
 enum { FW_HW_MARKER_OFFSET = 0x20u, FW_HW_MARKER_TAG = 0x48570000u };
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel);
 uint8_t fw_write_errors;
-uint32_t fw_rollback_pos, fw_rollback_end;
+uint32_t fw_rollback_end;
 typedef struct {
   uint8_t *data;
   uint32_t address, position, remaining, crc, expected_crc, usb_epoch;
@@ -20,17 +20,17 @@ typedef struct {
 static fw_block_job_s fw_job;
 enum { FA_ERASE=1, FA_WRITE, FA_HEADER, FA_CRC, FA_REPLY };
 
-// Вернуть запрет управляющих действий во время обновления.
+// Р’РµСЂРЅСѓС‚СЊ Р·Р°РїСЂРµС‚ СѓРїСЂР°РІР»СЏСЋС‰РёС… РґРµР№СЃС‚РІРёР№ РІРѕ РІСЂРµРјСЏ РѕР±РЅРѕРІР»РµРЅРёСЏ.
 uint8_t fw_update_quiet(void)
 {
   return device.status.readyToUpdate;
 }
 
-// Записать событие обновления с готовой числовой причиной.
+// Р—Р°РїРёСЃР°С‚СЊ СЃРѕР±С‹С‚РёРµ РѕР±РЅРѕРІР»РµРЅРёСЏ СЃ РіРѕС‚РѕРІРѕР№ С‡РёСЃР»РѕРІРѕР№ РїСЂРёС‡РёРЅРѕР№.
 void fw_event(logUpdate_e num, fw_reason_e reason)
 { log_addUpdateEvent(num, (uint32_t)reason); }
 
-// Отменить владельцев загрузки и сохранить состояние завершения.
+// РћС‚РјРµРЅРёС‚СЊ РІР»Р°РґРµР»СЊС†РµРІ Р·Р°РіСЂСѓР·РєРё Рё СЃРѕС…СЂР°РЅРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ Р·Р°РІРµСЂС€РµРЅРёСЏ.
 void fw_cancel(fw_reason_e reason)
 {
   fw_service_cancel();
@@ -45,7 +45,7 @@ void fw_cancel(fw_reason_e reason)
   if (device.cchFWupdate != CH_USB) user_saveindex();
 }
 
-// Завершить загрузку по причине и передать ответ её каналу.
+// Р—Р°РІРµСЂС€РёС‚СЊ Р·Р°РіСЂСѓР·РєСѓ РїРѕ РїСЂРёС‡РёРЅРµ Рё РїРµСЂРµРґР°С‚СЊ РѕС‚РІРµС‚ РµС‘ РєР°РЅР°Р»Сѓ.
 void fw_stop(fw_reason_e reason, uint8_t uniqId)
 {
   fw_cancel(reason);
@@ -53,7 +53,7 @@ void fw_stop(fw_reason_e reason, uint8_t uniqId)
     user_send_statusUpdateFW(20, FW_BLOCK_END, (dataChanel_e)device.cchFWupdate, uniqId);
 }
 
-// Определить несовместимое железо по метке первого блока.
+// РћРїСЂРµРґРµР»РёС‚СЊ РЅРµСЃРѕРІРјРµСЃС‚РёРјРѕРµ Р¶РµР»РµР·Рѕ РїРѕ РјРµС‚РєРµ РїРµСЂРІРѕРіРѕ Р±Р»РѕРєР°.
 static uint8_t fw_image_foreign(const uint8_t *block0, uint8_t hw)
 {
   uint32_t w;
@@ -61,7 +61,7 @@ static uint8_t fw_image_foreign(const uint8_t *block0, uint8_t hw)
   return hw != 0 && (w & 0xFFFFFF00u) == FW_HW_MARKER_TAG && (uint8_t)w != hw;
 }
 
-// Проверить внешние параметры образа прошивки.
+// РџСЂРѕРІРµСЂРёС‚СЊ РІРЅРµС€РЅРёРµ РїР°СЂР°РјРµС‚СЂС‹ РѕР±СЂР°Р·Р° РїСЂРѕС€РёРІРєРё.
 uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks)
 {
   if (number == 0) return 1;
@@ -73,7 +73,7 @@ uint8_t fw_start_rejected(uint16_t number, uint32_t build, uint32_t size, uint32
          (build == 0) || (size == 0) || (crc == 0) || (blocks == 0);
 }
 
-// Выбрать причину запрета запуска обновления.
+// Р’С‹Р±СЂР°С‚СЊ РїСЂРёС‡РёРЅСѓ Р·Р°РїСЂРµС‚Р° Р·Р°РїСѓСЃРєР° РѕР±РЅРѕРІР»РµРЅРёСЏ.
 fw_reason_e fw_refused(void)
 {
   if (BOOT_VER < 0x30) return FW_REASON_OLD_BOOT;
@@ -83,7 +83,7 @@ fw_reason_e fw_refused(void)
   return FW_REASON_NONE;
 }
 
-// Распознать повтор команды начала уже идущей загрузки.
+// Р Р°СЃРїРѕР·РЅР°С‚СЊ РїРѕРІС‚РѕСЂ РєРѕРјР°РЅРґС‹ РЅР°С‡Р°Р»Р° СѓР¶Рµ РёРґСѓС‰РµР№ Р·Р°РіСЂСѓР·РєРё.
 uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, uint32_t crc, uint16_t blocks, dataChanel_e cch)
 {
   bootFWparam_s h;
@@ -93,7 +93,7 @@ uint8_t fw_same_download(uint16_t number, uint32_t build, uint32_t size, uint32_
          h.firmwareSize == size && h.firmwareCRC == crc;
 }
 
-// Опубликовать завершение загрузки после окончательной CRC образа.
+// РћРїСѓР±Р»РёРєРѕРІР°С‚СЊ Р·Р°РІРµСЂС€РµРЅРёРµ Р·Р°РіСЂСѓР·РєРё РїРѕСЃР»Рµ РѕРєРѕРЅС‡Р°С‚РµР»СЊРЅРѕР№ CRC РѕР±СЂР°Р·Р°.
 static uint8_t fw_blocks_done(uint8_t crc_ok)
 {
   device.FWinProgress = 0;
@@ -105,7 +105,7 @@ static uint8_t fw_blocks_done(uint8_t crc_ok)
   return crc_ok ? FW_BLOCK_OK : FW_BLOCK_END;
 }
 
-// Проверить номер блока и передать его асинхронной записи.
+// РџСЂРѕРІРµСЂРёС‚СЊ РЅРѕРјРµСЂ Р±Р»РѕРєР° Рё РїРµСЂРµРґР°С‚СЊ РµРіРѕ Р°СЃРёРЅС…СЂРѕРЅРЅРѕР№ Р·Р°РїРёСЃРё.
 uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
 {
   uint16_t block;
@@ -122,20 +122,20 @@ uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
     fw_event(LOG_FW_FAIL, FW_REASON_HW);
     return FW_BLOCK_END;
   }
-  /* Сектор стирается перед первым блоком, который в него пишет (команда 19 стирает только
-     первый): стирание всей области сразу останавливало цикл на секунды и рвало связь.
-     Повтор блока стирает свой сектор снова - там только этот блок - и дописывает оборванное. */
+  /* РЎРµРєС‚РѕСЂ СЃС‚РёСЂР°РµС‚СЃСЏ РїРµСЂРµРґ РїРµСЂРІС‹Рј Р±Р»РѕРєРѕРј, РєРѕС‚РѕСЂС‹Р№ РІ РЅРµРіРѕ РїРёС€РµС‚ (РєРѕРјР°РЅРґР° 19 СЃС‚РёСЂР°РµС‚ С‚РѕР»СЊРєРѕ
+     РїРµСЂРІС‹Р№): СЃС‚РёСЂР°РЅРёРµ РІСЃРµР№ РѕР±Р»Р°СЃС‚Рё СЃСЂР°Р·Сѓ РѕСЃС‚Р°РЅР°РІР»РёРІР°Р»Рѕ С†РёРєР» РЅР° СЃРµРєСѓРЅРґС‹ Рё СЂРІР°Р»Рѕ СЃРІСЏР·СЊ.
+     РџРѕРІС‚РѕСЂ Р±Р»РѕРєР° СЃС‚РёСЂР°РµС‚ СЃРІРѕР№ СЃРµРєС‚РѕСЂ СЃРЅРѕРІР° - С‚Р°Рј С‚РѕР»СЊРєРѕ СЌС‚РѕС‚ Р±Р»РѕРє - Рё РґРѕРїРёСЃС‹РІР°РµС‚ РѕР±РѕСЂРІР°РЅРЅРѕРµ. */
   adr = mem[MB_FIRMWARE].start + FWBLOCK_OFFSET + (uint32_t)block * 1024u;
   return fw_async_begin(&p[2], adr, cch) ? FW_BLOCK_PENDING : FW_BLOCK_BADWRITE;
 }
 
-// Выбрать блок продолжения после перезапуска.
+// Р’С‹Р±СЂР°С‚СЊ Р±Р»РѕРє РїСЂРѕРґРѕР»Р¶РµРЅРёСЏ РїРѕСЃР»Рµ РїРµСЂРµР·Р°РїСѓСЃРєР°.
 static uint16_t fw_resume_block(void)
 {
   return device.FWblockIdx < device.FWblockCount ? device.FWblockIdx : UINT16_MAX;
 }
 
-// Восстановить допустимую загрузку из заголовка и сохранённого device.
+// Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РґРѕРїСѓСЃС‚РёРјСѓСЋ Р·Р°РіСЂСѓР·РєСѓ РёР· Р·Р°РіРѕР»РѕРІРєР° Рё СЃРѕС…СЂР°РЅС‘РЅРЅРѕРіРѕ device.
 void fw_resume_after_boot(void)
 {
   bootFWparam_s h;
@@ -162,25 +162,25 @@ void fw_resume_after_boot(void)
   device.firmwarePercent = device.FWblockIdx * 100 / device.FWblockCount;
 }
 
-// Сообщить занятость владельца записи блока прошивки.
+// РЎРѕРѕР±С‰РёС‚СЊ Р·Р°РЅСЏС‚РѕСЃС‚СЊ РІР»Р°РґРµР»СЊС†Р° Р·Р°РїРёСЃРё Р±Р»РѕРєР° РїСЂРѕС€РёРІРєРё.
 bool fw_async_active(void) { return fw_job.phase != 0; }
 
-// Пометить текущую запись отменённой без раннего освобождения флеша.
+// РџРѕРјРµС‚РёС‚СЊ С‚РµРєСѓС‰СѓСЋ Р·Р°РїРёСЃСЊ РѕС‚РјРµРЅС‘РЅРЅРѕР№ Р±РµР· СЂР°РЅРЅРµРіРѕ РѕСЃРІРѕР±РѕР¶РґРµРЅРёСЏ С„Р»РµС€Р°.
 void fw_async_cancel(void)
 {
   if (fw_async_active()) fw_job.cancelled = fw_job.quiet = 1;
 }
 
-// Подавить ответ записи при закрытии её канала.
+// РџРѕРґР°РІРёС‚СЊ РѕС‚РІРµС‚ Р·Р°РїРёСЃРё РїСЂРё Р·Р°РєСЂС‹С‚РёРё РµС‘ РєР°РЅР°Р»Р°.
 void fw_async_quiet(dataChanel_e channel)
 {
   if (fw_async_active() && fw_job.channel == channel) fw_job.quiet = 1;
 }
 
-// Зафиксировать уникальный номер ответа текущему блоку.
+// Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ СѓРЅРёРєР°Р»СЊРЅС‹Р№ РЅРѕРјРµСЂ РѕС‚РІРµС‚Р° С‚РµРєСѓС‰РµРјСѓ Р±Р»РѕРєСѓ.
 void fw_async_reply(uint8_t id) { fw_job.id = id; }
 
-// Скопировать проверенный блок и захватить флеш для фоновой записи.
+// РЎРєРѕРїРёСЂРѕРІР°С‚СЊ РїСЂРѕРІРµСЂРµРЅРЅС‹Р№ Р±Р»РѕРє Рё Р·Р°С…РІР°С‚РёС‚СЊ С„Р»РµС€ РґР»СЏ С„РѕРЅРѕРІРѕР№ Р·Р°РїРёСЃРё.
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel)
 {
   if (flash_owner || store.job || mem_config_result() || w25_async_active()) return false;
@@ -195,14 +195,14 @@ static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e c
   return true;
 }
 
-// Освободить данные блока и перейти к ответу результата.
+// РћСЃРІРѕР±РѕРґРёС‚СЊ РґР°РЅРЅС‹Рµ Р±Р»РѕРєР° Рё РїРµСЂРµР№С‚Рё Рє РѕС‚РІРµС‚Сѓ СЂРµР·СѓР»СЊС‚Р°С‚Р°.
 static void fw_async_complete(uint8_t code)
 {
   work_release(fw_job.data, WORK_FW_BLOCK); fw_job.data = NULL;
   fw_job.code = code; fw_job.phase = FA_REPLY;
 }
 
-// Отменить загрузку после окончательного отказа, сохраняя владельца до передачи ответа.
+// РћС‚РјРµРЅРёС‚СЊ Р·Р°РіСЂСѓР·РєСѓ РїРѕСЃР»Рµ РѕРєРѕРЅС‡Р°С‚РµР»СЊРЅРѕРіРѕ РѕС‚РєР°Р·Р°, СЃРѕС…СЂР°РЅСЏСЏ РІР»Р°РґРµР»СЊС†Р° РґРѕ РїРµСЂРµРґР°С‡Рё РѕС‚РІРµС‚Р°.
 static void fw_failure_reply(fw_reason_e reason)
 {
   fw_job.phase = 0;
@@ -212,7 +212,7 @@ static void fw_failure_reply(fw_reason_e reason)
   fw_job.phase = FA_REPLY;
 }
 
-// Продвинуть проверенную запись блока и CRC полного образа.
+// РџСЂРѕРґРІРёРЅСѓС‚СЊ РїСЂРѕРІРµСЂРµРЅРЅСѓСЋ Р·Р°РїРёСЃСЊ Р±Р»РѕРєР° Рё CRC РїРѕР»РЅРѕРіРѕ РѕР±СЂР°Р·Р°.
 void fw_storage_poll(uint32_t now)
 {
   uint8_t r;

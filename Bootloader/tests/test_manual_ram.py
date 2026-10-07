@@ -1,4 +1,3 @@
-"""Execute the RAM flash writer against SPI/Flash register models, never hardware."""
 import argparse
 from pathlib import Path
 import struct

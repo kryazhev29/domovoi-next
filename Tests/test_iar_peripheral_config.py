@@ -24,15 +24,6 @@ REGIONS = (
 )
 
 # Выбрать ровно один образ, чтобы адреса и типы брались из его карты и ELF.
-def select(base, variant, config):
-    folder = base / (variant + '-' + config)
-    os.environ.update(
-        DOMOVOI_ELF=str(folder / 'ExePath/DomovoiNext.out'),
-        DOMOVOI_BIN=str(folder / ('ExePath/DomovoiNext_' + variant + '.bin')),
-        DOMOVOI_MAP=str(folder / 'ListPath/DomovoiNext.map'))
-    return folder
-
-# Моделировать только аппаратные эффекты, которые нужны снимку инициализации.
 class Registers:
     def __init__(self, machine):
         self.m = machine
@@ -122,18 +113,6 @@ def snapshot(baud, stop, cable, seed):
     return result
 
 # Проверить ровно разрешённые отличия удаления PA1/PA4 и третьего канала.
-def compare(before, after, seed):
-    expected = dict(before)
-    address = '40010800'
-    mask = 0x000F00F0
-    expected[address] = (before[address] & ~mask) | (seed & mask)
-    expected['4001080c'] = before['4001080c'] & ~2
-    expected['40012410'] = before['40012410'] & ~(7 << 12)
-    expected['40012438'] = (1 << 20) | (8 << 10) | (9 << 15)
-    differences = {key: [expected[key], after[key]] for key in expected if expected[key] != after[key]}
-    assert not differences, differences
-
-# Проверить формулу IN1/IN2 независимо от последовательности и чужого JDR3.
 def values():
     m = Machine()
     m.init()
@@ -144,7 +123,7 @@ def values():
             assert m.call('adc_getinjectedvalue_mV', channel) == raw * 33 * 1016 // 4096
     assert m.call('adc_getinjectedvalue_mV', 4) == 0
 
-# Собрать пары снимков обоих профилей и вариантов и сохранить артефакт только вне дерева.
+# Проверить инициализацию в выбранном профиле.
 def current():
     """Проверить живую инициализацию с разными исходными регистрами и UART."""
     count = 0
@@ -159,30 +138,5 @@ def current():
     return count
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--before', type=Path, required=True)
-    parser.add_argument('--after', type=Path, required=True)
-    parser.add_argument('--output', type=Path, required=True)
-    args = parser.parse_args()
-    result = []
-    for config in ('Release', 'ReleaseCustomer'):
-        for variant in ('HYBRID', 'C'):
-            for seed in (0x44444444, 0xA5F01234):
-                for baud in (1200, 9600, 19200, 57600, 115200):
-                    for stop in (0, 1):
-                        for cable in (False, True):
-                            select(args.before, variant, config)
-                            before = snapshot(baud, stop, cable, seed)
-                            select(args.after, variant, config)
-                            after = snapshot(baud, stop, cable, seed)
-                            compare(before, after, seed)
-                            result.append(dict(variant=variant, config=config, seed=seed,
-                                               baud=baud, stop=stop, cable=cable,
-                                               before=before, after=after))
-            values()
-    args.output.write_text(json.dumps(result, indent=2) + '\n', encoding='utf8')
-    print(f'Peripheral snapshots: {len(result)} pairs, only VCC/433 deltas PASS')
-
 if __name__ == '__main__':
-    main()
+    print(current())

@@ -14,7 +14,7 @@ def review_unit():
     code += '\nstatic struct { char netOperator[32], server1[32], server2[32]; uint8_t netType, useServer1, useServer2; } config;\n'
     code += user[user.index('static char comm_host'):user.index('// Обработчики')]
     code += '\n'.join(function(user, name) for name in ('comm_split', 'comm_endpoints', 'comm_text', 'comm_number'))
-    code += (ROOT / 'Tests/test_comm_review.c').read_bytes().decode('cp1251')
+    code += (ROOT / 'Tests/test_comm_review.c').read_bytes().decode('utf-8')
     return code.replace('\r\n', '\n')
 
 

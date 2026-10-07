@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Команды SMS, ответы и уведомление администратора о неизвестном ID.
-// Имя команды разбирается один раз, ПИН и формат проверяются на входе.
-// Занятая отправка оставляет SMS в SIM; очередь уведомления существует только в RAM.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РљРѕРјР°РЅРґС‹ SMS, РѕС‚РІРµС‚С‹ Рё СѓРІРµРґРѕРјР»РµРЅРёРµ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР° Рѕ РЅРµРёР·РІРµСЃС‚РЅРѕРј ID.
+// РРјСЏ РєРѕРјР°РЅРґС‹ СЂР°Р·Р±РёСЂР°РµС‚СЃСЏ РѕРґРёРЅ СЂР°Р·, РџРРќ Рё С„РѕСЂРјР°С‚ РїСЂРѕРІРµСЂСЏСЋС‚СЃСЏ РЅР° РІС…РѕРґРµ.
+// Р—Р°РЅСЏС‚Р°СЏ РѕС‚РїСЂР°РІРєР° РѕСЃС‚Р°РІР»СЏРµС‚ SMS РІ SIM; РѕС‡РµСЂРµРґСЊ СѓРІРµРґРѕРјР»РµРЅРёСЏ СЃСѓС‰РµСЃС‚РІСѓРµС‚ С‚РѕР»СЊРєРѕ РІ RAM.
 #include "user_logic_internal.h"
 #include "../user_format.h"
 #include "../../Modules/comm_server.h"
@@ -9,7 +9,7 @@
 enum { SMS_UNKNOWN, SMS_ADD, SMS_IMEI, SMS_STATUS, SMS_RESET, SMS_SETOUT, SMS_DEFAULT };
 static struct { char id[10]; uint8_t due; } unreg_sms_pending;
 
-// Преобразовать имя SMS-команды в код для одного switch.
+// РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ РёРјСЏ SMS-РєРѕРјР°РЅРґС‹ РІ РєРѕРґ РґР»СЏ РѕРґРЅРѕРіРѕ switch.
 static uint8_t sms_command(const char *name)
 {
   static const char *const names[] = {"add", "imei", "status", "reset", "setout", "default"};
@@ -19,7 +19,7 @@ static uint8_t sms_command(const char *name)
   return SMS_UNKNOWN;
 }
 
-// Проверить ПИН и выполнить одну принятую SMS-команду.
+// РџСЂРѕРІРµСЂРёС‚СЊ РџРРќ Рё РІС‹РїРѕР»РЅРёС‚СЊ РѕРґРЅСѓ РїСЂРёРЅСЏС‚СѓСЋ SMS-РєРѕРјР°РЅРґСѓ.
 bool user_smsreceived(char *num, char *data)
 {
   char *lineEnd, *pin, *arg, *reply = tempStrBuffer;
@@ -97,20 +97,20 @@ format_error:
   return true;
 }
 
-// Поставить SMS в очередь модема и записать событие принятия.
+// РџРѕСЃС‚Р°РІРёС‚СЊ SMS РІ РѕС‡РµСЂРµРґСЊ РјРѕРґРµРјР° Рё Р·Р°РїРёСЃР°С‚СЊ СЃРѕР±С‹С‚РёРµ РїСЂРёРЅСЏС‚РёСЏ.
 void user_sendsms(char *mes, char *num){
   if (user_comm_sms(num, mes))
     log_addSystemEventID(LOG_SYS_SENDSMS, user_last10digitsnumber(num));
 }
 
-// Запомнить последнее неизвестное ID для уведомления администратора.
+// Р—Р°РїРѕРјРЅРёС‚СЊ РїРѕСЃР»РµРґРЅРµРµ РЅРµРёР·РІРµСЃС‚РЅРѕРµ ID РґР»СЏ СѓРІРµРґРѕРјР»РµРЅРёСЏ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°.
 void unreg_sms_note(const char *id)
 {
   memcpy(unreg_sms_pending.id, id, 10);
   unreg_sms_pending.due = 1;
 }
 
-// Передать ожидающее уведомление, когда слот SMS свободен.
+// РџРµСЂРµРґР°С‚СЊ РѕР¶РёРґР°СЋС‰РµРµ СѓРІРµРґРѕРјР»РµРЅРёРµ, РєРѕРіРґР° СЃР»РѕС‚ SMS СЃРІРѕР±РѕРґРµРЅ.
 void unreg_sms_poll(void)
 {
   char text[31];

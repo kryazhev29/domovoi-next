@@ -90,11 +90,10 @@ def run(baseline=False):
 
 if __name__ == '__main__':
     import argparse
-    from c_vs_asm_suite import select_image
+    from firmware_suite import select_image
     p = argparse.ArgumentParser()
-    p.add_argument('--variant', default='HYBRID')
     p.add_argument('--build-root')
     p.add_argument('--baseline', action='store_true')
     a = p.parse_args()
-    select_image(a.variant, a.build_root)
+    select_image(a.build_root)
     print(run(a.baseline))

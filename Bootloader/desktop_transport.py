@@ -1,4 +1,3 @@
-"""Desktop transport. Importing this module never opens a serial port."""
 import struct
 import time
 from boot_tool import application, crc16, crc32, frame
@@ -60,7 +59,7 @@ class Link:
                 count = struct.unpack_from('<I', body, 6)[0]
                 if expected_count is not None and count != expected_count:
                     if count < expected_count:
-                        continue  # delayed acknowledgement of a previous block
+                        continue
                     raise ValueError('Контроллер подтвердил неожиданное смещение.')
                 return body
         raise TimeoutError(f'Нет ответа на команду 0x{command:02X}. Проверьте USB и режим загрузчика.')
@@ -79,7 +78,6 @@ def identify(port, factory=None, cancel=None):
 
 
 def transfer(port, path, notify, cancel, factory=None, expected_image=None):
-    """Only block writes are retried. COMMIT is never repeated after ambiguity."""
     if factory is None:
         from serial import Serial
         factory = Serial

@@ -1,6 +1,6 @@
-// Доработка: Кряжев А., 2026
-// Проверка контрактов периферии без физической платы.
-// Зависимости моделируются, код проверяемого модуля вставляет стенд.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РџСЂРѕРІРµСЂРєР° РєРѕРЅС‚СЂР°РєС‚РѕРІ РїРµСЂРёС„РµСЂРёРё Р±РµР· С„РёР·РёС‡РµСЃРєРѕР№ РїР»Р°С‚С‹.
+// Р—Р°РІРёСЃРёРјРѕСЃС‚Рё РјРѕРґРµР»РёСЂСѓСЋС‚СЃСЏ, РєРѕРґ РїСЂРѕРІРµСЂСЏРµРјРѕРіРѕ РјРѕРґСѓР»СЏ РІСЃС‚Р°РІР»СЏРµС‚ СЃС‚РµРЅРґ.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,8 +13,8 @@ static struct {uint8_t USBwValue0;} *unused;
 static ONE_DESCRIPTOR String_Descriptor[4];
 static unsigned calls;
 static uint8_t payload;
-// Вернуть выбранный дескриптор для проверки границы индекса строки.
+// Р’РµСЂРЅСѓС‚СЊ РІС‹Р±СЂР°РЅРЅС‹Р№ РґРµСЃРєСЂРёРїС‚РѕСЂ РґР»СЏ РїСЂРѕРІРµСЂРєРё РіСЂР°РЅРёС†С‹ РёРЅРґРµРєСЃР° СЃС‚СЂРѕРєРё.
 static uint8_t *Standard_GetDescriptorData(uint16_t n,ONE_DESCRIPTOR *p){CHECK(n==7);CHECK(p>=String_Descriptor&&p<String_Descriptor+4);calls++;return &payload;}
-/* КОД */
-// Проверить все сценарии модуля и вернуть результат прогона.
+/* РљРћР” */
+// РџСЂРѕРІРµСЂРёС‚СЊ РІСЃРµ СЃС†РµРЅР°СЂРёРё РјРѕРґСѓР»СЏ Рё РІРµСЂРЅСѓС‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚ РїСЂРѕРіРѕРЅР°.
 int main(void){unsigned i;(void)unused;for(i=0;i<256;i++){information.USBwValue0=(uint8_t)i;uint8_t *p=Virtual_Com_Port_GetStringDescriptor(7);CHECK(i<4?p==&payload:p==NULL);}CHECK(calls==4);puts("usbdesc: only string descriptor indices 0..3 accepted passed");return 0;}

@@ -14,8 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'Tests'), str(ROOT / 'Tests/asm')]
-from c_vs_asm_suite import select_image
-from c_vs_asm_compare import Profile
+from firmware_suite import select_image
+from protocol_contract import Profile
 from test_access_reads import AccessMachine
 from test_service_runtime import ServiceMachine
 from storage_machine import StorageMachine, crc16
@@ -200,12 +200,12 @@ def startup_counts():
 
 # Проверить отсутствие мёртвого расчёта ПИН и размер тематических модулей.
 def source_contracts():
-    new = (ROOT / 'User/c/user_config.c').read_text(encoding='cp1251')
+    new = (ROOT / 'User/c/user_config.c').read_text(encoding='utf-8')
     assert 'user_unipassword' not in new and 'user_imeivalid' not in new
     assert not (ROOT / 'User/hybrid').exists()
     assert not (ROOT / 'User/c/user_fun_runtime.c').exists()
     for path in (ROOT / 'User/c').glob('user_*.c'):
-        data = path.read_bytes(); text = data.decode('cp1251')
+        data = path.read_bytes(); text = data.decode('utf-8')
         assert b'\n' not in data.replace(b'\r\n', b'') and len(text.splitlines()) <= 600, path
     return 1
 
@@ -214,14 +214,13 @@ def source_contracts():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--build-root', type=Path, required=True)
-    parser.add_argument('--variant', choices=('C', 'HYBRID'), default='HYBRID')
     parser.add_argument('--config', default='Release')
     parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     import os
     os.environ['DOMOVOI_COMPARE_CONFIG'] = args.config
-    select_image(args.variant, args.build_root)
+    select_image(args.build_root)
     checks = 0 if args.baseline else source_contracts() + rx_contracts() + reader_contracts() + startup_counts()
     data = {'checks': checks, 'measurements': measurements(),
             'elf_sha256': hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}

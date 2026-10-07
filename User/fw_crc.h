@@ -1,4 +1,4 @@
-/* STM32 CRC block is exclusively owned by the current FW Flash job. */
+
 #ifndef FW_CRC_H
 #define FW_CRC_H
 #include <stdint.h>

@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Стартовое чтение конфигурации, восстановление device и настройки по умолчанию.
-// До конца user_init допускается только необходимый синхронный путь восстановления.
-// Атомарной записью и выбором долговечного образа владеет memory_runtime.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РЎС‚Р°СЂС‚РѕРІРѕРµ С‡С‚РµРЅРёРµ РєРѕРЅС„РёРіСѓСЂР°С†РёРё, РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ device Рё РЅР°СЃС‚СЂРѕР№РєРё РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.
+// Р”Рѕ РєРѕРЅС†Р° user_init РґРѕРїСѓСЃРєР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РЅРµРѕР±С…РѕРґРёРјС‹Р№ СЃРёРЅС…СЂРѕРЅРЅС‹Р№ РїСѓС‚СЊ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.
+// РђС‚РѕРјР°СЂРЅРѕР№ Р·Р°РїРёСЃСЊСЋ Рё РІС‹Р±РѕСЂРѕРј РґРѕР»РіРѕРІРµС‡РЅРѕРіРѕ РѕР±СЂР°Р·Р° РІР»Р°РґРµРµС‚ memory_runtime.
 #include "user_logic_internal.h"
 #include "../table_runtime.h"
 #include "../sched16.h"
@@ -14,7 +14,7 @@ config_s config;
 #pragma data_alignment=4
 device_s device;
 
-// Стереть указанную область синхронно при стартовом восстановлении.
+// РЎС‚РµСЂРµС‚СЊ СѓРєР°Р·Р°РЅРЅСѓСЋ РѕР±Р»Р°СЃС‚СЊ СЃРёРЅС…СЂРѕРЅРЅРѕ РїСЂРё СЃС‚Р°СЂС‚РѕРІРѕРј РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРё.
 bool user_clearMemBlock(memBlock_e mb){
   if (mb==MB_SHEDULE) return sched16_clear();
 
@@ -23,32 +23,32 @@ bool user_clearMemBlock(memBlock_e mb){
   uint32_t adr;
   uint32_t endAdr = mem[mb].start + mem[mb].size;
 
-  // по секторно стираем
+  // РїРѕ СЃРµРєС‚РѕСЂРЅРѕ СЃС‚РёСЂР°РµРј
   for (adr = mem[mb].start; adr < endAdr; adr += 4096){
     if (!mem_erase_sector(adr)) return false;
     wdt_reload();
   }
-  if (mb == MB_ID) idindex_scanned(0, 0); /* база пуста - индекс пересобирается в фоне */
+  if (mb == MB_ID) idindex_scanned(0, 0); /* Р±Р°Р·Р° РїСѓСЃС‚Р° - РёРЅРґРµРєСЃ РїРµСЂРµСЃРѕР±РёСЂР°РµС‚СЃСЏ РІ С„РѕРЅРµ */
   return true;
 }
 
-// Восстановить device, курсоры и стартовые счётчики.
+// Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ device, РєСѓСЂСЃРѕСЂС‹ Рё СЃС‚Р°СЂС‚РѕРІС‹Рµ СЃС‡С‘С‚С‡РёРєРё.
 void user_initvariables (void)
 {
-  // чистим
+  // С‡РёСЃС‚РёРј
   memset((pInt8U)&device, 0, sizeof(device));
 
   device.connectionhandle = -1;
   device.memID = w25_read_devID();
   device.freeBufferSize = 2048;
 
-  // чтение сохранённой информации
+  // С‡С‚РµРЅРёРµ СЃРѕС…СЂР°РЅС‘РЅРЅРѕР№ РёРЅС„РѕСЂРјР°С†РёРё
   user_readsavedinformation();
   device.protocolVersion = PROTOCOL_VERSION;
 
   user_comm_boot();
 
-  // смотрим сколько в памяти номеров
+  // СЃРјРѕС‚СЂРёРј СЃРєРѕР»СЊРєРѕ РІ РїР°РјСЏС‚Рё РЅРѕРјРµСЂРѕРІ
   device.numbersCount = user_getNumbersCount();
   device.logsCount = log_getRecordsCount();
   if (device.logsCount)
@@ -56,12 +56,12 @@ void user_initvariables (void)
   device.tempIDsCount = user_getTempIDRecordsCount();
   if (device.tempIDsCount)
     device.status.readyID = 1;
-  // Очередь фото восстановит единственный асинхронный скан.
+  // РћС‡РµСЂРµРґСЊ С„РѕС‚Рѕ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚ РµРґРёРЅСЃС‚РІРµРЅРЅС‹Р№ Р°СЃРёРЅС…СЂРѕРЅРЅС‹Р№ СЃРєР°РЅ.
   device.countPhoto = 0;
   device.status.readyPhoto = 0;
 }
 
-// Обменять рабочую конфигурацию с телом принимаемой команды.
+// РћР±РјРµРЅСЏС‚СЊ СЂР°Р±РѕС‡СѓСЋ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ СЃ С‚РµР»РѕРј РїСЂРёРЅРёРјР°РµРјРѕР№ РєРѕРјР°РЅРґС‹.
 void config_exchange(uint8_t *data)
 {
   uint8_t *p = (uint8_t*)&config;
@@ -72,15 +72,15 @@ void config_exchange(uint8_t *data)
   }
 }
 
-// Завершить строковые поля на границе нового config.
-// Завершить только поле без нуля: исправленная конфигурация получает новую CRC.
+// Р—Р°РІРµСЂС€РёС‚СЊ СЃС‚СЂРѕРєРѕРІС‹Рµ РїРѕР»СЏ РЅР° РіСЂР°РЅРёС†Рµ РЅРѕРІРѕРіРѕ config.
+// Р—Р°РІРµСЂС€РёС‚СЊ С‚РѕР»СЊРєРѕ РїРѕР»Рµ Р±РµР· РЅСѓР»СЏ: РёСЃРїСЂР°РІР»РµРЅРЅР°СЏ РєРѕРЅС„РёРіСѓСЂР°С†РёСЏ РїРѕР»СѓС‡Р°РµС‚ РЅРѕРІСѓСЋ CRC.
 static bool config_terminate(char *text, size_t capacity)
 {
   if (memchr(text, 0, capacity)) return false;
   text[capacity - 1u] = 0;
   return true;
 }
-// Завершить строки внешних настроек и обновить CRC, если пришлось исправить границу.
+// Р—Р°РІРµСЂС€РёС‚СЊ СЃС‚СЂРѕРєРё РІРЅРµС€РЅРёС… РЅР°СЃС‚СЂРѕРµРє Рё РѕР±РЅРѕРІРёС‚СЊ CRC, РµСЃР»Рё РїСЂРёС€Р»РѕСЃСЊ РёСЃРїСЂР°РІРёС‚СЊ РіСЂР°РЅРёС†Сѓ.
 void config_terminate_strings(void)
 {
   bool changed = false;
@@ -94,7 +94,7 @@ void config_terminate_strings(void)
   if (changed) config.crc = crc16_calc((uint8_t *)&config, sizeof(config) - 2);
 }
 
-// Выбрать допустимый сохранённый config либо начальные настройки.
+// Р’С‹Р±СЂР°С‚СЊ РґРѕРїСѓСЃС‚РёРјС‹Р№ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Р№ config Р»РёР±Рѕ РЅР°С‡Р°Р»СЊРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё.
 void user_readconfig(void)
 {
   wdt_reload();
@@ -107,12 +107,12 @@ void user_readconfig(void)
   }
 }
 
-// Сформировать заводские настройки текущего профиля.
+// РЎС„РѕСЂРјРёСЂРѕРІР°С‚СЊ Р·Р°РІРѕРґСЃРєРёРµ РЅР°СЃС‚СЂРѕР№РєРё С‚РµРєСѓС‰РµРіРѕ РїСЂРѕС„РёР»СЏ.
 void user_setdefault (void)
 {
   wdt_reload();
 
-  // чистим
+  // С‡РёСЃС‚РёРј
   memset((pInt8U)&config, 0, sizeof(config));
 
   config.pinCode = 0x31323334;
@@ -136,52 +136,52 @@ void user_setdefault (void)
   user_writeConfigAndDevice();
 }
 
-// Передать согласованный протокольный сброс владельцу хранения.
+// РџРµСЂРµРґР°С‚СЊ СЃРѕРіР»Р°СЃРѕРІР°РЅРЅС‹Р№ РїСЂРѕС‚РѕРєРѕР»СЊРЅС‹Р№ СЃР±СЂРѕСЃ РІР»Р°РґРµР»СЊС†Сѓ С…СЂР°РЅРµРЅРёСЏ.
 void user_factoryReset (void){
   fw_async_cancel();
 
-  // закрываем соединение с сервером
+  // Р·Р°РєСЂС‹РІР°РµРј СЃРѕРµРґРёРЅРµРЅРёРµ СЃ СЃРµСЂРІРµСЂРѕРј
   upload_reset(10);
   upload_reset(9);
-  if (!user_writeConfigAndDevice()) return; // не стираем с сохранённым старым курсором
+  if (!user_writeConfigAndDevice()) return; // РЅРµ СЃС‚РёСЂР°РµРј СЃ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Рј СЃС‚Р°СЂС‹Рј РєСѓСЂСЃРѕСЂРѕРј
 
-  // чистим память абонентов
+  // С‡РёСЃС‚РёРј РїР°РјСЏС‚СЊ Р°Р±РѕРЅРµРЅС‚РѕРІ
   user_clearMemBlock(MB_ID);
-  // чистим память групп
+  // С‡РёСЃС‚РёРј РїР°РјСЏС‚СЊ РіСЂСѓРїРї
   user_clearMemBlock(MB_GROUP);
-  // чистим память расписаний
+  // С‡РёСЃС‚РёРј РїР°РјСЏС‚СЊ СЂР°СЃРїРёСЃР°РЅРёР№
   user_clearMemBlock(MB_SHEDULE);
-  // чистим память праздников
+  // С‡РёСЃС‚РёРј РїР°РјСЏС‚СЊ РїСЂР°Р·РґРЅРёРєРѕРІ
   user_clearMemBlock(MB_HOLIDAY);
-  // чистим память журнала
+  // С‡РёСЃС‚РёРј РїР°РјСЏС‚СЊ Р¶СѓСЂРЅР°Р»Р°
   user_clearMemBlock(MB_LOG);
-  // чистим память временные ID
+  // С‡РёСЃС‚РёРј РїР°РјСЏС‚СЊ РІСЂРµРјРµРЅРЅС‹Рµ ID
   user_clearMemBlock(MB_TEMPID);
-  // чистим память фото
+  // С‡РёСЃС‚РёРј РїР°РјСЏС‚СЊ С„РѕС‚Рѕ
   user_clearMemBlock(MB_PHOTO);
 
-  /* Заводской сброс отменяет загрузку: user_setdefault сохраняет это состояние, и после
-     перезапуска ничего не продолжается. */
+  /* Р—Р°РІРѕРґСЃРєРѕР№ СЃР±СЂРѕСЃ РѕС‚РјРµРЅСЏРµС‚ Р·Р°РіСЂСѓР·РєСѓ: user_setdefault СЃРѕС…СЂР°РЅСЏРµС‚ СЌС‚Рѕ СЃРѕСЃС‚РѕСЏРЅРёРµ, Рё РїРѕСЃР»Рµ
+     РїРµСЂРµР·Р°РїСѓСЃРєР° РЅРёС‡РµРіРѕ РЅРµ РїСЂРѕРґРѕР»Р¶Р°РµС‚СЃСЏ. */
   device.FWinProgress = 0;
   device.status.readyToUpdate = 0;
   device.updateTimeout = 0;
 
-  // чистим конфиг
+  // С‡РёСЃС‚РёРј РєРѕРЅС„РёРі
   user_setdefault();
-  // реинициализируем переменные
+  // СЂРµРёРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј РїРµСЂРµРјРµРЅРЅС‹Рµ
   user_initvariables();
 
 }
 
-// Восстановить устойчивые поля device и незавершённые действия.
+// Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ СѓСЃС‚РѕР№С‡РёРІС‹Рµ РїРѕР»СЏ device Рё РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Рµ РґРµР№СЃС‚РІРёСЏ.
 void user_readsavedinformation (void)
 {
   device_s DV;
   wdt_reload();
   if (mem_read(mem[MB_CONFIG].start + sizeof(config), (uint8_t *)&DV, sizeof(DV)) &&
     DV.crc == crc16_calc((uint8_t *)&DV, sizeof(DV) - 2u)) {
-    DV.IMEIGSM[sizeof(DV.IMEIGSM) - 1] = 0; // Завершаем после проверки CRC.
-    strcpy(device.IMEIGSM, DV.IMEIGSM); // восстанавливаем IMEI GSM
+    DV.IMEIGSM[sizeof(DV.IMEIGSM) - 1] = 0; // Р—Р°РІРµСЂС€Р°РµРј РїРѕСЃР»Рµ РїСЂРѕРІРµСЂРєРё CRC.
+    strcpy(device.IMEIGSM, DV.IMEIGSM); // РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµРј IMEI GSM
 
     device.hardwareVersion = DV.hardwareVersion;
     device.firmwareVersion = DV.firmwareVersion;
@@ -213,32 +213,32 @@ void user_readsavedinformation (void)
   fw_resume_after_boot();
 }
 
-// Сохранить device перед программным перезапуском.
+// РЎРѕС…СЂР°РЅРёС‚СЊ device РїРµСЂРµРґ РїСЂРѕРіСЂР°РјРјРЅС‹Рј РїРµСЂРµР·Р°РїСѓСЃРєРѕРј.
 void user_savereset (void)
 {
   if (store_runtime) { idclear_runtime_cancel(); expiry_runtime_cancel(); fw_service_cancel(); upload_runtime_cancel(); service_crc_cancel(); table_runtime_cancel(); photo_storage_cancel(); store_reset_requested = 1; return; }
-  log_flushPending(); // события, не дождавшиеся времени, - в журнал до перезагрузки
-  user_saveindex(); // сохраняем индексы и т.п.
+  log_flushPending(); // СЃРѕР±С‹С‚РёСЏ, РЅРµ РґРѕР¶РґР°РІС€РёРµСЃСЏ РІСЂРµРјРµРЅРё, - РІ Р¶СѓСЂРЅР°Р» РґРѕ РїРµСЂРµР·Р°РіСЂСѓР·РєРё
+  user_saveindex(); // СЃРѕС…СЂР°РЅСЏРµРј РёРЅРґРµРєСЃС‹ Рё С‚.Рї.
   wdt_reload();
 
-  // Отключаем USB
-  USB_PULLUP_OFF; // выключаем подтягивающий резистор
+  // РћС‚РєР»СЋС‡Р°РµРј USB
+  USB_PULLUP_OFF; // РІС‹РєР»СЋС‡Р°РµРј РїРѕРґС‚СЏРіРёРІР°СЋС‰РёР№ СЂРµР·РёСЃС‚РѕСЂ
 
-  // выключаем gsm
+  // РІС‹РєР»СЋС‡Р°РµРј gsm
   comm_modem_off();
 
-  // перезагружаем
+  // РїРµСЂРµР·Р°РіСЂСѓР¶Р°РµРј
   NVIC_SystemReset();
 }
 
-// Запросить сохранение device, учитывая стартовую синхронную фазу.
+// Р—Р°РїСЂРѕСЃРёС‚СЊ СЃРѕС…СЂР°РЅРµРЅРёРµ device, СѓС‡РёС‚С‹РІР°СЏ СЃС‚Р°СЂС‚РѕРІСѓСЋ СЃРёРЅС…СЂРѕРЅРЅСѓСЋ С„Р°Р·Сѓ.
 void user_saveindex (void)
 {
   if (store_runtime) { store_save_requested = 1; return; }
   user_writeConfigAndDevice();
 }
 
-// Сохранить config/device через их единственный атомарный владелец.
+// РЎРѕС…СЂР°РЅРёС‚СЊ config/device С‡РµСЂРµР· РёС… РµРґРёРЅСЃС‚РІРµРЅРЅС‹Р№ Р°С‚РѕРјР°СЂРЅС‹Р№ РІР»Р°РґРµР»РµС†.
 bool user_writeConfigAndDevice(void)
 {
   wdt_reload();

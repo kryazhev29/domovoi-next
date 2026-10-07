@@ -8,4 +8,4 @@
 
 Все полноценные QIRD-тела, URC между ответами, ошибки, сроки и разрывы в `Tests/test_comm_at.c` обозначены как **синтетика**. Форматы проверены по локальным руководствам SLM3XX EX V1.08 §8.1.8 (PDF 94–95) и M66 AT V2.1 §§11.30–11.31 (PDF 175–177); реальные журналы содержат старый direct push, а не чтение QIRD.
 
-Запуск: `python Tests/run_host.py work commat`; ARM-объект и измерение памяти: `python Tests/comm_at_host.py --arm`. Комментарии C в cp1251, CRLF; Python/JSON/Markdown в UTF-8. Платы, порты и сервер не используются.
+Запуск: `python Tests/run_host.py work commat`; ARM-объект и измерение памяти: `python Tests/comm_at_host.py --arm`. Исходники C/Python в UTF-8, CRLF; JSON/Markdown в UTF-8. Платы, порты и сервер не используются.

@@ -1,7 +1,7 @@
-/* Доработка: Кряжев А., 2026.
-   Разбирает строки AT, приглашения и двоичное тело SLM336.
-   Проверяет внешние ответы один раз; внутренние команды уже собраны владельцем.
-   Обработчики принимают данные, следующий запрос запускает главный цикл.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   Р Р°Р·Р±РёСЂР°РµС‚ СЃС‚СЂРѕРєРё AT, РїСЂРёРіР»Р°С€РµРЅРёСЏ Рё РґРІРѕРёС‡РЅРѕРµ С‚РµР»Рѕ SLM336.
+   РџСЂРѕРІРµСЂСЏРµС‚ РІРЅРµС€РЅРёРµ РѕС‚РІРµС‚С‹ РѕРґРёРЅ СЂР°Р·; РІРЅСѓС‚СЂРµРЅРЅРёРµ РєРѕРјР°РЅРґС‹ СѓР¶Рµ СЃРѕР±СЂР°РЅС‹ РІР»Р°РґРµР»СЊС†РµРј.
+   РћР±СЂР°Р±РѕС‚С‡РёРєРё РїСЂРёРЅРёРјР°СЋС‚ РґР°РЅРЅС‹Рµ, СЃР»РµРґСѓСЋС‰РёР№ Р·Р°РїСЂРѕСЃ Р·Р°РїСѓСЃРєР°РµС‚ РіР»Р°РІРЅС‹Р№ С†РёРєР».
 */
 #include "comm_at.h"
 #include "comm_uart.h"
@@ -13,33 +13,33 @@ static uint32_t started, timeout, recovery;
 static uint16_t remaining, read_limit, modem_code;
 static uint8_t command_count, line_count;
 static uint8_t state, mode, grammar, result, cr, prompt_space, header, sync_seen;
-/* PDU: строка после заголовка ответа - тело SMS (hex), без разбора и кусками;
-   1 - ждём тело, 2 - отдан кусок. */
+/* PDU: СЃС‚СЂРѕРєР° РїРѕСЃР»Рµ Р·Р°РіРѕР»РѕРІРєР° РѕС‚РІРµС‚Р° - С‚РµР»Рѕ SMS (hex), Р±РµР· СЂР°Р·Р±РѕСЂР° Рё РєСѓСЃРєР°РјРё;
+   1 - Р¶РґС‘Рј С‚РµР»Рѕ, 2 - РѕС‚РґР°РЅ РєСѓСЃРѕРє. */
 static uint8_t pdu_body;
 enum { IDLE, RUN, COMPLETE, DRAIN, CALL_DRAIN, SYNC_SEND, SYNC_WAIT, SYNC_COMPLETE, FAULT };
 enum { LINES, BODY, BODY_CR, BODY_LF };
 
-/* Передать событие единственному обработчику AT. */
+/* РџРµСЂРµРґР°С‚СЊ СЃРѕР±С‹С‚РёРµ РµРґРёРЅСЃС‚РІРµРЅРЅРѕРјСѓ РѕР±СЂР°Р±РѕС‚С‡РёРєСѓ AT. */
 static void event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t detail)
 {
   handlers.event(kind, data, count, detail);
 }
 
-/* Сравнить всю ограниченную строку с ожидаемым ответом. */
+/* РЎСЂР°РІРЅРёС‚СЊ РІСЃСЋ РѕРіСЂР°РЅРёС‡РµРЅРЅСѓСЋ СЃС‚СЂРѕРєСѓ СЃ РѕР¶РёРґР°РµРјС‹Рј РѕС‚РІРµС‚РѕРј. */
 bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text)
 {
   size_t n = strlen(text);
   return count == n && !memcmp(data, text, n);
 }
 
-/* Проверить начало ограниченной строки без выхода за границу. */
+/* РџСЂРѕРІРµСЂРёС‚СЊ РЅР°С‡Р°Р»Рѕ РѕРіСЂР°РЅРёС‡РµРЅРЅРѕР№ СЃС‚СЂРѕРєРё Р±РµР· РІС‹С…РѕРґР° Р·Р° РіСЂР°РЅРёС†Сѓ. */
 bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text)
 {
   size_t n = strlen(text);
   return count >= n && !memcmp(data, text, n);
 }
 
-/* Число без знака, переполнения и неявной обрезки; индекс только в строке. */
+/* Р§РёСЃР»Рѕ Р±РµР· Р·РЅР°РєР°, РїРµСЂРµРїРѕР»РЅРµРЅРёСЏ Рё РЅРµСЏРІРЅРѕР№ РѕР±СЂРµР·РєРё; РёРЅРґРµРєСЃ С‚РѕР»СЊРєРѕ РІ СЃС‚СЂРѕРєРµ. */
 bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
                    uint32_t limit, uint32_t *value)
 {
@@ -55,7 +55,7 @@ bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
   return *pos != begin;
 }
 
-/* Принять ожидаемый символ грамматики и сдвинуть позицию. */
+/* РџСЂРёРЅСЏС‚СЊ РѕР¶РёРґР°РµРјС‹Р№ СЃРёРјРІРѕР» РіСЂР°РјРјР°С‚РёРєРё Рё СЃРґРІРёРЅСѓС‚СЊ РїРѕР·РёС†РёСЋ. */
 static bool take(const uint8_t *data, uint16_t count, uint16_t *pos, uint8_t c)
 {
   if (*pos >= count || data[*pos] != c) return false;
@@ -63,14 +63,14 @@ static bool take(const uint8_t *data, uint16_t count, uint16_t *pos, uint8_t c)
   return true;
 }
 
-/* Пропустить разрешённые пробелы перед полем ответа. */
+/* РџСЂРѕРїСѓСЃС‚РёС‚СЊ СЂР°Р·СЂРµС€С‘РЅРЅС‹Рµ РїСЂРѕР±РµР»С‹ РїРµСЂРµРґ РїРѕР»РµРј РѕС‚РІРµС‚Р°. */
 uint16_t comm_at_spaces(const uint8_t *data, uint16_t count, uint16_t pos)
 {
   while (pos < count && data[pos] == ' ') ++pos;
   return pos;
 }
 
-/* Очистить грамматику для нового запроса. */
+/* РћС‡РёСЃС‚РёС‚СЊ РіСЂР°РјРјР°С‚РёРєСѓ РґР»СЏ РЅРѕРІРѕРіРѕ Р·Р°РїСЂРѕСЃР°. */
 static void parser_reset(void)
 {
   line_count = remaining = 0;
@@ -78,29 +78,29 @@ static void parser_reset(void)
   cr = prompt_space = header = pdu_body = 0;
 }
 
-/* Зафиксировать потерю границ и запретить дальнейший разбор. */
+/* Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РїРѕС‚РµСЂСЋ РіСЂР°РЅРёС† Рё Р·Р°РїСЂРµС‚РёС‚СЊ РґР°Р»СЊРЅРµР№С€РёР№ СЂР°Р·Р±РѕСЂ. */
 static void fault(uint8_t reason)
 {
   uint8_t kind = (state >= RUN && state <= COMPLETE) ? COMM_AT_DONE
                  : state == IDLE ? COMM_AT_STREAM_ERROR : COMM_AT_NO_ANSWER;
-  /* После потери границ ни оставшееся тело, ни его OK не разбираются. */
+  /* РџРѕСЃР»Рµ РїРѕС‚РµСЂРё РіСЂР°РЅРёС† РЅРё РѕСЃС‚Р°РІС€РµРµСЃСЏ С‚РµР»Рѕ, РЅРё РµРіРѕ OK РЅРµ СЂР°Р·Р±РёСЂР°СЋС‚СЃСЏ. */
   state = FAULT;
   event(kind, NULL, 0, reason);
 }
 
-/* Проверить истечение срока с учётом оборота счётчика времени. */
+/* РџСЂРѕРІРµСЂРёС‚СЊ РёСЃС‚РµС‡РµРЅРёРµ СЃСЂРѕРєР° СЃ СѓС‡С‘С‚РѕРј РѕР±РѕСЂРѕС‚Р° СЃС‡С‘С‚С‡РёРєР° РІСЂРµРјРµРЅРё. */
 static bool expired(uint32_t now, uint32_t duration)
 {
   return (uint32_t)(now - started) >= duration;
 }
 
-/* Размер тела известен из собственной команды канала. */
+/* Р Р°Р·РјРµСЂ С‚РµР»Р° РёР·РІРµСЃС‚РµРЅ РёР· СЃРѕР±СЃС‚РІРµРЅРЅРѕР№ РєРѕРјР°РЅРґС‹ РєР°РЅР°Р»Р°. */
 static void qird_request(void)
 {
   const char *p = (const char *)command + sizeof("AT+QIRD=0,") - 1u;
   while (*p >= '0' && *p <= '9') read_limit = (uint16_t)(read_limit * 10u + *p++ - '0');
 }
-/* Начать чистый AT после отмены прежнего UART. */
+/* РќР°С‡Р°С‚СЊ С‡РёСЃС‚С‹Р№ AT РїРѕСЃР»Рµ РѕС‚РјРµРЅС‹ РїСЂРµР¶РЅРµРіРѕ UART. */
 void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
 {
   handlers = *callbacks;
@@ -111,7 +111,7 @@ void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
   parser_reset();
 }
 
-/* Один раз проверить строковую настройку на границе запуска. */
+/* РћРґРёРЅ СЂР°Р· РїСЂРѕРІРµСЂРёС‚СЊ СЃС‚СЂРѕРєРѕРІСѓСЋ РЅР°СЃС‚СЂРѕР№РєСѓ РЅР° РіСЂР°РЅРёС†Рµ Р·Р°РїСѓСЃРєР°. */
 bool comm_at_field(const char *p, size_t size, bool host)
 {
   size_t i;
@@ -124,31 +124,31 @@ bool comm_at_field(const char *p, size_t size, bool host)
   }
   return false;
 }
-/* Назначить потребителя двоичного тела канала. */
+/* РќР°Р·РЅР°С‡РёС‚СЊ РїРѕС‚СЂРµР±РёС‚РµР»СЏ РґРІРѕРёС‡РЅРѕРіРѕ С‚РµР»Р° РєР°РЅР°Р»Р°. */
 void comm_at_sink(uint16_t (*binary)(const uint8_t *, uint16_t))
 { handlers.binary = binary; }
 
-/* Сообщить, занят ли движок запросом или восстановлением границ. */
+/* РЎРѕРѕР±С‰РёС‚СЊ, Р·Р°РЅСЏС‚ Р»Рё РґРІРёР¶РѕРє Р·Р°РїСЂРѕСЃРѕРј РёР»Рё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµРј РіСЂР°РЅРёС†. */
 bool comm_at_busy(void)
 {
   return state != IDLE;
 }
-/* Сообщить, ждёт ли модем данные после приглашения. */
+/* РЎРѕРѕР±С‰РёС‚СЊ, Р¶РґС‘С‚ Р»Рё РјРѕРґРµРј РґР°РЅРЅС‹Рµ РїРѕСЃР»Рµ РїСЂРёРіР»Р°С€РµРЅРёСЏ. */
 bool comm_at_prompt(void) { return state == IDLE && result == COMM_AT_GOT_PROMPT; }
 
-/* Разрешить новый запрос только при пустом приёмном потоке. */
+/* Р Р°Р·СЂРµС€РёС‚СЊ РЅРѕРІС‹Р№ Р·Р°РїСЂРѕСЃ С‚РѕР»СЊРєРѕ РїСЂРё РїСѓСЃС‚РѕРј РїСЂРёС‘РјРЅРѕРј РїРѕС‚РѕРєРµ. */
 static bool available(void)
 {
   const uint8_t *view;
   return !comm_at_busy() && !line_count && !cr && !comm_uart_peek(&view);
 }
-/* Начать ожидание ответа заданного режима. */
+/* РќР°С‡Р°С‚СЊ РѕР¶РёРґР°РЅРёРµ РѕС‚РІРµС‚Р° Р·Р°РґР°РЅРЅРѕРіРѕ СЂРµР¶РёРјР°. */
 static void run(uint8_t next_mode, uint32_t duration, uint32_t now_ms)
 {
   parser_reset(); modem_code = 0;
   mode = next_mode; started = now_ms; timeout = duration; state = RUN;
 }
-/* Скопировать готовую команду и начать её неблокирующую передачу. */
+/* РЎРєРѕРїРёСЂРѕРІР°С‚СЊ РіРѕС‚РѕРІСѓСЋ РєРѕРјР°РЅРґСѓ Рё РЅР°С‡Р°С‚СЊ РµС‘ РЅРµР±Р»РѕРєРёСЂСѓСЋС‰СѓСЋ РїРµСЂРµРґР°С‡Сѓ. */
 uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
 {
   uint8_t trailing_space = prompt_space;
@@ -165,7 +165,7 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
   return COMM_AT_ACCEPTED;
 }
 
-/* Отличить ответ текущей команды от постороннего уведомления. */
+/* РћС‚Р»РёС‡РёС‚СЊ РѕС‚РІРµС‚ С‚РµРєСѓС‰РµР№ РєРѕРјР°РЅРґС‹ РѕС‚ РїРѕСЃС‚РѕСЂРѕРЅРЅРµРіРѕ СѓРІРµРґРѕРјР»РµРЅРёСЏ. */
 static bool solicited(void)
 {
   uint16_t n = 2;
@@ -176,7 +176,7 @@ static bool solicited(void)
   return line_count > n && line[n] == ':' && !memcmp(line, command + 2, n);
 }
 
-/* Строки без массива указателей; результат 1..N, ноль — нет совпадения. */
+/* РЎС‚СЂРѕРєРё Р±РµР· РјР°СЃСЃРёРІР° СѓРєР°Р·Р°С‚РµР»РµР№; СЂРµР·СѓР»СЊС‚Р°С‚ 1..N, РЅРѕР»СЊ вЂ” РЅРµС‚ СЃРѕРІРїР°РґРµРЅРёСЏ. */
 uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names)
 {
   for (uint8_t i = 1; *names; ++i) {
@@ -186,7 +186,7 @@ uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names)
   }
   return 0;
 }
-/* Определить строку самостоятельного уведомления модема. */
+/* РћРїСЂРµРґРµР»РёС‚СЊ СЃС‚СЂРѕРєСѓ СЃР°РјРѕСЃС‚РѕСЏС‚РµР»СЊРЅРѕРіРѕ СѓРІРµРґРѕРјР»РµРЅРёСЏ РјРѕРґРµРјР°. */
 static bool urc(void)
 {
   return (line_count && line[0] == '+' && !solicited()) || (state != RUN && state != DRAIN)
@@ -194,7 +194,7 @@ static bool urc(void)
                                       "AT READY\0RDY\0SEND OK\0SEND FAIL\0");
 }
 
-/* Принять проверенную длину тела QIRD. */
+/* РџСЂРёРЅСЏС‚СЊ РїСЂРѕРІРµСЂРµРЅРЅСѓСЋ РґР»РёРЅСѓ С‚РµР»Р° QIRD. */
 static void binary_header(void)
 {
   uint16_t pos = comm_at_spaces(line, line_count, 6);
@@ -208,7 +208,7 @@ static void binary_header(void)
   grammar = n ? BODY : LINES;
 }
 
-/* Передать данные после уже полученного приглашения. */
+/* РџРµСЂРµРґР°С‚СЊ РґР°РЅРЅС‹Рµ РїРѕСЃР»Рµ СѓР¶Рµ РїРѕР»СѓС‡РµРЅРЅРѕРіРѕ РїСЂРёРіР»Р°С€РµРЅРёСЏ. */
 uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint8_t finals, uint32_t timeout_ms, uint32_t now_ms)
 {
   if (!available()) return COMM_AT_BUSY;
@@ -217,19 +217,19 @@ uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint8_t finals, uin
   return COMM_AT_ACCEPTED;
 }
 
-/* Распознать завершение команды и код ошибки модема. */
+/* Р Р°СЃРїРѕР·РЅР°С‚СЊ Р·Р°РІРµСЂС€РµРЅРёРµ РєРѕРјР°РЅРґС‹ Рё РєРѕРґ РѕС€РёР±РєРё РјРѕРґРµРјР°. */
 static bool final(uint8_t *code)
 {
   uint16_t pos; uint32_t value;
   uint8_t matched = comm_at_choice(line, line_count, state == RUN && mode == COMM_AT_SEND
     ? "SEND OK\0SEND FAIL\0ERROR\0" : "OK\0ERROR\0");
   if (matched) { *code = matched == 1 ? COMM_AT_OK : COMM_AT_ERROR; return true; }
-  /* +CMS ERROR - отказ команд SMS (27.005 §3.2.5), тот же разбор кода. */
+  /* +CMS ERROR - РѕС‚РєР°Р· РєРѕРјР°РЅРґ SMS (27.005 В§3.2.5), С‚РѕС‚ Р¶Рµ СЂР°Р·Р±РѕСЂ РєРѕРґР°. */
   if (!comm_at_prefix(line, line_count, "+CME ERROR:") && !comm_at_prefix(line, line_count, "+CMS ERROR:")) return false;
   pos = comm_at_spaces(line, line_count, sizeof("+CME ERROR:") - 1u);
   uint8_t letter = pos < line_count ? line[pos] | 32u : 0;
   if (letter >= 'a' && letter <= 'z') {
-    modem_code = UINT16_MAX; /* CMEE=2: текст вместо числового кода. */
+    modem_code = UINT16_MAX; /* CMEE=2: С‚РµРєСЃС‚ РІРјРµСЃС‚Рѕ С‡РёСЃР»РѕРІРѕРіРѕ РєРѕРґР°. */
     *code = COMM_AT_CME;
     return true;
   }
@@ -243,19 +243,19 @@ static bool final(uint8_t *code)
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma inline=never
 #endif
-/* Разобрать законченную строку согласно текущей грамматике. */
+/* Р Р°Р·РѕР±СЂР°С‚СЊ Р·Р°РєРѕРЅС‡РµРЅРЅСѓСЋ СЃС‚СЂРѕРєСѓ СЃРѕРіР»Р°СЃРЅРѕ С‚РµРєСѓС‰РµР№ РіСЂР°РјРјР°С‚РёРєРµ. */
 static void complete_line(void)
 {
   uint8_t code;
-  /* Тело кончилось ровно на границе куска: пустой последний кусок. */
+  /* РўРµР»Рѕ РєРѕРЅС‡РёР»РѕСЃСЊ СЂРѕРІРЅРѕ РЅР° РіСЂР°РЅРёС†Рµ РєСѓСЃРєР°: РїСѓСЃС‚РѕР№ РїРѕСЃР»РµРґРЅРёР№ РєСѓСЃРѕРє. */
   if (!line_count) { if (pdu_body == 2) { pdu_body = 0; event(COMM_AT_LINE, line, 0, 0); } return; }
   if ((state == RUN || state == SYNC_WAIT) && line_count + 1u == command_count
-      && !memcmp(line, command, line_count)) return; /* Эхо до ATE0. */
+      && !memcmp(line, command, line_count)) return; /* Р­С…Рѕ РґРѕ ATE0. */
   if (pdu_body) { pdu_body = 0; event(COMM_AT_LINE, line, line_count, 0); return; }
   if (comm_at_prefix(line, line_count, "+QIRD:")
       && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
           || mode != COMM_AT_SLM_QIRD)) {
-    fault(COMM_AT_BAD_FRAME); return; /* Неожиданное тело не становится текстом. */
+    fault(COMM_AT_BAD_FRAME); return; /* РќРµРѕР¶РёРґР°РЅРЅРѕРµ С‚РµР»Рѕ РЅРµ СЃС‚Р°РЅРѕРІРёС‚СЃСЏ С‚РµРєСЃС‚РѕРј. */
   }
   if (mode == COMM_AT_CALL && state == RUN && comm_at_equal(line, line_count, "NO CARRIER")) {
     result = COMM_AT_ERROR; state = COMPLETE; return;
@@ -283,11 +283,11 @@ static void complete_line(void)
   if (urc()) event(COMM_AT_URC, line, line_count, 0);
   else if (state == RUN) {
     event(COMM_AT_LINE, line, line_count, 0);
-    if (mode == COMM_AT_PDU && solicited()) pdu_body = 1; /* +CMGR:/+CMGL: - дальше тело */
+    if (mode == COMM_AT_PDU && solicited()) pdu_body = 1; /* +CMGR:/+CMGL: - РґР°Р»СЊС€Рµ С‚РµР»Рѕ */
   }
 }
 
-/* Принять один байт строки, приглашения или разделителя тела. */
+/* РџСЂРёРЅСЏС‚СЊ РѕРґРёРЅ Р±Р°Р№С‚ СЃС‚СЂРѕРєРё, РїСЂРёРіР»Р°С€РµРЅРёСЏ РёР»Рё СЂР°Р·РґРµР»РёС‚РµР»СЏ С‚РµР»Р°. */
 static void byte(uint8_t value)
 {
   if (grammar == BODY_CR || grammar == BODY_LF) {
@@ -313,16 +313,16 @@ static void byte(uint8_t value)
   }
   if (!value || cr) { fault(COMM_AT_BAD_FRAME); return; }
   if (line_count >= sizeof(line)) {
-    /* Ответ USSD с рекламой длиннее строки: нужное - в начале, хвост до CRLF отбрасывается. */
+    /* РћС‚РІРµС‚ USSD СЃ СЂРµРєР»Р°РјРѕР№ РґР»РёРЅРЅРµРµ СЃС‚СЂРѕРєРё: РЅСѓР¶РЅРѕРµ - РІ РЅР°С‡Р°Р»Рµ, С…РІРѕСЃС‚ РґРѕ CRLF РѕС‚Р±СЂР°СЃС‹РІР°РµС‚СЃСЏ. */
     if (comm_at_prefix(line, line_count, "+CUSD:")) return;
     if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }
-    event(COMM_AT_LINE, line, line_count, 1); line_count = 0; pdu_body = 2; /* кусок, дальше продолжение */
+    event(COMM_AT_LINE, line, line_count, 1); line_count = 0; pdu_body = 2; /* РєСѓСЃРѕРє, РґР°Р»СЊС€Рµ РїСЂРѕРґРѕР»Р¶РµРЅРёРµ */
   }
   line[line_count++] = value;
 }
 
-/* Голосовая команда не имеет бинарного тела/приглашения: её можно прервать.
-   CHUP уходит раньше CMEE; ответы ATA/ATH/CHUP не подтверждают следующий запрос. */
+/* Р“РѕР»РѕСЃРѕРІР°СЏ РєРѕРјР°РЅРґР° РЅРµ РёРјРµРµС‚ Р±РёРЅР°СЂРЅРѕРіРѕ С‚РµР»Р°/РїСЂРёРіР»Р°С€РµРЅРёСЏ: РµС‘ РјРѕР¶РЅРѕ РїСЂРµСЂРІР°С‚СЊ.
+   CHUP СѓС…РѕРґРёС‚ СЂР°РЅСЊС€Рµ CMEE; РѕС‚РІРµС‚С‹ ATA/ATH/CHUP РЅРµ РїРѕРґС‚РІРµСЂР¶РґР°СЋС‚ СЃР»РµРґСѓСЋС‰РёР№ Р·Р°РїСЂРѕСЃ. */
 bool comm_at_call_abort(uint32_t now_ms)
 {
   static const uint8_t stop[] = "AT+CHUP\r";
@@ -334,7 +334,7 @@ bool comm_at_call_abort(uint32_t now_ms)
   if (running) event(COMM_AT_DONE, NULL, 0, COMM_AT_TIMEOUT);
   return true;
 }
-/* Обработать ограниченный объём RX и сроки текущего AT. */
+/* РћР±СЂР°Р±РѕС‚Р°С‚СЊ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹Р№ РѕР±СЉС‘Рј RX Рё СЃСЂРѕРєРё С‚РµРєСѓС‰РµРіРѕ AT. */
 void comm_at_poll(uint32_t now_ms)
 {
   const uint8_t *view;
@@ -343,7 +343,7 @@ void comm_at_poll(uint32_t now_ms)
   if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); return; }
   if ((state >= RUN && state <= COMPLETE) && expired(now_ms, timeout)) {
     if (mode == COMM_AT_CALL) { comm_at_call_abort(now_ms); return; }
-    /* Отмена сохраняет грамматику и остаток тела: поиск OK внутри запрещён. */
+    /* РћС‚РјРµРЅР° СЃРѕС…СЂР°РЅСЏРµС‚ РіСЂР°РјРјР°С‚РёРєСѓ Рё РѕСЃС‚Р°С‚РѕРє С‚РµР»Р°: РїРѕРёСЃРє OK РІРЅСѓС‚СЂРё Р·Р°РїСЂРµС‰С‘РЅ. */
     state = grammar != LINES || line_count || cr ? DRAIN : SYNC_SEND;
     sync_seen = 0;
     started = now_ms;
@@ -359,7 +359,7 @@ void comm_at_poll(uint32_t now_ms)
     if (count > budget) count = budget;
     if (grammar == BODY) {
       if (count > remaining) count = remaining;
-      /* Позднее тело уже отменённой операции вычитывается без выдачи наверх. */
+      /* РџРѕР·РґРЅРµРµ С‚РµР»Рѕ СѓР¶Рµ РѕС‚РјРµРЅС‘РЅРЅРѕР№ РѕРїРµСЂР°С†РёРё РІС‹С‡РёС‚С‹РІР°РµС‚СЃСЏ Р±РµР· РІС‹РґР°С‡Рё РЅР°РІРµСЂС…. */
       used = state != RUN ? count : handlers.binary(view, count);
       if (comm_uart_errors()) { fault(COMM_AT_UART_ERROR); break; }
       if (used > count) { fault(COMM_AT_SINK_ERROR); break; }
@@ -375,7 +375,7 @@ void comm_at_poll(uint32_t now_ms)
     if (!comm_uart_consume(used) || comm_uart_errors()) { fault(COMM_AT_UART_ERROR); break; }
     budget = (uint16_t)(budget - used);
   }
-  /* Оборванный URC без активной команды иначе навсегда запрещает новый AT. */
+  /* РћР±РѕСЂРІР°РЅРЅС‹Р№ URC Р±РµР· Р°РєС‚РёРІРЅРѕР№ РєРѕРјР°РЅРґС‹ РёРЅР°С‡Рµ РЅР°РІСЃРµРіРґР° Р·Р°РїСЂРµС‰Р°РµС‚ РЅРѕРІС‹Р№ AT. */
   if (state == IDLE && (line_count || cr) && expired(now_ms, recovery)) fault(COMM_AT_BAD_FRAME);
   if (state == CALL_DRAIN && expired(now_ms, timeout)) state = SYNC_SEND;
   if (state == DRAIN && grammar == LINES && !line_count && !cr) state = SYNC_SEND;
@@ -386,7 +386,7 @@ void comm_at_poll(uint32_t now_ms)
       state = IDLE;
       if (done) event(COMM_AT_DONE, NULL, modem_code, result);
     } else {
-      /* Буфер меняется только после физического TC старой передачи. */
+      /* Р‘СѓС„РµСЂ РјРµРЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ С„РёР·РёС‡РµСЃРєРѕРіРѕ TC СЃС‚Р°СЂРѕР№ РїРµСЂРµРґР°С‡Рё. */
       memcpy(command, "AT+CMEE?\r", sizeof("AT+CMEE?\r") - 1u);
       command_count = sizeof("AT+CMEE?\r") - 1u;
       if (comm_uart_tx(command, command_count)) { parser_reset(); state = SYNC_WAIT; }
@@ -394,14 +394,14 @@ void comm_at_poll(uint32_t now_ms)
   }
 }
 
-/* Возвращает capacity при переполнении; следующие куски ничего не пишут. */
+/* Р’РѕР·РІСЂР°С‰Р°РµС‚ capacity РїСЂРё РїРµСЂРµРїРѕР»РЅРµРЅРёРё; СЃР»РµРґСѓСЋС‰РёРµ РєСѓСЃРєРё РЅРёС‡РµРіРѕ РЅРµ РїРёС€СѓС‚. */
 uint16_t comm_at_copy(char *out, uint16_t capacity, uint16_t pos, const char *text)
 {
   while (pos < capacity && *text) out[pos++] = *text++;
   if (pos < capacity) out[pos] = 0;
   return pos;
 }
-/* Добавить десятичное число в ограниченный буфер команды. */
+/* Р”РѕР±Р°РІРёС‚СЊ РґРµСЃСЏС‚РёС‡РЅРѕРµ С‡РёСЃР»Рѕ РІ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹Р№ Р±СѓС„РµСЂ РєРѕРјР°РЅРґС‹. */
 uint16_t comm_at_decimal(char *out, uint16_t capacity, uint16_t pos, uint16_t value)
 {
   uint16_t divisor = 10000u;
@@ -415,8 +415,8 @@ uint16_t comm_at_decimal(char *out, uint16_t capacity, uint16_t pos, uint16_t va
   return pos;
 }
 
-/* Шаблон во флеш, выход — только числа текущего вызова.
-   Число элементов out равно числу числовых меток доверенного шаблона. */
+/* РЁР°Р±Р»РѕРЅ РІРѕ С„Р»РµС€, РІС‹С…РѕРґ вЂ” С‚РѕР»СЊРєРѕ С‡РёСЃР»Р° С‚РµРєСѓС‰РµРіРѕ РІС‹Р·РѕРІР°.
+   Р§РёСЃР»Рѕ СЌР»РµРјРµРЅС‚РѕРІ out СЂР°РІРЅРѕ С‡РёСЃР»Сѓ С‡РёСЃР»РѕРІС‹С… РјРµС‚РѕРє РґРѕРІРµСЂРµРЅРЅРѕРіРѕ С€Р°Р±Р»РѕРЅР°. */
 bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uint32_t *out)
 {
   uint16_t pos = 0;
@@ -433,7 +433,7 @@ bool comm_at_parse(const uint8_t *data, uint16_t count, const char *pattern, uin
   return pos == count;
 }
 
-/* Преобразовать цифру шестнадцатеричного тела SMS или USSD. */
+/* РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ С†РёС„СЂСѓ С€РµСЃС‚РЅР°РґС†Р°С‚РµСЂРёС‡РЅРѕРіРѕ С‚РµР»Р° SMS РёР»Рё USSD. */
 uint8_t comm_at_hex(uint8_t value)
 {
   if (value >= '0' && value <= '9') return value - '0';
@@ -442,7 +442,7 @@ uint8_t comm_at_hex(uint8_t value)
   return 16;
 }
 
-/* Преобразовать общий для SMS и USSD алфавит UCS2 в cp1251. */
+/* РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ РѕР±С‰РёР№ РґР»СЏ SMS Рё USSD Р°Р»С„Р°РІРёС‚ UCS2 РІ cp1251. */
 char comm_at_cp1251(uint16_t value)
 {
   if (value < 0x80) return (char)value;

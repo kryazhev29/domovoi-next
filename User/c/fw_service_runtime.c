@@ -1,7 +1,7 @@
-// Äîðàáîòêà: Êðÿæåâ À., 2026
-// Êîìàíäà 19: íà÷àëî çàãðóçêè, ïðîâåðêà ðåçåðâà è îòêàò ïðîøèâêè.
-// W25 âûïîëíÿåò ïðîâåðåííûå îïåðàöèè ïî 64 Á; çàãîëîâîê è CRC ïðîøèâêè ïðîâåðÿþòñÿ íà ãðàíèöå.
-// Ñîõðàíåíèå íàñòðîåê ïåðåäà¸òñÿ âëàäåëüöó store; ïîëÿ åãî ñîñòîÿíèÿ çàäàíû îáùèì òèïîì.
+// Ð”Ð¾Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ°: ÐšÑ€ÑÐ¶ÐµÐ² Ð., 2026
+// ÐšÐ¾Ð¼Ð°Ð½Ð´Ð° 19: Ð½Ð°Ñ‡Ð°Ð»Ð¾ Ð·Ð°Ð³Ñ€ÑƒÐ·ÐºÐ¸, Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ° Ñ€ÐµÐ·ÐµÑ€Ð²Ð° Ð¸ Ð¾Ñ‚ÐºÐ°Ñ‚ Ð¿Ñ€Ð¾ÑˆÐ¸Ð²ÐºÐ¸.
+// W25 Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÑÐµÑ‚ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð½Ñ‹Ðµ Ð¾Ð¿ÐµÑ€Ð°Ñ†Ð¸Ð¸ Ð¿Ð¾ 64 Ð‘; Ð·Ð°Ð³Ð¾Ð»Ð¾Ð²Ð¾Ðº Ð¸ CRC Ð¿Ñ€Ð¾ÑˆÐ¸Ð²ÐºÐ¸ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÑÑŽÑ‚ÑÑ Ð½Ð° Ð³Ñ€Ð°Ð½Ð¸Ñ†Ðµ.
+// Ð¡Ð¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ðµ Ð½Ð°ÑÑ‚Ñ€Ð¾ÐµÐº Ð¿ÐµÑ€ÐµÐ´Ð°Ñ‘Ñ‚ÑÑ Ð²Ð»Ð°Ð´ÐµÐ»ÑŒÑ†Ñƒ store; Ð¿Ð¾Ð»Ñ ÐµÐ³Ð¾ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ñ Ð·Ð°Ð´Ð°Ð½Ñ‹ Ð¾Ð±Ñ‰Ð¸Ð¼ Ñ‚Ð¸Ð¿Ð¾Ð¼.
 #include "runtime_internal.h"
 #include "user_fw_reason.h"
 #include "../fw_crc.h"
@@ -14,10 +14,10 @@ enum {
 };
 extern uint8_t fw_start_rejected(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t);
 extern uint8_t fw_same_download(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t,dataChanel_e);
-extern uint32_t fw_rollback_pos,fw_rollback_end;
+extern uint32_t fw_rollback_end;
 extern uint8_t fw_write_errors,store_save_requested;
 extern bool store_snapshot(void);
-// Ñîñòîÿíèå ñîõðàíåíèÿ ïðèíàäëåæèò user_store.c; ñåðâèñ ïåðåäà¸ò åìó êîìàíäó 19.
+// Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ñ Ð¿Ñ€Ð¸Ð½Ð°Ð´Ð»ÐµÐ¶Ð¸Ñ‚ user_store.c; ÑÐµÑ€Ð²Ð¸Ñ Ð¿ÐµÑ€ÐµÐ´Ð°Ñ‘Ñ‚ ÐµÐ¼Ñƒ ÐºÐ¾Ð¼Ð°Ð½Ð´Ñƒ 19.
 extern store_state_s store;
 typedef struct {
   uint8_t data[64],header[32];
@@ -30,29 +30,29 @@ typedef struct {
 } fw_service_s;
 RT_ASSERT(fw_service_size,sizeof(fw_service_s)==128);
 fw_service_s *fw_service_context;
-// Âîçâðàùàåò êîíòåêñò çàíÿòîãî ñåðâèñà ïðîøèâêè.
+// Ð’Ð¾Ð·Ð²Ñ€Ð°Ñ‰Ð°ÐµÑ‚ ÐºÐ¾Ð½Ñ‚ÐµÐºÑÑ‚ Ð·Ð°Ð½ÑÑ‚Ð¾Ð³Ð¾ ÑÐµÑ€Ð²Ð¸ÑÐ° Ð¿Ñ€Ð¾ÑˆÐ¸Ð²ÐºÐ¸.
 void *fw_service_busy(void) { return fw_service_context; }
-// Ó÷èòûâàåò ïåðåäà÷ó âëàäåíèÿ íàñòðîéêàìè àâòîìàòó store.
+// Ð£Ñ‡Ð¸Ñ‚Ñ‹Ð²Ð°ÐµÑ‚ Ð¿ÐµÑ€ÐµÐ´Ð°Ñ‡Ñƒ Ð²Ð»Ð°Ð´ÐµÐ½Ð¸Ñ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ°Ð¼Ð¸ Ð°Ð²Ñ‚Ð¾Ð¼Ð°Ñ‚Ñƒ store.
 bool fw_service_active(void)
 { return fw_service_context && (fw_service_context->phase!=FWS_SAVE_WAIT || !store.job); }
-// Ïðèíèìàåò ðåçóëüòàò ñîõðàíåíèÿ íàñòðîåê è âîçâðàùàåò âëàäåíèå ôëåøåì.
+// ÐŸÑ€Ð¸Ð½Ð¸Ð¼Ð°ÐµÑ‚ Ñ€ÐµÐ·ÑƒÐ»ÑŒÑ‚Ð°Ñ‚ ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ñ Ð½Ð°ÑÑ‚Ñ€Ð¾ÐµÐº Ð¸ Ð²Ð¾Ð·Ð²Ñ€Ð°Ñ‰Ð°ÐµÑ‚ Ð²Ð»Ð°Ð´ÐµÐ½Ð¸Ðµ Ñ„Ð»ÐµÑˆÐµÐ¼.
 void fw_service_config_result(uint8_t result)
 {
   if(fw_service_context && fw_service_context->phase==FWS_SAVE_WAIT && (result==2 || result==3)) {
     fw_service_context->config_result=result; flash_claim(FO_FWSERVICE);
   }
 }
-// Ïîäàâëÿåò îòâåò ïðîøèâêè äëÿ çàêðûòîãî êàíàëà.
+// ÐŸÐ¾Ð´Ð°Ð²Ð»ÑÐµÑ‚ Ð¾Ñ‚Ð²ÐµÑ‚ Ð¿Ñ€Ð¾ÑˆÐ¸Ð²ÐºÐ¸ Ð´Ð»Ñ Ð·Ð°ÐºÑ€Ñ‹Ñ‚Ð¾Ð³Ð¾ ÐºÐ°Ð½Ð°Ð»Ð°.
 void fw_service_quiet(uint8_t channel)
 { if(fw_service_context && fw_service_context->channel==channel) fw_service_context->quiet=1; }
-// Îòìåíÿåò ñåðâèñ, ñîõðàíÿÿ èñòî÷íèê äî çàâåðøåíèÿ êîìàíäû W25.
+// ÐžÑ‚Ð¼ÐµÐ½ÑÐµÑ‚ ÑÐµÑ€Ð²Ð¸Ñ, ÑÐ¾Ñ…Ñ€Ð°Ð½ÑÑ Ð¸ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº Ð´Ð¾ Ð·Ð°Ð²ÐµÑ€ÑˆÐµÐ½Ð¸Ñ ÐºÐ¾Ð¼Ð°Ð½Ð´Ñ‹ W25.
 void fw_service_cancel(void)
 {
   fw_service_s *p=fw_service_context; if(!p) return;
   p->cancel=p->quiet=1; if(p->pending) return;
   fw_service_context=NULL; flash_release(FO_FWSERVICE); work_release(p->reserve, WORK_FW_DATA); work_release(p, WORK_FW_CONTEXT);
 }
-// Ïðîâåðÿåò êîìàíäó 19 íà ãðàíèöå è âûáèðàåò çàãðóçêó ëèáî îòêàò.
+// ÐŸÑ€Ð¾Ð²ÐµÑ€ÑÐµÑ‚ ÐºÐ¾Ð¼Ð°Ð½Ð´Ñƒ 19 Ð½Ð° Ð³Ñ€Ð°Ð½Ð¸Ñ†Ðµ Ð¸ Ð²Ñ‹Ð±Ð¸Ñ€Ð°ÐµÑ‚ Ð·Ð°Ð³Ñ€ÑƒÐ·ÐºÑƒ Ð»Ð¸Ð±Ð¾ Ð¾Ñ‚ÐºÐ°Ñ‚.
 bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
 {
   fw_service_s *p; fw_reason_e reason; uint8_t phase;
@@ -82,7 +82,7 @@ bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
   }
 publish: p->phase=phase; flash_claim(FO_FWSERVICE); fw_service_context=p; return true;
 }
-// Ïðîâåðÿåò ðåçåðâ, êîïèðóåò ïðîøèâêó è ñîãëàñóåò ñîõðàíåíèå ñî store.
+// ÐŸÑ€Ð¾Ð²ÐµÑ€ÑÐµÑ‚ Ñ€ÐµÐ·ÐµÑ€Ð², ÐºÐ¾Ð¿Ð¸Ñ€ÑƒÐµÑ‚ Ð¿Ñ€Ð¾ÑˆÐ¸Ð²ÐºÑƒ Ð¸ ÑÐ¾Ð³Ð»Ð°ÑÑƒÐµÑ‚ ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ðµ ÑÐ¾ store.
 void fw_service_poll(void)
 {
   fw_service_s *p=fw_service_context; uint8_t phase,result,code=2;
@@ -96,7 +96,7 @@ void fw_service_poll(void)
     else if(phase==FWS_NEW_HEADER) p->phase=FWS_SAVE;
     else if(phase==FWS_COPY_ERASE) p->phase=FWS_COPY_READ;
     else {
-      p->pos+=p->len; fw_rollback_pos=p->pos;
+      p->pos+=p->len;
       p->phase=p->pos>=p->end?FWS_COPY_HEADER:(p->pos&4095u)?FWS_COPY_READ:FWS_COPY_ERASE;
     }
     return;
@@ -130,7 +130,7 @@ start:
     p->pos+=p->len; if(p->pos<p->end) return;
     if(p->crc!=p->expected) goto bad_crc;
     if(phase==FWS_COPY_CRC) { fw_rollback_end=0; fw_event((logUpdate_e)137,FW_REASON_NONE); device.rebootToUpdate=1; goto cancel; }
-    fw_rollback_end=p->end; fw_rollback_pos=0;
+    fw_rollback_end=p->end;
     device.cchFWupdate=p->channel; device.status.readyToUpdate=1; goto handoff;
   case FWS_SAVE:
     if(p->mode) {

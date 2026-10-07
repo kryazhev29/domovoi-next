@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Приём SLDN: поиск сигнатуры, ожидание длины, одна CRC и выполнение команды.
-// Плохие длина и CRC сдвигают поиск на байт; неполный кадр живёт не более 30 с.
-// Завершение QIRD разрешает разбор; новая TCP-сессия полностью сбрасывает RAM-буфер.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РџСЂРёС‘Рј SLDN: РїРѕРёСЃРє СЃРёРіРЅР°С‚СѓСЂС‹, РѕР¶РёРґР°РЅРёРµ РґР»РёРЅС‹, РѕРґРЅР° CRC Рё РІС‹РїРѕР»РЅРµРЅРёРµ РєРѕРјР°РЅРґС‹.
+// РџР»РѕС…РёРµ РґР»РёРЅР° Рё CRC СЃРґРІРёРіР°СЋС‚ РїРѕРёСЃРє РЅР° Р±Р°Р№С‚; РЅРµРїРѕР»РЅС‹Р№ РєР°РґСЂ Р¶РёРІС‘С‚ РЅРµ Р±РѕР»РµРµ 30 СЃ.
+// Р—Р°РІРµСЂС€РµРЅРёРµ QIRD СЂР°Р·СЂРµС€Р°РµС‚ СЂР°Р·Р±РѕСЂ; РЅРѕРІР°СЏ TCP-СЃРµСЃСЃРёСЏ РїРѕР»РЅРѕСЃС‚СЊСЋ СЃР±СЂР°СЃС‹РІР°РµС‚ RAM-Р±СѓС„РµСЂ.
 #include "user_logic_internal.h"
 #include "fast_kernels.h"
 #include "../table_runtime.h"
@@ -12,14 +12,14 @@ static uint16_t server_rx_count, server_rx_ready;
 static uint32_t server_rx_last, server_rx_epoch;
 static uint8_t server_rx_busy, server_rx_pending;
 
-// Отменить кадры старого поколения TCP и очистить буфер.
+// РћС‚РјРµРЅРёС‚СЊ РєР°РґСЂС‹ СЃС‚Р°СЂРѕРіРѕ РїРѕРєРѕР»РµРЅРёСЏ TCP Рё РѕС‡РёСЃС‚РёС‚СЊ Р±СѓС„РµСЂ.
 static void server_rx_reset(void)
 {
   ++server_rx_epoch;
   server_rx_count = server_rx_ready = server_rx_pending = 0;
 }
 
-// Удалить незавершённый кадр по пределу ожидания 30 секунд.
+// РЈРґР°Р»РёС‚СЊ РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Р№ РєР°РґСЂ РїРѕ РїСЂРµРґРµР»Сѓ РѕР¶РёРґР°РЅРёСЏ 30 СЃРµРєСѓРЅРґ.
 void server_rx_begin_pass(void)
 {
   if (!server_rx_busy && server_rx_count &&
@@ -27,14 +27,14 @@ void server_rx_begin_pass(void)
     server_rx_reset();
 }
 
-// Убрать использованный префикс буфера одним сдвигом.
+// РЈР±СЂР°С‚СЊ РёСЃРїРѕР»СЊР·РѕРІР°РЅРЅС‹Р№ РїСЂРµС„РёРєСЃ Р±СѓС„РµСЂР° РѕРґРЅРёРј СЃРґРІРёРіРѕРј.
 static void server_rx_consume(uint16_t n)
 {
   server_rx_count -= n;
   memmove(server_rx_buffer, server_rx_buffer + n, server_rx_count);
 }
 
-// Найти целый корректный SLDN, сохранив неполный хвост.
+// РќР°Р№С‚Рё С†РµР»С‹Р№ РєРѕСЂСЂРµРєС‚РЅС‹Р№ SLDN, СЃРѕС…СЂР°РЅРёРІ РЅРµРїРѕР»РЅС‹Р№ С…РІРѕСЃС‚.
 static void server_rx_scan(void)
 {
   uint16_t skipped = 0, body, total, crc;
@@ -59,7 +59,7 @@ static void server_rx_scan(void)
   if (skipped) server_rx_consume(skipped);
 }
 
-// Принять доступную часть данных соединения без переполнения.
+// РџСЂРёРЅСЏС‚СЊ РґРѕСЃС‚СѓРїРЅСѓСЋ С‡Р°СЃС‚СЊ РґР°РЅРЅС‹С… СЃРѕРµРґРёРЅРµРЅРёСЏ Р±РµР· РїРµСЂРµРїРѕР»РЅРµРЅРёСЏ.
 void user_dataconnection(int8_t handle, uint8_t *data, uint16_t size)
 {
   uint16_t n;
@@ -77,7 +77,7 @@ void user_dataconnection(int8_t handle, uint8_t *data, uint16_t size)
   }
 }
 
-// Выполнить один готовый кадр и сохранить хвост потока.
+// Р’С‹РїРѕР»РЅРёС‚СЊ РѕРґРёРЅ РіРѕС‚РѕРІС‹Р№ РєР°РґСЂ Рё СЃРѕС…СЂР°РЅРёС‚СЊ С…РІРѕСЃС‚ РїРѕС‚РѕРєР°.
 void server_rx_process(void)
 {
   uint16_t total;
@@ -96,17 +96,17 @@ void server_rx_process(void)
   server_rx_scan();
 }
 
-// Распознать кадр, CRC которого уже проверена сборщиком.
+// Р Р°СЃРїРѕР·РЅР°С‚СЊ РєР°РґСЂ, CRC РєРѕС‚РѕСЂРѕРіРѕ СѓР¶Рµ РїСЂРѕРІРµСЂРµРЅР° СЃР±РѕСЂС‰РёРєРѕРј.
 bool server_rx_verified(const uint8_t *p)
 { return server_rx_busy && p == server_rx_buffer + 4; }
 
-// Вернуть свободное место для QIRD-backpressure.
+// Р’РµСЂРЅСѓС‚СЊ СЃРІРѕР±РѕРґРЅРѕРµ РјРµСЃС‚Рѕ РґР»СЏ QIRD-backpressure.
 uint16_t user_comm_rx_capacity(void)
 {
   return SERVER_RX_CAPACITY - server_rx_count;
 }
 
-// Принять очередную часть ещё не завершённого QIRD.
+// РџСЂРёРЅСЏС‚СЊ РѕС‡РµСЂРµРґРЅСѓСЋ С‡Р°СЃС‚СЊ РµС‰С‘ РЅРµ Р·Р°РІРµСЂС€С‘РЅРЅРѕРіРѕ QIRD.
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count)
 {
   uint16_t capacity;
@@ -118,7 +118,7 @@ uint16_t user_comm_rx(const uint8_t *data, uint16_t count)
   return count;
 }
 
-// Разрешить разбор законченного QIRD либо отбросить его при ошибке.
+// Р Р°Р·СЂРµС€РёС‚СЊ СЂР°Р·Р±РѕСЂ Р·Р°РєРѕРЅС‡РµРЅРЅРѕРіРѕ QIRD Р»РёР±Рѕ РѕС‚Р±СЂРѕСЃРёС‚СЊ РµРіРѕ РїСЂРё РѕС€РёР±РєРµ.
 void user_comm_rx_done(uint16_t count, uint8_t reason)
 {
   (void)count;
@@ -126,7 +126,7 @@ void user_comm_rx_done(uint16_t count, uint8_t reason)
   if (reason) server_rx_reset();
 }
 
-// Очистить буфер и неподтверждённые серверные ответы при смене TCP.
+// РћС‡РёСЃС‚РёС‚СЊ Р±СѓС„РµСЂ Рё РЅРµРїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ СЃРµСЂРІРµСЂРЅС‹Рµ РѕС‚РІРµС‚С‹ РїСЂРё СЃРјРµРЅРµ TCP.
 void user_comm_session(bool open)
 {
   server_rx_reset();
@@ -134,8 +134,8 @@ void user_comm_session(bool open)
   fw_async_quiet(CH_SERVER);
   table_runtime_quiet(CH_SERVER); service_crc_quiet(CH_SERVER);
   device.connectionhandle = 0; device.registredOnServer = 0;
-  /* Поколение TCP отменяет неподтверждённый пакет; сохранённые курсоры и USB не трогаем. */
+  /* РџРѕРєРѕР»РµРЅРёРµ TCP РѕС‚РјРµРЅСЏРµС‚ РЅРµРїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Р№ РїР°РєРµС‚; СЃРѕС…СЂР°РЅС‘РЅРЅС‹Рµ РєСѓСЂСЃРѕСЂС‹ Рё USB РЅРµ С‚СЂРѕРіР°РµРј. */
   if (store.job && store.channel == CH_SERVER) store.quiet = 1;
   log_unacked[1] = temp_unacked[1] = 0; store.seen &= 5u;
-  if (!open) photo_connection_lost(); /* «подключён» пишет user_comm_link после регистрации */
+  if (!open) photo_connection_lost(); /* В«РїРѕРґРєР»СЋС‡С‘РЅВ» РїРёС€РµС‚ user_comm_link РїРѕСЃР»Рµ СЂРµРіРёСЃС‚СЂР°С†РёРё */
 }

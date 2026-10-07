@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'Tests'), str(ROOT / 'Tests/asm')]
-from c_vs_asm_suite import select_image
+from firmware_suite import select_image
 from iar_image import image_paths
 from iar_layout import fields
 from storage_machine import crc16
@@ -174,16 +174,15 @@ def dispatcher_ownership():
     return 4
 
 
-# Выбрать только C или HYBRID указанного профиля и сохранить привязку результата к ELF.
+# Выбрать только единственный проект указанного профиля и сохранить привязку результата к ELF.
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--build-root', type=Path, required=True)
-    parser.add_argument('--variant', choices=('C', 'HYBRID'), default='HYBRID')
     parser.add_argument('--config', choices=('Release', 'ReleaseCustomer'), default='Release')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     os.environ['DOMOVOI_COMPARE_CONFIG'] = args.config
-    select_image(args.variant, args.build_root)
+    select_image(args.build_root)
     result = {'cases': run(), 'elf_sha256': hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
     result['ownership_checks'] = dispatcher_ownership()
     if args.output:

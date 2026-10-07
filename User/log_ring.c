@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Кольцевой журнал: 24 сектора по 127 записей и заголовок.
-// Заголовок хранит поколение, число записей и намерение удалить старый хвост.
-// W25 проверяет запись; после обрыва целостность определяется заголовком и CRC.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РљРѕР»СЊС†РµРІРѕР№ Р¶СѓСЂРЅР°Р»: 24 СЃРµРєС‚РѕСЂР° РїРѕ 127 Р·Р°РїРёСЃРµР№ Рё Р·Р°РіРѕР»РѕРІРѕРє.
+// Р—Р°РіРѕР»РѕРІРѕРє С…СЂР°РЅРёС‚ РїРѕРєРѕР»РµРЅРёРµ, С‡РёСЃР»Рѕ Р·Р°РїРёСЃРµР№ Рё РЅР°РјРµСЂРµРЅРёРµ СѓРґР°Р»РёС‚СЊ СЃС‚Р°СЂС‹Р№ С…РІРѕСЃС‚.
+// W25 РїСЂРѕРІРµСЂСЏРµС‚ Р·Р°РїРёСЃСЊ; РїРѕСЃР»Рµ РѕР±СЂС‹РІР° С†РµР»РѕСЃС‚РЅРѕСЃС‚СЊ РѕРїСЂРµРґРµР»СЏРµС‚СЃСЏ Р·Р°РіРѕР»РѕРІРєРѕРј Рё CRC.
 #include "c/runtime_internal.h"
 #include "log_ring.h"
 #include "user_fun.h"
@@ -15,10 +15,10 @@ enum {
 extern bool log_blank(const cellLog_s *);
 extern uint32_t log_lastIndex;
 extern uint8_t store_save_requested;
-// Проверяет CRC и метку записи на границе чтения из флеша.
+// РџСЂРѕРІРµСЂСЏРµС‚ CRC Рё РјРµС‚РєСѓ Р·Р°РїРёСЃРё РЅР° РіСЂР°РЅРёС†Рµ С‡С‚РµРЅРёСЏ РёР· С„Р»РµС€Р°.
 bool log_valid(const cellLog_s *cell)
 {
-  // Буферы записей выровнены по слову: поля заголовка читаются без копирования.
+  // Р‘СѓС„РµСЂС‹ Р·Р°РїРёСЃРµР№ РІС‹СЂРѕРІРЅРµРЅС‹ РїРѕ СЃР»РѕРІСѓ: РїРѕР»СЏ Р·Р°РіРѕР»РѕРІРєР° С‡РёС‚Р°СЋС‚СЃСЏ Р±РµР· РєРѕРїРёСЂРѕРІР°РЅРёСЏ.
   const uint32_t *words=(const uint32_t *)cell;
   uint32_t value=words[6];
   return words[0]!=0xffffffffu && words[7]==0x32474F4Cu &&
@@ -32,21 +32,21 @@ static struct {
   uint8_t head,target,forced,part,init,ready,after;
 } lr;
 #define NONE 255u
-// Возвращает начало сектора кольца.
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ РЅР°С‡Р°Р»Рѕ СЃРµРєС‚РѕСЂР° РєРѕР»СЊС†Р°.
 static uint32_t sector(uint8_t n) { return mem[MB_LOG].start+4096u*n; }
-// Проверяет поколение и инверсии заголовка после сброса.
+// РџСЂРѕРІРµСЂСЏРµС‚ РїРѕРєРѕР»РµРЅРёРµ Рё РёРЅРІРµСЂСЃРёРё Р·Р°РіРѕР»РѕРІРєР° РїРѕСЃР»Рµ СЃР±СЂРѕСЃР°.
 static bool header_valid(const uint32_t *h)
 {
   return h[0]==LOG_RING_MAGIC && h[1] && h[1]!=0xffffffffu &&
     h[2]==~h[1] && h[4]==~h[3];
 }
-// Проверяет пару из 16-битного значения и его инверсии.
+// РџСЂРѕРІРµСЂСЏРµС‚ РїР°СЂСѓ РёР· 16-Р±РёС‚РЅРѕРіРѕ Р·РЅР°С‡РµРЅРёСЏ Рё РµРіРѕ РёРЅРІРµСЂСЃРёРё.
 static bool pair_valid(uint32_t v) { return (uint16_t)v==(uint16_t)~(v>>16); }
-// Упаковывает 16-битное значение с инверсией для записи во флеш.
+// РЈРїР°РєРѕРІС‹РІР°РµС‚ 16-Р±РёС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ СЃ РёРЅРІРµСЂСЃРёРµР№ РґР»СЏ Р·Р°РїРёСЃРё РІРѕ С„Р»РµС€.
 static uint32_t pair(uint16_t v) { return v|((uint32_t)(uint16_t)~v<<16); }
-// Требует повторного чтения заголовков перед следующей операцией.
+// РўСЂРµР±СѓРµС‚ РїРѕРІС‚РѕСЂРЅРѕРіРѕ С‡С‚РµРЅРёСЏ Р·Р°РіРѕР»РѕРІРєРѕРІ РїРµСЂРµРґ СЃР»РµРґСѓСЋС‰РµР№ РѕРїРµСЂР°С†РёРµР№.
 void log_ring_invalidate(void) { lr.init=lr.ready=0; }
-// Восстанавливает кольцо либо форматирует старую область по одной операции.
+// Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РєРѕР»СЊС†Рѕ Р»РёР±Рѕ С„РѕСЂРјР°С‚РёСЂСѓРµС‚ СЃС‚Р°СЂСѓСЋ РѕР±Р»Р°СЃС‚СЊ РїРѕ РѕРґРЅРѕР№ РѕРїРµСЂР°С†РёРё.
 uint8_t log_ring_init_step(void)
 {
   uint32_t h[8]; cellLog_s cell;
@@ -64,13 +64,13 @@ uint8_t log_ring_init_step(void)
     }
     if(++lr.part<24) return 1;
     if(lr.head==NONE) { lr.part=0; lr.scan=0; lr.init=4; return 1; }
-    // Намерение удаляет старый хвост даже при целом заголовке после обрыва стирания.
+    // РќР°РјРµСЂРµРЅРёРµ СѓРґР°Р»СЏРµС‚ СЃС‚Р°СЂС‹Р№ С…РІРѕСЃС‚ РґР°Р¶Рµ РїСЂРё С†РµР»РѕРј Р·Р°РіРѕР»РѕРІРєРµ РїРѕСЃР»Рµ РѕР±СЂС‹РІР° СЃС‚РёСЂР°РЅРёСЏ.
     if(pair_valid(lr.header[6]) && (uint16_t)lr.header[6]<24 && (uint16_t)lr.header[6]!=lr.head) {
       lr.forced=(uint8_t)lr.header[6]; lr.live&=~(1u<<lr.forced); lr.count[lr.forced]=0;
     }
     lr.low=0; lr.high=127; lr.init=2; return 1;
   }
-  // До окончания очистки заголовков нет: сброс повторяет всё форматирование.
+  // Р”Рѕ РѕРєРѕРЅС‡Р°РЅРёСЏ РѕС‡РёСЃС‚РєРё Р·Р°РіРѕР»РѕРІРєРѕРІ РЅРµС‚: СЃР±СЂРѕСЃ РїРѕРІС‚РѕСЂСЏРµС‚ РІСЃС‘ С„РѕСЂРјР°С‚РёСЂРѕРІР°РЅРёРµ.
   if(lr.init==4) {
     if(lr.scan) {
       uint8_t r=w25_async_poll(timers_getMillis());
@@ -94,7 +94,7 @@ uint8_t log_ring_init_step(void)
     if(log_lastIndex<lr.header[3]) log_lastIndex=lr.header[3];
     lr.init=3; return 1;
   }
-  // Закрытые сектора уже имеют счётчики; головной проверяем, пропуская оборванные записи.
+  // Р—Р°РєСЂС‹С‚С‹Рµ СЃРµРєС‚РѕСЂР° СѓР¶Рµ РёРјРµСЋС‚ СЃС‡С‘С‚С‡РёРєРё; РіРѕР»РѕРІРЅРѕР№ РїСЂРѕРІРµСЂСЏРµРј, РїСЂРѕРїСѓСЃРєР°СЏ РѕР±РѕСЂРІР°РЅРЅС‹Рµ Р·Р°РїРёСЃРё.
   if(lr.scan<lr.position) {
     if(!w25_read_data(sector(lr.head)+32u+32u*lr.scan++,(uint8_t *)&cell,32)) return 3;
     if(log_blank(&cell)) lr.position=lr.scan-1u;
@@ -107,7 +107,7 @@ ready:
   device.newAddressLog=sector(lr.head==NONE?0:lr.head)+32u+32u*lr.position;
   device.status.readyLogData=device.logsCount!=0; lr.ready=1; return 2;
 }
-// Живут не более 24 соседних поколений: в ОЗУ хватает младшего байта, полный номер остаётся во флеше.
+// Р–РёРІСѓС‚ РЅРµ Р±РѕР»РµРµ 24 СЃРѕСЃРµРґРЅРёС… РїРѕРєРѕР»РµРЅРёР№: РІ РћР—РЈ С…РІР°С‚Р°РµС‚ РјР»Р°РґС€РµРіРѕ Р±Р°Р№С‚Р°, РїРѕР»РЅС‹Р№ РЅРѕРјРµСЂ РѕСЃС‚Р°С‘С‚СЃСЏ РІРѕ С„Р»РµС€Рµ.
 static uint8_t next_sector(uint8_t current)
 {
   uint8_t found=NONE;
@@ -119,12 +119,12 @@ static uint8_t next_sector(uint8_t current)
   }
   return found;
 }
-// Возвращает начало самого старого живого сектора.
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ РЅР°С‡Р°Р»Рѕ СЃР°РјРѕРіРѕ СЃС‚Р°СЂРѕРіРѕ Р¶РёРІРѕРіРѕ СЃРµРєС‚РѕСЂР°.
 uint32_t log_ring_first(void)
 {
   uint8_t n=next_sector(NONE); return n==NONE?0:sector(n)+32;
 }
-// Продвигает адрес, полученный из кольца, до следующей записи.
+// РџСЂРѕРґРІРёРіР°РµС‚ Р°РґСЂРµСЃ, РїРѕР»СѓС‡РµРЅРЅС‹Р№ РёР· РєРѕР»СЊС†Р°, РґРѕ СЃР»РµРґСѓСЋС‰РµР№ Р·Р°РїРёСЃРё.
 uint32_t log_ring_next(uint32_t address)
 {
   uint8_t n=(uint8_t)((address-mem[MB_LOG].start)/4096u);
@@ -132,25 +132,25 @@ uint32_t log_ring_next(uint32_t address)
   if(offset+32u<4096u && (n!=lr.head || offset/32u<lr.position)) return address+32u;
   n=next_sector(n); return n==NONE?0:sector(n)+32u;
 }
-// Завершает стартовую операцию с обслуживанием сторожевого таймера.
+// Р—Р°РІРµСЂС€Р°РµС‚ СЃС‚Р°СЂС‚РѕРІСѓСЋ РѕРїРµСЂР°С†РёСЋ СЃ РѕР±СЃР»СѓР¶РёРІР°РЅРёРµРј СЃС‚РѕСЂРѕР¶РµРІРѕРіРѕ С‚Р°Р№РјРµСЂР°.
 static uint16_t log_wait(void)
 {
   uint8_t r;
   do { wdt_reload(); r=log_ring_init_step(); } while(r==1);
   return r==2?device.logsCount:0xffff;
 }
-// Восстанавливает кольцо и возвращает число действующих записей.
+// Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РєРѕР»СЊС†Рѕ Рё РІРѕР·РІСЂР°С‰Р°РµС‚ С‡РёСЃР»Рѕ РґРµР№СЃС‚РІСѓСЋС‰РёС… Р·Р°РїРёСЃРµР№.
 uint16_t log_getRecordsCount(void) { log_ring_invalidate(); return log_wait(); }
 
-// Сообщает, находится ли запись события в работе.
+// РЎРѕРѕР±С‰Р°РµС‚, РЅР°С…РѕРґРёС‚СЃСЏ Р»Рё Р·Р°РїРёСЃСЊ СЃРѕР±С‹С‚РёСЏ РІ СЂР°Р±РѕС‚Рµ.
 bool log_async_active(void) { return log_job.phase!=0; }
-// Копирует событие и занимает флеш до окончания записи.
+// РљРѕРїРёСЂСѓРµС‚ СЃРѕР±С‹С‚РёРµ Рё Р·Р°РЅРёРјР°РµС‚ С„Р»РµС€ РґРѕ РѕРєРѕРЅС‡Р°РЅРёСЏ Р·Р°РїРёСЃРё.
 void log_async_begin(const cellLog_s *cell)
 {
   log_job.cell=*cell; log_job.waiting=0;
   log_job.phase=flash_claim(FO_LOG)?LOG_INIT:0; log_job.result=log_job.phase?1:3;
 }
-// Назначает повтор после ошибки, перечитывая кольцо при неясной ротации.
+// РќР°Р·РЅР°С‡Р°РµС‚ РїРѕРІС‚РѕСЂ РїРѕСЃР»Рµ РѕС€РёР±РєРё, РїРµСЂРµС‡РёС‚С‹РІР°СЏ РєРѕР»СЊС†Рѕ РїСЂРё РЅРµСЏСЃРЅРѕР№ СЂРѕС‚Р°С†РёРё.
 static uint8_t fail(uint32_t now,bool rotation)
 {
   log_job.result=3; log_job.retry_at=now+1000u;
@@ -158,13 +158,13 @@ static uint8_t fail(uint32_t now,bool rotation)
   else log_job.phase=LOG_REPAIR;
   return 3;
 }
-// Запускает проверяемую команду W25, сохраняя её следующий шаг.
+// Р—Р°РїСѓСЃРєР°РµС‚ РїСЂРѕРІРµСЂСЏРµРјСѓСЋ РєРѕРјР°РЅРґСѓ W25, СЃРѕС…СЂР°РЅСЏСЏ РµС‘ СЃР»РµРґСѓСЋС‰РёР№ С€Р°Рі.
 static bool start(uint32_t a,const uint8_t *p,uint16_t n,uint32_t now,uint8_t after)
 {
   if(!w25_async_start(a,p,n,now)) return false;
   lr.after=after; log_job.waiting=1; return true;
 }
-// Выбирает свободный сектор либо самый старый хвост кольца.
+// Р’С‹Р±РёСЂР°РµС‚ СЃРІРѕР±РѕРґРЅС‹Р№ СЃРµРєС‚РѕСЂ Р»РёР±Рѕ СЃР°РјС‹Р№ СЃС‚Р°СЂС‹Р№ С…РІРѕСЃС‚ РєРѕР»СЊС†Р°.
 static void target_select(void)
 {
   uint8_t n=lr.forced;
@@ -174,14 +174,14 @@ static void target_select(void)
   }
   lr.target=n;
 }
-// Публикует только полностью проверенную запись и освобождает владельца журнала.
+// РџСѓР±Р»РёРєСѓРµС‚ С‚РѕР»СЊРєРѕ РїРѕР»РЅРѕСЃС‚СЊСЋ РїСЂРѕРІРµСЂРµРЅРЅСѓСЋ Р·Р°РїРёСЃСЊ Рё РѕСЃРІРѕР±РѕР¶РґР°РµС‚ РІР»Р°РґРµР»СЊС†Р° Р¶СѓСЂРЅР°Р»Р°.
 static uint8_t log_publish(void)
 {
   log_lastIndex=log_job.cell.index; lr.position++; lr.count[lr.head]++; device.logsCount++;
   device.newAddressLog=log_job.address+32; device.status.readyLogData=1;
   log_job.phase=0; flash_release(FO_LOG); return log_job.result=2;
 }
-// Записывает событие или поворачивает кольцо одной командой за проход.
+// Р—Р°РїРёСЃС‹РІР°РµС‚ СЃРѕР±С‹С‚РёРµ РёР»Рё РїРѕРІРѕСЂР°С‡РёРІР°РµС‚ РєРѕР»СЊС†Рѕ РѕРґРЅРѕР№ РєРѕРјР°РЅРґРѕР№ Р·Р° РїСЂРѕС…РѕРґ.
 uint8_t log_async_step(uint32_t now)
 {
   cellLog_s actual; uint8_t result; uint16_t crc;
@@ -204,7 +204,7 @@ uint8_t log_async_step(uint32_t now)
       target_select(); log_job.phase=lr.head==NONE?LOG_ERASE:LOG_CLOSE; return 1;
     }
     log_job.address=sector(lr.head)+32u+32u*lr.position;
-    // Только владелец журнала продвигает свободное место; результат записи проверяет W25.
+    // РўРѕР»СЊРєРѕ РІР»Р°РґРµР»РµС† Р¶СѓСЂРЅР°Р»Р° РїСЂРѕРґРІРёРіР°РµС‚ СЃРІРѕР±РѕРґРЅРѕРµ РјРµСЃС‚Рѕ; СЂРµР·СѓР»СЊС‚Р°С‚ Р·Р°РїРёСЃРё РїСЂРѕРІРµСЂСЏРµС‚ W25.
     if(log_lastIndex && log_job.cell.index<=log_lastIndex) log_job.cell.index=log_lastIndex+1u;
     crc=crc16_calc((uint8_t *)&log_job.cell,24);
     memcpy(log_job.cell.reserve,&crc,2); crc=(uint16_t)~crc;
@@ -220,7 +220,7 @@ uint8_t log_async_step(uint32_t now)
   case LOG_PUBLISH: return log_publish();
   case LOG_REPAIR:
     if(!w25_read_data(log_job.address,(uint8_t *)&actual,32)) return fail(now,false);
-    // После отказа W25 проверяем, успела ли целиком записаться исходная запись.
+    // РџРѕСЃР»Рµ РѕС‚РєР°Р·Р° W25 РїСЂРѕРІРµСЂСЏРµРј, СѓСЃРїРµР»Р° Р»Рё С†РµР»РёРєРѕРј Р·Р°РїРёСЃР°С‚СЊСЃСЏ РёСЃС…РѕРґРЅР°СЏ Р·Р°РїРёСЃСЊ.
     if(!memcmp(&actual,&log_job.cell,32) && actual.index!=0xffffffffu) return log_publish();
     for(uint8_t i=0;i<32;i++) if((((uint8_t *)&actual)[i]&((uint8_t *)&log_job.cell)[i])!=((uint8_t *)&log_job.cell)[i]) {
       if(log_valid(&actual)) { if(log_lastIndex<actual.index) log_lastIndex=actual.index; lr.count[lr.head]++; device.logsCount++; }
@@ -255,7 +255,7 @@ uint8_t log_async_step(uint32_t now)
   default: return fail(now,true);
   }
 }
-// Записывает стартовое событие синхронно тем же автоматом.
+// Р—Р°РїРёСЃС‹РІР°РµС‚ СЃС‚Р°СЂС‚РѕРІРѕРµ СЃРѕР±С‹С‚РёРµ СЃРёРЅС…СЂРѕРЅРЅРѕ С‚РµРј Р¶Рµ Р°РІС‚РѕРјР°С‚РѕРј.
 bool log_addEvent(cellLog_s *cell)
 {
   if(!user_storage_flash_ready()) return false;

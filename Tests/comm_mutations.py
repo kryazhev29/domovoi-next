@@ -12,7 +12,7 @@ from comm_server_host import unit as channel_unit
 
 
 def uart_unit():
-    source = lambda name: (ROOT / name).read_bytes().decode('cp1251')
+    source = lambda name: (ROOT / name).read_bytes().decode('utf-8')
     model = source('Tests/test_comm_uart.c')
     tick = 'void SysTick_Handler(void)' + source('stm32_it.c').split('void SysTick_Handler(void)', 1)[1].split('\n}', 1)[0] + '\n}'
     # Чтение DR — аппаратный эффект; мутация IDLE обязана украсть байт в модели.
@@ -136,12 +136,12 @@ def user_mutations(out):
                 shutil.copytree(ROOT / name, tmp / name, ignore=shutil.ignore_patterns('__pycache__', '*.o', 'Release', 'Debug'))
             for name in ('structures.h', 'DomovoiNext.ewp', 'main.c', 'board.h'):
                 shutil.copy2(ROOT / name, tmp / name)
-            paths = [p for p in (tmp/'User/c').glob('user_*.c') if old in p.read_bytes().decode('cp1251').replace('\r\n','\n')]
+            paths = [p for p in (tmp/'User/c').glob('user_*.c') if old in p.read_bytes().decode('utf-8').replace('\r\n','\n')]
             assert len(paths) == 1, (label, paths)
             path = paths[0]
-            text = path.read_bytes().decode('cp1251').replace('\r\n', '\n')
+            text = path.read_bytes().decode('utf-8').replace('\r\n', '\n')
             assert text.count(old) == 1, label
-            path.write_bytes(text.replace(old, new).replace('\n', '\r\n').encode('cp1251'))
+            path.write_bytes(text.replace(old, new).replace('\n', '\r\n').encode('utf-8'))
             result = subprocess.run([sys.executable, str(ROOT / 'Tests/run_host.py'), 'work', group[0] if group else 'sms'], capture_output=True,
                                     timeout=120, env={**os.environ, 'DOMOVOI_ROOT': str(tmp)})
             (out / (label + '.log')).write_bytes(result.stdout + result.stderr)

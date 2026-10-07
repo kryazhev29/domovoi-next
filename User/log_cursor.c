@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Логические номера подтверждённых записей кольцевого журнала.
-// Байты device.reserv[16..31] хранят маркер, курсоры и последний номер.
-// Курсор меняется в ОЗУ только после успешного сохранения снимка A/B.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р›РѕРіРёС‡РµСЃРєРёРµ РЅРѕРјРµСЂР° РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹С… Р·Р°РїРёСЃРµР№ РєРѕР»СЊС†РµРІРѕРіРѕ Р¶СѓСЂРЅР°Р»Р°.
+// Р‘Р°Р№С‚С‹ device.reserv[16..31] С…СЂР°РЅСЏС‚ РјР°СЂРєРµСЂ, РєСѓСЂСЃРѕСЂС‹ Рё РїРѕСЃР»РµРґРЅРёР№ РЅРѕРјРµСЂ.
+// РљСѓСЂСЃРѕСЂ РјРµРЅСЏРµС‚СЃСЏ РІ РћР—РЈ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ СЃРѕС…СЂР°РЅРµРЅРёСЏ СЃРЅРёРјРєР° A/B.
 #include "c/runtime_internal.h"
 #include "log_ring.h"
 #include "user_fun.h"
@@ -12,14 +12,14 @@ extern uint8_t store_save_requested;
 uint32_t log_cursor32[2],log_pending32[2];
 static struct { uint32_t value; uint8_t phase,channel,uniq,quiet,last[2],seen[2]; } ack;
 #define CURSOR_MAGIC 0x354C5055u
-// Упаковывает логические курсоры и последний номер в резерв устройства.
+// РЈРїР°РєРѕРІС‹РІР°РµС‚ Р»РѕРіРёС‡РµСЃРєРёРµ РєСѓСЂСЃРѕСЂС‹ Рё РїРѕСЃР»РµРґРЅРёР№ РЅРѕРјРµСЂ РІ СЂРµР·РµСЂРІ СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 void log_ring_checkpoint(void)
 {
   uint32_t magic=CURSOR_MAGIC;
   memcpy(device.reserv+16,&magic,4); memcpy(device.reserv+20,log_cursor32,8);
   memcpy(device.reserv+28,&log_lastIndex,4);
 }
-// Читает сохранённые курсоры только при известном маркере формата.
+// Р§РёС‚Р°РµС‚ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Рµ РєСѓСЂСЃРѕСЂС‹ С‚РѕР»СЊРєРѕ РїСЂРё РёР·РІРµСЃС‚РЅРѕРј РјР°СЂРєРµСЂРµ С„РѕСЂРјР°С‚Р°.
 void log_ring_restore(const device_s *saved)
 {
   uint32_t magic,last;
@@ -31,26 +31,26 @@ void log_ring_restore(const device_s *saved)
   memcpy(log_cursor32,saved->reserv+20,8); memcpy(&last,saved->reserv+28,4);
   if(log_lastIndex<last) log_lastIndex=last;
 }
-// Сбрасывает курсоры при полном форматировании журнала.
+// РЎР±СЂР°СЃС‹РІР°РµС‚ РєСѓСЂСЃРѕСЂС‹ РїСЂРё РїРѕР»РЅРѕРј С„РѕСЂРјР°С‚РёСЂРѕРІР°РЅРёРё Р¶СѓСЂРЅР°Р»Р°.
 void log_ring_reset(void)
 {
   log_cursor32[0]=log_cursor32[1]=log_pending32[0]=log_pending32[1]=0;
   device.readLogIDIndex=log_usbReadIndex=log_unacked[0]=log_unacked[1]=0;
   ack.seen[0]=ack.seen[1]=0; log_ring_checkpoint(); log_ring_invalidate();
 }
-// Отменяет неподтверждённый кадр и ответ закрывшегося канала.
+// РћС‚РјРµРЅСЏРµС‚ РЅРµРїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Р№ РєР°РґСЂ Рё РѕС‚РІРµС‚ Р·Р°РєСЂС‹РІС€РµРіРѕСЃСЏ РєР°РЅР°Р»Р°.
 void log_ring_quiet(uint8_t channel)
 {
   if(channel>1) return;
   log_pending32[channel]=0; ack.seen[channel]=0;
   if(ack.phase && ack.channel==channel) ack.quiet=1;
 }
-// Запоминает границу и номер принятого транспортом кадра.
+// Р—Р°РїРѕРјРёРЅР°РµС‚ РіСЂР°РЅРёС†Сѓ Рё РЅРѕРјРµСЂ РїСЂРёРЅСЏС‚РѕРіРѕ С‚СЂР°РЅСЃРїРѕСЂС‚РѕРј РєР°РґСЂР°.
 void log_ring_sent(uint8_t channel,uint8_t uniq,uint32_t next)
 {
   log_pending32[channel]=next; ack.last[channel]=uniq; ack.seen[channel]=1;
 }
-// Сохраняет новый курсор в A/B до его публикации в ОЗУ.
+// РЎРѕС…СЂР°РЅСЏРµС‚ РЅРѕРІС‹Р№ РєСѓСЂСЃРѕСЂ РІ A/B РґРѕ РµРіРѕ РїСѓР±Р»РёРєР°С†РёРё РІ РћР—РЈ.
 bool log_ring_ack(uint8_t channel,uint8_t uniq)
 {
   uint32_t old;
@@ -63,7 +63,7 @@ bool log_ring_ack(uint8_t channel,uint8_t uniq)
   ack.value=log_pending32[channel]; ack.channel=channel; ack.uniq=uniq; ack.quiet=0; ack.phase=1;
   return false;
 }
-// Завершает сохранение ACK и продолжает выгрузку при успехе.
+// Р—Р°РІРµСЂС€Р°РµС‚ СЃРѕС…СЂР°РЅРµРЅРёРµ ACK Рё РїСЂРѕРґРѕР»Р¶Р°РµС‚ РІС‹РіСЂСѓР·РєСѓ РїСЂРё СѓСЃРїРµС…Рµ.
 bool log_ring_ack_poll(void)
 {
   uint8_t result,channel,uniq,quiet;

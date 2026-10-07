@@ -1,27 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Общие объявления библиотеки USB FS.
-// Дескрипторы и порядок событий сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
-
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РћР±С‰РёРµ РѕР±СЉСЏРІР»РµРЅРёСЏ Р±РёР±Р»РёРѕС‚РµРєРё USB FS.
+// Р”РµСЃРєСЂРёРїС‚РѕСЂС‹ Рё РїРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј; РїР°РјСЏС‚СЊ PMA С‚СЂРµР±СѓРµС‚ РѕСЃРѕР±РѕРіРѕ РґРѕСЃС‚СѓРїР°.
 
 #ifndef __USB_LIB_H
 #define __USB_LIB_H
@@ -37,5 +17,3 @@
 #include "usb_int.h"
 
 #endif
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

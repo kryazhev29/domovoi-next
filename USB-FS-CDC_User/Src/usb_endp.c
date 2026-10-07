@@ -1,27 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Передача IN и приём OUT по конечным точкам CDC.
-// Порядок событий и двоичные дескрипторы сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком.
-
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РџРµСЂРµРґР°С‡Р° IN Рё РїСЂРёС‘Рј OUT РїРѕ РєРѕРЅРµС‡РЅС‹Рј С‚РѕС‡РєР°Рј CDC.
+// РџРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ Рё РґРІРѕРёС‡РЅС‹Рµ РґРµСЃРєСЂРёРїС‚РѕСЂС‹ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј.
 
 #include "usb_lib.h"
 #include "usb_desc.h"
@@ -46,7 +26,7 @@ extern volatile uint32_t USART_Rx_length;
 extern volatile uint8_t  USB_Tx_State;
 #endif
 
-// Подтвердить пакет IN и передать следующую часть ответа.
+// РџРѕРґС‚РІРµСЂРґРёС‚СЊ РїР°РєРµС‚ IN Рё РїРµСЂРµРґР°С‚СЊ СЃР»РµРґСѓСЋС‰СѓСЋ С‡Р°СЃС‚СЊ РѕС‚РІРµС‚Р°.
 void EP1_IN_Callback (void)
 {
 #ifndef BOOTLOADER
@@ -72,7 +52,7 @@ void EP1_IN_Callback (void)
 #endif
 }
 
-// Принять пакет OUT и снова разрешить приём точки.
+// РџСЂРёРЅСЏС‚СЊ РїР°РєРµС‚ OUT Рё СЃРЅРѕРІР° СЂР°Р·СЂРµС€РёС‚СЊ РїСЂРёС‘Рј С‚РѕС‡РєРё.
 void EP3_OUT_Callback(void)
 {
   uint16_t USB_Rx_Cnt;
@@ -84,7 +64,7 @@ void EP3_OUT_Callback(void)
   SetEPRxValid(ENDP3);
 }
 
-// Отметить кадр USB и с заданным интервалом продвинуть очередь IN.
+// РћС‚РјРµС‚РёС‚СЊ РєР°РґСЂ USB Рё СЃ Р·Р°РґР°РЅРЅС‹Рј РёРЅС‚РµСЂРІР°Р»РѕРј РїСЂРѕРґРІРёРЅСѓС‚СЊ РѕС‡РµСЂРµРґСЊ IN.
 void SOF_Callback(void)
 {
   static uint32_t FrameCount = 0;
@@ -103,4 +83,3 @@ void SOF_Callback(void)
     }
   }
 }
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

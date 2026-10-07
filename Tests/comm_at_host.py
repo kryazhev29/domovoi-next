@@ -9,12 +9,12 @@ from modem_sim import c_header
 from source_select import diagnostic_header
 
 ROOT = Path(__file__).resolve().parents[1]
-ZIG = __import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
+ZIG = __import__('os').environ.get('DOMOVOI_ZIG', str(Path(__import__('tempfile').gettempdir())/'codex-zig/zig.exe'))
 
 
 def unit(root=ROOT):
     def source(name):
-        return (root / name).read_bytes().decode('cp1251').replace('#include \"domovoi_diag.h\"','')
+        return (root / name).read_bytes().decode('utf-8').replace('#include \"domovoi_diag.h\"','')
     uart_test = source('Tests/test_comm_uart.c').split('/* КОД МОДУЛЯ */', 1)[0]
     uart_test = uart_test.replace('static uint8_t at_command[128], frame[1040];', '')
     uart_test = uart_test.replace('/* ЗАГОЛОВОК МОДУЛЯ */', source('Modules/comm_uart.h'))
@@ -25,11 +25,11 @@ def unit(root=ROOT):
 
 
 def arm(out):
-    # Clang читает комментарии UTF-8; рабочие исходники остаются cp1251/CRLF.
+    # Clang читает комментарии UTF-8; рабочие исходники остаются UTF-8/CRLF.
     with tempfile.TemporaryDirectory(dir=out, prefix='arm-') as tmp:
         tmp = Path(tmp)
         for name in ('comm_at.c', 'comm_at.h', 'comm_uart.h'):
-            (tmp / name).write_text((ROOT / 'Modules' / name).read_bytes().decode('cp1251').replace('#include \"domovoi_diag.h\"','').replace('\r\n', '\n'), encoding='utf-8', newline='\n')
+            (tmp / name).write_text((ROOT / 'Modules' / name).read_bytes().decode('utf-8').replace('#include \"domovoi_diag.h\"','').replace('\r\n', '\n'), encoding='utf-8', newline='\n')
         # Freestanding Zig не поставляет string.h для ARM; стандартные объявления,
         # реализации не подменяются, внешние memcpy/memcmp остаются в объекте.
         (tmp / 'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void *, const void *, size_t);\n'

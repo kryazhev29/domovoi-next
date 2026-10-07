@@ -1,20 +1,20 @@
-/* Доработка: Кряжев А., 2026.
-   Управляет двухступенчатым питанием SLM336 на плате v5.
-   Каждый переход выдерживает полный срок, даже после пропуска главного цикла.
-   До назначения GPIO выключение меняет только состояние автомата.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   РЈРїСЂР°РІР»СЏРµС‚ РґРІСѓС…СЃС‚СѓРїРµРЅС‡Р°С‚С‹Рј РїРёС‚Р°РЅРёРµРј SLM336 РЅР° РїР»Р°С‚Рµ v5.
+   РљР°Р¶РґС‹Р№ РїРµСЂРµС…РѕРґ РІС‹РґРµСЂР¶РёРІР°РµС‚ РїРѕР»РЅС‹Р№ СЃСЂРѕРє, РґР°Р¶Рµ РїРѕСЃР»Рµ РїСЂРѕРїСѓСЃРєР° РіР»Р°РІРЅРѕРіРѕ С†РёРєР»Р°.
+   Р”Рѕ РЅР°Р·РЅР°С‡РµРЅРёСЏ GPIO РІС‹РєР»СЋС‡РµРЅРёРµ РјРµРЅСЏРµС‚ С‚РѕР»СЊРєРѕ СЃРѕСЃС‚РѕСЏРЅРёРµ Р°РІС‚РѕРјР°С‚Р°.
 */
 #include "comm_power_v5.h"
 #include "comm_timeouts.h"
 static comm_power_gpio_t power_gpio;
 static uint32_t power_started;
 static uint8_t power_state;
-/* Выключить питание модема и отпустить ключ включения. */
+/* Р’С‹РєР»СЋС‡РёС‚СЊ РїРёС‚Р°РЅРёРµ РјРѕРґРµРјР° Рё РѕС‚РїСѓСЃС‚РёС‚СЊ РєР»СЋС‡ РІРєР»СЋС‡РµРЅРёСЏ. */
 void comm_power_v5_off(void)
 {
   if (power_gpio) { power_gpio(13, false); power_gpio(14, true); }
   power_state = COMM_PWR_OFF;
 }
-/* Начать включение платы v5 с полного разряда питания. */
+/* РќР°С‡Р°С‚СЊ РІРєР»СЋС‡РµРЅРёРµ РїР»Р°С‚С‹ v5 СЃ РїРѕР»РЅРѕРіРѕ СЂР°Р·СЂСЏРґР° РїРёС‚Р°РЅРёСЏ. */
 void comm_power_v5_start(comm_power_gpio_t gpio, uint32_t now_ms)
 {
   power_gpio = gpio;
@@ -22,14 +22,14 @@ void comm_power_v5_start(comm_power_gpio_t gpio, uint32_t now_ms)
   power_started = now_ms;
   power_state = COMM_PWR_DISCHARGE;
 }
-/* Выдать текущую ступень питания. */
+/* Р’С‹РґР°С‚СЊ С‚РµРєСѓС‰СѓСЋ СЃС‚СѓРїРµРЅСЊ РїРёС‚Р°РЅРёСЏ. */
 uint8_t comm_power_v5_state(void) { return power_state; }
-/* Выполнить один переход после полной выдержки его срока. */
+/* Р’С‹РїРѕР»РЅРёС‚СЊ РѕРґРёРЅ РїРµСЂРµС…РѕРґ РїРѕСЃР»Рµ РїРѕР»РЅРѕР№ РІС‹РґРµСЂР¶РєРё РµРіРѕ СЃСЂРѕРєР°. */
 void comm_power_v5_poll(uint32_t now_ms)
 {
   if (power_state < COMM_PWR_DISCHARGE || power_state >= COMM_PWR_READY) return;
   if ((uint32_t)(now_ms - power_started) < comm_timeouts[power_state - 1u]) return;
-  /* Один переход за poll: пропуск вызовов не сокращает физические паузы. */
+  /* РћРґРёРЅ РїРµСЂРµС…РѕРґ Р·Р° poll: РїСЂРѕРїСѓСЃРє РІС‹Р·РѕРІРѕРІ РЅРµ СЃРѕРєСЂР°С‰Р°РµС‚ С„РёР·РёС‡РµСЃРєРёРµ РїР°СѓР·С‹. */
   if (power_state >= COMM_PWR_LEAD && power_state <= COMM_PWR_KEY)
     power_gpio(power_state == COMM_PWR_LEAD ? 13 : 14, power_state != COMM_PWR_RAIL);
   ++power_state;

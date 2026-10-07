@@ -1,5 +1,5 @@
 # Доработка: Кряжев А., 2026
-"""Контракты синхронизации ID и модель времени NOR для связанного C/HYBRID.
+"""Контракты синхронизации ID и модель времени NOR для единственного ELF.
 
 Артефакты создаются в TEMP; --output задаёт явный путь. Плата не используется.
 Выполняются связанные журнал и W25, граница SPI побайтно моделируется.
@@ -14,7 +14,7 @@ from pathlib import Path
 import struct
 import tempfile
 
-from c_vs_asm_suite import select_image
+from firmware_suite import select_image
 from storage_machine import StorageMachine, Machine, fields, crc16, UC_HOOK_MEM_WRITE
 from iar_image import image_paths
 
@@ -110,7 +110,7 @@ def run_packet(m, indices=range(1, 31)):
 
 
 # Возвращает ответы и полные образы NOR для парного сравнения.
-def paired_scenarios():
+def protocol_scenarios():
     """Возвращает для парного сравнения байты ответа, метаданные и полный образ NOR."""
     out = {}
     for count, unknown in ((0, False), (3000, False), (CAPACITY, False), (3000, True)):
@@ -179,7 +179,7 @@ def contracts():
 # Подменяет связанные инструкции и проверяет обнаружение неверного поведения.
 def mutations():
     # Меняем инструкции и данные связанного образа, сохраняя исходники продукта.
-    from c_vs_asm_compare import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS
+    from protocol_contract import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS
     md = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
     detected = {}
     for mode in ('used-end', 'skip-tail', 'chunk-cap', 'millisecond-budget'):
@@ -390,32 +390,31 @@ def timing(count, unknown=False):
 # Запускает проверки модуля и сохраняет результаты в заданный файл.
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--variant', choices=('C', 'HYBRID'), required=True)
     p.add_argument('--build-root', type=Path)
     p.add_argument('--output', type=Path)
     p.add_argument('--timing', action='store_true')
     p.add_argument('--oracle', action='store_true')
     p.add_argument('--baseline', action='store_true')
     args = p.parse_args()
-    select_image(args.variant, args.build_root)
+    select_image(args.build_root)
     result = {'elf_sha256': hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
     if args.oracle:
-        for name, case in paired_scenarios().items():
+        for name, case in protocol_scenarios().items():
             state = case['result']
             result[name] = {'replies': [b.hex() for b in state['sent']],
                             'nor_sha256': hashlib.sha256(state['nor']).hexdigest()}
-        print('PASS linked full-scan oracle', args.variant, flush=True)
+        print('PASS linked full-scan oracle', "DomovoiNext", flush=True)
     elif args.timing:
         for count, unknown in ((0, False), (3000, False), (CAPACITY, False), (3000, True)):
             name = f'{count}-'+('unknown' if unknown else 'known')
             result[name] = timing(count, unknown)
             if not args.baseline:
                 assert result[name]['max_poll_ms'] <= 2, result[name]
-            print(args.variant, name, result[name], flush=True)
+            print("DomovoiNext", name, result[name], flush=True)
     else:
         result.update(contracts())
         print('PASS ID fast contracts', flush=True)
-    out = args.output or Path(tempfile.gettempdir())/('id-sync-fast-'+args.variant+'.json')
+    out = args.output or Path(tempfile.gettempdir())/('id-sync-fast-'+"DomovoiNext"+'.json')
     out.write_text(json.dumps(result, indent=2)+'\n')
 
 

@@ -1,32 +1,32 @@
-/* Доработка: Кряжев А., 2026. Восстановление связи (этап 5) на имитаторе SLM336:
-   решения модуля (пауза, со снятием питания или с AT) и сами перезапуски,
-   модельное время без ожиданий. Подключается в сборку comm_server после его тестов. */
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ СЃРІСЏР·Рё (СЌС‚Р°Рї 5) РЅР° РёРјРёС‚Р°С‚РѕСЂРµ SLM336:
+   СЂРµС€РµРЅРёСЏ РјРѕРґСѓР»СЏ (РїР°СѓР·Р°, СЃРѕ СЃРЅСЏС‚РёРµРј РїРёС‚Р°РЅРёСЏ РёР»Рё СЃ AT) Рё СЃР°РјРё РїРµСЂРµР·Р°РїСѓСЃРєРё,
+   РјРѕРґРµР»СЊРЅРѕРµ РІСЂРµРјСЏ Р±РµР· РѕР¶РёРґР°РЅРёР№. РџРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ РІ СЃР±РѕСЂРєСѓ comm_server РїРѕСЃР»Рµ РµРіРѕ С‚РµСЃС‚РѕРІ. */
 static struct { uint32_t at, ms; uint8_t power; unsigned opens; } rc_log[16];
 static unsigned rc_logged, rc_power_starts, rc_soft_starts, rc_session_resets;
 static uint32_t rc_last_since, rc_last_attempt, rc_clock = UINT32_MAX;
 static bool rc_busy_flag;
-// Запомнить новый сеанс восстановления.
+// Р—Р°РїРѕРјРЅРёС‚СЊ РЅРѕРІС‹Р№ СЃРµР°РЅСЃ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.
 static void rc_session(void) { ++rc_session_resets; socket_model=false; comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done); }
-// Выдать моделируемое время восстановления.
+// Р’С‹РґР°С‚СЊ РјРѕРґРµР»РёСЂСѓРµРјРѕРµ РІСЂРµРјСЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.
 static uint32_t rc_time(void) { return rc_clock == UINT32_MAX ? UINT32_MAX : rc_clock + sim_now / 1000u; }
-// Сообщить о занятости вызовом или приложением.
+// РЎРѕРѕР±С‰РёС‚СЊ Рѕ Р·Р°РЅСЏС‚РѕСЃС‚Рё РІС‹Р·РѕРІРѕРј РёР»Рё РїСЂРёР»РѕР¶РµРЅРёРµРј.
 static bool rc_busy(void) { return rc_busy_flag; }
 static const comm_recover_hooks_t rc_hooks = {rc_session, rc_time, rc_busy};
-/* Шаг модели: связь, восстановление, учёт решений и перезапусков. */
+/* РЁР°Рі РјРѕРґРµР»Рё: СЃРІСЏР·СЊ, РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ, СѓС‡С‘С‚ СЂРµС€РµРЅРёР№ Рё РїРµСЂРµР·Р°РїСѓСЃРєРѕРІ. */
 static void rc_note(void);
-// Продвинуть модем и восстановление на один шаг.
+// РџСЂРѕРґРІРёРЅСѓС‚СЊ РјРѕРґРµРј Рё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РЅР° РѕРґРёРЅ С€Р°Рі.
 static void rc_tick(unsigned ms)
 {
-  power_events = 0; /* в трассе питания 16 мест, здесь считаем перезапуски сами */
+  power_events = 0; /* РІ С‚СЂР°СЃСЃРµ РїРёС‚Р°РЅРёСЏ 16 РјРµСЃС‚, Р·РґРµСЃСЊ СЃС‡РёС‚Р°РµРј РїРµСЂРµР·Р°РїСѓСЃРєРё СЃР°РјРё */
   transport_tick(ms);
   comm_info_poll(sim_now);
-  rc_note(); /* решение могло прийти из сервера (нет интернета) и исполниться в этом же такте */
+  rc_note(); /* СЂРµС€РµРЅРёРµ РјРѕРіР»Рѕ РїСЂРёР№С‚Рё РёР· СЃРµСЂРІРµСЂР° (РЅРµС‚ РёРЅС‚РµСЂРЅРµС‚Р°) Рё РёСЃРїРѕР»РЅРёС‚СЊСЃСЏ РІ СЌС‚РѕРј Р¶Рµ С‚Р°РєС‚Рµ */
   unsigned session_before = slm.session, resets_before = rc_session_resets;
   comm_recover_poll(sim_now);
   if (slm.session != session_before) CHECK(rc_session_resets == resets_before + 1u);
   rc_note();
 }
-// Запомнить событие восстановления.
+// Р—Р°РїРѕРјРЅРёС‚СЊ СЃРѕР±С‹С‚РёРµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.
 static void rc_note(void)
 {
   if (rc.state == RC_WAIT && rc.wait_since != rc_last_since) {
@@ -34,16 +34,16 @@ static void rc_note(void)
     if (rc_logged < sizeof(rc_log) / sizeof(rc_log[0])) { rc_log[rc_logged].at = sim_now; rc_log[rc_logged].ms = rc.wait_ms; rc_log[rc_logged].power = rc.power; rc_log[rc_logged].opens = opens; }
     ++rc_logged;
   }
-  if (opens > 8) opens = 0; /* учёт модели, не поведение */
+  if (opens > 8) opens = 0; /* СѓС‡С‘С‚ РјРѕРґРµР»Рё, РЅРµ РїРѕРІРµРґРµРЅРёРµ */
   if (slm.session != rc_last_attempt) {
     rc_last_attempt = slm.session;
-    socket_model = false; /* новая попытка модема: старого сокета нет */
+    socket_model = false; /* РЅРѕРІР°СЏ РїРѕРїС‹С‚РєР° РјРѕРґРµРјР°: СЃС‚Р°СЂРѕРіРѕ СЃРѕРєРµС‚Р° РЅРµС‚ */
     if (slm.attempt.status.step == SLM_DISCHARGE || slm.attempt.status.phase == SLM_PHASE_POWER) ++rc_power_starts; else ++rc_soft_starts;
   }
 }
-/* Шаг 10 мс первую минуту, дальше 100 мс (ответы AT успевают), в паузе восстановления 1 с. */
+/* РЁР°Рі 10 РјСЃ РїРµСЂРІСѓСЋ РјРёРЅСѓС‚Сѓ, РґР°Р»СЊС€Рµ 100 РјСЃ (РѕС‚РІРµС‚С‹ AT СѓСЃРїРµРІР°СЋС‚), РІ РїР°СѓР·Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ 1 СЃ. */
 static void rc_run(uint32_t ms) { uint32_t begin = sim_now; while (sim_now - begin < ms) rc_tick(rc.state == RC_WAIT ? 1000 : sim_now - begin < 60000u ? 10 : 100); }
-/* Плата на связи, восстановление включено; дальше сценарий задаёт сбой. */
+/* РџР»Р°С‚Р° РЅР° СЃРІСЏР·Рё, РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РІРєР»СЋС‡РµРЅРѕ; РґР°Р»СЊС€Рµ СЃС†РµРЅР°СЂРёР№ Р·Р°РґР°С‘С‚ СЃР±РѕР№. */
 static void rc_online(void)
 {
   server_reset();
@@ -52,19 +52,19 @@ static void rc_online(void)
   rc_logged = rc_power_starts = rc_soft_starts = 0; rc_last_since = UINT32_MAX;
   rc_last_attempt = slm.session; rc_clock = UINT32_MAX; rc_busy_flag = false;
 }
-/* Перезапуск со снятием питания, как после сбоя: дальше модем идёт уже с флагами сценария. */
+/* РџРµСЂРµР·Р°РїСѓСЃРє СЃРѕ СЃРЅСЏС‚РёРµРј РїРёС‚Р°РЅРёСЏ, РєР°Рє РїРѕСЃР»Рµ СЃР±РѕСЏ: РґР°Р»СЊС€Рµ РјРѕРґРµРј РёРґС‘С‚ СѓР¶Рµ СЃ С„Р»Р°РіР°РјРё СЃС†РµРЅР°СЂРёСЏ. */
 static void rc_fresh(void) { CHECK(comm_modem_restart(true, sim_now)); rc_session(); }
-// Проверить ожидаемую ступень и срок восстановления.
+// РџСЂРѕРІРµСЂРёС‚СЊ РѕР¶РёРґР°РµРјСѓСЋ СЃС‚СѓРїРµРЅСЊ Рё СЃСЂРѕРє РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.
 static void rc_expect(unsigned i, uint32_t ms, uint8_t power)
 {
   CHECK(i < rc_logged && rc_log[i].ms == ms && rc_log[i].power == power);
 }
-/* Сигнал, регистрация, тип сети: опрос через канал раз в 30 с, ERROR на запрос не рвёт TCP,
-   без связи - «неизвестно». */
+/* РЎРёРіРЅР°Р», СЂРµРіРёСЃС‚СЂР°С†РёСЏ, С‚РёРї СЃРµС‚Рё: РѕРїСЂРѕСЃ С‡РµСЂРµР· РєР°РЅР°Р» СЂР°Р· РІ 30 СЃ, ERROR РЅР° Р·Р°РїСЂРѕСЃ РЅРµ СЂРІС‘С‚ TCP,
+   Р±РµР· СЃРІСЏР·Рё - В«РЅРµРёР·РІРµСЃС‚РЅРѕВ». */
 static unsigned low_signals; static uint8_t low_csq;
-// Пройти штатный запуск модема без сервера.
+// РџСЂРѕР№С‚Рё С€С‚Р°С‚РЅС‹Р№ Р·Р°РїСѓСЃРє РјРѕРґРµРјР° Р±РµР· СЃРµСЂРІРµСЂР°.
 static void low_model(uint8_t csq) { ++low_signals; low_csq = csq; }
-// Проверить сигналы сети, время и информацию SIM.
+// РџСЂРѕРІРµСЂРёС‚СЊ СЃРёРіРЅР°Р»С‹ СЃРµС‚Рё, РІСЂРµРјСЏ Рё РёРЅС„РѕСЂРјР°С†РёСЋ SIM.
 static void info_tests(void)
 {
   rc_online(); rc_run(40000u);
@@ -72,8 +72,8 @@ static void info_tests(void)
   { unsigned before = opens; sim_nwinfo_error = 1; rc_run(70000u); CHECK(opens == before && comm_server_online()); }
   CHECK(comm_info()->csq == 22);
   comm_modem_off(); rc_run(100); CHECK(comm_info()->csq == 99 && !comm_info()->creg && !comm_info()->net);
-  /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
-  /* Время модели после rc_online идёт с начала, срок опроса - из прошлого сценария: 2 мин на свежий цикл. */
+  /* РЎРѕР±С‹С‚РёРµ 38: СЃРёРіРЅР°Р» РЅРёР¶Рµ 15 - РїРѕСЃР»Рµ РїРµСЂРІРѕРіРѕ РїРѕР»РЅРѕРіРѕ РѕРїСЂРѕСЃР°, РґР°Р»СЊС€Рµ СЂР°Р· РІ СЃСѓС‚РєРё. */
+  /* Р’СЂРµРјСЏ РјРѕРґРµР»Рё РїРѕСЃР»Рµ rc_online РёРґС‘С‚ СЃ РЅР°С‡Р°Р»Р°, СЃСЂРѕРє РѕРїСЂРѕСЃР° - РёР· РїСЂРѕС€Р»РѕРіРѕ СЃС†РµРЅР°СЂРёСЏ: 2 РјРёРЅ РЅР° СЃРІРµР¶РёР№ С†РёРєР». */
   rc_online(); sim_csq = 12; rc_run(120000u); comm_info_low_signal(low_model); rc_run(40000u);
   CHECK(low_signals == 1 && low_csq == 12);
   rc_run(3600000u); CHECK(low_signals == 1);
@@ -83,74 +83,74 @@ static void info_tests(void)
   CHECK(low_signals == 3 && low_csq == 14);
   sim_csq = 22;
 }
-// Проверить ступени восстановления при отказах и смене суток.
+// РџСЂРѕРІРµСЂРёС‚СЊ СЃС‚СѓРїРµРЅРё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїСЂРё РѕС‚РєР°Р·Р°С… Рё СЃРјРµРЅРµ СЃСѓС‚РѕРє.
 static void recover_tests(void)
 {
   info_tests();
-  /* 1. Нет SIM час: только снятие питания, паузы 10/30 мин, AT-перезапусков нет. */
+  /* 1. РќРµС‚ SIM С‡Р°СЃ: С‚РѕР»СЊРєРѕ СЃРЅСЏС‚РёРµ РїРёС‚Р°РЅРёСЏ, РїР°СѓР·С‹ 10/30 РјРёРЅ, AT-РїРµСЂРµР·Р°РїСѓСЃРєРѕРІ РЅРµС‚. */
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(3600000u);
   CHECK(rc_logged == 3 && !rc_soft_starts && rc_power_starts == 3);
   rc_expect(0, 600000u, 1); rc_expect(1, 1800000u, 1); rc_expect(2, 3600000u, 1);
-  CHECK(link_count(COMM_LINK_NO_NET, 0) == 1 && !link_count(COMM_LINK_NO_INTERNET, 0)); /* событие 11 один раз */
-  /* 2. Нет сети: с AT 10 с, 30 с, третья неудача подряд - питание 10 мин, дальше 60 с. */
+  CHECK(link_count(COMM_LINK_NO_NET, 0) == 1 && !link_count(COMM_LINK_NO_INTERNET, 0)); /* СЃРѕР±С‹С‚РёРµ 11 РѕРґРёРЅ СЂР°Р· */
+  /* 2. РќРµС‚ СЃРµС‚Рё: СЃ AT 10 СЃ, 30 СЃ, С‚СЂРµС‚СЊСЏ РЅРµСѓРґР°С‡Р° РїРѕРґСЂСЏРґ - РїРёС‚Р°РЅРёРµ 10 РјРёРЅ, РґР°Р»СЊС€Рµ 60 СЃ. */
   rc_online(); sim_network_wait = 1; rc_fresh(); rc_run(3600000u);
   rc_expect(0, 10000u, 0); rc_expect(1, 30000u, 0); rc_expect(2, 600000u, 1);
   rc_expect(3, 60000u, 0); rc_expect(4, 60000u, 0); rc_expect(5, 1800000u, 1);
   CHECK(link_count(COMM_LINK_NO_NET, 0) == 1);
-  /* Сеть нашлась, связь есть - при следующей потере сети событие 11 снова. */
+  /* РЎРµС‚СЊ РЅР°С€Р»Р°СЃСЊ, СЃРІСЏР·СЊ РµСЃС‚СЊ - РїСЂРё СЃР»РµРґСѓСЋС‰РµР№ РїРѕС‚РµСЂРµ СЃРµС‚Рё СЃРѕР±С‹С‚РёРµ 11 СЃРЅРѕРІР°. */
   sim_network_wait = 0; rc_run(3600000u); CHECK(comm_server_online());
   sim_network_wait = 1; rc_fresh(); rc_run(150000u); CHECK(link_count(COMM_LINK_NO_NET, 0) == 2);
-  /* Мобильный интернет не включается (QIACT): событие 12 один раз, 11 нет. */
+  /* РњРѕР±РёР»СЊРЅС‹Р№ РёРЅС‚РµСЂРЅРµС‚ РЅРµ РІРєР»СЋС‡Р°РµС‚СЃСЏ (QIACT): СЃРѕР±С‹С‚РёРµ 12 РѕРґРёРЅ СЂР°Р·, 11 РЅРµС‚. */
   rc_online(); sim_error_step = SLM_ACTIVATE; rc_fresh(); rc_run(3600000u);
   CHECK(rc_logged >= 3 && link_count(COMM_LINK_NO_INTERNET, 0) == 1 && !link_count(COMM_LINK_NO_NET, 0));
-  /* 3. Модем молчит после включения: питание 10/30/60 мин. */
+  /* 3. РњРѕРґРµРј РјРѕР»С‡РёС‚ РїРѕСЃР»Рµ РІРєР»СЋС‡РµРЅРёСЏ: РїРёС‚Р°РЅРёРµ 10/30/60 РјРёРЅ. */
   rc_online(); sim_silence_step = SLM_AT_READY; rc_fresh(); rc_run(3 * 3600000u);
   rc_expect(0, 600000u, 1); rc_expect(1, 1800000u, 1); rc_expect(2, 3600000u, 1); CHECK(!rc_soft_starts);
-  /* 4. Модем замолчал посреди работы: питание сразу, затем по паузам. */
+  /* 4. РњРѕРґРµРј Р·Р°РјРѕР»С‡Р°Р» РїРѕСЃСЂРµРґРё СЂР°Р±РѕС‚С‹: РїРёС‚Р°РЅРёРµ СЃСЂР°Р·Сѓ, Р·Р°С‚РµРј РїРѕ РїР°СѓР·Р°Рј. */
   rc_online();
-  { unsigned before = rc_power_starts; /* длинная строка - движок AT в сбое, канал в CH_FAULT */
+  { unsigned before = rc_power_starts; /* РґР»РёРЅРЅР°СЏ СЃС‚СЂРѕРєР° - РґРІРёР¶РѕРє AT РІ СЃР±РѕРµ, РєР°РЅР°Р» РІ CH_FAULT */
     for (unsigned i = 0; i < 240; ++i) interrupt_byte('Y', USART_SR_RXNE); sim_feed("\r\n");
     rc_run(200); CHECK(rc_logged >= 1 && rc_log[0].ms == 0 && rc_log[0].power); CHECK(rc_power_starts == before + 1u); }
   rc_run(30000u); CHECK(comm_server_online());
-  /* 5. Потеря мобильного интернета: модем заново с AT через 10 с, без питания, снова на связи. */
+  /* 5. РџРѕС‚РµСЂСЏ РјРѕР±РёР»СЊРЅРѕРіРѕ РёРЅС‚РµСЂРЅРµС‚Р°: РјРѕРґРµРј Р·Р°РЅРѕРІРѕ СЃ AT С‡РµСЂРµР· 10 СЃ, Р±РµР· РїРёС‚Р°РЅРёСЏ, СЃРЅРѕРІР° РЅР° СЃРІСЏР·Рё. */
   rc_online(); sim_feed("+QIURC: \"pdpdeact\",1\r\n"); rc_run(60000u);
   rc_expect(0, 10000u, 0); CHECK(!rc_power_starts && rc_soft_starts == 1 && comm_server_online());
-  /* QIDEACT ответил ошибкой (контекста нет) - шаг пройден, модем снова на связи. */
+  /* QIDEACT РѕС‚РІРµС‚РёР» РѕС€РёР±РєРѕР№ (РєРѕРЅС‚РµРєСЃС‚Р° РЅРµС‚) - С€Р°Рі РїСЂРѕР№РґРµРЅ, РјРѕРґРµРј СЃРЅРѕРІР° РЅР° СЃРІСЏР·Рё. */
   rc_online(); sim_error_step = SLM_DEACT; sim_feed("+QIURC: \"pdpdeact\",1\r\n"); rc_run(60000u);
   rc_expect(0, 10000u, 0); CHECK(rc_soft_starts == 1 && comm_server_online() && rc_logged == 1);
-  /* 6. Сервер молчит, интернет есть: событие 13 и переоткрытие TCP, модем не трогается. */
+  /* 6. РЎРµСЂРІРµСЂ РјРѕР»С‡РёС‚, РёРЅС‚РµСЂРЅРµС‚ РµСЃС‚СЊ: СЃРѕР±С‹С‚РёРµ 13 Рё РїРµСЂРµРѕС‚РєСЂС‹С‚РёРµ TCP, РјРѕРґРµРј РЅРµ С‚СЂРѕРіР°РµС‚СЃСЏ. */
   rc_online(); drop_status = 1; rc_run(600000u);
-  /* Событие 13 - на каждое переподключение: регистрация снимает его флаг (этап 4). */
+  /* РЎРѕР±С‹С‚РёРµ 13 - РЅР° РєР°Р¶РґРѕРµ РїРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёРµ: СЂРµРіРёСЃС‚СЂР°С†РёСЏ СЃРЅРёРјР°РµС‚ РµРіРѕ С„Р»Р°Рі (СЌС‚Р°Рї 4). */
   CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && event13 >= 1 && opens >= 2);
-  /* 7. Нет интернета (ping и DNS молчат): TCP заново, модем с AT (QIDEACT/QIACT),
-        потом питание сразу, дальше 10 мин. */
+  /* 7. РќРµС‚ РёРЅС‚РµСЂРЅРµС‚Р° (ping Рё DNS РјРѕР»С‡Р°С‚): TCP Р·Р°РЅРѕРІРѕ, РјРѕРґРµРј СЃ AT (QIDEACT/QIACT),
+        РїРѕС‚РѕРј РїРёС‚Р°РЅРёРµ СЃСЂР°Р·Сѓ, РґР°Р»СЊС€Рµ 10 РјРёРЅ. */
   rc_online(); drop_status = 1; ping_success = dns_success = 0; rc_run(1800000u);
   CHECK(rc_logged >= 3 && rc_soft_starts == 1 && rc_power_starts >= 1);
   rc_expect(0, 0, 0); rc_expect(1, 0, 1); rc_expect(2, 600000u, 1);
-  CHECK(rc_log[0].opens >= 2); /* до перезапуска модема TCP переоткрыт */
-  CHECK(link_count(COMM_LINK_NO_INTERNET, 0) >= 1 && !link_count(COMM_LINK_NO_NET, 0)); /* ping и DNS молчат - событие 12 */
-  /* 8. Ранний перезапуск: 3 таймаута AT в работе за 10 мин - питание сразу; 2 - нет. */
+  CHECK(rc_log[0].opens >= 2); /* РґРѕ РїРµСЂРµР·Р°РїСѓСЃРєР° РјРѕРґРµРјР° TCP РїРµСЂРµРѕС‚РєСЂС‹С‚ */
+  CHECK(link_count(COMM_LINK_NO_INTERNET, 0) >= 1 && !link_count(COMM_LINK_NO_NET, 0)); /* ping Рё DNS РјРѕР»С‡Р°С‚ - СЃРѕР±С‹С‚РёРµ 12 */
+  /* 8. Р Р°РЅРЅРёР№ РїРµСЂРµР·Р°РїСѓСЃРє: 3 С‚Р°Р№РјР°СѓС‚Р° AT РІ СЂР°Р±РѕС‚Рµ Р·Р° 10 РјРёРЅ - РїРёС‚Р°РЅРёРµ СЃСЂР°Р·Сѓ; 2 - РЅРµС‚. */
   rc_online();
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000);
   CHECK(!rc_logged);
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(100); rc_expect(0, 0, 1);
-  rc_online();  /* те же три, но растянуты больше чем на 10 мин - не считаются пачкой */
+  rc_online();  /* С‚Рµ Р¶Рµ С‚СЂРё, РЅРѕ СЂР°СЃС‚СЏРЅСѓС‚С‹ Р±РѕР»СЊС€Рµ С‡РµРј РЅР° 10 РјРёРЅ - РЅРµ СЃС‡РёС‚Р°СЋС‚СЃСЏ РїР°С‡РєРѕР№ */
   for (int i = 0; i < 3; ++i) { comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(330000u); }
   CHECK(!rc_logged);
-  /* Таймауты при запуске модема (нет сети) не копятся в пачку с таймаутом в работе. */
+  /* РўР°Р№РјР°СѓС‚С‹ РїСЂРё Р·Р°РїСѓСЃРєРµ РјРѕРґРµРјР° (РЅРµС‚ СЃРµС‚Рё) РЅРµ РєРѕРїСЏС‚СЃСЏ РІ РїР°С‡РєСѓ СЃ С‚Р°Р№РјР°СѓС‚РѕРј РІ СЂР°Р±РѕС‚Рµ. */
   rc_online(); sim_network_wait = 1; rc_fresh(); rc_run(150000u); CHECK(rc_logged == 2);
   sim_network_wait = 0; rc_run(120000u); CHECK(comm_server_online());
   { unsigned before = rc_logged; comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); CHECK(rc_logged == before); }
-  /* 5 неудач TCP за час - питание сразу. */
+  /* 5 РЅРµСѓРґР°С‡ TCP Р·Р° С‡Р°СЃ - РїРёС‚Р°РЅРёРµ СЃСЂР°Р·Сѓ. */
   rc_online(); for (int i = 0; i < 4; ++i) { comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, 566); rc_run(1000); }
   CHECK(!rc_logged); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, 566); rc_run(100); rc_expect(0, 0, 1);
-  /* 9. Ночь: в 03:00 модем перезапускается раз; занят - ждёт; без часов - раз в сутки работы. */
-  rc_online(); rc_clock = 1790899200u + 2u * 3600u + 3590u; /* 02:59:50 по модели */
+  /* 9. РќРѕС‡СЊ: РІ 03:00 РјРѕРґРµРј РїРµСЂРµР·Р°РїСѓСЃРєР°РµС‚СЃСЏ СЂР°Р·; Р·Р°РЅСЏС‚ - Р¶РґС‘С‚; Р±РµР· С‡Р°СЃРѕРІ - СЂР°Р· РІ СЃСѓС‚РєРё СЂР°Р±РѕС‚С‹. */
+  rc_online(); rc_clock = 1790899200u + 2u * 3600u + 3590u; /* 02:59:50 РїРѕ РјРѕРґРµР»Рё */
   rc_busy_flag = true; rc_run(60000u); CHECK(!rc_logged);
   rc_busy_flag = false; rc_run(60000u); CHECK(rc_logged == 1); rc_expect(0, 0, 1);
-  rc_run(1800000u); CHECK(rc_logged == 1 && comm_server_online());  /* в то же окно второй раз нет */
+  rc_run(1800000u); CHECK(rc_logged == 1 && comm_server_online());  /* РІ С‚Рѕ Р¶Рµ РѕРєРЅРѕ РІС‚РѕСЂРѕР№ СЂР°Р· РЅРµС‚ */
   rc_online(); rc_run(23u * 3600000u); CHECK(!rc_logged); rc_run(3600000u + 60000u); CHECK(rc_logged == 1); rc_expect(0, 0, 1);
-  /* 10 мин устойчивой связи - ступени с начала. */
+  /* 10 РјРёРЅ СѓСЃС‚РѕР№С‡РёРІРѕР№ СЃРІСЏР·Рё - СЃС‚СѓРїРµРЅРё СЃ РЅР°С‡Р°Р»Р°. */
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(700000u); CHECK(rc.power_step == 2);
   sim_no_sim = 0; rc_run(1800000u + 700000u); CHECK(comm_server_online() && rc.power_step == 0);
   printf("comm_recover: no SIM, no network, silent modem, silence in work, PDP loss, silent server, no internet, early AT/TCP, night/day restart, ladder reset PASS\n");

@@ -1,4 +1,4 @@
-/* Разработчик: Кряжев А., 2026 */
+/* Р Р°Р·СЂР°Р±РѕС‚С‡РёРє: РљСЂСЏР¶РµРІ Рђ., 2026 */
 #ifndef BOOT_INTERRUPTS_H
 #define BOOT_INTERRUPTS_H
 void USB_LP_CAN1_RX0_IRQHandler(void);

@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def result_path(name):
     """Результаты новых прогонов хранятся рядом со сборками в TEMP."""
-    folder = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', Path(tempfile.gettempdir())/'domovoi-tests-build'))
+    folder = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', Path(tempfile.gettempdir())/'domovoi-agent-build'))
     folder.mkdir(parents=True, exist_ok=True)
     return folder / name
 

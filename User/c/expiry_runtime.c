@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Фоновая проверка сроков ID, чтение базы по 64 Б.
-// Запись завершённого прохода выполняется через журнал секторов.
-// Рабочая память и флеш освобождаются при отмене, ошибке или завершении.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р¤РѕРЅРѕРІР°СЏ РїСЂРѕРІРµСЂРєР° СЃСЂРѕРєРѕРІ ID, С‡С‚РµРЅРёРµ Р±Р°Р·С‹ РїРѕ 64 Р‘.
+// Р—Р°РїРёСЃСЊ Р·Р°РІРµСЂС€С‘РЅРЅРѕРіРѕ РїСЂРѕС…РѕРґР° РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ С‡РµСЂРµР· Р¶СѓСЂРЅР°Р» СЃРµРєС‚РѕСЂРѕРІ.
+// Р Р°Р±РѕС‡Р°СЏ РїР°РјСЏС‚СЊ Рё С„Р»РµС€ РѕСЃРІРѕР±РѕР¶РґР°СЋС‚СЃСЏ РїСЂРё РѕС‚РјРµРЅРµ, РѕС€РёР±РєРµ РёР»Рё Р·Р°РІРµСЂС€РµРЅРёРё.
 #include "runtime_internal.h"
 enum {
   EXP_SCAN=1, EXP_DIRECT=2, EXP_SEARCH=3,
@@ -21,13 +21,13 @@ typedef struct {
 } expiry_s;
 RT_ASSERT(expiry_size,sizeof(expiry_s)==132);
 expiry_s *expiry_job;
-// Сообщает, занят ли автомат проверки сроков.
+// РЎРѕРѕР±С‰Р°РµС‚, Р·Р°РЅСЏС‚ Р»Рё Р°РІС‚РѕРјР°С‚ РїСЂРѕРІРµСЂРєРё СЃСЂРѕРєРѕРІ.
 bool expiry_runtime_active(void) { return expiry_job!=NULL; }
-// Запрашивает отмену проверки сроков: CRC базы больше не известна.
+// Р—Р°РїСЂР°С€РёРІР°РµС‚ РѕС‚РјРµРЅСѓ РїСЂРѕРІРµСЂРєРё СЃСЂРѕРєРѕРІ: CRC Р±Р°Р·С‹ Р±РѕР»СЊС€Рµ РЅРµ РёР·РІРµСЃС‚РЅР°.
 void expiry_runtime_cancel(void) { if(expiry_job) { idcrc_unknown(); expiry_job->cancelled=1; } }
-// Освобождает флеш и память завершённой проверки.
+// РћСЃРІРѕР±РѕР¶РґР°РµС‚ С„Р»РµС€ Рё РїР°РјСЏС‚СЊ Р·Р°РІРµСЂС€С‘РЅРЅРѕР№ РїСЂРѕРІРµСЂРєРё.
 static void expiry_release(void) { flash_release(FO_EXPIRY); work_release(expiry_job, WORK_EXPIRY); expiry_job=NULL; }
-// Начинает проход при наступлении ближайшего срока ID.
+// РќР°С‡РёРЅР°РµС‚ РїСЂРѕС…РѕРґ РїСЂРё РЅР°СЃС‚СѓРїР»РµРЅРёРё Р±Р»РёР¶Р°Р№С€РµРіРѕ СЃСЂРѕРєР° ID.
 bool expiry_runtime_begin(void)
 {
   uint32_t now,start,size,end,used; expiry_s *p;
@@ -40,7 +40,7 @@ bool expiry_runtime_begin(void)
   p->scan_time=now; p->phase=EXP_SCAN; p->cancelled=0;
   expiry_job=p; flash_claim(FO_EXPIRY); id_endScan=0; id_nextEnd=0; return true;
 }
-// Подставляет обновлённую запись ID в страницу журналируемого сектора.
+// РџРѕРґСЃС‚Р°РІР»СЏРµС‚ РѕР±РЅРѕРІР»С‘РЅРЅСѓСЋ Р·Р°РїРёСЃСЊ ID РІ СЃС‚СЂР°РЅРёС†Сѓ Р¶СѓСЂРЅР°Р»РёСЂСѓРµРјРѕРіРѕ СЃРµРєС‚РѕСЂР°.
 static uint8_t expiry_chunk(const void *context,uint16_t offset,uint8_t *data)
 {
   const expiry_s *p=context; uint32_t address=(p->target&~4095u)+offset,diff=p->target-address;
@@ -48,7 +48,7 @@ static uint8_t expiry_chunk(const void *context,uint16_t offset,uint8_t *data)
   if(diff<=32) memcpy(data+diff,p->record,32);
   return 1;
 }
-// Читает два ID за фрагмент и журналирует завершённый проход.
+// Р§РёС‚Р°РµС‚ РґРІР° ID Р·Р° С„СЂР°РіРјРµРЅС‚ Рё Р¶СѓСЂРЅР°Р»РёСЂСѓРµС‚ Р·Р°РІРµСЂС€С‘РЅРЅС‹Р№ РїСЂРѕС…РѕРґ.
 void expiry_runtime_poll(uint32_t now)
 {
   expiry_s *p=expiry_job; uint8_t scratch[64],*record; uint16_t index,got;

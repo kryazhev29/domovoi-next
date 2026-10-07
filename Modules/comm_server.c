@@ -1,7 +1,7 @@
-/* Доработка: Кряжев А., 2026.
-   Ведёт регистрацию, статусы и надзор за ответами сервера.
-   Канал владеет передачей, обработчики приложения собирают прежние кадры.
-   Отсутствие ответа запускает восстановление; журнал фиксирует смену связи.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   Р’РµРґС‘С‚ СЂРµРіРёСЃС‚СЂР°С†РёСЋ, СЃС‚Р°С‚СѓСЃС‹ Рё РЅР°РґР·РѕСЂ Р·Р° РѕС‚РІРµС‚Р°РјРё СЃРµСЂРІРµСЂР°.
+   РљР°РЅР°Р» РІР»Р°РґРµРµС‚ РїРµСЂРµРґР°С‡РµР№, РѕР±СЂР°Р±РѕС‚С‡РёРєРё РїСЂРёР»РѕР¶РµРЅРёСЏ СЃРѕР±РёСЂР°СЋС‚ РїСЂРµР¶РЅРёРµ РєР°РґСЂС‹.
+   РћС‚СЃСѓС‚СЃС‚РІРёРµ РѕС‚РІРµС‚Р° Р·Р°РїСѓСЃРєР°РµС‚ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ; Р¶СѓСЂРЅР°Р» С„РёРєСЃРёСЂСѓРµС‚ СЃРјРµРЅСѓ СЃРІСЏР·Рё.
 */
 #include "domovoi_diag.h"
 #include "comm_server.h"
@@ -15,26 +15,26 @@ static struct {
   struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1, first_status:1; } flags;
 } sv;
 enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
-/* Вне sv: переживают comm_server_init при перезапуске модема. */
+/* Р’РЅРµ sv: РїРµСЂРµР¶РёРІР°СЋС‚ comm_server_init РїСЂРё РїРµСЂРµР·Р°РїСѓСЃРєРµ РјРѕРґРµРјР°. */
 static void (*sv_no_internet)(void);
 static bool (*sv_link)(uint8_t, uint8_t);
-static uint8_t sv_noted; /* записано до исправления: биты 0/1 - ошибка адреса 0/1, 2 - нет сети, 3 - нет интернета */
-// Подключить восстановление при отсутствии интернета.
+static uint8_t sv_noted; /* Р·Р°РїРёСЃР°РЅРѕ РґРѕ РёСЃРїСЂР°РІР»РµРЅРёСЏ: Р±РёС‚С‹ 0/1 - РѕС€РёР±РєР° Р°РґСЂРµСЃР° 0/1, 2 - РЅРµС‚ СЃРµС‚Рё, 3 - РЅРµС‚ РёРЅС‚РµСЂРЅРµС‚Р° */
+// РџРѕРґРєР»СЋС‡РёС‚СЊ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїСЂРё РѕС‚СЃСѓС‚СЃС‚РІРёРё РёРЅС‚РµСЂРЅРµС‚Р°.
 void comm_server_no_internet(void (*handler)(void)) { sv_no_internet = handler; }
-/* Подключить запись изменений связи в журнал. */
+/* РџРѕРґРєР»СЋС‡РёС‚СЊ Р·Р°РїРёСЃСЊ РёР·РјРµРЅРµРЅРёР№ СЃРІСЏР·Рё РІ Р¶СѓСЂРЅР°Р». */
 void comm_server_link(bool (*handler)(uint8_t, uint8_t)) { sv_link = handler; }
-/* Выдать событие связи с подавлением подтверждённых повторов. */
+/* Р’С‹РґР°С‚СЊ СЃРѕР±С‹С‚РёРµ СЃРІСЏР·Рё СЃ РїРѕРґР°РІР»РµРЅРёРµРј РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹С… РїРѕРІС‚РѕСЂРѕРІ. */
 static void server_link(uint8_t kind, uint8_t address)
 {
   uint8_t bit = kind == COMM_LINK_FAIL ? (uint8_t)(1u << address) : kind >= COMM_LINK_NO_NET ? (uint8_t)(1u << (kind - 1u)) : 0u;
   if ((sv_noted & bit)) return;
   if (sv_link(kind, address)) sv_noted |= bit;
 }
-/* Передать событие сети или интернета от восстановления. */
+/* РџРµСЂРµРґР°С‚СЊ СЃРѕР±С‹С‚РёРµ СЃРµС‚Рё РёР»Рё РёРЅС‚РµСЂРЅРµС‚Р° РѕС‚ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ. */
 void comm_server_note(uint8_t kind) { server_link(kind, 0); }
-/* Выдать адрес текущего серверного соединения. */
+/* Р’С‹РґР°С‚СЊ Р°РґСЂРµСЃ С‚РµРєСѓС‰РµРіРѕ СЃРµСЂРІРµСЂРЅРѕРіРѕ СЃРѕРµРґРёРЅРµРЅРёСЏ. */
 uint8_t comm_server_address(void) { return sv.address; }
-/* Применить открытие, потерю или результат проверки канала. */
+/* РџСЂРёРјРµРЅРёС‚СЊ РѕС‚РєСЂС‹С‚РёРµ, РїРѕС‚РµСЂСЋ РёР»Рё СЂРµР·СѓР»СЊС‚Р°С‚ РїСЂРѕРІРµСЂРєРё РєР°РЅР°Р»Р°. */
 static void server_channel_event(uint8_t kind, uint8_t value)
 {
   if (kind == COMM_CH_OPENED) {
@@ -48,29 +48,29 @@ static void server_channel_event(uint8_t kind, uint8_t value)
       sv.flags.check_pending = 0;
       if (value) { sv.state = SV_SILENT; sv.silent_since = sv.now; }
       else if (sv.state == SV_PING) sv.state = SV_DNS;
-      else sv_no_internet(); /* ping и DNS не прошли: решает восстановление */
+      else sv_no_internet(); /* ping Рё DNS РЅРµ РїСЂРѕС€Р»Рё: СЂРµС€Р°РµС‚ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ */
     }
     return;
   }
   sv.flags.status_wait = sv.flags.status_due = sv.flags.check_pending = 0;
   sv.handlers.session(kind == COMM_CH_OPENED);
 }
-/* Начать регистрацию нового сеанса канала. */
+/* РќР°С‡Р°С‚СЊ СЂРµРіРёСЃС‚СЂР°С†РёСЋ РЅРѕРІРѕРіРѕ СЃРµР°РЅСЃР° РєР°РЅР°Р»Р°. */
 void comm_server_init(const comm_server_handlers_t *handlers)
 {
-  if (sv.state >= SV_ONLINE) server_link(COMM_LINK_LOST, sv.address); /* перезапуск модема на связи */
+  if (sv.state >= SV_ONLINE) server_link(COMM_LINK_LOST, sv.address); /* РїРµСЂРµР·Р°РїСѓСЃРє РјРѕРґРµРјР° РЅР° СЃРІСЏР·Рё */
   memset(&sv, 0, sizeof(sv));
   sv.handlers = *handlers;
   comm_channel_init(server_channel_event);
 }
-/* Сообщить, принял ли сервер регистрацию. */
+/* РЎРѕРѕР±С‰РёС‚СЊ, РїСЂРёРЅСЏР» Р»Рё СЃРµСЂРІРµСЂ СЂРµРіРёСЃС‚СЂР°С†РёСЋ. */
 bool comm_server_online(void) { return sv.state >= SV_ONLINE; }
 #if DOMOVOI_DIAG
-/* Собрать состояние надзора для стендовой команды 112. */
+/* РЎРѕР±СЂР°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РЅР°РґР·РѕСЂР° РґР»СЏ СЃС‚РµРЅРґРѕРІРѕР№ РєРѕРјР°РЅРґС‹ 112. */
 uint32_t comm_server_diag(void)
 { return sv.state | (uint32_t)sv.misses << 8 | (uint32_t)sv.registrations << 16; }
 #endif
-/* Принять ответ регистрации и сбросить счёт попыток соединения. */
+/* РџСЂРёРЅСЏС‚СЊ РѕС‚РІРµС‚ СЂРµРіРёСЃС‚СЂР°С†РёРё Рё СЃР±СЂРѕСЃРёС‚СЊ СЃС‡С‘С‚ РїРѕРїС‹С‚РѕРє СЃРѕРµРґРёРЅРµРЅРёСЏ. */
 void comm_server_registered(uint8_t success)
 {
   if (sv.state != SV_REG_WAIT) return;
@@ -80,16 +80,16 @@ void comm_server_registered(uint8_t success)
   sv.flags.first_status = 1;
   server_link(COMM_LINK_UP, sv.address); sv_noted = 0;
 }
-/* Начать срок ожидания подтверждения отправленного статуса. */
+/* РќР°С‡Р°С‚СЊ СЃСЂРѕРє РѕР¶РёРґР°РЅРёСЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РѕС‚РїСЂР°РІР»РµРЅРЅРѕРіРѕ СЃС‚Р°С‚СѓСЃР°. */
 void comm_server_status_sent(uint8_t unique_id)
 {
   sv.last_status_id = unique_id;
-  /* Внеочередной статус не продлевает уже идущий срок ответа. */
+  /* Р’РЅРµРѕС‡РµСЂРµРґРЅРѕР№ СЃС‚Р°С‚СѓСЃ РЅРµ РїСЂРѕРґР»РµРІР°РµС‚ СѓР¶Рµ РёРґСѓС‰РёР№ СЃСЂРѕРє РѕС‚РІРµС‚Р°. */
   if (!sv.flags.status_wait) {
     sv.status_id = unique_id; sv.flags.status_wait = 1; sv.status_since = sv.now;
   }
 }
-/* Принять подходящее подтверждение статуса. */
+/* РџСЂРёРЅСЏС‚СЊ РїРѕРґС…РѕРґСЏС‰РµРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ СЃС‚Р°С‚СѓСЃР°. */
 void comm_server_status_ack(uint8_t unique_id)
 {
   if (!comm_server_online() || !sv.flags.status_wait || (unique_id != sv.status_id && unique_id != sv.last_status_id)) return;
@@ -98,7 +98,7 @@ void comm_server_status_ack(uint8_t unique_id)
   sv.state = SV_ONLINE;
   if (!sv.flags.stable) { sv.flags.stable = 1; sv.stable_since = sv.now; }
 }
-/* Продвинуть регистрацию, статусы и надзор ответов сервера. */
+/* РџСЂРѕРґРІРёРЅСѓС‚СЊ СЂРµРіРёСЃС‚СЂР°С†РёСЋ, СЃС‚Р°С‚СѓСЃС‹ Рё РЅР°РґР·РѕСЂ РѕС‚РІРµС‚РѕРІ СЃРµСЂРІРµСЂР°. */
 void comm_server_poll(uint32_t now_ms)
 {
   sv.now = now_ms;
@@ -109,8 +109,8 @@ void comm_server_poll(uint32_t now_ms)
     else if (!sv.flags.status_due && sv.misses < 3) ++sv.misses;
     sv.flags.status_wait = 0;
   }
-  /* Первый периодический статус — через 5 с регистрации, следующие — через 15 с.
-     У внеочередного статуса свой срок ACK: он не сдвигает периодический запрос. */
+  /* РџРµСЂРІС‹Р№ РїРµСЂРёРѕРґРёС‡РµСЃРєРёР№ СЃС‚Р°С‚СѓСЃ вЂ” С‡РµСЂРµР· 5 СЃ СЂРµРіРёСЃС‚СЂР°С†РёРё, СЃР»РµРґСѓСЋС‰РёРµ вЂ” С‡РµСЂРµР· 15 СЃ.
+     РЈ РІРЅРµРѕС‡РµСЂРµРґРЅРѕРіРѕ СЃС‚Р°С‚СѓСЃР° СЃРІРѕР№ СЃСЂРѕРє ACK: РѕРЅ РЅРµ СЃРґРІРёРіР°РµС‚ РїРµСЂРёРѕРґРёС‡РµСЃРєРёР№ Р·Р°РїСЂРѕСЃ. */
   if (comm_server_online() && now_ms - sv.periodic_since >=
       comm_timeouts[sv.flags.first_status ? COMM_T_SERVER_REPLY : COMM_T_STATUS]) sv.flags.status_due = 1;
   comm_channel_priority(sv.flags.status_due || sv.state == SV_REG);
@@ -131,7 +131,7 @@ void comm_server_poll(uint32_t now_ms)
     if (comm_tx_busy()) { sv.flags.status_due = sv.flags.first_status = 0; sv.periodic_since = now_ms; }
   }
   comm_channel_priority(sv.flags.status_due || sv.state == SV_REG);
-  /* Обработка входящих подтверждений также ждёт освобождения слота. */
+  /* РћР±СЂР°Р±РѕС‚РєР° РІС…РѕРґСЏС‰РёС… РїРѕРґС‚РІРµСЂР¶РґРµРЅРёР№ С‚Р°РєР¶Рµ Р¶РґС‘С‚ РѕСЃРІРѕР±РѕР¶РґРµРЅРёСЏ СЃР»РѕС‚Р°. */
   if (!comm_tx_busy() && !sv.flags.status_due) sv.handlers.process();
   if (sv.flags.stable && now_ms - sv.stable_since >= comm_timeouts[COMM_T_STABLE]) { sv.silent_step = 0; sv.flags.stable = 0; comm_channel_stable(); }
   if (comm_channel_call_pending()) return;

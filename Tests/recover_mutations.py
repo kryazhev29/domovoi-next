@@ -37,7 +37,7 @@ def main():
     base = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', tempfile.gettempdir()))/'recover-mutations'
     base.mkdir(parents=True, exist_ok=True)
     for name, old, new, *where in CASES:
-        old, new = (data.decode('cp1251').replace('\r\n', '\n') for data in (old, new))
+        old, new = (data.decode('utf-8').replace('\r\n', '\n') for data in (old, new))
         assert production.count(old) == 1, name
         with tempfile.TemporaryDirectory(dir=base) as directory:
             folder=Path(directory);source=folder/'test.c';executable=folder/'test.exe'

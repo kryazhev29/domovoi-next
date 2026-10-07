@@ -1,13 +1,13 @@
-// Доработка: Кряжев А., 2026
-// Эталон SPI1 внешней W25: инициализация, обмен байтом и буфером.
-// Каждое аппаратное ожидание ограничено 512 опросами, отказ выключает SPI.
-// Приём отправляет FF; перед возвратом порт дожидается конца последнего байта.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р­С‚Р°Р»РѕРЅ SPI1 РІРЅРµС€РЅРµР№ W25: РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ, РѕР±РјРµРЅ Р±Р°Р№С‚РѕРј Рё Р±СѓС„РµСЂРѕРј.
+// РљР°Р¶РґРѕРµ Р°РїРїР°СЂР°С‚РЅРѕРµ РѕР¶РёРґР°РЅРёРµ РѕРіСЂР°РЅРёС‡РµРЅРѕ 512 РѕРїСЂРѕСЃР°РјРё, РѕС‚РєР°Р· РІС‹РєР»СЋС‡Р°РµС‚ SPI.
+// РџСЂРёС‘Рј РѕС‚РїСЂР°РІР»СЏРµС‚ FF; РїРµСЂРµРґ РІРѕР·РІСЂР°С‚РѕРј РїРѕСЂС‚ РґРѕР¶РёРґР°РµС‚СЃСЏ РєРѕРЅС†Р° РїРѕСЃР»РµРґРЅРµРіРѕ Р±Р°Р№С‚Р°.
 
 #include "spi_stm32f10x.h"
 #include "includes.h"
-// Проверить доступность SPI после старта или аппаратного отказа.
+// РџСЂРѕРІРµСЂРёС‚СЊ РґРѕСЃС‚СѓРїРЅРѕСЃС‚СЊ SPI РїРѕСЃР»Рµ СЃС‚Р°СЂС‚Р° РёР»Рё Р°РїРїР°СЂР°С‚РЅРѕРіРѕ РѕС‚РєР°Р·Р°.
 uint8_t spi_ready(void) { return (SPI1->CR1 & SPI_CR1_SPE) != 0; }
-// Ограниченно ждать аппаратный флаг, отключая SPI при таймауте.
+// РћРіСЂР°РЅРёС‡РµРЅРЅРѕ Р¶РґР°С‚СЊ Р°РїРїР°СЂР°С‚РЅС‹Р№ С„Р»Р°Рі, РѕС‚РєР»СЋС‡Р°СЏ SPI РїСЂРё С‚Р°Р№РјР°СѓС‚Рµ.
 static uint8_t spi_wait_flag(uint16_t flag, uint8_t set)
 {
   if (!spi_ready()) return 0;
@@ -18,13 +18,13 @@ static uint8_t spi_wait_flag(uint16_t flag, uint8_t set)
   return 1;
 }
 
-// Настроить SPI1 внешней флеш и очистить остаток принятого байта.
+// РќР°СЃС‚СЂРѕРёС‚СЊ SPI1 РІРЅРµС€РЅРµР№ С„Р»РµС€ Рё РѕС‡РёСЃС‚РёС‚СЊ РѕСЃС‚Р°С‚РѕРє РїСЂРёРЅСЏС‚РѕРіРѕ Р±Р°Р№С‚Р°.
 void spi_init (void)
 {
   GPIO_InitTypeDef GPIO_InitStructure;
   SPI_InitTypeDef SPI_InitStruct;
 
-  // CS должен стать высоким до включения SPI, чтобы не послать команду флеш.
+  // CS РґРѕР»Р¶РµРЅ СЃС‚Р°С‚СЊ РІС‹СЃРѕРєРёРј РґРѕ РІРєР»СЋС‡РµРЅРёСЏ SPI, С‡С‚РѕР±С‹ РЅРµ РїРѕСЃР»Р°С‚СЊ РєРѕРјР°РЅРґСѓ С„Р»РµС€.
   spi_initCS();
 
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1 | RCC_APB2Periph_GPIOA | RCC_APB2Periph_AFIO, ENABLE);
@@ -43,7 +43,7 @@ void spi_init (void)
   SPI_StructInit(&SPI_InitStruct);
 
   SPI_InitStruct.SPI_Mode = SPI_Mode_Master;
-  SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_4; // 72 / 4 = 18 МГц.
+  SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_4; // 72 / 4 = 18 РњР“С†.
   SPI_InitStruct.SPI_NSS = SPI_NSS_Soft;
 
   SPI_Init(SPI1, &SPI_InitStruct);
@@ -54,7 +54,7 @@ void spi_init (void)
   SPI_I2S_ReceiveData(SPI1);
 }
 
-// Настроить выход CS флеш в неактивный высокий уровень.
+// РќР°СЃС‚СЂРѕРёС‚СЊ РІС‹С…РѕРґ CS С„Р»РµС€ РІ РЅРµР°РєС‚РёРІРЅС‹Р№ РІС‹СЃРѕРєРёР№ СѓСЂРѕРІРµРЅСЊ.
 void spi_initCS (void)
 {
   GPIO_InitTypeDef        GPIO_InitStructure;
@@ -63,23 +63,23 @@ void spi_initCS (void)
 
   GPIO_StructInit(&GPIO_InitStructure);
 
-  // Вывод выбора флеш
+  // Р’С‹РІРѕРґ РІС‹Р±РѕСЂР° С„Р»РµС€
   GPIO_InitStructure.GPIO_Pin = SPI_CS_PIN;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_Init(SPI_CS_PORT, &GPIO_InitStructure);
 
-  // Неактивный уровень CS
+  // РќРµР°РєС‚РёРІРЅС‹Р№ СѓСЂРѕРІРµРЅСЊ CS
   GPIO_WriteBit(SPI_CS_PORT, SPI_CS_PIN, Bit_SET);
 }
 
-// чтение байта
+// С‡С‚РµРЅРёРµ Р±Р°Р№С‚Р°
 uint8_t spi_read_byte(void)
 {
   return spi_send_byte(0xff);
 }
 
-// чтение байт с порта
+// С‡С‚РµРЅРёРµ Р±Р°Р№С‚ СЃ РїРѕСЂС‚Р°
 void spi_read(uint8_t* dst, uint32_t length)
 {
   for (uint32_t i = 0; i < length; ++i) {
@@ -91,7 +91,7 @@ void spi_read(uint8_t* dst, uint32_t length)
   (void)spi_wait_flag(SPI_I2S_FLAG_BSY, 0);
 }
 
-// Отправка байта по SPI
+// РћС‚РїСЂР°РІРєР° Р±Р°Р№С‚Р° РїРѕ SPI
 uint8_t spi_send_byte(uint8_t data)
 {
   if (!spi_wait_flag(SPI_I2S_FLAG_TXE, 1)) return 0xff;
@@ -100,7 +100,7 @@ uint8_t spi_send_byte(uint8_t data)
   return (uint8_t)SPI1->DR;
 }
 
-// Отправка n байт по SPI
+// РћС‚РїСЂР°РІРєР° n Р±Р°Р№С‚ РїРѕ SPI
 void spi_send(uint8_t* buf, uint32_t length)
 {
   for (uint32_t i = 0; i < length; ++i) {

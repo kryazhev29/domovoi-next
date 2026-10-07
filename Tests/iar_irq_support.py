@@ -2,8 +2,6 @@
 import pathlib, struct, sys, re, os, atexit, json
 from iar_image import image_paths
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-for deps in (ROOT/'Release/photo_test_deps',ROOT.parents[1]/'СофтЭксперт/Для новой системы/Domovoi Next_IAR95/Domovoi Next_IAR95/Release/photo_test_deps'):
-    if deps.exists():sys.path.insert(0,str(deps))
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser
 from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_HOOK_MEM_WRITE,UC_HOOK_MEM_READ

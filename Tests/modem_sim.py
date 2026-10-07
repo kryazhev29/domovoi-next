@@ -15,7 +15,9 @@ LOG_NAMES = (
 
 def extract(path):
     raw = path.read_bytes()
-    text = raw.decode('cp1251').replace('\r\r\n', '\n').replace('\r\n', '\n').replace('\r', '\n')
+    try: text=raw.decode('utf-8');encoding='utf-8'
+    except UnicodeDecodeError: text=raw.decode('cp1251');encoding='cp1251'
+    text = text.replace('\r\r\n', '\n').replace('\r\n', '\n').replace('\r', '\n')
     # Префикс USB до первой метки GSM не является ответом модема.
     pattern = re.compile(r'>>> GSM: Cmd ([^\n]*)|(?:<<< GSM: Answer |>>> GSM: Recv )([\s\S]*?)(?:-----)', re.M)
     events, omitted = [], []
@@ -49,7 +51,7 @@ def extract(path):
             assert '\x00' not in payload and 'GSM:' not in payload and 'SLDN' not in payload
             events.append({'rx': payload})
     return {'origin': 'capture', 'source': path.name, 'sha256': hashlib.sha256(raw).hexdigest(),
-            'normalization': 'cp1251; CRCRLF журнала → CRLF; Cmd/Answer/Recv выделены; соседние копии Answer/Recv сняты',
+            'normalization': encoding+'; CRCRLF журнала → CRLF; Cmd/Answer/Recv выделены; соседние копии Answer/Recv сняты',
             'duplicates_removed': duplicates, 'omitted': sorted(set(omitted)), 'events': events}
 
 

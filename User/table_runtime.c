@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Обработка таблиц и переход на расписания по 16 Б.
-// Изменения секторов выполняются журналом; маркер перехода публикуется последним.
-// Формат кадров проверяется до записи, CRC расписаний охватывает 1040 Б.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РћР±СЂР°Р±РѕС‚РєР° С‚Р°Р±Р»РёС† Рё РїРµСЂРµС…РѕРґ РЅР° СЂР°СЃРїРёСЃР°РЅРёСЏ РїРѕ 16 Р‘.
+// РР·РјРµРЅРµРЅРёСЏ СЃРµРєС‚РѕСЂРѕРІ РІС‹РїРѕР»РЅСЏСЋС‚СЃСЏ Р¶СѓСЂРЅР°Р»РѕРј; РјР°СЂРєРµСЂ РїРµСЂРµС…РѕРґР° РїСѓР±Р»РёРєСѓРµС‚СЃСЏ РїРѕСЃР»РµРґРЅРёРј.
+// Р¤РѕСЂРјР°С‚ РєР°РґСЂРѕРІ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РґРѕ Р·Р°РїРёСЃРё, CRC СЂР°СЃРїРёСЃР°РЅРёР№ РѕС…РІР°С‚С‹РІР°РµС‚ 1040 Р‘.
 #include "c/runtime_internal.h"
 #include "table_runtime.h"
 #include "fast_kernels.h"
@@ -12,21 +12,21 @@ extern uint8_t sync_pending,sync_quiet;
 extern uint32_t id_nextEnd;
 extern uint32_t id_time_end(cellID_s *);
 extern void id_watch_end(uint32_t);
-// Получает день UTC для отметки прохода.
+// РџРѕР»СѓС‡Р°РµС‚ РґРµРЅСЊ UTC РґР»СЏ РѕС‚РјРµС‚РєРё РїСЂРѕС…РѕРґР°.
 static uint16_t id_today(void) { return device.datetime>=1600000000u ? (uint16_t)(device.datetime/86400u) : 0; }
-// Записывает день прохода в резерв записи ID.
+// Р—Р°РїРёСЃС‹РІР°РµС‚ РґРµРЅСЊ РїСЂРѕС…РѕРґР° РІ СЂРµР·РµСЂРІ Р·Р°РїРёСЃРё ID.
 static void id_set_pass_day(cellID_s *c,uint16_t day) { memcpy(c->reserve+4,&day,2); }
-// Отмечает таблицу для отложенной синхронизации.
+// РћС‚РјРµС‡Р°РµС‚ С‚Р°Р±Р»РёС†Сѓ РґР»СЏ РѕС‚Р»РѕР¶РµРЅРЅРѕР№ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё.
 static void sync_packet(uint8_t bit) { sync_pending|=bit; sync_quiet=30; }
 enum {
   SYNC_ID=1,SYNC_GROUP=4,SYNC_SHEDULE=8,SYNC_HOLIDAY=16
 };
 #include "c/table_runtime.inc"
 
-// Все варианты и команда 17 используют одну область CRC.
+// Р’СЃРµ РІР°СЂРёР°РЅС‚С‹ Рё РєРѕРјР°РЅРґР° 17 РёСЃРїРѕР»СЊР·СѓСЋС‚ РѕРґРЅСѓ РѕР±Р»Р°СЃС‚СЊ CRC.
 uint32_t sched16_crc_size(void) { return 1040u; }
 
-// Проверяет длину, количество и номера расписаний входящего кадра.
+// РџСЂРѕРІРµСЂСЏРµС‚ РґР»РёРЅСѓ, РєРѕР»РёС‡РµСЃС‚РІРѕ Рё РЅРѕРјРµСЂР° СЂР°СЃРїРёСЃР°РЅРёР№ РІС…РѕРґСЏС‰РµРіРѕ РєР°РґСЂР°.
 bool sched16_valid(const uint8_t *packet, uint16_t length)
 {
   if (length < 24u) return false;
@@ -34,10 +34,10 @@ bool sched16_valid(const uint8_t *packet, uint16_t length)
   if (!count || count>SCHED16_COUNT || length!=24u+count*SCHED16_RECORD_SIZE) return false;
   for (uint16_t i=0;i<count;i++)
     if (!packet[10u+i*SCHED16_RECORD_SIZE] || packet[10u+i*SCHED16_RECORD_SIZE]>SCHED16_COUNT) return false;
-  return true; // Сохраняем прежние правила допустимости полей команды.
+  return true; // РЎРѕС…СЂР°РЅСЏРµРј РїСЂРµР¶РЅРёРµ РїСЂР°РІРёР»Р° РґРѕРїСѓСЃС‚РёРјРѕСЃС‚Рё РїРѕР»РµР№ РєРѕРјР°РЅРґС‹.
 }
 
-// Читает расписание и общий хвост в прежнее представление исполнителя.
+// Р§РёС‚Р°РµС‚ СЂР°СЃРїРёСЃР°РЅРёРµ Рё РѕР±С‰РёР№ С…РІРѕСЃС‚ РІ РїСЂРµР¶РЅРµРµ РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ РёСЃРїРѕР»РЅРёС‚РµР»СЏ.
 bool sched16_get(uint16_t number, cellShedule_s *schedule)
 {
   if (!number || number>SCHED16_COUNT) return false;
@@ -45,7 +45,7 @@ bool sched16_get(uint16_t number, cellShedule_s *schedule)
   if (!mem_read(base+(number-1u)*SCHED16_RECORD_SIZE,(uint8_t *)schedule,16) ||
       schedule->index!=number ||
       !mem_read(base+SCHED16_TAIL_OFFSET,(uint8_t *)schedule+16,16)) return false;
-  // Сохраняем размещение scene и onHoliday для исполнителя доступа.
+  // РЎРѕС…СЂР°РЅСЏРµРј СЂР°Р·РјРµС‰РµРЅРёРµ scene Рё onHoliday РґР»СЏ РёСЃРїРѕР»РЅРёС‚РµР»СЏ РґРѕСЃС‚СѓРїР°.
   memmove(schedule->scene,(uint8_t *)schedule+16,9);
   memset(schedule->reserve,255,sizeof schedule->reserve);
   return true;
@@ -54,11 +54,11 @@ bool sched16_get(uint16_t number, cellShedule_s *schedule)
 #define SCHED16_MARK_OFFSET 32u
 #define SCHED16_MAGIC 0x36314853u
 static const uint32_t sched16_mark[2]={SCHED16_MAGIC,~SCHED16_MAGIC};
-// Возвращает маркер перехода из сохранённого состояния устройства.
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ РјР°СЂРєРµСЂ РїРµСЂРµС…РѕРґР° РёР· СЃРѕС…СЂР°РЅС‘РЅРЅРѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 void sched16_restore(const device_s *saved)
 { memcpy(device.reserv+SCHED16_MARK_OFFSET,saved->reserv+SCHED16_MARK_OFFSET,8); }
 
-// Готовит пустую страницу расписаний для журнальной очистки.
+// Р“РѕС‚РѕРІРёС‚ РїСѓСЃС‚СѓСЋ СЃС‚СЂР°РЅРёС†Сѓ СЂР°СЃРїРёСЃР°РЅРёР№ РґР»СЏ Р¶СѓСЂРЅР°Р»СЊРЅРѕР№ РѕС‡РёСЃС‚РєРё.
 static uint8_t sched16_empty_page(const void *context,uint16_t offset,uint8_t *page)
 {
   (void)context;
@@ -67,13 +67,13 @@ static uint8_t sched16_empty_page(const void *context,uint16_t offset,uint8_t *p
   memset(page,255,256); return 1;
 }
 
-// Завершает переход формата расписаний после стартового восстановления.
+// Р—Р°РІРµСЂС€Р°РµС‚ РїРµСЂРµС…РѕРґ С„РѕСЂРјР°С‚Р° СЂР°СЃРїРёСЃР°РЅРёР№ РїРѕСЃР»Рµ СЃС‚Р°СЂС‚РѕРІРѕРіРѕ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.
 bool sched16_boot(void)
 {
   if (!memcmp(device.reserv+SCHED16_MARK_OFFSET,sched16_mark,8)) return true;
   device.datetimeShedule=0;
-  // Отсутствие маркера означает незавершённый переход; после восстановления
-  // журнала очищаем расписания и только затем публикуем маркер.
+  // РћС‚СЃСѓС‚СЃС‚РІРёРµ РјР°СЂРєРµСЂР° РѕР·РЅР°С‡Р°РµС‚ РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Р№ РїРµСЂРµС…РѕРґ; РїРѕСЃР»Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ
+  // Р¶СѓСЂРЅР°Р»Р° РѕС‡РёС‰Р°РµРј СЂР°СЃРїРёСЃР°РЅРёСЏ Рё С‚РѕР»СЊРєРѕ Р·Р°С‚РµРј РїСѓР±Р»РёРєСѓРµРј РјР°СЂРєРµСЂ.
   if (!mem_tables_ready() ||
       !mem_replace_pages(mem[MB_SHEDULE].start&~4095u,sched16_empty_page,0)) goto bad;
   memcpy(device.reserv+SCHED16_MARK_OFFSET,sched16_mark,8);
@@ -84,10 +84,10 @@ bad:
   return false;
 }
 
-// Сначала сохраняет отсутствие маркера, затем очищает расписания.
+// РЎРЅР°С‡Р°Р»Р° СЃРѕС…СЂР°РЅСЏРµС‚ РѕС‚СЃСѓС‚СЃС‚РІРёРµ РјР°СЂРєРµСЂР°, Р·Р°С‚РµРј РѕС‡РёС‰Р°РµС‚ СЂР°СЃРїРёСЃР°РЅРёСЏ.
 bool sched16_clear(void)
 {
-  // При заводской очистке сначала сохраняем отсутствие маркера.
+  // РџСЂРё Р·Р°РІРѕРґСЃРєРѕР№ РѕС‡РёСЃС‚РєРµ СЃРЅР°С‡Р°Р»Р° СЃРѕС…СЂР°РЅСЏРµРј РѕС‚СЃСѓС‚СЃС‚РІРёРµ РјР°СЂРєРµСЂР°.
   device.datetimeShedule=0;
   memset(device.reserv+SCHED16_MARK_OFFSET,0,8);
   if (!user_writeConfigAndDevice()) { table_fault=1; return false; }

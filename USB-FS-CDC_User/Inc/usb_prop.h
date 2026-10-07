@@ -1,27 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Управляющие запросы и состояние виртуального порта CDC.
-// Дескрипторы и порядок событий сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
-
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РЈРїСЂР°РІР»СЏСЋС‰РёРµ Р·Р°РїСЂРѕСЃС‹ Рё СЃРѕСЃС‚РѕСЏРЅРёРµ РІРёСЂС‚СѓР°Р»СЊРЅРѕРіРѕ РїРѕСЂС‚Р° CDC.
+// Р”РµСЃРєСЂРёРїС‚РѕСЂС‹ Рё РїРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј; РїР°РјСЏС‚СЊ PMA С‚СЂРµР±СѓРµС‚ РѕСЃРѕР±РѕРіРѕ РґРѕСЃС‚СѓРїР°.
 
 #ifndef __usb_prop_H
 #define __usb_prop_H
@@ -39,32 +19,30 @@ typedef struct
 #define GET_LINE_CODING             0x21
 #define SET_CONTROL_LINE_STATE      0x22
 
-// Подготовить CDC и серийный номер перед подключением к хосту.
+// РџРѕРґРіРѕС‚РѕРІРёС‚СЊ CDC Рё СЃРµСЂРёР№РЅС‹Р№ РЅРѕРјРµСЂ РїРµСЂРµРґ РїРѕРґРєР»СЋС‡РµРЅРёРµРј Рє С…РѕСЃС‚Сѓ.
 void Virtual_Com_Port_init(void);
-// Сбросить очередь и настроить точки EP0–EP3 для CDC.
+// РЎР±СЂРѕСЃРёС‚СЊ РѕС‡РµСЂРµРґСЊ Рё РЅР°СЃС‚СЂРѕРёС‚СЊ С‚РѕС‡РєРё EP0вЂ“EP3 РґР»СЏ CDC.
 void Virtual_Com_Port_Reset(void);
-// Отметить выбранную хостом конфигурацию CDC.
+// РћС‚РјРµС‚РёС‚СЊ РІС‹Р±СЂР°РЅРЅСѓСЋ С…РѕСЃС‚РѕРј РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ CDC.
 void Virtual_Com_Port_SetConfiguration(void);
-// Отметить назначение адреса устройства.
+// РћС‚РјРµС‚РёС‚СЊ РЅР°Р·РЅР°С‡РµРЅРёРµ Р°РґСЂРµСЃР° СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 void Virtual_Com_Port_SetDeviceAddress (void);
-// Назначить данные GET/SET_LINE_CODING для управляющего запроса.
+// РќР°Р·РЅР°С‡РёС‚СЊ РґР°РЅРЅС‹Рµ GET/SET_LINE_CODING РґР»СЏ СѓРїСЂР°РІР»СЏСЋС‰РµРіРѕ Р·Р°РїСЂРѕСЃР°.
 RESULT Virtual_Com_Port_Data_Setup(uint8_t);
-// Принять поддерживаемый CDC-запрос без данных.
+// РџСЂРёРЅСЏС‚СЊ РїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Р№ CDC-Р·Р°РїСЂРѕСЃ Р±РµР· РґР°РЅРЅС‹С….
 RESULT Virtual_Com_Port_NoData_Setup(uint8_t);
-// Разрешить только два интерфейса CDC с нулевой альтернативой.
+// Р Р°Р·СЂРµС€РёС‚СЊ С‚РѕР»СЊРєРѕ РґРІР° РёРЅС‚РµСЂС„РµР№СЃР° CDC СЃ РЅСѓР»РµРІРѕР№ Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРѕР№.
 RESULT Virtual_Com_Port_Get_Interface_Setting(uint8_t Interface, uint8_t AlternateSetting);
-// Выдать фрагмент дескриптора устройства.
+// Р’С‹РґР°С‚СЊ С„СЂР°РіРјРµРЅС‚ РґРµСЃРєСЂРёРїС‚РѕСЂР° СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 uint8_t *Virtual_Com_Port_GetDeviceDescriptor(uint16_t);
-// Выдать фрагмент конфигурации CDC.
+// Р’С‹РґР°С‚СЊ С„СЂР°РіРјРµРЅС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёРё CDC.
 uint8_t *Virtual_Com_Port_GetConfigDescriptor(uint16_t);
-// Выдать существующую строку USB либо отклонить её индекс.
+// Р’С‹РґР°С‚СЊ СЃСѓС‰РµСЃС‚РІСѓСЋС‰СѓСЋ СЃС‚СЂРѕРєСѓ USB Р»РёР±Рѕ РѕС‚РєР»РѕРЅРёС‚СЊ РµС‘ РёРЅРґРµРєСЃ.
 uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t);
 
-// Выдать хосту текущие параметры виртуального порта.
+// Р’С‹РґР°С‚СЊ С…РѕСЃС‚Сѓ С‚РµРєСѓС‰РёРµ РїР°СЂР°РјРµС‚СЂС‹ РІРёСЂС‚СѓР°Р»СЊРЅРѕРіРѕ РїРѕСЂС‚Р°.
 uint8_t *Virtual_Com_Port_GetLineCoding(uint16_t Length);
-// Принять параметры виртуального порта в семибайтовое поле CDC.
+// РџСЂРёРЅСЏС‚СЊ РїР°СЂР°РјРµС‚СЂС‹ РІРёСЂС‚СѓР°Р»СЊРЅРѕРіРѕ РїРѕСЂС‚Р° РІ СЃРµРјРёР±Р°Р№С‚РѕРІРѕРµ РїРѕР»Рµ CDC.
 uint8_t *Virtual_Com_Port_SetLineCoding(uint16_t Length);
 
 #endif
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
