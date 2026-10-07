@@ -114,6 +114,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
         log_setTime(tmp32);
         device.registredOnServer = 1;
+        user_unblock_recheck(false);
         if (app_trial_active()){
           app_trial_confirm();
           if (!app_trial_active()) fw_event(LOG_FW_DONE, FW_REASON_NONE);
@@ -186,20 +187,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if ((len - 3) == 16){
         memcpy((uint8_t*)&device.triggers, &ptr[5], 16);
 
-        if (device.status.unblockHand != device.triggers.handUnBlock){
-          if (device.triggers.handUnBlock)
-            log_addSystemEvent(LOG_SYS_UNDLOCKHANDEN);
-          else
-            log_addSystemEvent(LOG_SYS_UNDLOCKHANDDIS);
-        }
-
-        if (device.status.unblockOnScene != device.triggers.sheduleUnBlock){
-          if (device.triggers.sheduleUnBlock)
-            log_addSystemEvent(LOG_SYS_UNBLOCKSHEDEN);
-          else
-            log_addSystemEvent(LOG_SYS_UNBLOCKSHEDDIS);
-        }
-
         if (device.status.autoRegistration != device.triggers.autoregistration){
           if (device.triggers.autoregistration)
             log_addSystemEvent(LOG_SYS_AUTOREGEN);
@@ -215,10 +202,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         }
 
         // дублируем в статусе
-        device.status.unblockHand = device.triggers.handUnBlock;
-        device.status.unblockOnScene = device.triggers.sheduleUnBlock;
         device.status.autoRegistration = device.triggers.autoregistration;
         device.status.openAnyUser = device.triggers.openAll;
+        user_unblock_recheck(false);
         // сохранить состояние в памяти
         store_command_start(5, cch, uniqId);
       }
@@ -239,7 +225,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 8: // управление выходами
-      if (fw_update_quiet()){
+      if (fw_update_quiet() || unblock_active){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
@@ -259,8 +245,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
              настройки реле разрешают команды сервера (onCmdServer); включение - по режиму реле
              и счётчику проходов ID. */
           server_out_event = cmd8_event(ptr[5]);
-          if (ptr[6] == 0 && config.rele[0].onCmdServer) out_load(OUT1, OUT_OFF, 0, 0, 0);
-          if (ptr[7] == 0 && config.rele[1].onCmdServer) out_load(OUT2, OUT_OFF, 0, 0, 0);
+          if (ptr[6] == 0 && config.rele[0].onCmdServer && !config.rele[0].useInBlock) out_load(OUT1, OUT_OFF, 0, 0, 0);
+          if (ptr[7] == 0 && config.rele[1].onCmdServer && !config.rele[1].useInBlock) out_load(OUT2, OUT_OFF, 0, 0, 0);
           /* Запрошенный выход не включился (не разрешён, занят, кончились проходы) - ответ 2,
              а не «выполнено»: сервер должен знать, что дверь не открылась (18.09.2026). */
           if ((ptr[6] == 1 || ptr[7] == 1) &&

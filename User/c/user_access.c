@@ -4,7 +4,78 @@
 // Счётчики проходов сохраняет модуль ID, событие принимает очередь журнала.
 #include "user_logic_internal.h"
 #include "../user_format.h"
+#include "../sched16.h"
 logControl_e server_out_event = LOG_CON_OUTONBYAPI;
+uint8_t unblock_active;
+static uint8_t unblock_relays, unblock_pending, unblock_restart, unblock_offline;
+static uint32_t unblock_offline_since, unblock_minute;
+
+// Пересчитать намерение; занятое хранилище откладывает только чтение сцен.
+void user_unblock_recheck(bool restart)
+{
+  uint8_t next = 0, relays = 0;
+  device.status.unblockHand = device.triggers.handUnBlock;
+  device.status.unblockOnScene = device.triggers.sheduleUnBlock;
+  unblock_pending = 1;
+  unblock_restart |= restart;
+  if (device.registredOnServer) {
+    unblock_offline_since = device.worktime;
+    unblock_offline = 0;
+  } else if (device.worktime - unblock_offline_since >= 1800u) unblock_offline = 1;
+  if (!unblock_offline) {
+    if (device.triggers.handUnBlock) next = 1;
+    else if (device.triggers.sheduleUnBlock && log_timeKnown && mem_tables_ready()) {
+      uint8_t scenes[8];
+      if (!user_storage_flash_ready()) return;
+      device.day = user_getweakday(device.datetime);
+      device.hour = device.datetime % 86400u / 3600u;
+      device.minute = device.datetime % 3600u / 60u;
+      if (mem_read(mem[MB_SHEDULE].start + SCHED16_TAIL_OFFSET, scenes, sizeof scenes))
+        for (uint8_t i = 0; i < sizeof scenes; ++i)
+          if (user_checkShedule(scenes[i])) { next = 2; break; }
+    }
+  }
+  for (uint8_t i = 0; i < 2; ++i) {
+    if (config.rele[i].useInBlock) relays |= 1u << i;
+    else if (unblock_relays & (1u << i)) out_load(i, OUT_OFF, 0, 0, 0);
+  }
+  if (unblock_restart || (!unblock_active && next)) {
+    // Штатное открытие не замыкает уже разомкнутую линию разблокировки.
+    if (next && relays)
+      for (uint8_t i = 0; i < 2; ++i)
+        if (!(relays & (1u << i))) {
+          if (config.rele[i].mode == 0)
+            out_load(i, OUT_IMP, config.rele[i].tImpulse, config.rele[i].tPause, config.rele[i].cnt);
+          else out_load(i, OUT_ON, 0, 0, 0);
+        }
+  }
+  // Разорвать линию только после запуска реле открытия; снятие замыкает её.
+  if (unblock_restart || (!!next != !!unblock_active) || relays != unblock_relays)
+    for (uint8_t i = 0; i < 2; ++i)
+      if (relays & (1u << i)) out_load(i, next ? OUT_OFF : OUT_ON, 0, 0, 0);
+  if (next != unblock_active) {
+    if (unblock_active) log_addSystemEvent(unblock_active == 1 ? LOG_SYS_UNDLOCKHANDDIS : LOG_SYS_UNBLOCKSHEDDIS);
+    if (next) log_addSystemEvent(next == 1 ? LOG_SYS_UNDLOCKHANDEN : LOG_SYS_UNBLOCKSHEDEN);
+  }
+  unblock_active = next;
+  unblock_relays = relays;
+  unblock_minute = device.datetime / 60u;
+  unblock_pending = unblock_restart = 0;
+}
+
+// Оффлайн считается по uptime; сцены — при смене минуты часов контроллера.
+void user_unblock_poll(void)
+{
+  if (device.registredOnServer) {
+    unblock_offline_since = device.worktime;
+    if (unblock_offline) unblock_pending = 1;
+    unblock_offline = 0;
+  } else if (!unblock_offline && device.worktime - unblock_offline_since >= 1800u) {
+    unblock_offline = unblock_pending = 1;
+  }
+  if (unblock_pending || unblock_minute != device.datetime / 60u)
+    user_unblock_recheck(false);
+}
 
 // Превратить код Wiegand в десятибайтовый ID и проверить доступ.
 void WG_readedID(uint32_t id){
@@ -43,15 +114,7 @@ bool user_incomingcall (char* num, uint8_t typ)
 void user_checkIdAndControl(char *id, codeType_e tp){
   if (!mem_tables_ready()) return;
 
-  // проверяем что блокировка не включена
-  if (device.status.unblockHand)
-  {
-    return; // ручная разблокировка включена
-  }
-  if (device.status.unblockOnScene)
-  {
-    return; // разблокировка по сценарию включена
-  }
+  if (unblock_active) return;
 
   bool onOut[2] = {false, false};
 
@@ -188,6 +251,8 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 
 // Сохранить счётчики проходов, включить разрешённые реле и записать событие.
 bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
+
+  if (unblock_active) return false;
 
   bool run[2];
   uint8_t out;

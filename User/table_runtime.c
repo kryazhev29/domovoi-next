@@ -6,6 +6,7 @@
 #include "table_runtime.h"
 #include "fast_kernels.h"
 #include "user_fun.h"
+#include "c/user_logic_internal.h"
 #include "sched16.h"
 #include "sector_journal.h"
 extern uint8_t sync_pending,sync_quiet;

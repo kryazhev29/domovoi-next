@@ -141,6 +141,7 @@ static void table_runtime_finish(void)
   } else if (!table_job.quiet)
     user_send_answer_comand(cmd,CMD_RUNERROR,(dataChanel_e)table_job.channel,table_job.uniq);
   work_release(table_job.records, WORK_TABLE); table_job.records=0; table_job.phase=0; flash_release(FO_TABLE);
+  if (cmd == 14 || cmd == 16) user_unblock_recheck(cmd == 14);
 }
 // Делает шаг журнальной записи, пересчёта либо передачи результата.
 void table_runtime_poll(uint32_t now)

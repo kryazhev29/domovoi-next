@@ -80,6 +80,7 @@ void user_init(void)
   // инициализация переменных
   user_initvariables();
   (void)sched16_boot();
+  user_unblock_recheck(true);
   // Сброс по питанию: одна запись; при отказе журнала сохраняем метку.
   if (BKP->DR1 == PVD_RESET_MARK && log_addSystemEvent(LOG_SYS_RESETONPOWER))
     BKP->DR1 = 0;
@@ -98,6 +99,7 @@ void user_init(void)
 // Выполнить очередной шаг входов, выходов и календарных сроков.
 void user_loop(void)
 {
+  user_unblock_poll();
   /* Карта - первой и на каждом проходе: конец кадра ловится сразу после паузы,
      а не на следующем 10-мс такте. */
   if (config.wiegandType != 0 && user_storage_flash_ready())

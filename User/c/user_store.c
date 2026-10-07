@@ -140,6 +140,7 @@ static void store_config_complete(void)
   rs485_set_config(mem_config_snapshot());
   comm_endpoints();
   device.datetimeConfig = config.datetime; device.status.defaultConfig = 0;
+  user_unblock_recheck(true);
   sync_packet(SYNC_CONFIG);
   if (comm_modem_state() == SLM_IDLE) user_comm_boot();
 }
