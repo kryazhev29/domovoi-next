@@ -38,7 +38,7 @@ def photo_fields(path, version):
 class PhotoMachine(StorageMachine):
     # Подготовить модель и перехватить аппаратные границы машинного кода.
     def __init__(self,flash=None):
-        super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
+        super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.job_fields=fields('photo_job_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
         self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
         config=fields('config_s');self.write(self.addr('config')+config['rs485Mode'],1,1)
         self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,3]))
@@ -74,7 +74,9 @@ class PhotoMachine(StorageMachine):
     # Прочитать поле фактического контекста камеры по DWARF.
     def pget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.photo_ptr()+pf()[n],size),'little')
     # Прочитать поле автомата хранения по DWARF.
-    def rget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.addr('pr')+self.runtime_fields[n],size),'little')
+    def rget(self,n,size=1):
+        address = self.addr('pr')+self.runtime_fields[n] if n in self.runtime_fields else self.job+self.job_fields[n]
+        return int.from_bytes(self.u.mem_read(address,size),'little')
     # Узнать, владеет ли автомат фото флеш.
     def active(self):return self.exec_active(8)!=0
     # Выполнить шаг хранения и проверить ограничение работы с NOR.

@@ -26,7 +26,7 @@ class StorageMachine(Machine):
         self.now=0;self.io=None;self.changes=[];self.calls=[];self.answers=[];self.timestamps=[]
         self.counts={'read':0,'start':0,'poll':0};self.fault=None;self.io_budget=0;self.read_budget=0
         self.costs=[];self.stack_peak=0;self.limit_reads=128;self.record_changes=False
-        self.d=fields('device_s');self.device=self.addr('device');self.table=fields('table_job_s')
+        self.d=fields('device_s');self.device=self.addr('device');self.table=fields('table_job_s');self.job=self.addr('flash_job')+fields('flash_exec_job_t')['data']
         for name,fn in [('w25_read_data',self.read),('w25_async_start',self.start),
           ('w25_async_poll',self.poll),('w25_async_active',lambda:self.ret(self.io is not None)),
           ('w25_read_available',lambda:self.ret(self.io is None)),
@@ -123,7 +123,7 @@ class StorageMachine(Machine):
     def active(self):return self.exec_active(7)
     # Выполняет один проход хранения и проверяет его бюджет.
     def tick(self):
-        crc_phase = bytes(self.u.mem_read(self.addr('table_job')+self.table['phase'],1)) == b'\x03'
+        crc_phase = self.exec_state() == (7,3,1)
         self.now+=1;self.checked('user_storage_poll')
         assert self.read_budget <= max(self.limit_reads,256 if crc_phase else 0),('read budget',self.read_budget)
         assert self.io_budget<=1,('one async action',self.io_budget)

@@ -81,7 +81,10 @@ CORE += ('flash fixes',)
 CORE += ('flash mutations', 'unblock delay mutations')
 CASES['flash executor'] = [('test_flash_executor', 'run')]
 CASES['executor mutations'] = [('test_flash_executor', 'mutations')]
+CASES['executor step3'] = [('test_flash_executor_step3', 'run')]
+CASES['executor step3 mutations'] = [('test_flash_executor_step3', 'mutations')]
 CORE += ('flash executor', 'executor mutations')
+CORE += ('executor step3', 'executor step3 mutations')
 
 
 def select_image(build_root=None):

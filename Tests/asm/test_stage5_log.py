@@ -17,7 +17,10 @@ def append(m,index):
     for _ in range(400):
         m.now+=1;r=m.checked('log_async_step',m.now)
         assert m.read_budget<=64 and m.io_budget<=1
-        if r==2:return
+        if r==2:
+            assert m.exec_state()[0] == 10 and m.exec_state()[2] == 2
+            assert m.checked('flash_exec_take_result') == 2
+            return
         assert r!=3,('append failure',m.now)
     raise AssertionError('append stuck')
 

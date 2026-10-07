@@ -39,17 +39,21 @@ def second_begin():
         m = StorageMachine()
         before = dict(m.counts)
         args = 0
-        slot = 7 if kind == IDCLEAR else 3 if kind == EXPIRY else 0
-        if slot or kind == INDEX:
+        slot = {IDCLEAR:7, EXPIRY:3, TABLE:14, FWBLOCK:13}.get(kind,0)
+        if slot or kind in (INDEX, PHOTO, LOG):
             import struct
             from test_work_memory import take
             pointer = take(m, slot) if slot else 0
-            assert pointer or kind == INDEX
+            assert pointer or kind in (INDEX, PHOTO, LOG)
             args = 0x21000800
-            m.u.mem_write(args, struct.pack('<IB3x', pointer, 1 if slot else 7))
+            step = 7 if kind == INDEX else 1
+            if kind == LOG:
+                pointer=0x21000400
+                m.u.mem_write(pointer,bytes(32))
+            m.u.mem_write(args, struct.pack('<IB3x', pointer, step))
         assert m.checked('flash_exec_begin', kind, args)
         accepted = state(m)
-        assert accepted == (kind, 1 if slot else 7 if kind == INDEX else 0, PENDING)
+        assert accepted == (kind, step if args else 0, PENDING)
         assert m.checked('flash_exec_take_result') == PENDING
         for other in range(1, 13):
             assert not m.checked('flash_exec_begin', other, args if other == kind else 0), 'second begin occupied flash'
@@ -155,18 +159,18 @@ def typed_admission():
     before = dict(m.counts)
     assert m.checked('fw_take_block', 0x21000800, 1026, 0) == 254, 'second FW begin occupied WORK'
     assert state(m) == (INDEX, 7, PENDING)
-    assert not m.checked('fw_async_active') and not owned(m)
+    assert not m.exec_active(FWBLOCK) and not owned(m)
     assert m.counts == before and m.io is None
     m = StorageMachine()
     m.u.mem_write(0x21000800, bytes(64))
     m.checked('log_async_begin', 0x21000800)
-    assert state(m) == (LOG, 0, PENDING)
-    saved = bytes(m.u.mem_read(m.addr('log_job'), 44))
+    assert state(m) == (LOG, 1, PENDING)
+    saved = bytes(m.u.mem_read(m.job, 44))
     m.u.mem_write(0x21000800, b'\x5a' * 64)
     before = dict(m.counts)
     m.checked('log_async_begin', 0x21000800)
-    assert bytes(m.u.mem_read(m.addr('log_job'), 44)) == saved, 'second LOG begin replaced source'
-    assert state(m) == (LOG, 0, PENDING) and m.counts == before
+    assert bytes(m.u.mem_read(m.job, 44)) == saved, 'second LOG begin replaced source'
+    assert state(m) == (LOG, 1, PENDING) and m.counts == before
     return {'FW_during_INDEX_read': 'no WORK/I/O', 'LOG_second_begin': 'source retained'}
 
 

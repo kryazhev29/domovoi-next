@@ -28,7 +28,7 @@ def run():
         for cmd in (9,10,13):
             m.packet(cmd)
             assert m.answers[-1][0:2] == (cmd,2)
-            assert m.rget('tx',4) == pointer and m.rget('phase') == phase
+            assert m.rget('tx',4) == pointer and m.exec_state()[1] == phase
         assert m.counts == before and bytes(m.u.mem_read(pointer,534)) == saved
         tested.append({'phase':phase,'live_photo_tx_bytes':534,'owned_slots':owned(m),'new_storage_commands':'rejected before allocation/I/O'})
     m.tick()

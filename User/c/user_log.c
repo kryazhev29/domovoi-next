@@ -19,7 +19,7 @@ bool log_blank(const cellLog_s *cell){
 // Передать первое ожидающее событие владельцу записи журнала.
 void log_storage_poll(uint32_t now)
 {
-  if (!log_async_active()) {
+  if (flash_job.kind != FX_LOG) {
     if (log_pendingCount)
       log_async_begin(&log_pending[0]);
     return;
@@ -44,7 +44,7 @@ void log_setTime(uint32_t now){
   device.datetime = now;
   id_endScan = true;
   if (!log_timeKnown) {
-    for (uint8_t i = log_async_active() ? 1u : 0u; i < log_pendingCount; i++){
+    for (uint8_t i = (flash_job.kind == FX_LOG && flash_job.result == FX_PENDING) ? 1u : 0u; i < log_pendingCount; i++){
       log_pending[i].datetime = now - (device.worktime - log_pending[i].datetime);
       log_pending[i].index = log_pending[i].datetime;
     }

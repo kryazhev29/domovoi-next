@@ -8,10 +8,6 @@
 #define LOG_RING_MAGIC 0xD74C4752u
 #define LOG_RING_SLOTS 127u
 #define LOG_RING_SECTORS 24u
-typedef struct { cellLog_s cell; uint32_t address,retry_at; uint8_t phase,waiting,result; } log_job_s;
-extern log_job_s log_job;
-// Сообщает о незавершённой записи события.
-bool log_async_active(void);
 // Копирует событие для фоновой записи.
 void log_async_begin(const cellLog_s *);
 // Выполняет один шаг записи или ротации.

@@ -376,7 +376,7 @@ void user_send_configToConfigurator(dataChanel_e cch){
 // Запросить следующий блок после освобождения владельцев обновления.
 bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   if (fw_service_busy()) return false;
-  if (fw_async_active()) return false;
+  if (flash_job.kind == FX_FWBLOCK && flash_job.result == FX_PENDING) return false;
   uint8_t send_local[16];
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return false;

@@ -13,11 +13,43 @@
 #include "../flash_exec.h"
 struct flash_exec_args { void *context; uint8_t step; };
 enum { FX_INDEX_READ = 7 };
+// Источники и продолжения принятой работы живут до verify и снятия результата.
+typedef struct {
+  uint8_t *records;
+  uint8_t mb, cmd, channel, uniq, quiet, cancelled, failed, reply_wait, scan_full;
+  // Количество приходит одним байтом; batch/position не превышают count.
+  uint8_t count, position, batch, cell_size;
+  uint16_t bytes, day, crc, numbers, last;
+  uint32_t stamp, sector, start, offset, sum, used, reply_until, crc_limit;
+} table_job_s;
+typedef struct {
+  uint8_t *data;
+  uint8_t channel, id, quiet, cancelled, code, final, reason;
+  uint16_t offset, block;
+  uint32_t address, position, remaining, crc, expected_crc, usb_epoch;
+} fw_block_job_s;
+typedef struct {
+  cellLog_s cell;
+  uint32_t address, retry_at;
+  uint8_t after;
+} log_job_s;
+typedef struct {
+  uint8_t after, task, quiet, cancelled, committed, address, reply_wait;
+  // Источник камеры не больше 58 Б, заголовок/ACK ещё меньше.
+  uint8_t io_len, io_done, io_step;
+  uint16_t offset, count, requested_offset, first_offset, target_done;
+  uint16_t send_size, send_offset, send_crc;
+  uint32_t io_address, scan, h[4], target, first, max_number, requested_number, reply_until;
+} photo_job_s;
 typedef struct {
   uint8_t kind, step, result;
   union {
     void *context;
     struct { uint32_t source[2], bucket; } index;
+    table_job_s table;
+    photo_job_s photo;
+    fw_block_job_s fwblock;
+    log_job_s log;
   } data;
 } flash_exec_job_t;
 extern flash_exec_job_t flash_job;

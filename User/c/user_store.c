@@ -18,31 +18,32 @@ static void store_poll(uint32_t now, uint8_t result);
 // Приём не выполняет I/O; отказ оставляет запрос и память у вызывающего.
 bool flash_exec_idle(void)
 {
-  flash_exec_state_t state = flash_exec_state();
-  return state.kind == FX_NONE && state.result == FX_IDLE &&
+  return flash_job.kind == FX_NONE && flash_job.result == FX_IDLE &&
     !flash_owner && !w25_async_active() && w25_read_available();
 }
 
 bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
 {
   if (kind == FX_NONE || kind > FX_STORE || !flash_exec_idle()) return false;
-  uint8_t slot = kind == FX_IDCLEAR ? WORK_IDCLEAR : kind == FX_EXPIRY ? WORK_EXPIRY :
-    kind == FX_CRC && args && args->context ? WORK_SERVICE : 0;
-  if (slot && (!args || args->step != 1 || !work_live(args->context, slot))) return false;
-  if (kind == FX_INDEX && (!args || args->context || args->step != FX_INDEX_READ)) return false;
-  if (kind == FX_CRC && !slot && args && args->step) return false;
+  static const uint8_t slots[] = { 0, WORK_IDCLEAR, WORK_EXPIRY, 0, 0, 0,
+    WORK_SERVICE, WORK_TABLE, 0, WORK_FW_BLOCK, 0, 0, 0 };
+  void *context = args ? args->context : NULL;
+  uint8_t step = args ? args->step : 0;
+  uint8_t slot = slots[kind];
+  if (kind == FX_CRC && !context) slot = 0;
+  if (slot && !work_live(context, slot)) return false;
+  if ((kind == FX_IDCLEAR || kind == FX_EXPIRY || (kind == FX_CRC && slot)) && step != 1) return false;
+  if (kind == FX_PHOTO && (context || !step)) return false;
+  if (kind == FX_LOG && (!context || step != 1)) return false;
+  if (kind == FX_INDEX && (context || step != FX_INDEX_READ)) return false;
+  if (kind == FX_CRC && !slot && step) return false;
   memset(&flash_job.data, 0, sizeof(flash_job.data));
-  flash_job.data.context = args ? args->context : NULL;
-  flash_job.step = args ? args->step : 0;
+  if (kind == FX_LOG) memcpy(&flash_job.data.log.cell, context, sizeof(cellLog_s));
+  else flash_job.data.context = context;
+  flash_job.step = step;
   flash_job.result = FX_PENDING;
   flash_job.kind = kind;
   return true;
-}
-
-flash_exec_state_t flash_exec_state(void)
-{
-  flash_exec_state_t state = { flash_job.kind, flash_job.step, flash_job.result };
-  return state;
 }
 
 void flash_exec_finish(flash_result_t result)
@@ -58,32 +59,26 @@ flash_result_t flash_exec_take_result(void)
 {
   flash_result_t result = flash_job.result;
   if (result < FX_OK) return result;
+  uint8_t kind = flash_job.kind;
   memset(&flash_job, 0, sizeof(flash_job));
+  if (kind >= FX_TABLE && kind <= FX_LOG) idcrc_owner_released();
   return result;
 }
 
-// Gate четырёх перенесённых типов сохраняет прежний запрет чтений.
+// Gate перенесённых типов сохраняет прежний запрет чтений.
 bool flash_exec_read_allowed(void)
 {
-  if (flash_job.result == FX_PENDING && (flash_job.kind == FX_IDCLEAR ||
-      flash_job.kind == FX_EXPIRY || flash_job.kind == FX_INDEX ||
-      flash_job.kind == FX_CRC)) return false;
+  uint8_t kind = flash_job.kind;
+  if (flash_job.result == FX_PENDING &&
+      ((kind >= FX_IDCLEAR && kind <= FX_EXPIRY) ||
+       (kind >= FX_INDEX && kind <= FX_TABLE))) return false;
   return flash_read_allowed();
-}
-
-static flash_kind_t legacy_kind(uint8_t owner)
-{
-  static const uint8_t kinds[] = { FX_NONE, FX_NONE, FX_NONE,
-    FX_FWSERVICE, FX_UPLOAD, FX_NONE, FX_NONE, FX_TABLE, FX_PHOTO,
-    FX_FWBLOCK, FX_LOG };
-  owner &= 0x7fu;
-  return owner <= 10 ? kinds[owner] : FX_NONE;
 }
 
 bool flash_exec_legacy_claim(uint8_t owner)
 {
-  flash_kind_t kind = legacy_kind(owner);
-  // Старые PHOTO/FW-подшаги повторно закрепляют уже принятую работу.
+  flash_kind_t kind = owner & 0x7fu;
+  // Мосты FW-service/UPLOAD остаются до шага 4.
   if (flash_job.kind == kind && flash_job.result == FX_PENDING) return true;
   // Мост FW-service забирает завершённый A/B до mem_config_reset.
   if (flash_job.kind == FX_CONFIG && flash_job.result >= FX_OK)
@@ -93,7 +88,7 @@ bool flash_exec_legacy_claim(uint8_t owner)
 
 void flash_exec_legacy_release(uint8_t owner)
 {
-  if (flash_job.kind != legacy_kind(owner)) return;
+  if (flash_job.kind != (owner & 0x7fu)) return;
   flash_exec_finish(FX_OK);
   flash_exec_take_result();
 }
@@ -129,6 +124,9 @@ void flash_exec_cancel(void)
     break;
   case FX_TABLE:
     table_runtime_cancel();
+    break;
+  case FX_FWBLOCK:
+    fw_async_cancel();
     break;
   case FX_PHOTO:
     photo_storage_cancel();
@@ -402,8 +400,13 @@ void user_storage_poll(void)
 {
   store_usb_session();
   flash_exec_poll(timers_getMillis());
-  if (flash_job.kind == FX_IDCLEAR || flash_job.kind == FX_EXPIRY ||
-      flash_job.kind == FX_INDEX || flash_job.kind == FX_CRC) flash_exec_take_result();
+  uint8_t cmd = flash_job.kind == FX_TABLE ? flash_job.data.table.cmd : 0;
+  if (flash_job.kind <= FX_LOG && flash_job.kind != FX_FWSERVICE &&
+      flash_job.kind != FX_UPLOAD) {
+    flash_result_t result = flash_exec_take_result();
+    // Сцены читаются после снятия результата TABLE и открытия прежних gates.
+    if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(cmd == 14);
+  }
 }
 
 static void store_poll(uint32_t now, uint8_t result)

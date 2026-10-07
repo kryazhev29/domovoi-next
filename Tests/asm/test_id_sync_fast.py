@@ -187,9 +187,9 @@ def mutations():
         count = 256 if 'budget' in mode or mode == 'chunk-cap' else 30
         m = fixture(SyncMachine(), count, total=8192)
         m.command(13, b''.join(cell(i, 1) for i in range(1, 31)), 30)
-        job = m.addr('table_job')
+        job = m.job
         for _ in range(4000):
-            if m.u.mem_read(job+m.table['phase'], 1) == b'\x03':
+            if m.exec_state() == (7,3,1):
                 break
             m.tick()
         else:
@@ -363,7 +363,7 @@ class TimedMachine(SyncMachine):
     def tick(self):
         self.cycles += self.gap
         before = self.cycles
-        phase = self.u.mem_read(self.addr('table_job')+self.table['phase'], 1)[0]
+        phase = self.exec_state()[1] if self.exec_active(7) else 0
         self.checked('user_storage_poll', budget=300000)
         cost = (self.cycles-before)/72000
         self.polls += 1

@@ -9,8 +9,8 @@ from test_photo_power import clean
 # Дождаться заданной фазы без скрытого зависания автомата.
 def reach(m,phase,limit=2500):
     for _ in range(limit):
-        if m.rget('phase')==phase and m.io is None:return
-        assert m.active() and not m.rget('fault'),(phase,m.rget('phase'))
+        if m.exec_state()[1]==phase and m.io is None:return
+        assert m.active() and not m.rget('fault'),(phase,m.exec_state()[1])
         m.tick()
     raise AssertionError(('unreachable',phase))
 
@@ -106,7 +106,7 @@ def ownership():
         m.write(m.addr(name),1,1);m.write(m.addr('log_timeKnown'),1,1);m.write(m.addr('cfg_boot_done' if 'cfg_boot_done' in m.symbols else 'cfg_legacy_checked'),1,1)
         m.port();assert not m.active(),name
         m.tick()
-        assert m.checked('mem_config_result')==1 if name=='store_save_requested' else m.checked('log_async_active')
+        assert m.checked('mem_config_result')==1 if name=='store_save_requested' else m.exec_active(10)
     return 8
 
 # Убедиться, что пустая очередь стирает только первый сектор.

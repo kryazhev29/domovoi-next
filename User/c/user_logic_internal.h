@@ -129,8 +129,6 @@ bool shedule_time_ok(const cellShedule_s *s);
 uint8_t shedule_window(const cellShedule_s *s);
 // Определить стёртую запись журнала.
 bool log_blank(const cellLog_s *cell);
-// Сообщить занятость владельца записи блока прошивки.
-bool fw_async_active(void);
 // Пометить текущую запись отменённой без раннего освобождения флеша.
 void fw_async_cancel(void);
 // Подавить ответ записи при закрытии её канала.
