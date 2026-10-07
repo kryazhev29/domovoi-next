@@ -15,9 +15,10 @@
 #define __ramfunc __attribute__((section(".ramfunc"),noinline))
 #define __disable_interrupt __disable_irq
 #endif
-/* Неподтверждённая проба длится 30 минут; таймер 6 принадлежит только ей. */
+/* Неподтверждённая проба длится 30 минут от чтения метаданных. */
 #define TRIAL_SECONDS 1800u
 static uint8_t trial;
+static uint32_t trial_started;
 
 // Обновить контрольную сумму образа в порядке слов аппаратного CRC STM32.
 static uint32_t crc_word(uint32_t crc, uint32_t word)
@@ -58,7 +59,7 @@ int app_boot_request(void)
 void app_boot_metadata(void)
 {
   const BootHeader *header = (const BootHeader *)BOOT_APP_BASE;
-  timers_set(6, 0);
+  trial_started = timers_getMillis();
   device.bootVersion = BOOT_VER;
   /* Старый загрузчик не определяет плату надёжно. */
   bool current_boot = BOOT_VER >= BOOT_VERSION && BOOT_VER != 0xffu;
@@ -99,8 +100,12 @@ int app_trial_rollback(void)
   return trial && mem_write(BOOT_JOURNAL + BOOT_JOURNAL_ROLLBACK, (uint8_t *)&zero, sizeof(zero));
 }
 
-// Проверить срок неподтверждённой пробы по выделенному таймеру.
-int app_trial_expired(void) { return trial && timers_get(6) >= TRIAL_SECONDS * 1000u; }
+// Проверить срок неподтверждённой пробы по времени от чтения метаданных.
+int app_trial_expired(void)
+{
+  // Вычитание сохраняет срок и при переполнении миллисекундного счётчика.
+  return trial && (uint32_t)(timers_getMillis() - trial_started) >= TRIAL_SECONDS * 1000u;
+}
 
 // Найти ещё не переданную серверу ошибку; отказ чтения не считается событием.
 int app_boot_error_unreported(void)
