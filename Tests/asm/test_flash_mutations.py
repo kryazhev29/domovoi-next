@@ -72,9 +72,11 @@ def run():
                                            if (source.parent/m[2]).exists() else m[2]) + m[3], text)
             target = dest/source.name
             target.write_bytes(text.replace('\n', '\r\n').encode('utf-8'))
-            command = next(c for c in commands if c.get('file') == str(source))
+            # База собрана из рабочего дерева, проверка идёт в его копии: ищем по пути от корня.
+            command = next(c for c in commands
+                           if c.get('file', '').replace('\\', '/').endswith('/' + name))
             args = list(command['arguments'])
-            args[args.index(str(source))] = str(target)
+            args[args.index(command['file'])] = str(target)
             args[args.index('-o') + 1] = str(dest/'ObjPath')
             args.extend(['-I', str(source.parent)])
             execute(args)

@@ -130,6 +130,8 @@ def main():
     destination=Path(tempfile.mkdtemp(prefix=f'host-{project}-{args.config}-',dir=base));mirror(destination)
     env=os.environ.copy()
     env['PYTHONIOENCODING']='utf-8';env['PYTHONDONTWRITEBYTECODE']='1'
+    # TMPDIR группы меняет gettempdir(); компилятор ищется в общем TEMP.
+    env.setdefault('DOMOVOI_ZIG',str(Path(tempfile.gettempdir())/'codex-zig/zig.exe'))
     env['PYTHONPATH']=os.pathsep.join((str(Path(tempfile.gettempdir())/'codex-deps'),str(destination/'Tests'),env.get('PYTHONPATH','')))
     env['GIT_DIR']=subprocess.check_output(['git','rev-parse','--absolute-git-dir'],cwd=ROOT).decode('utf-8').strip()
     env['GIT_WORK_TREE']=str(destination)
