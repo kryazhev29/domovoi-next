@@ -27,6 +27,7 @@ CASES = {
     'unblock': [('test_unblock', n) for n in ('manual','scenes','offline','restart_and_commands')],
     'ids boot read': [('test_ids_boot_read','main')],
     'log time pending': [('test_log_time_pending','main')],
+    'fw install wait': [('test_fw_install_wait','main')],
     'sched16_power': [('test_sched16','migration_power')],
     'stage5 countends': [('test_stage5_log','count_ends')],
     'stage5 logcommit': [('test_stage5_log','record_commit')],
@@ -70,7 +71,7 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
+CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','fw install wait','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
 

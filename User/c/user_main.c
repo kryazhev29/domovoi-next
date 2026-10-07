@@ -222,8 +222,9 @@ void user_loop(void)
     }
     sync_end_tick(); // события 6-10
 
-    // перезагрузиться в режим обновления FW
-    if (device.rebootToUpdate){
+    /* Перезагрузиться в режим обновления FW. Занятая флеш (журнал, база) отказала бы
+       в чтении образа: ждём следующей секунды, а не теряем загрузку (плата 07.10). */
+    if (device.rebootToUpdate && user_storage_command_ready()){
       device.rebootToUpdate = 0;
       if (app_boot_request()) {
         fw_event(LOG_FW_INSTALL, FW_REASON_NONE);
