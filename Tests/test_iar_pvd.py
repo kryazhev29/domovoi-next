@@ -40,25 +40,30 @@ if '--startup' not in sys.argv:
     print('PVD IAR: EXTI16 rising, marker precedes reset, no spurious reset PASS')
 
 # Исполняем настоящий user_init и журнал; заменены только периферия и конфигурация.
-records=[];reject=False
-def append():
-    if not reject:records.append(bytes(m.u.mem_read(m.u.reg_read(UC_ARM_REG_R0),32)))
-    m.ret(0 if reject else 1)
+# Событие при старте встаёт в очередь журнала; во флеш его пишет фоновый владелец
+# журнала, поэтому синхронная запись log_addEvent здесь — ошибка.
+records=[]
+def sync_write():
+    raise AssertionError('event written synchronously at startup instead of the journal queue')
 def fresh(value):
     global m
     m=Machine();m.init();m.u.mem_map(0x42000000,0x600000)
     for name in ('w25_read_devID','mem_recover','user_readconfig','user_initvariables',
                  'app_boot_metadata','sched16_boot','uart_init','uart_setRecTimeout','rs485_init'):
         m.stubs[m.addr(name)]=lambda:m.ret()
-    m.stubs[m.addr('log_addEvent')]=append
+    m.stubs[m.addr('log_addEvent')]=sync_write
     m.write(marker,value,2)
     return m
+def queued():
+    count=m.read(m.addr('log_pendingCount'),1)
+    return [bytes(m.u.mem_read(m.addr('log_pending')+32*i,32)) for i in range(count)]
 
 def startup(value):
     fresh(value)
     m.call('board_init')
     m.call('user_init')
     m.call('log_setTime',123456)
+    records.extend(queued())
 
 startup(magic)
 assert len(records)==1 and records[0][8]==event, 'PVD startup must emit one power-reset journal event'
@@ -72,8 +77,8 @@ for value in (0,0x1234,0xFFFF):
 
 # При отказе журнала метка остаётся до следующего успешного старта.
 fresh(magic);m.write(m.addr('log_pendingCount'),16,1)
-reject=True;m.call('user_init')
+m.call('user_init')
 assert m.read(marker,2)==magic, 'failed log insertion must retain marker'
-reject=False;startup(magic)
+startup(magic)
 assert len(records)==2 and records[-1][8]==event and m.read(marker,2)==0
 print('PVD IAR: startup event 39 once, second startup silent, invalid marker ignored, failed insertion retained PASS')
