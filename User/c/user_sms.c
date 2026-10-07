@@ -25,6 +25,7 @@ bool user_smsreceived(char *num, char *data)
   char *lineEnd, *pin, *arg, *reply = tempStrBuffer;
   char name[11];
   uint8_t command;
+  uint32_t pinValue;
   bool validPin = false, validFormat;
   if (device.triggers.smsToAdmin && *data != '#' && !user_send_smsToServer(data)) return false;
   log_addSystemEventID(LOG_SYS_RECVSMS, user_last10digitsnumber(num));
@@ -34,10 +35,9 @@ bool user_smsreceived(char *num, char *data)
   pin = skipchar(' ', data, 1);
   arg = skipchar(',', data, 1);
   validFormat = pin != data && arg != data;
-  if (pin != data) {
-    user_strcpy(reply, pin, ',', 4);
-    validPin = config.pinCode == *(uint32_t *)reply;
-  }
+  if (pin != data && (arg == data || arg > pin))
+    validPin = user_parse_pin(pin, arg == data ? strlen(pin) : (uint32_t)(arg - pin - 1),
+                              &pinValue) && user_pin_valid(pinValue);
   user_strcpy(name, data + 1, ' ', 10);
   command = sms_command(name);
   strcpy(reply, name);

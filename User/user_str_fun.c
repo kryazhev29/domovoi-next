@@ -36,6 +36,15 @@ uint32_t user_decimal(const char *text)
   return negative ? 0u - value : value;
 }
 
-// Проверить цифру для неизменённого исходного кода универсального ПИН.
-
-// Проверить цифры IMEI для неизменённого исходного кода универсального ПИН.
+// Разобрать ПИН числом, сохраняя допустимость ведущих нулей.
+bool user_parse_pin(const char *text, uint32_t length, uint32_t *value)
+{
+  uint32_t pin = 0;
+  if (length != 4u && length != 5u) return false;
+  for (uint32_t i = 0; i < length; ++i) {
+    if (text[i] < '0' || text[i] > '9') return false;
+    pin = pin * 10u + (uint32_t)(text[i] - '0');
+  }
+  *value = pin;
+  return true;
+}

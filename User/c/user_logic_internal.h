@@ -78,6 +78,8 @@ void sync_end_tick(void);
 void config_exchange(uint8_t *data);
 // Завершить строковые поля на границе нового config.
 void config_terminate_strings(void);
+// Привести ПИН настроек к числу 0–99999; false — ПИН недопустим.
+bool config_pin_number(uint32_t *pin);
 // Отправить ожидающий результат обновления при освобождении серверного TX.
 void fw_status_poll(void);
 // Запомнить последнее неизвестное ID для уведомления администратора.

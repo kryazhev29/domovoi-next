@@ -1,6 +1,6 @@
 """Контракты прежних cfgstrings/cmdlengths/commands на настоящем ELF."""
 import struct
-from storage_machine import fields, crc16
+from storage_machine import StorageMachine, fields, crc16
 from test_service_runtime import ServiceMachine
 
 
@@ -33,7 +33,7 @@ def lengths():
                 assert bytes(m.u.mem_read(0x21000000, len(data))) == data
                 count += 1
     for command, minimum in minima.items():
-        for extra in (0, 2):
+        for extra in ((0, 1) if command == 102 else (0, 2)):
             m = ServiceMachine()
             calls = []
             # Сохранённые действия команд проверяются через реальные поля device.
@@ -49,8 +49,8 @@ def lengths():
             if command == 6: payload[:3] = bytes([5, 3, 7])
             if command == 23: payload[:4] = struct.pack('<I', 0x10203040)
             if command == 102:
-                m.write(m.addr('config') + fields('config_s')['pinCode'], 0x31323334)
-                payload[:4] = struct.pack('<I', 0x31323334)
+                m.write(m.addr('config') + fields('config_s')['pinCode'], 4321)
+                payload[:4+extra] = b'04321' if extra else b'4321'
             execute(m, command, payload, 0 if command >= 100 else 1, minimum + extra)
             expected = {1: ('datetime', 0x10203040, 4), 2: ('timeToReset', 2, 1),
                         3: ('timeToDefault', 2, 1), 6: ('timeToGetID', 5, 1),
@@ -75,8 +75,8 @@ def lengths():
         assert not m.answers and acks == [0] and reopened == [0]
         assert not m.u.mem_read(m.device+m.d['registredOnServer'],1)[0]
         count += 1
-    m=ServiceMachine();m.write(m.addr('config')+fields('config_s')['pinCode'],0x31323334)
-    execute(m,102,struct.pack('<I',0x31323335),0)
+    m=ServiceMachine();m.write(m.addr('config')+fields('config_s')['pinCode'],4321)
+    execute(m,102,b'5321',0)
     assert not m.u.mem_read(m.device+m.d['userAutorized'],1)[0]
     assert m.sent[-1][8:10] == bytes([102,0])
     # CRC, авторизация и минимальная длина проверяются отдельными отказами.
@@ -107,6 +107,7 @@ def config_strings():
              'countryCode': 8, 'simPhone': 16, 'ussdBalance': 8}
     for terminated in (False, True):
         m = machine(); saved = bytearray(b'Q' * 512)
+        struct.pack_into('<I', saved, c['pinCode'], 4321)
         for name, size in names.items():
             if terminated: saved[c[name]:c[name]+size] = b'ok\0' + bytes(size-3)
         saved[-2:] = struct.pack('<H', crc16(saved[:-2]))
@@ -138,7 +139,8 @@ def config_strings():
         imei = bytes(m.u.mem_read(m.device + d['IMEIGSM'], 16))
         expected = b'123456789012345\0' if terminated else b'Q'*15+b'\0'
         assert imei == (expected if valid else b'old\0'+bytes(12))
-    m=machine();saved=bytearray(b'Q'*512);saved[-2:]=struct.pack('<H',crc16(saved[:-2]))
+    m=machine();saved=bytearray(b'Q'*512);struct.pack_into('<I',saved,c['pinCode'],4321)
+    saved[-2:]=struct.pack('<H',crc16(saved[:-2]))
     m.flash[0x1cd400:0x1cd600]=saved
     m.stubs[m.addr('config_terminate_strings')]=m.ret
     m.checked('user_readconfig')
@@ -172,3 +174,150 @@ def text_commands():
     m = machine(); m.stubs[m.addr('work_acquire')] = lambda: m.ret(0)
     execute(m, 11, b'9001234567hello'); assert not calls and m.answers[-1][1] == 2
     return {'sms_cases': 17}
+
+
+def pin_config():
+    # Реальное чтение, A/B-запись и повторная загрузка: переход выполняется один раз.
+    def machine():
+        m = ServiceMachine()
+        # Стартовое синхронное чтение config допускает 512 байт за один вызов NOR.
+        def read():
+            address, pointer, size, *_ = m.args()
+            assert 0 < size <= 512 and address + size <= len(m.flash)
+            m.u.mem_write(pointer, bytes(m.flash[address:address+size])); m.ret(1)
+        m.stubs[m.addr('w25_read_data')] = read
+        m.stubs[m.addr('w25_write_data')] = lambda: StorageMachine.sync_write(m)
+        m.stubs[m.addr('w25_erase_sector')] = lambda: StorageMachine.sync_erase(m)
+        m.write(m.addr('store_runtime'), 0, 1)
+        m.record_changes = True
+        return m
+    c = fields('config_s'); d = fields('device_s'); cases = 0
+    for old, expected in ((0x31323334, 4321), (0x34333231, 1234),
+                          (0x41423334, 4321), (100000, 4321),
+                          (0, 0), (20140, 20140), (99999, 99999)):
+        m = machine(); saved = bytearray(512)
+        struct.pack_into('<I', saved, c['pinCode'], old)
+        saved[-2:] = struct.pack('<H', crc16(saved[:-2]))
+        m.flash[0x1cd400:0x1cd600] = saved
+        saved_device = bytearray(512)
+        saved_device[d['IMEIGSM']:d['IMEIGSM']+16] = b'867442070217472\0'
+        saved_device[-2:] = struct.pack('<H', crc16(saved_device[:-2]))
+        m.flash[0x1cd600:0x1cd800] = saved_device
+        m.checked('user_readconfig', budget=3000000)
+        current = bytes(m.u.mem_read(m.addr('config'), 512))
+        assert struct.unpack_from('<I', current, c['pinCode'])[0] == expected, (old, expected)
+        assert crc16(current[:-2]) == int.from_bytes(current[-2:], 'little')
+        assert current[:c['pinCode']] == saved[:c['pinCode']]
+        assert current[c['pinCode']+4:-2] == saved[c['pinCode']+4:-2]
+        active = m.select_config()
+        assert m.flash[active:active+512] == current
+        assert m.flash[active+512:active+1024] == saved_device
+        assert (active != 0x1cd400) == (old > 99999)
+        before = bytes(m.flash); writes = len(m.changes)
+        m.checked('user_readconfig', budget=3000000)
+        assert bytes(m.flash) == before and len(m.changes) == writes
+        for name in ('user_comm_boot', 'store_restore', 'sched16_restore'):
+            m.stubs[m.addr(name)] = m.ret
+        m.checked('user_readsavedinformation')
+        assert bytes(m.u.mem_read(m.device+d['IMEIGSM'], 16)) == b'867442070217472\0'
+        cases += 1
+    # Неверная CRC не разрешает переход ASCII даже при правдоподобном ПИНе.
+    m = machine(); saved = bytearray(512)
+    struct.pack_into('<I', saved, c['pinCode'], 0x34333231)
+    saved[-2:] = struct.pack('<H', crc16(saved[:-2]) ^ 1)
+    m.flash[0x1cd400:0x1cd600] = saved
+    m.checked('user_readconfig', budget=3000000)
+    assert int.from_bytes(m.u.mem_read(m.addr('config')+c['pinCode'], 4), 'little') == 4321
+    return {'pin_config_cases': cases + 1}
+
+
+def pin_commands():
+    c = fields('config_s'); count = 0
+    cases = ((4321, b'4321', True), (4321, b'04321', True),
+             (20140, b'20140', True), (99999, b'99999', True),
+             (0, b'0000', True), (0, b'00000', True),
+             (432, b'432', False), (4321, b'004321', False),
+             (4321, b'43a1', False), (0, b'', False),
+             (4321, b'48074', True), (4321, b'48075', False))
+
+    def machine(pin, imei=b'867442070217472'):
+        m = ServiceMachine()
+        m.write(m.addr('config') + c['pinCode'], pin)
+        m.u.mem_write(m.device + m.d['IMEIGSM'], (imei + bytes(16))[:16])
+        m.stubs[m.addr('log_addSystemEventID')] = lambda: m.ret(1)
+        return m
+
+    def sms(m, text, valid):
+        replies = []
+        def send():
+            reply, number, *_ = m.args()
+            replies.append((bytes(m.u.mem_read(reply, 128)).split(b'\0')[0],
+                            bytes(m.u.mem_read(number, 16)).split(b'\0')[0])); m.ret()
+        m.stubs[m.addr('user_sendsms')] = send
+        m.u.mem_write(0x21000000, b'#imei ' + text + b',\0')
+        m.u.mem_write(0x21000400, b'+79031234567\0')
+        assert m.checked('user_smsreceived', 0x21000400, 0x21000000)
+        imei = bytes(m.u.mem_read(m.device + m.d['IMEIGSM'], 16)).split(b'\0')[0]
+        expected = b'IMEI: ' + imei if valid else b'IMEI: Error "Pin not valid"'
+        assert replies == [(expected, b'+79031234567')], (text, replies)
+
+    for pin, text, valid in cases:
+        m = machine(pin); m.write(m.device + m.d['userAutorized'], 0, 1)
+        execute(m, 102, text, 0)
+        assert bool(m.u.mem_read(m.device+m.d['userAutorized'], 1)[0]) == valid, text
+        if len(text) >= 4: assert m.sent[-1][8:10] == bytes([102, int(valid)])
+        else: assert m.answers == [(102, 1, 0, 42)]
+        sms(m, text, valid); count += 2
+    for imei in (b'', b'86744207021747', b'8674420702174721',
+                 b'867442a70217472', b'8674420a0217472'):
+        for text in (b'32768', b'48074'):
+            m = machine(4321, imei); execute(m, 102, text, 0)
+            assert m.sent[-1][8:10] == b'\x66\0'
+            sms(m, text, False); count += 2
+    # Формула даёт uint16; нулевой IMEI из 15 цифр допустим по контракту заказчика.
+    for imei, universal in ((b'000000000000000', 32768), (b'999999999999999', 49769),
+                            (b'123456789012345', 34422)):
+        m = machine(4321, imei)
+        assert m.checked('user_pin_valid', universal)
+        assert not m.checked('user_pin_valid', universal + 1)
+        count += 2
+    for pin in (4321, 20140, 0):
+        m = machine(pin); m.checked('user_send_identPackToConfigurator', 0)
+        assert m.sent[-1][24] == (pin == 4321); count += 1
+    # Команда 12 принимает байты числа, сохраняет их, затем новый ПИН работает в SMS/USB.
+    m = machine(4321); received = bytearray(512)
+    struct.pack_into('<I', received, c['pinCode'], 20140)
+    server = b'gate.gsmgate.ru:15010\0'
+    received[c['server1']:c['server1']+len(server)] = server
+    received[c['countryCode']:c['countryCode']+3] = b'+7\0'
+    received[-2:] = struct.pack('<H', crc16(received[:-2]))
+    m.flash[0x1cd400:0x1cd600] = bytes(m.u.mem_read(m.addr('config'), 512))
+    m.checked('user_comm_boot')
+    execute(m, 12, received, 1)
+    job = m.addr('store') + fields('store_state_s')['job']
+    assert m.u.mem_read(job, 1)[0] and not m.answers
+    m.limit_reads = 256
+    for _ in range(2000):
+        if not m.u.mem_read(job, 1)[0] and not m.active(): break
+        StorageMachine.tick(m)
+    else: raise AssertionError('command 12 did not complete')
+    assert int.from_bytes(m.u.mem_read(m.addr('config')+c['pinCode'], 4), 'little') == 20140
+    assert m.flash[m.select_config()+c['pinCode']:m.select_config()+c['pinCode']+4] == struct.pack('<I', 20140)
+    sms(m, b'20140', True); sms(m, b'04321', False); sms(m, b'48074', True)
+    execute(m, 102, b'20140', 0); assert m.sent[-1][8:10] == b'\x66\x01'
+    # Сервер СофтЭксперт шлёт ПИН текстом «4321»: принимается числом.
+    struct.pack_into('<I', received, c['pinCode'], 0x31323334)
+    received[-2:] = struct.pack('<H', crc16(received[:-2]))
+    execute(m, 12, received, 1)
+    for _ in range(2000):
+        if not m.u.mem_read(job, 1)[0] and not m.active(): break
+        StorageMachine.tick(m)
+    else: raise AssertionError('command 12 did not complete')
+    assert int.from_bytes(m.u.mem_read(m.addr('config')+c['pinCode'], 4), 'little') == 4321
+    before = bytes(m.u.mem_read(m.addr('config'), 512)), bytes(m.flash)
+    for invalid in (100000, 0x41333231, 0xffffffff):
+        struct.pack_into('<I', received, c['pinCode'], invalid)
+        execute(m, 12, received, 1)
+        assert m.answers[-1] == (12, 1, 1, 42)
+        assert (bytes(m.u.mem_read(m.addr('config'), 512)), bytes(m.flash)) == before
+    return {'pin_command_cases': count + 7}

@@ -90,7 +90,7 @@ static void init(void)
     memset(tempStrBuffer, 0, sizeof(tempStrBuffer)); memset(&config, 0, sizeof(config));
     memset(scratch.before, 0xa7, sizeof(scratch.before)); memset(scratch.after, 0xa7, sizeof(scratch.after));
     recv_debug_lines = 0; debug_text[0] = 0;
-    memset(&device, 0, sizeof(device)); memcpy(&config.pinCode, "1234", 4);
+    memset(&device, 0, sizeof(device)); config.pinCode = 1234u;
     strcpy(device.IMEIGSM, "123456789012345"); device.csq = 17; device.connected = 1;
     device.firmwareVersion = 71; device.netType = 4; config.rele[0].onCmdServer = config.rele[1].onCmdServer = true;
     config.useServer1 = config.useServer2 = 1; server_address = 0;
@@ -207,6 +207,30 @@ static void test_add_bounds(bool short_only)
     }
     puts("smsadd: 10-byte ID terminates; short arguments are copied and zero-padded within bounds passed");
 }
+// Те же разбор и проверка, что в прошивке: длина, ведущие нули и неверный IMEI.
+static void test_pin(void)
+{
+    static const struct { uint32_t pin; const char *text; bool valid; } cases[] = {
+        {4321, "4321", true}, {4321, "04321", true}, {20140, "20140", true},
+        {99999, "99999", true}, {0, "0000", true}, {0, "00000", true},
+        {432, "432", false}, {4321, "004321", false}, {4321, "43a1", false},
+        {0, "", false}, {4321, "48074", true}, {4321, "48075", false}
+    };
+    char number[] = "+79031234567", message[32];
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        init(); config.pinCode = cases[i].pin;
+        strcpy(device.IMEIGSM, "867442070217472");
+        snprintf(message, sizeof(message), "#imei %s,", cases[i].text);
+        CHECK(user_smsreceived(number, message));
+        CHECK(sent == 1 && !strcmp(sent_message, cases[i].valid ?
+              "IMEI: 867442070217472" : "IMEI: Error \"Pin not valid\""));
+    }
+    init(); config.pinCode = 4321u; device.IMEIGSM[0] = 0;
+    strcpy(message, "#imei 32768,"); CHECK(user_smsreceived(number, message));
+    CHECK(!strcmp(sent_message, "IMEI: Error \"Pin not valid\""));
+    strcpy(message, "#imei 48074,"); CHECK(user_smsreceived(number, message));
+    CHECK(!strcmp(sent_message, "IMEI: Error \"Pin not valid\""));
+}
 int main(int argc, char **argv)
 {
     if (argc > 1) {
@@ -242,5 +266,6 @@ int main(int argc, char **argv)
     test_journal();
     test_debug();
     test_add_bounds(false);
+    test_pin();
     return 0;
 }
