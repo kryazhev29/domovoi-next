@@ -9,6 +9,16 @@ logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 uint8_t unblock_active;
 static uint8_t unblock_relays, unblock_pending, unblock_restart, unblock_offline;
 static uint32_t unblock_offline_since, unblock_minute;
+/* Ожидание разрыва ИК: unblock_wait — бит 0/1 реле управления, бит 2 — выдержка уровня 1 с
+   от unblock_wait_since. unblock_level — бит 0/1 реле уровня, чьё состояние запомнено,
+   бит 2 — это состояние до разблокировки; 0 — ничего не запомнено. */
+static uint32_t unblock_wait_since;
+static uint8_t unblock_wait, unblock_level;
+
+static void unblock_set(uint8_t i, uint8_t state)
+{
+  out_load(i, state, 0, 0, 0);
+}
 
 // Пересчитать намерение; занятое хранилище откладывает только чтение сцен.
 void user_unblock_recheck(bool restart)
@@ -38,24 +48,38 @@ void user_unblock_recheck(bool restart)
       }
     }
   }
-  for (uint8_t i = 0; i < 2; ++i) {
-    if (config.rele[i].useInBlock) relays |= 1u << i;
-    else if (unblock_relays & (1u << i)) out_load(i, OUT_OFF, 0, 0, 0);
+  relays = !!config.rele[0].useInBlock | (!!config.rele[1].useInBlock << 1);
+  if ((unblock_restart && !unblock_wait) || (!unblock_active && next)) {
+    // Повторный recheck во время ожидания сохраняет уже запущенное открытие.
+    if (next && relays && relays != 3) {
+      uint8_t i = relays & 1u;
+      // После перезапуска ИК должна быть замкнута уже в момент щелчка.
+      unblock_set(i ^ 1u, OUT_ON);
+      unblock_wait = i + 1;
+      if (config.rele[i].mode == 0)
+        out_load(i, OUT_IMP, config.rele[i].tImpulse, config.rele[i].tPause, config.rele[i].cnt);
+      else {
+        if (!(unblock_level & (1u << i)))
+          unblock_level = unblock_wait | (out_getstate(i) << 2);
+        unblock_set(i, OUT_ON);
+        unblock_wait |= 4;
+        unblock_wait_since = timers_getMillis();
+      }
+    }
   }
-  if (unblock_restart || (!unblock_active && next)) {
-    // Штатное открытие не замыкает уже разомкнутую линию разблокировки.
-    if (next && relays)
-      for (uint8_t i = 0; i < 2; ++i)
-        if (!(relays & (1u << i))) {
-          if (config.rele[i].mode == 0)
-            out_load(i, OUT_IMP, config.rele[i].tImpulse, config.rele[i].tPause, config.rele[i].cnt);
-          else out_load(i, OUT_ON, 0, 0, 0);
-        }
-  }
-  // Разорвать линию только после запуска реле открытия; снятие замыкает её.
+  if (!next) unblock_wait = 0;
+  // Сначала ИК, затем возврат уровня; смена назначения не обрывает импульс.
   if (unblock_restart || (!!next != !!unblock_active) || relays != unblock_relays)
-    for (uint8_t i = 0; i < 2; ++i)
-      if (relays & (1u << i)) out_load(i, next ? OUT_OFF : OUT_ON, 0, 0, 0);
+    for (uint8_t n = 0; n < 2; ++n) {
+      uint8_t i = (relays & 1u ? 0 : 1) ^ n, state;
+      if (unblock_wait & (1u << i)) continue;
+      if (relays & (1u << i)) state = !next || unblock_wait;
+      else if (!next && (unblock_level & (1u << i))) state = unblock_level >> 2;
+      else if (unblock_relays & (1u << i)) state = OUT_OFF;
+      else continue;
+      unblock_set(i, state);
+    }
+  if (!next) unblock_level = 0;
   if (next != unblock_active) {
     if (unblock_active) log_addSystemEvent(unblock_active == 1 ? LOG_SYS_UNDLOCKHANDDIS : LOG_SYS_UNBLOCKSHEDDIS);
     if (next) log_addSystemEvent(next == 1 ? LOG_SYS_UNDLOCKHANDEN : LOG_SYS_UNBLOCKSHEDEN);
@@ -78,6 +102,14 @@ void user_unblock_poll(void)
   }
   if (unblock_pending || unblock_minute != device.datetime / 60u)
     user_unblock_recheck(false);
+  // 1/2 — номер реле + 1; бит 2 — секундная выдержка уровня.
+  if (unblock_wait && ((unblock_wait & 4u)
+      ? timers_getMillis() - unblock_wait_since >= 1000u
+      : !out_getmodestate(unblock_wait - 1))) {
+    unblock_wait = 0;
+    for (uint8_t i = 0; i < 2; ++i)
+      if (unblock_relays & (1u << i)) unblock_set(i, OUT_OFF);
+  }
 }
 
 // Превратить код Wiegand в десятибайтовый ID и проверить доступ.

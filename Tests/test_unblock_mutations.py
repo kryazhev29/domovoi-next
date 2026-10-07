@@ -14,15 +14,12 @@ def main():
     source = (ROOT/'User/c/user_access.c').read_text(encoding='utf-8')
     priority = source.replace('else if (device.triggers.sheduleUnBlock', 'if (device.triggers.sheduleUnBlock', 1)
     priority = priority.replace('      uint8_t scenes[8];', '      uint8_t scenes[8];\n      next = 0;', 1)
-    order = source.replace('    if (next && relays)\n',
-        '    if (next && relays)\n      for (uint8_t i = 0; i < 2; ++i)\n'
-        '        if (relays & (1u << i)) out_load(i, OUT_OFF, 0, 0, 0);\n'
-        '    if (next && relays)\n', 1)
+    order = source.replace('state = !next || unblock_wait;', 'state = !next;', 1)
     offline = source.replace('>= 1800u', '>= 0xffffffffu')
     results = {}
     for name, mutant, test, message in (
         ('manual-priority', priority, 'manual', 'ручная важнее сцены'),
-        ('opening-order', order, 'manual', 'линия разорвана до открытия'),
+        ('opening-order', order, 'pulse_delay', 'ИК разорвана во время импульса'),
         ('offline-30', offline, 'offline', 'оффлайн 30 минут')):
         assert mutant != source
         scope = base/name; scope.mkdir(parents=True, exist_ok=True)

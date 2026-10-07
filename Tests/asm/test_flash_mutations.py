@@ -44,7 +44,7 @@ MUTATIONS = {
 }
 
 
-def run():
+def run(mutations=MUTATIONS, module='test_flash_fixes', suite='flash-mutations'):
     base = Path(os.environ['DOMOVOI_COMPARE_BUILD'])
     config = os.environ.get('DOMOVOI_COMPARE_CONFIG', 'Release')
     database = next(p/config/'commands.json' for p in (base, *base.parents)
@@ -52,8 +52,8 @@ def run():
     folder = database.parent
     commands = json.loads(database.read_text(encoding='utf-8-sig'))
     results = {}
-    for tag, (test, changes) in MUTATIONS.items():
-        dest = base/'flash-mutations'/config/tag
+    for tag, (test, changes) in mutations.items():
+        dest = base/suite/config/tag
         for sub in ('ObjPath', 'ExePath', 'ListPath'): (dest/sub).mkdir(parents=True, exist_ok=True)
         objects = {}
         log = bytearray()
@@ -90,7 +90,7 @@ def run():
         for suffix, sub, ext in (('ELF','ExePath','out'), ('BIN','ExePath','bin'), ('MAP','ListPath','map')):
             env['DOMOVOI_' + suffix] = str(dest/sub/('DomovoiNext.' + ext))
         script = (f'import sys; sys.path[:0] = {repr([str(ROOT/"Tests"), str(ROOT/"Tests/asm")])}; '
-                  f'import test_flash_fixes; test_flash_fixes.{test}()')
+                  f'import {module}; {module}.{test}()')
         r = subprocess.run([sys.executable, '-c', script], cwd=ROOT, env=env, capture_output=True)
         (dest/'test.log').write_bytes(r.stdout + r.stderr)
         assert r.returncode != 0 and b'AssertionError' in r.stderr, f'{tag}: мутация не обнаружена'

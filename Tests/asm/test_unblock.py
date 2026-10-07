@@ -17,6 +17,8 @@ class UnblockMachine(AccessMachine):
             if name in self.symbols: self.stubs[self.addr(name)] = self.send_usb
         for name in ('out_load', 'out_getmodestate'):
             self.stubs.pop(self.addr(name))
+        self.stubs.pop(self.addr('timers_getMillis'))
+        self.gpio_changes = []
         self.u.hook_add(UC_HOOK_CODE, self.output_call,
                         begin=self.addr('out_load'), end=self.addr('out_load'))
         self.u.hook_add(UC_HOOK_MEM_WRITE, self.gpio, begin=0x40010810, end=0x40010c14)
@@ -63,6 +65,24 @@ class UnblockMachine(AccessMachine):
         old = int.from_bytes(u.mem_read(odr, 4), 'little')
         new = old | value if address & 0xff == 0x10 else old & ~value
         u.mem_write(odr, struct.pack('<I', new))
+        self.gpio_changes.append((self.now, address, old, new))
+
+    @property
+    def now(self): return self._now
+
+    @now.setter
+    def now(self, value):
+        self._now = value & 0xffffffff
+        self.write(self.addr('milliSeconds'), self._now)
+
+    # Настоящие миллисекунды/таймер и исполнитель импульсов, шаг не более 100 мс.
+    def advance(self, ms):
+        while ms:
+            step = min(ms, 100); ms -= step; self.now += step
+            self.checked('timers_set', 0, self.checked('timers_get', 0) + step)
+            for _ in range(self.checked('timers_take', 0, 100)):
+                self.checked('out_process')
+            self.checked('user_unblock_poll')
 
     def set_relay(self, i, name, value):
         self.write(self.addr('config') + self.cfg['rele'] + i*11 + self.rele[name], value, 1)
@@ -103,14 +123,13 @@ def manual():
     assert m.outputs() == (0, 1)
     assert m.status_outputs() == 1
     m.loads.clear(); m.triggers_command(hand=1)
-    assert m.effective() == 1 and m.outputs() == (1, 0)
-    assert m.status_outputs() == 2
+    assert m.effective() == 1 and m.outputs() == (1, 1)
+    assert m.status_outputs() == 3
     opening = next(i for i, load in enumerate(m.loads) if load[:2] == (0, 3))
+    assert m.loads[opening] == (0, 3, 1, 0, 1), m.loads
+    m.advance(1000)
     breaking = next(i for i, load in enumerate(m.loads) if load[:2] == (1, 0))
     assert opening < breaking, 'линия разорвана до открытия'
-    assert all(load[0] == 0 for load in m.loads[:breaking]), 'реле разблокировки тронуто до открытия'
-    assert m.loads[opening] == (0, 3, 1, 0, 1), m.loads
-    for _ in range(10): m.checked('out_process')
     assert m.outputs() == (0, 0), 'штатный импульс должен завершиться'
     assert m.status_outputs() == 0
     m.put_group(1); m.put_id(1, b'1234567890')
@@ -193,8 +212,9 @@ def offline():
         parse(m, 1, b'\x02', channel=1); assert not m.effective()
         m.loads.clear()
         parse(m, 1, b'\x00'+struct.pack('<I', 1789948800+12*3600), channel=1)
-        assert m.effective() and m.outputs() == (1, 0)
-        assert [(x[0], x[1]) for x in m.loads][-2:] == [(0, 3), (1, 0)]
+        assert m.effective() and m.outputs() == (1, 1)
+        m.advance(1000)
+        assert m.outputs() == (0, 0) and m.loads[-1][:2] == (1, 0)
         m.write(m.device+m.d['worktime'], 10000); m.checked('user_unblock_poll')
         m.write(m.device+m.d['registredOnServer'], 0, 1)
         m.write(m.device+m.d['worktime'], 11799); m.checked('user_unblock_poll'); assert m.effective()
@@ -206,7 +226,7 @@ def restart_and_commands():
     m = UnblockMachine()
     m.u.mem_write(m.device+m.d['reserv']+32, struct.pack('<II', 0x36314853, 0xc9ceb7ac))
     m.triggers_command(hand=1)
-    assert m.outputs() == (1, 0) and m.loads[-2][:2] == (0, 3) and m.loads[-1][:2] == (1, 0)
+    assert m.outputs() == (1, 1) and any(x[:2] == (0, 3) for x in m.loads)
     # Новый ELF-контекст восстанавливает сохранённые триггеры настоящим user_init.
     r = UnblockMachine(); r.flash[:] = m.flash; r.booting = True
     r.write(r.addr('cfg_boot_done'), 0, 1)
@@ -217,9 +237,11 @@ def restart_and_commands():
         r.stubs[r.addr(name)] = r.ret
     r.stubs[r.addr('w25_read_devID')] = lambda: r.ret(0x17c2)
     r.checked('user_init', budget=12000000)
-    assert r.effective() == 1 and r.outputs() == (1, 0)
-    assert r.loads[-2][:2] == (0, 3) and r.loads[-1][:2] == (1, 0)
-    assert all(load[0] == 0 for load in r.loads[:-1]), 'старт замыкает линию перед открытием'
+    assert r.effective() == 1 and r.outputs() == (1, 1)
+    assert any(x[:2] == (0, 3) for x in r.loads) and not any(x[:2] == (1, 0) for x in r.loads)
+    opening = next(i for i, x in enumerate(r.loads) if x[:2] == (0, 3))
+    assert any(x[:2] == (1, 1) for x in r.loads[:opening]), 'старт: ИК не замкнута до щелчка'
+    r.advance(1000); assert r.outputs() == (0, 0)
     # Настройки проходят настоящий разбор, A/B и применение снимка; модем не запускается.
     m.stubs[m.addr('comm_modem_valid_settings')] = lambda: m.ret(1)
     for name in ('comm_endpoints', 'user_comm_boot', 'rs485_init'): m.stubs[m.addr(name)] = m.ret
@@ -232,17 +254,123 @@ def restart_and_commands():
         for i in range(2): data[m.cfg['rele']+11*i+m.rele['useInBlock']] = (mask >> i) & 1
         m.loads.clear(); parse(m, 12, data); m.finish_storage()
         assert m.effective() == 1
-        assert m.outputs() == ((0, 1) if mask == 1 else (0, 0) if mask in (0,3) else (1, 0)), (mask, m.outputs())
-        if mask == 0: assert all(x[1] == 0 for x in m.loads), 'без реле разблокировки нет открытия'
-        if mask == 3: assert all(x[1] == 0 for x in m.loads), 'оба реле разблокировки только выключаются'
-        for _ in range(10): m.checked('out_process')
+        m.advance(2000)
+        assert m.outputs() == (0, 0), (mask, m.outputs())
+        if mask in (0, 3): assert all(x[1] != 3 for x in m.loads), 'нет реле управления'
     m.loads.clear(); m.command(14, record(1)+tail(bytes([1])+bytes(7)), 1); m.drain()
-    assert any(x[:2] == (0, 3) for x in m.loads) and m.loads[-1][:2] == (1, 0)
+    assert any(x[:2] == (0, 3) for x in m.loads)
+    m.advance(1000); assert m.loads[-1][:2] == (1, 0)
     m.set_trigger('handUnBlock', 0); m.set_trigger('sheduleUnBlock', 1)
     m.write(m.addr('log_timeKnown'), 1, 1); m.checked('user_unblock_recheck', 0); assert m.effective() == 2
     m.command(14, record(1, blocked=1)+tail(bytes([1])+bytes(7)), 1); m.drain()
     assert not m.effective() and m.outputs()[1] == 1
     m = UnblockMachine(); m.set_relay(0, 'mode', 1); m.set_trigger('handUnBlock', 1)
-    for _ in range(2): m.checked('user_unblock_recheck', 1); assert m.outputs() == (1, 0)
+    for _ in range(2): m.checked('user_unblock_recheck', 1); assert m.outputs() == (1, 1)
+    m.advance(1000); assert m.outputs() == (1, 0)
     assert not m.checked('out_getmodestate', 0)
     return {'startup_config12_schedule14_level': 'PASS'}
+
+
+def pulse_delay():
+    m = UnblockMachine(); m.checked('user_unblock_recheck', 1)
+    m.set_relay(0, 'tPause', 1); m.set_relay(0, 'cnt', 2)
+    m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0)
+    assert m.effective() and m.outputs() == (1, 1), 'ИК разорвана во время импульса'
+    m.loads.clear(); m.u.mem_write(0x21000600, b'1234567890\0')
+    m.put_group(1); m.put_id(1, b'1234567890')
+    m.checked('user_checkIdAndControl', 0x21000600, 2)
+    m.checked('user_incomingcall', 0x21000600, 1)
+    assert not m.checked('user_activateOut', 1, 1, 2, 0x21000600)
+    parse(m, 8, b'\x01\x01\x01'); assert m.answers[-1] == (8, 2, 0, 37)
+    assert not m.loads and not m.events, 'команда дёрнула реле во время ожидания'
+    for _ in range(39):
+        m.advance(100)
+        assert m.checked('out_getmodestate', 0) and m.outputs()[1] == 1, 'ИК разорвана до конца серии'
+    m.advance(100)
+    assert not m.checked('out_getmodestate', 0) and m.outputs()[1] == 0, 'ИК не разорвана после серии'
+    assert m.system_events == [30], 'начало должно попасть в журнал один раз'
+    return {'pulse_series_and_wait_guards': 'PASS'}
+
+
+def level_restore():
+    for relay in (0, 1):
+        for initial in (0, 1):
+            m = UnblockMachine(mask=1 << (1-relay)); m.checked('user_unblock_recheck', 1)
+            m.set_relay(relay, 'mode', 1); m.checked('out_load', relay, initial, 0, 0, 0)
+            m.now = 0xfffffe00  # Выдержка выдерживает переполнение millis.
+            m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0)
+            assert m.outputs() == (1, 1), 'ИК разорвана при включении уровня'
+            m.advance(999); assert m.outputs() == (1, 1), 'ИК разорвана раньше 1 с'
+            m.checked('user_unblock_recheck', 1)  # Не сбрасывает время и исходный уровень.
+            m.advance(1); assert m.outputs()[1-relay] == 0, 'ИК не разорвана через 1 с'
+            m.loads.clear(); m.checked('user_unblock_recheck', 1)
+            assert m.loads[:2] == [(1-relay, 1, 0, 0, 0), (relay, 1, 0, 0, 0)], 'перезапуск уровня: ИК не замкнута до щелчка'
+            m.advance(1000); assert m.outputs()[1-relay] == 0
+            m.loads.clear(); m.set_trigger('handUnBlock', 0); m.checked('user_unblock_recheck', 0)
+            assert m.outputs()[1-relay] == 1 and m.outputs()[relay] == initial, 'уровень не возвращён'
+            assert m.loads[:2] == [(1-relay, 1, 0, 0, 0), (relay, initial, 0, 0, 0)], 'возврат уровня раньше замыкания ИК'
+            assert m.system_events == [30, 31]
+    return {'level_1s_restore_off_on_both_relays_wrap': 'PASS'}
+
+
+def cancel_wait():
+    for level in (0, 1):
+        for initial in ((0, 1) if level else (0,)):
+            m = UnblockMachine(); m.checked('user_unblock_recheck', 1)
+            m.set_relay(0, 'mode', level); m.checked('out_load', 0, initial, 0, 0, 0)
+            m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0)
+            m.gpio_changes.clear(); m.advance(500)
+            m.set_trigger('handUnBlock', 0); m.checked('user_unblock_recheck', 0)
+            assert not m.effective() and m.outputs()[1] == 1
+            assert m.outputs()[0] == (initial if level else 1), 'отмена нарушила реле управления'
+            m.advance(1500)
+            assert m.outputs() == (initial if level else 0, 1), 'ожидание не отменено'
+            assert not any(a == 0x40010814 and old & 1 and not new & 1
+                           for _, a, old, new in m.gpio_changes), 'ИК размыкалась при отмене'
+            assert m.system_events == [30, 31]
+    return {'cancel_pulse_and_level': 'PASS'}
+
+
+def waiting_rechecks():
+    m = UnblockMachine(); m.checked('user_unblock_recheck', 1)
+    m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0); m.advance(400)
+    m.loads.clear()
+    for restart in (0, 1, 0, 1): m.checked('user_unblock_recheck', restart)
+    m.triggers_command(hand=1)  # Применение снимка в user_store вызывает restart=true.
+    assert not any(x[:2] == (0, 3) for x in m.loads), 'recheck повторил импульс'
+    m.advance(500); assert m.outputs()[1] == 1
+    m.advance(100); assert m.outputs() == (0, 0), 'recheck перезапустил ожидание'
+    assert m.system_events == [30]
+    for relay in (0, 1):
+        r = UnblockMachine(mask=1 << (1-relay)); r.checked('user_unblock_recheck', 1)
+        r.set_trigger('handUnBlock', 1); r.checked('user_unblock_recheck', 0); r.advance(1000)
+        r.loads.clear(); r.checked('user_unblock_recheck', 1)
+        assert r.loads[0][:2] == (1-relay, 1) and r.loads[1][:2] == (relay, 3), 'перезапуск импульса: ИК не замкнута до щелчка'
+        r.advance(900); assert r.outputs() == (1, 1)
+        r.advance(100); assert r.outputs() == (0, 0) and r.system_events == [30]
+    # Реле с идущим импульсом становится ИК: нельзя погасить его назначением.
+    for mask in (1, 3, 0):
+        m = UnblockMachine(); m.checked('user_unblock_recheck', 1)
+        m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0); m.advance(400)
+        m.loads.clear()
+        for i in range(2): m.set_relay(i, 'useInBlock', (mask >> i) & 1)
+        m.checked('user_unblock_recheck', 1)
+        assert m.outputs()[0] == 1 and m.checked('out_getmodestate', 0), 'смена назначения оборвала импульс'
+        assert not any(x[1] == 3 for x in m.loads), 'смена назначения повторила импульс'
+        m.advance(500); assert m.outputs()[0] == 1
+        m.advance(100); assert not m.checked('out_getmodestate', 0)
+        assert m.outputs() == (0, 0), (mask, m.outputs())
+    # Повторная смена не останавливает прежний импульс, даже когда он был ИК.
+    m = UnblockMachine(); m.checked('user_unblock_recheck', 1)
+    m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0)
+    for mask in (1, 2):
+        for i in range(2): m.set_relay(i, 'useInBlock', (mask >> i) & 1)
+        m.checked('user_unblock_recheck', 0); m.advance(400)
+        assert m.checked('out_getmodestate', 0) and m.outputs()[0 if mask == 1 else 1] == 1
+    m.advance(200); assert m.outputs() == (0, 0)
+    for mask in (0, 3):
+        m = UnblockMachine(mask); m.checked('user_unblock_recheck', 1)
+        m.loads.clear(); m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0)
+        assert m.effective() and m.outputs() == (0, 0)
+        assert not any(x[1] == 3 for x in m.loads), 'оба ИК или ни одного: открытия нет'
+    return {'restart_store_recheck_and_relay_changes': 'PASS'}

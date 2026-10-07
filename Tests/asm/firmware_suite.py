@@ -26,7 +26,8 @@ CASES = {
     'protocol config': [('test_protocol_guards','config_strings'), ('test_protocol_guards','pin_config')],
     'protocol text': [('test_protocol_guards','text_commands'), ('test_protocol_guards','pin_commands')],
     'sched16': [('test_sched16', n) for n in ('protocol','crc_paths','access','migration')],
-    'unblock': [('test_unblock', n) for n in ('manual','scenes','offline','restart_and_commands')],
+    'unblock': [('test_unblock', n) for n in ('manual','scenes','offline','restart_and_commands','pulse_delay','level_restore','cancel_wait','waiting_rechecks')],
+    'unblock delay mutations': [('test_unblock_delay_mutations', 'run')],
     'ids boot read': [('test_ids_boot_read','main')],
     'log time pending': [('test_log_time_pending','main')],
     'fw install wait': [('test_fw_install_wait','main')],
@@ -77,7 +78,7 @@ CORE = ('peripheral init','protocol lengths','protocol config','protocol text','
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
 CORE += ('flash fixes',)
-CORE += ('flash mutations',)
+CORE += ('flash mutations', 'unblock delay mutations')
 
 
 def select_image(build_root=None):
