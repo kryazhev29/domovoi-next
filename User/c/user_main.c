@@ -39,6 +39,9 @@ void usb_data_reading(uint8_t* ptr, uint16_t len)
 // Восстановить память и настройки, затем разрешить рабочие команды.
 void user_init(void)
 {
+  // Загрузчик, startup и периферия флаги не стирают; сохраняем до восстановления.
+  const uint32_t reset_csr = RCC->CSR;
+  bool reset_saved = true;
   // Определяем тип памяти
   device.memID = w25_read_devID();
 
@@ -81,9 +84,14 @@ void user_init(void)
   user_initvariables();
   (void)sched16_boot();
   user_unblock_recheck(true);
-  // Сброс по питанию: одна запись; при отказе журнала сохраняем метку.
-  if (BKP->DR1 == PVD_RESET_MARK && log_addSystemEvent(LOG_SYS_RESETONPOWER))
-    BKP->DR1 = 0;
+  // PVD уже объясняет программный сброс; при отказе журнала сохраняем причину.
+  if (BKP->DR1 == PVD_RESET_MARK) {
+    reset_saved = log_addSystemEvent(LOG_SYS_RESETONPOWER);
+    if (reset_saved) BKP->DR1 = 0;
+  } else if (reset_csr & (RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF |
+                          RCC_CSR_SFTRSTF | RCC_CSR_LPWRRSTF))
+    reset_saved = log_addSystemValue(LOG_SYS_RESETCAUSE, reset_csr >> 24);
+  if (reset_saved) RCC->CSR |= RCC_CSR_RMVF;
   app_boot_metadata();
 
   // Виганд

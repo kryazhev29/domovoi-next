@@ -30,6 +30,10 @@ CASES = {
     'unblock delay mutations': [('test_unblock_delay_mutations', 'run')],
     'ids boot read': [('test_ids_boot_read','main')],
     'log time pending': [('test_log_time_pending','main')],
+    'reset cause': [('test_resetcause','run')],
+    'reset cause mutations': [('test_resetcause','mutations')],
+    'reset runtime': [('test_reset_runtime', 'reset_paths'), ('test_reset_runtime', 'trial_clock')],
+    'reset runtime mutations': [('test_reset_runtime', 'mutations')],
     'fw install wait': [('test_fw_install_wait','main')],
     'sched16_power': [('test_sched16','migration_power')],
     'stage5 countends': [('test_stage5_log','count_ends')],
@@ -79,6 +83,8 @@ POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
 CORE += ('flash fixes',)
 CORE += ('flash mutations', 'unblock delay mutations')
+CORE += ('reset cause', 'reset cause mutations')
+CORE += ('reset runtime', 'reset runtime mutations')
 CASES['flash executor'] = [('test_flash_executor', 'run')]
 CASES['executor mutations'] = [('test_flash_executor', 'mutations')]
 CASES['executor step3'] = [('test_flash_executor_step3', 'run')]
