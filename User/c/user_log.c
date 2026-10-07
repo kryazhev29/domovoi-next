@@ -60,10 +60,7 @@ void log_checkPending(void){
 
 // Принять событие в ограниченную очередь журнала.
 static bool log_put(cellLog_s *cell){
-  if (!(log_timeKnown || device.worktime >= LOG_TIME_WAIT)){
-    log_flushPending();
-    if (!log_pendingCount && log_addEvent(cell)) return true;
-  }
+  /* Запись во флеш делает только владелец журнала (log_storage_poll): здесь только очередь. */
   if (log_pendingCount == LOG_PENDING_MAX) return false;
   log_pending[log_pendingCount] = *cell;
   // до времени сервера datetime хранит uptime, затем переводится один раз

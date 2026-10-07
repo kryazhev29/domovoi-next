@@ -22,6 +22,7 @@ CASES = {
     'protocol text': [('test_protocol_guards','text_commands')],
     'sched16': [('test_sched16', n) for n in ('protocol','crc_paths','access','migration')],
     'ids boot read': [('test_ids_boot_read','main')],
+    'log time pending': [('test_log_time_pending','main')],
     'sched16_power': [('test_sched16','migration_power')],
     'stage5 countends': [('test_stage5_log','count_ends')],
     'stage5 logcommit': [('test_stage5_log','record_commit')],
