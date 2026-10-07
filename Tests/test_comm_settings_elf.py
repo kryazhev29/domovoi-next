@@ -16,7 +16,7 @@ sys.path[:0] = [str(ROOT / 'Tests'), str(ROOT / 'Tests/asm')]
 from firmware_suite import select_image
 from iar_image import image_paths
 from iar_layout import fields
-from storage_machine import crc16
+from storage_machine import crc16, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_PC
 from test_service_runtime import ServiceMachine
 
 
@@ -146,15 +146,20 @@ def dispatcher_ownership():
         m = machine(configuration())
         calls, sms = [], []
         # Смоделировать захват флеша выполненной командой сервера.
+        def begin_store():
+            # Хвостовой вызов настоящего begin внутри исполняемого user_comm_poll.
+            m.u.reg_write(UC_ARM_REG_R0, 12)
+            m.u.reg_write(UC_ARM_REG_R1, 0)
+            m.u.reg_write(UC_ARM_REG_PC, m.addr('flash_exec_begin') | 1)
         def server_poll():
-            m.write(m.addr('flash_owner'), int(server_busy), 1)
-            m.ret()
+            if server_busy:begin_store()
+            else:m.ret()
         # Запомнить допуск вызова и смоделировать захват его обработчиком.
         def call_poll():
             calls.append(bool(m.args()[1]))
             if call_busy:
-                m.write(m.addr('flash_owner'), 1, 1)
-            m.ret()
+                begin_store()
+            else:m.ret()
         # Запомнить допуск обработчика SMS.
         def sms_poll():
             sms.append(1)
@@ -166,6 +171,8 @@ def dispatcher_ownership():
         m.stubs[m.addr('comm_sms_poll')] = sms_poll
         m.checked('user_comm_poll', 100)
         assert calls == [expected_call] and len(sms) == expected_sms, (server_busy, call_busy, calls, sms)
+        assert m.exec_state() == ((12,0,1) if server_busy or call_busy else (0,0,0))
+        assert not m.io_budget
     # Единственный выбранный сервер 2 не должен резервировать сам себя.
     config = configuration()
     offsets = fields('config_s')

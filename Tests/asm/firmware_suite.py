@@ -79,6 +79,9 @@ POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
 CORE += ('flash fixes',)
 CORE += ('flash mutations', 'unblock delay mutations')
+CASES['flash executor'] = [('test_flash_executor', 'run')]
+CASES['executor mutations'] = [('test_flash_executor', 'mutations')]
+CORE += ('flash executor', 'executor mutations')
 
 
 def select_image(build_root=None):

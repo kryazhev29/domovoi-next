@@ -10,6 +10,22 @@
 #include "idindex.h"
 #include "sector_runtime.h"
 #include "../asm/flash_owner.h"
+#include "../flash_exec.h"
+struct flash_exec_args { void *context; uint8_t step; };
+enum { FX_INDEX_READ = 7 };
+typedef struct {
+  uint8_t kind, step, result;
+  union {
+    void *context;
+    struct { uint32_t source[2], bucket; } index;
+  } data;
+} flash_exec_job_t;
+extern flash_exec_job_t flash_job;
+void flash_exec_finish(flash_result_t result);
+// Временные переходы прежних владельцев, удаляемые при переносе их автоматов.
+bool flash_exec_legacy_claim(uint8_t owner);
+void flash_exec_legacy_release(uint8_t owner);
+void flash_exec_legacy_yield_store(void);
 #include "../../Modules/comm_channel.h"
 // Состояние владельца настроек из user_store.c.
 typedef struct {
@@ -22,6 +38,7 @@ enum {
   STORE_JOB_COMMAND = 9
 };
 extern uint8_t flash_owner, store_runtime, store_reset_requested;
+extern store_state_s store;
 extern device_s device;
 extern config_s config;
 extern bool mem_storage_ready;
@@ -31,23 +48,25 @@ uint8_t flash_claim(uint8_t owner);
 uint8_t flash_release(uint8_t owner);
 uint8_t flash_read_allowed(void);
 void idindex_runtime_suspend(void);
+bool idindex_runtime_begin(void);
+bool idcrc_background_begin(void);
+void idcrc_background_poll(void);
 void idindex_table_commit(uint32_t delta, uint16_t end);
-bool idindex_runtime_active(void);
 uint8_t *user_comm_acquire(uint16_t n);
 uint8_t usb_try_send(const uint8_t *packet, uint16_t size);
-void *service_crc_active(void);
 uint8_t service_crc_begin_pack(uint8_t,uint8_t);
 uint8_t service_crc_begin_id(uint8_t,uint8_t,uint8_t);
 uint8_t service_crc_begin_config(uint8_t,uint8_t);
 void service_crc_poll(void),service_crc_cancel(void),service_crc_quiet(uint8_t);
-bool expiry_runtime_active(void),expiry_runtime_begin(void);
+bool expiry_runtime_begin(void);
 void expiry_runtime_poll(uint32_t),expiry_runtime_cancel(void);
-uint8_t idclear_runtime_active(void),idclear_runtime_begin(uint8_t,uint8_t);
+uint8_t idclear_runtime_begin(uint8_t,uint8_t);
 void idclear_runtime_poll(uint32_t),idclear_runtime_cancel(void),idclear_runtime_quiet(uint8_t);
-bool upload_runtime_active(void),upload_runtime_begin(uint8_t,dataChanel_e,uint8_t);
+bool upload_runtime_begin(uint8_t,dataChanel_e,uint8_t);
 void upload_runtime_poll(void),upload_runtime_cancel(void),upload_runtime_quiet(uint8_t);
 void *fw_service_busy(void);
-bool fw_service_active(void),fw_service_begin(const uint8_t *,dataChanel_e,uint8_t);
+bool fw_service_store_waiting(void);
+bool fw_service_begin(const uint8_t *,dataChanel_e,uint8_t);
 void fw_service_poll(void),fw_service_cancel(void),fw_service_quiet(uint8_t),fw_service_config_result(uint8_t);
 // Записывает 16 бит в порядке байтов протокола.
 static inline void rt_put16(uint8_t *p, uint16_t v) { p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); }

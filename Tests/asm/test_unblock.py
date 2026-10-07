@@ -108,7 +108,7 @@ class UnblockMachine(AccessMachine):
     def finish_storage(self):
         for _ in range(20000):
             self.now += 1; self.checked('user_storage_poll')
-            if not self.u.mem_read(self.addr('store')+fields('store_state_s')['job'], 1)[0] and not self.checked('service_crc_active'): return
+            if not self.u.mem_read(self.addr('store')+fields('store_state_s')['job'], 1)[0] and not self.exec_active(6): return
         raise AssertionError('сохранение не завершилось')
 
     def schedule(self, rec=None, scenes=None, holiday=1):

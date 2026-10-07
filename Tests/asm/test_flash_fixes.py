@@ -1,3 +1,4 @@
+from test_flash_executor import hold_clear, release_clear
 """E01–E09 на связанном IAR ELF; NOR и транспорт заменены границами модели."""
 import struct
 
@@ -10,7 +11,7 @@ from test_stage5_wiegand import frame
 def wiegand():
     m = UnblockMachine(mask=0)
     m.write(m.addr('config') + m.cfg['wiegandType'], 1, 1)
-    m.stubs[m.addr('idindex_poll')] = m.ret
+    m.stubs[m.addr('idindex_runtime_begin')] = lambda:m.ret(0)
     ids = []
     m.u.hook_add(UC_HOOK_CODE, lambda u, a, n, x: ids.append(m.args()[0]),
                  begin=m.addr('WG_readedID'), end=m.addr('WG_readedID'))
@@ -27,18 +28,18 @@ def wiegand():
         m.checked('user_loop')
         assert m.u.mem_read(m.addr('wgBitCount'), 1) == b'\0', 'кадр остался в приёмнике'
 
-    m.write(m.addr('flash_owner'), 0x81, 1)
+    hold_clear(m)
     send(123456); send(654321)
     assert ids == [] and m.outputs() == (0, 0)
-    m.write(m.addr('flash_owner'), 0, 1)
+    release_clear(m)
     m.checked('user_loop'); assert ids == [123456] and m.outputs()[0] == 1, (ids, m.outputs(), m.events, m.loads)
     m.checked('user_loop'); assert ids == [123456, 654321]
     # Свободная флеш: реле включается в том же проходе после паузы 26 мс.
     send(123456); assert ids == [123456, 654321, 123456]
-    m.write(m.addr('flash_owner'), 0x81, 1)
+    hold_clear(m)
     for value in (123456, 654321, 123456, 654321, 999999): send(value)
     assert int.from_bytes(m.u.mem_read(m.addr('wg_overflows'), 4), 'little') == 1
-    m.write(m.addr('flash_owner'), 0, 1)
+    release_clear(m)
     for _ in range(5): m.checked('user_loop')
     assert ids[-4:] == [123456, 654321, 123456, 654321]
     return {'frames': len(ids), 'overflow': 1, 'free_flash_relay_passes': 1}
@@ -49,12 +50,12 @@ def scenes():
     assert m.effective() == 2
     outputs = m.outputs()
     m.clock(7, 0)
-    m.write(m.addr('flash_owner'), 0x81, 1)
+    hold_clear(m)
     reads = m.counts['read']; m.checked('user_unblock_recheck', 0)
     assert m.effective() == 2 and m.outputs() == outputs
     assert m.u.mem_read(m.addr('unblock_pending'), 1) == b'\1'
     assert m.counts['read'] == reads
-    m.write(m.addr('flash_owner'), 0, 1); m.checked('user_unblock_poll')
+    release_clear(m); m.checked('user_unblock_poll')
     assert m.effective() == 0
     # Отказ хвоста, записи, повторного хвоста и праздников также сохраняет выполненную сцену.
     for failure in (1, 2, 3, 4):
@@ -68,7 +69,7 @@ def scenes():
 
 
 def server_frame():
-    m = StorageMachine(); m.write(m.addr('flash_owner'), 0x81, 1)
+    m = StorageMachine(); hold_clear(m)
     body = struct.pack('<HBBBB', 4, 0, 7, 2, 60)
     packet = b'SLDN' + body + struct.pack('<H', crc16(body))
     m.u.mem_write(0x21000000, packet)
@@ -84,7 +85,7 @@ def server_frame():
     assert m.checked('user_comm_rx', 0x21000000, 1) == 0
     assert bytes(m.u.mem_read(m.addr('server_rx_buffer'), len(packet))) == saved
     m.checked('user_comm_rx_done', 2048 - len(packet), 0)
-    m.write(m.addr('flash_owner'), 0, 1)
+    release_clear(m)
     m.checked('server_rx_process'); m.checked('server_rx_process')
     assert m.answers == [(2, 0, 1, 7)], m.answers
     assert m.u.mem_read(m.device + m.d['timeToReset'], 1) == b'\x3c'
@@ -124,7 +125,7 @@ def factory_reset():
     m.stubs[m.addr('user_setdefault')] = lambda: (starts.append(True), m.ret())
     m.stubs[m.addr('user_initvariables')] = m.ret
     timer = m.device + m.d['timeToDefault']
-    m.write(timer, 2, 1); m.write(m.addr('flash_owner'), 0x81, 1)
+    m.write(timer, 2, 1); hold_clear(m)
     def second():
         m.checked('timers_set', 3, 1000); m.checked('user_loop')
     second(); second(); second()
@@ -132,7 +133,7 @@ def factory_reset():
     # Прямой вход (в том числе SMS) также удерживает запрос при занятой флеш.
     m.checked('user_factoryReset')
     assert m.u.mem_read(timer, 1) == b'\1' and not starts
-    m.write(m.addr('flash_owner'), 0, 1); second()
+    release_clear(m); second()
     assert starts == [True] and m.u.mem_read(timer, 1) == b'\0'
     second(); assert starts == [True]
     return {'busy_seconds': 3, 'reset_starts': 1, 'direct_busy_request': True}

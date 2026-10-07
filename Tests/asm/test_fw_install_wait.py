@@ -1,3 +1,4 @@
+from test_flash_executor import hold_clear, release_clear
 # Доработка: Кряжев А., 2026
 """Установка FW и подтверждение пробы ждут свободную флеш, а не теряются.
 
@@ -24,14 +25,14 @@ def main():
         m.checked('timers_set', 3, 1000); m.checked('user_loop')
 
     # Флеш занята другим владельцем: установка откладывается, сбоя нет.
-    m.write(m.addr('flash_owner'), 1, 1)
+    hold_clear(m)
     second()
     assert calls == [], calls
     assert m.u.mem_read(reboot, 1)[0] == 1, 'запрос установки потерян'
 
     # Флеш свободна: образ передаётся загрузчику и плата уходит в перезагрузку.
     # Фоновая работа, начатая за эти секунды, тоже дожидается конца — без отказа.
-    m.write(m.addr('flash_owner'), 0, 1)
+    release_clear(m)
     for _ in range(20):
         second()
         if calls: break
@@ -46,10 +47,10 @@ def main():
     m.stubs[m.addr('app_trial_confirm')] = lambda: (calls.append('confirm'), state.update(trial=0), m.ret())
     m.stubs[m.addr('fw_event')] = lambda: (calls.append(m.args()[0]), m.ret())
     m.write(m.device + fields('device_s')['registredOnServer'], 1, 1)
-    m.write(m.addr('flash_owner'), 1, 1)
+    hold_clear(m)
     second()
     assert calls == [], calls
-    m.write(m.addr('flash_owner'), 0, 1)
+    release_clear(m)
     for _ in range(20):
         second()
         if calls: break

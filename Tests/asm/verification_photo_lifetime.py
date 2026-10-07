@@ -20,7 +20,7 @@ def run():
         reach(m, phase)
         pointer = m.rget('tx',4); assert pointer
         assert owned(m)==(1<<(PHOTO-1))|(1<<(PHOTO_PACKET-1))|(1<<(UP_PACKET-1))
-        assert m.checked('photo_storage_busy')
+        assert m.exec_active(8)
         assert not m.checked('user_storage_command_ready')
         assert not m.checked('user_storage_background_ready')
         assert not m.checked('mem_config_begin',0x21000000,0x21000200)
@@ -32,7 +32,7 @@ def run():
         assert m.counts == before and bytes(m.u.mem_read(pointer,534)) == saved
         tested.append({'phase':phase,'live_photo_tx_bytes':534,'owned_slots':owned(m),'new_storage_commands':'rejected before allocation/I/O'})
     m.tick()
-    assert not m.checked('photo_storage_busy') and m.rget('tx',4) == 0
+    assert not m.exec_active(8) and m.rget('tx',4) == 0
     assert owned(m)==(1<<(PHOTO-1))|(1<<(UP_PACKET-1))
     drop(m,UP_PACKET,reserve)
     from iar_image import image_paths

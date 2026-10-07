@@ -147,6 +147,7 @@ bool log_async_active(void) { return log_job.phase!=0; }
 // Копирует событие и занимает флеш до окончания записи.
 void log_async_begin(const cellLog_s *cell)
 {
+  if (log_job.phase) return;
   log_job.cell=*cell; log_job.waiting=0;
   log_job.phase=flash_claim(FO_LOG)?LOG_INIT:0; log_job.result=log_job.phase?1:3;
 }

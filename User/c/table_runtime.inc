@@ -16,8 +16,6 @@ typedef struct {
 table_job_s table_job;
 uint8_t table_fault;
 
-// Сообщает, выполняется ли команда записи таблицы.
-bool table_runtime_active(void) { return table_job.phase!=0; }
 // Подавляет ответ команды для закрытого канала.
 void table_runtime_quiet(dataChanel_e channel)
 {

@@ -252,7 +252,14 @@ void user_readsavedinformation (void)
 // Сохранить device перед программным перезапуском.
 void user_savereset (void)
 {
-  if (store_runtime) { idclear_runtime_cancel(); expiry_runtime_cancel(); fw_service_cancel(); upload_runtime_cancel(); service_crc_cancel(); table_runtime_cancel(); photo_storage_cancel(); store_reset_requested = 1; return; }
+  if (store_runtime) {
+    flash_exec_cancel();
+    fw_service_cancel();
+    upload_runtime_cancel();
+    photo_storage_cancel();
+    store_reset_requested = 1;
+    return;
+  }
   log_flushPending(); // события, не дождавшиеся времени, - в журнал до перезагрузки
   user_saveindex(); // сохраняем индексы и т.п.
   wdt_reload();

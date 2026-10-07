@@ -37,8 +37,6 @@ static upload_s *upload_acquire(void)
   if(!p->packet) { work_release(p,WORK_UPLOAD_CONTEXT); return NULL; }
   return p;
 }
-// Сообщает, выполняется ли выгрузка.
-bool upload_runtime_active(void) { return upload_runtime_context!=NULL; }
 // Освобождает кадр и контекст без подтверждения неотправленных данных.
 void upload_runtime_cancel(void)
 {

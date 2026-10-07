@@ -22,7 +22,8 @@ bool idcrc_erase(uint32_t);
 uint8_t idcrc_release_tail(void);
 #define idcrc_owner_released() ((void)idcrc_release_tail())
 // Продвигает построение CRC, освобождая флеш в том же проходе.
-bool idcrc_background(void);
+bool idcrc_background_begin(void);
+void idcrc_background_poll(void);
 // Возвращает готовую CRC всей базы ID.
 bool idcrc_get(uint16_t *crc);
 #endif

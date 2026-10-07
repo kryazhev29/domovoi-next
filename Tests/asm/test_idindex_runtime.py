@@ -31,6 +31,8 @@ class IndexMachine(StorageMachine):
     def __init__(self, flash=None):
         super().__init__(flash)
         self.at = self.addr('ix')
+        # Изолируем индекс: прежний прямой poll не включал CRC-фон.
+        self.stubs[self.addr('idcrc_background_begin')] = lambda:self.ret(0)
         self.stubs[self.addr('w25_write_data')] = self.no_sync
         self.stubs[self.addr('w25_erase_sector')] = self.no_sync
         self.max_read = self.max_io = 0
@@ -43,9 +45,10 @@ class IndexMachine(StorageMachine):
     def state(self):
         return self.u.mem_read(self.at + 10, 1)[0]
 
-    # Читает текущего владельца флеша.
+    # Читает шаг текущего INDEX; 1–6 — физическое ожидание, 7 — чтение корзины.
     def owner(self):
-        return self.u.mem_read(self.at + 11, 1)[0]
+        kind, step, result = self.exec_state()
+        return step if kind == 5 and result == 1 else 0
 
     # Создаёт исходное состояние сценария и его подменяемые границы.
     def setup(self, indices=(1, 2, 129), log_full=False):
@@ -86,13 +89,14 @@ class IndexMachine(StorageMachine):
             assert not self.checked('mem_tables_ready')
             self.checked('user_storage_poll')
         else:
-            self.checked('idindex_poll', BASE)
+            self.checked('user_storage_poll')
         assert self.u.reg_read(UC_ARM_REG_PRIMASK) == primask
         self.max_read = max(self.max_read, self.read_budget)
         self.max_io = max(self.max_io, self.io_budget)
         assert self.read_budget <= 64, self.read_budget
         assert self.io_budget <= 1, self.io_budget
-        assert bool(self.owner()) == (self.io is not None)
+        assert (1 <= self.owner() <= 6) == (self.io is not None)
+        if self.owner() == 7:assert self.io is None and self.state() == 6
 
     # Доводит пересборку индекса до конечного состояния.
     def drain_index(self, limit=20000, glue=False):
@@ -163,15 +167,19 @@ def test_cancel_restart():
             m.tick_index()
         else:
             raise AssertionError(('missing pending', pending))
-        source = bytes(m.u.mem_read(m.at + 12, 8))
+        source = bytes(m.u.mem_read(m.addr('flash_job') + 4, 8))
         m.checked('idindex_runtime_suspend')
         assert m.state() == 4 and m.owner()
         # Смена сеанса и сброс не должны оставлять фонового владельца занятым.
         m.checked('user_comm_session', 0)
         m.write(m.addr('usb_bus_resets'), 1)
         while m.owner():
+            assert bytes(m.u.mem_read(m.addr('flash_job') + 4, 8)) == source
             m.tick_index(glue=True)
-            assert bytes(m.u.mem_read(m.at + 12, 8)) == source
+            if m.owner():
+                assert bytes(m.u.mem_read(m.addr('flash_job') + 4, 8)) == source
+            else:
+                assert m.io is None and m.exec_state() == (0,0,0)
         assert m.state() == 4 and m.io is None
         m.checked('idindex_scanned', total, end)
         m.drain_index(); m.verify(expected, total)
@@ -183,7 +191,7 @@ def test_cancel_restart():
     m.drain_index(); m.verify(expected, total); count += 1
     # Индекс не опрашивает и не перезаписывает команду другого владельца.
     m = IndexMachine(); m.setup(); m.io = (0x1000, 0, 0, b'\xff' * 4096, 0)
-    m.checked('idindex_poll', BASE); assert m.counts['poll'] == 0 and not m.owner(); count += 1
+    m.checked('user_storage_poll'); assert m.counts['poll'] == 0 and not m.owner(); count += 1
     return count
 
 
@@ -318,7 +326,7 @@ def test_real_w25():
         if m.state() in (3, 4) and not m.owner():
             break
         m.now += 1; wire['read'] = wire['status'] = 0
-        m.checked('user_storage_poll' if m.owner() else 'idindex_poll', BASE)
+        m.checked('user_storage_poll')
         max_read = max(max_read, wire['read']); max_status = max(max_status, wire['status'])
         assert wire['read'] <= 64 and wire['status'] <= 4
     else:

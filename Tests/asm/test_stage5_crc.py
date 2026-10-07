@@ -1,3 +1,4 @@
+from test_flash_executor import finish, CANCELLED
 # Доработка: Кряжев А., 2026
 """Кэш CRC сырых байтов: все писатели, сброс и обрывы каждой записи в связанном коде."""
 from test_id_sync_fast import SyncMachine,fixture,cell,BASE
@@ -18,7 +19,7 @@ def oracle(m):return crc16(m.flash[BASE:BASE+8192])
 # Доводит кэш CRC до готовности перед проверкой записи.
 def warm(m):
     for _ in range(1600):
-        m.now+=1;m.checked('idcrc_background')
+        m.now+=1;m.crc_tick()
         value=get(m)
         if value is not None and not m.checked('idcrc_io_active'):return value
     raise AssertionError('CRC cache did not become known')
@@ -56,7 +57,7 @@ def power():
             assert r.checked('sj_recover',budget=5000000)
             expected=oracle(r)
             for _ in range(1600):
-                r.now+=1;r.checked('idcrc_background');cached=get(r)
+                r.now+=1;r.crc_tick();cached=get(r)
                 assert cached is None or cached==expected,(kind,hex(a),n,cached,expected)
                 if cached is not None and not r.checked('idcrc_io_active'):break
             else:raise AssertionError('recovery did not finish')
@@ -83,21 +84,22 @@ def background():
     m.flash[BASE:BASE+8192]=bytes((i*13)&255 for i in range(8192))
     expected=oracle(m)
     for step in range(129):
-        m.now+=1;m.checked('idcrc_background');assert m.read_budget<=64
+        m.now+=1;m.crc_tick();assert m.read_budget<=64
         r=fixture(SyncMachine(m.flash),0,unknown=True,total=8192)
         assert get(r) is None and warm(r)==expected
     # Другой владелец флеша приостанавливает проход, сохраняя готовый префикс.
-    m=fixture(SyncMachine(),0,unknown=True,total=8192);m.checked('idcrc_background')
-    before=m.counts['read'];m.write(m.addr('flash_owner'),1,1)
-    for _ in range(3):m.checked('idcrc_background')
+    m=fixture(SyncMachine(),0,unknown=True,total=8192);m.crc_tick()
+    before=m.counts['read'];assert m.checked('service_crc_begin_config',0,73)
+    assert m.exec_state() == (6,1,1)
+    for _ in range(3):m.crc_tick()
     assert m.counts['read']==before
-    m.write(m.addr('flash_owner'),0,1);assert warm(m)==oracle(m)
+    m.checked('service_crc_cancel');finish(m,CANCELLED);assert warm(m)==oracle(m)
     assert m.counts['read']==128
     # Запись после частичного прохода и ошибка чтения требуют повторного сканирования.
-    m=fixture(SyncMachine(),0,unknown=True,total=8192);m.checked('idcrc_background')
+    m=fixture(SyncMachine(),0,unknown=True,total=8192);m.crc_tick()
     m.command(13,cell(1),1);m.drain();assert get(m) is None and warm(m)==oracle(m)
     m=fixture(SyncMachine(),0,unknown=True,total=8192);m.fault=('read',1)
-    m.checked('idcrc_background');assert get(m) is None
+    m.crc_tick();assert get(m) is None
     m.fault=None;assert warm(m)==oracle(m)
     return {'occupied_boundaries':counts,'scan_power_cuts':129,'pause_resume':'prefix retained','writer_mid_scan':'restart','read_error':'retry','Flash_metadata':0}
 
@@ -182,7 +184,7 @@ def loader_recovery():
     reboot=fixture(SyncMachine(loader.flash),0,unknown=True,total=8192)
     expected=oracle(reboot)
     for _ in range(1600):
-        reboot.now+=1;reboot.checked('idcrc_background');cached=get(reboot)
+        reboot.now+=1;reboot.crc_tick();cached=get(reboot)
         assert cached is None or cached==expected,('loader bypassed dirty',cached,expected)
         if cached is not None and not reboot.checked('idcrc_io_active'):break
     else:raise AssertionError('loader recovery CRC did not finish')
@@ -207,7 +209,7 @@ def failed_commit_recovery():
     assert loader.checked('sj_recover',budget=2000000)
     reboot=fixture(SyncMachine(loader.flash),0,unknown=True,total=8192);expected=oracle(reboot)
     for _ in range(1600):
-        reboot.now+=1;reboot.checked('idcrc_background');cached=get(reboot)
+        reboot.now+=1;reboot.crc_tick();cached=get(reboot)
         assert cached is None or cached==expected,('failed commit published old CRC',cached,expected)
         if cached is not None and not reboot.checked('idcrc_io_active'):break
     else:raise AssertionError('failed commit recovery did not finish')

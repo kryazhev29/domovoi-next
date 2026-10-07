@@ -23,7 +23,7 @@ def expiry_scheduler():
             assert not m.checked('mem_config_begin', m.addr('config'), m.addr('device'))
             assert m.counts == previous, 'competing config touched NOR'
             assert not m.checked('service_crc_begin_pack', 0, 7)
-            assert not m.checked('service_crc_active')
+            assert not m.exec_active(6)
             if i == cancel_at:
                 m.checked('user_savereset')
             m.now += 1
@@ -59,9 +59,9 @@ def clear_scheduler():
             assert not m.checked('mem_config_begin', m.addr('config'), m.addr('device'))
             assert not m.checked('service_crc_begin_pack', 0, 7)
             m.checked('expiry_runtime_begin')
-            assert not m.checked('expiry_runtime_active')
+            assert not m.exec_active(2)
             m.checked('upload_runtime_begin', 10, 0, 7)
-            assert not m.checked('upload_runtime_active')
+            assert not m.exec_active(4)
             assert m.counts == before
             if (action == 'reset_before' and i == 0) or (action == 'reset_pending' and i == 1):
                 m.checked('user_savereset')

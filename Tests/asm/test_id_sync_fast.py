@@ -97,7 +97,8 @@ class SyncMachine(StorageMachine):
         assert self.sent and len(self.sent[-1]) == 18
         body = struct.pack('<HBBBBIH', 10, 255, 7, 12, 1, 123456, crc16(data))
         assert self.sent[-1] == b'SLDN'+body+struct.pack('<H', crc16(body)), 'reply differs from full CRC'
-        assert self.u.mem_read(self.addr('flash_owner'), 1) == b'\0'
+        assert self.exec_state() == (0,0,0)
+        assert not self.checked('w25_async_active')
         return self.sent[-1]
 
 

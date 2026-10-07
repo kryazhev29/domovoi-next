@@ -1,3 +1,4 @@
+from test_flash_executor import context
 # Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Ограниченная фоновая проверка сроков и сравнение с сохранённым эталоном."""
@@ -33,10 +34,10 @@ class ExpiryMachine(StorageMachine):
     # Начинает проверку сроков через настоящий фоновый вход.
     def start_expiry(self):return self.checked('expiry_runtime_begin')
     # Читает признак незавершённой проверки сроков.
-    def expiry_active(self):return self.checked('expiry_runtime_active')!=0
+    def expiry_active(self):return self.exec_active(2)!=0
     # Выполняет шаг проверки сроков и контролирует бюджет обмена.
     def expiry_tick(self):
-        self.now+=1;self.checked('expiry_runtime_poll',self.now)
+        self.now+=1;self.checked('user_storage_poll')
         assert self.read_budget<=128 and self.io_budget<=1
         self.runtime_costs.append(self.steps);self.runtime_reads.append(self.read_budget)
     # Доводит проверку сроков до конца с ограничением проходов.
@@ -116,7 +117,7 @@ def faults():
             if m.counts[kind]<point:continue
             assert not m.expiry_events and m.io is None
             assert m.u.mem_read(m.addr('id_endScan'),1)==b'\1'
-            assert not m.checked('expiry_runtime_active');count+=1
+            assert not m.exec_active(2);count+=1
     m=ExpiryMachine();m.install([record()]);p=take(m,REPLY);assert p
     before=bytes(m.flash);assert not m.start_expiry()
     assert bytes(m.flash)==before and not any(m.counts.values()) and not m.expiry_events;count+=1
@@ -153,7 +154,7 @@ def full_scan_and_heap():
     m.install([record(50048,first=NOW,minutes=1)],(50047,))
     live=[(slot,take(m,slot)) for slot in (PHOTO,PHOTO_PACKET)]
     assert all(live) and m.start_expiry()
-    ctx=int.from_bytes(m.u.mem_read(m.addr('expiry_job'),4),'little')
+    ctx=context(m)
     assert ctx==m.addr('work_memory')+184
     peak=heap_stats(m);assert owned(m)==7
     m.expiry_drain(80000)

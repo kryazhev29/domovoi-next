@@ -29,7 +29,7 @@ bool mem_recover(void) { mem_storage_ready = sj_recover(); return mem_storage_re
 #include "sector_runtime.h"
 extern uint8_t table_fault;
 // Разрешает таблицы после восстановления и при свободной флеш-памяти.
-bool mem_tables_ready(void) { return flash_read_allowed() && !table_fault && !sj_runtime_blocked() && mem_storage_ready; }
+bool mem_tables_ready(void) { return flash_exec_read_allowed() && !table_fault && !sj_runtime_blocked() && mem_storage_ready; }
 // Проверяет готовность таблиц, если диапазон затрагивает их сектора.
 static bool mem_guard(uint32_t adr, uint16_t n)
 {
@@ -268,6 +268,7 @@ const uint8_t *mem_config_snapshot(void) { return cfg_job.snapshot; }
 void mem_config_reset(void)
 {
   if (cfg_job.result == 1) return;
+  if (flash_job.kind == FX_CONFIG) flash_exec_take_result();
   work_release(cfg_job.snapshot, WORK_CONFIG); cfg_job.snapshot = NULL; cfg_job.result = 0; cfg_job.waiting = 0;
 }
 // Принимает готовые config/device, не сохраняя указатели вызывающего.
@@ -276,6 +277,11 @@ bool mem_config_begin(const uint8_t *first, const uint8_t *second)
   if (flash_owner || table_fault || sj_runtime_blocked() || cfg_job.result || w25_async_active() || !cfg_boot_done) return false;
   cfg_job.snapshot = work_acquire(1024, WORK_CONFIG);
   if (!cfg_job.snapshot) return false;
+  if (!flash_exec_begin(FX_CONFIG, NULL)) {
+    work_release(cfg_job.snapshot, WORK_CONFIG);
+    cfg_job.snapshot = NULL;
+    return false;
+  }
   memcpy(cfg_job.snapshot, first, 512); memcpy(cfg_job.snapshot + 512, second, 512);
   cfg_job.source = cfg_cached_active;
   cfg_job.target = cfg_cached_active == MEM_CONFIG_SLOT0 ? MEM_CONFIG_SLOT1 : MEM_CONFIG_SLOT0;
@@ -334,23 +340,30 @@ void mem_config_poll(uint32_t now)
     cfg_job.waiting = 1; cfg_job.state = CA_DONE; return;
   case CA_DONE:
     if (cfg_job.changed || cfg_job.first) { cfg_cached_active = cfg_job.target; cfg_cached_generation = cfg_job.header[1]; }
-    cfg_job.result = 2; return;
+    cfg_job.result = 2;
+    flash_exec_finish(FX_OK);
+    return;
   default: goto fail;
   }
   if (!w25_async_start(address, NULL, 0, now)) goto fail;
   cfg_job.waiting = 1; return;
 fail:
-  DOMOVOI_DIAG_INC(mem_config_errors); cfg_job.result = 3;
+  DOMOVOI_DIAG_INC(mem_config_errors);
+  cfg_job.result = 3;
+  flash_exec_finish(FX_ERROR);
 }
 
 // Закрепляет флеш за владельцем, допускающим своё повторное обращение.
 uint8_t flash_claim(uint8_t owner) {
   if (flash_owner && ((flash_owner ^ owner) & 0x7fu)) return 0;
-  flash_owner=owner; return 1;
+  if (!flash_exec_legacy_claim(owner)) return 0;
+  flash_owner=owner;
+  return 1;
 }
 // Освобождает флеш и сообщает кэшу CRC о завершении операции.
 uint8_t flash_release(uint8_t owner) {
   if (!((flash_owner ^ owner) & 0x7fu)) flash_owner=0;
+  flash_exec_legacy_release(owner);
   idcrc_owner_released(); return 0;
 }
 // Разрешает чтение, если владелец не запретил его на время записи.

@@ -27,7 +27,6 @@ int8_t idindex_find(uint32_t base, const uint8_t *id, uint8_t *cell);
 /* Фоновая пересборка, по одному короткому шагу за вызов. */
 void idindex_poll(uint32_t base);
 /* Текущая операция W25; suspend ждёт её проверки, сохраняя источник. */
-bool idindex_runtime_active(void);
 void idindex_runtime_suspend(void);
 
 #endif

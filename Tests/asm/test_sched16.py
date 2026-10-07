@@ -88,7 +88,7 @@ def crc_paths():
     cases = 0
     for channel in (0, 1):
         m = ServiceMachine()
-        m.active = lambda: m.call('table_runtime_active') != 0
+        m.active = lambda: m.exec_active(7) != 0
         m.tick = lambda: StorageMachine.tick(m)
         del m.stubs[m.addr('user_send_timeshtamp')]
         m.command(14,record(64)+tail(),1,channel,37,stamp=0x12345678)

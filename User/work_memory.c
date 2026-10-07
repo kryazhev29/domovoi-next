@@ -33,6 +33,11 @@ static void *address(uint32_t slot)
 // Возвращает допустимую вместимость рабочего слота.
 uint32_t work_capacity(uint32_t slot)
 { return slot>0 && slot<=WORK_TABLE ? capacities[slot] : 0; }
+bool work_live(const void *pointer, uint32_t slot)
+{
+  return slot > 0 && slot <= WORK_TABLE && pointer == address(slot) &&
+    (work_memory.owned & BIT(slot));
+}
 // Прерывание USB владеет дескриптором; рабочей памятью управляет главный цикл.
 extern uint8_t USB_Tx_SourceBusy(void);
 // Возвращает память после завершения заимствованной USB-передачи.

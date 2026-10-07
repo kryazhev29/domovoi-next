@@ -83,7 +83,7 @@ def recovery_gate():
 def reachable_ack():
     from test_work_memory import owned,PHOTO,CONFIG,UP_CONTEXT,UP_PACKET
     m=PhotoUploadMachine();m.boot_media();m.capture(b'x'*58)
-    assert m.photo_ptr() and not m.checked('photo_storage_busy')
+    assert m.photo_ptr() and not m.exec_active(8)
     assert owned(m)==1<<(PHOTO-1)
     m.fixture(10,[log(1),log(2)]);m.sent=[]
     released=[]

@@ -32,9 +32,11 @@ RT_ASSERT(fw_service_size,sizeof(fw_service_s)==128);
 fw_service_s *fw_service_context;
 // Возвращает контекст занятого сервиса прошивки.
 void *fw_service_busy(void) { return fw_service_context; }
-// Учитывает передачу владения настройками автомату store.
-bool fw_service_active(void)
-{ return fw_service_context && (fw_service_context->phase!=FWS_SAVE_WAIT || !store.job); }
+// Временный мост: store заканчивает A/B и снимает своё намерение ответа.
+bool fw_service_store_waiting(void)
+{
+  return fw_service_context && fw_service_context->phase == FWS_SAVE_WAIT && store.job;
+}
 // Принимает результат сохранения настроек и возвращает владение флешем.
 void fw_service_config_result(uint8_t result)
 {

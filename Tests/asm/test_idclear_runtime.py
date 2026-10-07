@@ -1,3 +1,4 @@
+from test_flash_executor import context
 # Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Очистка команды 103 в связанном IAR ELF; полное стирание не атомарно."""
@@ -33,10 +34,13 @@ class ClearMachine(StorageMachine):
     # Начинает очистку через настоящий вход команды 103.
     def start_clear(self,channel=0,uniq=7):return self.checked('idclear_runtime_begin',channel,uniq)
     # Читает признак незавершённой очистки базы.
-    def clear_active(self):return self.checked('idclear_runtime_active')!=0
+    def clear_active(self):return self.exec_active(1)!=0
     # Выполняет шаг очистки и проверяет бюджет обмена.
     def clear_tick(self):
-        self.now+=1;self.checked('idclear_runtime_poll',self.now)
+        if not self.clear_active():
+            assert self.exec_state() == (0,0,0)
+            return
+        self.now+=1;self.checked('user_storage_poll')
         self.passes.append(self.steps);assert self.io_budget<=1 and self.read_budget<=(64 if 'idcrc_io_poll' in self.symbols else 0)
     # Доводит очистку до конца с ограничением числа проходов.
     def clear_drain(self):
@@ -66,7 +70,7 @@ def success_and_heap():
     m=ClearMachine();live=[(slot,take(m,slot)) for slot in (PHOTO,PHOTO_PACKET)]
     m.parse();assert m.clear_active() and not m.answers and not m.wires
     assert m.counts=={'read':0,'start':0,'poll':0}
-    p=int.from_bytes(m.u.mem_read(m.addr('idclear_job'),4),'little')
+    p=context(m)
     assert owned(m)&(1<<6)
     peak=heap_stats(m);m.busy=3
     while m.clear_active():

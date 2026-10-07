@@ -5,6 +5,7 @@
 #ifndef WORK_MEMORY_H
 #define WORK_MEMORY_H
 #include <stdint.h>
+#include <stdbool.h>
 #include "work_slots.h"
 // Выдача и возврат выполняются главным циклом; прерывания память не занимают.
 void *work_acquire(uint32_t size, uint32_t slot);
@@ -16,4 +17,6 @@ const uint8_t *work_usb_source(const uint8_t *source, uint16_t length);
 
 // Возвращает допустимый размер участка владельца.
 uint32_t work_capacity(uint32_t slot);
+// Проверяет удержанный контекст перед публикацией kind исполнителя.
+bool work_live(const void *pointer, uint32_t slot);
 #endif

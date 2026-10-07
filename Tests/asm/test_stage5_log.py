@@ -123,7 +123,7 @@ def legacy_checkpoint():
     # Форматирование сохраняет пустые курсоры и прежний логический последний номер.
     for _ in range(2000):
         m.now+=1;m.checked('user_storage_poll')
-        if not m.u.mem_read(m.addr('store_save_requested'),1)[0] and not m.checked('mem_config_result') and not m.u.mem_read(m.addr('flash_owner'),1)[0]:break
+        if not m.u.mem_read(m.addr('store_save_requested'),1)[0] and not m.checked('mem_config_result') and m.exec_state() == (0,0,0) and not m.checked('w25_async_active') and not m.u.mem_read(m.addr('log_pendingCount'),1)[0]:break
     m.request();m.drain_upload();assert m.sent==[wire(10,7,0,[],0)]
     saved=bytearray(512);struct.pack_into('<4I',saved,off+16,0x354c5055,103,102,900)
     m=UploadMachine();m.cmd=10;m.base=BASE

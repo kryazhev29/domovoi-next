@@ -74,7 +74,7 @@ def config_ownership():
     # Камера также удерживает страницу на всех шагах хранения.
     from test_photo_runtime import PhotoMachine
     p=PhotoMachine();p.boot_media();p.begin_camera(58,drain=False)
-    assert p.checked('photo_storage_busy')
+    assert p.exec_active(8)
     assert not p.checked('mem_config_begin',0x21000000,0x21000200)
     return result
 

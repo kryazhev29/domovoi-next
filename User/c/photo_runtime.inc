@@ -32,10 +32,6 @@ bool photo_empty_cleanup(void) {
   return pr.cleanup && pr.initialized;
 }
 
-// Сообщаем арбитру, что автомат фото владеет флеш.
-bool photo_storage_busy(void) {
-  return pr.phase != 0;
-}
 
 // Отменяем запрос, но завершаем уже начатую публикацию или очистку.
 void photo_storage_cancel(void)

@@ -115,7 +115,12 @@ class StorageMachine(Machine):
         self.checked('user_parse_comand',0x21000000,channel)
         self.u.mem_write(0x21000000,b'\xA5'*len(p)) # Приёмник сразу повторно использует буфер кадра.
     # Читает признак незавершённой операции связанного кода.
-    def active(self):return self.call('table_runtime_active')!=0
+    def exec_state(self):
+        return tuple(self.u.mem_read(self.addr('flash_job'),3))
+    def exec_active(self, kind):
+        state=self.exec_state()
+        return state[0]==kind and state[2]==1
+    def active(self):return self.exec_active(7)
     # Выполняет один проход хранения и проверяет его бюджет.
     def tick(self):
         crc_phase = bytes(self.u.mem_read(self.addr('table_job')+self.table['phase'],1)) == b'\x03'
@@ -130,10 +135,22 @@ class StorageMachine(Machine):
             self.tick()
         raise AssertionError('operation did not terminate')
 
+    # Отдельный CRC-квант проходит настоящий begin/switch/result без нижних источников.
+    def crc_tick(self):
+        if not self.checked('idcrc_background_begin'):return
+        assert self.exec_state()==(6,0,1)
+        self.checked('flash_exec_poll',self.now)
+        budgets=self.read_budget,self.io_budget,self.steps
+        result=self.exec_state()[2]
+        assert self.exec_state()[:2]==(6,0) and result in (2,3)
+        assert self.checked('flash_exec_take_result')==result
+        assert self.checked('flash_exec_take_result')==0
+        self.read_budget,self.io_budget,self.steps=budgets
+
     # Доводит фоновый расчёт CRC до готового состояния.
     def settle_crc(self):
         if "idcrc_io_active" not in self.symbols:return
         for _ in range(1000):
             if not self.checked("idcrc_io_active"):return
-            self.now+=1;self.checked("idcrc_background")
+            self.now+=1;self.crc_tick()
         raise AssertionError("CRC metadata did not finish")

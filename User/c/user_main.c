@@ -105,7 +105,6 @@ void user_loop(void)
      а не на следующем 10-мс такте. */
   if (config.wiegandType != 0)
     WG_process();
-  if (user_storage_command_ready() && user_storage_flash_ready()) idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
   fw_status_poll();
   unreg_sms_poll();
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */

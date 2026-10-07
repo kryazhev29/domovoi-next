@@ -1,3 +1,4 @@
+from test_flash_executor import context
 # Доработка: Кряжев А., 2026
 from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONFIG, FW_CONTEXT, FW_DATA, TABLE, UP_CONTEXT, UP_PACKET, SIZES
 """Независимый эталон команд и проводных ответов фонового сервиса CRC."""
@@ -85,7 +86,7 @@ class ServiceMachine(StorageMachine):
 
     # Читает признак незавершённой операции связанного кода.
     def active(self):
-        return self.call('service_crc_active') != 0
+        return self.exec_active(6) != 0
 
     # Выполняет один проход хранения и проверяет его бюджет.
     def tick(self):
@@ -281,12 +282,12 @@ def ff_affine():
     maximum = 0
     for length in lengths:
         m = ServiceMachine(); assert m.checked('service_crc_begin_config', 0, 73)
-        job = int.from_bytes(m.u.mem_read(m.addr('service_crc_job'), 4), 'little')
+        job = context(m)
         seed = rng.randrange(65536); offsets=fields('service_crc_s')
         m.write(job + offsets['real'], 0); m.write(job + offsets['erased'], length); m.write(job + offsets['crc'], seed, 2)
-        m.write(job + offsets['phase'], 2, 1); m.write(job + offsets['waiting'], 0, 1)
+        m.write(m.addr('flash_job') + 1, 2, 1); m.write(job + offsets['waiting'], 0, 1)
         passes = 0
-        while int.from_bytes(m.u.mem_read(job + offsets['phase'], 1), 'little') == 2:
+        while m.exec_state()[1] == 2:
             m.tick(); passes += 1; assert passes <= 33
         assert int.from_bytes(m.u.mem_read(job + offsets['crc'], 2), 'little') == expected(seed, length), (seed, length)
         maximum = max(maximum, max(m.poll_costs)); assert not m.read_ranges

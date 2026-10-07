@@ -116,20 +116,27 @@ bool idcrc_get(uint16_t *crc)
   if(ic.state!=IC_READY) return false;
   *crc=ic.crc; return true;
 }
-// Читает до 64 Б за проход и возвращает владение; чужое чтение не сбрасывает скан.
-bool idcrc_background(void)
+// Намерение сканирования остаётся в ic; исполнитель принимает только один квант.
+bool idcrc_background_begin(void)
+{
+  if (ic.state || !user_storage_background_ready() || !mem_tables_ready()) return false;
+  return flash_exec_begin(FX_CRC, NULL);
+}
+// Читает до 64 Б за проход; чужая работа не сбрасывает готовый префикс.
+void idcrc_background_poll(void)
 {
   uint8_t b[64]; uint32_t end=id_used_bytes;
-  if(ic.state || !user_storage_background_ready() || !mem_tables_ready()) return false;
+  flash_result_t result = FX_OK;
   if(end>mem[MB_ID].size) end=mem[MB_ID].size;
   if(!ic.scan) ic.partial=65535;
   if(ic.scan<end) {
     uint16_t n=end-ic.scan>64?64:(uint16_t)(end-ic.scan);
-    if(!flash_claim(FO_CRC)) return false;
     if(w25_read_data(mem[MB_ID].start+ic.scan,b,n)) {
       ic.partial=crc16_calcInit(b,n,ic.partial); ic.scan+=n;
-    } else ic.scan=0;
-    flash_release(FO_CRC);
+    } else {
+      ic.scan = 0;
+      result = FX_ERROR;
+    }
   } else { ic.crc=crc16_ffInit(mem[MB_ID].size-ic.scan,ic.partial); ic.state=IC_READY; }
-  return false;
+  flash_exec_finish(result);
 }

@@ -59,7 +59,7 @@ class FirmwareMachine(UploadMachine):
         self.u.mem_write(0x21000000,b'\xa5'*32)
     # Выполняет один шаг сервиса прошивки.
     def tick_fw(self):
-        phase=self.phase();owner=self.checked('fw_service_active');self.now+=1
+        phase=self.phase();owner=self.exec_active(3);self.now+=1
         before=self.u.reg_read(UC_ARM_REG_PRIMASK)
         self.checked('user_storage_poll');self.poll_costs.append(self.steps)
         assert self.u.reg_read(UC_ARM_REG_PRIMASK)==before
@@ -251,7 +251,7 @@ def real_spi():
     m.begin();m.costs=[];mxread=mxstatus=fwread=0
     for n in range(10000):
         if not m.ptr():break
-        active=m.checked('fw_service_active');wire['read']=wire['status']=0;m.tick_fw()
+        active=m.exec_active(3);wire['read']=wire['status']=0;m.tick_fw()
         mxread=max(mxread,wire['read']);mxstatus=max(mxstatus,wire['status'])
         if active:fwread=max(fwread,wire['read']);assert wire['read']<=64
         assert wire['status']<=4

@@ -23,7 +23,6 @@ typedef struct {
   uint8_t *tx;
 } photo_runtime_s;
 // Сообщить арбитру о занятой флеш.
-bool photo_storage_busy(void);
 // Выполнить один ограниченный шаг хранения или отправки.
 void photo_storage_poll(uint32_t now);
 // Отменить запрос после завершения уже принятой операции W25.

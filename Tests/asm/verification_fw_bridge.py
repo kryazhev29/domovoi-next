@@ -23,7 +23,15 @@ def ack_order():
                 phase=m.phase();phases.add(phase)
                 assert_no_early_fetch(m)
                 if phase==8 and m.read_word(m.addr('store')+18,1):
-                    assert not m.checked('fw_service_active') and m.checked('fw_service_busy')
+                    from test_flash_executor import state, CONFIG, FWSERVICE, PENDING, OK
+                    kind, step, result = state(m)
+                    config_result = m.checked('mem_config_result')
+                    if config_result:
+                        assert (kind, result) == (CONFIG, PENDING if config_result == 1 else OK)
+                    else:
+                        assert (kind, result) == (FWSERVICE, PENDING)
+                        assert m.read_word(m.addr('store')+18,1) == 8
+                    assert m.checked('fw_service_busy')
                 if phase==16:break
                 m.tick_fw()
             else:raise AssertionError(('ACK never ready',number,ch))
@@ -34,7 +42,7 @@ def ack_order():
                 if number==1:assert m.flash[0x1000:0x1020]==b'\x5a'*32
             m.busy=m.commit_fail=False;m.drain()
             assert m.sent==[wire] and not m.ptr() and owned(m)==0
-            out.append(dict(number=number,channel=ch,setup_phases=sorted(phases),config_wait_excluded_from_flash_owner=True))
+            out.append(dict(number=number,channel=ch,setup_phases=sorted(phases),config_and_service_kind=True))
     return out
 
 

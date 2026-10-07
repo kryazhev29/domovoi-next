@@ -221,7 +221,7 @@ void fw_async_reply(uint8_t id) { fw_job.id = id; }
 // Скопировать проверенный блок и захватить флеш для фоновой записи.
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel)
 {
-  if (flash_owner || store.job || mem_config_result() || w25_async_active()) return false;
+  if (!flash_exec_idle() || store.job || mem_config_result()) return false;
   fw_job.data = work_acquire(1024u, WORK_FW_BLOCK);
   if (!fw_job.data) return false;
   memcpy(fw_job.data, data, 1024u);

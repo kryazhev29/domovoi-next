@@ -2,6 +2,16 @@
 
 07.10.2026; `domovoi-flash3`, HEAD `593f01d`. Прочитаны `AGENTS.md`, `PROJECT_STATUS.md`, `decisions.md` и [опись этапа 1](../../domovoi-flash/docs/flash_executor_plan.md), база `5fe9af1`. Только проект. E01–E09 исправляются отдельно; перед реализацией сверить их итог и тесты. Соседнее дерево только читалось.
 
+Актуализация для шагов 1–2: `task/exec`, база `53392ca`, дерево `domovoi-exec`.
+E01–E09 и разблокировка уже влиты; сверены с [итогом этапа 2](history/FLASH_FIXES_20261007.md).
+Новая измеренная база: BIN **78 975 / 76 532 Б**, readwrite data **16 917 / 16 531 Б**,
+RAM-код **516 Б** обоих профилей, CSTACK **4096 Б**, его limit **0x200043F0 / 0x20004268**.
+Артефакты реализации — `%TEMP%/domovoi-exec-build`. Таблица оценок ниже относится
+к историческому `593f01d`; пределы после всех семи шагов следует сравнивать с новой базой.
+Для нынешних шагов 1–2 размер измеряется, целевой выигрыш не является условием приёмки.
+E05 сохраняет минимальный BUSY-повтор, полное завершение factoryReset остаётся будущей работой.
+E06 сохраняет FIFO и reported после приёма события в RAM, без новой гарантии долговечности.
+
 | Решение | Граница |
 |---|---|
 | Один исполнитель | `job = { kind, step, result, union data }`; один `switch (kind)` в `flash_exec_poll`. `user_storage_poll` вызывает его и обслуживает результаты. |
@@ -94,7 +104,7 @@ void flash_exec_quiet(uint8_t channel);
 | I13 ID счётчика/first-pass; `user_ids.c:275` | TABLE/ID_PATCH: повторное чтение ID, прежний сектор-журнал/CRC; реле после OK, ответ/журнал один раз. |
 | I21–I23 factoryReset/default/config; `user_config.c:54,134,278`, `table_runtime.c` | CONFIG или STORE/FACTORY: A/B/очистки подшагами, успех после конца. Стартовая миграция синхронная; полный factoryReset не атомарен. |
 | I01 install; `Bootloader/app_update.c:54` | STORE/INSTALL: порционная проверка, erase журнала, magic последней. RebootToUpdate удерживается; reset после OK/flush. |
-| I02/I03/I05 confirm/rollback/reported; `Bootloader/app_update.c:92,99,130` | Короткие синхронные свободные точки исполнителя: idle → занять STORE/BOOT_MARK → 4 Б/verify → результат/release, без вложенного poll. Trial/registration/report удерживают намерение без mailbox; rollback-reset после метки, reported после долговечного события. I04 чтения — read_allowed. |
+| I02/I03/I05 confirm/rollback/reported; `Bootloader/app_update.c:92,99,130` | Короткие синхронные свободные точки исполнителя: idle → занять STORE/BOOT_MARK → 4 Б/verify → результат/release, без вложенного poll. Trial/registration/report удерживают намерение без mailbox; rollback-reset после метки, reported после принятия события в RAM согласно E06. I04 чтения — read_allowed. |
 | I06–I08 manual stage; `Bootloader/app_update.c:148,153,158` | Read — read_allowed/реальный результат; write/erase — STORE/MANUAL_STAGE с удержанным USB-вводом. Восемь erase асинхронно; сверить E07–E09. |
 | I09 RAM replacement; `Bootloader/app_update.c`, `boot_manual.c` | Эксклюзивный STORE/RAM_APPLY: drain/verify, проверенный образ, память/транспорт, прежний RAM-writer/IRQ off. Алгоритм не менять. |
 | I24–I30 `mem_*`, `sj_io_*`, CRC I/O; I39–I43 log/ACK/recovery | Только текущий kind/вложенный механизм. Sync_finish/log_wait/log_addEvent только до runtime; внутренние чтения без внешнего gate. |

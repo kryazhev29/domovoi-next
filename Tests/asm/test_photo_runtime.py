@@ -76,7 +76,7 @@ class PhotoMachine(StorageMachine):
     # Прочитать поле автомата хранения по DWARF.
     def rget(self,n,size=1):return int.from_bytes(self.u.mem_read(self.addr('pr')+self.runtime_fields[n],size),'little')
     # Узнать, владеет ли автомат фото флеш.
-    def active(self):return self.call('photo_storage_busy')!=0
+    def active(self):return self.exec_active(8)!=0
     # Выполнить шаг хранения и проверить ограничение работы с NOR.
     def tick(self):
         self.now+=1;self.checked('user_storage_poll')
