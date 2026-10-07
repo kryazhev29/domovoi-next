@@ -169,6 +169,11 @@ void user_setdefault (void)
 
 // Передать согласованный протокольный сброс владельцу хранения.
 void user_factoryReset (void){
+  if (store_runtime && !user_storage_command_ready()) {
+    device.timeToDefault = 1;
+    return;
+  }
+  device.timeToDefault = 0; // Запрос снимается только при старте сброса.
   fw_async_cancel();
 
   // закрываем соединение с сервером

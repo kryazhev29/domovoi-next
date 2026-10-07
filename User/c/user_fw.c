@@ -26,9 +26,47 @@ uint8_t fw_update_quiet(void)
   return device.status.readyToUpdate;
 }
 
-// Записать событие обновления с готовой числовой причиной.
-void fw_event(logUpdate_e num, fw_reason_e reason)
-{ log_addUpdateEvent(num, (uint32_t)reason); }
+// Принятие журналом проверяется отдельно от завершения работы FW.
+bool fw_event(logUpdate_e num, fw_reason_e reason)
+{ return log_addUpdateEvent(num, (uint32_t)reason); }
+
+static struct { uint8_t num, reason; } fw_events[4];
+static uint8_t fw_event_head, fw_event_count, boot_event_accepted;
+
+bool fw_event_waiting(void) { return fw_event_count != 0; }
+
+// Новые команды и секундные FW-переходы ждут эту очередь. Текущий единственный
+// FW-владелец может добавить только начало и завершение; четырёх мест достаточно.
+void fw_event_request(logUpdate_e num, fw_reason_e reason)
+{
+  if (!fw_event_count && fw_event(num, reason)) return;
+  if (fw_event_count > 3u) return; // по построению не бывает; кольцо не портим
+  uint8_t slot = (fw_event_head + fw_event_count) & 3u;
+  fw_events[slot].num = (uint8_t)num;
+  fw_events[slot].reason = (uint8_t)reason;
+  ++fw_event_count;
+}
+
+void fw_event_poll(void)
+{
+  if (!fw_event_count || !fw_event((logUpdate_e)fw_events[fw_event_head].num,
+                                  (fw_reason_e)fw_events[fw_event_head].reason)) return;
+  fw_event_head = (fw_event_head + 1u) & 3u;
+  --fw_event_count;
+}
+
+// После принятия события повторяется только метка, чтобы отказ записи не дал дубль.
+void fw_boot_event_poll(void)
+{
+  if (!device.registredOnServer || !user_storage_flash_ready()) return;
+  if (!boot_event_accepted) {
+    if (!app_boot_error_unreported()) return;
+    fw_reason_e code = (fw_reason_e)app_boot_error_code();
+    if (!fw_event(code == FW_REASON_TRIAL_FAIL ? LOG_FW_ROLLBACK : LOG_FW_FAIL, code)) return;
+    boot_event_accepted = 1;
+  }
+  if (app_boot_error_reported()) boot_event_accepted = 0;
+}
 
 // Отменить владельцев загрузки и сохранить состояние завершения.
 void fw_cancel(fw_reason_e reason)
@@ -41,7 +79,7 @@ void fw_cancel(fw_reason_e reason)
   device.updateTimeout = 0;
   device.FWblockIdx = device.FWblockCount = 0;
   fw_write_errors = 0;
-  if (reason != FW_REASON_NONE) fw_event(reason == FW_REASON_TIMEOUT ? LOG_FW_TIMEOUT : LOG_FW_FAIL, reason);
+  if (reason != FW_REASON_NONE) fw_event_request(reason == FW_REASON_TIMEOUT ? LOG_FW_TIMEOUT : LOG_FW_FAIL, reason);
   if (device.cchFWupdate != CH_USB) user_saveindex();
 }
 
@@ -100,7 +138,7 @@ static uint8_t fw_blocks_done(uint8_t crc_ok)
   device.status.readyToUpdate = 0;
   device.updateTimeout = 0;
   if (crc_ok) device.rebootToUpdate = 1;
-  else fw_event(LOG_FW_FAIL, FW_REASON_CRC);
+  else fw_event_request(LOG_FW_FAIL, FW_REASON_CRC);
   if (device.cchFWupdate != CH_USB) user_saveindex();
   return crc_ok ? FW_BLOCK_OK : FW_BLOCK_END;
 }
@@ -119,7 +157,7 @@ uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch)
   if (block != device.FWblockIdx) return FW_BLOCK_BADFRAME;
   if (block == 0 && fw_image_foreign(&p[2], device.hardwareVersion)){
     fw_cancel(FW_REASON_NONE);
-    fw_event(LOG_FW_FAIL, FW_REASON_HW);
+    fw_event_request(LOG_FW_FAIL, FW_REASON_HW);
     return FW_BLOCK_END;
   }
   /* Сектор стирается перед первым блоком, который в него пишет (команда 19 стирает только

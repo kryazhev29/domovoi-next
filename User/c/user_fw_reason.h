@@ -26,7 +26,11 @@ typedef enum {
   FW_REASON_UNKNOWN = 30
 } fw_reason_e;
 // Записать событие с готовым числовым кодом причины.
-void fw_event(logUpdate_e num, fw_reason_e reason);
+bool fw_event(logUpdate_e num, fw_reason_e reason);
+void fw_event_request(logUpdate_e num, fw_reason_e reason);
+bool fw_event_waiting(void);
+void fw_event_poll(void);
+void fw_boot_event_poll(void);
 // Закончить загрузку, сохранив подтверждённые позиции.
 void fw_cancel(fw_reason_e reason);
 // Закончить загрузку и ответить по её каналу.

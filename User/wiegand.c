@@ -5,11 +5,15 @@
 
 #include "wiegand.h"
 #include "prof.h"
+#include "user_fun.h"
 
 volatile uint32_t wgData = 0;
 volatile uint32_t wgTime = 0;
 volatile uint8_t wgBitCount = 0;
 uint32_t wgID = 0;
+static struct { uint32_t data; uint8_t count; } wg_frames[4];
+static uint8_t wg_head, wg_count;
+uint32_t wg_overflows;
 
 // Принять бит D0 и очистить аппаратный флаг фронта.
 void EXTI2_IRQHandler(void){
@@ -37,6 +41,7 @@ void WG_init(void)
   board_irq_enable(EXTI3_IRQn, 0x10u);
   wgData = 0;
   wgBitCount = 0;
+  wg_head = wg_count = 0;
 }
 
 // Проверить две группы чётности W26 без цикла и таблицы.
@@ -47,7 +52,7 @@ static bool wg_parity_valid(uint32_t data)
   return (p & 0x10001u) == 1u;
 }
 
-// Передать завершённую карту в текущем проходе после атомарного снимка.
+// Снять кадр независимо от флеш; свободное хранилище обрабатывает его в этом проходе.
 void WG_process(void){
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
@@ -65,7 +70,20 @@ void WG_process(void){
     wgBitCount = 0;
   }
   __set_PRIMASK(mask); // следующий фронт уже принадлежит следующему кадру
-  if (complete && count == 26 && (!WG_PARITY || wg_parity_valid(data))) {
+  if (count) {
+    if (wg_count < 4u) {
+      uint8_t slot = (wg_head + wg_count) & 3u;
+      wg_frames[slot].data = data;
+      wg_frames[slot].count = count;
+      ++wg_count;
+    } else ++wg_overflows;
+  }
+  if (!wg_count || !user_storage_flash_ready()) return;
+  data = wg_frames[wg_head].data;
+  count = wg_frames[wg_head].count;
+  wg_head = (wg_head + 1u) & 3u;
+  --wg_count;
+  if (count == 26 && (!WG_PARITY || wg_parity_valid(data))) {
     wgID = (data >> 1) & 0x03FFFFFFu;
     PROF_CARD_MARK();
     PROF_STEP(PROF_WG_CALL, WG_readedID(wgID));

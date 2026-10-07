@@ -22,7 +22,7 @@ static void server_rx_reset(void)
 // Удалить незавершённый кадр по пределу ожидания 30 секунд.
 void server_rx_begin_pass(void)
 {
-  if (!server_rx_busy && server_rx_count &&
+  if (!server_rx_busy && !server_rx_ready && server_rx_count &&
       (uint32_t)(timers_getMillis() - server_rx_last) >= SERVER_RX_TIMEOUT_MS)
     server_rx_reset();
 }

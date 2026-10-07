@@ -8,6 +8,8 @@ def frame(value):
 
 def run(parity=True):
     m = Machine(); m.init()
+    # Приём теперь отделён от доступа; этот тест задаёт свободную физическую NOR.
+    m.stubs[m.addr('w25_read_available')] = lambda: m.ret(1)
     ids = []
     m.stubs[m.addr('WG_readedID')] = lambda: (ids.append(m.read(m.addr('wgID'))), m.ret())
     maximum = 0

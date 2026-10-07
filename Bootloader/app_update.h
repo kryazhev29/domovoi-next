@@ -11,7 +11,7 @@ int app_boot_request(void);
 // Прочитать версию загрузчика и состояние пробного запуска.
 void app_boot_metadata(void);
 // Отметить ошибку установки как переданную серверу.
-void app_boot_error_reported(void);
+int app_boot_error_reported(void);
 /* Не ноль, пока в журнале есть ошибка, ещё не отправленная на сервер. */
 int app_boot_error_unreported(void);
 /* Числовая причина этой ошибки для аргумента 2 журнала событий. */
@@ -21,7 +21,7 @@ int app_trial_active(void);
 // Подтвердить пробную прошивку записью в журнал загрузчика.
 void app_trial_confirm(void);
 // Запросить откат пробной прошивки при следующем запуске.
-void app_trial_rollback(void);
+int app_trial_rollback(void);
 /* Вызывать раз в секунду; не ноль, когда время пробы вышло без подтверждения. */
 int app_trial_expired(void);
 #endif

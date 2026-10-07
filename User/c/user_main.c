@@ -99,10 +99,11 @@ void user_init(void)
 // Выполнить очередной шаг входов, выходов и календарных сроков.
 void user_loop(void)
 {
+  fw_event_poll();
   user_unblock_poll();
   /* Карта - первой и на каждом проходе: конец кадра ловится сразу после паузы,
      а не на следующем 10-мс такте. */
-  if (config.wiegandType != 0 && user_storage_flash_ready())
+  if (config.wiegandType != 0)
     WG_process();
   if (user_storage_command_ready() && user_storage_flash_ready()) idindex_poll(mem[MB_ID].start); /* фоновая пересборка индекса ID, короткий шаг */
   fw_status_poll();
@@ -206,9 +207,8 @@ void user_loop(void)
 
     // сброс на заводские
     if (device.timeToDefault){
-      if (--device.timeToDefault == 0){
-        user_factoryReset();
-      }
+      if (device.timeToDefault > 1) --device.timeToDefault;
+      else if (user_storage_command_ready()) user_factoryReset();
     }
 
     // таймаут на отправку ID
@@ -227,7 +227,7 @@ void user_loop(void)
     if (device.rebootToUpdate && user_storage_command_ready()){
       device.rebootToUpdate = 0;
       if (app_boot_request()) {
-        fw_event(LOG_FW_INSTALL, FW_REASON_NONE);
+        fw_event_request(LOG_FW_INSTALL, FW_REASON_NONE);
         user_savereset();
       } else {
         fw_stop(FW_REASON_INSTALL, uniqIDCnt++);
@@ -247,14 +247,14 @@ void user_loop(void)
        повтор через секунду: иначе через 30 мин загрузчик откатил бы годную прошивку (07.10). */
     if (app_trial_active() && device.registredOnServer && user_storage_command_ready()){
       app_trial_confirm();
-      if (!app_trial_active()) fw_event(LOG_FW_DONE, FW_REASON_NONE);
+      if (!app_trial_active()) fw_event_request(LOG_FW_DONE, FW_REASON_NONE);
     }
 
     // пробная прошивка после обновления так и не зарегистрировалась на сервере - откат
     if (app_trial_expired() && user_storage_command_ready()){
-      app_trial_rollback();
-      user_savereset();
+      if (app_trial_rollback()) user_savereset();
     }
+    fw_boot_event_poll();
   }
 
   // каждую 1 минуту

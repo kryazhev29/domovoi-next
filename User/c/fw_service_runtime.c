@@ -60,7 +60,7 @@ bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
   p=work_acquire(sizeof *p, WORK_FW_CONTEXT); if(!p) return true;
   memset(p,0,sizeof *p); p->channel=channel; p->uniq=uniq;
   if(fw_start_rejected(rt_get16(data),rt_get32(data+2),rt_get32(data+6),rt_get32(data+10),rt_get16(data+14))) {
-    fw_event((logUpdate_e)133,FW_REASON_PARAM);
+    fw_event_request((logUpdate_e)133,FW_REASON_PARAM);
     p->config_result=1; phase=FWS_REJECT; goto publish;
   }
   p->reserve=work_acquire(1024, WORK_FW_DATA); if(!p->reserve) { work_release(p, WORK_FW_CONTEXT); return true; }
@@ -70,7 +70,7 @@ bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
   }
   reason=fw_refused();
   if(reason) {
-    fw_event((logUpdate_e)133,reason); work_release(p->reserve, WORK_FW_DATA); p->reserve=NULL;
+    fw_event_request((logUpdate_e)133,reason); work_release(p->reserve, WORK_FW_DATA); p->reserve=NULL;
     p->config_result=2; phase=FWS_REJECT; goto publish;
   }
   if(rt_get16(data)==1) { p->mode=1; phase=FWS_BACKUP_HEADER; }
@@ -129,13 +129,13 @@ start:
     for(n=0;n<p->len;n+=4) p->crc=fw_crc_next(p->crc,rt_get32(p->data+n));
     p->pos+=p->len; if(p->pos<p->end) return;
     if(p->crc!=p->expected) goto bad_crc;
-    if(phase==FWS_COPY_CRC) { fw_rollback_end=0; fw_event((logUpdate_e)137,FW_REASON_NONE); device.rebootToUpdate=1; goto cancel; }
+    if(phase==FWS_COPY_CRC) { fw_rollback_end=0; fw_event_request((logUpdate_e)137,FW_REASON_NONE); device.rebootToUpdate=1; goto cancel; }
     fw_rollback_end=p->end;
     device.cchFWupdate=p->channel; device.status.readyToUpdate=1; goto handoff;
   case FWS_SAVE:
     if(p->mode) {
       device.FWblockCount=p->blocks; device.FWblockIdx=0; device.firmwarePercent=0; device.startWaitFWtime=0;
-      fw_write_errors=0; device.cchFWupdate=p->channel; fw_event((logUpdate_e)132,FW_REASON_NONE);
+      fw_write_errors=0; device.cchFWupdate=p->channel; fw_event_request((logUpdate_e)132,FW_REASON_NONE);
       if(p->channel) { device.FWinProgress=1; device.updateTimeout=600; device.status.readyToUpdate=1; }
     }
 handoff:
@@ -173,7 +173,7 @@ error_log:
     p->data[7]=0; p->data[8]=4; p->data[9]=device.firmwarePercent; p->data[10]=253;
     packet_frame(p->data,5); p->len=13; p->phase=FWS_REPLY; return;
   }
-  fw_event((logUpdate_e)133,reason);
+  fw_event_request((logUpdate_e)133,reason);
 cleanup:
   fw_rollback_end=0; device.status.readyToUpdate=0; device.FWinProgress=0;
   device.updateTimeout=0; device.FWblockCount=0; device.FWblockIdx=0; fw_write_errors=0; code=2;

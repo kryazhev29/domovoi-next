@@ -16,6 +16,8 @@ sys.path.insert(0, str(ROOT / 'Tests'))
 import iar_irq_support
 
 CASES = {
+    'flash mutations': [('test_flash_mutations', 'run')],
+    'flash fixes': [('test_flash_fixes', n) for n in ('wiegand','scenes','server_frame','rollback','factory_reset','firmware_events','manual_read','manual_write','manual_erase')],
     'quick protocol': [('quick_contracts','protocol')],
     'quick storage': [('quick_contracts','storage')],
     'quick power': [('quick_contracts','power')],
@@ -74,6 +76,8 @@ CASES = {
 CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','fw install wait','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
+CORE += ('flash fixes',)
+CORE += ('flash mutations',)
 
 
 def select_image(build_root=None):

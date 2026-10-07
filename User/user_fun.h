@@ -112,8 +112,8 @@ uint8_t user_dayIsHoliday(void);
 uint16_t user_getNumbersCount(void);
 // получаем кол-во ID во временном буфере и тут же обновляем адрес записи
 uint16_t user_getTempIDRecordsCount(void);
-// проверить расписание
-bool user_checkShedule(uint8_t shd);
+// проверить расписание: 0 — закрыто, 1 — открыто, 2 — отказ чтения
+uint8_t user_checkShedule(uint8_t shd);
 // обновить данные ID
 bool user_updateID(cellID_s *c);
 // Удалить истёкшие ID в фоновом проходе.

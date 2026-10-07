@@ -117,11 +117,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_unblock_recheck(false);
         /* Неудачная установка или проба до этого старта: только журнал, версию сервер видит в
            статусе 2 (E122). */
-        if (app_boot_error_unreported()){
-          fw_reason_e code = (fw_reason_e)app_boot_error_code();
-          fw_event(code == FW_REASON_TRIAL_FAIL ? LOG_FW_ROLLBACK : LOG_FW_FAIL, code);
-          app_boot_error_reported();
-        }
+        fw_boot_event_poll();
         {
           uint16_t st;
           memcpy((uint8_t*)&st, (uint8_t*)&device.status, 2);
@@ -399,7 +395,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if ((len - 3) == 16){
         (void)fw_service_begin(ptr+5,cch,uniqId);
       } else{
-        fw_event(LOG_FW_FAIL, FW_REASON_PARAM);
+        fw_event_request(LOG_FW_FAIL, FW_REASON_PARAM);
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
       }
       break;

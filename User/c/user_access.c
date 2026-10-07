@@ -24,15 +24,18 @@ void user_unblock_recheck(bool restart)
   } else if (device.worktime - unblock_offline_since >= 1800u) unblock_offline = 1;
   if (!unblock_offline) {
     if (device.triggers.handUnBlock) next = 1;
-    else if (device.triggers.sheduleUnBlock && log_timeKnown && mem_tables_ready()) {
-      uint8_t scenes[8];
-      if (!user_storage_flash_ready()) return;
+    else if (device.triggers.sheduleUnBlock && log_timeKnown) {
+      uint8_t scenes[8], r;
+      if (!mem_tables_ready() || !user_storage_flash_ready()) return;
       device.day = user_getweakday(device.datetime);
       device.hour = device.datetime % 86400u / 3600u;
       device.minute = device.datetime % 3600u / 60u;
-      if (mem_read(mem[MB_SHEDULE].start + SCHED16_TAIL_OFFSET, scenes, sizeof scenes))
-        for (uint8_t i = 0; i < sizeof scenes; ++i)
-          if (user_checkShedule(scenes[i])) { next = 2; break; }
+      if (!mem_read(mem[MB_SHEDULE].start + SCHED16_TAIL_OFFSET, scenes, sizeof scenes)) return;
+      for (uint8_t i = 0; i < sizeof scenes; ++i) {
+        r = scenes[i] ? user_checkShedule(scenes[i]) : 0;
+        if (r == 2) return; // Отказ чтения не доказывает отсутствие сцены.
+        if (r) { next = 2; break; }
+      }
     }
   }
   for (uint8_t i = 0; i < 2; ++i) {
@@ -163,7 +166,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   if (device.triggers.openAllByShedule){
     // проверяем рассписание
     // проходим по расписанию
-    if (user_checkShedule(device.triggers.openAllByShedule) == true){
+    if (user_checkShedule(device.triggers.openAllByShedule) == 1){
       user_activateOut(onOut[0], onOut[1], tp, id);
     }
     return;
@@ -236,7 +239,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
         return;
       }
 
-      if (!shedule_window_ok(&shedule)) return;
+      if (shedule_window(&shedule) != 1) return;
 
       user_activateOut(onOut[0], onOut[1], tp, id);
     } else{

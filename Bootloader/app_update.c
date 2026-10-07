@@ -93,10 +93,10 @@ void app_trial_confirm(void)
 }
 
 // Запросить восстановление резервной копии при следующем старте загрузчика.
-void app_trial_rollback(void)
+int app_trial_rollback(void)
 {
   uint32_t zero = 0;
-  if (trial) (void)mem_write(BOOT_JOURNAL + BOOT_JOURNAL_ROLLBACK, (uint8_t *)&zero, sizeof(zero));
+  return trial && mem_write(BOOT_JOURNAL + BOOT_JOURNAL_ROLLBACK, (uint8_t *)&zero, sizeof(zero));
 }
 
 // Проверить срок неподтверждённой пробы по выделенному таймеру.
@@ -123,11 +123,11 @@ uint32_t app_boot_error_code(void)
 }
 
 // Отметить переданную ошибку; запись FF в ноль не требует стирания журнала.
-void app_boot_error_reported(void)
+int app_boot_error_reported(void)
 {
   uint32_t reported = 0;
-  if (app_boot_error_unreported())
-    (void)mem_write(BOOT_JOURNAL + BOOT_JOURNAL_REPORTED, (uint8_t *)&reported, sizeof(reported));
+  return app_boot_error_unreported() &&
+    mem_write(BOOT_JOURNAL + BOOT_JOURNAL_REPORTED, (uint8_t *)&reported, sizeof(reported));
 }
 /* Кандидат готовится через имеющийся драйвер внешней флеш-памяти работающей прошивки.
  * Встроенного образа загрузчика нет, автоматического запроса при старте нет. */
@@ -145,17 +145,17 @@ int manual_board_hw(uint8_t hw) {
 // Прочитать часть подготовленного образа из внешнего флеша.
 int manual_stage_read(uint32_t off,void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
- mem_read(BOOT_CANDIDATE+off,data,n);return 1;
+ return mem_read(BOOT_CANDIDATE+off,data,n);
 }
 // Записать часть подготовленного образа с проверкой драйвером W25.
 int manual_stage_write(uint32_t off,const void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
- mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);return 1;
+ return mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);
 }
 // Стереть сектор области подготовки образа.
 int manual_stage_erase(uint32_t off) {
  if(off>=MANUAL_BOOT_SIZE||(off&4095u))return 0;
- mem_erase_sector(BOOT_CANDIDATE+off);return 1;
+ return mem_erase_sector(BOOT_CANDIDATE+off);
 }
 // Обслужить сторожевой таймер во время ручного обновления.
 void manual_service(void) {wdt_reload();}

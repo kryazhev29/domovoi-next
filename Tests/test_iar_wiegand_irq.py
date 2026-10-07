@@ -3,6 +3,7 @@
 Доработка: Кряжев А., 2026"""
 from iar_irq_support import Machine,UC_ARM_REG_PRIMASK
 m=Machine();seed=0x2123457;delivered=[]
+m.stubs[m.addr('w25_read_available')]=lambda:m.ret(1)
 m.stubs[m.addr('WG_readedID')]=lambda:(delivered.append(m.read(m.addr('wgID'))),m.ret())
 # Готовит законченный кадр и очищает список принятых кодов.
 def setup():

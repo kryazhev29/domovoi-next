@@ -39,17 +39,17 @@ bool sched16_valid(const uint8_t *packet, uint16_t length)
 }
 
 // Читает расписание и общий хвост в прежнее представление исполнителя.
-bool sched16_get(uint16_t number, cellShedule_s *schedule)
+uint8_t sched16_get(uint16_t number, cellShedule_s *schedule)
 {
-  if (!number || number>SCHED16_COUNT) return false;
+  if (!number || number>SCHED16_COUNT) return 0;
   uint32_t base=mem[MB_SHEDULE].start;
-  if (!mem_read(base+(number-1u)*SCHED16_RECORD_SIZE,(uint8_t *)schedule,16) ||
-      schedule->index!=number ||
-      !mem_read(base+SCHED16_TAIL_OFFSET,(uint8_t *)schedule+16,16)) return false;
+  if (!mem_read(base+(number-1u)*SCHED16_RECORD_SIZE,(uint8_t *)schedule,16)) return 2;
+  if (schedule->index!=number) return 0;
+  if (!mem_read(base+SCHED16_TAIL_OFFSET,(uint8_t *)schedule+16,16)) return 2;
   // Сохраняем размещение scene и onHoliday для исполнителя доступа.
   memmove(schedule->scene,(uint8_t *)schedule+16,9);
   memset(schedule->reserve,255,sizeof schedule->reserve);
-  return true;
+  return 1;
 }
 
 #define SCHED16_MARK_OFFSET 32u

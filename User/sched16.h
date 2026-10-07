@@ -13,8 +13,8 @@
 uint32_t sched16_crc_size(void);
 // Проверяет длину, количество и номера расписаний входящего кадра.
 bool sched16_valid(const uint8_t *packet, uint16_t length);
-// Читает запись и общий хвост в представление исполнителя доступа.
-bool sched16_get(uint16_t number, cellShedule_s *schedule);
+// Читает запись и общий хвост: 0 — записи нет, 1 — прочитана, 2 — отказ чтения.
+uint8_t sched16_get(uint16_t number, cellShedule_s *schedule);
 // Восстанавливает маркер завершённого перехода формата.
 void sched16_restore(const device_s *saved);
 // Очищает старый формат и публикует маркер после журнальной записи.

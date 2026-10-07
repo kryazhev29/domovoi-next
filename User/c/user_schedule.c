@@ -39,7 +39,7 @@ uint32_t offset;
 
 // Собрать расписание из записи и общего хвоста.
 bool user_getShedule(uint16_t num, cellShedule_s *shedule){
-  return sched16_get(num,shedule);
+  return sched16_get(num,shedule) == 1;
 }
 
 // Проверить текущую дату по таблице праздников.
@@ -55,22 +55,21 @@ uint8_t data[64];
   return 0;
 }
 
-// Проверить день, время и праздничный режим прочитанного расписания.
-bool shedule_window_ok(const cellShedule_s *s)
+// Окно прочитанного расписания: 0 — закрыто, 1 — открыто, 2 — праздники не прочитаны.
+uint8_t shedule_window(const cellShedule_s *s)
 {
-  if (!s->day[device.day] || !shedule_time_ok(s)) return false;
-  switch (s->onHoliday) {
-  case 1: return true;
-  case 2: return user_dayIsHoliday() == 1;
-  case 3: return user_dayIsHoliday() == 0;
-  default: return false;
-  }
+  uint8_t holiday;
+  if (!s->day[device.day] || !shedule_time_ok(s)) return 0;
+  if (s->onHoliday == 1) return 1;
+  if (s->onHoliday != 2 && s->onHoliday != 3) return 0;
+  holiday = user_dayIsHoliday();
+  return holiday == 2 ? 2 : holiday == (s->onHoliday == 2);
 }
 
-// Прочитать разрешённое расписание и проверить его текущее окно.
-bool user_checkShedule(uint8_t number)
+// Окно расписания по номеру: 0 — закрыто или нет записи, 1 — открыто, 2 — отказ чтения.
+uint8_t user_checkShedule(uint8_t number)
 {
   cellShedule_s shedule;
-  return mem_tables_ready() && user_getShedule(number, &shedule) &&
-    !shedule.blocked && shedule_window_ok(&shedule);
+  uint8_t r = mem_tables_ready() ? sched16_get(number, &shedule) : 2;
+  return r != 1 ? r : shedule.blocked ? 0 : shedule_window(&shedule);
 }

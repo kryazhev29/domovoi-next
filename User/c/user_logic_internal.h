@@ -125,8 +125,8 @@ uint8_t fw_take_block(const uint8_t *p, uint16_t n, dataChanel_e cch);
 void fw_resume_after_boot(void);
 // Проверить текущую минуту по интервалу расписания.
 bool shedule_time_ok(const cellShedule_s *s);
-// Проверить день, время и праздничный режим прочитанного расписания.
-bool shedule_window_ok(const cellShedule_s *s);
+// Окно прочитанного расписания: 0 — закрыто, 1 — открыто, 2 — праздники не прочитаны.
+uint8_t shedule_window(const cellShedule_s *s);
 // Определить стёртую запись журнала.
 bool log_blank(const cellLog_s *cell);
 // Сообщить занятость владельца записи блока прошивки.

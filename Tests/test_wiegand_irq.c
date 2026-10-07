@@ -18,8 +18,9 @@ void __disable_irq(void){irqmask=1;}
 void __set_PRIMASK(uint32_t m){irqmask=m;}
 uint32_t timers_getMillis(void){return clock_ms;}
 void WG_readedID(uint32_t id){seen++;lastid=id;}
+bool user_storage_flash_ready(void){return true;}
 /* КОД */
-static void reset(void){wgData=wgTime=wgID=0;wgBitCount=0;clock_ms=100;irqmask=0;seen=0;}
+static void reset(void){wgData=wgTime=wgID=wg_overflows=0;wgBitCount=wg_head=wg_count=0;clock_ms=100;irqmask=0;seen=0;}
 static void bits(unsigned n){for(unsigned i=0;i<n;i++){if(i&1)EXTI3_IRQHandler();else EXTI2_IRQHandler();}}
 int main(void){
   reset();bits(282);clock_ms=400;WG_process();WG_process();CHECK(seen==0);

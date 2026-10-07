@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=fixture('Tests/test_outs.c').replace('/* PRODUCTION */','void prof_relay_on(void) {}\n'+outs)
     elif kind=='wiegandirq':
         wg=source('User/wiegand.c')
-        code='\n'.join(x for x in wg.splitlines() if re.match(r'^(?:volatile )?(?:uint32_t|uint8_t|bool) wg',x))+'\n'
+        code='\n'.join(x for x in wg.splitlines() if x.endswith(';') and re.match(r'^(?:(?:static|volatile) )?(?:(?:uint32_t|uint8_t|bool) wg|struct .* wg_frames)',x))+'\n'
         code+='\n'.join(function(wg,n) for n in ('wg_parity_valid','EXTI2_IRQHandler','EXTI3_IRQHandler','WG_process'))
         prof='#ifndef WG_PARITY\n#define WG_PARITY 1\n#endif\nuint32_t prof_card_mark;\n#define PROF_CARD_MARK() (prof_card_mark = PROF_NOW() | 1u)\n#define PROF_NOW() (0u)\n#define PROF_STEP(i, call) do { call; } while (0)\n'
         unit=fixture('Tests/test_wiegand_irq.c').replace('/* PRODUCTION */',prof+code)

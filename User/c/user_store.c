@@ -19,7 +19,7 @@ static inline bool storage_idle(void) { return !flash_owner && !w25_async_active
 
 // Определить готовность хранения после обработки поколения USB.
 bool user_storage_command_ready(void) {
-store_usb_session(); return !store.job && !store_reset_requested && !mem_config_result() && storage_idle();
+store_usb_session(); return !fw_event_waiting() && !store.job && !store_reset_requested && !mem_config_result() && storage_idle();
 }
 
 // Разрешить команду с учётом её владельца и состояния хранения.
