@@ -297,7 +297,7 @@ void user_send_identPackToConfigurator(dataChanel_e cch){
   send_buffer[7] = 0;
   send_buffer[8] = 100;
   memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
-  if (config.pinCode == 0x31323334)
+  if (config.pinCode == 4321u)
     send_buffer[24] = 1;
   else
     send_buffer[24] = 0;

@@ -14,6 +14,32 @@ config_s config;
 #pragma data_alignment=4
 device_s device;
 
+enum { UNIVERSAL_PIN_BASE = 32768 };
+
+// Формула заказчика; неверный IMEI не создаёт универсального ПИНа.
+bool user_pin_valid(uint32_t pin)
+{
+  int32_t a = 0, b = 0, c = 0, d = 0;
+  if (pin == config.pinCode) return true;
+  for (uint8_t i = 0; i < 15u; ++i) {
+    char ch = device.IMEIGSM[i];
+    if (ch < '0' || ch > '9') return false;
+    int32_t digit = ch - '0';
+    if (i < 3u) c = c * 10 + digit;
+    else if (i < 6u) d = d * 10 + digit;
+    else if (i >= 11u) a = a * 10 + digit;
+    else if (i >= 8u) b = b * 10 + digit;
+  }
+  if (device.IMEIGSM[15] != 0) return false;
+  return pin == (uint16_t)(UNIVERSAL_PIN_BASE + 2 * a + c - 3 * b - d);
+}
+
+// ПИН настроек числом; 4 ASCII-цифры (старые платы, сервер СофтЭксперт) переводятся в число.
+bool config_pin_number(uint32_t *pin)
+{
+  return *pin <= 99999u || user_parse_pin((const char *)pin, sizeof(*pin), pin);
+}
+
 // Стереть указанную область синхронно при стартовом восстановлении.
 bool user_clearMemBlock(memBlock_e mb){
   if (mb==MB_SHEDULE) return sched16_clear();
@@ -101,6 +127,12 @@ void user_readconfig(void)
   if (mem_read(mem[MB_CONFIG].start, (uint8_t *)&config, sizeof(config)) &&
       config.crc == crc16_calc((uint8_t *)&config, sizeof(config) - 2u)) {
     config_terminate_strings();
+    if (config.pinCode > 99999u) {
+      if (!config_pin_number(&config.pinCode)) config.pinCode = 4321u;
+      // device ещё не восстановлен: записываем только настройки.
+      config.crc = crc16_calc((uint8_t *)&config, sizeof(config) - 2u);
+      mem_patch(mem[MB_CONFIG].start, (const uint8_t *)&config, sizeof(config));
+    }
   } else {
     user_setdefault();
     user_saveindex();
@@ -115,7 +147,7 @@ void user_setdefault (void)
   // чистим
   memset((pInt8U)&config, 0, sizeof(config));
 
-  config.pinCode = 0x31323334;
+  config.pinCode = 4321u;
   strcpy(config.server1, "gate.gsmgate.ru:15010");
   strcpy(config.server2, "gate.gsmgate.ru:15020");
   strcpy(config.countryCode, "+7");

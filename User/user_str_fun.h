@@ -12,8 +12,6 @@ char *skipchar(char ch, char *text, unsigned char count);
 void user_strcpy(char *dest, char *src, char separator, unsigned char limit);
 // Разобрать десятичный внешний аргумент, включая пробелы и знак.
 uint32_t user_decimal(const char *text);
-// Проверить цифру для интерфейса универсального ПИН.
-
-// Проверить заданное число цифр IMEI.
-
+// Разобрать ровно 4–5 цифр ПИНа; при отказе результат не менять.
+bool user_parse_pin(const char *text, uint32_t length, uint32_t *value);
 #endif

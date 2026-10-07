@@ -311,10 +311,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     case 12: // установка настроек контроллера
       if ((len - 3) == sizeof(config)){
         const config_s *received = (const config_s *)&ptr[5];
+        uint32_t pin;
+        memcpy(&pin, &ptr[5 + offsetof(config_s, pinCode)], sizeof(pin));
 
         /* Сервер 1 и код страны обязательны; сервер 2 может быть пустым, его использование
            задаёт useServer2. */
-        if ((received->server1[0] == 0) || (received->countryCode[0] == 0)){
+        if ((received->server1[0] == 0) || (received->countryCode[0] == 0) ||
+            !config_pin_number(&pin)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         }
         else{
@@ -322,6 +325,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           uint16_t oldcrc = device.crc;
           uint8_t olddefault = device.status.defaultConfig;
           config_exchange(&ptr[5]);
+          config.pinCode = pin;
           config_terminate_strings();
           /* Новый набор проверяется до записи; отказ оставляет прежние настройки. */
           comm_endpoints();
@@ -466,11 +470,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
     case 102: // проверка ПИН кода
       if (cch == CH_USB){
-        if (*(uint32_t*)&ptr[5] == config.pinCode){
-          device.userAutorized = 1;
-        } else{
-          device.userAutorized = 0;
-        }
+        device.userAutorized = user_parse_pin((const char *)&ptr[5], len - 3u, &tmp32) &&
+                               user_pin_valid(tmp32);
         user_send_anyData(102, &device.userAutorized, 1, cch, uniqId);
       }
       break;
