@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+from temp_cleanup import TemporaryDirectory
 
 from comm_server_host import unit, ZIG
 
@@ -38,7 +39,7 @@ def main():
     old = 'if (r == COMM_AT_OK) { call.answered = now_ms;'
     assert old in mutant
     changed.append(('answer-before-action', mutant.replace(old, 'if (r == COMM_AT_OK) { call.caller(call.number); call.answered = now_ms;', 1)))
-    with tempfile.TemporaryDirectory(dir=out) as folder:
+    with TemporaryDirectory(dir=out) as folder:
         folder = Path(folder)
         for name, mutant in changed:
             source, executable = folder / 'test.c', folder / 'test.exe'

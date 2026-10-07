@@ -3,6 +3,7 @@ import subprocess
 import sys
 import os
 import tempfile
+from temp_cleanup import TemporaryDirectory
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +40,7 @@ def main():
     for name, old, new, *where in CASES:
         old, new = (data.decode('utf-8').replace('\r\n', '\n') for data in (old, new))
         assert production.count(old) == 1, name
-        with tempfile.TemporaryDirectory(dir=base) as directory:
+        with TemporaryDirectory(dir=base) as directory:
             folder=Path(directory);source=folder/'test.c';executable=folder/'test.exe'
             source.write_text(production.replace(old,new),encoding='utf-8')
             compiler=subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(source),'-o',str(executable)],capture_output=True)

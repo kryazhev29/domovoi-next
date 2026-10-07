@@ -5,11 +5,12 @@ import os
 import struct
 import subprocess
 import tempfile
+from temp_cleanup import TemporaryDirectory
 from modem_sim import c_header
 from source_select import diagnostic_header
 
 ROOT = Path(__file__).resolve().parents[1]
-ZIG = __import__('os').environ.get('DOMOVOI_ZIG', str(Path(__import__('tempfile').gettempdir())/'codex-zig/zig.exe'))
+ZIG = __import__('os').environ.get('DOMOVOI_ZIG', str(Path(tempfile.gettempdir())/'codex-zig/zig.exe'))
 
 
 def unit(root=ROOT):
@@ -26,7 +27,7 @@ def unit(root=ROOT):
 
 def arm(out):
     # Clang читает комментарии UTF-8; рабочие исходники остаются UTF-8/CRLF.
-    with tempfile.TemporaryDirectory(dir=out, prefix='arm-') as tmp:
+    with TemporaryDirectory(dir=out, prefix='arm-') as tmp:
         tmp = Path(tmp)
         for name in ('comm_at.c', 'comm_at.h', 'comm_uart.h'):
             (tmp / name).write_text((ROOT / 'Modules' / name).read_bytes().decode('utf-8').replace('#include \"domovoi_diag.h\"','').replace('\r\n', '\n'), encoding='utf-8', newline='\n')
@@ -62,7 +63,7 @@ if __name__ == '__main__':
     if a.arm:
         arm(out)
     else:
-        with tempfile.TemporaryDirectory(dir=out, prefix='host-') as tmp:
+        with TemporaryDirectory(dir=out, prefix='host-') as tmp:
             tmp = Path(tmp)
             (tmp / 'test.c').write_text(unit().replace('\r\n', '\n'), encoding='utf-8', newline='\n')
             subprocess.run([ZIG, 'cc', '-std=c99', '-O2', '-Wall', '-Wextra', '-Werror',

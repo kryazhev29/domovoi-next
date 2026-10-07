@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from temp_cleanup import TemporaryDirectory
 from comm_at_host import ROOT, ZIG, unit as at_unit
 from source_select import diagnostic_header
 from comm_slm_host import unit as modem_unit
@@ -111,7 +112,7 @@ def run():
     for group, label, old, new in cases:
         text = sources[group]
         assert old in text, label
-        with tempfile.TemporaryDirectory(dir=out) as tmp:
+        with TemporaryDirectory(dir=out) as tmp:
             tmp = Path(tmp)
             (tmp / 'test.c').write_text(text.replace(old, new), encoding='utf-8', newline='\n')
             subprocess.run([ZIG, 'cc', '-std=c99', '-O2', '-Wall', '-Wextra', '-Werror',
@@ -134,7 +135,7 @@ def user_mutations(out):
         ('balance-event-threshold', 'if (rubles < 100) log_addSystemValue', 'if (rubles < 1) log_addSystemValue'),
     )
     for label, old, new, *group in cases:
-        with tempfile.TemporaryDirectory(dir=out) as tmp:
+        with TemporaryDirectory(dir=out) as tmp:
             tmp = Path(tmp)
             for name in ('User', 'Modules', 'Tests', 'Bootloader', 'CMSIS'):
                 shutil.copytree(ROOT / name, tmp / name, ignore=shutil.ignore_patterns('__pycache__', '*.o', 'Release', 'Debug'))

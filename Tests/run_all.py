@@ -4,6 +4,7 @@
 Профиль выбирает соответствующий образ и его смещения DWARF.
 """
 import argparse
+import concurrent.futures
 import json
 import os
 from pathlib import Path
@@ -14,13 +15,14 @@ import tempfile
 import time
 
 sys.path.insert(0,str(Path(__file__).resolve().parent/'asm'))
-from firmware_suite import ROOT, CORE, POWER, run_cases, select_image
+from firmware_suite import ROOT, CORE, POWER, select_image
 sys.path.insert(0,str(ROOT/'Tests'))
 GROUPS = ('access', 'bootjournal', 'cfgstrings', 'cmdlengths', 'commands', 'commat', 'commserver', 'commslm', 'commuart', 'countends', 'crc', 'crcblocks', 'crcff', 'flashcmds', 'fwblockbounds', 'fwstart', 'idexpiry', 'idindex', 'idsync', 'idtext', 'log', 'logcommit', 'logupload', 'outs', 'persistence', 'photo', 'recovery', 'rs485cfg', 'rules', 'rx', 'sectorjournal', 'serverrx', 'sms', 'storage', 'sync', 'tempidmeta', 'timersirq', 'uarttimer', 'uploadretry', 'usbdesc', 'usbresetwait', 'usbresume', 'usbsetupbounds', 'utcday', 'w25', 'wiegandirq')
 TX = ('idle', 'reset', 'esof', 'busy', 'large')
 
 
 from contract_mapping import REPLACEMENTS
+from temp_cleanup import TemporaryDirectory
 
 
 def mirror(destination):
@@ -32,12 +34,94 @@ def mirror(destination):
     return destination
 
 
+def default_jobs():
+    return int(os.environ.get('DOMOVOI_TEST_JOBS', min(12, max(1, (os.cpu_count() or 2)//2))))
+
+
+def execute_group(job, destination, base, config, env):
+    name, command, elf = job
+    start = time.monotonic()
+    scope = base/'groups'/name.replace(' ', '_')
+    scope.mkdir(parents=True, exist_ok=True)
+    try:
+        # select_image() и result_path() внутри стендов получают отдельные каталоги.
+        for folder in (config, 'BOOT-Release'):
+            for sub in ('ExePath', 'ListPath'):
+                source = base/folder/sub
+                if source.exists():
+                    shutil.copytree(source, scope/folder/sub, dirs_exist_ok=True)
+        with TemporaryDirectory(prefix='temp-', dir=scope) as temporary:
+            # Python выбирает TMPDIR первым. TEMP/TMP оставляем компилятору:
+            # установленный zig.exe строит общий безопасный кэш относительно TEMP.
+            local_env = dict(env, DOMOVOI_COMPARE_BUILD=str(scope), TMPDIR=temporary)
+            command = list(command)
+            if elf:
+                output = scope/'case.json'
+                # Старый JSON не может замаскировать аварийное завершение нового запуска.
+                output.unlink(missing_ok=True)
+                command = ['Tests/asm/firmware_suite.py', '--case', name, '--output', str(output)]
+            if '--build-root' in command:
+                command[command.index('--build-root')+1] = str(scope)
+            if name == 'uart arm':
+                command += ['--out', str(scope/'uart-arm')]
+            r = subprocess.run([sys.executable, 'Tests/temp_cleanup.py', *command],
+                               cwd=destination, env=local_env, capture_output=True)
+            (base/('DomovoiNext-'+config+'-'+name.replace(' ', '_')+'.log')).write_bytes(r.stdout+r.stderr)
+            ok = r.returncode == 0 and b'FAIL' not in r.stdout
+            if elf:
+                result = json.loads(output.read_text(encoding='utf-8'))['cases'][name]
+                if not ok:
+                    result['status'] = 'FAIL'
+                display = r.stdout.decode('utf-8', errors='replace').replace('\r\n', '\n')
+                if not ok:
+                    display += r.stderr[-1600:].decode('utf-8', errors='replace')
+            else:
+                result = {'status':'PASS' if ok else 'FAIL', 'seconds':round(time.monotonic()-start, 3)}
+                display = result['status']+' '+name+'\n'
+                if not ok:
+                    display += (r.stdout+r.stderr)[-1600:].decode('utf-8', errors='replace')+'\n'
+        return result, display
+    except Exception as exc:
+        import traceback
+        trace = traceback.format_exc()
+        result = {'status':'FAIL', 'seconds':round(time.monotonic()-start, 3)}
+        if elf:
+            result.update(error=str(exc), traceback=trace)
+        return result, 'FAIL '+name+': '+trace+'\n'
+
+
+def run_groups(jobs, destination, base, config, env, workers, previous=None):
+    # Долгие группы стартуют первыми; печать и JSON сохраняют прежний порядок.
+    previous = previous or {}
+    def priority(job):
+        name = job[0]
+        estimate = 60 if name.endswith('_power') else 30 if name in (
+            'protocol contract', 'kernel benefit', 'comm mutations', 'ELF mutations') else 0
+        return previous.get(name, {}).get('seconds', estimate)
+    finished = {}
+    results = {}
+    next_result = 0
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
+        pending = {pool.submit(execute_group, job, destination, base, config, env):job[0]
+                   for job in sorted(jobs, key=priority, reverse=True)}
+        for future in concurrent.futures.as_completed(pending):
+            finished[pending[future]] = future.result()
+            while next_result < len(jobs) and jobs[next_result][0] in finished:
+                name = jobs[next_result][0]
+                results[name], display = finished.pop(name)
+                print(display, end='', flush=True)
+                next_result += 1
+    return results
+
+
 def main():
     sys.stdout.reconfigure(encoding='utf-8',errors='replace')
     p=argparse.ArgumentParser();p.add_argument('--quick',action='store_true')
     p.add_argument('--fast',action='store_true');p.add_argument('--output',type=Path)
     p.add_argument('--config',choices=('Release','ReleaseCustomer'),default='Release')
+    p.add_argument('--jobs',type=int,default=default_jobs(),help='Число независимых групп на профиль (DOMOVOI_TEST_JOBS).')
     args=p.parse_args()
+    if args.jobs < 1:p.error('--jobs должен быть положительным')
     project="DomovoiNext"
     os.environ['DOMOVOI_COMPARE_CONFIG']=args.config
     os.environ['DOMOVOI_TEST_DIAG']='0' if args.config=='ReleaseCustomer' else '1'
@@ -46,21 +130,16 @@ def main():
     destination=Path(tempfile.mkdtemp(prefix=f'host-{project}-{args.config}-',dir=base));mirror(destination)
     env=os.environ.copy()
     env['PYTHONIOENCODING']='utf-8';env['PYTHONDONTWRITEBYTECODE']='1'
-    env['PYTHONPATH']=os.pathsep.join((str(Path(tempfile.gettempdir())/'codex-deps'),str(ROOT/'Tests'),env.get('PYTHONPATH','')))
+    env['PYTHONPATH']=os.pathsep.join((str(Path(tempfile.gettempdir())/'codex-deps'),str(destination/'Tests'),env.get('PYTHONPATH','')))
     env['GIT_DIR']=subprocess.check_output(['git','rev-parse','--absolute-git-dir'],cwd=ROOT).decode('utf-8').strip()
     env['GIT_WORK_TREE']=str(destination)
     from build_iar import build
     boot=base/'BOOT-Release'
     if not args.quick and not (boot/'ExePath/DomovoiBoot.out').exists(): build(base,boot=True)
     env.update(DOMOVOI_BOOT_ELF=str(boot/'ExePath/DomovoiBoot.out'), DOMOVOI_BOOT_BIN=str(boot/'ExePath/DomovoiBoot.bin'), DOMOVOI_BOOT_MAP=str(boot/'ListPath/DomovoiBoot.map'))
-    results={}
+    jobs=[]
     def run(name,command):
-        start=time.monotonic();r=subprocess.run([sys.executable,*command],cwd=destination,env=env,capture_output=True)
-        (base/(project+'-'+args.config+'-'+name.replace(' ','_')+'.log')).write_bytes(r.stdout+r.stderr)
-        ok=r.returncode==0 and b'FAIL' not in r.stdout
-        results[name]={'status':'PASS' if ok else 'FAIL','seconds':round(time.monotonic()-start,3)}
-        print(results[name]['status'],name,flush=True)
-        if not ok:print((r.stdout+r.stderr)[-1600:].decode('utf-8',errors='replace'),flush=True)
+        jobs.append((name,command,False))
     run('sources',['Tests/check_comm_sources.py'])
     run('project sources',['Tests/test_project_sources.py'])
     run('format oracle',['Tests/test_user_format.py'])
@@ -86,7 +165,7 @@ def main():
     cases=list(CORE)+['event_append','fw_blocks','fw_bridge','usb_queue']
     if not args.fast:cases+=list(POWER)
     if args.quick:cases=['quick protocol','quick storage','quick power']
-    results.update(run_cases(cases))
+    for case in dict.fromkeys(cases):jobs.append((case,[],True))
     if not args.quick:
         run('protocol contract',['Tests/asm/protocol_contract.py','--output',str(base/f'protocol-{args.config}.json')])
         run('kernel benefit',['Tests/benchmark_kernels.py','--output',str(base/f'kernel-benefit-{args.config}.json')])
@@ -96,9 +175,14 @@ def main():
         run('RX mutations',['Tests/rx_budget_mutations.py'])
         run('call mutations',['Tests/call_mutations.py'])
         run('ELF mutations',['Tests/asm/elf_mutations.py','--output',str(base/f'mutations-{project}-{args.config}.json')])
+    output=args.output or base/f'run-all-{project}-{args.config}.json'
+    try:
+        previous=json.loads(output.read_text(encoding='utf-8'))['cases']
+    except (OSError, ValueError, KeyError):
+        previous={}  # История влияет только на очередь, не на результат проверок.
+    results=run_groups(jobs,destination,base,args.config,env,args.jobs,previous)
     result={'project':project,'configuration':args.config,'source_root':str(destination),'diagnostic_skips':(['USB command 111','USB command 112','DWT packet 113','111: USB counters/register snapshots','112: modem timings/step history and UART cumulative counters'] if args.config=='ReleaseCustomer' else []),'cases':results,'legacy_contract_mapping':REPLACEMENTS,
             'elf_sha256':__import__('hashlib').sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()}
-    output=args.output or base/f'run-all-{project}-{args.config}.json'
     output.write_text(json.dumps(result,indent=2,default=str)+'\n',encoding='utf-8')
     passed=sum(v['status']=='PASS' for v in results.values())
     print(f'TOTAL {passed}/{len(results)} passed; project {project}',flush=True)

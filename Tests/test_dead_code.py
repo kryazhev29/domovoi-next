@@ -4,13 +4,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import tempfile
+from temp_cleanup import TemporaryDirectory
 from check_dead_code import inspect
 from iar_image import result_path
 
 def main():
     base=result_path('.')
-    with tempfile.TemporaryDirectory(prefix='dead-code-',dir=base) as temporary:
+    with TemporaryDirectory(prefix='dead-code-',dir=base) as temporary:
         root=Path(temporary);sources=root/'source';sources.mkdir()
         source=sources/'probe.c'
         source.write_bytes(b'unsigned audit_unread;\r\nvoid audit_discarded(void) { audit_unread=7; }\r\n')

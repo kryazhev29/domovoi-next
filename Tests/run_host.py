@@ -1,9 +1,10 @@
 # Доработка: Кряжев А., 2026
 import os, pathlib, subprocess, sys, tempfile, re
+from temp_cleanup import TemporaryDirectory
 from source_select import source_text, host_adapters
 # DOMOVOI_ROOT направляет проверки в копию, например с намеренно внесённой ошибкой.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
-ZIG=__import__('os').environ.get('DOMOVOI_ZIG', str(pathlib.Path(__import__('tempfile').gettempdir())/'codex-zig/zig.exe'))
+ZIG=__import__('os').environ.get('DOMOVOI_ZIG', str(pathlib.Path(tempfile.gettempdir())/'codex-zig/zig.exe'))
 if len(sys.argv) > 1 and sys.argv[1] != 'work':
     sys.exit('Проверяется рабочий код: используйте run_host.py work <группа>.')
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'
@@ -60,7 +61,7 @@ if kind == 'tx':
     print('PASS USB source', result)
     sys.exit(0)
 
-with tempfile.TemporaryDirectory(prefix='domovoi-host-') as d:
+with TemporaryDirectory(prefix='domovoi-host-') as d:
     d=pathlib.Path(d)
     if kind=='sms':
         user=source('User/c/user_*.c');strings=source('User/user_str_fun.c')

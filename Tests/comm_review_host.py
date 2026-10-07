@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+from temp_cleanup import TemporaryDirectory
 from comm_server_host import ROOT, ZIG, unit, source, function
 
 
@@ -23,7 +24,7 @@ def run():
     out.mkdir(parents=True, exist_ok=True)
     os.environ['ZIG_GLOBAL_CACHE_DIR'] = str(out / 'zig-global')
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out / 'zig-local')
-    with tempfile.TemporaryDirectory(dir=out) as directory:
+    with TemporaryDirectory(dir=out) as directory:
         directory = Path(directory)
         source = directory / 'review.c'
         source.write_text(review_unit(), encoding='utf-8')
