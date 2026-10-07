@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Граница команд сервера и USB: длина, аргументы, ПИН и запуск нужного владельца.
-// USB и сервер передают целый кадр с уже проверенной CRC.
-// Долговечность изменений и ответы после записи обеспечивают вызываемые автоматы.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р“СЂР°РЅРёС†Р° РєРѕРјР°РЅРґ СЃРµСЂРІРµСЂР° Рё USB: РґР»РёРЅР°, Р°СЂРіСѓРјРµРЅС‚С‹, РџРРќ Рё Р·Р°РїСѓСЃРє РЅСѓР¶РЅРѕРіРѕ РІР»Р°РґРµР»СЊС†Р°.
+// USB Рё СЃРµСЂРІРµСЂ РїРµСЂРµРґР°СЋС‚ С†РµР»С‹Р№ РєР°РґСЂ СЃ СѓР¶Рµ РїСЂРѕРІРµСЂРµРЅРЅРѕР№ CRC.
+// Р”РѕР»РіРѕРІРµС‡РЅРѕСЃС‚СЊ РёР·РјРµРЅРµРЅРёР№ Рё РѕС‚РІРµС‚С‹ РїРѕСЃР»Рµ Р·Р°РїРёСЃРё РѕР±РµСЃРїРµС‡РёРІР°СЋС‚ РІС‹Р·С‹РІР°РµРјС‹Рµ Р°РІС‚РѕРјР°С‚С‹.
 #include "user_logic_internal.h"
 #include "user_fw_reason.h"
 #include "../sched16.h"
@@ -14,7 +14,7 @@
 #include "../../Bootloader/boot_manual.h"
 #include "prof.h"
 
-// Определить команды USB, доступные до авторизации.
+// РћРїСЂРµРґРµР»РёС‚СЊ РєРѕРјР°РЅРґС‹ USB, РґРѕСЃС‚СѓРїРЅС‹Рµ РґРѕ Р°РІС‚РѕСЂРёР·Р°С†РёРё.
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
 #if DOMOVOI_DIAG
@@ -24,7 +24,7 @@ static bool usb_cmd_without_pin(uint8_t cmd)
 #endif
 }
 
-// Выбрать событие журнала по источнику управления выходом.
+// Р’С‹Р±СЂР°С‚СЊ СЃРѕР±С‹С‚РёРµ Р¶СѓСЂРЅР°Р»Р° РїРѕ РёСЃС‚РѕС‡РЅРёРєСѓ СѓРїСЂР°РІР»РµРЅРёСЏ РІС‹С…РѕРґРѕРј.
 static logControl_e cmd8_event(uint8_t source)
 {
   switch (source){
@@ -35,7 +35,7 @@ static logControl_e cmd8_event(uint8_t source)
   }
 }
 
-// Проверить размер, количество и номера принимаемых ячеек.
+// РџСЂРѕРІРµСЂРёС‚СЊ СЂР°Р·РјРµСЂ, РєРѕР»РёС‡РµСЃС‚РІРѕ Рё РЅРѕРјРµСЂР° РїСЂРёРЅРёРјР°РµРјС‹С… СЏС‡РµРµРє.
 static bool sync_cells_valid(const uint8_t *ptr, uint16_t len, memBlock_e mb, uint16_t cell_size)
 {
   uint16_t count, index;
@@ -52,10 +52,10 @@ static bool sync_cells_valid(const uint8_t *ptr, uint16_t len, memBlock_e mb, ui
   return true;
 }
 
-// Проверить обязательные аргументы до обращения к полям кадра.
+// РџСЂРѕРІРµСЂРёС‚СЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ Р°СЂРіСѓРјРµРЅС‚С‹ РґРѕ РѕР±СЂР°С‰РµРЅРёСЏ Рє РїРѕР»СЏРј РєР°РґСЂР°.
 static bool command_args_valid(const uint8_t *ptr, uint16_t len)
 {
-  // Проверяем обязательные аргументы до любых действий команды.
+  // РџСЂРѕРІРµСЂСЏРµРј РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ Р°СЂРіСѓРјРµРЅС‚С‹ РґРѕ Р»СЋР±С‹С… РґРµР№СЃС‚РІРёР№ РєРѕРјР°РЅРґС‹.
   switch (ptr[4]){
     case 1:
       if (len < 4) return false;
@@ -68,16 +68,16 @@ static bool command_args_valid(const uint8_t *ptr, uint16_t len)
   }
 }
 
-// Выполнить одну команду с проверенными длиной и контрольной суммой.
+// Р’С‹РїРѕР»РЅРёС‚СЊ РѕРґРЅСѓ РєРѕРјР°РЅРґСѓ СЃ РїСЂРѕРІРµСЂРµРЅРЅС‹РјРё РґР»РёРЅРѕР№ Рё РєРѕРЅС‚СЂРѕР»СЊРЅРѕР№ СЃСѓРјРјРѕР№.
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
   uint16_t len;
   uint8_t uniqId;
   uint32_t tmp32;
 
-  len = ptr[1]; // длина
+  len = ptr[1]; // РґР»РёРЅР°
   len = (len<<8) | ptr[0];
-  if (len < 3) return; // В неполном заголовке нет команды и uniqId.
+  if (len < 3) return; // Р’ РЅРµРїРѕР»РЅРѕРј Р·Р°РіРѕР»РѕРІРєРµ РЅРµС‚ РєРѕРјР°РЅРґС‹ Рё uniqId.
   bool server_verified = cch == CH_SERVER && server_rx_verified(ptr);
   uniqId = ptr[3];
   wdt_reload();
@@ -93,9 +93,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     return;
   }
 
-  /* ПИН (команда 102) проверялся, но нигде не требовался: без него по USB стирались база ID
-     и настройки. Теперь остальные команды по USB - только после верного ПИНа, иначе ответ 4
-     «нужен пароль» (18.09.2026). */
+  /* РџРРќ (РєРѕРјР°РЅРґР° 102) РїСЂРѕРІРµСЂСЏР»СЃСЏ, РЅРѕ РЅРёРіРґРµ РЅРµ С‚СЂРµР±РѕРІР°Р»СЃСЏ: Р±РµР· РЅРµРіРѕ РїРѕ USB СЃС‚РёСЂР°Р»РёСЃСЊ Р±Р°Р·Р° ID
+     Рё РЅР°СЃС‚СЂРѕР№РєРё. РўРµРїРµСЂСЊ РѕСЃС‚Р°Р»СЊРЅС‹Рµ РєРѕРјР°РЅРґС‹ РїРѕ USB - С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ РІРµСЂРЅРѕРіРѕ РџРРќР°, РёРЅР°С‡Рµ РѕС‚РІРµС‚ 4
+     В«РЅСѓР¶РµРЅ РїР°СЂРѕР»СЊВ» (18.09.2026). */
   if (cch == CH_USB && !device.userAutorized && !usb_cmd_without_pin(ptr[4])){
     user_send_answer_comand(ptr[4], CMD_GETPASSWORD, cch, uniqId);
     return;
@@ -104,22 +104,22 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   if (!server_verified && !store_command_allowed(ptr[4])) {
     user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId); return;
   }
-  switch (ptr[4]) // команда
+  switch (ptr[4]) // РєРѕРјР°РЅРґР°
   {
-    case 1: // Ответ контроллеру на регистрацию
-      if (cch != CH_SERVER) break; // ответ на регистрацию бывает только от сервера
+    case 1: // РћС‚РІРµС‚ РєРѕРЅС‚СЂРѕР»Р»РµСЂСѓ РЅР° СЂРµРіРёСЃС‚СЂР°С†РёСЋ
+      if (cch != CH_SERVER) break; // РѕС‚РІРµС‚ РЅР° СЂРµРіРёСЃС‚СЂР°С†РёСЋ Р±С‹РІР°РµС‚ С‚РѕР»СЊРєРѕ РѕС‚ СЃРµСЂРІРµСЂР°
       comm_server_registered(ptr[5] == CMD_SUCCESS);
       switch ((cmdCode_e)ptr[5]){
       case CMD_SUCCESS:
-        memcpy((uint8_t*)&tmp32, &ptr[6], 4); // время сервера
+        memcpy((uint8_t*)&tmp32, &ptr[6], 4); // РІСЂРµРјСЏ СЃРµСЂРІРµСЂР°
         log_setTime(tmp32);
         device.registredOnServer = 1;
         if (app_trial_active()){
           app_trial_confirm();
           if (!app_trial_active()) fw_event(LOG_FW_DONE, FW_REASON_NONE);
-        } // прошивка дошла до сервера - обновление подтверждено
-        /* Неудачная установка или проба до этого старта: только журнал, версию сервер видит в
-           статусе 2 (E122). */
+        } // РїСЂРѕС€РёРІРєР° РґРѕС€Р»Р° РґРѕ СЃРµСЂРІРµСЂР° - РѕР±РЅРѕРІР»РµРЅРёРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРѕ
+        /* РќРµСѓРґР°С‡РЅР°СЏ СѓСЃС‚Р°РЅРѕРІРєР° РёР»Рё РїСЂРѕР±Р° РґРѕ СЌС‚РѕРіРѕ СЃС‚Р°СЂС‚Р°: С‚РѕР»СЊРєРѕ Р¶СѓСЂРЅР°Р», РІРµСЂСЃРёСЋ СЃРµСЂРІРµСЂ РІРёРґРёС‚ РІ
+           СЃС‚Р°С‚СѓСЃРµ 2 (E122). */
         if (app_boot_error_unreported()){
           fw_reason_e code = (fw_reason_e)app_boot_error_code();
           fw_event(code == FW_REASON_TRIAL_FAIL ? LOG_FW_ROLLBACK : LOG_FW_FAIL, code);
@@ -141,8 +141,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
       case REG_UNKNOWN_IMEI:
       case REG_NOT_BOUND:
-        // пробная прошивка могла сама прочитать IMEI неверно: не подтверждаем и базу не стираем,
-        // при повторении откат по таймауту вернёт прежнюю прошивку
+        // РїСЂРѕР±РЅР°СЏ РїСЂРѕС€РёРІРєР° РјРѕРіР»Р° СЃР°РјР° РїСЂРѕС‡РёС‚Р°С‚СЊ IMEI РЅРµРІРµСЂРЅРѕ: РЅРµ РїРѕРґС‚РІРµСЂР¶РґР°РµРј Рё Р±Р°Р·Сѓ РЅРµ СЃС‚РёСЂР°РµРј,
+        // РїСЂРё РїРѕРІС‚РѕСЂРµРЅРёРё РѕС‚РєР°С‚ РїРѕ С‚Р°Р№РјР°СѓС‚Сѓ РІРµСЂРЅС‘С‚ РїСЂРµР¶РЅСЋСЋ РїСЂРѕС€РёРІРєСѓ
         if (!app_trial_active())
           user_factoryReset();
         device.registredOnServer = 0;
@@ -154,9 +154,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 2: // перезагрузить
-      /* Бит 11 (E440): перезагрузка отменяет загрузку; откат или установка, уже идущие в
-         загрузчик, не трогаются. */
+    case 2: // РїРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊ
+      /* Р‘РёС‚ 11 (E440): РїРµСЂРµР·Р°РіСЂСѓР·РєР° РѕС‚РјРµРЅСЏРµС‚ Р·Р°РіСЂСѓР·РєСѓ; РѕС‚РєР°С‚ РёР»Рё СѓСЃС‚Р°РЅРѕРІРєР°, СѓР¶Рµ РёРґСѓС‰РёРµ РІ
+         Р·Р°РіСЂСѓР·С‡РёРє, РЅРµ С‚СЂРѕРіР°СЋС‚СЃСЏ. */
       if (device.rebootToUpdate){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
@@ -167,22 +167,22 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
         device.timeToReset = 2;
       } else{
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // кода 5 в ответе 11 нет (строка 537)
+        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // РєРѕРґР° 5 РІ РѕС‚РІРµС‚Рµ 11 РЅРµС‚ (СЃС‚СЂРѕРєР° 537)
         device.timeToReset = ptr[5];
       }
       break;
 
-    case 3: // команда установить заводские настройки
+    case 3: // РєРѕРјР°РЅРґР° СѓСЃС‚Р°РЅРѕРІРёС‚СЊ Р·Р°РІРѕРґСЃРєРёРµ РЅР°СЃС‚СЂРѕР№РєРё
       if (ptr[5] == 0){
         user_factoryReset();
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
       } else{
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // кода 5 в ответе 11 нет (строка 537)
+        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // РєРѕРґР° 5 РІ РѕС‚РІРµС‚Рµ 11 РЅРµС‚ (СЃС‚СЂРѕРєР° 537)
         device.timeToDefault = ptr[5];
       }
       break;
 
-    case 5: // Установка состояния триггерных функций
+    case 5: // РЈСЃС‚Р°РЅРѕРІРєР° СЃРѕСЃС‚РѕСЏРЅРёСЏ С‚СЂРёРіРіРµСЂРЅС‹С… С„СѓРЅРєС†РёР№
       if ((len - 3) == 16){
         memcpy((uint8_t*)&device.triggers, &ptr[5], 16);
 
@@ -214,12 +214,12 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             log_addSystemEvent(LOG_SYS_OPENALLDIS);
         }
 
-        // дублируем в статусе
+        // РґСѓР±Р»РёСЂСѓРµРј РІ СЃС‚Р°С‚СѓСЃРµ
         device.status.unblockHand = device.triggers.handUnBlock;
         device.status.unblockOnScene = device.triggers.sheduleUnBlock;
         device.status.autoRegistration = device.triggers.autoregistration;
         device.status.openAnyUser = device.triggers.openAll;
-        // сохранить состояние в памяти
+        // СЃРѕС…СЂР°РЅРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РІ РїР°РјСЏС‚Рё
         store_command_start(5, cch, uniqId);
       }
       else{
@@ -234,35 +234,35 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
       break;
 
-    case 7: // запрос фото с камеры
+    case 7: // Р·Р°РїСЂРѕСЃ С„РѕС‚Рѕ СЃ РєР°РјРµСЂС‹
       user_send_answer_comand(7, len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR, cch, uniqId);
       break;
 
-    case 8: // управление выходами
+    case 8: // СѓРїСЂР°РІР»РµРЅРёРµ РІС‹С…РѕРґР°РјРё
       if (fw_update_quiet()){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
       if (ptr[5] != 0 && (len - 3) >= 3){
         cmdCode_e res8 = CMD_SUCCESS;
-        //ptr[5] - источник события, от него зависит номер события в журнале (E184)
-        //ptr[8] - ID абонента для передачи контроллеру информации для какого ID нужно сделать декримент счетчика проходов в сутки.
-        /* ID абонента есть только в полном пакете (13 байт); в коротком ID пустой,
-           за концом пакета ничего не читается. */
+        //ptr[5] - РёСЃС‚РѕС‡РЅРёРє СЃРѕР±С‹С‚РёСЏ, РѕС‚ РЅРµРіРѕ Р·Р°РІРёСЃРёС‚ РЅРѕРјРµСЂ СЃРѕР±С‹С‚РёСЏ РІ Р¶СѓСЂРЅР°Р»Рµ (E184)
+        //ptr[8] - ID Р°Р±РѕРЅРµРЅС‚Р° РґР»СЏ РїРµСЂРµРґР°С‡Рё РєРѕРЅС‚СЂРѕР»Р»РµСЂСѓ РёРЅС„РѕСЂРјР°С†РёРё РґР»СЏ РєР°РєРѕРіРѕ ID РЅСѓР¶РЅРѕ СЃРґРµР»Р°С‚СЊ РґРµРєСЂРёРјРµРЅС‚ СЃС‡РµС‚С‡РёРєР° РїСЂРѕС…РѕРґРѕРІ РІ СЃСѓС‚РєРё.
+        /* ID Р°Р±РѕРЅРµРЅС‚Р° РµСЃС‚СЊ С‚РѕР»СЊРєРѕ РІ РїРѕР»РЅРѕРј РїР°РєРµС‚Рµ (13 Р±Р°Р№С‚); РІ РєРѕСЂРѕС‚РєРѕРј ID РїСѓСЃС‚РѕР№,
+           Р·Р° РєРѕРЅС†РѕРј РїР°РєРµС‚Р° РЅРёС‡РµРіРѕ РЅРµ С‡РёС‚Р°РµС‚СЃСЏ. */
         memset(tempStrBuffer, 0, 11);
         if ((len - 3) >= 13) strncpy(tempStrBuffer, (char*)&ptr[8], 10);
         if (ptr[6] > 1 || ptr[7] > 1){
           res8 = CMD_PARAMERROR;
         } else{
-          /* Протокол2, строки 185-188: 1 - включить, 0 - выключить; источник задаёт только номер
-             события в журнале (тест из админки - тоже). Управляются только выходы, которым
-             настройки реле разрешают команды сервера (onCmdServer); включение - по режиму реле
-             и счётчику проходов ID. */
+          /* РџСЂРѕС‚РѕРєРѕР»2, СЃС‚СЂРѕРєРё 185-188: 1 - РІРєР»СЋС‡РёС‚СЊ, 0 - РІС‹РєР»СЋС‡РёС‚СЊ; РёСЃС‚РѕС‡РЅРёРє Р·Р°РґР°С‘С‚ С‚РѕР»СЊРєРѕ РЅРѕРјРµСЂ
+             СЃРѕР±С‹С‚РёСЏ РІ Р¶СѓСЂРЅР°Р»Рµ (С‚РµСЃС‚ РёР· Р°РґРјРёРЅРєРё - С‚РѕР¶Рµ). РЈРїСЂР°РІР»СЏСЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РІС‹С…РѕРґС‹, РєРѕС‚РѕСЂС‹Рј
+             РЅР°СЃС‚СЂРѕР№РєРё СЂРµР»Рµ СЂР°Р·СЂРµС€Р°СЋС‚ РєРѕРјР°РЅРґС‹ СЃРµСЂРІРµСЂР° (onCmdServer); РІРєР»СЋС‡РµРЅРёРµ - РїРѕ СЂРµР¶РёРјСѓ СЂРµР»Рµ
+             Рё СЃС‡С‘С‚С‡РёРєСѓ РїСЂРѕС…РѕРґРѕРІ ID. */
           server_out_event = cmd8_event(ptr[5]);
           if (ptr[6] == 0 && config.rele[0].onCmdServer) out_load(OUT1, OUT_OFF, 0, 0, 0);
           if (ptr[7] == 0 && config.rele[1].onCmdServer) out_load(OUT2, OUT_OFF, 0, 0, 0);
-          /* Запрошенный выход не включился (не разрешён, занят, кончились проходы) - ответ 2,
-             а не «выполнено»: сервер должен знать, что дверь не открылась (18.09.2026). */
+          /* Р—Р°РїСЂРѕС€РµРЅРЅС‹Р№ РІС‹С…РѕРґ РЅРµ РІРєР»СЋС‡РёР»СЃСЏ (РЅРµ СЂР°Р·СЂРµС€С‘РЅ, Р·Р°РЅСЏС‚, РєРѕРЅС‡РёР»РёСЃСЊ РїСЂРѕС…РѕРґС‹) - РѕС‚РІРµС‚ 2,
+             Р° РЅРµ В«РІС‹РїРѕР»РЅРµРЅРѕВ»: СЃРµСЂРІРµСЂ РґРѕР»Р¶РµРЅ Р·РЅР°С‚СЊ, С‡С‚Рѕ РґРІРµСЂСЊ РЅРµ РѕС‚РєСЂС‹Р»Р°СЃСЊ (18.09.2026). */
           if ((ptr[6] == 1 || ptr[7] == 1) &&
               !user_activateOut((ptr[6] == 1) && config.rele[0].onCmdServer,
                            (ptr[7] == 1) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer))
@@ -275,17 +275,17 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 9: // запрос журнала событий
+    case 9: // Р·Р°РїСЂРѕСЃ Р¶СѓСЂРЅР°Р»Р° СЃРѕР±С‹С‚РёР№
       user_send_logRecords(cch, uniqId);
       break;
 
-    case 10: // запрос ID добавленных через SMS или Авторегистрацию
+    case 10: // Р·Р°РїСЂРѕСЃ ID РґРѕР±Р°РІР»РµРЅРЅС‹С… С‡РµСЂРµР· SMS РёР»Рё РђРІС‚РѕСЂРµРіРёСЃС‚СЂР°С†РёСЋ
       user_send_tempIDs(cch, uniqId);
       break;
 
-    case 11: // отправить смс на заданный номер с заданным текстом
-      /* Номер занимает 10 байт. Текст ограничен длиной кадра, NUL на проводе необязателен.
-       * Собственная копия не позволяет захватить CRC или соседний пакет в текст SMS. */
+    case 11: // РѕС‚РїСЂР°РІРёС‚СЊ СЃРјСЃ РЅР° Р·Р°РґР°РЅРЅС‹Р№ РЅРѕРјРµСЂ СЃ Р·Р°РґР°РЅРЅС‹Рј С‚РµРєСЃС‚РѕРј
+      /* РќРѕРјРµСЂ Р·Р°РЅРёРјР°РµС‚ 10 Р±Р°Р№С‚. РўРµРєСЃС‚ РѕРіСЂР°РЅРёС‡РµРЅ РґР»РёРЅРѕР№ РєР°РґСЂР°, NUL РЅР° РїСЂРѕРІРѕРґРµ РЅРµРѕР±СЏР·Р°С‚РµР»РµРЅ.
+       * РЎРѕР±СЃС‚РІРµРЅРЅР°СЏ РєРѕРїРёСЏ РЅРµ РїРѕР·РІРѕР»СЏРµС‚ Р·Р°С…РІР°С‚РёС‚СЊ CRC РёР»Рё СЃРѕСЃРµРґРЅРёР№ РїР°РєРµС‚ РІ С‚РµРєСЃС‚ SMS. */
       if (len >= 14 && ptr[5] != 0 && ptr[15] != 0 &&
           memchr(config.countryCode, 0, sizeof(config.countryCode)) != NULL){
         uint16_t text_size = len - 13;
@@ -308,12 +308,12 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 12: // установка настроек контроллера
+    case 12: // СѓСЃС‚Р°РЅРѕРІРєР° РЅР°СЃС‚СЂРѕРµРє РєРѕРЅС‚СЂРѕР»Р»РµСЂР°
       if ((len - 3) == sizeof(config)){
         const config_s *received = (const config_s *)&ptr[5];
 
-        /* Сервер 1 и код страны обязательны; сервер 2 может быть пустым, его использование
-           задаёт useServer2. */
+        /* РЎРµСЂРІРµСЂ 1 Рё РєРѕРґ СЃС‚СЂР°РЅС‹ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹; СЃРµСЂРІРµСЂ 2 РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј, РµРіРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ
+           Р·Р°РґР°С‘С‚ useServer2. */
         if ((received->server1[0] == 0) || (received->countryCode[0] == 0)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         }
@@ -323,7 +323,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           uint8_t olddefault = device.status.defaultConfig;
           config_exchange(&ptr[5]);
           config_terminate_strings();
-          /* Новый набор проверяется до записи; отказ оставляет прежние настройки. */
+          /* РќРѕРІС‹Р№ РЅР°Р±РѕСЂ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РґРѕ Р·Р°РїРёСЃРё; РѕС‚РєР°Р· РѕСЃС‚Р°РІР»СЏРµС‚ РїСЂРµР¶РЅРёРµ РЅР°СЃС‚СЂРѕР№РєРё. */
           comm_endpoints();
           if (!comm_modem_valid_settings()) {
             config_exchange(&ptr[5]); comm_endpoints();
@@ -346,9 +346,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 13: // отправить блок ID абонентов в контроллер
+    case 13: // РѕС‚РїСЂР°РІРёС‚СЊ Р±Р»РѕРє ID Р°Р±РѕРЅРµРЅС‚РѕРІ РІ РєРѕРЅС‚СЂРѕР»Р»РµСЂ
       {
-        // определяем сектор, в который будем писать, читаем, стираем и пишем.
+        // РѕРїСЂРµРґРµР»СЏРµРј СЃРµРєС‚РѕСЂ, РІ РєРѕС‚РѕСЂС‹Р№ Р±СѓРґРµРј РїРёСЃР°С‚СЊ, С‡РёС‚Р°РµРј, СЃС‚РёСЂР°РµРј Рё РїРёС€РµРј.
         if (!sync_cells_valid(ptr, len, MB_ID, sizeof(cellID_s))){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
@@ -359,7 +359,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 14: // синхро. расписаний
+    case 14: // СЃРёРЅС…СЂРѕ. СЂР°СЃРїРёСЃР°РЅРёР№
       {
         if (!sched16_valid(ptr, len)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -371,7 +371,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 15: // синхро групп
+    case 15: // СЃРёРЅС…СЂРѕ РіСЂСѓРїРї
       {
         if (!sync_cells_valid(ptr, len, MB_GROUP, sizeof(cellGroup_s))){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -383,10 +383,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 16: // синхро. праздников
+    case 16: // СЃРёРЅС…СЂРѕ. РїСЂР°Р·РґРЅРёРєРѕРІ
       {
-        /* Праздники - список дат без номера ячейки (Протокол2, строки 359-362), синхронизируются
-           целиком. Раньше номером ячейки считался младший байт даты: полночь отвергалась. */
+        /* РџСЂР°Р·РґРЅРёРєРё - СЃРїРёСЃРѕРє РґР°С‚ Р±РµР· РЅРѕРјРµСЂР° СЏС‡РµР№РєРё (РџСЂРѕС‚РѕРєРѕР»2, СЃС‚СЂРѕРєРё 359-362), СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓСЋС‚СЃСЏ
+           С†РµР»РёРєРѕРј. Р Р°РЅСЊС€Рµ РЅРѕРјРµСЂРѕРј СЏС‡РµР№РєРё СЃС‡РёС‚Р°Р»СЃСЏ РјР»Р°РґС€РёР№ Р±Р°Р№С‚ РґР°С‚С‹: РїРѕР»РЅРѕС‡СЊ РѕС‚РІРµСЂРіР°Р»Р°СЃСЊ. */
         if (len < 8 || ptr[9] == 0 || (uint32_t)(len - 8) != (uint32_t)ptr[9] * sizeof(cellHoliday_s)){
           user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
           break;
@@ -397,19 +397,19 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 17: // CRC всех 5-ти блоков данных
+    case 17: // CRC РІСЃРµС… 5-С‚Рё Р±Р»РѕРєРѕРІ РґР°РЅРЅС‹С…
       user_send_crcPack(cch, uniqId);
       break;
 
-    case 18: // запрос CRC базы абонентов поблочно
-      if (ptr[5] > 100) { // блоков 100: номер больше - чтение мимо базы
+    case 18: // Р·Р°РїСЂРѕСЃ CRC Р±Р°Р·С‹ Р°Р±РѕРЅРµРЅС‚РѕРІ РїРѕР±Р»РѕС‡РЅРѕ
+      if (ptr[5] > 100) { // Р±Р»РѕРєРѕРІ 100: РЅРѕРјРµСЂ Р±РѕР»СЊС€Рµ - С‡С‚РµРЅРёРµ РјРёРјРѕ Р±Р°Р·С‹
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
         break;
       }
       user_send_crcMemoryID(ptr[5], cch, uniqId);
       break;
 
-    case 19: // Обновление прошивки
+    case 19: // РћР±РЅРѕРІР»РµРЅРёРµ РїСЂРѕС€РёРІРєРё
       if ((len - 3) == 16){
         (void)fw_service_begin(ptr+5,cch,uniqId);
       } else{
@@ -418,7 +418,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 20: // Блок прошивки, ответ командой 4
+    case 20: // Р‘Р»РѕРє РїСЂРѕС€РёРІРєРё, РѕС‚РІРµС‚ РєРѕРјР°РЅРґРѕР№ 4
       {
         uint8_t code = fw_take_block(&ptr[5], (uint16_t)(len - 3), cch);
         if (code == FW_BLOCK_PENDING) fw_async_reply(uniqId);
@@ -426,45 +426,45 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 21: // запрос фотографий
+    case 21: // Р·Р°РїСЂРѕСЃ С„РѕС‚РѕРіСЂР°С„РёР№
       if (len == 3 || len == 9)
 
         photo_request_answer(cch,uniqId,ptr+5,(uint8_t)(len-3));
       else user_send_answer_comand(21, CMD_PARAMERROR, cch, uniqId);
       break;
 
-    case 22: // запрос статуса 2
+    case 22: // Р·Р°РїСЂРѕСЃ СЃС‚Р°С‚СѓСЃР° 2
       user_send_statusPackSecond(cch, uniqId);
       break;
 
-    case 23: // установить время контроллера
+    case 23: // СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РІСЂРµРјСЏ РєРѕРЅС‚СЂРѕР»Р»РµСЂР°
       memcpy((uint8_t*)&tmp32, &ptr[5], 4);
       log_setTime(tmp32);
       user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
       break;
 
-    case 24: // команда подтверждения приема команды от контроллера
-      /* Ответ на статус 1 заканчивает ожидание и счёт пропущенных ответов. ptr[5] - уникальный
-         номер подтверждаемого сообщения, а не команда: он не должен заканчивать ожидание ответа
-         на регистрацию. */
+    case 24: // РєРѕРјР°РЅРґР° РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РїСЂРёРµРјР° РєРѕРјР°РЅРґС‹ РѕС‚ РєРѕРЅС‚СЂРѕР»Р»РµСЂР°
+      /* РћС‚РІРµС‚ РЅР° СЃС‚Р°С‚СѓСЃ 1 Р·Р°РєР°РЅС‡РёРІР°РµС‚ РѕР¶РёРґР°РЅРёРµ Рё СЃС‡С‘С‚ РїСЂРѕРїСѓС‰РµРЅРЅС‹С… РѕС‚РІРµС‚РѕРІ. ptr[5] - СѓРЅРёРєР°Р»СЊРЅС‹Р№
+         РЅРѕРјРµСЂ РїРѕРґС‚РІРµСЂР¶РґР°РµРјРѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ, Р° РЅРµ РєРѕРјР°РЅРґР°: РѕРЅ РЅРµ РґРѕР»Р¶РµРЅ Р·Р°РєР°РЅС‡РёРІР°С‚СЊ РѕР¶РёРґР°РЅРёРµ РѕС‚РІРµС‚Р°
+         РЅР° СЂРµРіРёСЃС‚СЂР°С†РёСЋ. */
       if (cch == CH_SERVER) comm_server_status_ack(ptr[5]);
       break;
 
-    case 27: // произвольная команда
+    case 27: // РїСЂРѕРёР·РІРѕР»СЊРЅР°СЏ РєРѕРјР°РЅРґР°
       user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
       break;
 
-    case 100: // идентификация для конфигуратора
+    case 100: // РёРґРµРЅС‚РёС„РёРєР°С†РёСЏ РґР»СЏ РєРѕРЅС„РёРіСѓСЂР°С‚РѕСЂР°
       if (cch == CH_USB)
         user_send_identPackToConfigurator(CH_USB);
       break;
 
-    case 101: // статус для конфигуратора
+    case 101: // СЃС‚Р°С‚СѓСЃ РґР»СЏ РєРѕРЅС„РёРіСѓСЂР°С‚РѕСЂР°
       if (cch == CH_USB)
         user_send_statusPackToConfigurator(CH_USB);
       break;
 
-    case 102: // проверка ПИН кода
+    case 102: // РїСЂРѕРІРµСЂРєР° РџРРќ РєРѕРґР°
       if (cch == CH_USB){
         if (*(uint32_t*)&ptr[5] == config.pinCode){
           device.userAutorized = 1;
@@ -475,12 +475,12 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 103: // очистить память идентификаторов
+    case 103: // РѕС‡РёСЃС‚РёС‚СЊ РїР°РјСЏС‚СЊ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂРѕРІ
       if (cch==CH_USB && !idclear_runtime_begin(cch,uniqId))
         user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
       break;
 
-    case 105: // задать тип модуля
+    case 105: // Р·Р°РґР°С‚СЊ С‚РёРї РјРѕРґСѓР»СЏ
       if (cch == CH_USB){
         user_send_anyData(105, NULL, 0, cch, uniqId);
         device.moduleType = ptr[5];
@@ -488,12 +488,12 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 106: // считать конфигурацию
+    case 106: // СЃС‡РёС‚Р°С‚СЊ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ
       if (cch == CH_USB)
         user_send_configToConfigurator(CH_USB);
       break;
 
-    case 107: // режим прозрачной передачи gsm
+    case 107: // СЂРµР¶РёРј РїСЂРѕР·СЂР°С‡РЅРѕР№ РїРµСЂРµРґР°С‡Рё gsm
       user_send_anyData(107, NULL, 0, cch, uniqId);
       break;
 
@@ -507,7 +507,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     #endif
-    case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */
+    case MANUAL_BOOT_COMMAND: { /* Р¤Р°Р№Р» Р·Р°РіСЂСѓР·С‡РёРєР° РІСЂСѓС‡РЅСѓСЋ, С‚РѕР»СЊРєРѕ РїРѕ USB. */
       uint8_t response[8];
       if (cch != CH_USB || len < 4) {
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -520,7 +520,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       boot_manual_command(1, &ptr[5], (uint16_t)(len-3), response);
       user_send_anyData(MANUAL_BOOT_COMMAND, response, sizeof(response), cch, uniqId);
       if (response[0] == 2 && response[1] == MANUAL_OK) {
-        /* Дать USB отправить подтверждение. Успех проверяется после перезапуска. */
+        /* Р”Р°С‚СЊ USB РѕС‚РїСЂР°РІРёС‚СЊ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ. РЈСЃРїРµС… РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РїРѕСЃР»Рµ РїРµСЂРµР·Р°РїСѓСЃРєР°. */
         delay_ms(200);
         response[1] = (uint8_t)boot_manual_apply();
         user_send_anyData(MANUAL_BOOT_COMMAND, response, sizeof(response), cch, uniqId);
@@ -528,13 +528,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
     }
 
-    case 108: // включить лог
+    case 108: // РІРєР»СЋС‡РёС‚СЊ Р»РѕРі
       user_send_anyData(108, NULL, 0, cch, uniqId);
       if (cch == CH_USB)
         device.logBits = ptr[5];
       break;
 
-    default: // команда не поддерживается
+    default: // РєРѕРјР°РЅРґР° РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ
       user_send_answer_comand(ptr[4], CMD_UNDEFINE, cch, uniqId);
       break;
   }

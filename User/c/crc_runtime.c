@@ -1,48 +1,21 @@
-// Доработка: Кряжев А., 2026
-// Эталон CRC-16/MODBUS и быстрое продвижение CRC по области FF.
-// Гибрид использует ASM CRC16, а чистый C — тот же полином 0xA001.
-// Таблица степеней FF заменяет чтение пустой флеш; степени повторяются через 15.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р­С‚Р°Р»РѕРЅ CRC-16/MODBUS Рё Р±С‹СЃС‚СЂРѕРµ РїСЂРѕРґРІРёР¶РµРЅРёРµ CRC РїРѕ РѕР±Р»Р°СЃС‚Рё FF.
+// CRC16 СЂРµР°Р»РёР·РѕРІР°РЅ РёР·РјРµСЂРµРЅРЅС‹Рј ASM-СЏРґСЂРѕРј; Р·РґРµСЃСЊ С‚РѕР»СЊРєРѕ РїСЂРѕРґРІРёР¶РµРЅРёРµ РїРѕ FF.
+// РўР°Р±Р»РёС†Р° СЃС‚РµРїРµРЅРµР№ FF Р·Р°РјРµРЅСЏРµС‚ С‡С‚РµРЅРёРµ РїСѓСЃС‚РѕР№ С„Р»РµС€; СЃС‚РµРїРµРЅРё РїРѕРІС‚РѕСЂСЏСЋС‚СЃСЏ С‡РµСЂРµР· 15.
 #include "crc.h"
 
-#ifndef ASM_CRC
-// Продолжить CRC16 с переданного начального значения.
-unsigned short crc16_calcInit(unsigned char *buf, unsigned short size, unsigned short init)
-{
-  while (size--) {
-    init ^= *buf++;
-    for (unsigned char bit = 0; bit < 8; ++bit)
-      init = (init & 1u) ? (init >> 1) ^ 0xA001u : init >> 1;
-  }
-  return init;
-}
 
-// Получить CRC16 кадра с начальным значением FFFF.
-unsigned short crc16_calc(unsigned char *buf, unsigned short size)
-{
-  return crc16_calcInit(buf, size, 0xFFFFu);
-}
-#endif
-
-#ifdef ASM_FAST_KERNELS
 #include "fast_kernels.h"
 #define gf2_apply fast_gf2_apply
-#else
-// Применить матрицу CRC к установленным битам начального значения.
-static unsigned short gf2_apply(const unsigned short *m, unsigned short x)
-{
-  unsigned short r = 0;
-  for (unsigned char j = 0; x; j++, x >>= 1) if (x & 1u) r ^= m[j];
-  return r;
-}
-#endif
 
-/* CRC-16 ModBus после count байт 0xFF без самих байт (стёртая флеш).
-   Шаг по одному байту 0xFF аффинный: r -> T*r ^ c, где T - шаг по байту 0,
-   c = T*0xFF. Степень отображения считается удвоением: log2(count) шагов
-   по 16x16 бит вместо count*8 сдвигов. */
+
+/* CRC-16 ModBus РїРѕСЃР»Рµ count Р±Р°Р№С‚ 0xFF Р±РµР· СЃР°РјРёС… Р±Р°Р№С‚ (СЃС‚С‘СЂС‚Р°СЏ С„Р»РµС€).
+   РЁР°Рі РїРѕ РѕРґРЅРѕРјСѓ Р±Р°Р№С‚Сѓ 0xFF Р°С„С„РёРЅРЅС‹Р№: r -> T*r ^ c, РіРґРµ T - С€Р°Рі РїРѕ Р±Р°Р№С‚Сѓ 0,
+   c = T*0xFF. РЎС‚РµРїРµРЅСЊ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ СЃС‡РёС‚Р°РµС‚СЃСЏ СѓРґРІРѕРµРЅРёРµРј: log2(count) С€Р°РіРѕРІ
+   РїРѕ 16x16 Р±РёС‚ РІРјРµСЃС‚Рѕ count*8 СЃРґРІРёРіРѕРІ. */
 #include <stdint.h>
 #include "service_ff.inc"
-// Продолжить CRC16 по count байтам FF без чтения пустой флеш.
+// РџСЂРѕРґРѕР»Р¶РёС‚СЊ CRC16 РїРѕ count Р±Р°Р№С‚Р°Рј FF Р±РµР· С‡С‚РµРЅРёСЏ РїСѓСЃС‚РѕР№ С„Р»РµС€.
 unsigned short crc16_ffInit(unsigned long count, unsigned short init)
 {
   unsigned char power=0;

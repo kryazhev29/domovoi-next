@@ -25,7 +25,7 @@ if __name__ == '__main__':
     if not (a.map or a.object): p.error('map or --object required')
     result={}
     if a.map:
-        text = a.map.read_text(encoding='cp1251')
+        text = a.map.read_text(encoding='utf-8')
         summary = text.split('*** MODULE SUMMARY')[1].split('*** ENTRY LIST')[0]
         modules = {}
         for name in ('gsm.o', 'user_gsm.o', 'uart_stm32f10x.o', 'user_fun.o'):

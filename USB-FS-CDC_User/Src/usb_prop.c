@@ -1,29 +1,10 @@
-// Доработка: Кряжев А., 2026
-// Дескрипторы, управляющие запросы и параметры CDC.
-// Порядок событий и двоичные дескрипторы сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р”РµСЃРєСЂРёРїС‚РѕСЂС‹, СѓРїСЂР°РІР»СЏСЋС‰РёРµ Р·Р°РїСЂРѕСЃС‹ Рё РїР°СЂР°РјРµС‚СЂС‹ CDC.
+// РџРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ Рё РґРІРѕРёС‡РЅС‹Рµ РґРµСЃРєСЂРёРїС‚РѕСЂС‹ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј.
 
 #include "../../User/domovoi_diag.h"
-// Доработка: Кряжев А., 2026
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
 
 #include "usb_lib.h"
 #include "usb_conf.h"
@@ -94,7 +75,7 @@ const ONE_DESCRIPTOR String_Descriptor[4] =
     {(uint8_t*)Virtual_Com_Port_StringSerial, VIRTUAL_COM_PORT_SIZ_STRING_SERIAL}
   };
 
-// Подготовить CDC и серийный номер перед подключением к хосту.
+// РџРѕРґРіРѕС‚РѕРІРёС‚СЊ CDC Рё СЃРµСЂРёР№РЅС‹Р№ РЅРѕРјРµСЂ РїРµСЂРµРґ РїРѕРґРєР»СЋС‡РµРЅРёРµРј Рє С…РѕСЃС‚Сѓ.
 void Virtual_Com_Port_init(void)
 {
 
@@ -113,7 +94,7 @@ void Virtual_Com_Port_init(void)
 extern void usb_clear_buffer(void);
 extern volatile uint32_t usb_bus_resets;
 #endif
-// Сбросить очередь и настроить точки EP0–EP3 для CDC.
+// РЎР±СЂРѕСЃРёС‚СЊ РѕС‡РµСЂРµРґСЊ Рё РЅР°СЃС‚СЂРѕРёС‚СЊ С‚РѕС‡РєРё EP0вЂ“EP3 РґР»СЏ CDC.
 void Virtual_Com_Port_Reset(void)
 {
 #ifndef BOOTLOADER
@@ -161,7 +142,7 @@ void Virtual_Com_Port_Reset(void)
   bDeviceState = ATTACHED;
 }
 
-// Отметить выбранную хостом конфигурацию CDC.
+// РћС‚РјРµС‚РёС‚СЊ РІС‹Р±СЂР°РЅРЅСѓСЋ С…РѕСЃС‚РѕРј РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ CDC.
 void Virtual_Com_Port_SetConfiguration(void)
 {
   if (pInformation->Current_Configuration != 0)
@@ -171,13 +152,13 @@ void Virtual_Com_Port_SetConfiguration(void)
   }
 }
 
-// Отметить назначение адреса устройства.
+// РћС‚РјРµС‚РёС‚СЊ РЅР°Р·РЅР°С‡РµРЅРёРµ Р°РґСЂРµСЃР° СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 void Virtual_Com_Port_SetDeviceAddress (void)
 {
   bDeviceState = ADDRESSED;
 }
 
-// Назначить данные GET/SET_LINE_CODING управляющего запроса.
+// РќР°Р·РЅР°С‡РёС‚СЊ РґР°РЅРЅС‹Рµ GET/SET_LINE_CODING СѓРїСЂР°РІР»СЏСЋС‰РµРіРѕ Р·Р°РїСЂРѕСЃР°.
 RESULT Virtual_Com_Port_Data_Setup(uint8_t RequestNo)
 {
   uint8_t    *(*CopyRoutine)(uint16_t);
@@ -210,7 +191,7 @@ RESULT Virtual_Com_Port_Data_Setup(uint8_t RequestNo)
   return USB_SUCCESS;
 }
 
-// Принять поддерживаемый CDC-запрос без данных.
+// РџСЂРёРЅСЏС‚СЊ РїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Р№ CDC-Р·Р°РїСЂРѕСЃ Р±РµР· РґР°РЅРЅС‹С….
 RESULT Virtual_Com_Port_NoData_Setup(uint8_t RequestNo)
 {
 
@@ -229,19 +210,19 @@ RESULT Virtual_Com_Port_NoData_Setup(uint8_t RequestNo)
   return USB_UNSUPPORT;
 }
 
-// Выдать фрагмент дескриптора устройства.
+// Р’С‹РґР°С‚СЊ С„СЂР°РіРјРµРЅС‚ РґРµСЃРєСЂРёРїС‚РѕСЂР° СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 uint8_t *Virtual_Com_Port_GetDeviceDescriptor(uint16_t Length)
 {
   return Standard_GetDescriptorData(Length, &Device_Descriptor);
 }
 
-// Выдать фрагмент конфигурации CDC.
+// Р’С‹РґР°С‚СЊ С„СЂР°РіРјРµРЅС‚ РєРѕРЅС„РёРіСѓСЂР°С†РёРё CDC.
 uint8_t *Virtual_Com_Port_GetConfigDescriptor(uint16_t Length)
 {
   return Standard_GetDescriptorData(Length, &Config_Descriptor);
 }
 
-// Выдать существующую строку USB либо отклонить её индекс.
+// Р’С‹РґР°С‚СЊ СЃСѓС‰РµСЃС‚РІСѓСЋС‰СѓСЋ СЃС‚СЂРѕРєСѓ USB Р»РёР±Рѕ РѕС‚РєР»РѕРЅРёС‚СЊ РµС‘ РёРЅРґРµРєСЃ.
 uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t Length)
 {
   uint8_t wValue0 = pInformation->USBwValue0;
@@ -255,7 +236,7 @@ uint8_t *Virtual_Com_Port_GetStringDescriptor(uint16_t Length)
   }
 }
 
-// Разрешить два интерфейса CDC с нулевой альтернативой.
+// Р Р°Р·СЂРµС€РёС‚СЊ РґРІР° РёРЅС‚РµСЂС„РµР№СЃР° CDC СЃ РЅСѓР»РµРІРѕР№ Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРѕР№.
 RESULT Virtual_Com_Port_Get_Interface_Setting(uint8_t Interface, uint8_t AlternateSetting)
 {
   if (AlternateSetting > 0)
@@ -269,7 +250,7 @@ RESULT Virtual_Com_Port_Get_Interface_Setting(uint8_t Interface, uint8_t Alterna
   return USB_SUCCESS;
 }
 
-// Выдать текущие параметры виртуального порта.
+// Р’С‹РґР°С‚СЊ С‚РµРєСѓС‰РёРµ РїР°СЂР°РјРµС‚СЂС‹ РІРёСЂС‚СѓР°Р»СЊРЅРѕРіРѕ РїРѕСЂС‚Р°.
 uint8_t *Virtual_Com_Port_GetLineCoding(uint16_t Length)
 {
   if (Length == 0)
@@ -280,7 +261,7 @@ uint8_t *Virtual_Com_Port_GetLineCoding(uint16_t Length)
   return(uint8_t *)&linecoding;
 }
 
-// Принять параметры в семибайтовое поле CDC.
+// РџСЂРёРЅСЏС‚СЊ РїР°СЂР°РјРµС‚СЂС‹ РІ СЃРµРјРёР±Р°Р№С‚РѕРІРѕРµ РїРѕР»Рµ CDC.
 uint8_t *Virtual_Com_Port_SetLineCoding(uint16_t Length)
 {
   if (Length == 0)
@@ -290,5 +271,3 @@ uint8_t *Virtual_Com_Port_SetLineCoding(uint16_t Length)
   }
   return(uint8_t *)&linecoding;
 }
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

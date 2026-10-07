@@ -13,7 +13,7 @@ PHASE={name:i+1 for i,name in enumerate(("IO","HEAD","CAMERA","LAZY_DONE","DATA_
 # Вычислить начало следующего снимка с выравниванием по сектору.
 def next_record(a,size):return (a+HEAD+size+4095)&~4095
 
-# Читаем фактический тип камеры: runtime_layout.c пока содержит старую копию.
+# Читаем фактический тип камеры из DWARF живого C-модуля.
 def pf():
     image=image_paths()[0]
     return photo_fields(str(image), image.stat().st_mtime_ns)

@@ -1,19 +1,19 @@
-// Доработка: Кряжев А., 2026
-// Курсоры подтверждённой выгрузки журнала и временных ID.
-// Только подтверждённые позиции записываются в device; отправку ведёт upload_runtime.
-// Намерение очистки сохраняется до стирания, поэтому обрыв допускает повтор, не пропуск.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РљСѓСЂСЃРѕСЂС‹ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅРѕР№ РІС‹РіСЂСѓР·РєРё Р¶СѓСЂРЅР°Р»Р° Рё РІСЂРµРјРµРЅРЅС‹С… ID.
+// РўРѕР»СЊРєРѕ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РїРѕР·РёС†РёРё Р·Р°РїРёСЃС‹РІР°СЋС‚СЃСЏ РІ device; РѕС‚РїСЂР°РІРєСѓ РІРµРґС‘С‚ upload_runtime.
+// РќР°РјРµСЂРµРЅРёРµ РѕС‡РёСЃС‚РєРё СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ РґРѕ СЃС‚РёСЂР°РЅРёСЏ, РїРѕСЌС‚РѕРјСѓ РѕР±СЂС‹РІ РґРѕРїСѓСЃРєР°РµС‚ РїРѕРІС‚РѕСЂ, РЅРµ РїСЂРѕРїСѓСЃРє.
 #include "user_logic_internal.h"
 #include "../log_ring.h"
 uint16_t log_usbReadIndex, temp_usbReadIndex;
 uint16_t log_unacked[2], temp_unacked[2];
 
-// Вернуть подтверждённый курсор заданной выгрузки и канала.
+// Р’РµСЂРЅСѓС‚СЊ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Р№ РєСѓСЂСЃРѕСЂ Р·Р°РґР°РЅРЅРѕР№ РІС‹РіСЂСѓР·РєРё Рё РєР°РЅР°Р»Р°.
 uint16_t upload_index(uint8_t cmd, dataChanel_e cch){
   if (cmd == 10) return cch == CH_USB ? log_usbReadIndex : device.readLogIDIndex;
   return cch == CH_USB ? temp_usbReadIndex : device.readTempIDIndex;
 }
 
-// Установить рабочий курсор заданной выгрузки и канала.
+// РЈСЃС‚Р°РЅРѕРІРёС‚СЊ СЂР°Р±РѕС‡РёР№ РєСѓСЂСЃРѕСЂ Р·Р°РґР°РЅРЅРѕР№ РІС‹РіСЂСѓР·РєРё Рё РєР°РЅР°Р»Р°.
 void upload_setIndex(uint8_t cmd, dataChanel_e cch, uint16_t value){
   if (cmd == 10) {
     if (cch == CH_USB) log_usbReadIndex = value; else device.readLogIDIndex = value;
@@ -22,7 +22,7 @@ void upload_setIndex(uint8_t cmd, dataChanel_e cch, uint16_t value){
   }
 }
 
-// Поместить подтверждённые курсоры USB в резерв device.
+// РџРѕРјРµСЃС‚РёС‚СЊ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РєСѓСЂСЃРѕСЂС‹ USB РІ СЂРµР·РµСЂРІ device.
 void upload_store(void){
   uint32_t mark = DEVICE_UPLOAD_MARK;
   memcpy(device.reserv + DEVICE_UPLOAD_MARK_OFFSET, &mark, 4);
@@ -31,12 +31,12 @@ void upload_store(void){
   log_ring_checkpoint();
 }
 
-// Восстановить подтверждённые курсоры из сохранённого device.
+// Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РєСѓСЂСЃРѕСЂС‹ РёР· СЃРѕС…СЂР°РЅС‘РЅРЅРѕРіРѕ device.
 void upload_restore(const device_s *saved){
   log_ring_restore(saved);
   uint32_t mark;
   memcpy(&mark, saved->reserv + DEVICE_UPLOAD_MARK_OFFSET, 4);
-  if (mark != DEVICE_UPLOAD_MARK) return; // старые версии подтверждения не сохраняли
+  if (mark != DEVICE_UPLOAD_MARK) return; // СЃС‚Р°СЂС‹Рµ РІРµСЂСЃРёРё РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РЅРµ СЃРѕС…СЂР°РЅСЏР»Рё
   device.readLogIDIndex = saved->readLogIDIndex;
   device.readTempIDIndex = saved->readTempIDIndex;
   memcpy(&log_usbReadIndex, saved->reserv + DEVICE_LOG_USB_OFFSET, 2);
@@ -44,7 +44,7 @@ void upload_restore(const device_s *saved){
   upload_store();
 }
 
-// Обнулить курсоры и неподтверждённые позиции выбранной таблицы.
+// РћР±РЅСѓР»РёС‚СЊ РєСѓСЂСЃРѕСЂС‹ Рё РЅРµРїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РїРѕР·РёС†РёРё РІС‹Р±СЂР°РЅРЅРѕР№ С‚Р°Р±Р»РёС†С‹.
 void upload_reset(uint8_t cmd){
   if (cmd == 10) log_ring_reset();
   upload_setIndex(cmd, CH_USB, 0);
@@ -54,24 +54,24 @@ void upload_reset(uint8_t cmd){
   upload_store();
 }
 
-// Передать подтверждение выгрузки единственному владельцу сохранения.
+// РџРµСЂРµРґР°С‚СЊ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РІС‹РіСЂСѓР·РєРё РµРґРёРЅСЃС‚РІРµРЅРЅРѕРјСѓ РІР»Р°РґРµР»СЊС†Сѓ СЃРѕС…СЂР°РЅРµРЅРёСЏ.
 bool upload_ack(uint8_t cmd, dataChanel_e cch)
 {
   return store_ack(cmd, cch);
 }
 
-// Передать завершение выгрузки владельцу долговечной очистки.
+// РџРµСЂРµРґР°С‚СЊ Р·Р°РІРµСЂС€РµРЅРёРµ РІС‹РіСЂСѓР·РєРё РІР»Р°РґРµР»СЊС†Сѓ РґРѕР»РіРѕРІРµС‡РЅРѕР№ РѕС‡РёСЃС‚РєРё.
 bool upload_finish(uint8_t cmd)
 {
   return store_finish(cmd);
 }
 
-// Запустить фоновую выгрузку журнала.
+// Р—Р°РїСѓСЃС‚РёС‚СЊ С„РѕРЅРѕРІСѓСЋ РІС‹РіСЂСѓР·РєСѓ Р¶СѓСЂРЅР°Р»Р°.
 void user_send_logRecords(dataChanel_e cch, uint8_t uniqId){
   upload_runtime_begin(10,cch,uniqId);
 }
 
-// Запустить фоновую выгрузку временных ID.
+// Р—Р°РїСѓСЃС‚РёС‚СЊ С„РѕРЅРѕРІСѓСЋ РІС‹РіСЂСѓР·РєСѓ РІСЂРµРјРµРЅРЅС‹С… ID.
 void user_send_tempIDs(dataChanel_e cch, uint8_t uniqId)
 {
   upload_runtime_begin(9, cch, uniqId);

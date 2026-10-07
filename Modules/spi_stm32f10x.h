@@ -1,6 +1,4 @@
-/******************************************************************************
-*    SPI functions
-******************************************************************************/
+
 
 #ifndef __SPI_H
 #define __SPI_H
@@ -9,28 +7,28 @@
 #include "stm32f10x_rcc.h"
 #include "stm32f10x_spi.h"
 
-// инициализация SPI
-// SPI подключенный к flash памяти
+// РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ SPI
+// SPI РїРѕРґРєР»СЋС‡РµРЅРЅС‹Р№ Рє flash РїР°РјСЏС‚Рё
 void spi_init (void);
 
-// инициализация ножки chip select
+// РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РЅРѕР¶РєРё chip select
 void spi_initCS (void);
 
-// управление ножкой chip select
+// СѓРїСЂР°РІР»РµРЅРёРµ РЅРѕР¶РєРѕР№ chip select
 extern inline void spi_ssenable (BitAction BitVal);
 
 uint8_t spi_ready(void);
 uint8_t spi_read_byte (void);
 
-// чтение байт с порта
+// С‡С‚РµРЅРёРµ Р±Р°Р№С‚ СЃ РїРѕСЂС‚Р°
 void spi_read (uint8_t* dst, uint32_t length);
 
-// Отправка байта по SPI
+// РћС‚РїСЂР°РІРєР° Р±Р°Р№С‚Р° РїРѕ SPI
 uint8_t spi_send_byte (uint8_t data);
 
-// Отправка n байт по SPI
+// РћС‚РїСЂР°РІРєР° n Р±Р°Р№С‚ РїРѕ SPI
 void spi_send (uint8_t* buf, uint32_t length);
 
-// Ожидание завершения передачи по SPI
+// РћР¶РёРґР°РЅРёРµ Р·Р°РІРµСЂС€РµРЅРёСЏ РїРµСЂРµРґР°С‡Рё РїРѕ SPI
 
 #endif

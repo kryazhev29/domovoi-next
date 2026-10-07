@@ -2,9 +2,9 @@
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent/'asm'))
-from c_vs_asm_suite import select_image
+from firmware_suite import select_image
 import os
-if 'DOMOVOI_ELF' not in os.environ: select_image(os.environ.get('DOMOVOI_TEST_PROJECT','HYBRID'))
+if 'DOMOVOI_ELF' not in os.environ: select_image()
 import test_logic_cleanup as logic
 
 original=logic.rx_machine

@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Выгрузка журнала и временных ID с устойчивыми курсорами подтверждения.
-// Кадр принадлежит автомату до успешной передачи; общий формат задаёт packet.c.
-// Отмена освобождает память, не подтверждая неотправленные записи.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р’С‹РіСЂСѓР·РєР° Р¶СѓСЂРЅР°Р»Р° Рё РІСЂРµРјРµРЅРЅС‹С… ID СЃ СѓСЃС‚РѕР№С‡РёРІС‹РјРё РєСѓСЂСЃРѕСЂР°РјРё РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ.
+// РљР°РґСЂ РїСЂРёРЅР°РґР»РµР¶РёС‚ Р°РІС‚РѕРјР°С‚Сѓ РґРѕ СѓСЃРїРµС€РЅРѕР№ РїРµСЂРµРґР°С‡Рё; РѕР±С‰РёР№ С„РѕСЂРјР°С‚ Р·Р°РґР°С‘С‚ packet.c.
+// РћС‚РјРµРЅР° РѕСЃРІРѕР±РѕР¶РґР°РµС‚ РїР°РјСЏС‚СЊ, РЅРµ РїРѕРґС‚РІРµСЂР¶РґР°СЏ РЅРµРѕС‚РїСЂР°РІР»РµРЅРЅС‹Рµ Р·Р°РїРёСЃРё.
 #include "runtime_internal.h"
 #include "../log_ring.h"
 enum {
@@ -23,12 +23,12 @@ typedef struct {
 } upload_s;
 RT_ASSERT(upload_size,sizeof(upload_s)==32);
 upload_s *upload_runtime_context;
-// Возвращает оба участка выгрузки; USB удерживает заимствованный кадр до завершения.
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ РѕР±Р° СѓС‡Р°СЃС‚РєР° РІС‹РіСЂСѓР·РєРё; USB СѓРґРµСЂР¶РёРІР°РµС‚ Р·Р°РёРјСЃС‚РІРѕРІР°РЅРЅС‹Р№ РєР°РґСЂ РґРѕ Р·Р°РІРµСЂС€РµРЅРёСЏ.
 static void upload_release(upload_s *p)
 {
   work_release(p->packet,WORK_UPLOAD_PACKET); work_release(p,WORK_UPLOAD_CONTEXT);
 }
-// Резервирует весь ответ до подтверждения, чтобы нехватка памяти не сдвинула курсор.
+// Р РµР·РµСЂРІРёСЂСѓРµС‚ РІРµСЃСЊ РѕС‚РІРµС‚ РґРѕ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ, С‡С‚РѕР±С‹ РЅРµС…РІР°С‚РєР° РїР°РјСЏС‚Рё РЅРµ СЃРґРІРёРЅСѓР»Р° РєСѓСЂСЃРѕСЂ.
 static upload_s *upload_acquire(void)
 {
   upload_s *p=work_acquire(sizeof *p,WORK_UPLOAD_CONTEXT);
@@ -37,22 +37,22 @@ static upload_s *upload_acquire(void)
   if(!p->packet) { work_release(p,WORK_UPLOAD_CONTEXT); return NULL; }
   return p;
 }
-// Сообщает, выполняется ли выгрузка.
+// РЎРѕРѕР±С‰Р°РµС‚, РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Р»Рё РІС‹РіСЂСѓР·РєР°.
 bool upload_runtime_active(void) { return upload_runtime_context!=NULL; }
-// Освобождает кадр и контекст без подтверждения неотправленных данных.
+// РћСЃРІРѕР±РѕР¶РґР°РµС‚ РєР°РґСЂ Рё РєРѕРЅС‚РµРєСЃС‚ Р±РµР· РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РЅРµРѕС‚РїСЂР°РІР»РµРЅРЅС‹С… РґР°РЅРЅС‹С….
 void upload_runtime_cancel(void)
 {
   upload_s *p=upload_runtime_context; if(!p) return;
   upload_runtime_context=NULL; flash_release(FO_UPLOAD);
   upload_release(p);
 }
-// Останавливает выгрузку при закрытии её канала.
+// РћСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РІС‹РіСЂСѓР·РєСѓ РїСЂРё Р·Р°РєСЂС‹С‚РёРё РµС‘ РєР°РЅР°Р»Р°.
 void upload_runtime_quiet(uint8_t channel)
 {
   log_ring_quiet(channel);
   if(upload_runtime_context && upload_runtime_context->channel==channel) upload_runtime_cancel();
 }
-// Принимает запрос выгрузки после старта и сохраняет подтверждённый курсор.
+// РџСЂРёРЅРёРјР°РµС‚ Р·Р°РїСЂРѕСЃ РІС‹РіСЂСѓР·РєРё РїРѕСЃР»Рµ СЃС‚Р°СЂС‚Р° Рё СЃРѕС…СЂР°РЅСЏРµС‚ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Р№ РєСѓСЂСЃРѕСЂ.
 bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
 {
   upload_s *p; unsigned part=command==10?MB_LOG:MB_TEMPID;
@@ -60,7 +60,7 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   if(upload_runtime_context || !mem_tables_ready()) return true;
   p=upload_acquire(); if(!p) return true;
   if(!store_upload_request(command,channel,uniq)) { upload_release(p); return true; }
-  // ACK сохраняет настройки в том же участке: возвращаем резерв и затем берём его снова.
+  // ACK СЃРѕС…СЂР°РЅСЏРµС‚ РЅР°СЃС‚СЂРѕР№РєРё РІ С‚РѕРј Р¶Рµ СѓС‡Р°СЃС‚РєРµ: РІРѕР·РІСЂР°С‰Р°РµРј СЂРµР·РµСЂРІ Рё Р·Р°С‚РµРј Р±РµСЂС‘Рј РµРіРѕ СЃРЅРѕРІР°.
   upload_release(p);
   if(command==10 ? !log_ring_ack((uint8_t)channel,uniq) : !upload_ack(command,channel)) return true;
   p=upload_acquire(); if(!p) return true;
@@ -70,7 +70,7 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   p->pos=mem[part].start; p->limit=p->pos+mem[part].size;
   upload_runtime_context=p; flash_claim(FO_UPLOAD); return true;
 }
-// Считает записи, заполняет тело кадра и передаёт его выбранному каналу.
+// РЎС‡РёС‚Р°РµС‚ Р·Р°РїРёСЃРё, Р·Р°РїРѕР»РЅСЏРµС‚ С‚РµР»Рѕ РєР°РґСЂР° Рё РїРµСЂРµРґР°С‘С‚ РµРіРѕ РІС‹Р±СЂР°РЅРЅРѕРјСѓ РєР°РЅР°Р»Сѓ.
 void upload_runtime_poll(void)
 {
   upload_s *p=upload_runtime_context; uint32_t record[8]; uint8_t *b=(uint8_t *)record;

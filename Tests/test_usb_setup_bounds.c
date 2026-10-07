@@ -1,6 +1,6 @@
-// Доработка: Кряжев А., 2026
-// Проверка контрактов периферии без физической платы.
-// Зависимости моделируются, код проверяемого модуля вставляет стенд.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РџСЂРѕРІРµСЂРєР° РєРѕРЅС‚СЂР°РєС‚РѕРІ РїРµСЂРёС„РµСЂРёРё Р±РµР· С„РёР·РёС‡РµСЃРєРѕР№ РїР»Р°С‚С‹.
+// Р—Р°РІРёСЃРёРјРѕСЃС‚Рё РјРѕРґРµР»РёСЂСѓСЋС‚СЃСЏ, РєРѕРґ РїСЂРѕРІРµСЂСЏРµРјРѕРіРѕ РјРѕРґСѓР»СЏ РІСЃС‚Р°РІР»СЏРµС‚ СЃС‚РµРЅРґ.
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@ static union {uint16_t w;struct {uint8_t bb1,bb0;} bw;} StatusInfo;
 #define EP_RX_VALID 1
 #define EP_TX_STALL 2
 #define EP_RX_STALL 2
-// Зафиксировать MMIO и проверить границу номера конечной точки.
+// Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ MMIO Рё РїСЂРѕРІРµСЂРёС‚СЊ РіСЂР°РЅРёС†Сѓ РЅРѕРјРµСЂР° РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё.
 static unsigned touch(unsigned ep){CHECK(ep<8&&ep<Device_Table.Total_Endpoint);mmio++;return 1;}
 #define _GetEPTxStatus touch
 #define _GetEPRxStatus touch
@@ -38,11 +38,11 @@ static unsigned touch(unsigned ep){CHECK(ep<8&&ep<Device_Table.Total_Endpoint);m
 #define _SetEPTxStatus SetEPTxStatus
 #define _SetEPRxStatus SetEPTxStatus
 #define SetEPRxCount SetEPTxStatus
-// Имитировать callback стандартного запроса без действия.
+// РРјРёС‚РёСЂРѕРІР°С‚СЊ callback СЃС‚Р°РЅРґР°СЂС‚РЅРѕРіРѕ Р·Р°РїСЂРѕСЃР° Р±РµР· РґРµР№СЃС‚РІРёСЏ.
 static void noop(void){}
 static struct {void (*User_GetStatus)(void),(*User_ClearFeature)(void),(*User_SetEndPointFeature)(void);} requests={noop,noop,noop},*pUser_Standard_Requests=&requests;
-/* КОД */
-// Проверить все сценарии модуля и вернуть результат прогона.
+/* РљРћР” */
+// РџСЂРѕРІРµСЂРёС‚СЊ РІСЃРµ СЃС†РµРЅР°СЂРёРё РјРѕРґСѓР»СЏ Рё РІРµСЂРЅСѓС‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚ РїСЂРѕРіРѕРЅР°.
 int main(void){
  info.Current_Configuration=1;
  for(unsigned total=1;total<=8;total++){Device_Table.Total_Endpoint=total;

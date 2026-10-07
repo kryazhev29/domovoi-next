@@ -1,15 +1,15 @@
-/* Доработка: Кряжев А., 2026.
-   Обслуживает USART3 и приём через DMA1 канал 3 на плате v5.
-   DMA владеет приёмом, прерывание USART передаёт данные до физического TC.
-   PB14 управляет потоком; потери RX запрещают разбор до отмены сеанса.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   РћР±СЃР»СѓР¶РёРІР°РµС‚ USART3 Рё РїСЂРёС‘Рј С‡РµСЂРµР· DMA1 РєР°РЅР°Р» 3 РЅР° РїР»Р°С‚Рµ v5.
+   DMA РІР»Р°РґРµРµС‚ РїСЂРёС‘РјРѕРј, РїСЂРµСЂС‹РІР°РЅРёРµ USART РїРµСЂРµРґР°С‘С‚ РґР°РЅРЅС‹Рµ РґРѕ С„РёР·РёС‡РµСЃРєРѕРіРѕ TC.
+   PB14 СѓРїСЂР°РІР»СЏРµС‚ РїРѕС‚РѕРєРѕРј; РїРѕС‚РµСЂРё RX Р·Р°РїСЂРµС‰Р°СЋС‚ СЂР°Р·Р±РѕСЂ РґРѕ РѕС‚РјРµРЅС‹ СЃРµР°РЅСЃР°.
 */
 #include "domovoi_diag.h"
 #include "comm_uart.h"
 #include "board.h"
 
-/* DMA пишет прямо в кольцо; 511 полезных байт сохраняют прежний предел. */
+/* DMA РїРёС€РµС‚ РїСЂСЏРјРѕ РІ РєРѕР»СЊС†Рѕ; 511 РїРѕР»РµР·РЅС‹С… Р±Р°Р№С‚ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРµР¶РЅРёР№ РїСЂРµРґРµР». */
 static uint8_t rx[512];
-/* Общая структура убирает межобъектные зазоры и сохраняет бюджет ОЗУ. */
+/* РћР±С‰Р°СЏ СЃС‚СЂСѓРєС‚СѓСЂР° СѓР±РёСЂР°РµС‚ РјРµР¶РѕР±СЉРµРєС‚РЅС‹Рµ Р·Р°Р·РѕСЂС‹ Рё СЃРѕС…СЂР°РЅСЏРµС‚ Р±СЋРґР¶РµС‚ РћР—РЈ. */
 static volatile struct {
   const uint8_t *tx_ptr;
   uint16_t rx_write, rx_read, rx_view, tx_length, tx_index;
@@ -23,7 +23,7 @@ static volatile struct {
 enum { TX_IDLE, TX_SEND, TX_WAIT_TC };
 
 #if DOMOVOI_DIAG
-/* Увеличить диагностический счётчик с насыщением. */
+/* РЈРІРµР»РёС‡РёС‚СЊ РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёР№ СЃС‡С‘С‚С‡РёРє СЃ РЅР°СЃС‹С‰РµРЅРёРµРј. */
 static void error_add(volatile uint16_t *count)
 {
   if (*count != UINT16_MAX) ++*count;
@@ -32,14 +32,14 @@ static void error_add(volatile uint16_t *count)
 #define error_add(count) ((void)0)
 #endif
 
-/* RM0008 §13.3.3/§13.4: CNDTR и TC дают число записанных байт,
-   а не только совпадение индексов. Обслуживать не реже половины круга
-   (22,2 мс при 115200); SysTick — 1 мс. IRQ не вложены в учёт RX.
-   Повтор снимка исключает переход HT/TC между ISR и CNDTR.
-   Сбрасываем только увиденные флаги, остальные каналы не затронуты. */
+/* RM0008 В§13.3.3/В§13.4: CNDTR Рё TC РґР°СЋС‚ С‡РёСЃР»Рѕ Р·Р°РїРёСЃР°РЅРЅС‹С… Р±Р°Р№С‚,
+   Р° РЅРµ С‚РѕР»СЊРєРѕ СЃРѕРІРїР°РґРµРЅРёРµ РёРЅРґРµРєСЃРѕРІ. РћР±СЃР»СѓР¶РёРІР°С‚СЊ РЅРµ СЂРµР¶Рµ РїРѕР»РѕРІРёРЅС‹ РєСЂСѓРіР°
+   (22,2 РјСЃ РїСЂРё 115200); SysTick вЂ” 1 РјСЃ. IRQ РЅРµ РІР»РѕР¶РµРЅС‹ РІ СѓС‡С‘С‚ RX.
+   РџРѕРІС‚РѕСЂ СЃРЅРёРјРєР° РёСЃРєР»СЋС‡Р°РµС‚ РїРµСЂРµС…РѕРґ HT/TC РјРµР¶РґСѓ ISR Рё CNDTR.
+   РЎР±СЂР°СЃС‹РІР°РµРј С‚РѕР»СЊРєРѕ СѓРІРёРґРµРЅРЅС‹Рµ С„Р»Р°РіРё, РѕСЃС‚Р°Р»СЊРЅС‹Рµ РєР°РЅР°Р»С‹ РЅРµ Р·Р°С‚СЂРѕРЅСѓС‚С‹. */
 void comm_uart_tick(void)
 {
-  if (!(RCC->AHBENR & RCC_AHBENR_DMA1EN)) return; /* SysTick может начаться до init. */
+  if (!(RCC->AHBENR & RCC_AHBENR_DMA1EN)) return; /* SysTick РјРѕР¶РµС‚ РЅР°С‡Р°С‚СЊСЃСЏ РґРѕ init. */
   uint32_t mask = __get_PRIMASK(), flags;
   uint16_t pos, delta, used;
   __disable_irq();
@@ -52,15 +52,15 @@ void comm_uart_tick(void)
   if ((flags & DMA_ISR_TCIF3) && pos >= (uart_state.rx_write & (sizeof(rx) - 1u))) delta += sizeof(rx);
   uart_state.rx_write += delta;
   __DMB();
-  uint16_t written = uart_state.rx_write, taken = uart_state.rx_read; /* порядок чтений volatile задан */
+  uint16_t written = uart_state.rx_write, taken = uart_state.rx_read; /* РїРѕСЂСЏРґРѕРє С‡С‚РµРЅРёР№ volatile Р·Р°РґР°РЅ */
   used = (uint16_t)(written - taken);
   if ((delta && used >= sizeof(rx)) || (flags & DMA_ISR_TEIF3)) {
-    uart_state.rx_view = sizeof(rx); /* Защёлка потери потока до abort, без нового ОЗУ. */
+    uart_state.rx_view = sizeof(rx); /* Р—Р°С‰С‘Р»РєР° РїРѕС‚РµСЂРё РїРѕС‚РѕРєР° РґРѕ abort, Р±РµР· РЅРѕРІРѕРіРѕ РћР—РЈ. */
     uart_state.counters.errors |= COMM_UART_OVERFLOW;
     error_add(&uart_state.counters.overflow);
   }
   if (uart_state.rx_view == sizeof(rx)) used = sizeof(rx);
-  /* PB14: HIGH — стоп при свободно < 128, LOW — пуск при занято < 128. */
+  /* PB14: HIGH вЂ” СЃС‚РѕРї РїСЂРё СЃРІРѕР±РѕРґРЅРѕ < 128, LOW вЂ” РїСѓСЃРє РїСЂРё Р·Р°РЅСЏС‚Рѕ < 128. */
   if (used > sizeof(rx) - 1u - 128u) { RTSG_HIGH; }
   else if (used < 128u) { RTSG_LOW; }
   __set_PRIMASK(mask);
@@ -69,7 +69,7 @@ void comm_uart_tick(void)
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma call_graph_root="interrupt"
 #endif
-/* Опубликовать принятую часть кольца по прерыванию DMA. */
+/* РћРїСѓР±Р»РёРєРѕРІР°С‚СЊ РїСЂРёРЅСЏС‚СѓСЋ С‡Р°СЃС‚СЊ РєРѕР»СЊС†Р° РїРѕ РїСЂРµСЂС‹РІР°РЅРёСЋ DMA. */
 void DMA1_Channel3_IRQHandler(void)
 {
   comm_uart_tick();
@@ -77,20 +77,20 @@ void DMA1_Channel3_IRQHandler(void)
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma call_graph_root="interrupt"
 #endif
-/* Передать очередной байт или зафиксировать ошибку USART3. */
+/* РџРµСЂРµРґР°С‚СЊ РѕС‡РµСЂРµРґРЅРѕР№ Р±Р°Р№С‚ РёР»Рё Р·Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РѕС€РёР±РєСѓ USART3. */
 void USART3_IRQHandler(void)
 {
   uint32_t status = USART3->SR;
   uint16_t errors = 0;
-  /* В обычном RX регистр DR принадлежит только DMA. Чтение DR по IDLE
-     может украсть следующий байт между SR и DR; остаток публикуют tick/peek.
-     При ошибке границы уже потеряны: снимаем флаг и отменяем весь поток. */
+  /* Р’ РѕР±С‹С‡РЅРѕРј RX СЂРµРіРёСЃС‚СЂ DR РїСЂРёРЅР°РґР»РµР¶РёС‚ С‚РѕР»СЊРєРѕ DMA. Р§С‚РµРЅРёРµ DR РїРѕ IDLE
+     РјРѕР¶РµС‚ СѓРєСЂР°СЃС‚СЊ СЃР»РµРґСѓСЋС‰РёР№ Р±Р°Р№С‚ РјРµР¶РґСѓ SR Рё DR; РѕСЃС‚Р°С‚РѕРє РїСѓР±Р»РёРєСѓСЋС‚ tick/peek.
+     РџСЂРё РѕС€РёР±РєРµ РіСЂР°РЅРёС†С‹ СѓР¶Рµ РїРѕС‚РµСЂСЏРЅС‹: СЃРЅРёРјР°РµРј С„Р»Р°Рі Рё РѕС‚РјРµРЅСЏРµРј РІРµСЃСЊ РїРѕС‚РѕРє. */
   if (status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
     (void)USART3->DR;
     if (status & USART_SR_ORE) { errors |= COMM_UART_ORE; error_add(&uart_state.counters.ore); }
     if (status & USART_SR_FE) { errors |= COMM_UART_FE; error_add(&uart_state.counters.fe); }
     if (status & USART_SR_NE) { errors |= COMM_UART_NE; error_add(&uart_state.counters.ne); }
-    if (errors) uart_state.rx_view = sizeof(rx); /* DMA мог уже записать ошибочный байт. */
+    if (errors) uart_state.rx_view = sizeof(rx); /* DMA РјРѕРі СѓР¶Рµ Р·Р°РїРёСЃР°С‚СЊ РѕС€РёР±РѕС‡РЅС‹Р№ Р±Р°Р№С‚. */
     comm_uart_tick();
   }
   if (errors) uart_state.counters.errors |= errors;
@@ -104,7 +104,7 @@ void USART3_IRQHandler(void)
         uart_state.tx_phase = TX_WAIT_TC;
       }
     }
-    /* TC из снимка до записи DR относится к прежнему байту. */
+    /* TC РёР· СЃРЅРёРјРєР° РґРѕ Р·Р°РїРёСЃРё DR РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє РїСЂРµР¶РЅРµРјСѓ Р±Р°Р№С‚Сѓ. */
   } else if ((USART3->CR1 & USART_CR1_TCIE) && (status & USART_SR_TC)) {
     USART3->CR1 &= ~USART_CR1_TCIE;
     if (uart_state.tx_phase == TX_WAIT_TC) {
@@ -115,12 +115,12 @@ void USART3_IRQHandler(void)
   }
 }
 
-/* Отменить TX и очистить кольцо RX при смене сеанса. */
+/* РћС‚РјРµРЅРёС‚СЊ TX Рё РѕС‡РёСЃС‚РёС‚СЊ РєРѕР»СЊС†Рѕ RX РїСЂРё СЃРјРµРЅРµ СЃРµР°РЅСЃР°. */
 void comm_uart_abort(void)
 {
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
-  DMA1_Channel3->CCR = 0; /* RM0008 §13.4.3: CNDTR меняется только при EN=0. */
+  DMA1_Channel3->CCR = 0; /* RM0008 В§13.4.3: CNDTR РјРµРЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё EN=0. */
   USART3->CR1 &= ~(USART_CR1_TXEIE | USART_CR1_TCIE);
   uart_state.tx_phase = TX_IDLE;
   uart_state.tx_done = 0;
@@ -129,7 +129,7 @@ void comm_uart_abort(void)
   uart_state.rx_write = uart_state.rx_read = uart_state.rx_view = 0;
   DMA1->IFCR = DMA_IFCR_CGIF3;
   DMA1_Channel3->CNDTR = sizeof(rx);
-  /* Снятие старого RX; ошибки до abort остаются в диагностике. */
+  /* РЎРЅСЏС‚РёРµ СЃС‚Р°СЂРѕРіРѕ RX; РѕС€РёР±РєРё РґРѕ abort РѕСЃС‚Р°СЋС‚СЃСЏ РІ РґРёР°РіРЅРѕСЃС‚РёРєРµ. */
   (void)USART3->SR;
   (void)USART3->DR;
   DMA1_Channel3->CCR = DMA_CCR3_MINC | DMA_CCR3_CIRC | DMA_CCR3_HTIE | DMA_CCR3_TCIE | DMA_CCR3_TEIE | DMA_CCR3_EN;
@@ -137,7 +137,7 @@ void comm_uart_abort(void)
   __set_PRIMASK(mask);
 }
 
-/* Настроить регистры USART3, GPIOB, DMA и NVIC платы v5. */
+/* РќР°СЃС‚СЂРѕРёС‚СЊ СЂРµРіРёСЃС‚СЂС‹ USART3, GPIOB, DMA Рё NVIC РїР»Р°С‚С‹ v5. */
 void comm_uart_init(uint32_t baud)
 {
   uint32_t mask = __get_PRIMASK();
@@ -156,10 +156,10 @@ void comm_uart_init(uint32_t baud)
 #else
   uart_state.counters.errors = 0;
 #endif
-  /* PB10 — TX 50 МГц, PB11/PB13 — входы с подтяжкой, PB14 — RTS. */
+  /* PB10 вЂ” TX 50 РњР“С†, PB11/PB13 вЂ” РІС…РѕРґС‹ СЃ РїРѕРґС‚СЏР¶РєРѕР№, PB14 вЂ” RTS. */
   GPIOB->CRH = (GPIOB->CRH & ~0x0FF0FF00u) | 0x03808B00u;
   GPIOB->BSRR = GPIO_Pin_11 | GPIO_Pin_13;
-  /* APB1 может быть делён; округление BRR совпадает с библиотекой ST. */
+  /* APB1 РјРѕР¶РµС‚ Р±С‹С‚СЊ РґРµР»С‘РЅ; РѕРєСЂСѓРіР»РµРЅРёРµ BRR СЃРѕРІРїР°РґР°РµС‚ СЃ Р±РёР±Р»РёРѕС‚РµРєРѕР№ ST. */
   uint32_t prescaler = (RCC->CFGR & RCC_CFGR_PPRE1) >> 8;
   uint32_t clock = SystemCoreClock >> (prescaler < 4 ? 0 : prescaler - 3);
   uint32_t divider = (25u * clock) / (4u * baud);
@@ -168,14 +168,14 @@ void comm_uart_init(uint32_t baud)
   USART3->CR2 = 0;
   USART3->CR3 = USART_CR3_CTSE | USART_CR3_DMAR | USART_CR3_EIE;
   USART3->CR1 = USART_CR1_RE | USART_CR1_TE | USART_CR1_UE;
-  /* До настройки RS-485 группа 0, после — 1: сохраняем прежнее кодирование NVIC. */
+  /* Р”Рѕ РЅР°СЃС‚СЂРѕР№РєРё RS-485 РіСЂСѓРїРїР° 0, РїРѕСЃР»Рµ вЂ” 1: СЃРѕС…СЂР°РЅСЏРµРј РїСЂРµР¶РЅРµРµ РєРѕРґРёСЂРѕРІР°РЅРёРµ NVIC. */
   uint8_t priority = (SCB->AIRCR & (7u << 8)) == (7u << 8) ? 0x70u : 0xF0u;
   board_irq_enable(USART3_IRQn, priority);
   board_irq_enable(DMA1_Channel3_IRQn, priority);
   __set_PRIMASK(mask);
 }
 
-/* Выдать непрерывный участок текущего кольца RX. */
+/* Р’С‹РґР°С‚СЊ РЅРµРїСЂРµСЂС‹РІРЅС‹Р№ СѓС‡Р°СЃС‚РѕРє С‚РµРєСѓС‰РµРіРѕ РєРѕР»СЊС†Р° RX. */
 uint16_t comm_uart_peek(const uint8_t **data)
 {
   uint32_t mask = __get_PRIMASK();
@@ -193,7 +193,7 @@ uint16_t comm_uart_peek(const uint8_t **data)
   __set_PRIMASK(mask);
   return count;
 }
-/* Освободить принятый участок, сохранив защиту от потери DMA. */
+/* РћСЃРІРѕР±РѕРґРёС‚СЊ РїСЂРёРЅСЏС‚С‹Р№ СѓС‡Р°СЃС‚РѕРє, СЃРѕС…СЂР°РЅРёРІ Р·Р°С‰РёС‚Сѓ РѕС‚ РїРѕС‚РµСЂРё DMA. */
 bool comm_uart_consume(uint16_t count)
 {
   uint32_t mask = __get_PRIMASK();
@@ -209,7 +209,7 @@ bool comm_uart_consume(uint16_t count)
   return true;
 }
 
-/* Передать владение готовым буфером фоновому передатчику. */
+/* РџРµСЂРµРґР°С‚СЊ РІР»Р°РґРµРЅРёРµ РіРѕС‚РѕРІС‹Рј Р±СѓС„РµСЂРѕРј С„РѕРЅРѕРІРѕРјСѓ РїРµСЂРµРґР°С‚С‡РёРєСѓ. */
 bool comm_uart_tx(const uint8_t *data, uint16_t count)
 {
   if (uart_state.tx_phase != TX_IDLE) return false;
@@ -217,7 +217,7 @@ bool comm_uart_tx(const uint8_t *data, uint16_t count)
   __disable_irq();
   uart_state.tx_ptr = data;
   uart_state.tx_length = count;
-  __DMB(); /* IRQ здесь отложен: остальные поля ещё не опубликованы. */
+  __DMB(); /* IRQ Р·РґРµСЃСЊ РѕС‚Р»РѕР¶РµРЅ: РѕСЃС‚Р°Р»СЊРЅС‹Рµ РїРѕР»СЏ РµС‰С‘ РЅРµ РѕРїСѓР±Р»РёРєРѕРІР°РЅС‹. */
   uart_state.tx_index = 0;
   uart_state.tx_done = 0;
   uart_state.tx_phase = TX_SEND;
@@ -228,13 +228,13 @@ bool comm_uart_tx(const uint8_t *data, uint16_t count)
   return true;
 }
 
-/* Сообщить о физическом завершении последнего байта TX. */
+/* РЎРѕРѕР±С‰РёС‚СЊ Рѕ С„РёР·РёС‡РµСЃРєРѕРј Р·Р°РІРµСЂС€РµРЅРёРё РїРѕСЃР»РµРґРЅРµРіРѕ Р±Р°Р№С‚Р° TX. */
 bool comm_uart_tx_done(void)
 {
   return uart_state.tx_done != 0;
 }
 
-/* Забрать и снять флаги потери потока. */
+/* Р—Р°Р±СЂР°С‚СЊ Рё СЃРЅСЏС‚СЊ С„Р»Р°РіРё РїРѕС‚РµСЂРё РїРѕС‚РѕРєР°. */
 uint16_t comm_uart_errors(void)
 {
   uint32_t mask = __get_PRIMASK();
@@ -246,7 +246,7 @@ uint16_t comm_uart_errors(void)
 }
 
 #if DOMOVOI_DIAG || defined(DOMOVOI_HOST_TEST)
-/* Скопировать насыщаемые счётчики стендовой диагностики. */
+/* РЎРєРѕРїРёСЂРѕРІР°С‚СЊ РЅР°СЃС‹С‰Р°РµРјС‹Рµ СЃС‡С‘С‚С‡РёРєРё СЃС‚РµРЅРґРѕРІРѕР№ РґРёР°РіРЅРѕСЃС‚РёРєРё. */
 void comm_uart_stats(comm_uart_stats_t *stats)
 {
   uint32_t mask = __get_PRIMASK();

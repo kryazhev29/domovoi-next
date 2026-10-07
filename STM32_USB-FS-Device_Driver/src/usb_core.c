@@ -1,27 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Автомат управляющей точки ep0 и стандартные запросы хоста.
-// Дескрипторы и порядок событий сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
-
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РђРІС‚РѕРјР°С‚ СѓРїСЂР°РІР»СЏСЋС‰РµР№ С‚РѕС‡РєРё ep0 Рё СЃС‚Р°РЅРґР°СЂС‚РЅС‹Рµ Р·Р°РїСЂРѕСЃС‹ С…РѕСЃС‚Р°.
+// Р”РµСЃРєСЂРёРїС‚РѕСЂС‹ Рё РїРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј; РїР°РјСЏС‚СЊ PMA С‚СЂРµР±СѓРµС‚ РѕСЃРѕР±РѕРіРѕ РґРѕСЃС‚СѓРїР°.
 
 #include "usb_lib.h"
 
@@ -38,14 +18,14 @@ static void DataStageIn(void);
 static void NoData_Setup0(void);
 static void Data_Setup0(void);
 
-// Выдать пустой пакет статуса IN; аппаратный статус EP0 применится после обработки IRQ.
+// Р’С‹РґР°С‚СЊ РїСѓСЃС‚РѕР№ РїР°РєРµС‚ СЃС‚Р°С‚СѓСЃР° IN; Р°РїРїР°СЂР°С‚РЅС‹Р№ СЃС‚Р°С‚СѓСЃ EP0 РїСЂРёРјРµРЅРёС‚СЃСЏ РїРѕСЃР»Рµ РѕР±СЂР°Р±РѕС‚РєРё IRQ.
 static void Send0LengthData(void)
 {
   _SetEPTxCount(ENDP0, 0);
   SaveTState = EP_TX_VALID;
 }
 
-// Вернуть текущую конфигурацию для стандартного запроса хоста.
+// Р’РµСЂРЅСѓС‚СЊ С‚РµРєСѓС‰СѓСЋ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ РґР»СЏ СЃС‚Р°РЅРґР°СЂС‚РЅРѕРіРѕ Р·Р°РїСЂРѕСЃР° С…РѕСЃС‚Р°.
 uint8_t *Standard_GetConfiguration(uint16_t Length)
 {
   if (Length == 0)
@@ -58,7 +38,7 @@ uint8_t *Standard_GetConfiguration(uint16_t Length)
   return (uint8_t *)&pInformation->Current_Configuration;
 }
 
-// Проверить SET_CONFIGURATION и применить выбранную конфигурацию.
+// РџСЂРѕРІРµСЂРёС‚СЊ SET_CONFIGURATION Рё РїСЂРёРјРµРЅРёС‚СЊ РІС‹Р±СЂР°РЅРЅСѓСЋ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ.
 RESULT Standard_SetConfiguration(void)
 {
 
@@ -76,7 +56,7 @@ RESULT Standard_SetConfiguration(void)
   }
 }
 
-// Вернуть текущее альтернативное состояние интерфейса.
+// Р’РµСЂРЅСѓС‚СЊ С‚РµРєСѓС‰РµРµ Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РёРЅС‚РµСЂС„РµР№СЃР°.
 uint8_t *Standard_GetInterface(uint16_t Length)
 {
   if (Length == 0)
@@ -89,7 +69,7 @@ uint8_t *Standard_GetInterface(uint16_t Length)
   return (uint8_t *)&pInformation->Current_AlternateSetting;
 }
 
-// Проверить SET_INTERFACE и уведомить обработчик класса.
+// РџСЂРѕРІРµСЂРёС‚СЊ SET_INTERFACE Рё СѓРІРµРґРѕРјРёС‚СЊ РѕР±СЂР°Р±РѕС‚С‡РёРє РєР»Р°СЃСЃР°.
 RESULT Standard_SetInterface(void)
 {
   RESULT Re;
@@ -116,7 +96,7 @@ RESULT Standard_SetInterface(void)
   return USB_UNSUPPORT;
 }
 
-// Собрать двухбайтовый статус устройства, интерфейса или конечной точки.
+// РЎРѕР±СЂР°С‚СЊ РґРІСѓС…Р±Р°Р№С‚РѕРІС‹Р№ СЃС‚Р°С‚СѓСЃ СѓСЃС‚СЂРѕР№СЃС‚РІР°, РёРЅС‚РµСЂС„РµР№СЃР° РёР»Рё РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё.
 uint8_t *Standard_GetStatus(uint16_t Length)
 {
   if (Length == 0)
@@ -190,7 +170,7 @@ uint8_t *Standard_GetStatus(uint16_t Length)
   return (uint8_t *)&StatusInfo;
 }
 
-// Снять разрешение пробуждения или блокировку проверенной конечной точки.
+// РЎРЅСЏС‚СЊ СЂР°Р·СЂРµС€РµРЅРёРµ РїСЂРѕР±СѓР¶РґРµРЅРёСЏ РёР»Рё Р±Р»РѕРєРёСЂРѕРІРєСѓ РїСЂРѕРІРµСЂРµРЅРЅРѕР№ РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё.
 RESULT Standard_ClearFeature(void)
 {
   uint32_t     Type_Rec = Type_Recipient;
@@ -216,7 +196,7 @@ RESULT Standard_ClearFeature(void)
     wIndex0 = pInformation->USBwIndex0;
     rEP = wIndex0 & ~0x80;
     Related_Endpoint = ENDP0 + rEP;
-    // номер проверяем до обращения к регистрам USB
+    // РЅРѕРјРµСЂ РїСЂРѕРІРµСЂСЏРµРј РґРѕ РѕР±СЂР°С‰РµРЅРёСЏ Рє СЂРµРіРёСЃС‚СЂР°Рј USB
     if (rEP >= 8u ||
         rEP >= Device_Table.Total_Endpoint) return USB_UNSUPPORT;
 
@@ -270,7 +250,7 @@ RESULT Standard_ClearFeature(void)
   return USB_UNSUPPORT;
 }
 
-// Заблокировать проверенную конечную точку по запросу SET_FEATURE.
+// Р—Р°Р±Р»РѕРєРёСЂРѕРІР°С‚СЊ РїСЂРѕРІРµСЂРµРЅРЅСѓСЋ РєРѕРЅРµС‡РЅСѓСЋ С‚РѕС‡РєСѓ РїРѕ Р·Р°РїСЂРѕСЃСѓ SET_FEATURE.
 RESULT Standard_SetEndPointFeature(void)
 {
   uint32_t    wIndex0;
@@ -281,7 +261,7 @@ RESULT Standard_SetEndPointFeature(void)
   wIndex0 = pInformation->USBwIndex0;
   rEP = wIndex0 & ~0x80;
   Related_Endpoint = ENDP0 + rEP;
-  // номер проверяем до обращения к регистрам USB
+  // РЅРѕРјРµСЂ РїСЂРѕРІРµСЂСЏРµРј РґРѕ РѕР±СЂР°С‰РµРЅРёСЏ Рє СЂРµРіРёСЃС‚СЂР°Рј USB
   if (pInformation->USBwIndex1 != 0 || rEP >= Device_Table.Total_Endpoint ||
       pInformation->USBwValue != ENDPOINT_STALL ||
       pInformation->Current_Configuration == 0) return USB_UNSUPPORT;
@@ -318,7 +298,7 @@ RESULT Standard_SetEndPointFeature(void)
   return USB_SUCCESS;
 }
 
-// Запомнить разрешение удалённого пробуждения в статусе USB.
+// Р—Р°РїРѕРјРЅРёС‚СЊ СЂР°Р·СЂРµС€РµРЅРёРµ СѓРґР°Р»С‘РЅРЅРѕРіРѕ РїСЂРѕР±СѓР¶РґРµРЅРёСЏ РІ СЃС‚Р°С‚СѓСЃРµ USB.
 RESULT Standard_SetDeviceFeature(void)
 {
   pInformation->Current_Feature |= (1u << 5);
@@ -326,7 +306,7 @@ RESULT Standard_SetDeviceFeature(void)
   return USB_SUCCESS;
 }
 
-// Вернуть размер или очередной фрагмент выбранного дескриптора.
+// Р’РµСЂРЅСѓС‚СЊ СЂР°Р·РјРµСЂ РёР»Рё РѕС‡РµСЂРµРґРЅРѕР№ С„СЂР°РіРјРµРЅС‚ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РґРµСЃРєСЂРёРїС‚РѕСЂР°.
 uint8_t *Standard_GetDescriptorData(uint16_t Length, const ONE_DESCRIPTOR *pDesc)
 {
   uint32_t  wOffset;
@@ -341,7 +321,7 @@ uint8_t *Standard_GetDescriptorData(uint16_t Length, const ONE_DESCRIPTOR *pDesc
   return pDesc->Descriptor + wOffset;
 }
 
-// Принять очередную порцию данных управляющего запроса EP0.
+// РџСЂРёРЅСЏС‚СЊ РѕС‡РµСЂРµРґРЅСѓСЋ РїРѕСЂС†РёСЋ РґР°РЅРЅС‹С… СѓРїСЂР°РІР»СЏСЋС‰РµРіРѕ Р·Р°РїСЂРѕСЃР° EP0.
 void DataStageOut(void)
 {
   ENDPOINT_INFO *pEPinfo = &pInformation->Ctrl_Info;
@@ -392,7 +372,7 @@ void DataStageOut(void)
   }
 }
 
-// Передать очередную порцию EP0 и нужный завершающий пустой пакет.
+// РџРµСЂРµРґР°С‚СЊ РѕС‡РµСЂРµРґРЅСѓСЋ РїРѕСЂС†РёСЋ EP0 Рё РЅСѓР¶РЅС‹Р№ Р·Р°РІРµСЂС€Р°СЋС‰РёР№ РїСѓСЃС‚РѕР№ РїР°РєРµС‚.
 void DataStageIn(void)
 {
   ENDPOINT_INFO *pEPinfo = &pInformation->Ctrl_Info;
@@ -446,7 +426,7 @@ Expect_Status_Out:
   pInformation->ControlState = ControlState;
 }
 
-// Обработать SETUP без данных и выбрать ответ либо STALL.
+// РћР±СЂР°Р±РѕС‚Р°С‚СЊ SETUP Р±РµР· РґР°РЅРЅС‹С… Рё РІС‹Р±СЂР°С‚СЊ РѕС‚РІРµС‚ Р»РёР±Рѕ STALL.
 void NoData_Setup0(void)
 {
   RESULT Result = USB_UNSUPPORT;
@@ -553,7 +533,7 @@ exit_NoData_Setup0:
   return;
 }
 
-// Проверить SETUP с данными и назначить источник или приёмник EP0.
+// РџСЂРѕРІРµСЂРёС‚СЊ SETUP СЃ РґР°РЅРЅС‹РјРё Рё РЅР°Р·РЅР°С‡РёС‚СЊ РёСЃС‚РѕС‡РЅРёРє РёР»Рё РїСЂРёС‘РјРЅРёРє EP0.
 void Data_Setup0(void)
 {
   uint8_t *(*CopyRoutine)(uint16_t);
@@ -611,7 +591,7 @@ void Data_Setup0(void)
       Related_Endpoint = (pInformation->USBwIndex0 & 0x0f);
       Reserved = pInformation->USBwIndex0 & 0x70;
 
-      // недопустимый SETUP не должен читать даже неиспользуемую конечную точку
+      // РЅРµРґРѕРїСѓСЃС‚РёРјС‹Р№ SETUP РЅРµ РґРѕР»Р¶РµРЅ С‡РёС‚Р°С‚СЊ РґР°Р¶Рµ РЅРµРёСЃРїРѕР»СЊР·СѓРµРјСѓСЋ РєРѕРЅРµС‡РЅСѓСЋ С‚РѕС‡РєСѓ
       if (Related_Endpoint >= 8u || Related_Endpoint >= Device_Table.Total_Endpoint || Reserved != 0)
       {
         Status = 0;
@@ -709,7 +689,7 @@ void Data_Setup0(void)
   return;
 }
 
-// Снять восьмибайтовый SETUP из PMA и запустить разбор EP0.
+// РЎРЅСЏС‚СЊ РІРѕСЃСЊРјРёР±Р°Р№С‚РѕРІС‹Р№ SETUP РёР· PMA Рё Р·Р°РїСѓСЃС‚РёС‚СЊ СЂР°Р·Р±РѕСЂ EP0.
 void Setup0_Process(void)
 {
 
@@ -745,7 +725,7 @@ void Setup0_Process(void)
   Post0_Process();
 }
 
-// Завершить передачу EP0, применяя новый адрес после ответа хосту.
+// Р—Р°РІРµСЂС€РёС‚СЊ РїРµСЂРµРґР°С‡Сѓ EP0, РїСЂРёРјРµРЅСЏСЏ РЅРѕРІС‹Р№ Р°РґСЂРµСЃ РїРѕСЃР»Рµ РѕС‚РІРµС‚Р° С…РѕСЃС‚Сѓ.
 void In0_Process(void)
 {
   uint32_t ControlState = pInformation->ControlState;
@@ -779,7 +759,7 @@ void In0_Process(void)
   Post0_Process();
 }
 
-// Обработать данные либо статус OUT управляющей точки.
+// РћР±СЂР°Р±РѕС‚Р°С‚СЊ РґР°РЅРЅС‹Рµ Р»РёР±Рѕ СЃС‚Р°С‚СѓСЃ OUT СѓРїСЂР°РІР»СЏСЋС‰РµР№ С‚РѕС‡РєРё.
 void Out0_Process(void)
 {
   uint32_t ControlState = pInformation->ControlState;
@@ -811,7 +791,7 @@ void Out0_Process(void)
   Post0_Process();
 }
 
-// Подготовить EP0 к следующему пакету или отклонить запрос.
+// РџРѕРґРіРѕС‚РѕРІРёС‚СЊ EP0 Рє СЃР»РµРґСѓСЋС‰РµРјСѓ РїР°РєРµС‚Сѓ РёР»Рё РѕС‚РєР»РѕРЅРёС‚СЊ Р·Р°РїСЂРѕСЃ.
 void Post0_Process(void)
 {
 
@@ -825,7 +805,7 @@ void Post0_Process(void)
 
 }
 
-// Назначить адрес устройства и адреса его конечных точек.
+// РќР°Р·РЅР°С‡РёС‚СЊ Р°РґСЂРµСЃ СѓСЃС‚СЂРѕР№СЃС‚РІР° Рё Р°РґСЂРµСЃР° РµРіРѕ РєРѕРЅРµС‡РЅС‹С… С‚РѕС‡РµРє.
 void SetDeviceAddress(uint8_t Val)
 {
   uint32_t i;
@@ -838,9 +818,7 @@ void SetDeviceAddress(uint8_t Val)
   _SetDADDR(Val | DADDR_EF);
 }
 
-// Обслужить допустимое событие, которому не нужно действие класса.
+// РћР±СЃР»СѓР¶РёС‚СЊ РґРѕРїСѓСЃС‚РёРјРѕРµ СЃРѕР±С‹С‚РёРµ, РєРѕС‚РѕСЂРѕРјСѓ РЅРµ РЅСѓР¶РЅРѕ РґРµР№СЃС‚РІРёРµ РєР»Р°СЃСЃР°.
 void NOP_Process(void)
 {
 }
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

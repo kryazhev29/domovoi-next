@@ -1,27 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Регистры USB, поля конечных точек и аппаратная таблица буферов.
-// Дескрипторы и порядок событий сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
-
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р РµРіРёСЃС‚СЂС‹ USB, РїРѕР»СЏ РєРѕРЅРµС‡РЅС‹С… С‚РѕС‡РµРє Рё Р°РїРїР°СЂР°С‚РЅР°СЏ С‚Р°Р±Р»РёС†Р° Р±СѓС„РµСЂРѕРІ.
+// Р”РµСЃРєСЂРёРїС‚РѕСЂС‹ Рё РїРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј; РїР°РјСЏС‚СЊ PMA С‚СЂРµР±СѓРµС‚ РѕСЃРѕР±РѕРіРѕ РґРѕСЃС‚СѓРїР°.
 
 #ifndef __USB_REGS_H
 #define __USB_REGS_H
@@ -110,93 +90,93 @@
 #define EP_RX_VALID    (0x3000)
 #define EPRX_DTOGMASK  (EPRX_STAT|EPREG_MASK)
 
-// Задать управляющий регистр USB.
+// Р—Р°РґР°С‚СЊ СѓРїСЂР°РІР»СЏСЋС‰РёР№ СЂРµРіРёСЃС‚СЂ USB.
 static inline void _SetCNTR(uint16_t value)
 {
   *CNTR = value;
 }
 
-// Очистить события ISTR записью нулей в выбранные биты.
+// РћС‡РёСЃС‚РёС‚СЊ СЃРѕР±С‹С‚РёСЏ ISTR Р·Р°РїРёСЃСЊСЋ РЅСѓР»РµР№ РІ РІС‹Р±СЂР°РЅРЅС‹Рµ Р±РёС‚С‹.
 static inline void _SetISTR(uint16_t value)
 {
   *ISTR = value;
 }
 
-// Задать адрес и разрешение устройства.
+// Р—Р°РґР°С‚СЊ Р°РґСЂРµСЃ Рё СЂР°Р·СЂРµС€РµРЅРёРµ СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 static inline void _SetDADDR(uint16_t value)
 {
   *DADDR = value;
 }
 
-// Задать адрес таблицы с выравниванием на восемь байтов.
+// Р—Р°РґР°С‚СЊ Р°РґСЂРµСЃ С‚Р°Р±Р»РёС†С‹ СЃ РІС‹СЂР°РІРЅРёРІР°РЅРёРµРј РЅР° РІРѕСЃРµРјСЊ Р±Р°Р№С‚РѕРІ.
 static inline void _SetBTABLE(uint16_t value)
 {
   *BTABLE = value & 0xFFF8u;
 }
 
-// Прочитать управление USB.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ СѓРїСЂР°РІР»РµРЅРёРµ USB.
 static inline uint16_t _GetCNTR(void)
 {
   return (uint16_t)*CNTR;
 }
 
-// Прочитать аппаратные события USB.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ Р°РїРїР°СЂР°С‚РЅС‹Рµ СЃРѕР±С‹С‚РёСЏ USB.
 static inline uint16_t _GetISTR(void)
 {
   return (uint16_t)*ISTR;
 }
 
-// Прочитать номер кадра и состояние линий USB.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ РЅРѕРјРµСЂ РєР°РґСЂР° Рё СЃРѕСЃС‚РѕСЏРЅРёРµ Р»РёРЅРёР№ USB.
 static inline uint16_t _GetFNR(void)
 {
   return (uint16_t)*FNR;
 }
 
-// Прочитать текущий адрес устройства.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ С‚РµРєСѓС‰РёР№ Р°РґСЂРµСЃ СѓСЃС‚СЂРѕР№СЃС‚РІР°.
 static inline uint16_t _GetDADDR(void)
 {
   return (uint16_t)*DADDR;
 }
 
-// Прочитать положение таблицы буферов.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ РїРѕР»РѕР¶РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ Р±СѓС„РµСЂРѕРІ.
 static inline uint16_t _GetBTABLE(void)
 {
   return (uint16_t)*BTABLE;
 }
 
-// Записать аппаратный регистр проверенной конечной точки.
+// Р—Р°РїРёСЃР°С‚СЊ Р°РїРїР°СЂР°С‚РЅС‹Р№ СЂРµРіРёСЃС‚СЂ РїСЂРѕРІРµСЂРµРЅРЅРѕР№ РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё.
 static inline void _SetENDPOINT(uint8_t ep, uint16_t value)
 {
   EP0REG[ep] = value;
 }
 
-// Прочитать аппаратный регистр проверенной конечной точки.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ Р°РїРїР°СЂР°С‚РЅС‹Р№ СЂРµРіРёСЃС‚СЂ РїСЂРѕРІРµСЂРµРЅРЅРѕР№ РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё.
 static inline uint16_t _GetENDPOINT(uint8_t ep)
 {
   return (uint16_t)EP0REG[ep];
 }
 
-// Задать тип точки без переключения STAT/DTOG.
+// Р—Р°РґР°С‚СЊ С‚РёРї С‚РѕС‡РєРё Р±РµР· РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ STAT/DTOG.
 static inline void _SetEPType(uint8_t ep, uint16_t type)
 {
   _SetENDPOINT(ep, (_GetENDPOINT(ep) & EP_T_MASK) | type);
 }
 
-// Переключить STAT_TX до нужного значения, сохраняя оба события CTR.
+// РџРµСЂРµРєР»СЋС‡РёС‚СЊ STAT_TX РґРѕ РЅСѓР¶РЅРѕРіРѕ Р·РЅР°С‡РµРЅРёСЏ, СЃРѕС…СЂР°РЅСЏСЏ РѕР±Р° СЃРѕР±С‹С‚РёСЏ CTR.
 static inline void _SetEPTxStatus(uint8_t ep, uint16_t state)
 {
   uint16_t value = (_GetENDPOINT(ep) & EPTX_DTOGMASK) ^ (state & EPTX_STAT);
   _SetENDPOINT(ep, value | EP_CTR_RX | EP_CTR_TX);
 }
 
-// Переключить STAT_RX до нужного значения, сохраняя оба события CTR.
+// РџРµСЂРµРєР»СЋС‡РёС‚СЊ STAT_RX РґРѕ РЅСѓР¶РЅРѕРіРѕ Р·РЅР°С‡РµРЅРёСЏ, СЃРѕС…СЂР°РЅСЏСЏ РѕР±Р° СЃРѕР±С‹С‚РёСЏ CTR.
 static inline void _SetEPRxStatus(uint8_t ep, uint16_t state)
 {
   uint16_t value = (_GetENDPOINT(ep) & EPRX_DTOGMASK) ^ (state & EPRX_STAT);
   _SetENDPOINT(ep, value | EP_CTR_RX | EP_CTR_TX);
 }
 
-// Атомарно задать оба статуса точки без потери события на другой стороне.
+// РђС‚РѕРјР°СЂРЅРѕ Р·Р°РґР°С‚СЊ РѕР±Р° СЃС‚Р°С‚СѓСЃР° С‚РѕС‡РєРё Р±РµР· РїРѕС‚РµСЂРё СЃРѕР±С‹С‚РёСЏ РЅР° РґСЂСѓРіРѕР№ СЃС‚РѕСЂРѕРЅРµ.
 static inline void _SetEPRxTxStatus(uint8_t ep, uint16_t rx, uint16_t tx)
 {
   uint16_t value = _GetENDPOINT(ep) & (EPRX_DTOGMASK | EPTX_STAT);
@@ -204,115 +184,115 @@ static inline void _SetEPRxTxStatus(uint8_t ep, uint16_t rx, uint16_t tx)
   _SetENDPOINT(ep, value | EP_CTR_RX | EP_CTR_TX);
 }
 
-// Прочитать состояние передачи IN.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РїРµСЂРµРґР°С‡Рё IN.
 static inline uint16_t _GetEPTxStatus(uint8_t ep)
 {
   return _GetENDPOINT(ep) & EPTX_STAT;
 }
 
-// Прочитать состояние приёма OUT.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РїСЂРёС‘РјР° OUT.
 static inline uint16_t _GetEPRxStatus(uint8_t ep)
 {
   return _GetENDPOINT(ep) & EPRX_STAT;
 }
 
-// Проверить блокировку IN.
+// РџСЂРѕРІРµСЂРёС‚СЊ Р±Р»РѕРєРёСЂРѕРІРєСѓ IN.
 static inline uint16_t _GetTxStallStatus(uint8_t ep)
 {
   return _GetEPTxStatus(ep) == EP_TX_STALL;
 }
 
-// Проверить блокировку OUT.
+// РџСЂРѕРІРµСЂРёС‚СЊ Р±Р»РѕРєРёСЂРѕРІРєСѓ OUT.
 static inline uint16_t _GetRxStallStatus(uint8_t ep)
 {
   return _GetEPRxStatus(ep) == EP_RX_STALL;
 }
 
-// Снять EP_KIND без изменения флагов передачи.
+// РЎРЅСЏС‚СЊ EP_KIND Р±РµР· РёР·РјРµРЅРµРЅРёСЏ С„Р»Р°РіРѕРІ РїРµСЂРµРґР°С‡Рё.
 static inline void _ClearEP_KIND(uint8_t ep)
 {
   _SetENDPOINT(ep, EP_CTR_RX | EP_CTR_TX | (_GetENDPOINT(ep) & EPKIND_MASK));
 }
 
-// Подтвердить обработанное событие приёма, сохранив событие передачи.
+// РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕР±СЂР°Р±РѕС‚Р°РЅРЅРѕРµ СЃРѕР±С‹С‚РёРµ РїСЂРёС‘РјР°, СЃРѕС…СЂР°РЅРёРІ СЃРѕР±С‹С‚РёРµ РїРµСЂРµРґР°С‡Рё.
 static inline void _ClearEP_CTR_RX(uint8_t ep)
 {
   _SetENDPOINT(ep, _GetENDPOINT(ep) & 0x7FFFu & EPREG_MASK);
 }
 
-// Подтвердить обработанное событие передачи, сохранив событие приёма.
+// РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕР±СЂР°Р±РѕС‚Р°РЅРЅРѕРµ СЃРѕР±С‹С‚РёРµ РїРµСЂРµРґР°С‡Рё, СЃРѕС…СЂР°РЅРёРІ СЃРѕР±С‹С‚РёРµ РїСЂРёС‘РјР°.
 static inline void _ClearEP_CTR_TX(uint8_t ep)
 {
   _SetENDPOINT(ep, _GetENDPOINT(ep) & 0xFF7Fu & EPREG_MASK);
 }
 
-// Переключить приём между DATA0 и DATA1.
+// РџРµСЂРµРєР»СЋС‡РёС‚СЊ РїСЂРёС‘Рј РјРµР¶РґСѓ DATA0 Рё DATA1.
 static inline void _ToggleDTOG_RX(uint8_t ep)
 {
   _SetENDPOINT(ep, EP_CTR_RX | EP_CTR_TX | EP_DTOG_RX | (_GetENDPOINT(ep) & EPREG_MASK));
 }
 
-// Переключить передачу между DATA0 и DATA1.
+// РџРµСЂРµРєР»СЋС‡РёС‚СЊ РїРµСЂРµРґР°С‡Сѓ РјРµР¶РґСѓ DATA0 Рё DATA1.
 static inline void _ToggleDTOG_TX(uint8_t ep)
 {
   _SetENDPOINT(ep, EP_CTR_RX | EP_CTR_TX | EP_DTOG_TX | (_GetENDPOINT(ep) & EPREG_MASK));
 }
 
-// Вернуть приём к DATA0, переключая бит только при необходимости.
+// Р’РµСЂРЅСѓС‚СЊ РїСЂРёС‘Рј Рє DATA0, РїРµСЂРµРєР»СЋС‡Р°СЏ Р±РёС‚ С‚РѕР»СЊРєРѕ РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё.
 static inline void _ClearDTOG_RX(uint8_t ep)
 {
   if (_GetENDPOINT(ep) & EP_DTOG_RX) _ToggleDTOG_RX(ep);
 }
 
-// Вернуть передачу к DATA0, переключая бит только при необходимости.
+// Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРґР°С‡Сѓ Рє DATA0, РїРµСЂРµРєР»СЋС‡Р°СЏ Р±РёС‚ С‚РѕР»СЊРєРѕ РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё.
 static inline void _ClearDTOG_TX(uint8_t ep)
 {
   if (_GetENDPOINT(ep) & EP_DTOG_TX) _ToggleDTOG_TX(ep);
 }
 
-// Задать адрес точки без переключения состояния передачи.
+// Р—Р°РґР°С‚СЊ Р°РґСЂРµСЃ С‚РѕС‡РєРё Р±РµР· РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ СЃРѕСЃС‚РѕСЏРЅРёСЏ РїРµСЂРµРґР°С‡Рё.
 static inline void _SetEPAddress(uint8_t ep, uint8_t address)
 {
   _SetENDPOINT(ep, EP_CTR_RX | EP_CTR_TX | (_GetENDPOINT(ep) & EPREG_MASK) | address);
 }
 
-// Найти поле таблицы: в CPU-памяти слова PMA разделены двумя байтами.
+// РќР°Р№С‚Рё РїРѕР»Рµ С‚Р°Р±Р»РёС†С‹: РІ CPU-РїР°РјСЏС‚Рё СЃР»РѕРІР° PMA СЂР°Р·РґРµР»РµРЅС‹ РґРІСѓРјСЏ Р±Р°Р№С‚Р°РјРё.
 static inline __IO uint32_t * usb_pma_field(uint8_t ep, uint8_t offset)
 {
   return (__IO uint32_t *)((_GetBTABLE() + ep * 8u + offset) * 2u + PMAAddr);
 }
 
-// Задать выровненный адрес буфера TX в PMA.
+// Р—Р°РґР°С‚СЊ РІС‹СЂРѕРІРЅРµРЅРЅС‹Р№ Р°РґСЂРµСЃ Р±СѓС„РµСЂР° TX РІ PMA.
 static inline void _SetEPTxAddr(uint8_t ep, uint16_t address)
 {
   *usb_pma_field(ep, 0) = address & 0xFFFEu;
 }
 
-// Прочитать адрес буфера TX в PMA.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ Р°РґСЂРµСЃ Р±СѓС„РµСЂР° TX РІ PMA.
 static inline uint16_t _GetEPTxAddr(uint8_t ep)
 {
   return (uint16_t)*usb_pma_field(ep, 0);
 }
 
-// Задать выровненный адрес буфера RX в PMA.
+// Р—Р°РґР°С‚СЊ РІС‹СЂРѕРІРЅРµРЅРЅС‹Р№ Р°РґСЂРµСЃ Р±СѓС„РµСЂР° RX РІ PMA.
 static inline void _SetEPRxAddr(uint8_t ep, uint16_t address)
 {
   *usb_pma_field(ep, 4) = address & 0xFFFEu;
 }
 
-// Прочитать адрес буфера RX в PMA.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ Р°РґСЂРµСЃ Р±СѓС„РµСЂР° RX РІ PMA.
 static inline uint16_t _GetEPRxAddr(uint8_t ep)
 {
   return (uint16_t)*usb_pma_field(ep, 4);
 }
 
-// Задать число байтов очередного пакета IN.
+// Р—Р°РґР°С‚СЊ С‡РёСЃР»Рѕ Р±Р°Р№С‚РѕРІ РѕС‡РµСЂРµРґРЅРѕРіРѕ РїР°РєРµС‚Р° IN.
 static inline void _SetEPTxCount(uint8_t ep, uint16_t count)
 {
   *usb_pma_field(ep, 2) = count;
 }
 
-// Задать ёмкость OUT: до 62 байт блоками по два, дальше — по 32 байта.
+// Р—Р°РґР°С‚СЊ С‘РјРєРѕСЃС‚СЊ OUT: РґРѕ 62 Р±Р°Р№С‚ Р±Р»РѕРєР°РјРё РїРѕ РґРІР°, РґР°Р»СЊС€Рµ вЂ” РїРѕ 32 Р±Р°Р№С‚Р°.
 static inline void _SetEPRxCount(uint8_t ep, uint16_t count)
 {
   uint32_t blocks;
@@ -325,61 +305,59 @@ static inline void _SetEPRxCount(uint8_t ep, uint16_t count)
   }
 }
 
-// Прочитать фактический размер пакета TX, отделив служебные биты.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ С„Р°РєС‚РёС‡РµСЃРєРёР№ СЂР°Р·РјРµСЂ РїР°РєРµС‚Р° TX, РѕС‚РґРµР»РёРІ СЃР»СѓР¶РµР±РЅС‹Рµ Р±РёС‚С‹.
 static inline uint16_t _GetEPTxCount(uint8_t ep)
 {
   return (uint16_t)*usb_pma_field(ep, 2) & 0x03FFu;
 }
 
-// Прочитать фактический размер пакета RX, отделив служебные биты.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ С„Р°РєС‚РёС‡РµСЃРєРёР№ СЂР°Р·РјРµСЂ РїР°РєРµС‚Р° RX, РѕС‚РґРµР»РёРІ СЃР»СѓР¶РµР±РЅС‹Рµ Р±РёС‚С‹.
 static inline uint16_t _GetEPRxCount(uint8_t ep)
 {
   return (uint16_t)*usb_pma_field(ep, 6) & 0x03FFu;
 }
 
-// Последнее чтение ISTR разделяют USB_Istr и обработчик завершённых передач.
+// РџРѕСЃР»РµРґРЅРµРµ С‡С‚РµРЅРёРµ ISTR СЂР°Р·РґРµР»СЏСЋС‚ USB_Istr Рё РѕР±СЂР°Р±РѕС‚С‡РёРє Р·Р°РІРµСЂС€С‘РЅРЅС‹С… РїРµСЂРµРґР°С‡.
 extern __IO uint16_t wIstr;
 
-// Задать выровненный адрес таблицы буферов в памяти USB.
+// Р—Р°РґР°С‚СЊ РІС‹СЂРѕРІРЅРµРЅРЅС‹Р№ Р°РґСЂРµСЃ С‚Р°Р±Р»РёС†С‹ Р±СѓС„РµСЂРѕРІ РІ РїР°РјСЏС‚Рё USB.
 void SetBTABLE(uint16_t );
-// Последнее чтение ISTR разделяют USB_Istr и обработчик завершённых передач.
+// РџРѕСЃР»РµРґРЅРµРµ С‡С‚РµРЅРёРµ ISTR СЂР°Р·РґРµР»СЏСЋС‚ USB_Istr Рё РѕР±СЂР°Р±РѕС‚С‡РёРє Р·Р°РІРµСЂС€С‘РЅРЅС‹С… РїРµСЂРµРґР°С‡.
 extern __IO uint16_t wIstr;
 
-// Задать выровненный адрес таблицы буферов в памяти USB.
+// Р—Р°РґР°С‚СЊ РІС‹СЂРѕРІРЅРµРЅРЅС‹Р№ Р°РґСЂРµСЃ С‚Р°Р±Р»РёС†С‹ Р±СѓС„РµСЂРѕРІ РІ РїР°РјСЏС‚Рё USB.
 void SetBTABLE(uint16_t );
-// Задать тип конечной точки, сохранив аппаратные флаги.
+// Р—Р°РґР°С‚СЊ С‚РёРї РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё, СЃРѕС…СЂР°РЅРёРІ Р°РїРїР°СЂР°С‚РЅС‹Рµ С„Р»Р°РіРё.
 void SetEPType(uint8_t , uint16_t );
-// Изменить статус IN через аппаратные переключающие биты.
+// РР·РјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ IN С‡РµСЂРµР· Р°РїРїР°СЂР°С‚РЅС‹Рµ РїРµСЂРµРєР»СЋС‡Р°СЋС‰РёРµ Р±РёС‚С‹.
 void SetEPTxStatus(uint8_t , uint16_t );
-// Изменить статус OUT через аппаратные переключающие биты.
+// РР·РјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ OUT С‡РµСЂРµР· Р°РїРїР°СЂР°С‚РЅС‹Рµ РїРµСЂРµРєР»СЋС‡Р°СЋС‰РёРµ Р±РёС‚С‹.
 void SetEPRxStatus(uint8_t , uint16_t );
-// Разрешить передачу уже подготовленного пакета IN.
+// Р Р°Р·СЂРµС€РёС‚СЊ РїРµСЂРµРґР°С‡Сѓ СѓР¶Рµ РїРѕРґРіРѕС‚РѕРІР»РµРЅРЅРѕРіРѕ РїР°РєРµС‚Р° IN.
 void SetEPTxValid(uint8_t );
-// Разрешить приём следующего пакета OUT.
+// Р Р°Р·СЂРµС€РёС‚СЊ РїСЂРёС‘Рј СЃР»РµРґСѓСЋС‰РµРіРѕ РїР°РєРµС‚Р° OUT.
 void SetEPRxValid(uint8_t );
-// Снять признак ожидаемого статуса OUT управляющей точки.
+// РЎРЅСЏС‚СЊ РїСЂРёР·РЅР°Рє РѕР¶РёРґР°РµРјРѕРіРѕ СЃС‚Р°С‚СѓСЃР° OUT СѓРїСЂР°РІР»СЏСЋС‰РµР№ С‚РѕС‡РєРё.
 void Clear_Status_Out(uint8_t );
-// Вернуть приём конечной точки к последовательности DATA0.
+// Р’РµСЂРЅСѓС‚СЊ РїСЂРёС‘Рј РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё Рє РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕСЃС‚Рё DATA0.
 void ClearDTOG_RX(uint8_t );
-// Вернуть передачу конечной точки к последовательности DATA0.
+// Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРґР°С‡Сѓ РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё Рє РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕСЃС‚Рё DATA0.
 void ClearDTOG_TX(uint8_t );
-// Задать выровненное положение буфера IN в памяти USB.
+// Р—Р°РґР°С‚СЊ РІС‹СЂРѕРІРЅРµРЅРЅРѕРµ РїРѕР»РѕР¶РµРЅРёРµ Р±СѓС„РµСЂР° IN РІ РїР°РјСЏС‚Рё USB.
 void SetEPTxAddr(uint8_t , uint16_t );
-// Задать выровненное положение буфера OUT в памяти USB.
+// Р—Р°РґР°С‚СЊ РІС‹СЂРѕРІРЅРµРЅРЅРѕРµ РїРѕР»РѕР¶РµРЅРёРµ Р±СѓС„РµСЂР° OUT РІ РїР°РјСЏС‚Рё USB.
 void SetEPRxAddr(uint8_t , uint16_t );
-// Прочитать положение буфера IN конечной точки.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ РїРѕР»РѕР¶РµРЅРёРµ Р±СѓС„РµСЂР° IN РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё.
 uint16_t GetEPTxAddr(uint8_t );
-// Прочитать положение буфера OUT конечной точки.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ РїРѕР»РѕР¶РµРЅРёРµ Р±СѓС„РµСЂР° OUT РєРѕРЅРµС‡РЅРѕР№ С‚РѕС‡РєРё.
 uint16_t GetEPRxAddr(uint8_t );
-// Задать размер подготовленного пакета IN.
+// Р—Р°РґР°С‚СЊ СЂР°Р·РјРµСЂ РїРѕРґРіРѕС‚РѕРІР»РµРЅРЅРѕРіРѕ РїР°РєРµС‚Р° IN.
 void SetEPTxCount(uint8_t , uint16_t );
-// Закодировать ёмкость буфера OUT аппаратными блоками 2 или 32 байта.
+// Р—Р°РєРѕРґРёСЂРѕРІР°С‚СЊ С‘РјРєРѕСЃС‚СЊ Р±СѓС„РµСЂР° OUT Р°РїРїР°СЂР°С‚РЅС‹РјРё Р±Р»РѕРєР°РјРё 2 РёР»Рё 32 Р±Р°Р№С‚Р°.
 void SetEPRxCount(uint8_t , uint16_t );
-// Прочитать фактическую длину принятого пакета OUT.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ С„Р°РєС‚РёС‡РµСЃРєСѓСЋ РґР»РёРЅСѓ РїСЂРёРЅСЏС‚РѕРіРѕ РїР°РєРµС‚Р° OUT.
 uint16_t GetEPRxCount(uint8_t );
-// Поменять местами байты 16-битного поля USB.
+// РџРѕРјРµРЅСЏС‚СЊ РјРµСЃС‚Р°РјРё Р±Р°Р№С‚С‹ 16-Р±РёС‚РЅРѕРіРѕ РїРѕР»СЏ USB.
 uint16_t ByteSwap(uint16_t);
 
 #endif
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

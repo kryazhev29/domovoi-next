@@ -1,35 +1,16 @@
-// Доработка: Кряжев А., 2026
-// Очередь IN, приём OUT и серийный номер платы.
-// Дескрипторы и порядок событий сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РћС‡РµСЂРµРґСЊ IN, РїСЂРёС‘Рј OUT Рё СЃРµСЂРёР№РЅС‹Р№ РЅРѕРјРµСЂ РїР»Р°С‚С‹.
+// Р”РµСЃРєСЂРёРїС‚РѕСЂС‹ Рё РїРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј; РїР°РјСЏС‚СЊ PMA С‚СЂРµР±СѓРµС‚ РѕСЃРѕР±РѕРіРѕ РґРѕСЃС‚СѓРїР°.
 
-// Доработка: Кряжев А., 2026
-// USB CDC платы v5: hw_config.
-// Модуль сохраняет дескрипторы, порядок событий и двоичный протокол приложения.
-// Диагностические счётчики отделены от обязательных таймаутов восстановления.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// USB CDC РїР»Р°С‚С‹ v5: hw_config.
+// РњРѕРґСѓР»СЊ СЃРѕС…СЂР°РЅСЏРµС‚ РґРµСЃРєСЂРёРїС‚РѕСЂС‹, РїРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ Рё РґРІРѕРёС‡РЅС‹Р№ РїСЂРѕС‚РѕРєРѕР» РїСЂРёР»РѕР¶РµРЅРёСЏ.
+// Р”РёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёРµ СЃС‡С‘С‚С‡РёРєРё РѕС‚РґРµР»РµРЅС‹ РѕС‚ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹С… С‚Р°Р№РјР°СѓС‚РѕРІ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.
 #ifndef BOOTLOADER
 #include "../../User/domovoi_diag.h"
 #endif
-// Доработка: Кряжев А., 2026
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
 
 #include "includes.h"
 
@@ -48,18 +29,18 @@ static const uint8_t * volatile usb_tx_source;
 static volatile uint16_t usb_tx_length, usb_tx_offset;
 
 volatile uint8_t  USB_Tx_State = 0;
-volatile uint32_t usb_in_armed = 0; /* пакеты IN, отданные EP1, команда 111 */
+volatile uint32_t usb_in_armed = 0; /* РїР°РєРµС‚С‹ IN, РѕС‚РґР°РЅРЅС‹Рµ EP1, РєРѕРјР°РЅРґР° 111 */
 static volatile uint32_t usb_tx_epoch = 0;
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len);
 
-// Настроить внутреннюю линию USB EXTI18.
+// РќР°СЃС‚СЂРѕРёС‚СЊ РІРЅСѓС‚СЂРµРЅРЅСЋСЋ Р»РёРЅРёСЋ USB EXTI18.
 void Set_System(void)
 {
   EXTI->PR = EXTI_PR_PR18;
   board_exti_config(EXTI_IMR_MR18, 0);
 }
 
-// Подать 48 МГц на USB от PLL платы.
+// РџРѕРґР°С‚СЊ 48 РњР“С† РЅР° USB РѕС‚ PLL РїР»Р°С‚С‹.
 void Set_USBClock(void)
 {
   if (SystemCoreClock == 72000000u) RCC->CFGR &= ~RCC_CFGR_USBPRE;
@@ -67,11 +48,11 @@ void Set_USBClock(void)
   RCC->APB1ENR |= RCC_APB1ENR_USBEN;
 }
 
-// Отметить переход USB в приостановленное состояние.
+// РћС‚РјРµС‚РёС‚СЊ РїРµСЂРµС…РѕРґ USB РІ РїСЂРёРѕСЃС‚Р°РЅРѕРІР»РµРЅРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ.
 
-// Восстановить состояние USB после выхода из приостановки.
+// Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ USB РїРѕСЃР»Рµ РІС‹С…РѕРґР° РёР· РїСЂРёРѕСЃС‚Р°РЅРѕРІРєРё.
 
-// Назначить приоритеты и разрешить IRQ USB.
+// РќР°Р·РЅР°С‡РёС‚СЊ РїСЂРёРѕСЂРёС‚РµС‚С‹ Рё СЂР°Р·СЂРµС€РёС‚СЊ IRQ USB.
 void USB_Interrupts_Config(void)
 {
   SCB->AIRCR = 0x05FA0500u;
@@ -79,21 +60,21 @@ void USB_Interrupts_Config(void)
   board_irq_enable(USBWakeUp_IRQn, 0);
 }
 
-// Принять настройки CDC без перенастройки физического UART.
+// РџСЂРёРЅСЏС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё CDC Р±РµР· РїРµСЂРµРЅР°СЃС‚СЂРѕР№РєРё С„РёР·РёС‡РµСЃРєРѕРіРѕ UART.
 
-// Передать принятые USB-байты разборщику приложения.
+// РџРµСЂРµРґР°С‚СЊ РїСЂРёРЅСЏС‚С‹Рµ USB-Р±Р°Р№С‚С‹ СЂР°Р·Р±РѕСЂС‰РёРєСѓ РїСЂРёР»РѕР¶РµРЅРёСЏ.
 void USB_To_USART_Send_Data(uint8_t *data_buffer, uint8_t Nb_bytes)
 {
   usb_datareceived(data_buffer, Nb_bytes);
 }
 
-// Выдать следующий пакет неизменяемого источника на EP1.
+// Р’С‹РґР°С‚СЊ СЃР»РµРґСѓСЋС‰РёР№ РїР°РєРµС‚ РЅРµРёР·РјРµРЅСЏРµРјРѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР° РЅР° EP1.
 void Handle_USBAsynchXfer (void)
 {
   uint16_t count,offset; const uint8_t *source;
   if (USB_Tx_State || bDeviceState != CONFIGURED || !usb_tx_source) return;
   source=usb_tx_source; count=usb_tx_length; offset=usb_tx_offset; count-=offset;
-  if(!count) { usb_tx_source=NULL; return; } /* Хост подтвердил последний пакет IN. */
+  if(!count) { usb_tx_source=NULL; return; } /* РҐРѕСЃС‚ РїРѕРґС‚РІРµСЂРґРёР» РїРѕСЃР»РµРґРЅРёР№ РїР°РєРµС‚ IN. */
   if(count>VIRTUAL_COM_PORT_DATA_SIZE) count=VIRTUAL_COM_PORT_DATA_SIZE;
   UserToPMABufferCopy((uint8_t*)source+offset,ENDP1_TXADDR,count);
   usb_tx_offset+=count;
@@ -103,17 +84,17 @@ void Handle_USBAsynchXfer (void)
 #endif
   SetEPTxCount(ENDP1,count); SetEPTxValid(ENDP1);
 }
-// Освободить источник передачи и пометить смену поколения очереди.
+// РћСЃРІРѕР±РѕРґРёС‚СЊ РёСЃС‚РѕС‡РЅРёРє РїРµСЂРµРґР°С‡Рё Рё РїРѕРјРµС‚РёС‚СЊ СЃРјРµРЅСѓ РїРѕРєРѕР»РµРЅРёСЏ РѕС‡РµСЂРµРґРё.
 void USB_Tx_Reset(void)
 {
   USB_Tx_State=0; usb_tx_source=NULL;
   usb_tx_length=0; usb_tx_offset=0; usb_tx_epoch++;
 }
-// Проверить, продолжает ли USB владеть данным источником.
+// РџСЂРѕРІРµСЂРёС‚СЊ, РїСЂРѕРґРѕР»Р¶Р°РµС‚ Р»Рё USB РІР»Р°РґРµС‚СЊ РґР°РЅРЅС‹Рј РёСЃС‚РѕС‡РЅРёРєРѕРј.
 uint8_t USB_Tx_SourceBusy(void) { return usb_tx_source!=NULL; }
 #include "work_memory.h"
 
-// Атомарно принять источник целиком, если прежняя передача закончена.
+// РђС‚РѕРјР°СЂРЅРѕ РїСЂРёРЅСЏС‚СЊ РёСЃС‚РѕС‡РЅРёРє С†РµР»РёРєРѕРј, РµСЃР»Рё РїСЂРµР¶РЅСЏСЏ РїРµСЂРµРґР°С‡Р° Р·Р°РєРѕРЅС‡РµРЅР°.
 static uint8_t usb_tx_submit(const uint8_t *source,uint16_t length,uint32_t epoch)
 {
   const uint8_t *owned;
@@ -124,7 +105,7 @@ static uint8_t usb_tx_submit(const uint8_t *source,uint16_t length,uint32_t epoc
   usb_tx_length=length; usb_tx_offset=0;
   __DMB(); usb_tx_source=owned; return 1;
 }
-// Передать USB источник ответа с сохранением владения до завершения.
+// РџРµСЂРµРґР°С‚СЊ USB РёСЃС‚РѕС‡РЅРёРє РѕС‚РІРµС‚Р° СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј РІР»Р°РґРµРЅРёСЏ РґРѕ Р·Р°РІРµСЂС€РµРЅРёСЏ.
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer,uint16_t Nb_bytes)
 {
   uint32_t mask=__get_PRIMASK(),epoch=usb_tx_epoch; uint8_t result;
@@ -134,15 +115,15 @@ uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer,uint16_t Nb_bytes)
   __set_PRIMASK(mask);
   return result;
 }
-/* RX сохраняет кадр, пока хост не подтвердит предыдущий источник ответа. */
-// Разрешить новую команду только после освобождения прежнего ответа.
+/* RX СЃРѕС…СЂР°РЅСЏРµС‚ РєР°РґСЂ, РїРѕРєР° С…РѕСЃС‚ РЅРµ РїРѕРґС‚РІРµСЂРґРёС‚ РїСЂРµРґС‹РґСѓС‰РёР№ РёСЃС‚РѕС‡РЅРёРє РѕС‚РІРµС‚Р°. */
+// Р Р°Р·СЂРµС€РёС‚СЊ РЅРѕРІСѓСЋ РєРѕРјР°РЅРґСѓ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ РѕСЃРІРѕР±РѕР¶РґРµРЅРёСЏ РїСЂРµР¶РЅРµРіРѕ РѕС‚РІРµС‚Р°.
 uint8_t USB_Tx_CommandReady(void)
 {
   extern bool user_storage_command_ready(void);
   return user_storage_command_ready() && !USB_Tx_SourceBusy();
 }
 
-// Передать ответ только в исходную USB-сессию, сохраняя источник при занятости.
+// РџРµСЂРµРґР°С‚СЊ РѕС‚РІРµС‚ С‚РѕР»СЊРєРѕ РІ РёСЃС…РѕРґРЅСѓСЋ USB-СЃРµСЃСЃРёСЋ, СЃРѕС…СЂР°РЅСЏСЏ РёСЃС‚РѕС‡РЅРёРє РїСЂРё Р·Р°РЅСЏС‚РѕСЃС‚Рё.
 uint8_t USB_Tx_Try(const uint8_t *source,uint16_t length)
 {
   extern uint8_t usb_enabled; extern uint8_t store[];
@@ -154,19 +135,12 @@ uint8_t USB_Tx_Try(const uint8_t *source,uint16_t length)
   __set_PRIMASK(mask); return result;
 }
 #if DOMOVOI_DIAG
-// Принять диагностический текст в ту же очередь USB.
-uint16_t USB_Send_Debug(uint8_t *data,uint16_t count)
-{
-  uint32_t mask=__get_PRIMASK(); uint8_t result;
-  if(count && data == NULL) return 0;
-  if(count>=USART_RX_DATA_SIZE) count=USART_RX_DATA_SIZE-1;
-  __disable_irq(); result=usb_tx_submit(data,count,usb_tx_epoch);
-  __set_PRIMASK(mask); return result?count:0;
-}
+// РџСЂРёРЅСЏС‚СЊ РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёР№ С‚РµРєСЃС‚ РІ С‚Сѓ Р¶Рµ РѕС‡РµСЂРµРґСЊ USB.
+
 #endif
-// Проверить наличие незавершённой передачи USB.
+// РџСЂРѕРІРµСЂРёС‚СЊ РЅР°Р»РёС‡РёРµ РЅРµР·Р°РІРµСЂС€С‘РЅРЅРѕР№ РїРµСЂРµРґР°С‡Рё USB.
 uint8_t USB_Tx_Pending(void) { return USB_Tx_State || usb_tx_source!=NULL; }
-// Вернуть оставшееся число байтов источника.
+// Р’РµСЂРЅСѓС‚СЊ РѕСЃС‚Р°РІС€РµРµСЃСЏ С‡РёСЃР»Рѕ Р±Р°Р№С‚РѕРІ РёСЃС‚РѕС‡РЅРёРєР°.
 uint16_t USB_Tx_Queued(void)
 {
   uint32_t mask=__get_PRIMASK(); uint16_t length,offset;
@@ -175,7 +149,7 @@ uint16_t USB_Tx_Queued(void)
   __set_PRIMASK(mask); return length ? length-offset : 0;
 }
 
-// Собрать постоянный серийный номер из заводского идентификатора МК.
+// РЎРѕР±СЂР°С‚СЊ РїРѕСЃС‚РѕСЏРЅРЅС‹Р№ СЃРµСЂРёР№РЅС‹Р№ РЅРѕРјРµСЂ РёР· Р·Р°РІРѕРґСЃРєРѕРіРѕ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂР° РњРљ.
 void Get_SerialNum(void)
 {
   uint32_t Device_Serial0, Device_Serial1, Device_Serial2;
@@ -193,7 +167,7 @@ void Get_SerialNum(void)
   }
 }
 
-// Записать шестнадцатеричные цифры в строку USB UTF-16LE.
+// Р—Р°РїРёСЃР°С‚СЊ С€РµСЃС‚РЅР°РґС†Р°С‚РµСЂРёС‡РЅС‹Рµ С†РёС„СЂС‹ РІ СЃС‚СЂРѕРєСѓ USB UTF-16LE.
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len)
 {
   uint8_t idx = 0;
@@ -214,5 +188,3 @@ static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len)
     pbuf[ 2* idx + 1] = 0;
   }
 }
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Кооперативное сохранение device, конфигурации и намерений очистки.
-// Единственный владелец флеша завершает операцию до отправки её результата.
-// Маркеры публикуются до стирания и снимаются после сохранения новых курсоров.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РљРѕРѕРїРµСЂР°С‚РёРІРЅРѕРµ СЃРѕС…СЂР°РЅРµРЅРёРµ device, РєРѕРЅС„РёРіСѓСЂР°С†РёРё Рё РЅР°РјРµСЂРµРЅРёР№ РѕС‡РёСЃС‚РєРё.
+// Р•РґРёРЅСЃС‚РІРµРЅРЅС‹Р№ РІР»Р°РґРµР»РµС† С„Р»РµС€Р° Р·Р°РІРµСЂС€Р°РµС‚ РѕРїРµСЂР°С†РёСЋ РґРѕ РѕС‚РїСЂР°РІРєРё РµС‘ СЂРµР·СѓР»СЊС‚Р°С‚Р°.
+// РњР°СЂРєРµСЂС‹ РїСѓР±Р»РёРєСѓСЋС‚СЃСЏ РґРѕ СЃС‚РёСЂР°РЅРёСЏ Рё СЃРЅРёРјР°СЋС‚СЃСЏ РїРѕСЃР»Рµ СЃРѕС…СЂР°РЅРµРЅРёСЏ РЅРѕРІС‹С… РєСѓСЂСЃРѕСЂРѕРІ.
 #include "user_logic_internal.h"
 #include "../log_ring.h"
 #include "../table_runtime.h"
@@ -13,32 +13,32 @@ static void store_usb_session(void);
 uint8_t store_runtime, store_save_requested, store_reset_requested;
 store_state_s store;
 
-// Проверить свободу владельца флеша и её операций.
+// РџСЂРѕРІРµСЂРёС‚СЊ СЃРІРѕР±РѕРґСѓ РІР»Р°РґРµР»СЊС†Р° С„Р»РµС€Р° Рё РµС‘ РѕРїРµСЂР°С†РёР№.
 #pragma inline=forced
 static inline bool storage_idle(void) { return !flash_owner && !w25_async_active() && w25_read_available(); }
 
-// Определить готовность хранения после обработки поколения USB.
+// РћРїСЂРµРґРµР»РёС‚СЊ РіРѕС‚РѕРІРЅРѕСЃС‚СЊ С…СЂР°РЅРµРЅРёСЏ РїРѕСЃР»Рµ РѕР±СЂР°Р±РѕС‚РєРё РїРѕРєРѕР»РµРЅРёСЏ USB.
 bool user_storage_command_ready(void) {
 store_usb_session(); return !store.job && !store_reset_requested && !mem_config_result() && storage_idle();
 }
 
-// Разрешить команду с учётом её владельца и состояния хранения.
+// Р Р°Р·СЂРµС€РёС‚СЊ РєРѕРјР°РЅРґСѓ СЃ СѓС‡С‘С‚РѕРј РµС‘ РІР»Р°РґРµР»СЊС†Р° Рё СЃРѕСЃС‚РѕСЏРЅРёСЏ С…СЂР°РЅРµРЅРёСЏ.
 bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || (cmd == 21 && photo_empty_cleanup()) || user_storage_command_ready(); }
 
-// Разрешить обычное чтение флеша вне очистки и записи.
+// Р Р°Р·СЂРµС€РёС‚СЊ РѕР±С‹С‡РЅРѕРµ С‡С‚РµРЅРёРµ С„Р»РµС€Р° РІРЅРµ РѕС‡РёСЃС‚РєРё Рё Р·Р°РїРёСЃРё.
 bool user_storage_flash_ready(void) {
 return store.clear!=9 && storage_idle();
 }
 
-// Разрешить фоновую работу после приоритетных сохранений.
+// Р Р°Р·СЂРµС€РёС‚СЊ С„РѕРЅРѕРІСѓСЋ СЂР°Р±РѕС‚Сѓ РїРѕСЃР»Рµ РїСЂРёРѕСЂРёС‚РµС‚РЅС‹С… СЃРѕС…СЂР°РЅРµРЅРёР№.
 bool user_storage_background_ready(void)
 {
   return user_storage_command_ready() && !store_save_requested &&
     !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
 }
 
-// Отменить ответы и подтверждения предыдущего поколения USB.
-// Проверка поколения вызывается на каждом шаге автомата; встраивание убирает переход.
+// РћС‚РјРµРЅРёС‚СЊ РѕС‚РІРµС‚С‹ Рё РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РїСЂРµРґС‹РґСѓС‰РµРіРѕ РїРѕРєРѕР»РµРЅРёСЏ USB.
+// РџСЂРѕРІРµСЂРєР° РїРѕРєРѕР»РµРЅРёСЏ РІС‹Р·С‹РІР°РµС‚СЃСЏ РЅР° РєР°Р¶РґРѕРј С€Р°РіРµ Р°РІС‚РѕРјР°С‚Р°; РІСЃС‚СЂР°РёРІР°РЅРёРµ СѓР±РёСЂР°РµС‚ РїРµСЂРµС…РѕРґ.
 #pragma inline=forced
 static inline void store_usb_session(void)
 {
@@ -51,14 +51,14 @@ static inline void store_usb_session(void)
   if (store.job && store.channel == CH_USB) store.quiet = 1;
 }
 
-// Записать намерение очистки и её конец в резерв device.
+// Р—Р°РїРёСЃР°С‚СЊ РЅР°РјРµСЂРµРЅРёРµ РѕС‡РёСЃС‚РєРё Рё РµС‘ РєРѕРЅРµС† РІ СЂРµР·РµСЂРІ device.
 static void store_marker(uint8_t cmd, uint32_t end)
 {
   uint32_t mark = cmd ? STORE_CLEAR_MARK | cmd : 0;
   memcpy(device.reserv + DEVICE_CLEAR_MARK_OFFSET, &mark, 4); memcpy(device.reserv + DEVICE_CLEAR_END_OFFSET, &end, 4);
 }
 
-// Передать снимок config/device атомарному сохранению.
+// РџРµСЂРµРґР°С‚СЊ СЃРЅРёРјРѕРє config/device Р°С‚РѕРјР°СЂРЅРѕРјСѓ СЃРѕС…СЂР°РЅРµРЅРёСЋ.
 bool store_snapshot(void)
 {
   config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
@@ -66,7 +66,7 @@ bool store_snapshot(void)
   return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
 }
 
-// Восстановить незавершённую долговечную очистку после старта.
+// Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РЅРµР·Р°РІРµСЂС€С‘РЅРЅСѓСЋ РґРѕР»РіРѕРІРµС‡РЅСѓСЋ РѕС‡РёСЃС‚РєСѓ РїРѕСЃР»Рµ СЃС‚Р°СЂС‚Р°.
 void store_restore(const device_s *saved)
 {
   uint32_t mark, end, start, limit;
@@ -82,7 +82,7 @@ void store_restore(const device_s *saved)
   store.erase = start;
 }
 
-// Принять новый запрос выгрузки без повторного подтверждения.
+// РџСЂРёРЅСЏС‚СЊ РЅРѕРІС‹Р№ Р·Р°РїСЂРѕСЃ РІС‹РіСЂСѓР·РєРё Р±РµР· РїРѕРІС‚РѕСЂРЅРѕРіРѕ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ.
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 {
   uint8_t slot = (cmd == 10 ? 0 : 2) + (cch == CH_USB ? 0 : 1);
@@ -93,7 +93,7 @@ bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
   return true;
 }
 
-// Начать долговечное сохранение подтверждённого курсора.
+// РќР°С‡Р°С‚СЊ РґРѕР»РіРѕРІРµС‡РЅРѕРµ СЃРѕС…СЂР°РЅРµРЅРёРµ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅРѕРіРѕ РєСѓСЂСЃРѕСЂР°.
 bool store_ack(uint8_t cmd, dataChanel_e cch)
 {
   uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
@@ -109,7 +109,7 @@ bool store_ack(uint8_t cmd, dataChanel_e cch)
   return false;
 }
 
-// Сохранить намерение очистки до её первого стирания.
+// РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°РјРµСЂРµРЅРёРµ РѕС‡РёСЃС‚РєРё РґРѕ РµС‘ РїРµСЂРІРѕРіРѕ СЃС‚РёСЂР°РЅРёСЏ.
 bool store_finish(uint8_t cmd)
 {
   bool active = cmd == 10 ? device.status.readyLogData || device.logsCount : device.status.readyID || device.tempIDsCount;
@@ -126,7 +126,7 @@ bool store_finish(uint8_t cmd)
   return false;
 }
 
-// Зафиксировать поля отложенного ответа владельца хранения.
+// Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РїРѕР»СЏ РѕС‚Р»РѕР¶РµРЅРЅРѕРіРѕ РѕС‚РІРµС‚Р° РІР»Р°РґРµР»СЊС†Р° С…СЂР°РЅРµРЅРёСЏ.
 void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 {
   store.cmd = cmd; store.channel = cch; store.uniq = uniq; store.quiet = 0;
@@ -134,7 +134,7 @@ void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
   else user_send_answer_comand(cmd, CMD_RUNERROR, cch, uniq);
 }
 
-// Применить сохранённую конфигурацию к RS485 и адресам модема.
+// РџСЂРёРјРµРЅРёС‚СЊ СЃРѕС…СЂР°РЅС‘РЅРЅСѓСЋ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ Рє RS485 Рё Р°РґСЂРµСЃР°Рј РјРѕРґРµРјР°.
 static void store_config_complete(void)
 {
   rs485_set_config(mem_config_snapshot());
@@ -144,14 +144,14 @@ static void store_config_complete(void)
   if (comm_modem_state() == SLM_IDLE) user_comm_boot();
 }
 
-// Начать сохранение временно подставленной новой конфигурации.
+// РќР°С‡Р°С‚СЊ СЃРѕС…СЂР°РЅРµРЅРёРµ РІСЂРµРјРµРЅРЅРѕ РїРѕРґСЃС‚Р°РІР»РµРЅРЅРѕР№ РЅРѕРІРѕР№ РєРѕРЅС„РёРіСѓСЂР°С†РёРё.
 bool store_config_start(void)
 {
   if (store.job || !store_snapshot()) return false;
   store.job = US_CONFIG; return true;
 }
 
-// Передать долговечный результат по исходному каналу.
+// РџРµСЂРµРґР°С‚СЊ РґРѕР»РіРѕРІРµС‡РЅС‹Р№ СЂРµР·СѓР»СЊС‚Р°С‚ РїРѕ РёСЃС…РѕРґРЅРѕРјСѓ РєР°РЅР°Р»Сѓ.
 static void store_reply(void)
 {
 uint8_t cmd=store.cmd,id=store.uniq,quiet=store.quiet;
@@ -164,7 +164,7 @@ uint8_t cmd=store.cmd,id=store.uniq,quiet=store.quiet;
   else user_send_answer_comand(cmd,CMD_SUCCESS,cch,id);
 }
 
-// Продвинуть одного владельца хранения в порядке приоритетов.
+// РџСЂРѕРґРІРёРЅСѓС‚СЊ РѕРґРЅРѕРіРѕ РІР»Р°РґРµР»СЊС†Р° С…СЂР°РЅРµРЅРёСЏ РІ РїРѕСЂСЏРґРєРµ РїСЂРёРѕСЂРёС‚РµС‚РѕРІ.
 void user_storage_poll(void)
 {
   store_usb_session();

@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Доступ к W25, восстановление таблиц и атомарные настройки A/B.
-// Старое место читается только для первого переноса; сохранения меняют неактивный слот.
-// W25 проверяет запись и стирание; CRC слота проверяется при старте.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р”РѕСЃС‚СѓРї Рє W25, РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС† Рё Р°С‚РѕРјР°СЂРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё A/B.
+// РЎС‚Р°СЂРѕРµ РјРµСЃС‚Рѕ С‡РёС‚Р°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ РїРµСЂРІРѕРіРѕ РїРµСЂРµРЅРѕСЃР°; СЃРѕС…СЂР°РЅРµРЅРёСЏ РјРµРЅСЏСЋС‚ РЅРµР°РєС‚РёРІРЅС‹Р№ СЃР»РѕС‚.
+// W25 РїСЂРѕРІРµСЂСЏРµС‚ Р·Р°РїРёСЃСЊ Рё СЃС‚РёСЂР°РЅРёРµ; CRC СЃР»РѕС‚Р° РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РїСЂРё СЃС‚Р°СЂС‚Рµ.
 #include "../domovoi_diag.h"
 
 #include "memory.h"
@@ -10,27 +10,27 @@
 #include "sector_journal.h"
 
 bool mem_storage_ready = false;
-// Запрещает таблицы после ошибки даже при прямом вызове журнала, минуя mem_replace_pages.
+// Р—Р°РїСЂРµС‰Р°РµС‚ С‚Р°Р±Р»РёС†С‹ РїРѕСЃР»Рµ РѕС€РёР±РєРё РґР°Р¶Рµ РїСЂРё РїСЂСЏРјРѕРј РІС‹Р·РѕРІРµ Р¶СѓСЂРЅР°Р»Р°, РјРёРЅСѓСЏ mem_replace_pages.
 static uint8_t mem_journal_result(uint8_t ok)
 {
   if (!ok) mem_storage_ready = false;
   return ok;
 }
-// Читает проверенный журналом адрес через драйвер W25.
+// Р§РёС‚Р°РµС‚ РїСЂРѕРІРµСЂРµРЅРЅС‹Р№ Р¶СѓСЂРЅР°Р»РѕРј Р°РґСЂРµСЃ С‡РµСЂРµР· РґСЂР°Р№РІРµСЂ W25.
 uint8_t sj_io_read(uint32_t adr, uint8_t *p, uint16_t n) { return mem_journal_result(w25_read_data(adr, p, n)); }
-// Передаёт запись журнала драйверу с проверкой результата.
+// РџРµСЂРµРґР°С‘С‚ Р·Р°РїРёСЃСЊ Р¶СѓСЂРЅР°Р»Р° РґСЂР°Р№РІРµСЂСѓ СЃ РїСЂРѕРІРµСЂРєРѕР№ СЂРµР·СѓР»СЊС‚Р°С‚Р°.
 uint8_t sj_io_write(uint32_t adr, const uint8_t *p, uint16_t n) { return mem_journal_result(w25_write_data(adr, (uint8_t*)p, n)); }
-// Стирает проверенный журналом сектор с проверкой драйвером.
+// РЎС‚РёСЂР°РµС‚ РїСЂРѕРІРµСЂРµРЅРЅС‹Р№ Р¶СѓСЂРЅР°Р»РѕРј СЃРµРєС‚РѕСЂ СЃ РїСЂРѕРІРµСЂРєРѕР№ РґСЂР°Р№РІРµСЂРѕРј.
 uint8_t sj_io_erase(uint32_t adr) { return mem_journal_result(w25_erase_sector(adr)); }
-// Поддерживает сторожевой таймер при синхронном восстановлении.
+// РџРѕРґРґРµСЂР¶РёРІР°РµС‚ СЃС‚РѕСЂРѕР¶РµРІРѕР№ С‚Р°Р№РјРµСЂ РїСЂРё СЃРёРЅС…СЂРѕРЅРЅРѕРј РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРё.
 void sj_io_service(void) { wdt_reload(); }
-// Восстанавливает журнал при старте и задаёт доступность таблиц.
+// Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ Р¶СѓСЂРЅР°Р» РїСЂРё СЃС‚Р°СЂС‚Рµ Рё Р·Р°РґР°С‘С‚ РґРѕСЃС‚СѓРїРЅРѕСЃС‚СЊ С‚Р°Р±Р»РёС†.
 bool mem_recover(void) { mem_storage_ready = sj_recover(); return mem_storage_ready; }
 #include "sector_runtime.h"
 extern uint8_t table_fault;
-// Разрешает таблицы после восстановления и при свободной флеш-памяти.
+// Р Р°Р·СЂРµС€Р°РµС‚ С‚Р°Р±Р»РёС†С‹ РїРѕСЃР»Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ Рё РїСЂРё СЃРІРѕР±РѕРґРЅРѕР№ С„Р»РµС€-РїР°РјСЏС‚Рё.
 bool mem_tables_ready(void) { return flash_read_allowed() && !table_fault && !sj_runtime_blocked() && mem_storage_ready; }
-// Проверяет готовность таблиц, если диапазон затрагивает их сектора.
+// РџСЂРѕРІРµСЂСЏРµС‚ РіРѕС‚РѕРІРЅРѕСЃС‚СЊ С‚Р°Р±Р»РёС†, РµСЃР»Рё РґРёР°РїР°Р·РѕРЅ Р·Р°С‚СЂР°РіРёРІР°РµС‚ РёС… СЃРµРєС‚РѕСЂР°.
 static bool mem_guard(uint32_t adr, uint16_t n)
 {
   uint32_t sector, last;
@@ -41,26 +41,26 @@ static bool mem_guard(uint32_t adr, uint16_t n)
     if (sector == last) return true;
   }
 }
-// Не допускает обычную запись в служебные резервные сектора.
+// РќРµ РґРѕРїСѓСЃРєР°РµС‚ РѕР±С‹С‡РЅСѓСЋ Р·Р°РїРёСЃСЊ РІ СЃР»СѓР¶РµР±РЅС‹Рµ СЂРµР·РµСЂРІРЅС‹Рµ СЃРµРєС‚РѕСЂР°.
 static bool mem_reserved(uint32_t adr, uint16_t n)
 {
   return n && (adr < 0x1FE000u && adr + n > SJ_DATA);
 }
-// Заменяет сектор из источника страниц без копии 4 КиБ в ОЗУ.
+// Р—Р°РјРµРЅСЏРµС‚ СЃРµРєС‚РѕСЂ РёР· РёСЃС‚РѕС‡РЅРёРєР° СЃС‚СЂР°РЅРёС† Р±РµР· РєРѕРїРёРё 4 РљРёР‘ РІ РћР—РЈ.
 bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context)
 {
   mem_storage_ready = sj_replace_pages(adr, reader, context);
   return mem_storage_ready;
 }
 
-// Две смежные правки: config/device не требуют общей копии сектора.
+// Р”РІРµ СЃРјРµР¶РЅС‹Рµ РїСЂР°РІРєРё: config/device РЅРµ С‚СЂРµР±СѓСЋС‚ РѕР±С‰РµР№ РєРѕРїРёРё СЃРµРєС‚РѕСЂР°.
 typedef struct {
   uint32_t source, offset;
   const uint8_t *first, *second;
   uint16_t nfirst, nsecond;
 } mem_image_s;
 
-// Накладывает изменяемый фрагмент на страницу сохранённого образа.
+// РќР°РєР»Р°РґС‹РІР°РµС‚ РёР·РјРµРЅСЏРµРјС‹Р№ С„СЂР°РіРјРµРЅС‚ РЅР° СЃС‚СЂР°РЅРёС†Сѓ СЃРѕС…СЂР°РЅС‘РЅРЅРѕРіРѕ РѕР±СЂР°Р·Р°.
 static void mem_overlay(uint8_t *page, uint16_t off, uint32_t start, const uint8_t *data, uint16_t size)
 {
   uint32_t from = off > start ? off : start;
@@ -69,7 +69,7 @@ static void mem_overlay(uint8_t *page, uint16_t off, uint32_t start, const uint8
   if (from < end) memcpy(page + from - off, data + from - start, end - from);
 }
 
-// Читает исходную страницу и накладывает обе смежные правки.
+// Р§РёС‚Р°РµС‚ РёСЃС…РѕРґРЅСѓСЋ СЃС‚СЂР°РЅРёС†Сѓ Рё РЅР°РєР»Р°РґС‹РІР°РµС‚ РѕР±Рµ СЃРјРµР¶РЅС‹Рµ РїСЂР°РІРєРё.
 static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
 {
   const mem_image_s *image = context;
@@ -79,15 +79,15 @@ static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
   return 1;
 }
 
-// Два слота по 8 КиБ: образ 4 КиБ и отдельный сектор публикации.
-// Целый старый образ переносится только при отсутствии обоих слотов.
-// Сохранение меняет только неактивный слот; старое место больше не записывается.
+// Р”РІР° СЃР»РѕС‚Р° РїРѕ 8 РљРёР‘: РѕР±СЂР°Р· 4 РљРёР‘ Рё РѕС‚РґРµР»СЊРЅС‹Р№ СЃРµРєС‚РѕСЂ РїСѓР±Р»РёРєР°С†РёРё.
+// Р¦РµР»С‹Р№ СЃС‚Р°СЂС‹Р№ РѕР±СЂР°Р· РїРµСЂРµРЅРѕСЃРёС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё РѕС‚СЃСѓС‚СЃС‚РІРёРё РѕР±РѕРёС… СЃР»РѕС‚РѕРІ.
+// РЎРѕС…СЂР°РЅРµРЅРёРµ РјРµРЅСЏРµС‚ С‚РѕР»СЊРєРѕ РЅРµР°РєС‚РёРІРЅС‹Р№ СЃР»РѕС‚; СЃС‚Р°СЂРѕРµ РјРµСЃС‚Рѕ Р±РѕР»СЊС€Рµ РЅРµ Р·Р°РїРёСЃС‹РІР°РµС‚СЃСЏ.
 volatile uint32_t mem_config_errors = 0;
 uint8_t flash_owner;
 static uint8_t cfg_boot_done;
 uint32_t cfg_cached_active = MEM_CONFIG_LEGACY, cfg_cached_generation;
 #define CFG_MAGIC 0x32474643u
-// Считает CRC образа вместе с поколением при выборе слота.
+// РЎС‡РёС‚Р°РµС‚ CRC РѕР±СЂР°Р·Р° РІРјРµСЃС‚Рµ СЃ РїРѕРєРѕР»РµРЅРёРµРј РїСЂРё РІС‹Р±РѕСЂРµ СЃР»РѕС‚Р°.
 static bool cfg_image_crc(uint32_t address, uint32_t generation, uint32_t *result)
 {
   uint8_t b[64];
@@ -100,7 +100,7 @@ static bool cfg_image_crc(uint32_t address, uint32_t generation, uint32_t *resul
   *result = c;
   return true;
 }
-// Проверяет заголовок и CRC слота на границе стартового чтения.
+// РџСЂРѕРІРµСЂСЏРµС‚ Р·Р°РіРѕР»РѕРІРѕРє Рё CRC СЃР»РѕС‚Р° РЅР° РіСЂР°РЅРёС†Рµ СЃС‚Р°СЂС‚РѕРІРѕРіРѕ С‡С‚РµРЅРёСЏ.
 static uint8_t cfg_valid(uint32_t address, uint32_t *generation)
 {
   uint32_t h[4], crc;
@@ -110,7 +110,7 @@ static uint8_t cfg_valid(uint32_t address, uint32_t *generation)
   *generation = h[1];
   return 1;
 }
-// Выбирает самый новый целый слот и сохраняет его адрес и поколение.
+// Р’С‹Р±РёСЂР°РµС‚ СЃР°РјС‹Р№ РЅРѕРІС‹Р№ С†РµР»С‹Р№ СЃР»РѕС‚ Рё СЃРѕС…СЂР°РЅСЏРµС‚ РµРіРѕ Р°РґСЂРµСЃ Рё РїРѕРєРѕР»РµРЅРёРµ.
 static void cfg_select(void)
 {
   uint32_t a = 0, b = 0;
@@ -122,7 +122,7 @@ static void cfg_select(void)
   if (va) { cfg_cached_generation = a; cfg_cached_active = MEM_CONFIG_SLOT0; return; }
   cfg_cached_generation = 0; cfg_cached_active = MEM_CONFIG_LEGACY;
 }
-// Сравнивает изменяемую часть, чтобы не стирать слот без изменений.
+// РЎСЂР°РІРЅРёРІР°РµС‚ РёР·РјРµРЅСЏРµРјСѓСЋ С‡Р°СЃС‚СЊ, С‡С‚РѕР±С‹ РЅРµ СЃС‚РёСЂР°С‚СЊ СЃР»РѕС‚ Р±РµР· РёР·РјРµРЅРµРЅРёР№.
 static uint8_t cfg_same_part(uint32_t address, const uint8_t *data, uint16_t size)
 {
   uint8_t check[64];
@@ -133,7 +133,7 @@ static uint8_t cfg_same_part(uint32_t address, const uint8_t *data, uint16_t siz
   }
   return 1;
 }
-// Пишет неактивный слот; заголовок публикуется после проверенного драйвером образа.
+// РџРёС€РµС‚ РЅРµР°РєС‚РёРІРЅС‹Р№ СЃР»РѕС‚; Р·Р°РіРѕР»РѕРІРѕРє РїСѓР±Р»РёРєСѓРµС‚СЃСЏ РїРѕСЃР»Рµ РїСЂРѕРІРµСЂРµРЅРЅРѕРіРѕ РґСЂР°Р№РІРµСЂРѕРј РѕР±СЂР°Р·Р°.
 static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint32_t generation)
 {
   uint32_t h[4];
@@ -155,14 +155,14 @@ static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint
   return 1;
 }
 
-// Выбирает слот один раз при старте и переносит целые настройки старого формата.
+// Р’С‹Р±РёСЂР°РµС‚ СЃР»РѕС‚ РѕРґРёРЅ СЂР°Р· РїСЂРё СЃС‚Р°СЂС‚Рµ Рё РїРµСЂРµРЅРѕСЃРёС‚ С†РµР»С‹Рµ РЅР°СЃС‚СЂРѕР№РєРё СЃС‚Р°СЂРѕРіРѕ С„РѕСЂРјР°С‚Р°.
 static uint8_t cfg_boot_select(void)
 {
   uint8_t block[64];
   if (cfg_boot_done) return 1;
   cfg_select();
   if (cfg_cached_active == MEM_CONFIG_LEGACY) {
-    // CRC config и device проверяются на границе: старое место не имеет заголовка A/B.
+    // CRC config Рё device РїСЂРѕРІРµСЂСЏСЋС‚СЃСЏ РЅР° РіСЂР°РЅРёС†Рµ: СЃС‚Р°СЂРѕРµ РјРµСЃС‚Рѕ РЅРµ РёРјРµРµС‚ Р·Р°РіРѕР»РѕРІРєР° A/B.
     for (uint16_t part = 0; part < 1024; part += 512) {
       uint16_t crc = 0xFFFFu, expected;
       for (uint16_t off = 0; off < 510;) {
@@ -182,7 +182,7 @@ static uint8_t cfg_boot_select(void)
   cfg_boot_done = 1;
   return 1;
 }
-// Сохраняет смежные части настроек, сохраняя остальные байты активного образа.
+// РЎРѕС…СЂР°РЅСЏРµС‚ СЃРјРµР¶РЅС‹Рµ С‡Р°СЃС‚Рё РЅР°СЃС‚СЂРѕРµРє, СЃРѕС…СЂР°РЅСЏСЏ РѕСЃС‚Р°Р»СЊРЅС‹Рµ Р±Р°Р№С‚С‹ Р°РєС‚РёРІРЅРѕРіРѕ РѕР±СЂР°Р·Р°.
 static bool cfg_commit_parts(uint16_t offset, const uint8_t *first, uint16_t nfirst, const uint8_t *second, uint16_t nsecond)
 {
   if (!cfg_boot_select()) return false;
@@ -196,35 +196,35 @@ static bool cfg_commit_parts(uint16_t offset, const uint8_t *first, uint16_t nfi
   }
   return true;
 }
-// Распознаёт логический диапазон настроек для перенаправления в A/B.
+// Р Р°СЃРїРѕР·РЅР°С‘С‚ Р»РѕРіРёС‡РµСЃРєРёР№ РґРёР°РїР°Р·РѕРЅ РЅР°СЃС‚СЂРѕРµРє РґР»СЏ РїРµСЂРµРЅР°РїСЂР°РІР»РµРЅРёСЏ РІ A/B.
 static uint8_t cfg_range(uint32_t adr, uint16_t size)
 {
   return adr >= MEM_CONFIG_LEGACY && adr < MEM_CONFIG_LEGACY + MEMSECTORSIZE &&
          size <= MEM_CONFIG_LEGACY + MEMSECTORSIZE - adr;
 }
-// Читает логический адрес из выбранного при старте и обновляемого при записи слота.
+// Р§РёС‚Р°РµС‚ Р»РѕРіРёС‡РµСЃРєРёР№ Р°РґСЂРµСЃ РёР· РІС‹Р±СЂР°РЅРЅРѕРіРѕ РїСЂРё СЃС‚Р°СЂС‚Рµ Рё РѕР±РЅРѕРІР»СЏРµРјРѕРіРѕ РїСЂРё Р·Р°РїРёСЃРё СЃР»РѕС‚Р°.
 static bool cfg_read(uint32_t adr, uint8_t *buff, uint16_t size)
 {
   if (!store_runtime && !cfg_boot_select()) return false;
   return w25_read_data(cfg_cached_active + adr - MEM_CONFIG_LEGACY, buff, size);
 }
 
-// Чтение данных с памяти
+// Р§С‚РµРЅРёРµ РґР°РЅРЅС‹С… СЃ РїР°РјСЏС‚Рё
 bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 {
   if (cfg_range(adr, size)) return cfg_read(adr, buff, size);
   return mem_guard(adr, size) && w25_read_data(adr, buff, size);
 }
 
-// Запись данных в память
-// данные пишутся в предварительно стертый сектор
+// Р—Р°РїРёСЃСЊ РґР°РЅРЅС‹С… РІ РїР°РјСЏС‚СЊ
+// РґР°РЅРЅС‹Рµ РїРёС€СѓС‚СЃСЏ РІ РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕ СЃС‚РµСЂС‚С‹Р№ СЃРµРєС‚РѕСЂ
 bool mem_write (Int32U adr, pInt8U buff, Int16U size)
 {
   if (cfg_range(adr, size)) return mem_patch(adr, buff, size);
   return !mem_reserved(adr, size) && mem_guard(adr, size) && w25_write_data(adr, buff, size);
 }
 
-// Атомарно применяет две смежные правки через слот или журнал таблиц.
+// РђС‚РѕРјР°СЂРЅРѕ РїСЂРёРјРµРЅСЏРµС‚ РґРІРµ СЃРјРµР¶РЅС‹Рµ РїСЂР°РІРєРё С‡РµСЂРµР· СЃР»РѕС‚ РёР»Рё Р¶СѓСЂРЅР°Р» С‚Р°Р±Р»РёС†.
 bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *second, Int16U nsecond)
 {
   uint32_t size = (uint32_t)nfirst + nsecond;
@@ -235,21 +235,21 @@ bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *
   return mem_replace_pages(sector, mem_image_page, &image);
 }
 
-// Передаёт одну правку общему пути атомарного сохранения.
+// РџРµСЂРµРґР°С‘С‚ РѕРґРЅСѓ РїСЂР°РІРєСѓ РѕР±С‰РµРјСѓ РїСѓС‚Рё Р°С‚РѕРјР°СЂРЅРѕРіРѕ СЃРѕС…СЂР°РЅРµРЅРёСЏ.
 bool mem_patch(Int32U adr, const uint8_t *data, Int16U size)
 {
   return mem_patch2(adr, data, size, NULL, 0);
 }
 
-// Стирает обычный сектор, учитывая резерв и готовность таблиц.
+// РЎС‚РёСЂР°РµС‚ РѕР±С‹С‡РЅС‹Р№ СЃРµРєС‚РѕСЂ, СѓС‡РёС‚С‹РІР°СЏ СЂРµР·РµСЂРІ Рё РіРѕС‚РѕРІРЅРѕСЃС‚СЊ С‚Р°Р±Р»РёС†.
 bool mem_erase_sector (Int32U adr)
 {
   adr &= ~4095u;
   return !mem_reserved(adr, MEMSECTORSIZE) && mem_guard(adr, MEMSECTORSIZE) && w25_erase_sector(adr);
 }
 
-// Фоновая публикация: один фрагмент 64 Б или одна команда W25 за вызов.
-// Снимок config/device принадлежит автомату до завершения проверки драйвером.
+// Р¤РѕРЅРѕРІР°СЏ РїСѓР±Р»РёРєР°С†РёСЏ: РѕРґРёРЅ С„СЂР°РіРјРµРЅС‚ 64 Р‘ РёР»Рё РѕРґРЅР° РєРѕРјР°РЅРґР° W25 Р·Р° РІС‹Р·РѕРІ.
+// РЎРЅРёРјРѕРє config/device РїСЂРёРЅР°РґР»РµР¶РёС‚ Р°РІС‚РѕРјР°С‚Сѓ РґРѕ Р·Р°РІРµСЂС€РµРЅРёСЏ РїСЂРѕРІРµСЂРєРё РґСЂР°Р№РІРµСЂРѕРј.
 struct {
   uint8_t *snapshot;
   uint32_t source, target, header[4];
@@ -260,17 +260,17 @@ enum {
   CA_CHECK=1, CA_META, CA_DATA,
   CA_COPY, CA_HEADER, CA_DONE
 };
-// Возвращает состояние публикации: 0 — нет, 1 — работа, 2 — готово, 3 — ошибка.
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ СЃРѕСЃС‚РѕСЏРЅРёРµ РїСѓР±Р»РёРєР°С†РёРё: 0 вЂ” РЅРµС‚, 1 вЂ” СЂР°Р±РѕС‚Р°, 2 вЂ” РіРѕС‚РѕРІРѕ, 3 вЂ” РѕС€РёР±РєР°.
 uint8_t mem_config_result(void) { return cfg_job.result; }
-// Даёт владельцу сохранённый снимок для восстановления при ошибке.
+// Р”Р°С‘С‚ РІР»Р°РґРµР»СЊС†Сѓ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Р№ СЃРЅРёРјРѕРє РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїСЂРё РѕС€РёР±РєРµ.
 const uint8_t *mem_config_snapshot(void) { return cfg_job.snapshot; }
-// Освобождает снимок после завершения автомата и последней проверки W25.
+// РћСЃРІРѕР±РѕР¶РґР°РµС‚ СЃРЅРёРјРѕРє РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ Р°РІС‚РѕРјР°С‚Р° Рё РїРѕСЃР»РµРґРЅРµР№ РїСЂРѕРІРµСЂРєРё W25.
 void mem_config_reset(void)
 {
   if (cfg_job.result == 1) return;
   work_release(cfg_job.snapshot, WORK_CONFIG); cfg_job.snapshot = NULL; cfg_job.result = 0; cfg_job.waiting = 0;
 }
-// Принимает готовые config/device, не сохраняя указатели вызывающего.
+// РџСЂРёРЅРёРјР°РµС‚ РіРѕС‚РѕРІС‹Рµ config/device, РЅРµ СЃРѕС…СЂР°РЅСЏСЏ СѓРєР°Р·Р°С‚РµР»Рё РІС‹Р·С‹РІР°СЋС‰РµРіРѕ.
 bool mem_config_begin(const uint8_t *first, const uint8_t *second)
 {
   if (flash_owner || table_fault || sj_runtime_blocked() || cfg_job.result || w25_async_active() || !cfg_boot_done) return false;
@@ -285,7 +285,7 @@ bool mem_config_begin(const uint8_t *first, const uint8_t *second)
   cfg_job.waiting = 0; cfg_job.state = CA_CHECK; cfg_job.result = 1;
   return true;
 }
-// Берёт новый config/device из снимка, а неизменный хвост — из активного образа.
+// Р‘РµСЂС‘С‚ РЅРѕРІС‹Р№ config/device РёР· СЃРЅРёРјРєР°, Р° РЅРµРёР·РјРµРЅРЅС‹Р№ С…РІРѕСЃС‚ вЂ” РёР· Р°РєС‚РёРІРЅРѕРіРѕ РѕР±СЂР°Р·Р°.
 static bool cfg_async_page(void)
 {
   if (cfg_job.offset < 1024u) {
@@ -293,7 +293,7 @@ static bool cfg_async_page(void)
   }
   return w25_read_data(cfg_job.source + cfg_job.offset, sjr.data, sizeof(sjr.data));
 }
-// Делает один шаг; до заголовка прежний активный слот остаётся единственным целым.
+// Р”РµР»Р°РµС‚ РѕРґРёРЅ С€Р°Рі; РґРѕ Р·Р°РіРѕР»РѕРІРєР° РїСЂРµР¶РЅРёР№ Р°РєС‚РёРІРЅС‹Р№ СЃР»РѕС‚ РѕСЃС‚Р°С‘С‚СЃСЏ РµРґРёРЅСЃС‚РІРµРЅРЅС‹Рј С†РµР»С‹Рј.
 void mem_config_poll(uint32_t now)
 {
   uint8_t b[64], r;
@@ -343,15 +343,15 @@ fail:
   DOMOVOI_DIAG_INC(mem_config_errors); cfg_job.result = 3;
 }
 
-// Закрепляет флеш за владельцем, допускающим своё повторное обращение.
+// Р—Р°РєСЂРµРїР»СЏРµС‚ С„Р»РµС€ Р·Р° РІР»Р°РґРµР»СЊС†РµРј, РґРѕРїСѓСЃРєР°СЋС‰РёРј СЃРІРѕС‘ РїРѕРІС‚РѕСЂРЅРѕРµ РѕР±СЂР°С‰РµРЅРёРµ.
 uint8_t flash_claim(uint8_t owner) {
   if (flash_owner && ((flash_owner ^ owner) & 0x7fu)) return 0;
   flash_owner=owner; return 1;
 }
-// Освобождает флеш и сообщает кэшу CRC о завершении операции.
+// РћСЃРІРѕР±РѕР¶РґР°РµС‚ С„Р»РµС€ Рё СЃРѕРѕР±С‰Р°РµС‚ РєСЌС€Сѓ CRC Рѕ Р·Р°РІРµСЂС€РµРЅРёРё РѕРїРµСЂР°С†РёРё.
 uint8_t flash_release(uint8_t owner) {
   if (!((flash_owner ^ owner) & 0x7fu)) flash_owner=0;
   idcrc_owner_released(); return 0;
 }
-// Разрешает чтение, если владелец не запретил его на время записи.
+// Р Р°Р·СЂРµС€Р°РµС‚ С‡С‚РµРЅРёРµ, РµСЃР»Рё РІР»Р°РґРµР»РµС† РЅРµ Р·Р°РїСЂРµС‚РёР» РµРіРѕ РЅР° РІСЂРµРјСЏ Р·Р°РїРёСЃРё.
 uint8_t flash_read_allowed(void) { return !(flash_owner & 0x80u); }

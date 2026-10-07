@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Кэш CRC сырых байтов всей базы ID в ОЗУ.
-// После сброса CRC строится заново; запись сначала считывает прежние байты.
-// Разность CRC публикуется только после проверки команды W25.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РљСЌС€ CRC СЃС‹СЂС‹С… Р±Р°Р№С‚РѕРІ РІСЃРµР№ Р±Р°Р·С‹ ID РІ РћР—РЈ.
+// РџРѕСЃР»Рµ СЃР±СЂРѕСЃР° CRC СЃС‚СЂРѕРёС‚СЃСЏ Р·Р°РЅРѕРІРѕ; Р·Р°РїРёСЃСЊ СЃРЅР°С‡Р°Р»Р° СЃС‡РёС‚С‹РІР°РµС‚ РїСЂРµР¶РЅРёРµ Р±Р°Р№С‚С‹.
+// Р Р°Р·РЅРѕСЃС‚СЊ CRC РїСѓР±Р»РёРєСѓРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ РїСЂРѕРІРµСЂРєРё РєРѕРјР°РЅРґС‹ W25.
 #define IDCRC_RAW_IO 1
 #include "c/runtime_internal.h"
 #include "id_crc_cache.h"
@@ -13,25 +13,25 @@ enum {
 static struct {
   uint32_t scan;
   uint16_t crc, partial, delta;
-  uint8_t state; // Младшие биты — фаза, IC_CANCELLED запрещает публикацию.
+  uint8_t state; // РњР»Р°РґС€РёРµ Р±РёС‚С‹ вЂ” С„Р°Р·Р°, IC_CANCELLED Р·Р°РїСЂРµС‰Р°РµС‚ РїСѓР±Р»РёРєР°С†РёСЋ.
 } ic;
 RT_ASSERT(idcrc_ram, sizeof(ic)<=16);
 
-// Сбрасывает готовность и частичный проход после ошибки.
+// РЎР±СЂР°СЃС‹РІР°РµС‚ РіРѕС‚РѕРІРЅРѕСЃС‚СЊ Рё С‡Р°СЃС‚РёС‡РЅС‹Р№ РїСЂРѕС…РѕРґ РїРѕСЃР»Рµ РѕС€РёР±РєРё.
 static void invalidate(void) { ic.state=IC_UNKNOWN; ic.scan=0; }
-// Запрещает использовать CRC после отмены или неопределённого результата.
+// Р—Р°РїСЂРµС‰Р°РµС‚ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ CRC РїРѕСЃР»Рµ РѕС‚РјРµРЅС‹ РёР»Рё РЅРµРѕРїСЂРµРґРµР»С‘РЅРЅРѕРіРѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°.
 void idcrc_unknown(void)
 {
-  // Отмена не прерывает команду W25, но запрещает публиковать её разность CRC.
+  // РћС‚РјРµРЅР° РЅРµ РїСЂРµСЂС‹РІР°РµС‚ РєРѕРјР°РЅРґСѓ W25, РЅРѕ Р·Р°РїСЂРµС‰Р°РµС‚ РїСѓР±Р»РёРєРѕРІР°С‚СЊ РµС‘ СЂР°Р·РЅРѕСЃС‚СЊ CRC.
   ic.state=ic.state>IC_READY?ic.state|IC_CANCELLED:IC_UNKNOWN; ic.scan=0;
 }
-// Определяет, затрагивает ли операция только базу ID.
+// РћРїСЂРµРґРµР»СЏРµС‚, Р·Р°С‚СЂР°РіРёРІР°РµС‚ Р»Рё РѕРїРµСЂР°С†РёСЏ С‚РѕР»СЊРєРѕ Р±Р°Р·Сѓ ID.
 static bool id_span(uint32_t a,uint32_t n)
 {
   uint32_t offset=a-mem[MB_ID].start;
   return n && offset<mem[MB_ID].size && n<=mem[MB_ID].size-offset;
 }
-// Резервирует прежние байты ID либо сразу передаёт команду драйверу.
+// Р РµР·РµСЂРІРёСЂСѓРµС‚ РїСЂРµР¶РЅРёРµ Р±Р°Р№С‚С‹ ID Р»РёР±Рѕ СЃСЂР°Р·Сѓ РїРµСЂРµРґР°С‘С‚ РєРѕРјР°РЅРґСѓ РґСЂР°Р№РІРµСЂСѓ.
 bool idcrc_io_start(uint32_t address,const uint8_t *source,uint16_t length,uint32_t now)
 {
   uint32_t n=source?length:4096u;
@@ -46,7 +46,7 @@ bool idcrc_io_start(uint32_t address,const uint8_t *source,uint16_t length,uint3
   }
   return w25_async_start(address,source,length,now);
 }
-// Считает разность сырых байтов и публикует её после проверки W25.
+// РЎС‡РёС‚Р°РµС‚ СЂР°Р·РЅРѕСЃС‚СЊ СЃС‹СЂС‹С… Р±Р°Р№С‚РѕРІ Рё РїСѓР±Р»РёРєСѓРµС‚ РµС‘ РїРѕСЃР»Рµ РїСЂРѕРІРµСЂРєРё W25.
 uint8_t idcrc_io_poll(uint32_t now)
 {
   uint8_t b[64],r;
@@ -61,7 +61,7 @@ uint8_t idcrc_io_poll(uint32_t now)
     }
     n=ic.delta;
     uint32_t tail=mem[MB_ID].size-(w25_job.address-mem[MB_ID].start)-w25_job.length;
-    // Одинаковый хвост FF сокращается: остаётся линейный сдвиг разности CRC.
+    // РћРґРёРЅР°РєРѕРІС‹Р№ С…РІРѕСЃС‚ FF СЃРѕРєСЂР°С‰Р°РµС‚СЃСЏ: РѕСЃС‚Р°С‘С‚СЃСЏ Р»РёРЅРµР№РЅС‹Р№ СЃРґРІРёРі СЂР°Р·РЅРѕСЃС‚Рё CRC.
     ic.delta=crc16_ffInit(tail,n)^crc16_ffInit(tail,0);
     if(!w25_async_start(w25_job.address,w25_job.data,w25_job.data?w25_job.length:0,now)) goto failed;
     ic.state=(ic.state&IC_CANCELLED)|IC_VERIFY; return 1;
@@ -76,22 +76,22 @@ uint8_t idcrc_io_poll(uint32_t now)
 failed:
   invalidate(); return 3;
 }
-// Учитывает подготовку CRC и незавершённую команду W25.
+// РЈС‡РёС‚С‹РІР°РµС‚ РїРѕРґРіРѕС‚РѕРІРєСѓ CRC Рё РЅРµР·Р°РІРµСЂС€С‘РЅРЅСѓСЋ РєРѕРјР°РЅРґСѓ W25.
 bool idcrc_io_active(void) { return ic.state>IC_READY || w25_async_active(); }
-// Сбрасывает CRC недоступной базы; ноль сохраняет контракт flash_release.
+// РЎР±СЂР°СЃС‹РІР°РµС‚ CRC РЅРµРґРѕСЃС‚СѓРїРЅРѕР№ Р±Р°Р·С‹; РЅРѕР»СЊ СЃРѕС…СЂР°РЅСЏРµС‚ РєРѕРЅС‚СЂР°РєС‚ flash_release.
 uint8_t idcrc_release_tail(void)
 {
   if(!mem_tables_ready()) invalidate();
   return 0;
 }
-// Дожидается результата синхронного писателя с обслуживанием сторожевого таймера.
+// Р”РѕР¶РёРґР°РµС‚СЃСЏ СЂРµР·СѓР»СЊС‚Р°С‚Р° СЃРёРЅС…СЂРѕРЅРЅРѕРіРѕ РїРёСЃР°С‚РµР»СЏ СЃ РѕР±СЃР»СѓР¶РёРІР°РЅРёРµРј СЃС‚РѕСЂРѕР¶РµРІРѕРіРѕ С‚Р°Р№РјРµСЂР°.
 static bool sync_finish(void)
 {
   uint8_t r;
   do { wdt_reload(); r=idcrc_io_poll(timers_getMillis()); } while(r==1);
   return r==2;
 }
-// Разбивает синхронную запись ID на фрагменты, учитываемые кэшем CRC.
+// Р Р°Р·Р±РёРІР°РµС‚ СЃРёРЅС…СЂРѕРЅРЅСѓСЋ Р·Р°РїРёСЃСЊ ID РЅР° С„СЂР°РіРјРµРЅС‚С‹, СѓС‡РёС‚С‹РІР°РµРјС‹Рµ РєСЌС€РµРј CRC.
 bool idcrc_write(uint32_t address,uint8_t *source,uint16_t length)
 {
   if(!id_span(address,source?length:4096u))
@@ -105,18 +105,18 @@ bool idcrc_write(uint32_t address,uint8_t *source,uint16_t length)
   } while(length);
   return true;
 }
-// Стирает сектор ID тем же путём учёта CRC.
+// РЎС‚РёСЂР°РµС‚ СЃРµРєС‚РѕСЂ ID С‚РµРј Р¶Рµ РїСѓС‚С‘Рј СѓС‡С‘С‚Р° CRC.
 bool idcrc_erase(uint32_t address)
 {
   return idcrc_write(address,0,0);
 }
-// Возвращает готовую CRC всей базы ID.
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ РіРѕС‚РѕРІСѓСЋ CRC РІСЃРµР№ Р±Р°Р·С‹ ID.
 bool idcrc_get(uint16_t *crc)
 {
   if(ic.state!=IC_READY) return false;
   *crc=ic.crc; return true;
 }
-// Читает до 64 Б за проход и возвращает владение; чужое чтение не сбрасывает скан.
+// Р§РёС‚Р°РµС‚ РґРѕ 64 Р‘ Р·Р° РїСЂРѕС…РѕРґ Рё РІРѕР·РІСЂР°С‰Р°РµС‚ РІР»Р°РґРµРЅРёРµ; С‡СѓР¶РѕРµ С‡С‚РµРЅРёРµ РЅРµ СЃР±СЂР°СЃС‹РІР°РµС‚ СЃРєР°РЅ.
 bool idcrc_background(void)
 {
   uint8_t b[64]; uint32_t end=id_used_bytes;

@@ -1,14 +1,14 @@
-// Доработка: Кряжев А., 2026
-// Основные и временные ID: поиск, счётчики проходов и сроки действия.
-// Индекс ускоряет поиск; во время пересборки остаётся перебор блоками 256 Б.
-// Стартовый скан сверяет метку индекса с базой; ошибка чтения отличается от отсутствия ID.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РћСЃРЅРѕРІРЅС‹Рµ Рё РІСЂРµРјРµРЅРЅС‹Рµ ID: РїРѕРёСЃРє, СЃС‡С‘С‚С‡РёРєРё РїСЂРѕС…РѕРґРѕРІ Рё СЃСЂРѕРєРё РґРµР№СЃС‚РІРёСЏ.
+// РРЅРґРµРєСЃ СѓСЃРєРѕСЂСЏРµС‚ РїРѕРёСЃРє; РІРѕ РІСЂРµРјСЏ РїРµСЂРµСЃР±РѕСЂРєРё РѕСЃС‚Р°С‘С‚СЃСЏ РїРµСЂРµР±РѕСЂ Р±Р»РѕРєР°РјРё 256 Р‘.
+// РЎС‚Р°СЂС‚РѕРІС‹Р№ СЃРєР°РЅ СЃРІРµСЂСЏРµС‚ РјРµС‚РєСѓ РёРЅРґРµРєСЃР° СЃ Р±Р°Р·РѕР№; РѕС€РёР±РєР° С‡С‚РµРЅРёСЏ РѕС‚Р»РёС‡Р°РµС‚СЃСЏ РѕС‚ РѕС‚СЃСѓС‚СЃС‚РІРёСЏ ID.
 #include "user_logic_internal.h"
 uint32_t id_used_bytes = UINT32_MAX;
 uint16_t id_cells_end;
 uint32_t id_nextEnd;
 bool id_endScan = true;
 
-// ID часто отличаются последними цифрами; каждый байт сравнивается ровно один раз.
+// ID С‡Р°СЃС‚Рѕ РѕС‚Р»РёС‡Р°СЋС‚СЃСЏ РїРѕСЃР»РµРґРЅРёРјРё С†РёС„СЂР°РјРё; РєР°Р¶РґС‹Р№ Р±Р°Р№С‚ СЃСЂР°РІРЅРёРІР°РµС‚СЃСЏ СЂРѕРІРЅРѕ РѕРґРёРЅ СЂР°Р·.
 #pragma inline=forced
 static inline bool id_equal(const char *left, const char *right)
 {
@@ -18,58 +18,58 @@ static inline bool id_equal(const char *left, const char *right)
   return true;
 }
 
-// Прочитать долговечную дату первого прохода ID.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ РґРѕР»РіРѕРІРµС‡РЅСѓСЋ РґР°С‚Сѓ РїРµСЂРІРѕРіРѕ РїСЂРѕС…РѕРґР° ID.
 uint32_t id_first_pass(cellID_s *c){
   uint32_t t;
   memcpy(&t, c->reserve, 4);
   return (t == 0xffffffff || t < ID_TIME_VALID) ? 0 : t;
 }
 
-// Сохранить дату первого прохода ID в резерв записи.
+// РЎРѕС…СЂР°РЅРёС‚СЊ РґР°С‚Сѓ РїРµСЂРІРѕРіРѕ РїСЂРѕС…РѕРґР° ID РІ СЂРµР·РµСЂРІ Р·Р°РїРёСЃРё.
 void id_set_first_pass(cellID_s *c, uint32_t t){
   memcpy(c->reserve, &t, 4);
 }
 
-// Определить, закончился ли срок действия ID.
+// РћРїСЂРµРґРµР»РёС‚СЊ, Р·Р°РєРѕРЅС‡РёР»СЃСЏ Р»Рё СЃСЂРѕРє РґРµР№СЃС‚РІРёСЏ ID.
 bool id_expired(cellID_s *c){
   uint32_t first = id_first_pass(c);
   return c->useTime != 0 && first != 0 && device.datetime >= first &&
     device.datetime - first >= (uint32_t)c->useTime * 60u;
 }
 
-// Вычислить окончание срока действия ID по первой дате прохода.
+// Р’С‹С‡РёСЃР»РёС‚СЊ РѕРєРѕРЅС‡Р°РЅРёРµ СЃСЂРѕРєР° РґРµР№СЃС‚РІРёСЏ ID РїРѕ РїРµСЂРІРѕР№ РґР°С‚Рµ РїСЂРѕС…РѕРґР°.
 uint32_t id_time_end(cellID_s *c){
   uint32_t first = id_first_pass(c), end;
   if (c->useTime == 0 || first == 0 || c->reserve[6] == ID_TIME_DONE) return 0;
-  // за пределами представимого Unix-времени нет раннего окончания
+  // Р·Р° РїСЂРµРґРµР»Р°РјРё РїСЂРµРґСЃС‚Р°РІРёРјРѕРіРѕ Unix-РІСЂРµРјРµРЅРё РЅРµС‚ СЂР°РЅРЅРµРіРѕ РѕРєРѕРЅС‡Р°РЅРёСЏ
   if (first > 0xffffffffu - (uint32_t)c->useTime * 60u) return 0;
   end = first + (uint32_t)c->useTime * 60u;
   return (end / ONE_DAY == first / ONE_DAY) ? end : 0;
 }
 
-// Учесть ближайшее окончание срока при очередном обходе.
+// РЈС‡РµСЃС‚СЊ Р±Р»РёР¶Р°Р№С€РµРµ РѕРєРѕРЅС‡Р°РЅРёРµ СЃСЂРѕРєР° РїСЂРё РѕС‡РµСЂРµРґРЅРѕРј РѕР±С…РѕРґРµ.
 void id_watch_end(uint32_t end){
   if (end != 0 && (id_nextEnd == 0 || end < id_nextEnd)) id_nextEnd = end;
 }
 
-// Вернуть номер текущих местных суток для счётчиков ID.
+// Р’РµСЂРЅСѓС‚СЊ РЅРѕРјРµСЂ С‚РµРєСѓС‰РёС… РјРµСЃС‚РЅС‹С… СЃСѓС‚РѕРє РґР»СЏ СЃС‡С‘С‚С‡РёРєРѕРІ ID.
 static uint16_t id_today(void){
   return device.datetime >= ID_TIME_VALID ? (uint16_t)(device.datetime / ONE_DAY) : 0;
 }
 
-// Прочитать сутки последнего прохода из записи ID.
+// РџСЂРѕС‡РёС‚Р°С‚СЊ СЃСѓС‚РєРё РїРѕСЃР»РµРґРЅРµРіРѕ РїСЂРѕС…РѕРґР° РёР· Р·Р°РїРёСЃРё ID.
 static uint16_t id_pass_day(cellID_s *c){
   uint16_t d;
   memcpy(&d, &c->reserve[4], 2);
   return d == 0xffff ? 0 : d;
 }
 
-// Записать сутки последнего прохода в запись ID.
+// Р—Р°РїРёСЃР°С‚СЊ СЃСѓС‚РєРё РїРѕСЃР»РµРґРЅРµРіРѕ РїСЂРѕС…РѕРґР° РІ Р·Р°РїРёСЃСЊ ID.
 static void id_set_pass_day(cellID_s *c, uint16_t day){
   memcpy(&c->reserve[4], &day, 2);
 }
 
-// Определить, нужно ли восстановить суточный лимит проходов.
+// РћРїСЂРµРґРµР»РёС‚СЊ, РЅСѓР¶РЅРѕ Р»Рё РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ СЃСѓС‚РѕС‡РЅС‹Р№ Р»РёРјРёС‚ РїСЂРѕС…РѕРґРѕРІ.
 bool id_new_day(cellID_s *c){
   uint16_t today = id_today(), last = id_pass_day(c);
   if (today == 0 || last == today) return false;
@@ -78,13 +78,13 @@ bool id_new_day(cellID_s *c){
   return true;
 }
 
-// Найти ID через индекс или ограниченный буфер резервного перебора.
+// РќР°Р№С‚Рё ID С‡РµСЂРµР· РёРЅРґРµРєСЃ РёР»Рё РѕРіСЂР°РЅРёС‡РµРЅРЅС‹Р№ Р±СѓС„РµСЂ СЂРµР·РµСЂРІРЅРѕРіРѕ РїРµСЂРµР±РѕСЂР°.
 uint8_t user_findID(char *id, cellID_s *cell){
 
   uint32_t adr;
   uint16_t idsum = 0;
   for (uint8_t i = 0; i < 10; i++) idsum += (uint8_t)id[i];
-  if (idsum == 2550 || idsum == 0) return false; // пустой ID в базе не ищется
+  if (idsum == 2550 || idsum == 0) return false; // РїСѓСЃС‚РѕР№ ID РІ Р±Р°Р·Рµ РЅРµ РёС‰РµС‚СЃСЏ
   {
     cellID_s found;
     int8_t r = idindex_find(mem[MB_ID].start, (const uint8_t*)id, (uint8_t*)&found);
@@ -93,18 +93,18 @@ uint8_t user_findID(char *id, cellID_s *cell){
       return r == 1;
     }
   }
-  /* Индекс не готов (пересборка) - перебор по базе. */
+  /* РРЅРґРµРєСЃ РЅРµ РіРѕС‚РѕРІ (РїРµСЂРµСЃР±РѕСЂРєР°) - РїРµСЂРµР±РѕСЂ РїРѕ Р±Р°Р·Рµ. */
   uint32_t endAdr = mem[MB_ID].start + (uint32_t)id_cells_end * sizeof(cellID_s);
   uint8_t tbuffer[256];
   cellID_s *c;
 
-  // по странично читаем
+  // РїРѕ СЃС‚СЂР°РЅРёС‡РЅРѕ С‡РёС‚Р°РµРј
   for (adr = mem[MB_ID].start; adr < endAdr; adr += sizeof(tbuffer)){
     if (!mem_read(adr, tbuffer, sizeof(tbuffer))) return 2;
-    // перебираем ячейки
+    // РїРµСЂРµР±РёСЂР°РµРј СЏС‡РµР№РєРё
     for (uint16_t a = 0; a < sizeof(tbuffer) && adr + a < endAdr; a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
-      // пустая ячейка
+      // РїСѓСЃС‚Р°СЏ СЏС‡РµР№РєР°
       if (c->reserve[9] == 255) continue;
 
       if (id_equal(c->ID, id) && c->index != 0xffff){
@@ -113,11 +113,11 @@ uint8_t user_findID(char *id, cellID_s *cell){
       }
     }
   }
-  // не нашли
+  // РЅРµ РЅР°С€Р»Рё
   return false;
 }
 
-// Найти ID среди уже записанных временных записей.
+// РќР°Р№С‚Рё ID СЃСЂРµРґРё СѓР¶Рµ Р·Р°РїРёСЃР°РЅРЅС‹С… РІСЂРµРјРµРЅРЅС‹С… Р·Р°РїРёСЃРµР№.
 bool user_findTempID(char *id){
 
   uint32_t adr;
@@ -126,19 +126,19 @@ bool user_findTempID(char *id){
 
   if (startAddress < mem[MB_TEMPID].start) startAddress = mem[MB_TEMPID].start;
 
-  // проверим, что такого ID нет в буфере
+  // РїСЂРѕРІРµСЂРёРј, С‡С‚Рѕ С‚Р°РєРѕРіРѕ ID РЅРµС‚ РІ Р±СѓС„РµСЂРµ
   for (adr = mem[MB_TEMPID].start; adr < startAddress; adr += sizeof(cellID_s)){
     if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return false;
-    // такой ID есть
+    // С‚Р°РєРѕР№ ID РµСЃС‚СЊ
     if (id_equal(cellId.ID, id)){
       return true;
     }
   }
-  // не нашли
+  // РЅРµ РЅР°С€Р»Рё
   return false;
 }
 
-// Добавить отсутствующий ID в первое свободное место временной таблицы.
+// Р”РѕР±Р°РІРёС‚СЊ РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РёР№ ID РІ РїРµСЂРІРѕРµ СЃРІРѕР±РѕРґРЅРѕРµ РјРµСЃС‚Рѕ РІСЂРµРјРµРЅРЅРѕР№ С‚Р°Р±Р»РёС†С‹.
 void user_addIdToTempBuffer(char *id, codeType_e tp){
 
   uint32_t adr;
@@ -150,12 +150,12 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
 
   if (user_findTempID(id)) return;
 
-  // по странично
+  // РїРѕ СЃС‚СЂР°РЅРёС‡РЅРѕ
   for (adr = startAddress; adr < endAdr; adr += sizeof(cellID_s)){
     if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
-    // ячейка пустая, она должна быть стерта
+    // СЏС‡РµР№РєР° РїСѓСЃС‚Р°СЏ, РѕРЅР° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ СЃС‚РµСЂС‚Р°
     if (cellId.index == 0xffff){
-      memset(&cellId, 0, sizeof(cellId)); // новая запись без чужих флагов и резерва
+      memset(&cellId, 0, sizeof(cellId)); // РЅРѕРІР°СЏ Р·Р°РїРёСЃСЊ Р±РµР· С‡СѓР¶РёС… С„Р»Р°РіРѕРІ Рё СЂРµР·РµСЂРІР°
       memcpy(cellId.ID, id, 10);
       switch (tp){
         case CT_PHONE: cellId.isPhone = 1; break;
@@ -171,7 +171,7 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
   }
 }
 
-// Сверить стартовую базу с меткой индекса и вернуть число живых ID.
+// РЎРІРµСЂРёС‚СЊ СЃС‚Р°СЂС‚РѕРІСѓСЋ Р±Р°Р·Сѓ СЃ РјРµС‚РєРѕР№ РёРЅРґРµРєСЃР° Рё РІРµСЂРЅСѓС‚СЊ С‡РёСЃР»Рѕ Р¶РёРІС‹С… ID.
 uint16_t user_getNumbersCount(void){
 
   uint32_t adr;
@@ -182,23 +182,23 @@ uint16_t user_getNumbersCount(void){
   uint32_t sum = 0;
 
   id_cells_end = 0;
-  // по странично читаем
+  // РїРѕ СЃС‚СЂР°РЅРёС‡РЅРѕ С‡РёС‚Р°РµРј
   for (adr = mem[MB_ID].start; adr < endAdr; adr += sizeof(tbuffer)){
     if (!mem_read(adr, tbuffer, sizeof(tbuffer))) {
-      /* Флеш не прочиталась: индекс не публикуем, поиск идёт по всей базе,
-         чтобы ни один записанный ID не пропал из проверки доступа. */
+      /* Р¤Р»РµС€ РЅРµ РїСЂРѕС‡РёС‚Р°Р»Р°СЃСЊ: РёРЅРґРµРєСЃ РЅРµ РїСѓР±Р»РёРєСѓРµРј, РїРѕРёСЃРє РёРґС‘С‚ РїРѕ РІСЃРµР№ Р±Р°Р·Рµ,
+         С‡С‚РѕР±С‹ РЅРё РѕРґРёРЅ Р·Р°РїРёСЃР°РЅРЅС‹Р№ ID РЅРµ РїСЂРѕРїР°Р» РёР· РїСЂРѕРІРµСЂРєРё РґРѕСЃС‚СѓРїР°. */
       id_cells_end = (uint16_t)(mem[MB_ID].size / sizeof(cellID_s));
       id_used_bytes = UINT32_MAX;
       return 0;
     }
-    // перебираем ячейки
+    // РїРµСЂРµР±РёСЂР°РµРј СЏС‡РµР№РєРё
     for (uint16_t a = 0; a < sizeof(tbuffer); a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
       cell++;
-      /* Последняя ячейка, где есть хоть один записанный байт: за ней флеш стёрта. */
+      /* РџРѕСЃР»РµРґРЅСЏСЏ СЏС‡РµР№РєР°, РіРґРµ РµСЃС‚СЊ С…РѕС‚СЊ РѕРґРёРЅ Р·Р°РїРёСЃР°РЅРЅС‹Р№ Р±Р°Р№С‚: Р·Р° РЅРµР№ С„Р»РµС€ СЃС‚С‘СЂС‚Р°. */
       for (uint8_t b = 0; b < sizeof(cellID_s); b++)
         if (tbuffer[a + b] != 0xff) { used = cell; break; }
-      // пустая ячейка
+      // РїСѓСЃС‚Р°СЏ СЏС‡РµР№РєР°
       if (c->index == 0xffff || c->reserve[9] == 255) continue;
 
       cnt++;
@@ -213,12 +213,12 @@ uint16_t user_getNumbersCount(void){
   return cnt;
 }
 
-// Записать событие окончания срока ID ровно один раз.
+// Р—Р°РїРёСЃР°С‚СЊ СЃРѕР±С‹С‚РёРµ РѕРєРѕРЅС‡Р°РЅРёСЏ СЃСЂРѕРєР° ID СЂРѕРІРЅРѕ РѕРґРёРЅ СЂР°Р·.
 void user_checkIdTimeEnd(void){
 expiry_runtime_begin();
 }
 
-// Найти конец временной таблицы и обновить указатель добавления.
+// РќР°Р№С‚Рё РєРѕРЅРµС† РІСЂРµРјРµРЅРЅРѕР№ С‚Р°Р±Р»РёС†С‹ Рё РѕР±РЅРѕРІРёС‚СЊ СѓРєР°Р·Р°С‚РµР»СЊ РґРѕР±Р°РІР»РµРЅРёСЏ.
 uint16_t user_getTempIDRecordsCount(void){
 
   uint32_t adr;
@@ -227,13 +227,13 @@ uint16_t user_getTempIDRecordsCount(void){
   cellID_s *c;
   uint16_t cnt = 0;
 
-  // по странично читаем
+  // РїРѕ СЃС‚СЂР°РЅРёС‡РЅРѕ С‡РёС‚Р°РµРј
   for (adr = mem[MB_TEMPID].start; adr < endAdr; adr += sizeof(tbuffer)){
     if (!mem_read(adr, tbuffer, sizeof(tbuffer))) return 0xFFFFu;
-    // перебираем ячейки
+    // РїРµСЂРµР±РёСЂР°РµРј СЏС‡РµР№РєРё
     for (uint16_t a = 0; a < sizeof(tbuffer); a += sizeof(cellID_s)){
       c = (cellID_s*)&tbuffer[a];
-      // пустая ячейка
+      // РїСѓСЃС‚Р°СЏ СЏС‡РµР№РєР°
       if (c->index == 0xffff){
         device.newAddressTempID = adr + a;
         return cnt;
@@ -247,14 +247,14 @@ uint16_t user_getTempIDRecordsCount(void){
   return cnt;
 }
 
-// Записать изменённые параметры ID и обновить соответствие индекса.
+// Р—Р°РїРёСЃР°С‚СЊ РёР·РјРµРЅС‘РЅРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ ID Рё РѕР±РЅРѕРІРёС‚СЊ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ РёРЅРґРµРєСЃР°.
 bool user_updateID(cellID_s *c){
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint8_t stored[32];
   uint16_t index;
   uint32_t adr;
-  /* Команда 13 кладёт ячейку на место её номера: сначала проверяем это место,
-     перебор - только если там другая ячейка. */
+  /* РљРѕРјР°РЅРґР° 13 РєР»Р°РґС‘С‚ СЏС‡РµР№РєСѓ РЅР° РјРµСЃС‚Рѕ РµС‘ РЅРѕРјРµСЂР°: СЃРЅР°С‡Р°Р»Р° РїСЂРѕРІРµСЂСЏРµРј СЌС‚Рѕ РјРµСЃС‚Рѕ,
+     РїРµСЂРµР±РѕСЂ - С‚РѕР»СЊРєРѕ РµСЃР»Рё С‚Р°Рј РґСЂСѓРіР°СЏ СЏС‡РµР№РєР°. */
   if (c->index != 0 && c->index != 0xffff){
     adr = mem[MB_ID].start + (uint32_t)(c->index - 1u) * sizeof(cellID_s);
     if (adr + sizeof(cellID_s) <= endAdr){

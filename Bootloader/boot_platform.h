@@ -1,4 +1,4 @@
-/* Разработчик: Кряжев А., 2026 */
+/* Р Р°Р·СЂР°Р±РѕС‚С‡РёРє: РљСЂСЏР¶РµРІ Рђ., 2026 */
 #ifndef BOOT_PLATFORM_H
 #define BOOT_PLATFORM_H
 #include "boot_core.h"

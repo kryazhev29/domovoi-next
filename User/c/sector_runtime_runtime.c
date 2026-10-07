@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Фоновая замена сектора через тот же журнал, шагами по 64 Б.
-// Буфер sjr принадлежит операции до завершения проверки W25.
-// После фиксации ошибки блокируют таблицы до восстановления при старте.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р¤РѕРЅРѕРІР°СЏ Р·Р°РјРµРЅР° СЃРµРєС‚РѕСЂР° С‡РµСЂРµР· С‚РѕС‚ Р¶Рµ Р¶СѓСЂРЅР°Р», С€Р°РіР°РјРё РїРѕ 64 Р‘.
+// Р‘СѓС„РµСЂ sjr РїСЂРёРЅР°РґР»РµР¶РёС‚ РѕРїРµСЂР°С†РёРё РґРѕ Р·Р°РІРµСЂС€РµРЅРёСЏ РїСЂРѕРІРµСЂРєРё W25.
+// РџРѕСЃР»Рµ С„РёРєСЃР°С†РёРё РѕС€РёР±РєРё Р±Р»РѕРєРёСЂСѓСЋС‚ С‚Р°Р±Р»РёС†С‹ РґРѕ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїСЂРё СЃС‚Р°СЂС‚Рµ.
 #include "sector_runtime.h"
 #include "sector_journal.h"
 #include "flash_w25.h"
@@ -11,13 +11,13 @@
 
 sj_runtime_state_s sjr;
 
-// Сообщает о незавершённом журнале или ошибке после фиксации.
+// РЎРѕРѕР±С‰Р°РµС‚ Рѕ РЅРµР·Р°РІРµСЂС€С‘РЅРЅРѕРј Р¶СѓСЂРЅР°Р»Рµ РёР»Рё РѕС€РёР±РєРµ РїРѕСЃР»Рµ С„РёРєСЃР°С†РёРё.
 uint8_t sj_runtime_blocked(void) { return sjr.fault || (sjr.phase && sjr.phase < SJ_PHASE_DONE); }
-// Запрашивает отмену до фиксации образа.
+// Р—Р°РїСЂР°С€РёРІР°РµС‚ РѕС‚РјРµРЅСѓ РґРѕ С„РёРєСЃР°С†РёРё РѕР±СЂР°Р·Р°.
 void sj_runtime_cancel(void) { sjr.cancelled = 1; }
-// Сбрасывает завершённый автомат, сохраняя запрет при неясном результате.
+// РЎР±СЂР°СЃС‹РІР°РµС‚ Р·Р°РІРµСЂС€С‘РЅРЅС‹Р№ Р°РІС‚РѕРјР°С‚, СЃРѕС…СЂР°РЅСЏСЏ Р·Р°РїСЂРµС‚ РїСЂРё РЅРµСЏСЃРЅРѕРј СЂРµР·СѓР»СЊС‚Р°С‚Рµ.
 void sj_runtime_reset(void) { if (!sjr.waiting) sjr.phase = SJ_PHASE_IDLE; }
-// Принимает проверенный адрес и источник при свободном журнале и W25.
+// РџСЂРёРЅРёРјР°РµС‚ РїСЂРѕРІРµСЂРµРЅРЅС‹Р№ Р°РґСЂРµСЃ Рё РёСЃС‚РѕС‡РЅРёРє РїСЂРё СЃРІРѕР±РѕРґРЅРѕРј Р¶СѓСЂРЅР°Р»Рµ Рё W25.
 uint8_t sj_runtime_begin(uint32_t address, sj_chunk_reader reader, const void *context)
 {
   if (mem_config_result() || sjr.phase || sjr.fault || w25_async_active()) return 0;
@@ -25,22 +25,22 @@ uint8_t sj_runtime_begin(uint32_t address, sj_chunk_reader reader, const void *c
   sjr.offset=0; sjr.expected=0xffffffffu; sjr.committed=sjr.cancelled=0;
   sjr.changed=0; sjr.phase=SJ_PHASE_COMPARE; return 1;
 }
-// Блокирует таблицы, если ошибка возникла после попытки фиксации.
+// Р‘Р»РѕРєРёСЂСѓРµС‚ С‚Р°Р±Р»РёС†С‹, РµСЃР»Рё РѕС€РёР±РєР° РІРѕР·РЅРёРєР»Р° РїРѕСЃР»Рµ РїРѕРїС‹С‚РєРё С„РёРєСЃР°С†РёРё.
 static void sjr_fail(void)
 {
-  if (sjr.committed) sjr.fault=1; // Неясный результат разрешает только восстановление при старте.
+  if (sjr.committed) sjr.fault=1; // РќРµСЏСЃРЅС‹Р№ СЂРµР·СѓР»СЊС‚Р°С‚ СЂР°Р·СЂРµС€Р°РµС‚ С‚РѕР»СЊРєРѕ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїСЂРё СЃС‚Р°СЂС‚Рµ.
   sjr.phase=SJ_PHASE_ERROR;
 }
-// Запускает одну команду W25 и сохраняет следующий шаг.
+// Р—Р°РїСѓСЃРєР°РµС‚ РѕРґРЅСѓ РєРѕРјР°РЅРґСѓ W25 Рё СЃРѕС…СЂР°РЅСЏРµС‚ СЃР»РµРґСѓСЋС‰РёР№ С€Р°Рі.
 static void sjr_start(uint32_t address, const uint8_t *data, uint16_t n, uint32_t now, uint8_t after)
 {
   if (!w25_async_start(address,data,n,now)) { sjr_fail(); return; }
   sjr.waiting=1; sjr.after=after;
 }
-// Выполняет один шаг подготовки, фиксации или переноса сектора.
+// Р’С‹РїРѕР»РЅСЏРµС‚ РѕРґРёРЅ С€Р°Рі РїРѕРґРіРѕС‚РѕРІРєРё, С„РёРєСЃР°С†РёРё РёР»Рё РїРµСЂРµРЅРѕСЃР° СЃРµРєС‚РѕСЂР°.
 uint8_t sj_runtime_poll(uint32_t now)
 {
-  uint8_t check[64]; // Сравнение до записи, буфер живёт только в этом вызове.
+  uint8_t check[64]; // РЎСЂР°РІРЅРµРЅРёРµ РґРѕ Р·Р°РїРёСЃРё, Р±СѓС„РµСЂ Р¶РёРІС‘С‚ С‚РѕР»СЊРєРѕ РІ СЌС‚РѕРј РІС‹Р·РѕРІРµ.
   if (!sjr.phase) return 0;
   if (sjr.waiting) {
     uint8_t r=w25_async_poll(now);
@@ -70,7 +70,7 @@ uint8_t sj_runtime_poll(uint32_t now)
     else sjr.phase=SJ_PHASE_SOURCE;
     break;
   case SJ_PHASE_HEADER:
-    // CRC уже посчитан по источнику, W25 проверил содержимое каждой записи.
+    // CRC СѓР¶Рµ РїРѕСЃС‡РёС‚Р°РЅ РїРѕ РёСЃС‚РѕС‡РЅРёРєСѓ, W25 РїСЂРѕРІРµСЂРёР» СЃРѕРґРµСЂР¶РёРјРѕРµ РєР°Р¶РґРѕР№ Р·Р°РїРёСЃРё.
     sjr.header[0]=SJ_MAGIC; sjr.header[1]=SJ_VERSION; sjr.header[2]=sjr.address;
     sjr.header[3]=SJ_SECTOR; sjr.header[4]=~sjr.expected; sjr.header[5]=sjr.expected;
     sjr.header[6]=~crc32_update(0xffffffffu,(uint8_t*)sjr.header,24);
@@ -78,7 +78,7 @@ uint8_t sj_runtime_poll(uint32_t now)
     break;
   case SJ_PHASE_HEADER_WRITE: sjr_start(SJ_META,(uint8_t*)sjr.header,28,now,SJ_PHASE_COMMIT); break;
   case SJ_PHASE_COMMIT:
-    sjr.committed=1; // Метка могла попасть во флеш даже при ошибке проверки.
+    sjr.committed=1; // РњРµС‚РєР° РјРѕРіР»Р° РїРѕРїР°СЃС‚СЊ РІРѕ С„Р»РµС€ РґР°Р¶Рµ РїСЂРё РѕС€РёР±РєРµ РїСЂРѕРІРµСЂРєРё.
     sjr_start(SJ_META+28,(uint8_t*)sjr.header+28,4,now,SJ_PHASE_TARGET_ERASE); break;
   case SJ_PHASE_TARGET_ERASE:
     sjr.offset=0; sjr_start(sjr.address,0,0,now,SJ_PHASE_COPY); break;

@@ -1,6 +1,6 @@
-/* Доработка: Кряжев А., 2026. Модель суток и серверных отказов; без платы.
-   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
-   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. РњРѕРґРµР»СЊ СЃСѓС‚РѕРє Рё СЃРµСЂРІРµСЂРЅС‹С… РѕС‚РєР°Р·РѕРІ; Р±РµР· РїР»Р°С‚С‹.
+   РџРµСЂРёС„РµСЂРёСЏ Рё РІСЂРµРјСЏ РјРѕРґРµР»РёСЂСѓСЋС‚СЃСЏ; РєРѕРґ РїСЂРѕРІРµСЂСЏРµРјРѕРіРѕ РјРѕРґСѓР»СЏ Р±РµСЂС‘С‚СЃСЏ РёР· РїСЂРѕРµРєС‚Р°.
+   РљР°Р¶РґС‹Р№ СЃС†РµРЅР°СЂРёР№ РїСЂРѕРІРµСЂСЏРµС‚ РЅР°Р±Р»СЋРґР°РµРјРѕРµ РїРѕРІРµРґРµРЅРёРµ Р±РµР· РїР»Р°С‚С‹ Рё СЃРµСЂРІРµСЂР°. */
 static struct {
   int8_t connectionhandle; uint8_t registredOnServer, answerTimeout, answerID;
   char IMEIGSM[16]; uint8_t protocolVersion, hardwareVersion;
@@ -23,44 +23,44 @@ static uint32_t dns_late, ping_reply_due;
 static unsigned ping_reply_kind, read_error, long_lines;
 static uint32_t open_times[64];
 static uint8_t open_addresses[64];
-// Выдать время модели для кадров приложения.
+// Р’С‹РґР°С‚СЊ РІСЂРµРјСЏ РјРѕРґРµР»Рё РґР»СЏ РєР°РґСЂРѕРІ РїСЂРёР»РѕР¶РµРЅРёСЏ.
 static uint32_t timers_getMillis(void) { return sim_now; }
-/* Звонок: сколько раз сброшен, ответ модема на сброс, последняя команда перед данными. */
+/* Р—РІРѕРЅРѕРє: СЃРєРѕР»СЊРєРѕ СЂР°Р· СЃР±СЂРѕС€РµРЅ, РѕС‚РІРµС‚ РјРѕРґРµРјР° РЅР° СЃР±СЂРѕСЃ, РїРѕСЃР»РµРґРЅСЏСЏ РєРѕРјР°РЅРґР° РїРµСЂРµРґ РґР°РЅРЅС‹РјРё. */
 static bool call_access_ready, call_registration_noise;
 static unsigned chups, chup_silence, answers, aths, answer_mode, answer_delay, ath_silence;
 static unsigned call_drop, call_drop_urc, call_activations, call_activation_error, call_net_queries, call_pdp_queries, call_tcp_queries;
 static uint8_t call_cgreg_model, call_cereg_model, call_creg_model, call_pdp_model, call_other_pdp, call_other_socket;
 static uint32_t answer_at, answer_due, hangup_at, hangup_due, call_network_due, call_tcp_due;
 static char last_command[32];
-/* SMS: ячейки SIM 1..10 (PDU hex), журнал команд SMS, последняя отправленная PDU. */
+/* SMS: СЏС‡РµР№РєРё SIM 1..10 (PDU hex), Р¶СѓСЂРЅР°Р» РєРѕРјР°РЅРґ SMS, РїРѕСЃР»РµРґРЅСЏСЏ РѕС‚РїСЂР°РІР»РµРЅРЅР°СЏ PDU. */
 static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
 static unsigned cmgs_error, sms_received_count;
 static bool sms_received_model(char *number, char *text);
-/* VoLTE: настройка, состояние модема, ответ ERROR, счётчики запросов и записей. */
+/* VoLTE: РЅР°СЃС‚СЂРѕР№РєР°, СЃРѕСЃС‚РѕСЏРЅРёРµ РјРѕРґРµРјР°, РѕС‚РІРµС‚ ERROR, СЃС‡С‘С‚С‡РёРєРё Р·Р°РїСЂРѕСЃРѕРІ Рё Р·Р°РїРёСЃРµР№. */
 static uint8_t volte_flag, volte_modem; static unsigned volte_error, volte_queries, volte_sets;
-// Выдать требуемую настройку VoLTE.
+// Р’С‹РґР°С‚СЊ С‚СЂРµР±СѓРµРјСѓСЋ РЅР°СЃС‚СЂРѕР№РєСѓ VoLTE.
 static uint8_t volte_flag_model(void) { return volte_flag; }
-/* Баланс: ответ модели на AT+CUSD=1 (URC через 2 с или до OK), счётчики, итог. */
+/* Р‘Р°Р»Р°РЅСЃ: РѕС‚РІРµС‚ РјРѕРґРµР»Рё РЅР° AT+CUSD=1 (URC С‡РµСЂРµР· 2 СЃ РёР»Рё РґРѕ OK), СЃС‡С‘С‚С‡РёРєРё, РёС‚РѕРі. */
 static const char *cusd_reply, *ussd_code; static unsigned cusd_count, cusd_cancel, cusd_error, cusd_early, balance_count;
 static uint32_t cusd_due; static int32_t balance_value;
 static const char *ussd_model(void) { return ussd_code; }
-// Запомнить полученный баланс SIM.
+// Р—Р°РїРѕРјРЅРёС‚СЊ РїРѕР»СѓС‡РµРЅРЅС‹Р№ Р±Р°Р»Р°РЅСЃ SIM.
 static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_count; }
-// Обозначить границу фото, не участвующую в данном сценарии.
+// РћР±РѕР·РЅР°С‡РёС‚СЊ РіСЂР°РЅРёС†Сѓ С„РѕС‚Рѕ, РЅРµ СѓС‡Р°СЃС‚РІСѓСЋС‰СѓСЋ РІ РґР°РЅРЅРѕРј СЃС†РµРЅР°СЂРёРё.
 static void photo_connection_lost(void) {}
 static void user_parse_comand(uint8_t *p, unsigned channel);
 static void call_caller(const char *number);
-/* КОНТРОЛЬНАЯ СУММА */
-/* ПРИЁМ */
+/* РљРћРќРўР РћР›Р¬РќРђРЇ РЎРЈРњРњРђ */
+/* РџР РРЃРњ */
 
-// Поставить входящий кадр сервера в модель TCP.
+// РџРѕСЃС‚Р°РІРёС‚СЊ РІС…РѕРґСЏС‰РёР№ РєР°РґСЂ СЃРµСЂРІРµСЂР° РІ РјРѕРґРµР»СЊ TCP.
 static void enqueue(const uint8_t *p, uint16_t n)
 {
   CHECK(incoming_count + n <= sizeof(incoming));
   memcpy(incoming + incoming_count, p, n); incoming_count += n;
   sim_feed("+QIURC: \"recv\",0\r\n");
 }
-// Собрать независимый проверенный кадр команды сервера.
+// РЎРѕР±СЂР°С‚СЊ РЅРµР·Р°РІРёСЃРёРјС‹Р№ РїСЂРѕРІРµСЂРµРЅРЅС‹Р№ РєР°РґСЂ РєРѕРјР°РЅРґС‹ СЃРµСЂРІРµСЂР°.
 static uint16_t server_frame(uint8_t *p, uint8_t cmd, uint8_t id, const uint8_t *args, uint16_t n)
 {
   uint16_t body = n + 3u; memcpy(p,"SLDN",4); p[4]=(uint8_t)body; p[5]=(uint8_t)(body>>8);
@@ -68,11 +68,11 @@ static uint16_t server_frame(uint8_t *p, uint8_t cmd, uint8_t id, const uint8_t 
   uint16_t crc=crc16_calc(p+4,body+2u); p[body+6]=(uint8_t)crc; p[body+7]=(uint8_t)(crc>>8);
   return body+8u;
 }
-// Принять моделируемые подтверждения регистрации и статуса.
+// РџСЂРёРЅСЏС‚СЊ РјРѕРґРµР»РёСЂСѓРµРјС‹Рµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ СЂРµРіРёСЃС‚СЂР°С†РёРё Рё СЃС‚Р°С‚СѓСЃР°.
 static void user_parse_comand(uint8_t *p, unsigned channel)
 {
   CHECK(channel == CH_SERVER && !comm_tx_busy() && server_rx_verified(p)); ++server_commands;
-  /* Модель разрешает только законные ответы. Любая мусорная команда — ошибка теста. */
+  /* РњРѕРґРµР»СЊ СЂР°Р·СЂРµС€Р°РµС‚ С‚РѕР»СЊРєРѕ Р·Р°РєРѕРЅРЅС‹Рµ РѕС‚РІРµС‚С‹. Р›СЋР±Р°СЏ РјСѓСЃРѕСЂРЅР°СЏ РєРѕРјР°РЅРґР° вЂ” РѕС€РёР±РєР° С‚РµСЃС‚Р°. */
   if (p[4] == 1) { CHECK(p[5] == 0); comm_server_registered(1); }
   else if (p[4] == 24) comm_server_status_ack(p[5]);
   else if (p[4] == 27) {
@@ -85,7 +85,7 @@ static const char *server_text(uint8_t f, uint16_t *capacity)
   if (f==SLM_CFG_HOST2) { *capacity=sizeof("backup.local"); return invalid_reserve == 1 ? "bad\"host" : "backup.local"; }
   return sim_text(f,capacity);
 }
-// Выдать числовые настройки канала модели.
+// Р’С‹РґР°С‚СЊ С‡РёСЃР»РѕРІС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё РєР°РЅР°Р»Р° РјРѕРґРµР»Рё.
 static uint16_t server_number(uint8_t f)
 { return f==SLM_CFG_RESERVE ? reserve_enabled : f==SLM_CFG_PORT2 ? (invalid_reserve == 2 ? 0 : 8888) : sim_number(f); }
 static const slm_settings_t server_settings={server_text,server_number};
@@ -100,19 +100,19 @@ typedef unsigned dataChanel_e;
 #define _2B(x) ((uint8_t)((x)>>8))
 static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
-// Обозначить границу USB, не участвующую в данном сценарии.
+// РћР±РѕР·РЅР°С‡РёС‚СЊ РіСЂР°РЅРёС†Сѓ USB, РЅРµ СѓС‡Р°СЃС‚РІСѓСЋС‰СѓСЋ РІ РґР°РЅРЅРѕРј СЃС†РµРЅР°СЂРёРё.
 static bool usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; return true; }
-/* Эталон: те же сборщики кадров пишут в отдельный буфер, кадр канала сверяется с ним байт в байт. */
+/* Р­С‚Р°Р»РѕРЅ: С‚Рµ Р¶Рµ СЃР±РѕСЂС‰РёРєРё РєР°РґСЂРѕРІ РїРёС€СѓС‚ РІ РѕС‚РґРµР»СЊРЅС‹Р№ Р±СѓС„РµСЂ, РєР°РґСЂ РєР°РЅР°Р»Р° СЃРІРµСЂСЏРµС‚СЃСЏ СЃ РЅРёРј Р±Р°Р№С‚ РІ Р±Р°Р№С‚. */
 static uint8_t legacy_buffer[1040];
-// Выдать отдельный буфер для независимого эталона кадра.
+// Р’С‹РґР°С‚СЊ РѕС‚РґРµР»СЊРЅС‹Р№ Р±СѓС„РµСЂ РґР»СЏ РЅРµР·Р°РІРёСЃРёРјРѕРіРѕ СЌС‚Р°Р»РѕРЅР° РєР°РґСЂР°.
 static uint8_t *legacy_acquire(uint16_t needed) { return needed <= sizeof(legacy_buffer) ? legacy_buffer : NULL; }
-// Выдать вместимость отдельного эталонного буфера.
+// Р’С‹РґР°С‚СЊ РІРјРµСЃС‚РёРјРѕСЃС‚СЊ РѕС‚РґРµР»СЊРЅРѕРіРѕ СЌС‚Р°Р»РѕРЅРЅРѕРіРѕ Р±СѓС„РµСЂР°.
 static uint8_t *legacy_tx_acquire(uint16_t *capacity) { *capacity = sizeof(legacy_buffer); return legacy_buffer; }
-// Запомнить длину эталонного кадра.
+// Р—Р°РїРѕРјРЅРёС‚СЊ РґР»РёРЅСѓ СЌС‚Р°Р»РѕРЅРЅРѕРіРѕ РєР°РґСЂР°.
 static bool legacy_commit(uint16_t n) { CHECK(n<=sizeof(legacy_frame)); memcpy(legacy_frame,legacy_buffer,n); legacy_count=n; return true; }
 #define legacy_free(p, cch) ((void)(p), (void)(cch))
-/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */
-// Сверить кадр с эталоном и показать первое расхождение при отказе.
+/* РџР РћРР—Р’РћР”РРўР•Р›Р РџРђРљР•РўРћР’ */
+// РЎРІРµСЂРёС‚СЊ РєР°РґСЂ СЃ СЌС‚Р°Р»РѕРЅРѕРј Рё РїРѕРєР°Р·Р°С‚СЊ РїРµСЂРІРѕРµ СЂР°СЃС…РѕР¶РґРµРЅРёРµ РїСЂРё РѕС‚РєР°Р·Рµ.
 static void compare_frame(void)
 {
   if (ch.frame_count != legacy_count || memcmp(frame, legacy_frame, ch.frame_count)) {
@@ -122,7 +122,7 @@ static void compare_frame(void)
   }
   CHECK(ch.frame_count == legacy_count && !memcmp(frame, legacy_frame, ch.frame_count));
 }
-// Сравнить кадр регистрации с эталоном и передать его каналу.
+// РЎСЂР°РІРЅРёС‚СЊ РєР°РґСЂ СЂРµРіРёСЃС‚СЂР°С†РёРё СЃ СЌС‚Р°Р»РѕРЅРѕРј Рё РїРµСЂРµРґР°С‚СЊ РµРіРѕ РєР°РЅР°Р»Сѓ.
 static void registration_producer(void)
 {
   uint8_t id=uniqIDCnt;
@@ -131,7 +131,7 @@ static void registration_producer(void)
   compare_frame();
   ++registrations_sent;
 }
-// Сравнить кадр статуса с эталоном и запомнить уникальный номер.
+// РЎСЂР°РІРЅРёС‚СЊ РєР°РґСЂ СЃС‚Р°С‚СѓСЃР° СЃ СЌС‚Р°Р»РѕРЅРѕРј Рё Р·Р°РїРѕРјРЅРёС‚СЊ СѓРЅРёРєР°Р»СЊРЅС‹Р№ РЅРѕРјРµСЂ.
 static void status_producer(void)
 {
   uint8_t id=uniqIDCnt;
@@ -140,18 +140,18 @@ static void status_producer(void)
   compare_frame();
   ++statuses_sent;
 }
-// Передать смену TCP-сеанса реальному сборщику кадров.
+// РџРµСЂРµРґР°С‚СЊ СЃРјРµРЅСѓ TCP-СЃРµР°РЅСЃР° СЂРµР°Р»СЊРЅРѕРјСѓ СЃР±РѕСЂС‰РёРєСѓ РєР°РґСЂРѕРІ.
 static void server_session(bool open) { ++server_sessions; user_comm_session(open); }
-// Смоделировать сохранение события отсутствия серверного трафика.
+// РЎРјРѕРґРµР»РёСЂРѕРІР°С‚СЊ СЃРѕС…СЂР°РЅРµРЅРёРµ СЃРѕР±С‹С‚РёСЏ РѕС‚СЃСѓС‚СЃС‚РІРёСЏ СЃРµСЂРІРµСЂРЅРѕРіРѕ С‚СЂР°С„РёРєР°.
 static bool no_traffic(void)
 {
   if (event_retry) { --event_retry; return false; }
   ++event13; flash_model[0x70000]=13; return true;
 }
 static const comm_server_handlers_t test_server_handlers={registration_producer,status_producer,server_session,server_rx_process,no_traffic};
-/* События журнала связи по порядку: вид и адрес; link_refuse - журнал не принял, повтор при следующем случае. */
+/* РЎРѕР±С‹С‚РёСЏ Р¶СѓСЂРЅР°Р»Р° СЃРІСЏР·Рё РїРѕ РїРѕСЂСЏРґРєСѓ: РІРёРґ Рё Р°РґСЂРµСЃ; link_refuse - Р¶СѓСЂРЅР°Р» РЅРµ РїСЂРёРЅСЏР», РїРѕРІС‚РѕСЂ РїСЂРё СЃР»РµРґСѓСЋС‰РµРј СЃР»СѓС‡Р°Рµ. */
 static uint8_t link_kinds[256], link_addrs[256]; static unsigned links, link_refuse;
-// Запомнить события состояния серверной связи.
+// Р—Р°РїРѕРјРЅРёС‚СЊ СЃРѕР±С‹С‚РёСЏ СЃРѕСЃС‚РѕСЏРЅРёСЏ СЃРµСЂРІРµСЂРЅРѕР№ СЃРІСЏР·Рё.
 static bool link_model(uint8_t kind, uint8_t address)
 {
   if (link_refuse) { --link_refuse; return false; }
@@ -166,7 +166,7 @@ static unsigned link_count(uint8_t kind, uint8_t address)
 }
 static const slm_handlers_t transport_handlers={sim_gpio,sim_type,sim_imei};
 
-// Ответить на физически отправленные команды и кадры модели.
+// РћС‚РІРµС‚РёС‚СЊ РЅР° С„РёР·РёС‡РµСЃРєРё РѕС‚РїСЂР°РІР»РµРЅРЅС‹Рµ РєРѕРјР°РЅРґС‹ Рё РєР°РґСЂС‹ РјРѕРґРµР»Рё.
 static void transport_tx(void)
 {
   if (!(regs.CR1 & USART_CR1_TXEIE)) return;
@@ -179,12 +179,12 @@ static void transport_tx(void)
     return;
   }
   if (tx_data == frame) {
-    /* После '>' - только данные: служебная команда не встаёт между QISEND и кадром. */
+    /* РџРѕСЃР»Рµ '>' - С‚РѕР»СЊРєРѕ РґР°РЅРЅС‹Рµ: СЃР»СѓР¶РµР±РЅР°СЏ РєРѕРјР°РЅРґР° РЅРµ РІСЃС‚Р°С‘С‚ РјРµР¶РґСѓ QISEND Рё РєР°РґСЂРѕРј. */
     CHECK(!strncmp(last_command,"AT+QISEND=0,",12) && strcmp(last_command,"AT+QISEND=0,0"));
     CHECK(tx_count <= sizeof(sent_frame)); sent_count=tx_count; memcpy(sent_frame,tx_data,tx_count);
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
-    /* SLM336 может возвращать бинарный пакет даже после ATE0. */
+    /* SLM336 РјРѕР¶РµС‚ РІРѕР·РІСЂР°С‰Р°С‚СЊ Р±РёРЅР°СЂРЅС‹Р№ РїР°РєРµС‚ РґР°Р¶Рµ РїРѕСЃР»Рµ ATE0. */
     if (sim_data_echo) for (unsigned i=0;i<sent_count;++i) interrupt_byte(sent_frame[i],USART_SR_RXNE);
     if (!send_silence) sim_reply("SEND OK\r\n",20);
     else if (send_silence == 2) sim_reply("SEND FAIL\r\n",20);
@@ -201,7 +201,7 @@ static void transport_tx(void)
   if (!strncmp(cmd,"AT+CMG",6) || !strncmp(cmd,"AT+CPMS",7) || !strncmp(cmd,"AT+CNMI",7)) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
-    if (strlen(sms_log)+strlen(cmd)+2u>=sizeof(sms_log)) sms_log[0]=0; /* долгие прогоны восстановления */
+    if (strlen(sms_log)+strlen(cmd)+2u>=sizeof(sms_log)) sms_log[0]=0; /* РґРѕР»РіРёРµ РїСЂРѕРіРѕРЅС‹ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ */
     strcat(sms_log,cmd); strcat(sms_log,";");
     unsigned i;
     char head[48];
@@ -323,7 +323,7 @@ static void transport_tx(void)
   }
   legacy_sim_tx();
 }
-// Продвинуть UART, модем, канал и сервер на один шаг.
+// РџСЂРѕРґРІРёРЅСѓС‚СЊ UART, РјРѕРґРµРј, РєР°РЅР°Р» Рё СЃРµСЂРІРµСЂ РЅР° РѕРґРёРЅ С€Р°Рі.
 static void transport_tick(unsigned increment)
 {
   writes = 0;
@@ -347,11 +347,11 @@ static void transport_tick(unsigned increment)
   if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
   transport_tx(); sim_now+=increment;
 }
-// Пройти заданный интервал с шагом модели 10 мс.
+// РџСЂРѕР№С‚Рё Р·Р°РґР°РЅРЅС‹Р№ РёРЅС‚РµСЂРІР°Р» СЃ С€Р°РіРѕРј РјРѕРґРµР»Рё 10 РјСЃ.
 static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<ms) transport_tick(10); }
-// Запросить обычное восстановление после отказа ping и DNS.
+// Р—Р°РїСЂРѕСЃРёС‚СЊ РѕР±С‹С‡РЅРѕРµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїРѕСЃР»Рµ РѕС‚РєР°Р·Р° ping Рё DNS.
 static void server_no_internet(void) { comm_channel_reopen(0); }
-// Начать независимый сеанс модема и зарегистрироваться на сервере.
+// РќР°С‡Р°С‚СЊ РЅРµР·Р°РІРёСЃРёРјС‹Р№ СЃРµР°РЅСЃ РјРѕРґРµРјР° Рё Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°С‚СЊСЃСЏ РЅР° СЃРµСЂРІРµСЂРµ.
 static void server_reset(void)
 {
   comm_modem_transport(NULL); sim_reset();
@@ -374,7 +374,7 @@ static void server_reset(void)
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
   comm_balance_init(ussd_model, balance_model);
-  /* Выход к TCP — принятой моделью этапа 3. */
+  /* Р’С‹С…РѕРґ Рє TCP вЂ” РїСЂРёРЅСЏС‚РѕР№ РјРѕРґРµР»СЊСЋ СЌС‚Р°РїР° 3. */
   comm_server_link(link_model); comm_server_no_internet(server_no_internet);
   comm_server_init(&test_server_handlers); links=link_refuse=0;
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
@@ -382,10 +382,10 @@ static void server_reset(void)
   CHECK(comm_server_online() && comm_modem_ready() && sim_now<11000);
   advance(500); call_activations=call_net_queries=call_pdp_queries=call_tcp_queries=0;
 }
-// Проверить кадры, сроки статусов, регистрацию и отказы сервера.
+// РџСЂРѕРІРµСЂРёС‚СЊ РєР°РґСЂС‹, СЃСЂРѕРєРё СЃС‚Р°С‚СѓСЃРѕРІ, СЂРµРіРёСЃС‚СЂР°С†РёСЋ Рё РѕС‚РєР°Р·С‹ СЃРµСЂРІРµСЂР°.
 static void server_tests(void)
 {
-  /* Резервный адрес и порт проверяются до первого построения команды TCP. */
+  /* Р РµР·РµСЂРІРЅС‹Р№ Р°РґСЂРµСЃ Рё РїРѕСЂС‚ РїСЂРѕРІРµСЂСЏСЋС‚СЃСЏ РґРѕ РїРµСЂРІРѕРіРѕ РїРѕСЃС‚СЂРѕРµРЅРёСЏ РєРѕРјР°РЅРґС‹ TCP. */
   sim_reset(); reserve_enabled=1; invalid_reserve=1;
   CHECK(!modem_slm336_start(&server_settings,&sim_handlers,0));
   invalid_reserve=2;
@@ -407,7 +407,7 @@ static void server_tests(void)
   CHECK(ch.frame_count==1040 && !memcmp(frame,legacy_frame,1040)); advance(500);
   sms[1029]='S'; user_send_smsToServer(sms); CHECK(!comm_tx_busy());
   user_send_smsToServer(NULL); CHECK(!comm_tx_busy());
-  /* Первый период — 5 с; внеочередной статус не переносит следующий период 15 с. */
+  /* РџРµСЂРІС‹Р№ РїРµСЂРёРѕРґ вЂ” 5 СЃ; РІРЅРµРѕС‡РµСЂРµРґРЅРѕР№ СЃС‚Р°С‚СѓСЃ РЅРµ РїРµСЂРµРЅРѕСЃРёС‚ СЃР»РµРґСѓСЋС‰РёР№ РїРµСЂРёРѕРґ 15 СЃ. */
   server_reset(); CHECK(comm_server_online() && registrations_sent==1);
   advance(4490); CHECK(statuses_sent==0);
   advance(10); CHECK(statuses_sent==1);
@@ -484,7 +484,7 @@ static void server_tests(void)
   advance(500); CHECK(server_commands==before && !server_rx_count && closes>=1);
   puts("comm_server: registration/status/ping/DNS/close/backpressure/ACK/address/backoff PASS");
 }
-/* Ответ ping/DNS может прийти посреди подтверждения другой передачи. */
+/* РћС‚РІРµС‚ ping/DNS РјРѕР¶РµС‚ РїСЂРёР№С‚Рё РїРѕСЃСЂРµРґРё РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РґСЂСѓРіРѕР№ РїРµСЂРµРґР°С‡Рё. */
 static void probe_overlap_tests(void)
 {
   for (unsigned probe=COMM_CH_PING; probe<=COMM_CH_DNS; ++probe) {
@@ -502,7 +502,7 @@ static void probe_overlap_tests(void)
     CHECK(sv.state==SV_SILENT && event13==1 && !ch.probe_active && !comm_tx_busy());
   }
 }
-// Проверить сутки случайного трафика и неизменность NOR.
+// РџСЂРѕРІРµСЂРёС‚СЊ СЃСѓС‚РєРё СЃР»СѓС‡Р°Р№РЅРѕРіРѕ С‚СЂР°С„РёРєР° Рё РЅРµРёР·РјРµРЅРЅРѕСЃС‚СЊ NOR.
 static void garbage_test(void)
 {
   server_reset();
@@ -512,14 +512,14 @@ static void garbage_test(void)
   while (sim_now-start<86400000u) {
     random=random*1664525u+1013904223u;
     if ((random&255u)==0 && !comm_modem_busy() && !comm_tx_busy()) {
-      /* Тело QIRD содержит управляющие слова, NUL и ложный SLDN/CRC. */
+      /* РўРµР»Рѕ QIRD СЃРѕРґРµСЂР¶РёС‚ СѓРїСЂР°РІР»СЏСЋС‰РёРµ СЃР»РѕРІР°, NUL Рё Р»РѕР¶РЅС‹Р№ SLDN/CRC. */
       uint8_t noise[256]; for (unsigned i=0;i<sizeof(noise);++i) noise[i]=(uint8_t)(random+i*11u);
       memcpy(noise+7,"OK\r\nERROR\r\nRING\r\nSLDN\0",23); enqueue(noise,sizeof(noise)); ++fragments;
     }
     if ((random&8191u)==0 && !sim_pending[0] && !comm_modem_busy()) {
       for (unsigned i=0;i<700;++i) interrupt_byte('X',USART_SR_RXNE);
       transport_tick(10); comm_uart_stats_t stats; comm_uart_stats(&stats); DIAG_CHECK(stats.overflow); ++overflows;
-      /* Новая изолированная сессия модели; питание/восстановление этапа 5 не тестируются. */
+      /* РќРѕРІР°СЏ РёР·РѕР»РёСЂРѕРІР°РЅРЅР°СЏ СЃРµСЃСЃРёСЏ РјРѕРґРµР»Рё; РїРёС‚Р°РЅРёРµ/РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ СЌС‚Р°РїР° 5 РЅРµ С‚РµСЃС‚РёСЂСѓСЋС‚СЃСЏ. */
       uint32_t saved=sim_now; unsigned saved_events=event13;
       server_reset(); sim_now=saved; sv.now=saved; sv.status_since=saved; event13=saved_events;
     }
@@ -535,34 +535,34 @@ static void garbage_test(void)
   CHECK(!memcmp(flash_model,flash_before,sizeof(flash_model)));
   printf("comm_server garbage: 24 model hours, %u payloads, %u ring overflows, %u long lines, entire NOR unchanged PASS\n",fragments,overflows,long_lines);
 }
-// Дождаться серверной регистрации с ограничением времени модели.
+// Р”РѕР¶РґР°С‚СЊСЃСЏ СЃРµСЂРІРµСЂРЅРѕР№ СЂРµРіРёСЃС‚СЂР°С†РёРё СЃ РѕРіСЂР°РЅРёС‡РµРЅРёРµРј РІСЂРµРјРµРЅРё РјРѕРґРµР»Рё.
 static void until_online(void) { for (unsigned i=0;!comm_server_online() && i<200000;++i) transport_tick(10); CHECK(comm_server_online()); }
-/* Лист «Журнал событий»: 14/15 подключён (сервер принял регистрацию), 16/17 ошибка соединения -
-   один раз до удачного, 18/19 потеря связи после регистрации. Номер сервера - по адресу. */
+/* Р›РёСЃС‚ В«Р–СѓСЂРЅР°Р» СЃРѕР±С‹С‚РёР№В»: 14/15 РїРѕРґРєР»СЋС‡С‘РЅ (СЃРµСЂРІРµСЂ РїСЂРёРЅСЏР» СЂРµРіРёСЃС‚СЂР°С†РёСЋ), 16/17 РѕС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ -
+   РѕРґРёРЅ СЂР°Р· РґРѕ СѓРґР°С‡РЅРѕРіРѕ, 18/19 РїРѕС‚РµСЂСЏ СЃРІСЏР·Рё РїРѕСЃР»Рµ СЂРµРіРёСЃС‚СЂР°С†РёРё. РќРѕРјРµСЂ СЃРµСЂРІРµСЂР° - РїРѕ Р°РґСЂРµСЃСѓ. */
 static void link_tests(void)
 {
   server_reset(); CHECK(links==1 && link_kinds[0]==COMM_LINK_UP && link_addrs[0]==0);
   sim_feed("+QIURC: \"closed\",0\r\n"); advance(2000);
   CHECK(links==3 && link_kinds[1]==COMM_LINK_LOST && link_addrs[1]==0 && link_kinds[2]==COMM_LINK_UP);
-  /* Перезапуск модема на связи - тоже потеря. */
+  /* РџРµСЂРµР·Р°РїСѓСЃРє РјРѕРґРµРјР° РЅР° СЃРІСЏР·Рё - С‚РѕР¶Рµ РїРѕС‚РµСЂСЏ. */
   comm_server_init(&test_server_handlers); CHECK(links==4 && link_kinds[3]==COMM_LINK_LOST);
-  /* Сервер не открывает TCP: одно событие на всю серию попыток. */
+  /* РЎРµСЂРІРµСЂ РЅРµ РѕС‚РєСЂС‹РІР°РµС‚ TCP: РѕРґРЅРѕ СЃРѕР±С‹С‚РёРµ РЅР° РІСЃСЋ СЃРµСЂРёСЋ РїРѕРїС‹С‚РѕРє. */
   server_reset(); sim_open_error=1; comm_channel_reopen(0);
   for (unsigned i=0;opens<6 && i<100000;++i) transport_tick(10);
   CHECK(opens>=6 && link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && links==3);
   sim_open_error=0; until_online(); CHECK(links==4 && link_kinds[3]==COMM_LINK_UP);
-  /* После удачного соединения ошибка пишется снова. */
+  /* РџРѕСЃР»Рµ СѓРґР°С‡РЅРѕРіРѕ СЃРѕРµРґРёРЅРµРЅРёСЏ РѕС€РёР±РєР° РїРёС€РµС‚СЃСЏ СЃРЅРѕРІР°. */
   sim_open_error=1; comm_channel_reopen(0);
   for (unsigned i=0;links<6;++i) { CHECK(i<100000); transport_tick(10); }
   CHECK(link_count(COMM_LINK_FAIL,0)==2);
-  /* TCP открыт, регистрацию сервер не принял - ошибка соединения, не «подключён» и не «потеря». */
+  /* TCP РѕС‚РєСЂС‹С‚, СЂРµРіРёСЃС‚СЂР°С†РёСЋ СЃРµСЂРІРµСЂ РЅРµ РїСЂРёРЅСЏР» - РѕС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ, РЅРµ В«РїРѕРґРєР»СЋС‡С‘РЅВ» Рё РЅРµ В«РїРѕС‚РµСЂСЏВ». */
   server_reset(); drop_register=1; comm_channel_reopen(0); advance(30000);
-  CHECK(link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_UP,0)==1); /* UP - от server_reset */
-  /* Журнал не принял запись - повтор при следующей неудаче. */
+  CHECK(link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_UP,0)==1); /* UP - РѕС‚ server_reset */
+  /* Р–СѓСЂРЅР°Р» РЅРµ РїСЂРёРЅСЏР» Р·Р°РїРёСЃСЊ - РїРѕРІС‚РѕСЂ РїСЂРё СЃР»РµРґСѓСЋС‰РµР№ РЅРµСѓРґР°С‡Рµ. */
   server_reset(); link_refuse=1; sim_open_error=1; comm_channel_reopen(0); link_refuse=1;
   for (unsigned i=0;opens<4 && i<100000;++i) transport_tick(10);
   CHECK(link_count(COMM_LINK_FAIL,0)==1);
-  /* Резервный сервер: ошибка каждого - по разу, «подключён» - с адресом, где открылся TCP. */
+  /* Р РµР·РµСЂРІРЅС‹Р№ СЃРµСЂРІРµСЂ: РѕС€РёР±РєР° РєР°Р¶РґРѕРіРѕ - РїРѕ СЂР°Р·Сѓ, В«РїРѕРґРєР»СЋС‡С‘РЅВ» - СЃ Р°РґСЂРµСЃРѕРј, РіРґРµ РѕС‚РєСЂС‹Р»СЃСЏ TCP. */
   server_reset(); reserve_enabled=1; sim_open_error=1; comm_channel_reopen(0);
   for (unsigned i=0;opens<10 && i<200000;++i) transport_tick(10);
   CHECK(link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_FAIL,1)==1);
@@ -570,7 +570,7 @@ static void link_tests(void)
   CHECK(comm_server_address()==open_addresses[opens-1u]);
   puts("comm_server link events: connected, lost, connect error once until success, rejected registration, retry, reserve PASS");
 }
-/* Пакет 8 (ответ на команду 6): занятый слот канала не теряет его - уходит, когда слот свободен. */
+/* РџР°РєРµС‚ 8 (РѕС‚РІРµС‚ РЅР° РєРѕРјР°РЅРґСѓ 6): Р·Р°РЅСЏС‚С‹Р№ СЃР»РѕС‚ РєР°РЅР°Р»Р° РЅРµ С‚РµСЂСЏРµС‚ РµРіРѕ - СѓС…РѕРґРёС‚, РєРѕРіРґР° СЃР»РѕС‚ СЃРІРѕР±РѕРґРµРЅ. */
 static void unregistered_sms_tests(void)
 {
   server_reset();uint8_t busy=0;user_send_anyData(27,&busy,1,CH_SERVER,1);
@@ -581,7 +581,7 @@ static void unregistered_sms_tests(void)
   puts("unknown ID notification: waits for a free slot and is sent once PASS");
 }
 
-// Проверить сохранение ответа обновления до освобождения слота.
+// РџСЂРѕРІРµСЂРёС‚СЊ СЃРѕС…СЂР°РЅРµРЅРёРµ РѕС‚РІРµС‚Р° РѕР±РЅРѕРІР»РµРЅРёСЏ РґРѕ РѕСЃРІРѕР±РѕР¶РґРµРЅРёСЏ СЃР»РѕС‚Р°.
 static void pending_update_tests(void)
 {
   server_reset();uint16_t old=device.status;
@@ -599,7 +599,7 @@ static void pending_update_tests(void)
   puts("update result: busy slot keeps code, percent and ID until sent once PASS");
 }
 
-// Проверить однократную передачу ответов считывателя после занятости.
+// РџСЂРѕРІРµСЂРёС‚СЊ РѕРґРЅРѕРєСЂР°С‚РЅСѓСЋ РїРµСЂРµРґР°С‡Сѓ РѕС‚РІРµС‚РѕРІ СЃС‡РёС‚С‹РІР°С‚РµР»СЏ РїРѕСЃР»Рµ Р·Р°РЅСЏС‚РѕСЃС‚Рё.
 static void reader_tests(void)
 {
   server_reset(); uint16_t cap; uint8_t *p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
@@ -610,12 +610,12 @@ static void reader_tests(void)
   advance(500); user_send_readedIDtoServer((uint8_t*)"0012345678",1);
   for (i=0;!(sent_frame[8]==8 && sent_frame[9]==1) && i<1000;++i) { transport_tick(10); reader_reply_poll(); }
   CHECK(sent_frame[9]==1 && !memcmp(sent_frame+10,"0012345678",10));
-  /* Отправлен один раз: дальше пакетов 8 нет. */
+  /* РћС‚РїСЂР°РІР»РµРЅ РѕРґРёРЅ СЂР°Р·: РґР°Р»СЊС€Рµ РїР°РєРµС‚РѕРІ 8 РЅРµС‚. */
   sent_frame[8]=0; for (i=0;i<300;++i) { transport_tick(10); reader_reply_poll(); }
   CHECK(sent_frame[8]!=8);
   puts("reader reply: packet 8 waits for a free slot, timeout and card both delivered once PASS");
 }
-/* ВОССТАНОВЛЕНИЕ */
-/* ВЫЗОВ */
+/* Р’РћРЎРЎРўРђРќРћР’Р›Р•РќРР• */
+/* Р’Р«Р—РћР’ */
 int main(void)
 { CHECK(slm_regressions()==0); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }

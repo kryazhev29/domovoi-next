@@ -1,7 +1,7 @@
-/* Доработка: Кряжев А., 2026.
-   Запускает единственный SLM336 и распределяет его ответы.
-   Шаги питания и настройки заданы постоянной таблицей.
-   Один владелец AT; служебные команды ждут свободного слота.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   Р—Р°РїСѓСЃРєР°РµС‚ РµРґРёРЅСЃС‚РІРµРЅРЅС‹Р№ SLM336 Рё СЂР°СЃРїСЂРµРґРµР»СЏРµС‚ РµРіРѕ РѕС‚РІРµС‚С‹.
+   РЁР°РіРё РїРёС‚Р°РЅРёСЏ Рё РЅР°СЃС‚СЂРѕР№РєРё Р·Р°РґР°РЅС‹ РїРѕСЃС‚РѕСЏРЅРЅРѕР№ С‚Р°Р±Р»РёС†РµР№.
+   РћРґРёРЅ РІР»Р°РґРµР»РµС† AT; СЃР»СѓР¶РµР±РЅС‹Рµ РєРѕРјР°РЅРґС‹ Р¶РґСѓС‚ СЃРІРѕР±РѕРґРЅРѕРіРѕ СЃР»РѕС‚Р°.
 */
 #include "comm_modem.h"
 #include "comm_at.h"
@@ -10,7 +10,7 @@
 #include "comm_recover.h"
 #include "comm_channel.h"
 #include <string.h>
-/* Настройки и история живут между попытками; текущая попытка обнуляется целиком. */
+/* РќР°СЃС‚СЂРѕР№РєРё Рё РёСЃС‚РѕСЂРёСЏ Р¶РёРІСѓС‚ РјРµР¶РґСѓ РїРѕРїС‹С‚РєР°РјРё; С‚РµРєСѓС‰Р°СЏ РїРѕРїС‹С‚РєР° РѕР±РЅСѓР»СЏРµС‚СЃСЏ С†РµР»РёРєРѕРј. */
 static struct {
   struct {
     uint8_t done, result, answer, query, recording;
@@ -29,9 +29,9 @@ static struct {
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
   void (*urc[COMM_URC_COUNT])(const uint8_t *, uint16_t);
   uint8_t call_active;
-  uint8_t session; /* растёт с каждой попыткой запуска */
-  /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
-     данные уходят в том же poll; результат забирает только владелец req. */
+  uint8_t session; /* СЂР°СЃС‚С‘С‚ СЃ РєР°Р¶РґРѕР№ РїРѕРїС‹С‚РєРѕР№ Р·Р°РїСѓСЃРєР° */
+  /* РЎР»СѓР¶РµР±РЅР°СЏ РєРѕРјР°РЅРґР° РІРЅРµ РѕС‡РµСЂРµРґРё РєР°РЅР°Р»Р°: queued Р¶РґС‘С‚ AT, prompted - РїРѕР»СѓС‡РµРЅ '>',
+     РґР°РЅРЅС‹Рµ СѓС…РѕРґСЏС‚ РІ С‚РѕРј Р¶Рµ poll; СЂРµР·СѓР»СЊС‚Р°С‚ Р·Р°Р±РёСЂР°РµС‚ С‚РѕР»СЊРєРѕ РІР»Р°РґРµР»РµС† req. */
   struct { const comm_side_t *req; uint32_t started; uint8_t queued, running, prompted, done, result; } side;
 #if DOMOVOI_DIAG
   slm_diag_t diag;
@@ -42,15 +42,15 @@ typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 128u) ? 1 : -1];
 #endif
 
 #if DOMOVOI_DIAG
-/* Преобразовать длительность шага в насыщаемое значение диагностики. */
+/* РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ С€Р°РіР° РІ РЅР°СЃС‹С‰Р°РµРјРѕРµ Р·РЅР°С‡РµРЅРёРµ РґРёР°РіРЅРѕСЃС‚РёРєРё. */
 static uint16_t slm_elapsed(uint32_t start)
 {
   uint32_t ticks = (slm.attempt.now - start) / 10u;
   return ticks > UINT16_MAX ? UINT16_MAX : (uint16_t)ticks;
 }
 #endif
-/* Единственная запись длительностей, завершений и кольца сбоев.
-   STEP_COUNT+1 — текущий снимок, STEP_COUNT — завершение без нового шага. */
+/* Р•РґРёРЅСЃС‚РІРµРЅРЅР°СЏ Р·Р°РїРёСЃСЊ РґР»РёС‚РµР»СЊРЅРѕСЃС‚РµР№, Р·Р°РІРµСЂС€РµРЅРёР№ Рё РєРѕР»СЊС†Р° СЃР±РѕРµРІ.
+   STEP_COUNT+1 вЂ” С‚РµРєСѓС‰РёР№ СЃРЅРёРјРѕРє, STEP_COUNT вЂ” Р·Р°РІРµСЂС€РµРЅРёРµ Р±РµР· РЅРѕРІРѕРіРѕ С€Р°РіР°. */
 void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
 {
 #if DOMOVOI_DIAG
@@ -105,7 +105,7 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
     slm.attempt.answer = slm.attempt.done = 0; slm.attempt.next = slm.attempt.now;
   }
 }
-/* Закончить попытку модема с заданной причиной. */
+/* Р—Р°РєРѕРЅС‡РёС‚СЊ РїРѕРїС‹С‚РєСѓ РјРѕРґРµРјР° СЃ Р·Р°РґР°РЅРЅРѕР№ РїСЂРёС‡РёРЅРѕР№. */
 static void slm_fail(uint8_t reason)
 {
   if (slm.attempt.status.state == SLM_FAILED) return;
@@ -113,7 +113,7 @@ static void slm_fail(uint8_t reason)
   slm.attempt.status.state = SLM_FAILED;
 }
 
-/* Распределить AT между запуском, каналом и служебным владельцем. */
+/* Р Р°СЃРїСЂРµРґРµР»РёС‚СЊ AT РјРµР¶РґСѓ Р·Р°РїСѓСЃРєРѕРј, РєР°РЅР°Р»РѕРј Рё СЃР»СѓР¶РµР±РЅС‹Рј РІР»Р°РґРµР»СЊС†РµРј. */
 static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
   if (kind == COMM_AT_URC)
@@ -125,13 +125,13 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       if (detail == COMM_AT_GOT_PROMPT && slm.side.req->payload) { slm.side.prompted = 1; return; }
       slm.side.done = 1; slm.side.result = (uint8_t)detail;
       if (detail <= COMM_AT_TIMEOUT) return;
-      kind = COMM_AT_STREAM_ERROR; /* поток потерян - как у любой команды */
+      kind = COMM_AT_STREAM_ERROR; /* РїРѕС‚РѕРє РїРѕС‚РµСЂСЏРЅ - РєР°Рє Сѓ Р»СЋР±РѕР№ РєРѕРјР°РЅРґС‹ */
     }
   }
   if (kind == COMM_AT_DONE) {
     slm.attempt.done = 1; slm.attempt.result = (uint8_t)detail;
     slm.attempt.status.modem_code = n;
-    /* Ошибка грамматики/UART оставляет AT в FAULT: обычный TCP close уже невозможен. */
+    /* РћС€РёР±РєР° РіСЂР°РјРјР°С‚РёРєРё/UART РѕСЃС‚Р°РІР»СЏРµС‚ AT РІ FAULT: РѕР±С‹С‡РЅС‹Р№ TCP close СѓР¶Рµ РЅРµРІРѕР·РјРѕР¶РµРЅ. */
     if (detail > COMM_AT_TIMEOUT) kind = COMM_AT_STREAM_ERROR;
   }
   if (slm.attempt.status.state == SLM_READY || kind == COMM_AT_URC
@@ -151,7 +151,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     slm_fail(kind == COMM_AT_NO_ANSWER ? SLM_ERR_NO_ANSWER : SLM_ERR_STREAM); return;
   }
   if (kind == COMM_AT_DONE) return;
-  /* После отказа поздние URC не индексируют таблицу шагом TCP/READ. */
+  /* РџРѕСЃР»Рµ РѕС‚РєР°Р·Р° РїРѕР·РґРЅРёРµ URC РЅРµ РёРЅРґРµРєСЃРёСЂСѓСЋС‚ С‚Р°Р±Р»РёС†Сѓ С€Р°РіРѕРј TCP/READ. */
   if (slm.attempt.status.state != SLM_STARTING) return;
   uint32_t values[2];
   uint8_t step = slm.attempt.status.step;
@@ -161,13 +161,13 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
   } else {
     switch (action) {
     case MODEM_NETWORK:
-      /* Возврат сети будит обычный запуск, не ждёт следующего секундного опроса. */
+      /* Р’РѕР·РІСЂР°С‚ СЃРµС‚Рё Р±СѓРґРёС‚ РѕР±С‹С‡РЅС‹Р№ Р·Р°РїСѓСЃРє, РЅРµ Р¶РґС‘С‚ СЃР»РµРґСѓСЋС‰РµРіРѕ СЃРµРєСѓРЅРґРЅРѕРіРѕ РѕРїСЂРѕСЃР°. */
       if ((comm_at_parse(p,n,"+CGREG:\005",values) || comm_at_parse(p,n,"+CEREG:\005",values)
           || comm_at_parse(p,n,"+CGREG:\005,\"*",values) || comm_at_parse(p,n,"+CEREG:\005,\"*",values)) && (values[0] == 1 || values[0] == 5)) {
         slm.attempt.net_registered = 1; slm.attempt.next = slm.attempt.now;
       }
       if (comm_at_parse(p,n,(slm.attempt.query ? "+CEREG:\005,\005|" : "+CGREG:\005,\005|"),values) && values[0] <= 2 && values[1] <= 5) {
-        slm.attempt.answer = 1; /* Один домен может быть запрещён при регистрации в другом. */
+        slm.attempt.answer = 1; /* РћРґРёРЅ РґРѕРјРµРЅ РјРѕР¶РµС‚ Р±С‹С‚СЊ Р·Р°РїСЂРµС‰С‘РЅ РїСЂРё СЂРµРіРёСЃС‚СЂР°С†РёРё РІ РґСЂСѓРіРѕРј. */
         if (values[1] == 1 || values[1] == 5) slm.attempt.net_registered = 1;
       }
       break;
@@ -189,7 +189,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       break;
     }
     case MODEM_IMEI: {
-      /* AT+GSN: строка из 15 цифр - IMEI для регистрации на сервере. */
+      /* AT+GSN: СЃС‚СЂРѕРєР° РёР· 15 С†РёС„СЂ - IMEI РґР»СЏ СЂРµРіРёСЃС‚СЂР°С†РёРё РЅР° СЃРµСЂРІРµСЂРµ. */
       char imei[16];
       if (n != 15) break;
       for (uint16_t i = 0; i < n; ++i) { if (p[i] < '0' || p[i] > '9') return; imei[i] = (char)p[i]; }
@@ -211,20 +211,20 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma inline=never
 #endif
-/* Запросить строковую настройку у владельца конфигурации. */
+/* Р—Р°РїСЂРѕСЃРёС‚СЊ СЃС‚СЂРѕРєРѕРІСѓСЋ РЅР°СЃС‚СЂРѕР№РєСѓ Сѓ РІР»Р°РґРµР»СЊС†Р° РєРѕРЅС„РёРіСѓСЂР°С†РёРё. */
 static const char *slm_text(uint8_t field)
 {
   uint16_t capacity;
   return slm.settings.text(field, &capacity);
 }
-/* Проверить внешнюю строку настройки перед первым построением AT. */
+/* РџСЂРѕРІРµСЂРёС‚СЊ РІРЅРµС€РЅСЋСЋ СЃС‚СЂРѕРєСѓ РЅР°СЃС‚СЂРѕР№РєРё РїРµСЂРµРґ РїРµСЂРІС‹Рј РїРѕСЃС‚СЂРѕРµРЅРёРµРј AT. */
 static bool slm_valid_field(uint8_t field)
 {
   uint16_t capacity = 0;
   const char *p = slm.settings.text(field, &capacity);
   return p && capacity && comm_at_field(p, capacity, field == SLM_CFG_HOST || field == SLM_CFG_HOST2);
 }
-/* Проверить внешние настройки один раз при запуске модема. */
+/* РџСЂРѕРІРµСЂРёС‚СЊ РІРЅРµС€РЅРёРµ РЅР°СЃС‚СЂРѕР№РєРё РѕРґРёРЅ СЂР°Р· РїСЂРё Р·Р°РїСѓСЃРєРµ РјРѕРґРµРјР°. */
 bool comm_modem_valid_settings(void)
 {
   uint16_t type = slm.settings.number(SLM_CFG_TYPE);
@@ -235,13 +235,13 @@ bool comm_modem_valid_settings(void)
   return !slm.settings.number(SLM_CFG_RESERVE)
     || (slm.settings.number(SLM_CFG_PORT2) && slm_valid_field(SLM_CFG_HOST2));
 }
-/* Перезапуск или выключение снимает служебную команду: владелец получает ERROR. */
+/* РџРµСЂРµР·Р°РїСѓСЃРє РёР»Рё РІС‹РєР»СЋС‡РµРЅРёРµ СЃРЅРёРјР°РµС‚ СЃР»СѓР¶РµР±РЅСѓСЋ РєРѕРјР°РЅРґСѓ: РІР»Р°РґРµР»РµС† РїРѕР»СѓС‡Р°РµС‚ ERROR. */
 static void slm_side_cancel(void)
 {
   if (slm.side.queued || slm.side.running || slm.side.prompted) { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
   slm.side.queued = slm.side.running = slm.side.prompted = 0;
 }
-/* Новая попытка: обнуляется всё, кроме кольца последних десяти сбоев. */
+/* РќРѕРІР°СЏ РїРѕРїС‹С‚РєР°: РѕР±РЅСѓР»СЏРµС‚СЃСЏ РІСЃС‘, РєСЂРѕРјРµ РєРѕР»СЊС†Р° РїРѕСЃР»РµРґРЅРёС… РґРµСЃСЏС‚Рё СЃР±РѕРµРІ. */
 static void slm_begin(bool power, uint32_t now_ms)
 {
   static const comm_at_handlers_t at_handlers = {slm_event, NULL};
@@ -271,7 +271,7 @@ static void slm_begin(bool power, uint32_t now_ms)
   }
   slm.attempt.step_started = slm.attempt.next = now_ms;
 }
-/* Проверить настройки и включить единственный модем платы. */
+/* РџСЂРѕРІРµСЂРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё Рё РІРєР»СЋС‡РёС‚СЊ РµРґРёРЅСЃС‚РІРµРЅРЅС‹Р№ РјРѕРґРµРј РїР»Р°С‚С‹. */
 bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
 {
   if (slm.attempt.status.state == SLM_STARTING || slm.attempt.status.state == SLM_READY) return false;
@@ -283,39 +283,39 @@ bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *ha
   slm_begin(true, now_ms);
   return true;
 }
-/* Перезапуск по сохранённым настройкам (восстановление связи).
-   power - со снятием питания; без него - с AT при включённом модеме, а если
-   питание уже снято, то всё равно с полного включения. */
+/* РџРµСЂРµР·Р°РїСѓСЃРє РїРѕ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Рј РЅР°СЃС‚СЂРѕР№РєР°Рј (РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ СЃРІСЏР·Рё).
+   power - СЃРѕ СЃРЅСЏС‚РёРµРј РїРёС‚Р°РЅРёСЏ; Р±РµР· РЅРµРіРѕ - СЃ AT РїСЂРё РІРєР»СЋС‡С‘РЅРЅРѕРј РјРѕРґРµРјРµ, Р° РµСЃР»Рё
+   РїРёС‚Р°РЅРёРµ СѓР¶Рµ СЃРЅСЏС‚Рѕ, С‚Рѕ РІСЃС‘ СЂР°РІРЅРѕ СЃ РїРѕР»РЅРѕРіРѕ РІРєР»СЋС‡РµРЅРёСЏ. */
 bool comm_modem_restart(bool power, uint32_t now_ms)
 {
   if (comm_power_v5_state() != COMM_PWR_READY) power = true;
   if (power) comm_power_v5_off();
   bool data_lost = !power && slm.attempt.status.reason == SLM_ERR_PDP && slm.attempt.status.step >= SLM_TCP;
   slm_begin(power, now_ms);
-  /* После потери PDP настройки UART/SIM уже действуют: обычное восстановление начинается с сети. */
+  /* РџРѕСЃР»Рµ РїРѕС‚РµСЂРё PDP РЅР°СЃС‚СЂРѕР№РєРё UART/SIM СѓР¶Рµ РґРµР№СЃС‚РІСѓСЋС‚: РѕР±С‹С‡РЅРѕРµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РЅР°С‡РёРЅР°РµС‚СЃСЏ СЃ СЃРµС‚Рё. */
   if (data_lost) { slm.attempt.status.step = SLM_NETWORK; slm.attempt.status.phase = SLM_PHASE_NETWORK; }
   return true;
 }
-/* Снять питание и отменить прежний сеанс UART. */
+/* РЎРЅСЏС‚СЊ РїРёС‚Р°РЅРёРµ Рё РѕС‚РјРµРЅРёС‚СЊ РїСЂРµР¶РЅРёР№ СЃРµР°РЅСЃ UART. */
 void comm_modem_off(void)
 {
   comm_uart_abort(); comm_power_v5_off(); slm.attempt.status.state = SLM_IDLE;
   slm_side_cancel();
 }
-/* Подключить обязательный обработчик канала. */
+/* РџРѕРґРєР»СЋС‡РёС‚СЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ РѕР±СЂР°Р±РѕС‚С‡РёРє РєР°РЅР°Р»Р°. */
 void comm_modem_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint16_t))
 { slm.transport_event = event; }
-/* Подключить постоянного потребителя уведомлений. */
+/* РџРѕРґРєР»СЋС‡РёС‚СЊ РїРѕСЃС‚РѕСЏРЅРЅРѕРіРѕ РїРѕС‚СЂРµР±РёС‚РµР»СЏ СѓРІРµРґРѕРјР»РµРЅРёР№. */
 void comm_modem_listen(uint8_t slot, void (*urc)(const uint8_t *, uint16_t)) { slm.urc[slot] = urc; }
-/* Выдать поколение запуска для отмены старых запросов. */
+/* Р’С‹РґР°С‚СЊ РїРѕРєРѕР»РµРЅРёРµ Р·Р°РїСѓСЃРєР° РґР»СЏ РѕС‚РјРµРЅС‹ СЃС‚Р°СЂС‹С… Р·Р°РїСЂРѕСЃРѕРІ. */
 uint8_t comm_modem_session(void) { return slm.session; }
-/* Модем принимает служебную команду после настройки порта (эхо выключено). */
+/* РњРѕРґРµРј РїСЂРёРЅРёРјР°РµС‚ СЃР»СѓР¶РµР±РЅСѓСЋ РєРѕРјР°РЅРґСѓ РїРѕСЃР»Рµ РЅР°СЃС‚СЂРѕР№РєРё РїРѕСЂС‚Р° (СЌС…Рѕ РІС‹РєР»СЋС‡РµРЅРѕ). */
 static bool slm_side_allowed(void)
 {
   return slm.attempt.status.state == SLM_READY
     || (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
 }
-/* Занять служебный слот для его владельца. */
+/* Р—Р°РЅСЏС‚СЊ СЃР»СѓР¶РµР±РЅС‹Р№ СЃР»РѕС‚ РґР»СЏ РµРіРѕ РІР»Р°РґРµР»СЊС†Р°. */
 static bool slm_side_queue(const comm_side_t *req)
 {
   if (slm.side.queued || slm.side.running
@@ -323,40 +323,40 @@ static bool slm_side_queue(const comm_side_t *req)
   slm.side.req = req; slm.side.queued = 1; slm.side.done = 0;
   return true;
 }
-/* Передать голосу приоритет в служебном слоте. */
+/* РџРµСЂРµРґР°С‚СЊ РіРѕР»РѕСЃСѓ РїСЂРёРѕСЂРёС‚РµС‚ РІ СЃР»СѓР¶РµР±РЅРѕРј СЃР»РѕС‚Рµ. */
 void comm_modem_call(bool active) { slm.call_active = (uint8_t)active; }
-/* Передать потерю мобильных данных обычному восстановлению. */
+/* РџРµСЂРµРґР°С‚СЊ РїРѕС‚РµСЂСЋ РјРѕР±РёР»СЊРЅС‹С… РґР°РЅРЅС‹С… РѕР±С‹С‡РЅРѕРјСѓ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЋ. */
 void comm_modem_data_failed(uint8_t reason) { slm_fail(reason); }
-/* Поставить служебный запрос вне голосового вызова. */
+/* РџРѕСЃС‚Р°РІРёС‚СЊ СЃР»СѓР¶РµР±РЅС‹Р№ Р·Р°РїСЂРѕСЃ РІРЅРµ РіРѕР»РѕСЃРѕРІРѕРіРѕ РІС‹Р·РѕРІР°. */
 bool comm_modem_side(const comm_side_t *req) { return !slm.call_active && slm_side_queue(req); }
-/* Передать свободному AT команду или данные служебного владельца. */
+/* РџРµСЂРµРґР°С‚СЊ СЃРІРѕР±РѕРґРЅРѕРјСѓ AT РєРѕРјР°РЅРґСѓ РёР»Рё РґР°РЅРЅС‹Рµ СЃР»СѓР¶РµР±РЅРѕРіРѕ РІР»Р°РґРµР»СЊС†Р°. */
 static void slm_side_issue(void);
-/* Поставить голосовую команду с приоритетом над запуском данных. */
+/* РџРѕСЃС‚Р°РІРёС‚СЊ РіРѕР»РѕСЃРѕРІСѓСЋ РєРѕРјР°РЅРґСѓ СЃ РїСЂРёРѕСЂРёС‚РµС‚РѕРј РЅР°Рґ Р·Р°РїСѓСЃРєРѕРј РґР°РЅРЅС‹С…. */
 bool comm_modem_call_side(const comm_side_t *req)
 {
   if (!slm_side_queue(req)) return false;
   slm_side_issue(); return true;
 }
-/* Выдать время фактического начала голосовой команды. */
+/* Р’С‹РґР°С‚СЊ РІСЂРµРјСЏ С„Р°РєС‚РёС‡РµСЃРєРѕРіРѕ РЅР°С‡Р°Р»Р° РіРѕР»РѕСЃРѕРІРѕР№ РєРѕРјР°РЅРґС‹. */
 bool comm_modem_side_started(const comm_side_t *req, uint32_t *since)
 {
   if (slm.side.req != req || slm.side.queued || !(slm.side.running || slm.side.done)) return false;
   *since = slm.side.started; return true;
 }
-/* Передать движку AT аварийный отбой. */
+/* РџРµСЂРµРґР°С‚СЊ РґРІРёР¶РєСѓ AT Р°РІР°СЂРёР№РЅС‹Р№ РѕС‚Р±РѕР№. */
 bool comm_modem_call_abort(uint32_t now_ms) { return comm_at_call_abort(now_ms); }
-/* Выдать результат служебного запроса только его владельцу. */
+/* Р’С‹РґР°С‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚ СЃР»СѓР¶РµР±РЅРѕРіРѕ Р·Р°РїСЂРѕСЃР° С‚РѕР»СЊРєРѕ РµРіРѕ РІР»Р°РґРµР»СЊС†Сѓ. */
 uint8_t comm_modem_side_result(const comm_side_t *req)
 {
   if (!slm.side.done || slm.side.req != req) return UINT8_MAX;
   slm.side.done = 0; return slm.side.result;
 }
-/* Вне очереди: между командами канала и шагами запуска, но не после '>'. */
+/* Р’РЅРµ РѕС‡РµСЂРµРґРё: РјРµР¶РґСѓ РєРѕРјР°РЅРґР°РјРё РєР°РЅР°Р»Р° Рё С€Р°РіР°РјРё Р·Р°РїСѓСЃРєР°, РЅРѕ РЅРµ РїРѕСЃР»Рµ '>'. */
 static void slm_side_issue(void)
 {
   const comm_side_t *s = slm.side.req;
   uint8_t r;
-  if (slm.side.prompted) { /* модем ждёт данные: ничто другое не уходит в UART */
+  if (slm.side.prompted) { /* РјРѕРґРµРј Р¶РґС‘С‚ РґР°РЅРЅС‹Рµ: РЅРёС‡С‚Рѕ РґСЂСѓРіРѕРµ РЅРµ СѓС…РѕРґРёС‚ РІ UART */
     r = comm_at_payload(s->payload, s->count, COMM_AT_TEXT, comm_timeouts[s->timeout], slm.attempt.now);
     if (r == COMM_AT_BUSY) return;
     slm.side.prompted = 0;
@@ -372,10 +372,10 @@ static void slm_side_issue(void)
   if (r == COMM_AT_ACCEPTED) { slm.side.running = 1; slm.side.started = slm.attempt.now; }
   else { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
 }
-/* Сообщить о занятом AT или восстановлении его границ. */
+/* РЎРѕРѕР±С‰РёС‚СЊ Рѕ Р·Р°РЅСЏС‚РѕРј AT РёР»Рё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРё РµРіРѕ РіСЂР°РЅРёС†. */
 bool comm_modem_busy(void) { return comm_at_busy(); }
 
-/* Передать команду канала после завершения настройки модема. */
+/* РџРµСЂРµРґР°С‚СЊ РєРѕРјР°РЅРґСѓ РєР°РЅР°Р»Р° РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РЅР°СЃС‚СЂРѕР№РєРё РјРѕРґРµРјР°. */
 uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms)
 {
   if (slm.attempt.status.state != SLM_READY || slm.side.prompted || slm.side.queued || slm.call_active) return COMM_AT_BUSY;
@@ -383,7 +383,7 @@ uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms)
   if (r == COMM_AT_ACCEPTED) slm.attempt.done = 0;
   return r;
 }
-/* Передать данные канала после приглашения QISEND. */
+/* РџРµСЂРµРґР°С‚СЊ РґР°РЅРЅС‹Рµ РєР°РЅР°Р»Р° РїРѕСЃР»Рµ РїСЂРёРіР»Р°С€РµРЅРёСЏ QISEND. */
 uint8_t comm_modem_payload(const uint8_t *data, uint16_t count, uint32_t now_ms)
 {
   if (slm.side.prompted) return COMM_AT_BUSY;
@@ -391,23 +391,23 @@ uint8_t comm_modem_payload(const uint8_t *data, uint16_t count, uint32_t now_ms)
   if (r == COMM_AT_ACCEPTED) slm.attempt.done = 0;
   return r;
 }
-/* Забрать завершение операции канала один раз. */
+/* Р—Р°Р±СЂР°С‚СЊ Р·Р°РІРµСЂС€РµРЅРёРµ РѕРїРµСЂР°С†РёРё РєР°РЅР°Р»Р° РѕРґРёРЅ СЂР°Р·. */
 uint8_t comm_modem_result(void)
 {
   if (!slm.attempt.done) return UINT8_MAX;
   slm.attempt.done = 0; return slm.attempt.result;
 }
-/* Выдать состояние запуска модема. */
+/* Р’С‹РґР°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ Р·Р°РїСѓСЃРєР° РјРѕРґРµРјР°. */
 uint8_t comm_modem_state(void) { return slm.attempt.status.state; }
-/* Выдать назначенные геттеры настроек. */
+/* Р’С‹РґР°С‚СЊ РЅР°Р·РЅР°С‡РµРЅРЅС‹Рµ РіРµС‚С‚РµСЂС‹ РЅР°СЃС‚СЂРѕРµРє. */
 const slm_settings_t *comm_modem_settings(void) { return &slm.settings; }
-/* Узнать, разрешён ли резервный адрес сервера. */
+/* РЈР·РЅР°С‚СЊ, СЂР°Р·СЂРµС€С‘РЅ Р»Рё СЂРµР·РµСЂРІРЅС‹Р№ Р°РґСЂРµСЃ СЃРµСЂРІРµСЂР°. */
 bool comm_modem_reserve(void) { return slm.settings.number(SLM_CFG_RESERVE); }
-/* Шаблон: 1 сеть, 2 APN, 3/4 учётные данные, 5 адрес сервера (host),
-   6/7 число (порт или длина QIRD), 8 авторизация, 9 второй запрос регистрации.
-   Одна сборка на модем и канал. */
+/* РЁР°Р±Р»РѕРЅ: 1 СЃРµС‚СЊ, 2 APN, 3/4 СѓС‡С‘С‚РЅС‹Рµ РґР°РЅРЅС‹Рµ, 5 Р°РґСЂРµСЃ СЃРµСЂРІРµСЂР° (host),
+   6/7 С‡РёСЃР»Рѕ (РїРѕСЂС‚ РёР»Рё РґР»РёРЅР° QIRD), 8 Р°РІС‚РѕСЂРёР·Р°С†РёСЏ, 9 РІС‚РѕСЂРѕР№ Р·Р°РїСЂРѕСЃ СЂРµРіРёСЃС‚СЂР°С†РёРё.
+   РћРґРЅР° СЃР±РѕСЂРєР° РЅР° РјРѕРґРµРј Рё РєР°РЅР°Р». */
 static const char *slm_apn(void);
-/* Собрать команду из постоянного шаблона и проверенных настроек. */
+/* РЎРѕР±СЂР°С‚СЊ РєРѕРјР°РЅРґСѓ РёР· РїРѕСЃС‚РѕСЏРЅРЅРѕРіРѕ С€Р°Р±Р»РѕРЅР° Рё РїСЂРѕРІРµСЂРµРЅРЅС‹С… РЅР°СЃС‚СЂРѕРµРє. */
 uint16_t comm_modem_build(char *cmd, uint16_t size, const char *p, const char *host, uint16_t value)
 {
   uint16_t n = comm_at_copy(cmd, size, 0, *p && *p != 'E' ? "AT+" : "AT");
@@ -431,7 +431,7 @@ uint16_t comm_modem_build(char *cmd, uint16_t size, const char *p, const char *h
   if (n < size) cmd[n] = 0;
   return n;
 }
-/* Запустить команду текущего шага таблицы. */
+/* Р—Р°РїСѓСЃС‚РёС‚СЊ РєРѕРјР°РЅРґСѓ С‚РµРєСѓС‰РµРіРѕ С€Р°РіР° С‚Р°Р±Р»РёС†С‹. */
 static uint8_t slm_issue(uint8_t step)
 {
   char cmd[128];
@@ -443,16 +443,16 @@ static uint8_t slm_issue(uint8_t step)
   return comm_at_start(&req, slm.attempt.now);
 }
 
-/* Сообщить, готовы ли SIM, сеть и мобильный интернет. */
+/* РЎРѕРѕР±С‰РёС‚СЊ, РіРѕС‚РѕРІС‹ Р»Рё SIM, СЃРµС‚СЊ Рё РјРѕР±РёР»СЊРЅС‹Р№ РёРЅС‚РµСЂРЅРµС‚. */
 bool comm_modem_ready(void) { return slm.attempt.status.state == SLM_READY; }
 #if DOMOVOI_DIAG
-/* Выдать стендовые времена шагов и историю отказов. */
+/* Р’С‹РґР°С‚СЊ СЃС‚РµРЅРґРѕРІС‹Рµ РІСЂРµРјРµРЅР° С€Р°РіРѕРІ Рё РёСЃС‚РѕСЂРёСЋ РѕС‚РєР°Р·РѕРІ. */
 const slm_diag_t *comm_modem_diag(void) { return &slm.diag; }
 #endif
-/* Выдать текущее состояние и причину отказа модема. */
+/* Р’С‹РґР°С‚СЊ С‚РµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ Рё РїСЂРёС‡РёРЅСѓ РѕС‚РєР°Р·Р° РјРѕРґРµРјР°. */
 const slm_status_t *comm_modem_status(void) { return &slm.attempt.status; }
 
-/* Выбрать настроенный APN или стандартный APN оператора SIM. */
+/* Р’С‹Р±СЂР°С‚СЊ РЅР°СЃС‚СЂРѕРµРЅРЅС‹Р№ APN РёР»Рё СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ APN РѕРїРµСЂР°С‚РѕСЂР° SIM. */
 static const char *slm_apn(void)
 {
   static const struct { uint8_t mnc, offset; } apn_map[] = {
@@ -465,23 +465,23 @@ static const char *slm_apn(void)
     if (slm.attempt.mnc == apn_map[i].mnc) return apns + apn_map[i].offset;
   return "";
 }
-/* Запустить шаг или дождаться освобождения входного потока. */
+/* Р—Р°РїСѓСЃС‚РёС‚СЊ С€Р°Рі РёР»Рё РґРѕР¶РґР°С‚СЊСЃСЏ РѕСЃРІРѕР±РѕР¶РґРµРЅРёСЏ РІС…РѕРґРЅРѕРіРѕ РїРѕС‚РѕРєР°. */
 static void slm_send(void)
 {
   uint8_t result = slm_issue(slm.attempt.status.step);
-  /* После poll мог прийти хвост ответа/URC: BUSY означает повтор, не поломку. */
+  /* РџРѕСЃР»Рµ poll РјРѕРі РїСЂРёР№С‚Рё С…РІРѕСЃС‚ РѕС‚РІРµС‚Р°/URC: BUSY РѕР·РЅР°С‡Р°РµС‚ РїРѕРІС‚РѕСЂ, РЅРµ РїРѕР»РѕРјРєСѓ. */
   if (result == COMM_AT_BUSY) {
     if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);
   } else if (result != COMM_AT_ACCEPTED) slm_fail(SLM_ERR_RESPONSE);
 }
-/* Применить ответ и выбрать следующий шаг таблицы запуска. */
+/* РџСЂРёРјРµРЅРёС‚СЊ РѕС‚РІРµС‚ Рё РІС‹Р±СЂР°С‚СЊ СЃР»РµРґСѓСЋС‰РёР№ С€Р°Рі С‚Р°Р±Р»РёС†С‹ Р·Р°РїСѓСЃРєР°. */
 static void slm_completed(void)
 {
   uint8_t step = slm.attempt.status.step;
   const comm_modem_step_t *entry = &slm_steps[step - SLM_AT_READY];
   uint8_t action = entry->action & 15u;
   slm.attempt.done = 0; slm.attempt.next = slm.attempt.now;
-  /* MODEM_ANY: ответ модема есть (OK, ERROR, CME) - шаг пройден; срок или сбой потока - нет. */
+  /* MODEM_ANY: РѕС‚РІРµС‚ РјРѕРґРµРјР° РµСЃС‚СЊ (OK, ERROR, CME) - С€Р°Рі РїСЂРѕР№РґРµРЅ; СЃСЂРѕРє РёР»Рё СЃР±РѕР№ РїРѕС‚РѕРєР° - РЅРµС‚. */
   if (slm.attempt.result != COMM_AT_OK && !(action == MODEM_ANY && slm.attempt.result < COMM_AT_GOT_PROMPT)) {
     uint8_t reason = slm.attempt.result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT
                      : slm.attempt.result > COMM_AT_TIMEOUT ? SLM_ERR_STREAM : SLM_ERR_AT;
@@ -516,13 +516,13 @@ static void slm_completed(void)
   comm_modem_record(next, 0, slm.attempt.status.modem_code);
   if (next == SLM_STEP_COUNT) slm.attempt.status.state = SLM_READY;
 }
-/* Продвинуть питание, AT и единственную попытку запуска. */
+/* РџСЂРѕРґРІРёРЅСѓС‚СЊ РїРёС‚Р°РЅРёРµ, AT Рё РµРґРёРЅСЃС‚РІРµРЅРЅСѓСЋ РїРѕРїС‹С‚РєСѓ Р·Р°РїСѓСЃРєР°. */
 void comm_modem_poll(uint32_t now_ms)
 {
   if (slm.attempt.status.state == SLM_IDLE) return;
   slm.attempt.now = now_ms;
-  /* При снятом/нарастающем питании UART может ловить FE и шум загрузки.
-     Это не ответ AT: начинаем чистый поток после выдержки POWER_BOOT. */
+  /* РџСЂРё СЃРЅСЏС‚РѕРј/РЅР°СЂР°СЃС‚Р°СЋС‰РµРј РїРёС‚Р°РЅРёРё UART РјРѕР¶РµС‚ Р»РѕРІРёС‚СЊ FE Рё С€СѓРј Р·Р°РіСЂСѓР·РєРё.
+     Р­С‚Рѕ РЅРµ РѕС‚РІРµС‚ AT: РЅР°С‡РёРЅР°РµРј С‡РёСЃС‚С‹Р№ РїРѕС‚РѕРє РїРѕСЃР»Рµ РІС‹РґРµСЂР¶РєРё POWER_BOOT. */
   if (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step <= SLM_POWER_BOOT) {
 #if DOMOVOI_DIAG
     comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
@@ -535,7 +535,7 @@ void comm_modem_poll(uint32_t now_ms)
     }
     return;
   }
-  comm_at_poll(now_ms); /* После ошибки шага завершаем ресинхронизацию. */
+  comm_at_poll(now_ms); /* РџРѕСЃР»Рµ РѕС€РёР±РєРё С€Р°РіР° Р·Р°РІРµСЂС€Р°РµРј СЂРµСЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ. */
   slm_side_issue();
   if (slm.attempt.status.state != SLM_STARTING) return;
 #if DOMOVOI_DIAG

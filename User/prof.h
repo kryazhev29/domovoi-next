@@ -1,6 +1,6 @@
-/* Замер времени по счётчику тактов ядра (DWT CYCCNT), 72 МГц: 72 такта = 1 мкс.
- * Только для сравнения сборок на C и ASM; читается пакетом 113 после ответа на команду 112 по USB.
- * Доработка: Кряжев А., 2026 */
+/* Р—Р°РјРµСЂ РІСЂРµРјРµРЅРё РїРѕ СЃС‡С‘С‚С‡РёРєСѓ С‚Р°РєС‚РѕРІ СЏРґСЂР° (DWT CYCCNT), 72 РњР“С†: 72 С‚Р°РєС‚Р° = 1 РјРєСЃ.
+ * РўРѕР»СЊРєРѕ РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ СЃР±РѕСЂРѕРє РЅР° C Рё ASM; С‡РёС‚Р°РµС‚СЃСЏ РїР°РєРµС‚РѕРј 113 РїРѕСЃР»Рµ РѕС‚РІРµС‚Р° РЅР° РєРѕРјР°РЅРґСѓ 112 РїРѕ USB.
+ * Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026 */
 #ifndef PROF_H
 #define PROF_H
 
@@ -8,14 +8,14 @@
 #include "domovoi_diag.h"
 
 enum {
-  PROF_GSM,        // gsm_check_data
-  PROF_PORT,       // port_check_data
-  PROF_USB,        // usb_check_data
-  PROF_USER,       // user_loop
-  PROF_STORAGE,    // user_storage_poll
-  PROF_LOOP,       // весь проход главного цикла
-  PROF_WG_CALL,    // WG_readedID: проверка карты до возврата
-  PROF_CARD_RELAY, // кадр Wiegand принят -> реле включено
+  PROF_GSM,
+  PROF_PORT,
+  PROF_USB,
+  PROF_USER,
+  PROF_STORAGE,
+  PROF_LOOP,       // РІРµСЃСЊ РїСЂРѕС…РѕРґ РіР»Р°РІРЅРѕРіРѕ С†РёРєР»Р°
+  PROF_WG_CALL,    // WG_readedID: РїСЂРѕРІРµСЂРєР° РєР°СЂС‚С‹ РґРѕ РІРѕР·РІСЂР°С‚Р°
+  PROF_CARD_RELAY, // РєР°РґСЂ Wiegand РїСЂРёРЅСЏС‚ -> СЂРµР»Рµ РІРєР»СЋС‡РµРЅРѕ
   PROF_N
 };
 
@@ -24,7 +24,7 @@ enum {
 #define PROF_STEP(i, call) do { uint32_t prof_s_ = PROF_NOW(); call; prof_add((i), PROF_NOW() - prof_s_); } while (0)
 
 #define PROF_CARD_MARK() (prof_card_mark = PROF_NOW() | 1u)
-extern uint32_t prof_card_mark; // такт приёма кадра Wiegand, 0 - карты нет
+extern uint32_t prof_card_mark; // С‚Р°РєС‚ РїСЂРёС‘РјР° РєР°РґСЂР° Wiegand, 0 - РєР°СЂС‚С‹ РЅРµС‚
 
 void prof_init(void);
 void prof_add(uint8_t i, uint32_t cycles);

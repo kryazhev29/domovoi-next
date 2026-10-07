@@ -1,6 +1,6 @@
-/* Доработка: Кряжев А., 2026. Сценарии логики на модели NOR.
-   Данные и отказы задаются стендом; проверяется реальный код модуля.
-   Проверки не используют физическую плату и сеть. */
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. РЎС†РµРЅР°СЂРёРё Р»РѕРіРёРєРё РЅР° РјРѕРґРµР»Рё NOR.
+   Р”Р°РЅРЅС‹Рµ Рё РѕС‚РєР°Р·С‹ Р·Р°РґР°СЋС‚СЃСЏ СЃС‚РµРЅРґРѕРј; РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ СЂРµР°Р»СЊРЅС‹Р№ РєРѕРґ РјРѕРґСѓР»СЏ.
+   РџСЂРѕРІРµСЂРєРё РЅРµ РёСЃРїРѕР»СЊР·СѓСЋС‚ С„РёР·РёС‡РµСЃРєСѓСЋ РїР»Р°С‚Сѓ Рё СЃРµС‚СЊ. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -8,7 +8,7 @@
 #include <string.h>
 #include <stdarg.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %d: %s\n", __LINE__, #x); exit(1); } } while (0)
-/* ТИПЫ ПРОТОКОЛА */
+/* РўРРџР« РџР РћРўРћРљРћР›Рђ */
 #define DEBUG_USER
 #define OUT1 0
 #define OUT2 1
@@ -23,7 +23,7 @@ static struct {
     uint16_t balance;
     struct { uint8_t handUnBlock, sheduleUnBlock, autoregistration, openAll; bool smsToAdmin; } triggers;
 } device;
-/* Адрес канала связи (0 - основной, 1 - резервный) и события журнала без SMS. */
+/* РђРґСЂРµСЃ РєР°РЅР°Р»Р° СЃРІСЏР·Рё (0 - РѕСЃРЅРѕРІРЅРѕР№, 1 - СЂРµР·РµСЂРІРЅС‹Р№) Рё СЃРѕР±С‹С‚РёСЏ Р¶СѓСЂРЅР°Р»Р° Р±РµР· SMS. */
 static uint8_t server_address;
 static uint8_t comm_server_address(void) { return server_address; }
 static unsigned value_events, plain_events; static logSystem_e last_event; static char value_id[11];
@@ -47,7 +47,7 @@ static bool log_addSystemEventID(logSystem_e event, char *id)
 {
     if (event == LOG_SYS_RECVSMS) { strcpy(recv_id, id); received_events++; }
     else if (event == LOG_SYS_LOWBALANCE || event == LOG_SYS_LOWSIGNAL) {
-        /* Поле ID - 10 байт: число текстом, остаток нули. */
+        /* РџРѕР»Рµ ID - 10 Р±Р°Р№С‚: С‡РёСЃР»Рѕ С‚РµРєСЃС‚РѕРј, РѕСЃС‚Р°С‚РѕРє РЅСѓР»Рё. */
         last_event = event; memcpy(value_id, id, 10); value_id[10] = 0; value_events++;
         for (unsigned i = strlen(value_id); i < 10; i++) CHECK(id[i] == 0);
     }
@@ -82,7 +82,7 @@ static char *checked_strcat(char *dest, size_t capacity, const char *source, siz
 }
 
 #define strcat(p, s) checked_strcat(p, __builtin_object_size(p, 1), s, __builtin_object_size(s, 1))
-/* КОД МОДУЛЯ */
+/* РљРћР” РњРћР”РЈР›РЇ */
 #undef sprintf
 #undef strcat
 static void init(void)
@@ -107,7 +107,7 @@ static void run_case(const char *command, const char *reply, unsigned mode)
     device.triggers.smsToAdmin = true;
     user_smsreceived(number, message);
     CHECK(received_events == 1 && !strcmp(recv_id, "9031234567"));
-    /* Пакет 7 - только SMS, которые не команды (лист «SMS», таблица 03.10). */
+    /* РџР°РєРµС‚ 7 - С‚РѕР»СЊРєРѕ SMS, РєРѕС‚РѕСЂС‹Рµ РЅРµ РєРѕРјР°РЅРґС‹ (Р»РёСЃС‚ В«SMSВ», С‚Р°Р±Р»РёС†Р° 03.10). */
     CHECK(forwarded == (command[0] != '#'));
     if (forwarded) CHECK(!strcmp(forwarded_text, message));
     CHECK(sent == (reply != NULL) && sent_events == sent);
@@ -116,7 +116,7 @@ static void run_case(const char *command, const char *reply, unsigned mode)
         CHECK(!strcmp(send_id, "9031234567"));
     }
 }
-/* STATUS: тип сети словами, C/x - связь и номер сервера, триггеры E1-E4 - флаги команды 5 по порядку. */
+/* STATUS: С‚РёРї СЃРµС‚Рё СЃР»РѕРІР°РјРё, C/x - СЃРІСЏР·СЊ Рё РЅРѕРјРµСЂ СЃРµСЂРІРµСЂР°, С‚СЂРёРіРіРµСЂС‹ E1-E4 - С„Р»Р°РіРё РєРѕРјР°РЅРґС‹ 5 РїРѕ РїРѕСЂСЏРґРєСѓ. */
 static void status_case(unsigned net, unsigned connected, uint8_t address, uint8_t use1, const char *net_text, const char *cloud)
 {
     char number[] = "+79031234567", message[] = "#status 1234,", expected[128];
@@ -131,10 +131,10 @@ static void test_status(void)
     status_case(0, 0, 0, 1, "Not network", "0/1");
     status_case(1, 1, 0, 1, "gprs", "1/1");
     status_case(3, 1, 1, 1, "3G", "1/2");
-    status_case(4, 1, 0, 0, "4G", "1/2"); /* сервер 1 выключен: основной адрес - сервер 2 */
+    status_case(4, 1, 0, 0, "4G", "1/2"); /* СЃРµСЂРІРµСЂ 1 РІС‹РєР»СЋС‡РµРЅ: РѕСЃРЅРѕРІРЅРѕР№ Р°РґСЂРµСЃ - СЃРµСЂРІРµСЂ 2 */
     status_case(9, 1, 0, 1, "Not network", "1/1");
 }
-/* Пользовательская часть журнала связи: 11, 12, 14-19 по виду и номеру сервера, 37 и 38 с числом. */
+/* РџРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєР°СЏ С‡Р°СЃС‚СЊ Р¶СѓСЂРЅР°Р»Р° СЃРІСЏР·Рё: 11, 12, 14-19 РїРѕ РІРёРґСѓ Рё РЅРѕРјРµСЂСѓ СЃРµСЂРІРµСЂР°, 37 Рё 38 СЃ С‡РёСЃР»РѕРј. */
 static void test_journal(void)
 {
     static const struct { uint8_t kind, address, use1; logSystem_e event; } links[] = {
@@ -148,7 +148,7 @@ static void test_journal(void)
         CHECK(user_comm_link(links[i].kind, links[i].address) && plain_events == 1 && last_event == links[i].event);
     }
     init(); log_refuse = true; CHECK(!user_comm_link(COMM_LINK_FAIL, 0));
-    /* 37: баланс ниже 100 - сумма текстом (с минусом), в статус 2 - 1..65000. */
+    /* 37: Р±Р°Р»Р°РЅСЃ РЅРёР¶Рµ 100 - СЃСѓРјРјР° С‚РµРєСЃС‚РѕРј (СЃ РјРёРЅСѓСЃРѕРј), РІ СЃС‚Р°С‚СѓСЃ 2 - 1..65000. */
     init(); user_comm_balance(-12); CHECK(value_events == 1 && last_event == LOG_SYS_LOWBALANCE && !strcmp(value_id, "-12") && device.balance == 1);
     init(); user_comm_balance(99); CHECK(value_events == 1 && !strcmp(value_id, "99") && device.balance == 99);
     init(); user_comm_balance(100); CHECK(!value_events && device.balance == 100);

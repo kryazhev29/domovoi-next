@@ -4,7 +4,7 @@ import argparse, os, subprocess
 from comm_uart_budget import arm_sections
 
 p=argparse.ArgumentParser()
-p.add_argument('--cc', default=__import__('os').environ.get('DOMOVOI_ZIG', r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe'))
+p.add_argument('--cc', default=__import__('os').environ.get('DOMOVOI_ZIG', str(Path(__import__('tempfile').gettempdir())/'codex-zig/zig.exe')))
 p.add_argument('--out', type=Path, default=Path('Release/comm-stage4_6/final'))
 a=p.parse_args()
 root=Path(__file__).resolve().parents[1]
@@ -18,10 +18,18 @@ flags=['-target','thumb-freestanding-eabi','-mcpu=cortex_m3','-mthumb','-Oz','-s
        '-ISTM32F10x_StdPeriph_Driver/inc','-c']
 profiles={'v5':[]}  # только v5 (решение владельца 03.10.2026)
 # Сравниваем тем же компилятором, профилем и флагами, все выходы — в final.
+def historical_source(path):
+    data=subprocess.check_output(['git','show','HEAD:'+path],cwd=root)
+    # В прежних коммитах исходники cp1251, после перехода — UTF-8.
+    try:
+        return data.decode('utf-8')
+    except UnicodeDecodeError:
+        return data.decode('cp1251')
+
 baseline=out/'comm_uart-before.c'
-baseline.write_text(subprocess.check_output(['git','show','HEAD:Modules/comm_uart.c'],cwd=root).decode('cp1251'),encoding='utf-8',newline='')
+baseline.write_text(historical_source('Modules/comm_uart.c'),encoding='utf-8',newline='')
 # Исторический драйвер собирается со своим заголовком, а не с новым контрактом.
-(out/'comm_uart.h').write_text(subprocess.check_output(['git','show','HEAD:Modules/comm_uart.h'],cwd=root).decode('cp1251'),encoding='utf-8',newline='')
+(out/'comm_uart.h').write_text(historical_source('Modules/comm_uart.h'),encoding='utf-8',newline='')
 for name,defines in profiles.items():
     before=out/('comm_uart-before-'+name+'.o')
     after=out/('comm_uart-'+name+'.o')

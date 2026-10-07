@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Тела ответов SLDN, состояние ожидания и уведомления о синхронизации.
-// Заголовок и CRC формирует packet.c; ответ 11 полностью формирует answer11.
-// Канал владеет TX после принятия; неподтверждённые данные остаются у своих владельцев.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РўРµР»Р° РѕС‚РІРµС‚РѕРІ SLDN, СЃРѕСЃС‚РѕСЏРЅРёРµ РѕР¶РёРґР°РЅРёСЏ Рё СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё.
+// Р—Р°РіРѕР»РѕРІРѕРє Рё CRC С„РѕСЂРјРёСЂСѓРµС‚ packet.c; РѕС‚РІРµС‚ 11 РїРѕР»РЅРѕСЃС‚СЊСЋ С„РѕСЂРјРёСЂСѓРµС‚ answer11.
+// РљР°РЅР°Р» РІР»Р°РґРµРµС‚ TX РїРѕСЃР»Рµ РїСЂРёРЅСЏС‚РёСЏ; РЅРµРїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РґР°РЅРЅС‹Рµ РѕСЃС‚Р°СЋС‚СЃСЏ Сѓ СЃРІРѕРёС… РІР»Р°РґРµР»СЊС†РµРІ.
 #include "user_logic_internal.h"
 #include "../../Modules/comm_server.h"
 #include "prof.h"
@@ -12,10 +12,10 @@ static struct { uint8_t state; char id[10]; } reader_out;
 static uint16_t status_reported;
 static uint32_t status_reported_ms;
 
-// Отметить таблицу для уведомления об окончании синхронизации.
+// РћС‚РјРµС‚РёС‚СЊ С‚Р°Р±Р»РёС†Сѓ РґР»СЏ СѓРІРµРґРѕРјР»РµРЅРёСЏ РѕР± РѕРєРѕРЅС‡Р°РЅРёРё СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё.
 void sync_packet(uint8_t bit) { sync_pending |= bit; sync_quiet = SYNC_QUIET_S; }
 
-// Записать окончание синхронизации после периода тишины.
+// Р—Р°РїРёСЃР°С‚СЊ РѕРєРѕРЅС‡Р°РЅРёРµ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё РїРѕСЃР»Рµ РїРµСЂРёРѕРґР° С‚РёС€РёРЅС‹.
 void sync_end_tick(void)
 {
   if (!sync_quiet || --sync_quiet) return;
@@ -25,7 +25,7 @@ void sync_end_tick(void)
   if (sync_pending) sync_quiet = 1;
 }
 
-// Получить серверный TX достаточной ёмкости.
+// РџРѕР»СѓС‡РёС‚СЊ СЃРµСЂРІРµСЂРЅС‹Р№ TX РґРѕСЃС‚Р°С‚РѕС‡РЅРѕР№ С‘РјРєРѕСЃС‚Рё.
 uint8_t *user_comm_acquire(uint16_t needed)
 {
   uint16_t capacity; uint8_t *p = comm_tx_acquire(&capacity);
@@ -33,28 +33,28 @@ uint8_t *user_comm_acquire(uint16_t needed)
   return p;
 }
 
-// Освободить буфер ответа у его владельца.
+// РћСЃРІРѕР±РѕРґРёС‚СЊ Р±СѓС„РµСЂ РѕС‚РІРµС‚Р° Сѓ РµРіРѕ РІР»Р°РґРµР»СЊС†Р°.
 void user_comm_free(uint8_t *buffer, dataChanel_e channel)
 {
   if (channel == CH_SERVER) comm_tx_release();
   else work_release(buffer, WORK_REPLY);
 }
 
-// Собрать произвольное тело ответа через общий кадр SLDN.
+// РЎРѕР±СЂР°С‚СЊ РїСЂРѕРёР·РІРѕР»СЊРЅРѕРµ С‚РµР»Рѕ РѕС‚РІРµС‚Р° С‡РµСЂРµР· РѕР±С‰РёР№ РєР°РґСЂ SLDN.
 void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId){
-  // весь кадр должен помещаться в 16-битную длину транспорта
+  // РІРµСЃСЊ РєР°РґСЂ РґРѕР»Р¶РµРЅ РїРѕРјРµС‰Р°С‚СЊСЃСЏ РІ 16-Р±РёС‚РЅСѓСЋ РґР»РёРЅСѓ С‚СЂР°РЅСЃРїРѕСЂС‚Р°
   uint16_t len = size + 3;
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : work_acquire(len + 8, WORK_REPLY);
 
   if (send_buffer != NULL){
 
-    // ------- меняемый блок ---------
-    send_buffer[6] = 255; // таймаут актуальности команды
+    // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+    send_buffer[6] = 255; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
     send_buffer[7] = uniqId;
     send_buffer[8] = id;
 
     if (size) memcpy(&send_buffer[9], data, size);
-    // ------- меняемый блок ---------
+    // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
     packet_send(send_buffer, len, (uint8_t)cch);
 
@@ -62,7 +62,7 @@ void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cc
   }
 }
 
-// Передать регистрацию с IMEI и таймштампами таблиц.
+// РџРµСЂРµРґР°С‚СЊ СЂРµРіРёСЃС‚СЂР°С†РёСЋ СЃ IMEI Рё С‚Р°Р№РјС€С‚Р°РјРїР°РјРё С‚Р°Р±Р»РёС†.
 void user_send_registrationData(dataChanel_e cch){
 
   uint16_t len = 40;
@@ -71,27 +71,27 @@ void user_send_registrationData(dataChanel_e cch){
   if (!send_buffer) return;
   uint32_t tmp32;
 
-  // ------- меняемый блок ---------
-  send_buffer[6] = TIMETOREGRESPONSE; // таймаут актуальности команды
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+  send_buffer[6] = TIMETOREGRESPONSE; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = uniqIDCnt++;
   send_buffer[8] = 1;
 
   memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
 
-  send_buffer[24] = device.protocolVersion; // версия протокола
-  send_buffer[25] = device.hardwareVersion; // версия железа
+  send_buffer[24] = device.protocolVersion; // РІРµСЂСЃРёСЏ РїСЂРѕС‚РѕРєРѕР»Р°
+  send_buffer[25] = device.hardwareVersion; // РІРµСЂСЃРёСЏ Р¶РµР»РµР·Р°
 
   tmp32 = device.datetimeID;
-  memcpy(&send_buffer[26], (uint8_t*)&tmp32, 4); // таймштамп ИД
+  memcpy(&send_buffer[26], (uint8_t*)&tmp32, 4); // С‚Р°Р№РјС€С‚Р°РјРї РР”
   tmp32 = device.datetimeGroup;
-  memcpy(&send_buffer[30], (uint8_t*)&tmp32, 4); // таймштамп групп
+  memcpy(&send_buffer[30], (uint8_t*)&tmp32, 4); // С‚Р°Р№РјС€С‚Р°РјРї РіСЂСѓРїРї
   tmp32 = device.datetimeShedule;
-  memcpy(&send_buffer[34], (uint8_t*)&tmp32, 4); // таймштамп засписаний
+  memcpy(&send_buffer[34], (uint8_t*)&tmp32, 4); // С‚Р°Р№РјС€С‚Р°РјРї Р·Р°СЃРїРёСЃР°РЅРёР№
   tmp32 = device.datetimeConfig;
-  memcpy(&send_buffer[38], (uint8_t*)&tmp32, 4); // таймштамп конфига
+  memcpy(&send_buffer[38], (uint8_t*)&tmp32, 4); // С‚Р°Р№РјС€С‚Р°РјРї РєРѕРЅС„РёРіР°
   tmp32 = device.datetimeHoliday;
-  memcpy(&send_buffer[42], (uint8_t*)&tmp32, 4); // таймштамп празников
-  // ------- меняемый блок ---------
+  memcpy(&send_buffer[42], (uint8_t*)&tmp32, 4); // С‚Р°Р№РјС€С‚Р°РјРї РїСЂР°Р·РЅРёРєРѕРІ
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
   switch (cch){
   case CH_USB:
@@ -105,7 +105,7 @@ void user_send_registrationData(dataChanel_e cch){
   }
 }
 
-// Передать статус 1 и установить срок его подтверждения.
+// РџРµСЂРµРґР°С‚СЊ СЃС‚Р°С‚СѓСЃ 1 Рё СѓСЃС‚Р°РЅРѕРІРёС‚СЊ СЃСЂРѕРє РµРіРѕ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ.
 void user_send_statusPack(dataChanel_e cch){
 
   uint16_t len = 18;
@@ -114,19 +114,19 @@ void user_send_statusPack(dataChanel_e cch){
   if (!send_buffer) return;
   uint32_t tmp32;
 
-  // ------- меняемый блок ---------
-  send_buffer[6] = TIMETOSTATUSRESPONSE; // таймаут актуальности команды
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+  send_buffer[6] = TIMETOSTATUSRESPONSE; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = uniqIDCnt++;
   send_buffer[8] = 2;
 
   tmp32 = device.datetime;
-  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
-  memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // статус
+  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // РІСЂРµРјСЏ
+  memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // СЃС‚Р°С‚СѓСЃ
   tmp32 = device.freeBufferSize;
-  memcpy(&send_buffer[15], (uint8_t*)&tmp32, 2); // Размер буфера входящих данных
+  memcpy(&send_buffer[15], (uint8_t*)&tmp32, 2); // Р Р°Р·РјРµСЂ Р±СѓС„РµСЂР° РІС…РѕРґСЏС‰РёС… РґР°РЅРЅС‹С…
 
-  memset(&send_buffer[17], 0, 7); // резерв
-  // ------- меняемый блок ---------
+  memset(&send_buffer[17], 0, 7); // СЂРµР·РµСЂРІ
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
   switch (cch){
   case CH_USB:
@@ -142,7 +142,7 @@ void user_send_statusPack(dataChanel_e cch){
   }
 }
 
-// Передать статус 2 с уровнем сигнала и версиями.
+// РџРµСЂРµРґР°С‚СЊ СЃС‚Р°С‚СѓСЃ 2 СЃ СѓСЂРѕРІРЅРµРј СЃРёРіРЅР°Р»Р° Рё РІРµСЂСЃРёСЏРјРё.
 void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
 
   uint16_t len = 24;
@@ -151,27 +151,27 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
   if (!send_buffer) return;
   uint32_t tmp32;
 
-  // ------- меняемый блок ---------
-  send_buffer[6] = 255; // таймаут актуальности команды
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+  send_buffer[6] = 255; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = uniqId;
   send_buffer[8] = 3;
 
   tmp32 = device.datetime;
-  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
-  send_buffer[13] = device.csq; // уровень сигнала
+  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // РІСЂРµРјСЏ
+  send_buffer[13] = device.csq; // СѓСЂРѕРІРµРЅСЊ СЃРёРіРЅР°Р»Р°
   tmp32 = device.balance;
-  memcpy(&send_buffer[14], (uint8_t*)&tmp32, 2); // баланс
-  send_buffer[16] = device.firmwareVersion; // версия прошивки
+  memcpy(&send_buffer[14], (uint8_t*)&tmp32, 2); // Р±Р°Р»Р°РЅСЃ
+  send_buffer[16] = device.firmwareVersion; // РІРµСЂСЃРёСЏ РїСЂРѕС€РёРІРєРё
   tmp32 = device.buildDate;
-  memcpy(&send_buffer[17], (uint8_t*)&tmp32, 4); // билд
-  send_buffer[21] = device.bootVersion; // версия загрузчика
-  memcpy(&send_buffer[22], (uint8_t*)&device.peripheryState, 8); // состояние периферии
-  // ------- меняемый блок ---------
+  memcpy(&send_buffer[17], (uint8_t*)&tmp32, 4); // Р±РёР»Рґ
+  send_buffer[21] = device.bootVersion; // РІРµСЂСЃРёСЏ Р·Р°РіСЂСѓР·С‡РёРєР°
+  memcpy(&send_buffer[22], (uint8_t*)&device.peripheryState, 8); // СЃРѕСЃС‚РѕСЏРЅРёРµ РїРµСЂРёС„РµСЂРёРё
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
   packet_send(send_buffer, len, (uint8_t)cch);
 }
 
-// Отправить ожидающий результат обновления при освобождении серверного TX.
+// РћС‚РїСЂР°РІРёС‚СЊ РѕР¶РёРґР°СЋС‰РёР№ СЂРµР·СѓР»СЊС‚Р°С‚ РѕР±РЅРѕРІР»РµРЅРёСЏ РїСЂРё РѕСЃРІРѕР±РѕР¶РґРµРЅРёРё СЃРµСЂРІРµСЂРЅРѕРіРѕ TX.
 void fw_status_poll(void)
 {
   uint8_t *b;
@@ -183,7 +183,7 @@ void fw_status_poll(void)
   if (packet_send(b, 5, CH_SERVER)) fw_status_pending.due = 0;
 }
 
-// Передать код результата блока по каналу обновления.
+// РџРµСЂРµРґР°С‚СЊ РєРѕРґ СЂРµР·СѓР»СЊС‚Р°С‚Р° Р±Р»РѕРєР° РїРѕ РєР°РЅР°Р»Сѓ РѕР±РЅРѕРІР»РµРЅРёСЏ.
 void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8_t uniqId){
   (void)cmd;
   uint16_t len = 5;
@@ -197,29 +197,29 @@ void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8
     return;
   }
 
-  // ------- меняемый блок ---------
-  send_buffer[6] = 255; // таймаут актуальности команды
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+  send_buffer[6] = 255; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = uniqId;
   send_buffer[8] = 4;
-  //send_buffer[9] = 20; // Отправка блока прошивки
-  send_buffer[9] = device.firmwarePercent; // Процент хода обновления или код ошибки
-  send_buffer[10] = code; // 0 блок принят, 253 загрузка прекращена, 254 и 255 блок запрошен снова
-  // ------- меняемый блок ---------
+  //send_buffer[9] = 20; // РћС‚РїСЂР°РІРєР° Р±Р»РѕРєР° РїСЂРѕС€РёРІРєРё
+  send_buffer[9] = device.firmwarePercent; // РџСЂРѕС†РµРЅС‚ С…РѕРґР° РѕР±РЅРѕРІР»РµРЅРёСЏ РёР»Рё РєРѕРґ РѕС€РёР±РєРё
+  send_buffer[10] = code; // 0 Р±Р»РѕРє РїСЂРёРЅСЏС‚, 253 Р·Р°РіСЂСѓР·РєР° РїСЂРµРєСЂР°С‰РµРЅР°, 254 Рё 255 Р±Р»РѕРє Р·Р°РїСЂРѕС€РµРЅ СЃРЅРѕРІР°
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
   packet_send(send_buffer, len, (uint8_t)cch);
 }
 
-// Запустить фоновое получение CRC таблиц.
+// Р—Р°РїСѓСЃС‚РёС‚СЊ С„РѕРЅРѕРІРѕРµ РїРѕР»СѓС‡РµРЅРёРµ CRC С‚Р°Р±Р»РёС†.
 void user_send_crcPack(dataChanel_e cch, uint8_t uniqId){
   service_crc_begin_pack(cch,uniqId);
 }
 
-// Запустить фоновое получение CRC блока ID.
+// Р—Р°РїСѓСЃС‚РёС‚СЊ С„РѕРЅРѕРІРѕРµ РїРѕР»СѓС‡РµРЅРёРµ CRC Р±Р»РѕРєР° ID.
 void user_send_crcMemoryID(uint8_t idx, dataChanel_e cch, uint8_t uniqId){
   service_crc_begin_id(idx,cch,uniqId);
 }
 
-// Передать текст SMS в ограниченном серверном TX.
+// РџРµСЂРµРґР°С‚СЊ С‚РµРєСЃС‚ SMS РІ РѕРіСЂР°РЅРёС‡РµРЅРЅРѕРј СЃРµСЂРІРµСЂРЅРѕРј TX.
 bool user_send_smsToServer(char *sms)
 {
   uint16_t capacity, size = 0;
@@ -236,14 +236,14 @@ bool user_send_smsToServer(char *sms)
   return false;
 }
 
-// Зафиксировать ответ считывателя до отправки серверу.
+// Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РѕС‚РІРµС‚ СЃС‡РёС‚С‹РІР°С‚РµР»СЏ РґРѕ РѕС‚РїСЂР°РІРєРё СЃРµСЂРІРµСЂСѓ.
 void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState){
-  reader_out.state = cmdState; // 1 - ID считан, 255 - время вышло
+  reader_out.state = cmdState; // 1 - ID СЃС‡РёС‚Р°РЅ, 255 - РІСЂРµРјСЏ РІС‹С€Р»Рѕ
   if (id == 0) memset(reader_out.id, 0, 10);
   else memcpy(reader_out.id, id, 10);
 }
 
-// Передать ожидающий ответ считывателя при свободном TX.
+// РџРµСЂРµРґР°С‚СЊ РѕР¶РёРґР°СЋС‰РёР№ РѕС‚РІРµС‚ СЃС‡РёС‚С‹РІР°С‚РµР»СЏ РїСЂРё СЃРІРѕР±РѕРґРЅРѕРј TX.
 void reader_reply_poll(void)
 {
   uint8_t *b;
@@ -255,7 +255,7 @@ void reader_reply_poll(void)
   if (packet_send(b, 14, CH_SERVER)) reader_out.state = 0;
 }
 
-// Передать единый ответ 11 без повторного формирования CRC.
+// РџРµСЂРµРґР°С‚СЊ РµРґРёРЅС‹Р№ РѕС‚РІРµС‚ 11 Р±РµР· РїРѕРІС‚РѕСЂРЅРѕРіРѕ С„РѕСЂРјРёСЂРѕРІР°РЅРёСЏ CRC.
 void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId)
 {
   uint8_t local[19];
@@ -266,7 +266,7 @@ void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_
   else if (cch == CH_SERVER) comm_tx_commit(sizeof(local));
 }
 
-// Передать таймштамп и CRC изменённой таблицы.
+// РџРµСЂРµРґР°С‚СЊ С‚Р°Р№РјС€С‚Р°РјРї Рё CRC РёР·РјРµРЅС‘РЅРЅРѕР№ С‚Р°Р±Р»РёС†С‹.
 void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataChanel_e cch, uint8_t uniqId){
 
   uint16_t len = 10;
@@ -274,17 +274,17 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
 
-  send_buffer[6] = 255; // таймаут актуальности команды
+  send_buffer[6] = 255; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = uniqId;
   send_buffer[8] = 12;
-  send_buffer[9] = sht; // к каким данным относится таймштамп
-  memcpy(&send_buffer[10], (uint8_t*)&time, 4); // таймштамп
-  memcpy(&send_buffer[14], (uint8_t*)&crcData, 2); // Контрольная сумма структуры
+  send_buffer[9] = sht; // Рє РєР°РєРёРј РґР°РЅРЅС‹Рј РѕС‚РЅРѕСЃРёС‚СЃСЏ С‚Р°Р№РјС€С‚Р°РјРї
+  memcpy(&send_buffer[10], (uint8_t*)&time, 4); // С‚Р°Р№РјС€С‚Р°РјРї
+  memcpy(&send_buffer[14], (uint8_t*)&crcData, 2); // РљРѕРЅС‚СЂРѕР»СЊРЅР°СЏ СЃСѓРјРјР° СЃС‚СЂСѓРєС‚СѓСЂС‹
 
   packet_send(send_buffer, len, (uint8_t)cch);
 }
 
-// Передать идентификацию устройства конфигуратору.
+// РџРµСЂРµРґР°С‚СЊ РёРґРµРЅС‚РёС„РёРєР°С†РёСЋ СѓСЃС‚СЂРѕР№СЃС‚РІР° РєРѕРЅС„РёРіСѓСЂР°С‚РѕСЂСѓ.
 void user_send_identPackToConfigurator(dataChanel_e cch){
 
   uint16_t len = 19;
@@ -292,8 +292,8 @@ void user_send_identPackToConfigurator(dataChanel_e cch){
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
   if (!send_buffer) return;
 
-  // ------- меняемый блок ---------
-  send_buffer[6] = 0; // таймаут актуальности команды
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+  send_buffer[6] = 0; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = 0;
   send_buffer[8] = 100;
   memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
@@ -301,12 +301,12 @@ void user_send_identPackToConfigurator(dataChanel_e cch){
     send_buffer[24] = 1;
   else
     send_buffer[24] = 0;
-  // ------- меняемый блок ---------
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
   packet_send(send_buffer, len, (uint8_t)cch);
 }
 
-// Передать состояние устройства конфигуратору.
+// РџРµСЂРµРґР°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ СѓСЃС‚СЂРѕР№СЃС‚РІР° РєРѕРЅС„РёРіСѓСЂР°С‚РѕСЂСѓ.
 void user_send_statusPackToConfigurator(dataChanel_e cch){
 
   uint16_t len = 34;
@@ -315,33 +315,33 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
   if (!send_buffer) return;
   uint32_t tmp32;
 
-  // ------- меняемый блок ---------
-  send_buffer[6] = 0; // таймаут актуальности команды
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+  send_buffer[6] = 0; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = 0;
   send_buffer[8] = 101;
 
   tmp32 = device.datetime;
-  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
-  memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // статус
-  send_buffer[15] = device.firmwareVersion; // версия прошивки
+  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // РІСЂРµРјСЏ
+  memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // СЃС‚Р°С‚СѓСЃ
+  send_buffer[15] = device.firmwareVersion; // РІРµСЂСЃРёСЏ РїСЂРѕС€РёРІРєРё
   tmp32 = device.buildDate;
-  memcpy(&send_buffer[16], (uint8_t*)&tmp32, 4); // билд
-  send_buffer[20] = device.bootVersion; // версия загрузчика
-  send_buffer[21] = device.hardwareVersion; // версия железа
-  send_buffer[22] = device.csq; // уровень сигнала
+  memcpy(&send_buffer[16], (uint8_t*)&tmp32, 4); // Р±РёР»Рґ
+  send_buffer[20] = device.bootVersion; // РІРµСЂСЃРёСЏ Р·Р°РіСЂСѓР·С‡РёРєР°
+  send_buffer[21] = device.hardwareVersion; // РІРµСЂСЃРёСЏ Р¶РµР»РµР·Р°
+  send_buffer[22] = device.csq; // СѓСЂРѕРІРµРЅСЊ СЃРёРіРЅР°Р»Р°
   tmp32 = device.balance;
-  memcpy(&send_buffer[23], (uint8_t*)&tmp32, 2); // баланс
+  memcpy(&send_buffer[23], (uint8_t*)&tmp32, 2); // Р±Р°Р»Р°РЅСЃ
   send_buffer[25] = device.creg;
   send_buffer[26] = device.cgreg;
   send_buffer[27] = device.connected;
   send_buffer[28] = device.netType;
-  memcpy(&send_buffer[29], (uint8_t*)&device.peripheryState, 8); // состояние периферии
-  send_buffer[37] = _1B(device.numbersCount); // использовано памяти, кол-во ID
+  memcpy(&send_buffer[29], (uint8_t*)&device.peripheryState, 8); // СЃРѕСЃС‚РѕСЏРЅРёРµ РїРµСЂРёС„РµСЂРёРё
+  send_buffer[37] = _1B(device.numbersCount); // РёСЃРїРѕР»СЊР·РѕРІР°РЅРѕ РїР°РјСЏС‚Рё, РєРѕР»-РІРѕ ID
   send_buffer[38] = _2B(device.numbersCount);
   send_buffer[39] = device.moduleType;
-  // ------- меняемый блок ---------
+  // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
-  /* Необязательное расширение FLT1 после исходных данных статуса. */
+  /* РќРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕРµ СЂР°СЃС€РёСЂРµРЅРёРµ FLT1 РїРѕСЃР»Рµ РёСЃС…РѕРґРЅС‹С… РґР°РЅРЅС‹С… СЃС‚Р°С‚СѓСЃР°. */
   if (fault_record[0] == FAULT_RECORD_MAGIC) {
     uint16_t i;
     for (i = 0; i < sizeof(fault_record); i++)
@@ -352,7 +352,7 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
   packet_send(send_buffer, len, (uint8_t)cch);
 }
 
-// Передать конфигурацию устройства конфигуратору.
+// РџРµСЂРµРґР°С‚СЊ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ СѓСЃС‚СЂРѕР№СЃС‚РІР° РєРѕРЅС„РёРіСѓСЂР°С‚РѕСЂСѓ.
 void user_send_configToConfigurator(dataChanel_e cch){
 
   uint16_t len = sizeof(config_s) + 3;
@@ -360,12 +360,12 @@ void user_send_configToConfigurator(dataChanel_e cch){
 
   if (send_buffer != NULL){
 
-    // ------- меняемый блок ---------
-    send_buffer[6] = 255; // таймаут актуальности команды
+    // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
+    send_buffer[6] = 255; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
     send_buffer[7] = 0;
     send_buffer[8] = 106;
     memcpy(&send_buffer[9], (uint8_t*)&config, sizeof(config_s));
-    // ------- меняемый блок ---------
+    // ------- РјРµРЅСЏРµРјС‹Р№ Р±Р»РѕРє ---------
 
     packet_send(send_buffer, len, (uint8_t)cch);
 
@@ -373,7 +373,7 @@ void user_send_configToConfigurator(dataChanel_e cch){
   }
 }
 
-// Запросить следующий блок после освобождения владельцев обновления.
+// Р—Р°РїСЂРѕСЃРёС‚СЊ СЃР»РµРґСѓСЋС‰РёР№ Р±Р»РѕРє РїРѕСЃР»Рµ РѕСЃРІРѕР±РѕР¶РґРµРЅРёСЏ РІР»Р°РґРµР»СЊС†РµРІ РѕР±РЅРѕРІР»РµРЅРёСЏ.
 bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   if (fw_service_busy()) return false;
   if (fw_async_active()) return false;
@@ -382,10 +382,10 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   if (!send_buffer) return false;
   uint16_t len = 5;
 
-  send_buffer[6] = 255; // таймаут актуальности команды
+  send_buffer[6] = 255; // С‚Р°Р№РјР°СѓС‚ Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР°РЅРґС‹
   send_buffer[7] = uniqIDCnt++;
   send_buffer[8] = 13;
-  send_buffer[9] = _1B(block);  // номер блока
+  send_buffer[9] = _1B(block);  // РЅРѕРјРµСЂ Р±Р»РѕРєР°
   send_buffer[10] = _2B(block);
 
   if (cch == CH_SERVER) return packet_send(send_buffer, len, CH_SERVER);
@@ -393,14 +393,14 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   return true;
 }
 
-// Определить необходимость внеочередного статуса с ограничением частоты.
+// РћРїСЂРµРґРµР»РёС‚СЊ РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚СЊ РІРЅРµРѕС‡РµСЂРµРґРЅРѕРіРѕ СЃС‚Р°С‚СѓСЃР° СЃ РѕРіСЂР°РЅРёС‡РµРЅРёРµРј С‡Р°СЃС‚РѕС‚С‹.
 uint8_t status_event_due(uint16_t status, uint32_t now_ms)
 {
   return ((status ^ status_reported) & STATUS_EVENT_MASK) != 0 &&
          (uint32_t)(now_ms - status_reported_ms) >= STATUS_EVENT_GAP_MS;
 }
 
-// Запомнить состояние и время переданного статуса.
+// Р—Р°РїРѕРјРЅРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ Рё РІСЂРµРјСЏ РїРµСЂРµРґР°РЅРЅРѕРіРѕ СЃС‚Р°С‚СѓСЃР°.
 void status_event_sent(uint16_t status, uint32_t now_ms)
 {
   status_reported = status;

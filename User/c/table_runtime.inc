@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Фоновая запись таблиц, пересчёт ID и ответы о результате.
-// Данные кадра копируются при запуске; внешние указатели не переживают приём.
-// CRC читается по 64 Б, до четырёх фрагментов и одной миллисекунды за проход.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р¤РѕРЅРѕРІР°СЏ Р·Р°РїРёСЃСЊ С‚Р°Р±Р»РёС†, РїРµСЂРµСЃС‡С‘С‚ ID Рё РѕС‚РІРµС‚С‹ Рѕ СЂРµР·СѓР»СЊС‚Р°С‚Рµ.
+// Р”Р°РЅРЅС‹Рµ РєР°РґСЂР° РєРѕРїРёСЂСѓСЋС‚СЃСЏ РїСЂРё Р·Р°РїСѓСЃРєРµ; РІРЅРµС€РЅРёРµ СѓРєР°Р·Р°С‚РµР»Рё РЅРµ РїРµСЂРµР¶РёРІР°СЋС‚ РїСЂРёС‘Рј.
+// CRC С‡РёС‚Р°РµС‚СЃСЏ РїРѕ 64 Р‘, РґРѕ С‡РµС‚С‹СЂС‘С… С„СЂР°РіРјРµРЅС‚РѕРІ Рё РѕРґРЅРѕР№ РјРёР»Р»РёСЃРµРєСѓРЅРґС‹ Р·Р° РїСЂРѕС…РѕРґ.
 enum {
   TABLE_SECTOR=1, TABLE_JOURNAL=2, TABLE_CRC=3,
   TABLE_REPLY=4, TABLE_APPEND_CHECK=5, TABLE_APPEND_BODY=6,
@@ -16,21 +16,21 @@ typedef struct {
 table_job_s table_job;
 uint8_t table_fault;
 
-// Сообщает, выполняется ли команда записи таблицы.
+// РЎРѕРѕР±С‰Р°РµС‚, РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Р»Рё РєРѕРјР°РЅРґР° Р·Р°РїРёСЃРё С‚Р°Р±Р»РёС†С‹.
 bool table_runtime_active(void) { return table_job.phase!=0; }
-// Подавляет ответ команды для закрытого канала.
+// РџРѕРґР°РІР»СЏРµС‚ РѕС‚РІРµС‚ РєРѕРјР°РЅРґС‹ РґР»СЏ Р·Р°РєСЂС‹С‚РѕРіРѕ РєР°РЅР°Р»Р°.
 void table_runtime_quiet(dataChanel_e channel)
 {
   if (table_job.phase && table_job.channel==channel) table_job.quiet=1;
 }
-// Запрашивает отмену записи таблиц и незавершённого журнала.
+// Р—Р°РїСЂР°С€РёРІР°РµС‚ РѕС‚РјРµРЅСѓ Р·Р°РїРёСЃРё С‚Р°Р±Р»РёС† Рё РЅРµР·Р°РІРµСЂС€С‘РЅРЅРѕРіРѕ Р¶СѓСЂРЅР°Р»Р°.
 void table_runtime_cancel(void)
 {
   if (!table_job.phase) return;
   if(table_job.cmd==13) idcrc_unknown();
   table_job.cancelled=table_job.quiet=1; sj_runtime_cancel();
 }
-// Накладывает записи команды на фрагмент исходного сектора.
+// РќР°РєР»Р°РґС‹РІР°РµС‚ Р·Р°РїРёСЃРё РєРѕРјР°РЅРґС‹ РЅР° С„СЂР°РіРјРµРЅС‚ РёСЃС…РѕРґРЅРѕРіРѕ СЃРµРєС‚РѕСЂР°.
 static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
 {
   (void)context;
@@ -41,7 +41,7 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
     return 1;
   }
   if (table_job.cmd==14) {
-    // Кадр задаёт все расписания; отсутствующие записи стираются.
+    // РљР°РґСЂ Р·Р°РґР°С‘С‚ РІСЃРµ СЂР°СЃРїРёСЃР°РЅРёСЏ; РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РёРµ Р·Р°РїРёСЃРё СЃС‚РёСЂР°СЋС‚СЃСЏ.
     uint32_t rel=table_job.sector+off-table_job.start;
     if (rel<SCHED16_TAIL_OFFSET) memset(page,255,64);
     else if (rel==SCHED16_TAIL_OFFSET)
@@ -57,8 +57,8 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
     if (table_job.cmd==13) {
       cellID_s *old=(cellID_s*)(page+local);
       uint8_t first[4],done=old->reserve[6];
-      // Источник читается при сравнении и записи; изменение суммы считаем
-      // только в первом проходе. Публикуем сумму после завершения всех секторов.
+      // РСЃС‚РѕС‡РЅРёРє С‡РёС‚Р°РµС‚СЃСЏ РїСЂРё СЃСЂР°РІРЅРµРЅРёРё Рё Р·Р°РїРёСЃРё; РёР·РјРµРЅРµРЅРёРµ СЃСѓРјРјС‹ СЃС‡РёС‚Р°РµРј
+      // С‚РѕР»СЊРєРѕ РІ РїРµСЂРІРѕРј РїСЂРѕС…РѕРґРµ. РџСѓР±Р»РёРєСѓРµРј СЃСѓРјРјСѓ РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РІСЃРµС… СЃРµРєС‚РѕСЂРѕРІ.
       if (sjr.phase==SJ_PHASE_COMPARE) {
         if (old->index==0xffff || old->reserve[9]==255) table_job.numbers++;
         else table_job.sum^=idindex_hash(index,(uint8_t*)old->ID);
@@ -75,7 +75,7 @@ static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
   }
   return 1;
 }
-// Копирует уже проверенные записи кадра и начинает атомарную запись.
+// РљРѕРїРёСЂСѓРµС‚ СѓР¶Рµ РїСЂРѕРІРµСЂРµРЅРЅС‹Рµ Р·Р°РїРёСЃРё РєР°РґСЂР° Рё РЅР°С‡РёРЅР°РµС‚ Р°С‚РѕРјР°СЂРЅСѓСЋ Р·Р°РїРёСЃСЊ.
 bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
 {
   uint8_t cmd=ptr[4],mb=cmd==13 ? MB_ID : cmd==14 ? MB_SHEDULE : cmd==15 ? MB_GROUP : MB_HOLIDAY;
@@ -104,12 +104,12 @@ bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
   }
   return true;
 }
-// Готовит пересчёт ID после успешной записи таблиц.
+// Р“РѕС‚РѕРІРёС‚ РїРµСЂРµСЃС‡С‘С‚ ID РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕР№ Р·Р°РїРёСЃРё С‚Р°Р±Р»РёС†.
 static void table_scan_begin(void)
 {
   table_job.phase=TABLE_CRC; table_job.offset=0; table_job.crc=0xffff;
   table_job.crc_limit=table_job.cmd==14 ? sched16_crc_size() : mem[table_job.mb].size;
-  // Пересчёт использует отдельные границу чтения и флаг полного сканирования ID.
+  // РџРµСЂРµСЃС‡С‘С‚ РёСЃРїРѕР»СЊР·СѓРµС‚ РѕС‚РґРµР»СЊРЅС‹Рµ РіСЂР°РЅРёС†Сѓ С‡С‚РµРЅРёСЏ Рё С„Р»Р°Рі РїРѕР»РЅРѕРіРѕ СЃРєР°РЅРёСЂРѕРІР°РЅРёСЏ ID.
   table_job.scan_full=0;
   if (table_job.cmd==13) {
     if(table_job.failed || table_job.cancelled) idcrc_unknown();
@@ -126,7 +126,7 @@ static void table_scan_begin(void)
   if (table_job.cmd==13 && !table_job.scan_full && !table_job.failed && !table_job.cancelled &&
       idcrc_get(&table_job.crc)) table_job.phase=TABLE_REPLY;
 }
-// Завершает запись, обновляет CRC и готовит ответ команды.
+// Р—Р°РІРµСЂС€Р°РµС‚ Р·Р°РїРёСЃСЊ, РѕР±РЅРѕРІР»СЏРµС‚ CRC Рё РіРѕС‚РѕРІРёС‚ РѕС‚РІРµС‚ РєРѕРјР°РЅРґС‹.
 static void table_runtime_finish(void)
 {
   uint8_t cmd=table_job.cmd;
@@ -142,10 +142,10 @@ static void table_runtime_finish(void)
     user_send_answer_comand(cmd,CMD_RUNERROR,(dataChanel_e)table_job.channel,table_job.uniq);
   work_release(table_job.records, WORK_TABLE); table_job.records=0; table_job.phase=0; flash_release(FO_TABLE);
 }
-// Делает шаг журнальной записи, пересчёта либо передачи результата.
+// Р”РµР»Р°РµС‚ С€Р°Рі Р¶СѓСЂРЅР°Р»СЊРЅРѕР№ Р·Р°РїРёСЃРё, РїРµСЂРµСЃС‡С‘С‚Р° Р»РёР±Рѕ РїРµСЂРµРґР°С‡Рё СЂРµР·СѓР»СЊС‚Р°С‚Р°.
 void table_runtime_poll(uint32_t now)
 {
-  // Проверяем весь кадр до первой записи во флеш.
+  // РџСЂРѕРІРµСЂСЏРµРј РІРµСЃСЊ РєР°РґСЂ РґРѕ РїРµСЂРІРѕР№ Р·Р°РїРёСЃРё РІРѕ С„Р»РµС€.
   if (table_job.phase==TABLE_APPEND_CHECK) {
     uint16_t index; uint8_t old[32];
     memcpy(&index,table_job.records+32u*table_job.position,2);
@@ -212,7 +212,7 @@ void table_runtime_poll(uint32_t now)
     return;
   }
   if (table_job.phase==TABLE_CRC) {
-    uint8_t *b=sjr.data, chunks=4; // Журнал свободен: используем его буфер.
+    uint8_t *b=sjr.data, chunks=4; // Р–СѓСЂРЅР°Р» СЃРІРѕР±РѕРґРµРЅ: РёСЃРїРѕР»СЊР·СѓРµРј РµРіРѕ Р±СѓС„РµСЂ.
     uint32_t started=timers_getMillis();
     do {
       uint16_t n=64;

@@ -1,13 +1,10 @@
-"""Run replace_ram() of the IAR-built application against SPI/Flash register models.
-The RAM copy is produced by the application's own __iar_data_init3. Model of the checks
-from Bootloader/tests/test_manual_ram.py (Codex, GCC build), applied to the IAR build."""
 import struct
 from pathlib import Path
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_HOOK_CODE
 from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_R0, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_XPSR
 
-R = Path(__file__).resolve().parents[2]  # project root; run after IAR Release builds of the application and the bootloader
+R = Path(__file__).resolve().parents[2]
 elf = ELFFile(open(R / "Release/Exe/DomovoiNext.out", "rb"))
 sym = {s.name: s["st_value"] for s in elf.get_section_by_name(".symtab").iter_symbols()}
 app = (R / "Release/Exe/DomovoiNext.bin").read_bytes()

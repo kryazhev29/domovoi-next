@@ -1,33 +1,13 @@
-// Доработка: Кряжев А., 2026
-// Питание USB и ограниченное ожидание RESET.
-// Порядок событий и двоичные дескрипторы сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком.
-
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РџРёС‚Р°РЅРёРµ USB Рё РѕРіСЂР°РЅРёС‡РµРЅРЅРѕРµ РѕР¶РёРґР°РЅРёРµ RESET.
+// РџРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ Рё РґРІРѕРёС‡РЅС‹Рµ РґРµСЃРєСЂРёРїС‚РѕСЂС‹ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј.
 
 #include "usb_lib.h"
 #include "usb_conf.h"
 #include "usb_pwr.h"
 #include "hw_config.h"
-// Ограниченно ждать аппаратный RESET; вызывающий код выбирает восстановление и диагностику.
+// РћРіСЂР°РЅРёС‡РµРЅРЅРѕ Р¶РґР°С‚СЊ Р°РїРїР°СЂР°С‚РЅС‹Р№ RESET; РІС‹Р·С‹РІР°СЋС‰РёР№ РєРѕРґ РІС‹Р±РёСЂР°РµС‚ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ Рё РґРёР°РіРЅРѕСЃС‚РёРєСѓ.
 uint8_t USB_WaitReset(void)
 {
   uint32_t budget = 32000u;
@@ -35,9 +15,9 @@ uint8_t USB_WaitReset(void)
   return budget != 0;
 }
 
-__IO uint32_t bDeviceState = UNCONNECTED; /* Текущее состояние устройства USB. */
+__IO uint32_t bDeviceState = UNCONNECTED; /* РўРµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ СѓСЃС‚СЂРѕР№СЃС‚РІР° USB. */
 
-// Включить USB с аппаратным порядком сброса и начальной маской событий.
+// Р’РєР»СЋС‡РёС‚СЊ USB СЃ Р°РїРїР°СЂР°С‚РЅС‹Рј РїРѕСЂСЏРґРєРѕРј СЃР±СЂРѕСЃР° Рё РЅР°С‡Р°Р»СЊРЅРѕР№ РјР°СЃРєРѕР№ СЃРѕР±С‹С‚РёР№.
 RESULT PowerOn(void)
 {
   uint16_t wRegVal;
@@ -56,7 +36,7 @@ RESULT PowerOn(void)
   return USB_SUCCESS;
 }
 
-// Выключить USB перед повторным подключением загрузчика.
+// Р’С‹РєР»СЋС‡РёС‚СЊ USB РїРµСЂРµРґ РїРѕРІС‚РѕСЂРЅС‹Рј РїРѕРґРєР»СЋС‡РµРЅРёРµРј Р·Р°РіСЂСѓР·С‡РёРєР°.
 RESULT PowerOff()
 {
 
@@ -69,10 +49,8 @@ RESULT PowerOff()
   return USB_SUCCESS;
 }
 
-// Ввести USB в низкое потребление с сохранением прежнего состояния.
+// Р’РІРµСЃС‚Рё USB РІ РЅРёР·РєРѕРµ РїРѕС‚СЂРµР±Р»РµРЅРёРµ СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј РїСЂРµР¶РЅРµРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ.
 
-// Восстановить USB после приостановки.
+// Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ USB РїРѕСЃР»Рµ РїСЂРёРѕСЃС‚Р°РЅРѕРІРєРё.
 
-// Выполнить согласованную фазу восстановления USB.
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+// Р’С‹РїРѕР»РЅРёС‚СЊ СЃРѕРіР»Р°СЃРѕРІР°РЅРЅСѓСЋ С„Р°Р·Сѓ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ USB.

@@ -45,7 +45,7 @@ def function(text, name):
 def run(cmd):
     p = subprocess.run([str(x) for x in cmd], cwd=ROOT, capture_output=True)
     if p.returncode:
-        raise RuntimeError(p.stdout.decode('cp1251', errors='replace') + p.stderr.decode('cp1251', errors='replace'))
+        raise RuntimeError(p.stdout.decode('utf-8', errors='replace') + p.stderr.decode('utf-8', errors='replace'))
 
 
 # Строит независимый эталон CRC с обработкой полубайтов.
@@ -75,18 +75,18 @@ uint32_t nibble_crc32_update(uint32_t c, const uint8_t *p, uint16_t n) {
 
 # Собирает эталон C и проверяемое ядро IAR в отдельной папке.
 def build(out):
-    source = lambda p: (ROOT / p).read_text(encoding='cp1251')
-    journal = source('User/c/crc_asm.c')
+    source = lambda p: (ROOT / p).read_text(encoding='utf-8')
+    journal = source('Tests/reference/crc_asm.c')
     name = 'crc32_update' if 'uint32_t crc32_update(' in journal else 'sj_crc'
     c = function(journal, name).replace('static ', '').replace(name, 'crc32_update')
     c = re.search(r'static const uint32_t crc32_nibble\[16\]\s*=\s*\{.*?\};', journal, re.S).group(0) + '\n' + c
     (out / 'ref.c').write_text('#include <stdint.h>\n' + c, encoding='utf-8')
     (out / 'nibble.c').write_text(nibble_reference(), encoding='utf-8')
     objs = []
-    for i, src in enumerate([ROOT / 'User/c/crc_runtime.c', out / 'ref.c', out / 'nibble.c']):
+    for i, src in enumerate([ROOT / 'Tests/reference/crc_runtime.c', out / 'ref.c', out / 'nibble.c']):
         obj = out / f'c{i}.o'
         run([IAR / 'iccarm.exe', src, '--cpu', 'Cortex-M3', '--thumb', '-Ohz', '-e',
-             '-I', ROOT / 'User', *('-D' + f + '=ref_' + f for f in FUNCS), '-o', obj])
+             '--source_encoding','utf8','-I', ROOT / 'User', '-I', ROOT / 'User/c', *('-D' + f + '=ref_' + f for f in FUNCS), '-o', obj])
         objs.append(obj)
     fast = ['crc16_calc', 'crc32_update']
     run([IAR / 'iccarm.exe', out / 'nibble.c', '--cpu', 'Cortex-M3', '--thumb', '-Ohs', '-e',
@@ -241,7 +241,7 @@ def mutations(elf):
 def linked_firmware(path, reference):
     actual, rng = Machine(path), random.Random(17)
     checks = 0
-    for i in range(250):
+    for i in range(2000):
         data = rng.randbytes(rng.randrange(2049))
         pointer, initial = BUF + i % 4, rng.getrandbits(32)
         actual.uc.mem_write(pointer, data or b'\0')
@@ -261,7 +261,7 @@ def main():
     p.add_argument('--json', type=Path)
     p.add_argument('--firmware', type=Path, help='Also check kernels relocated into the linked application ELF')
     args = p.parse_args()
-    project = ET.parse(ROOT / 'DomovoiNext_HYBRID.ewp').getroot()
+    project = ET.parse(ROOT / 'DomovoiNext.ewp').getroot()
     for config in project.findall('configuration'):
         defines = [s.text for o in config.findall('.//option') if o.findtext('name') == 'CCDefines' for s in o.findall('state')]
         assert 'ASM_CRC' in defines, config.findtext('name')

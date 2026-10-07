@@ -1,31 +1,12 @@
-// Доработка: Кряжев А., 2026
-// События USB и ограниченное восстановление по ESOF.
-// Порядок событий и двоичные дескрипторы сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РЎРѕР±С‹С‚РёСЏ USB Рё РѕРіСЂР°РЅРёС‡РµРЅРЅРѕРµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїРѕ ESOF.
+// РџРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ Рё РґРІРѕРёС‡РЅС‹Рµ РґРµСЃРєСЂРёРїС‚РѕСЂС‹ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј.
 
 #ifndef BOOTLOADER
 #include "../../User/domovoi_diag.h"
 #endif
-// Доработка: Кряжев А., 2026
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
 
 #ifndef BOOTLOADER
 #include "usb_stm32f10x.h"
@@ -45,7 +26,7 @@ __IO uint16_t wIstr;
 __IO uint32_t esof_counter =0;
 __IO uint32_t wCNTR=0;
 
-/* Таблицы обратных вызовов конечных точек, кроме управляющей EP0. */
+/* РўР°Р±Р»РёС†С‹ РѕР±СЂР°С‚РЅС‹С… РІС‹Р·РѕРІРѕРІ РєРѕРЅРµС‡РЅС‹С… С‚РѕС‡РµРє, РєСЂРѕРјРµ СѓРїСЂР°РІР»СЏСЋС‰РµР№ EP0. */
 void (*const pEpInt_IN[7])(void) =
   {
     EP1_IN_Callback,
@@ -68,7 +49,7 @@ void (*const pEpInt_OUT[7])(void) =
     EP7_OUT_Callback,
   };
 
-// Обслужить события USB и ограниченное восстановление после потери кадра.
+// РћР±СЃР»СѓР¶РёС‚СЊ СЃРѕР±С‹С‚РёСЏ USB Рё РѕРіСЂР°РЅРёС‡РµРЅРЅРѕРµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїРѕСЃР»Рµ РїРѕС‚РµСЂРё РєР°РґСЂР°.
 void USB_Istr(void)
 {
     uint32_t i=0;
@@ -115,15 +96,15 @@ void USB_Istr(void)
 
       esof_counter ++;
 
-      /* Более трёх ESOF при FSUSP=0 и RXDP=1 означает возможную потерю SUSP. */
+      /* Р‘РѕР»РµРµ С‚СЂС‘С… ESOF РїСЂРё FSUSP=0 Рё RXDP=1 РѕР·РЅР°С‡Р°РµС‚ РІРѕР·РјРѕР¶РЅСѓСЋ РїРѕС‚РµСЂСЋ SUSP. */
       if ((esof_counter >3)&&((_GetCNTR()&CNTR_FSUSP)==0))
       {
-        /* Восстановление принудительным сбросом после потери события шины. */
+        /* Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїСЂРёРЅСѓРґРёС‚РµР»СЊРЅС‹Рј СЃР±СЂРѕСЃРѕРј РїРѕСЃР»Рµ РїРѕС‚РµСЂРё СЃРѕР±С‹С‚РёСЏ С€РёРЅС‹. */
 
-        /* Сохранить маску USB-прерываний до сброса. */
+        /* РЎРѕС…СЂР°РЅРёС‚СЊ РјР°СЃРєСѓ USB-РїСЂРµСЂС‹РІР°РЅРёР№ РґРѕ СЃР±СЂРѕСЃР°. */
         wCNTR = _GetCNTR();
 
-        /* Сохранить настройки конечных точек до сброса USB. */
+        /* РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё РєРѕРЅРµС‡РЅС‹С… С‚РѕС‡РµРє РґРѕ СЃР±СЂРѕСЃР° USB. */
         for (i=0;i<8;i++) EP[i] = _GetENDPOINT(i);
 
 #ifndef BOOTLOADER
@@ -138,7 +119,7 @@ void USB_Istr(void)
         wCNTR&=~CNTR_FRES;
         _SetCNTR(wCNTR);
 
-        /* Дождаться подтверждения аппаратного сброса с ограничением времени. */
+        /* Р”РѕР¶РґР°С‚СЊСЃСЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ Р°РїРїР°СЂР°С‚РЅРѕРіРѕ СЃР±СЂРѕСЃР° СЃ РѕРіСЂР°РЅРёС‡РµРЅРёРµРј РІСЂРµРјРµРЅРё. */
         if (!USB_WaitReset()) {
 #ifndef BOOTLOADER
 #if DOMOVOI_DIAG
@@ -154,7 +135,7 @@ void USB_Istr(void)
         }
         _SetISTR((uint16_t)CLR_RESET);
 
-       /* Восстановить настройки конечных точек после сброса. */
+       /* Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё РєРѕРЅРµС‡РЅС‹С… С‚РѕС‡РµРє РїРѕСЃР»Рµ СЃР±СЂРѕСЃР°. */
         for (i=0;i<8;i++)
         _SetENDPOINT(i, EP[i]);
 
@@ -166,9 +147,7 @@ void USB_Istr(void)
         esof_counter = 0;
     }
 
-    /* Временные фазы восстановления отсчитываются по событиям ESOF. */
+    /* Р’СЂРµРјРµРЅРЅС‹Рµ С„Р°Р·С‹ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РѕС‚СЃС‡РёС‚С‹РІР°СЋС‚СЃСЏ РїРѕ СЃРѕР±С‹С‚РёСЏРј ESOF. */
 
   }
 }
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

@@ -1,27 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Включение, отключение и ограниченное ожидание RESET.
-// Дескрипторы и порядок событий сохраняют протокол CDC.
-// Общие файлы также используются загрузчиком; память PMA требует особого доступа.
-
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2013 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р’РєР»СЋС‡РµРЅРёРµ, РѕС‚РєР»СЋС‡РµРЅРёРµ Рё РѕРіСЂР°РЅРёС‡РµРЅРЅРѕРµ РѕР¶РёРґР°РЅРёРµ RESET.
+// Р”РµСЃРєСЂРёРїС‚РѕСЂС‹ Рё РїРѕСЂСЏРґРѕРє СЃРѕР±С‹С‚РёР№ СЃРѕС…СЂР°РЅСЏСЋС‚ РїСЂРѕС‚РѕРєРѕР» CDC.
+// РћР±С‰РёРµ С„Р°Р№Р»С‹ С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Р·Р°РіСЂСѓР·С‡РёРєРѕРј; РїР°РјСЏС‚СЊ PMA С‚СЂРµР±СѓРµС‚ РѕСЃРѕР±РѕРіРѕ РґРѕСЃС‚СѓРїР°.
 
 #ifndef __USB_PWR_H
 #define __USB_PWR_H
@@ -36,15 +16,13 @@ typedef enum _DEVICE_STATE
   CONFIGURED
 } DEVICE_STATE;
 
-// Ограниченно ждать RESET; вызывающий код обрабатывает отказ.
+// РћРіСЂР°РЅРёС‡РµРЅРЅРѕ Р¶РґР°С‚СЊ RESET; РІС‹Р·С‹РІР°СЋС‰РёР№ РєРѕРґ РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚ РѕС‚РєР°Р·.
 uint8_t USB_WaitReset(void);
-// Включить USB с аппаратным порядком сброса и начальной маской событий.
+// Р’РєР»СЋС‡РёС‚СЊ USB СЃ Р°РїРїР°СЂР°С‚РЅС‹Рј РїРѕСЂСЏРґРєРѕРј СЃР±СЂРѕСЃР° Рё РЅР°С‡Р°Р»СЊРЅРѕР№ РјР°СЃРєРѕР№ СЃРѕР±С‹С‚РёР№.
 RESULT PowerOn(void);
-// Выключить USB перед повторным подключением загрузчика.
+// Р’С‹РєР»СЋС‡РёС‚СЊ USB РїРµСЂРµРґ РїРѕРІС‚РѕСЂРЅС‹Рј РїРѕРґРєР»СЋС‡РµРЅРёРµРј Р·Р°РіСЂСѓР·С‡РёРєР°.
 RESULT PowerOff(void);
 
-extern  __IO uint32_t bDeviceState; /* Текущее состояние устройства USB. */
+extern  __IO uint32_t bDeviceState; /* РўРµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ СѓСЃС‚СЂРѕР№СЃС‚РІР° USB. */
 
 #endif
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

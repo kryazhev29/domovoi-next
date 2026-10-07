@@ -1,4 +1,4 @@
-// Файл определений
+// Р¤Р°Р№Р» РѕРїСЂРµРґРµР»РµРЅРёР№
 
 #ifndef __INCLUDES_H
 #define __INCLUDES_H
@@ -23,14 +23,13 @@
   #include "bootloader.h"
 #endif
 
-// usb
 #include "hw_config.h"
 #include "usb_lib.h"
 #include "usb_desc.h"
 #include "usb_pwr.h"
 #include "usb_istr.h"
 
-// периферия
+// РїРµСЂРёС„РµСЂРёСЏ
 #include "main.h"
 #include "timers.h"
 #include "adc_stm32f10x.h"
@@ -46,12 +45,6 @@
 #include "crc.h"
 
 #include "wiegand.h"
-/*#include "prime_reader.h"
-#include "r16_reader.h"
-#include "rfid.h"
-#include "log.h"
-#include "number_list.h"
-#include "other.h"
-*/
+
 #endif
 

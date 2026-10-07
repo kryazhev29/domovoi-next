@@ -1,4 +1,4 @@
-/* Bench diagnostics default on; customer builds set DOMOVOI_DIAG=0. */
+
 #ifndef DOMOVOI_DIAG_H
 #define DOMOVOI_DIAG_H
 #ifndef DOMOVOI_DIAG

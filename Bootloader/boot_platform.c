@@ -1,5 +1,5 @@
-/* Разработчик: Кряжев А., 2026 */
-/* STM32F103CB / Домовой v5, по разводке присланной платы v5. */
+/* Р Р°Р·СЂР°Р±РѕС‚С‡РёРє: РљСЂСЏР¶РµРІ Рђ., 2026 */
+/* STM32F103CB / Р”РѕРјРѕРІРѕР№ v5, РїРѕ СЂР°Р·РІРѕРґРєРµ РїСЂРёСЃР»Р°РЅРЅРѕР№ РїР»Р°С‚С‹ v5. */
 #include "includes.h"
 #include "boot_platform.h"
 #include "../User/sector_journal.h"
@@ -23,11 +23,9 @@ void USB_LP_CAN1_RX0_IRQHandler(void) { USB_Istr(); }
 void USBWakeUp_IRQHandler(void) { EXTI_ClearITPendingBit(EXTI_Line18); }
 void boot_service(void) {
  IWDG->KR=0xAAAA;
-#ifndef BOOT_BOARD_MINI
- /* Только отдельные светодиоды PWR/DATA. Светодиоды MINI электрически общие с CAN. */
+ /* РћС‚РґРµР»СЊРЅС‹Рµ СЃРІРµС‚РѕРґРёРѕРґС‹ PWR/DATA РїР»Р°С‚С‹ v5. */
  if((ticks/250u)&1u) { GPIOB->BRR=BOOT_LED_PRIMARY_PIN;GPIOB->BSRR=BOOT_LED_SECONDARY_PIN; }
  else { GPIOB->BRR=BOOT_LED_SECONDARY_PIN;GPIOB->BSRR=BOOT_LED_PRIMARY_PIN; }
-#endif
 }
 static uint8_t spi_byte(uint8_t data) {
  uint32_t timeout=100000;
@@ -79,7 +77,7 @@ static int storage_erase(uint32_t address) {
  spi_fault=0;if(!write_enable()) return 0;
  command(0x20,address);select_chip(0);
  if(!wait_flash()) return 0;
- /* Защищённое или неудачное стирание отвергается до любого перехода журнала. */
+ /* Р—Р°С‰РёС‰С‘РЅРЅРѕРµ РёР»Рё РЅРµСѓРґР°С‡РЅРѕРµ СЃС‚РёСЂР°РЅРёРµ РѕС‚РІРµСЂРіР°РµС‚СЃСЏ РґРѕ Р»СЋР±РѕРіРѕ РїРµСЂРµС…РѕРґР° Р¶СѓСЂРЅР°Р»Р°. */
  command(3,address);
  {unsigned i;int ok=1;for(i=0;i<4096;i++) if(spi_byte(0xff)!=0xff) ok=0;
  select_chip(0);return ok&&!spi_fault;}
@@ -107,7 +105,7 @@ int boot_ext_write(uint32_t address,const void *data,uint32_t size) {
  if(address>BOOT_BACKUP+BOOT_SLOT_SIZE||size>BOOT_BACKUP+BOOT_SLOT_SIZE-address) return 0;
  return storage_write(address,data,size);
 }
-// Только общий recovery получает доступ к зарезервированному журналу и таблицам.
+// РўРѕР»СЊРєРѕ РѕР±С‰РёР№ recovery РїРѕР»СѓС‡Р°РµС‚ РґРѕСЃС‚СѓРї Рє Р·Р°СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРЅРѕРјСѓ Р¶СѓСЂРЅР°Р»Сѓ Рё С‚Р°Р±Р»РёС†Р°Рј.
 uint8_t sj_io_read(uint32_t a,uint8_t *p,uint16_t n) { return sj_span(a,n) && storage_read(a,p,n); }
 uint8_t sj_io_write(uint32_t a,const uint8_t *p,uint16_t n) { return sj_span(a,n) && storage_write(a,p,n); }
 uint8_t sj_io_erase(uint32_t a) { return !(a&4095u) && sj_span(a,4096) && storage_erase(a); }
@@ -137,37 +135,21 @@ int boot_int_write(uint32_t address,const void *data,uint32_t size) {
 }
 void boot_platform_init(void) {
  GPIO_InitTypeDef g;
- /* Заводская запись объёма запоминается до включения USB и периферии. */
+ /* Р—Р°РІРѕРґСЃРєР°СЏ Р·Р°РїРёСЃСЊ РѕР±СЉС‘РјР° Р·Р°РїРѕРјРёРЅР°РµС‚СЃСЏ РґРѕ РІРєР»СЋС‡РµРЅРёСЏ USB Рё РїРµСЂРёС„РµСЂРёРё. */
  flash_kib=*(const volatile uint16_t*)BOOT_FLASH_SIZE_ADDRESS;
  SCB->VTOR=0x08000000u;
  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA|RCC_APB2Periph_GPIOB|RCC_APB2Periph_GPIOC|RCC_APB2Periph_AFIO|RCC_APB2Periph_SPI1,ENABLE);
  GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable,ENABLE);
  GPIO_StructInit(&g);g.GPIO_Speed=GPIO_Speed_50MHz;g.GPIO_Mode=GPIO_Mode_Out_PP;
- /* Пассивные уровни выставляются до включения выходных драйверов. */
+ /* РџР°СЃСЃРёРІРЅС‹Рµ СѓСЂРѕРІРЅРё РІС‹СЃС‚Р°РІР»СЏСЋС‚СЃСЏ РґРѕ РІРєР»СЋС‡РµРЅРёСЏ РІС‹С…РѕРґРЅС‹С… РґСЂР°Р№РІРµСЂРѕРІ. */
  BOOT_USB_PORT->BRR=BOOT_USB_PIN;BOOT_CS_PORT->BSRR=BOOT_CS_PIN;
-#ifndef BOOT_BOARD_MINI
  GPIOB->BRR=BOOT_LED_PINS;
-#endif
  g.GPIO_Pin=BOOT_USB_PIN;GPIO_Init(BOOT_USB_PORT,&g);
  g.GPIO_Pin=BOOT_CS_PIN;GPIO_Init(BOOT_CS_PORT,&g);
-#ifndef BOOT_BOARD_MINI
  g.GPIO_Pin=BOOT_LED_PINS;GPIO_Init(GPIOB,&g);
-#endif
-#ifdef BOOT_BOARD_MINI
- /* RXD - выход внешней микросхемы CAN; микроконтроллер его никогда не ведёт. TXD в высоком
-    уровне не даёт доминантного уровня на шине всё время работы загрузчика. */
- g.GPIO_Pin=BOOT_CAN_RX_PIN;g.GPIO_Mode=GPIO_Mode_IN_FLOATING;GPIO_Init(GPIOB,&g);
- GPIOB->BSRR=BOOT_CAN_TX_PIN;
- g.GPIO_Pin=BOOT_CAN_TX_PIN;g.GPIO_Mode=GPIO_Mode_Out_PP;GPIO_Init(GPIOB,&g);
- GPIOB->BRR=GPIO_Pin_0;g.GPIO_Pin=GPIO_Pin_0;GPIO_Init(GPIOB,&g);
- GPIOC->BRR=GPIO_Pin_14|GPIO_Pin_15;g.GPIO_Pin=GPIO_Pin_14|GPIO_Pin_15;GPIO_Init(GPIOC,&g);
-#else
  GPIOB->BRR=GPIO_Pin_3|GPIO_Pin_7;g.GPIO_Pin=GPIO_Pin_3|GPIO_Pin_7;GPIO_Init(GPIOB,&g);
  GPIOC->BRR=GPIO_Pin_13;g.GPIO_Pin=GPIO_Pin_13;GPIO_Init(GPIOC,&g);
-#ifndef BOOT_BOARD_MODEM
  GPIOA->BRR=GPIO_Pin_0;g.GPIO_Pin=GPIO_Pin_0;GPIO_Init(GPIOA,&g);
-#endif
-#endif
  g.GPIO_Mode=GPIO_Mode_IPU;g.GPIO_Pin=BOOT_BUTTON_PIN;GPIO_Init(BOOT_BUTTON_PORT,&g);
  g.GPIO_Pin=GPIO_Pin_15;g.GPIO_Mode=GPIO_Mode_IN_FLOATING;GPIO_Init(GPIOB,&g);
  g.GPIO_Pin=GPIO_Pin_5|GPIO_Pin_7;g.GPIO_Mode=GPIO_Mode_AF_PP;GPIO_Init(GPIOA,&g);
@@ -206,7 +188,7 @@ __attribute__((naked)) static void jump(uint32_t sp,uint32_t pc) {
 #endif
 
 void boot_start_app(void) {
- // До запуска, включая откат на старую FW, таблицы должны быть восстановлены.
+ // Р”Рѕ Р·Р°РїСѓСЃРєР°, РІРєР»СЋС‡Р°СЏ РѕС‚РєР°С‚ РЅР° СЃС‚Р°СЂСѓСЋ FW, С‚Р°Р±Р»РёС†С‹ РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅС‹.
  if(!sj_recover())return;
  BootHeader h;unsigned i;
  if(!boot_validate(0,BOOT_APP_BASE,&h))return;

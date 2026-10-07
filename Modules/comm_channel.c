@@ -1,7 +1,7 @@
-/* Доработка: Кряжев А., 2026.
-   Владеет TCP сервера и единственным буфером отправки.
-   Слот освобождается после TCP ACK; чтение выдаёт предварительное тело до финала AT.
-   После звонка ожидаемый обрыв восстанавливается обычным путём без первой паузы.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   Р’Р»Р°РґРµРµС‚ TCP СЃРµСЂРІРµСЂР° Рё РµРґРёРЅСЃС‚РІРµРЅРЅС‹Рј Р±СѓС„РµСЂРѕРј РѕС‚РїСЂР°РІРєРё.
+   РЎР»РѕС‚ РѕСЃРІРѕР±РѕР¶РґР°РµС‚СЃСЏ РїРѕСЃР»Рµ TCP ACK; С‡С‚РµРЅРёРµ РІС‹РґР°С‘С‚ РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕРµ С‚РµР»Рѕ РґРѕ С„РёРЅР°Р»Р° AT.
+   РџРѕСЃР»Рµ Р·РІРѕРЅРєР° РѕР¶РёРґР°РµРјС‹Р№ РѕР±СЂС‹РІ РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚СЃСЏ РѕР±С‹С‡РЅС‹Рј РїСѓС‚С‘Рј Р±РµР· РїРµСЂРІРѕР№ РїР°СѓР·С‹.
 */
 #include "domovoi_diag.h"
 #include "comm_channel.h"
@@ -25,18 +25,18 @@ static struct {
 enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT };
 enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_ACK };
 enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY };
-/* Служебный запрос (сигнал, регистрация): одна команда, строки ответа - заказчику. */
+/* РЎР»СѓР¶РµР±РЅС‹Р№ Р·Р°РїСЂРѕСЃ (СЃРёРіРЅР°Р», СЂРµРіРёСЃС‚СЂР°С†РёСЏ): РѕРґРЅР° РєРѕРјР°РЅРґР°, СЃС‚СЂРѕРєРё РѕС‚РІРµС‚Р° - Р·Р°РєР°Р·С‡РёРєСѓ. */
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
-/* Передать изменение канала владельцу сервера. */
+/* РџРµСЂРµРґР°С‚СЊ РёР·РјРµРЅРµРЅРёРµ РєР°РЅР°Р»Р° РІР»Р°РґРµР»СЊС†Сѓ СЃРµСЂРІРµСЂР°. */
 static void channel_emit(uint8_t kind, uint8_t value)
 { ch.event(kind, value); }
-/* Голос занимает AT; после отбоя только известный обрыв требует восстановления. */
+/* Р“РѕР»РѕСЃ Р·Р°РЅРёРјР°РµС‚ AT; РїРѕСЃР»Рµ РѕС‚Р±РѕСЏ С‚РѕР»СЊРєРѕ РёР·РІРµСЃС‚РЅС‹Р№ РѕР±СЂС‹РІ С‚СЂРµР±СѓРµС‚ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ. */
 bool comm_channel_call_pending(void) { return ch.call.active; }
-/* Разрешить первую попытку восстановления ожидаемого обрыва. */
+/* Р Р°Р·СЂРµС€РёС‚СЊ РїРµСЂРІСѓСЋ РїРѕРїС‹С‚РєСѓ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РѕР¶РёРґР°РµРјРѕРіРѕ РѕР±СЂС‹РІР°. */
 bool comm_channel_expected(void) { return ch.call.expected; }
-/* Снять ожидание обрыва после ответа сервера. */
+/* РЎРЅСЏС‚СЊ РѕР¶РёРґР°РЅРёРµ РѕР±СЂС‹РІР° РїРѕСЃР»Рµ РѕС‚РІРµС‚Р° СЃРµСЂРІРµСЂР°. */
 void comm_channel_alive(void) { if (!ch.call.active) ch.call.expected = 0; }
-/* Отметить голос и восстановить только уже обнаруженную потерю. */
+/* РћС‚РјРµС‚РёС‚СЊ РіРѕР»РѕСЃ Рё РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ С‚РѕР»СЊРєРѕ СѓР¶Рµ РѕР±РЅР°СЂСѓР¶РµРЅРЅСѓСЋ РїРѕС‚РµСЂСЋ. */
 void comm_channel_call(bool active)
 {
   ch.call.active = (uint8_t)active;
@@ -49,12 +49,12 @@ void comm_channel_call(bool active)
 #ifdef __IAR_SYSTEMS_ICC__
 #pragma inline=forced
 #endif
-/* Проверить IPv4 с разрешёнными кавычками и без них. */
+/* РџСЂРѕРІРµСЂРёС‚СЊ IPv4 СЃ СЂР°Р·СЂРµС€С‘РЅРЅС‹РјРё РєР°РІС‹С‡РєР°РјРё Рё Р±РµР· РЅРёС…. */
 static bool channel_ip(const uint8_t *p, uint16_t n, const char *quoted, const char *plain, uint32_t *values)
 {
   return comm_at_parse(p,n,quoted,values) || comm_at_parse(p,n,plain,values);
 }
-/* Завершить предварительное чтение и выдать его результат. */
+/* Р—Р°РІРµСЂС€РёС‚СЊ РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕРµ С‡С‚РµРЅРёРµ Рё РІС‹РґР°С‚СЊ РµРіРѕ СЂРµР·СѓР»СЊС‚Р°С‚. */
 static void channel_read_done(uint8_t reason)
 {
   if (ch.flags.read_active) {
@@ -62,7 +62,7 @@ static void channel_read_done(uint8_t reason)
     ch.read_done(ch.bytes, reason);
   }
 }
-/* Передать тело владельцу и учесть принятые байты. */
+/* РџРµСЂРµРґР°С‚СЊ С‚РµР»Рѕ РІР»Р°РґРµР»СЊС†Сѓ Рё СѓС‡РµСЃС‚СЊ РїСЂРёРЅСЏС‚С‹Рµ Р±Р°Р№С‚С‹. */
 static uint16_t channel_binary(const uint8_t *p, uint16_t n)
 {
   if (!ch.flags.read_active) return 0;
@@ -70,7 +70,7 @@ static uint16_t channel_binary(const uint8_t *p, uint16_t n)
   if (used <= n) ch.bytes = (uint16_t)(ch.bytes + used);
   return used;
 }
-/* Разобрать ответы канала и уведомления о потере соединения. */
+/* Р Р°Р·РѕР±СЂР°С‚СЊ РѕС‚РІРµС‚С‹ РєР°РЅР°Р»Р° Рё СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РїРѕС‚РµСЂРµ СЃРѕРµРґРёРЅРµРЅРёСЏ. */
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
@@ -104,10 +104,10 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
       ch.answer = v[2] == 0 ? 1 : 2;
   }
   {
-    /* Повторное открытие гасит проверку, поэтому ответ старого сокета сюда не доходит. */
+    /* РџРѕРІС‚РѕСЂРЅРѕРµ РѕС‚РєСЂС‹С‚РёРµ РіР°СЃРёС‚ РїСЂРѕРІРµСЂРєСѓ, РїРѕСЌС‚РѕРјСѓ РѕС‚РІРµС‚ СЃС‚Р°СЂРѕРіРѕ СЃРѕРєРµС‚Р° СЃСЋРґР° РЅРµ РґРѕС…РѕРґРёС‚. */
     if (ch.probe_active == COMM_CH_PING) {
       if (!comm_at_prefix(p,n,"+QPING:")) return;
-      /* Фактический ответ: код, IPv4, bytes, time, ttl. */
+      /* Р¤Р°РєС‚РёС‡РµСЃРєРёР№ РѕС‚РІРµС‚: РєРѕРґ, IPv4, bytes, time, ttl. */
       uint16_t pos = sizeof("+QPING:") - 1u;
       uint32_t code;
       if (!comm_at_scan(p,n,&pos,UINT32_MAX,&code) || code || pos >= n || p[pos++] != ',') return;
@@ -124,34 +124,34 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
     }
   }
 }
-/* Начать новый TCP-сеанс и подключить обработчики AT. */
+/* РќР°С‡Р°С‚СЊ РЅРѕРІС‹Р№ TCP-СЃРµР°РЅСЃ Рё РїРѕРґРєР»СЋС‡РёС‚СЊ РѕР±СЂР°Р±РѕС‚С‡РёРєРё AT. */
 void comm_channel_init(void (*event)(uint8_t, uint8_t))
 {
   memset(&ch, 0, sizeof(ch));
   ch.event = event; comm_modem_transport(channel_at_event);
   comm_at_sink(channel_binary);
 }
-/* Назначить владельца тела и результата чтения. */
+/* РќР°Р·РЅР°С‡РёС‚СЊ РІР»Р°РґРµР»СЊС†Р° С‚РµР»Р° Рё СЂРµР·СѓР»СЊС‚Р°С‚Р° С‡С‚РµРЅРёСЏ. */
 void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),
                           void (*read_done)(uint16_t, uint8_t))
 { ch.binary = binary; ch.read_done = read_done; }
-/* Ограничить следующий QIRD свободным местом потребителя. */
+/* РћРіСЂР°РЅРёС‡РёС‚СЊ СЃР»РµРґСѓСЋС‰РёР№ QIRD СЃРІРѕР±РѕРґРЅС‹Рј РјРµСЃС‚РѕРј РїРѕС‚СЂРµР±РёС‚РµР»СЏ. */
 void comm_channel_rx_capacity(uint16_t count)
 { ch.capacity = count > 256u ? 256u : count; }
-/* Сообщить, открыт ли серверный TCP. */
+/* РЎРѕРѕР±С‰РёС‚СЊ, РѕС‚РєСЂС‹С‚ Р»Рё СЃРµСЂРІРµСЂРЅС‹Р№ TCP. */
 bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
-/* Сообщить о потере границ AT, требующей перезапуска модема. */
+/* РЎРѕРѕР±С‰РёС‚СЊ Рѕ РїРѕС‚РµСЂРµ РіСЂР°РЅРёС† AT, С‚СЂРµР±СѓСЋС‰РµР№ РїРµСЂРµР·Р°РїСѓСЃРєР° РјРѕРґРµРјР°. */
 bool comm_channel_fault(void) { return ch.state == CH_FAULT; }
 #if DOMOVOI_DIAG
-/* Собрать состояние канала для стендовой команды 112. */
+/* РЎРѕР±СЂР°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РєР°РЅР°Р»Р° РґР»СЏ СЃС‚РµРЅРґРѕРІРѕР№ РєРѕРјР°РЅРґС‹ 112. */
 uint32_t comm_channel_diag(void)
 { return ch.state | (uint32_t)ch.tx_state << 8 | (uint32_t)ch.operation << 16 | (uint32_t)ch.connections << 24; }
 #endif
-/* Сообщить, занят ли единственный слот отправки. */
+/* РЎРѕРѕР±С‰РёС‚СЊ, Р·Р°РЅСЏС‚ Р»Рё РµРґРёРЅСЃС‚РІРµРЅРЅС‹Р№ СЃР»РѕС‚ РѕС‚РїСЂР°РІРєРё. */
 bool comm_tx_busy(void) { return ch.tx_state != TX_FREE; }
-/* Отложить фоновые операции ради регистрации или статуса. */
+/* РћС‚Р»РѕР¶РёС‚СЊ С„РѕРЅРѕРІС‹Рµ РѕРїРµСЂР°С†РёРё СЂР°РґРё СЂРµРіРёСЃС‚СЂР°С†РёРё РёР»Рё СЃС‚Р°С‚СѓСЃР°. */
 void comm_channel_priority(bool pending) { ch.flags.urgent = (uint8_t)pending; }
-/* Выдать свободный слот производителю кадра. */
+/* Р’С‹РґР°С‚СЊ СЃРІРѕР±РѕРґРЅС‹Р№ СЃР»РѕС‚ РїСЂРѕРёР·РІРѕРґРёС‚РµР»СЋ РєР°РґСЂР°. */
 uint8_t *comm_tx_acquire(uint16_t *capacity)
 {
   *capacity = sizeof(frame);
@@ -159,22 +159,22 @@ uint8_t *comm_tx_acquire(uint16_t *capacity)
       || ch.call.active) return NULL;
   ch.tx_state = TX_BUILD; ch.tx_since = ch.now; return frame;
 }
-/* Передать заполненный слот каналу до подтверждения TCP. */
+/* РџРµСЂРµРґР°С‚СЊ Р·Р°РїРѕР»РЅРµРЅРЅС‹Р№ СЃР»РѕС‚ РєР°РЅР°Р»Сѓ РґРѕ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ TCP. */
 bool comm_tx_commit(uint16_t count)
 {
   if (ch.tx_state != TX_BUILD || !count || count > sizeof(frame)) return false;
   ch.frame_count = count; ch.tx_state = TX_QUEUED; return true;
 }
-/* Отменить ещё не переданный каналу кадр. */
+/* РћС‚РјРµРЅРёС‚СЊ РµС‰С‘ РЅРµ РїРµСЂРµРґР°РЅРЅС‹Р№ РєР°РЅР°Р»Сѓ РєР°РґСЂ. */
 void comm_tx_release(void) { if (ch.tx_state == TX_BUILD) ch.tx_state = TX_FREE; }
-/* Снять ступени отката после устойчивой связи. */
+/* РЎРЅСЏС‚СЊ СЃС‚СѓРїРµРЅРё РѕС‚РєР°С‚Р° РїРѕСЃР»Рµ СѓСЃС‚РѕР№С‡РёРІРѕР№ СЃРІСЏР·Рё. */
 void comm_channel_stable(void) { ch.retry_step = 0; }
-/* Зафиксировать принятый сервером новый сеанс. */
+/* Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РїСЂРёРЅСЏС‚С‹Р№ СЃРµСЂРІРµСЂРѕРј РЅРѕРІС‹Р№ СЃРµР°РЅСЃ. */
 void comm_channel_registered(void)
 {
   ch.connections = 0; ch.address_failures = 0; ch.flags.registered_session = 1; ch.call.expected = ch.call.lost = 0;
 }
-/* Закрыть прежний TCP и назначить обычную повторную попытку. */
+/* Р—Р°РєСЂС‹С‚СЊ РїСЂРµР¶РЅРёР№ TCP Рё РЅР°Р·РЅР°С‡РёС‚СЊ РѕР±С‹С‡РЅСѓСЋ РїРѕРІС‚РѕСЂРЅСѓСЋ РїРѕРїС‹С‚РєСѓ. */
 void comm_channel_reopen(uint32_t pause_ms)
 {
   if (ch.call.active) { ch.call.lost = 1; return; }
@@ -196,19 +196,19 @@ void comm_channel_reopen(uint32_t pause_ms)
   }
   if (had_socket) channel_emit(COMM_CH_CLOSED, 0);
 }
-/* Самый низкий приоритет: только при свободном канале, без отправки и чтения. */
+/* РЎР°РјС‹Р№ РЅРёР·РєРёР№ РїСЂРёРѕСЂРёС‚РµС‚: С‚РѕР»СЊРєРѕ РїСЂРё СЃРІРѕР±РѕРґРЅРѕРј РєР°РЅР°Р»Рµ, Р±РµР· РѕС‚РїСЂР°РІРєРё Рё С‡С‚РµРЅРёСЏ. */
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t))
 {
   if (!comm_channel_ready() || query.cmd) return false;
   query.cmd = cmd; query.line = line; return true;
 }
-/* Поставить проверку интернета по запросу надзора сервера. */
+/* РџРѕСЃС‚Р°РІРёС‚СЊ РїСЂРѕРІРµСЂРєСѓ РёРЅС‚РµСЂРЅРµС‚Р° РїРѕ Р·Р°РїСЂРѕСЃСѓ РЅР°РґР·РѕСЂР° СЃРµСЂРІРµСЂР°. */
 bool comm_channel_probe(uint8_t kind)
 {
   if (!comm_channel_ready() || ch.probe || ch.probe_active || (kind != COMM_CH_PING && kind != COMM_CH_DNS)) return false;
   ch.probe = kind; return true;
 }
-/* Собрать и запустить одну операцию канала. */
+/* РЎРѕР±СЂР°С‚СЊ Рё Р·Р°РїСѓСЃС‚РёС‚СЊ РѕРґРЅСѓ РѕРїРµСЂР°С†РёСЋ РєР°РЅР°Р»Р°. */
 static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uint8_t op)
 {
   char cmd[128];
@@ -237,7 +237,7 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
   }
   return true;
 }
-/* Применить завершение текущей операции канала. */
+/* РџСЂРёРјРµРЅРёС‚СЊ Р·Р°РІРµСЂС€РµРЅРёРµ С‚РµРєСѓС‰РµР№ РѕРїРµСЂР°С†РёРё РєР°РЅР°Р»Р°. */
 static void channel_completed(void)
 {
   uint8_t op = ch.operation, result = comm_modem_result();
@@ -272,7 +272,7 @@ static void channel_completed(void)
     if (reason) comm_channel_reopen(0);
     return;
   }
-  if (op == OP_QUERY) { query.cmd = NULL; return; } /* ответ разобран; ERROR - не повод рвать TCP */
+  if (op == OP_QUERY) { query.cmd = NULL; return; } /* РѕС‚РІРµС‚ СЂР°Р·РѕР±СЂР°РЅ; ERROR - РЅРµ РїРѕРІРѕРґ СЂРІР°С‚СЊ TCP */
   if (op == OP_PING || op == OP_DNS) {
     if (result != COMM_AT_OK && ch.probe_active == (op == OP_PING ? COMM_CH_PING : COMM_CH_DNS)) {
       ch.probe = ch.probe_active = 0; channel_emit(COMM_CH_PROBE_DONE, 0);
@@ -284,7 +284,7 @@ static void channel_completed(void)
     if (op == OP_CLOSE && result == COMM_AT_ERROR && !ch.flags.peer_closed) {
       ch.state = CH_VERIFY; return;
     }
-    /* После URC closed дождались финала QICLOSE; иначе требуется QISTATE. */
+    /* РџРѕСЃР»Рµ URC closed РґРѕР¶РґР°Р»РёСЃСЊ С„РёРЅР°Р»Р° QICLOSE; РёРЅР°С‡Рµ С‚СЂРµР±СѓРµС‚СЃСЏ QISTATE. */
     if ((result != COMM_AT_OK && !(result == COMM_AT_ERROR && ch.flags.peer_closed))
         || (op == OP_VERIFY && ch.answer)) {
       comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, comm_modem_status()->modem_code);
@@ -306,7 +306,7 @@ static void channel_completed(void)
     else ch.ack_next = ch.now + comm_timeouts[COMM_T_ACK_POLL];
   }
 }
-/* Продвинуть канал, передачу, чтение и фоновые запросы. */
+/* РџСЂРѕРґРІРёРЅСѓС‚СЊ РєР°РЅР°Р», РїРµСЂРµРґР°С‡Сѓ, С‡С‚РµРЅРёРµ Рё С„РѕРЅРѕРІС‹Рµ Р·Р°РїСЂРѕСЃС‹. */
 void comm_channel_poll(uint32_t now_ms)
 {
   ch.now = now_ms;
@@ -330,8 +330,8 @@ void comm_channel_poll(uint32_t now_ms)
       uint8_t ok = ch.probe_answer == 1; ch.probe_active = ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, ok);
     }
   }
-  if (comm_modem_busy()) return; /* В том числе безопасная ресинхронизация AT. */
-  /* Приглашение уже получено: даже потеря TCP/вызов не заменяет данные командой. */
+  if (comm_modem_busy()) return; /* Р’ С‚РѕРј С‡РёСЃР»Рµ Р±РµР·РѕРїР°СЃРЅР°СЏ СЂРµСЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ AT. */
+  /* РџСЂРёРіР»Р°С€РµРЅРёРµ СѓР¶Рµ РїРѕР»СѓС‡РµРЅРѕ: РґР°Р¶Рµ РїРѕС‚РµСЂСЏ TCP/РІС‹Р·РѕРІ РЅРµ Р·Р°РјРµРЅСЏРµС‚ РґР°РЅРЅС‹Рµ РєРѕРјР°РЅРґРѕР№. */
   if (ch.tx_state == TX_PAYLOAD && !ch.operation) {
     if (channel_command(NULL, COMM_AT_SEND, COMM_T_SEND_RESULT, OP_SEND)) ch.tx_state = TX_SENDING;
     return;
@@ -349,8 +349,8 @@ void comm_channel_poll(uint32_t now_ms)
     return;
   }
   if (ch.state == CH_VERIFY) {
-    /* EX §8.1.6: OK без QISTATE означает отсутствие сокетов PDP 1.
-       После ERROR закрытия наличие старого сокета нельзя угадывать. */
+    /* EX В§8.1.6: OK Р±РµР· QISTATE РѕР·РЅР°С‡Р°РµС‚ РѕС‚СЃСѓС‚СЃС‚РІРёРµ СЃРѕРєРµС‚РѕРІ PDP 1.
+       РџРѕСЃР»Рµ ERROR Р·Р°РєСЂС‹С‚РёСЏ РЅР°Р»РёС‡РёРµ СЃС‚Р°СЂРѕРіРѕ СЃРѕРєРµС‚Р° РЅРµР»СЊР·СЏ СѓРіР°РґС‹РІР°С‚СЊ. */
     if (!ch.operation) channel_command("AT+QISTATE=0,1", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_VERIFY);
     return;
   }
@@ -372,7 +372,7 @@ void comm_channel_poll(uint32_t now_ms)
     channel_command("AT+QISEND=0,0", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_ACK);
   else if (ch.tx_state == TX_FREE && ch.probe && !ch.probe_active) {
     bool dns = ch.probe == COMM_CH_DNS;
-    /* URC DNS не содержит ID: новое поколение не запускаем в старом окне. */
+    /* URC DNS РЅРµ СЃРѕРґРµСЂР¶РёС‚ ID: РЅРѕРІРѕРµ РїРѕРєРѕР»РµРЅРёРµ РЅРµ Р·Р°РїСѓСЃРєР°РµРј РІ СЃС‚Р°СЂРѕРј РѕРєРЅРµ. */
     if (dns && ch.flags.dns_fence && now_ms - ch.dns_since < comm_timeouts[COMM_T_DNS_FENCE]) {
       ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, 0);
     } else if (channel_command(dns ? "AT+QIDNSGIP=1,\"ya.ru\"" : "AT+QPING=1,\"ya.ru\",3,2",

@@ -1,6 +1,6 @@
-/* Доработка: Кряжев А., 2026. Регрессии пяти дефектов новой связи.
-   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
-   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. Р РµРіСЂРµСЃСЃРёРё РїСЏС‚Рё РґРµС„РµРєС‚РѕРІ РЅРѕРІРѕР№ СЃРІСЏР·Рё.
+   РџРµСЂРёС„РµСЂРёСЏ Рё РІСЂРµРјСЏ РјРѕРґРµР»РёСЂСѓСЋС‚СЃСЏ; РєРѕРґ РїСЂРѕРІРµСЂСЏРµРјРѕРіРѕ РјРѕРґСѓР»СЏ Р±РµСЂС‘С‚СЃСЏ РёР· РїСЂРѕРµРєС‚Р°.
+   РљР°Р¶РґС‹Р№ СЃС†РµРЅР°СЂРёР№ РїСЂРѕРІРµСЂСЏРµС‚ РЅР°Р±Р»СЋРґР°РµРјРѕРµ РїРѕРІРµРґРµРЅРёРµ Р±РµР· РїР»Р°С‚С‹ Рё СЃРµСЂРІРµСЂР°. */
 static void review_parser_fault(void)
 {
   for (unsigned uart_error = 0; uart_error < 2; ++uart_error) {
@@ -17,7 +17,7 @@ static void review_parser_fault(void)
     CHECK(comm_server_online() && rc_power_starts == 1);
   }
 }
-/* Незавершённый URC перед QICLOSE не должен блокировать всё восстановление. */
+/* РќРµР·Р°РІРµСЂС€С‘РЅРЅС‹Р№ URC РїРµСЂРµРґ QICLOSE РЅРµ РґРѕР»Р¶РµРЅ Р±Р»РѕРєРёСЂРѕРІР°С‚СЊ РІСЃС‘ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ. */
 static void review_idle_fragment(void)
 {
   rc_online();
@@ -27,7 +27,7 @@ static void review_idle_fragment(void)
   rc_run(30000);
   CHECK(comm_server_online() && rc_power_starts == 1);
 }
-// Проверить окна ранних ошибок AT и TCP.
+// РџСЂРѕРІРµСЂРёС‚СЊ РѕРєРЅР° СЂР°РЅРЅРёС… РѕС€РёР±РѕРє AT Рё TCP.
 static void review_error_windows(void)
 {
   rc_online();
@@ -35,7 +35,7 @@ static void review_error_windows(void)
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(65537000u);
   comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(100);
   CHECK(!rc_logged && comm_server_online());
-  /* Точная граница и оборот миллисекунд, включая отметку времени ноль. */
+  /* РўРѕС‡РЅР°СЏ РіСЂР°РЅРёС†Р° Рё РѕР±РѕСЂРѕС‚ РјРёР»Р»РёСЃРµРєСѓРЅРґ, РІРєР»СЋС‡Р°СЏ РѕС‚РјРµС‚РєСѓ РІСЂРµРјРµРЅРё РЅРѕР»СЊ. */
   uint32_t times[3]; uint8_t index = 0, count = 0;
   rc.now = UINT32_MAX - 100u;
   CHECK(!rc_burst(times, 3, &index, &count, COMM_T_EARLY_AT));
@@ -49,7 +49,7 @@ static void review_error_windows(void)
   CHECK(!rc_burst(times, 3, &index, &count, COMM_T_EARLY_AT));
   CHECK(count == 1);
 }
-// Проверить APN, тип сети и обновление разобранных адресов.
+// РџСЂРѕРІРµСЂРёС‚СЊ APN, С‚РёРї СЃРµС‚Рё Рё РѕР±РЅРѕРІР»РµРЅРёРµ СЂР°Р·РѕР±СЂР°РЅРЅС‹С… Р°РґСЂРµСЃРѕРІ.
 static void review_settings(void)
 {
   rc_online();
@@ -80,7 +80,7 @@ static void review_settings(void)
     char want[40]; snprintf(want, sizeof(want), "AT+QCFG=\"nwscanmode\",%u,1", expected[i]);
     CHECK(!strcmp(cmd, want) && comm_modem_valid_settings());
   }
-  /* Новые настройки меняют следующий QIOPEN без перезагрузки процессора. */
+  /* РќРѕРІС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё РјРµРЅСЏСЋС‚ СЃР»РµРґСѓСЋС‰РёР№ QIOPEN Р±РµР· РїРµСЂРµР·Р°РіСЂСѓР·РєРё РїСЂРѕС†РµСЃСЃРѕСЂР°. */
   comm_split(0, "old.local:1234"); comm_split(1, "old-backup.local:1235");
   comm_endpoints();
   uint16_t capacity;
@@ -99,7 +99,7 @@ static void review_settings(void)
   comm_endpoints();
   CHECK(!strcmp(comm_text(SLM_CFG_HOST2, &capacity), "next-backup.local") && comm_number(SLM_CFG_PORT2) == 7778);
 }
-// Запустить все сценарии этого стенда.
+// Р—Р°РїСѓСЃС‚РёС‚СЊ РІСЃРµ СЃС†РµРЅР°СЂРёРё СЌС‚РѕРіРѕ СЃС‚РµРЅРґР°.
 int main(void)
 {
   (void)original_regressions;

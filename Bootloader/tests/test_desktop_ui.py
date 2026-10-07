@@ -1,4 +1,3 @@
-"""UI state tests; synthetic data, no serial ports opened."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -13,7 +12,7 @@ class UiTests(unittest.TestCase):
     def setUp(self):
         self.root = tk.Tk(); self.root.withdraw()
         self.app = App(self.root, demo=True)
-        self.app.demo = False  # refresh already used only synthetic ports
+        self.app.demo = False
         self.tmp = tempfile.TemporaryDirectory()
         self.file = Path(self.tmp.name)/'139.14.1726300000.bin'
         self.file.write_bytes(struct.pack('<II',0x20001000,0x08008209)+bytes(512))

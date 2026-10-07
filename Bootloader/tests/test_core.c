@@ -8,7 +8,7 @@ static unsigned char ext[BOOT_BACKUP+BOOT_SLOT_SIZE],flash[BOOT_FLASH_END-BOOT_A
 static jmp_buf reset;
 static unsigned mutations,cut;
 static int fail_program,fail_backup,partial,trial_image;
-static uint32_t reject_a,reject_b; /* external addresses whose writes fail, 0 = none */
+static uint32_t reject_a,reject_b;
 void boot_service(void){}
 static void checkpoint(void){++mutations;if(cut&&mutations==cut)longjmp(reset,1);}
 int boot_read(int e,uint32_t a,void *p,uint32_t n){
@@ -33,16 +33,14 @@ static void image(unsigned char *p,unsigned version,uint32_t size){
  h.crc=crc;memcpy(p,&h,sizeof(h));
 }
 static void initial(void){trial_image=0;reject_a=reject_b=0;memset(ext,255,sizeof(ext));memset(flash,255,sizeof(flash));image(flash,14,8192);image(ext,15,12288);mutations=cut=0;fail_program=fail_backup=partial=0;}
-/* Candidate 15 can confirm itself; the running application 14 cannot. */
+
 static void trial_initial(void){initial();trial_image=1;image(ext,15,12288);trial_image=0;}
 static int run(void){if(setjmp(reset))return -1;return boot_run();}
 static unsigned version(void){BootHeader h;assert(boot_validate(0,BOOT_APP_BASE,&h));return h.version;}
 static uint32_t journal(uint32_t offset){uint32_t v;assert(boot_read(1,BOOT_JOURNAL+offset,&v,4));return v;}
-/* The application writes a journal word itself, outside the bootloader HAL. */
+
 static void app_word(uint32_t offset,uint32_t value){unsigned char b[4];unsigned i;memcpy(b,&value,4);for(i=0;i<4;i++)ext[BOOT_JOURNAL+offset+i]&=b[i];}
-/* Starts without confirmation until the state settles. Every cut position must
-   end on the backup with the trial failure recorded, never in recovery, and
-   the trial application may start at most one launch more than allowed. */
+
 static void trial_settles(uint32_t first,uint32_t request){
  unsigned i,launches=0;int r,torn=partial;
  for(i=0;i<16;i++){
@@ -51,14 +49,13 @@ static void trial_settles(uint32_t first,uint32_t request){
   assert(r==BOOT_OK||r==BOOT_RESTORED);
   if(version()==15&&journal(12)==0xffffffffu)launches++;
  }
- /* A torn error code still ends the trial; the FW reports any written code. */
+
  assert(version()==14);assert(journal(12)!=0xffffffffu);assert(torn||journal(12)==BOOT_TRIAL_FAILED);
  assert(launches<=BOOT_TRIAL_LAUNCHES+1u);
 }
 int main(void){
  unsigned total,k,mode;int result;BootHeader h;
- /* A legacy header's HW byte cannot identify a physical board. Preserve the
-    existing application across manual boot replacement, with CRC/vectors intact. */
+
  initial();((BootHeader*)flash)->magic=BOOT_LEGACY_MAGIC;((BootHeader*)flash)->hardware=0;
  assert(boot_validate(0,BOOT_APP_BASE,&h));
  assert(run()==BOOT_OK);assert(boot_validate(1,BOOT_BACKUP,&h)&&h.hardware==0);
@@ -75,15 +72,12 @@ int main(void){
   result=run();assert(result==BOOT_OK||result==BOOT_RESTORED);assert(version()==14||version()==15);
  }
  printf("rollback: %u complete/partial power-cut positions passed\n",total*2);
- /* Backup cannot be written: the intact application keeps running, the request
-    is dropped instead of being retried on every start, and the FW gets a code. */
+
  initial();fail_backup=1;assert(run()==BOOT_BACKUP_ERROR);fail_backup=0;assert(version()==14);
  {uint32_t error;assert(boot_read(1,BOOT_JOURNAL+12,&error,4)&&error==BOOT_BACKUP_ERROR);}
  total=mutations;assert(run()==BOOT_OK&&mutations==total&&version()==14);
  puts("backup failure: application kept, request dropped, error recorded");
- /* The next update erases the journal. A cut inside that erase can leave the
-    completion word erased while the start or rollback word survives. The new
-    candidate is not published yet; the intact application must stay. */
+
  for(k=0;k<2;k++){
   initial();assert(run()==BOOT_OK&&version()==15);
   image(ext,16,4096);((BootHeader*)ext)->magic=0xffffffffu;
@@ -91,55 +85,51 @@ int main(void){
   total=mutations;result=run();assert(version()==15);assert(result==BOOT_OK);assert(mutations==total);
  }
  puts("torn journal erase: running application kept, backup not restored");
- /* Trial: armed before internal Flash changes, every start is a launch. */
+
  trial_initial();assert(run()==BOOT_OK&&version()==15);
  assert(journal(BOOT_JOURNAL_TRIAL)==0&&journal(BOOT_JOURNAL_LAUNCHES)==0xfffffffeu);
  assert(run()==BOOT_OK&&run()==BOOT_OK&&version()==15&&journal(BOOT_JOURNAL_LAUNCHES)==0xfffffff8u);
  assert(run()==BOOT_RESTORED&&version()==14&&journal(12)==BOOT_TRIAL_FAILED);
  total=mutations;for(k=0;k<5;k++){assert(run()==BOOT_OK);assert(version()==14);}assert(mutations==total);
- /* Confirmation ends the trial for good; a torn confirmation does not. */
+
  trial_initial();assert(run()==BOOT_OK);app_word(BOOT_JOURNAL_CONFIRMED,0);
  total=mutations;for(k=0;k<8;k++){assert(run()==BOOT_OK);assert(version()==15);}assert(mutations==total);
  trial_initial();assert(run()==BOOT_OK);app_word(BOOT_JOURNAL_CONFIRMED,0x00ff0000u);
  assert(run()==BOOT_OK&&run()==BOOT_OK&&run()==BOOT_RESTORED&&version()==14);
- /* The application asks for a rollback: the next start restores the backup. */
+
  trial_initial();assert(run()==BOOT_OK);app_word(BOOT_JOURNAL_ROLLBACK,0xfffeffffu);
  assert(run()==BOOT_RESTORED&&version()==14&&journal(12)==BOOT_TRIAL_FAILED);
- /* Images without the marker and installs without a backup are not trials. */
+
  initial();assert(run()==BOOT_OK&&journal(BOOT_JOURNAL_TRIAL)==0xffffffffu);
  total=mutations;for(k=0;k<8;k++){assert(run()==BOOT_OK);assert(version()==15);}assert(mutations==total);
  trial_initial();memset(flash,255,sizeof(flash));assert(run()==BOOT_OK&&version()==15);
  assert(journal(0)==0x4e4f424bu&&journal(BOOT_JOURNAL_TRIAL)==0xffffffffu);
- /* A damaged backup cannot be restored: the trial application keeps running. */
+
  trial_initial();assert(run()==BOOT_OK);ext[BOOT_BACKUP+BOOT_HEADER_SIZE+40]^=1;
  for(k=0;k<6;k++){assert(run()==BOOT_OK);assert(version()==15);}
  puts("trial: launches, confirmation, torn confirmation, request, no marker, no backup, damaged backup");
- /* Confirmed on the third launch, next upload staged, then the journal erase
-    is cut after setting bits of the confirmation. The confirmed application
-    must stay. */
+
  for(k=0;k<2;k++){
   trial_initial();assert(run()==BOOT_OK&&run()==BOOT_OK&&run()==BOOT_OK);app_word(BOOT_JOURNAL_CONFIRMED,0);
   assert(boot_prepare()==BOOT_OK);image(ext,16,4096);((BootHeader*)ext)->magic=0xffffffffu;
   if(k)memset(ext+BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED,255,4);else ext[BOOT_JOURNAL+BOOT_JOURNAL_CONFIRMED]|=1;
   total=mutations;result=run();assert(version()==15);assert(result==BOOT_OK);assert(mutations==total);
  }
- /* A running trial owns the candidate slot and the backup: an upload through
-    the bootloader is refused, unless the application is damaged. */
+
  trial_initial();assert(run()==BOOT_OK);total=mutations;
  assert(boot_prepare()==BOOT_TRIAL_BUSY);assert(mutations==total&&((BootHeader*)ext)->magic==0);
  assert(run()==BOOT_OK&&run()==BOOT_OK&&run()==BOOT_RESTORED&&version()==14);
  assert(boot_prepare()==BOOT_OK);
  trial_initial();assert(run()==BOOT_OK);app_word(BOOT_JOURNAL_CONFIRMED,0);assert(boot_prepare()==BOOT_OK);
  trial_initial();assert(run()==BOOT_OK);memset(flash+BOOT_HEADER_SIZE+64,255,1024);assert(boot_prepare()==BOOT_OK);
- /* A launch that cannot be counted is not granted. With the error code also
-    unwritable, the restored backup is not rewritten on every start. */
+
  trial_initial();assert(run()==BOOT_OK);reject_a=BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES;
  assert(run()==BOOT_RESTORED&&version()==14&&journal(12)==BOOT_TRIAL_FAILED);
  trial_initial();assert(run()==BOOT_OK);reject_a=BOOT_JOURNAL+BOOT_JOURNAL_LAUNCHES;reject_b=BOOT_JOURNAL+12;
  assert(run()==BOOT_IO&&version()==14);total=mutations;
  for(k=0;k<6;k++){assert(run()==BOOT_IO);assert(version()==14);}assert(mutations==total);
  puts("trial: torn journal erase after confirmation, upload refused during trial, unrecordable launch");
- /* Power cut at every Flash change of install, launches and rollback. */
+
  trial_initial();trial_settles(99,0);total=mutations;
  for(mode=0;mode<2;mode++)for(k=1;k<=total;k++){trial_initial();cut=k;partial=(int)mode;trial_settles(99,0);}
  printf("trial exhausted: %u complete/partial power-cut positions passed\n",total*2);
@@ -152,7 +142,7 @@ int main(void){
  initial();((BootHeader*)ext)->size=9;assert(run()==BOOT_OK&&mutations==0);
  initial();memset(flash,255,sizeof(flash));assert(run()==BOOT_OK&&version()==15);
  initial();memset(flash,255,sizeof(flash));fail_program=1;assert(run()==BOOT_RECOVERY);
- /* A complete new upload can escape a previous failed recovery. */
+
  assert(boot_prepare()==BOOT_OK);image(ext,16,4096);assert(boot_request()==BOOT_OK);assert(run()==BOOT_OK&&version()==16);
  initial();assert(run()==BOOT_OK);image(ext,17,BOOT_MAX_CODE);assert(boot_request()==BOOT_OK);assert(run()==BOOT_OK&&version()==17);
  assert(boot_parse_filename("139.14.1726300000.bin",&h)&&h.version==14&&h.timestamp==1726300000u);

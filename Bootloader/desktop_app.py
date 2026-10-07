@@ -1,4 +1,3 @@
-"""Domovoi Service desktop UI. No device queries until the operator requests one."""
 import datetime as dt
 import os
 from pathlib import Path
@@ -323,7 +322,7 @@ DomovoiService/logs; его также можно сохранить отдел�
         info = self.devices.get(port)
         if not info or info['hw'] != self.image[1][0] or info['version'] < 0x31 or info['status']:
             return
-        # The worker reads the file again and re-identifies the actual device.
+
         self.progress['value'] = 0
         self.status.set('Проверка контроллера и подготовка передачи')
         snapshot = self.image[1]

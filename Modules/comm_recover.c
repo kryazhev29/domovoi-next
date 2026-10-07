@@ -1,7 +1,7 @@
-/* Доработка: Кряжев А., 2026.
-   Восстанавливает связь по причинам отказа и окнам AT/TCP.
-   Ступени задают паузы перезапуска модема, процессор не перезагружается.
-   Ожидаемая потеря PDP после звонка получает первую попытку без отката.
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026.
+   Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ СЃРІСЏР·СЊ РїРѕ РїСЂРёС‡РёРЅР°Рј РѕС‚РєР°Р·Р° Рё РѕРєРЅР°Рј AT/TCP.
+   РЎС‚СѓРїРµРЅРё Р·Р°РґР°СЋС‚ РїР°СѓР·С‹ РїРµСЂРµР·Р°РїСѓСЃРєР° РјРѕРґРµРјР°, РїСЂРѕС†РµСЃСЃРѕСЂ РЅРµ РїРµСЂРµР·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ.
+   РћР¶РёРґР°РµРјР°СЏ РїРѕС‚РµСЂСЏ PDP РїРѕСЃР»Рµ Р·РІРѕРЅРєР° РїРѕР»СѓС‡Р°РµС‚ РїРµСЂРІСѓСЋ РїРѕРїС‹С‚РєСѓ Р±РµР· РѕС‚РєР°С‚Р°.
 */
 #include "domovoi_diag.h"
 #include "comm_recover.h"
@@ -15,20 +15,20 @@ enum { RC_WATCH, RC_WAIT };
 static struct {
   const comm_recover_hooks_t *hooks;
   uint32_t now, wait_since, wait_ms, online_since, last_start;
-  uint32_t at_times[3], tcp_times[5];   /* millis последних таймаутов AT и неудач TCP в работе */
-  uint16_t night_day;                   /* сутки последнего ночного перезапуска */
+  uint32_t at_times[3], tcp_times[5];   /* millis РїРѕСЃР»РµРґРЅРёС… С‚Р°Р№РјР°СѓС‚РѕРІ AT Рё РЅРµСѓРґР°С‡ TCP РІ СЂР°Р±РѕС‚Рµ */
+  uint16_t night_day;                   /* СЃСѓС‚РєРё РїРѕСЃР»РµРґРЅРµРіРѕ РЅРѕС‡РЅРѕРіРѕ РїРµСЂРµР·Р°РїСѓСЃРєР° */
   uint8_t state, power, power_step, soft_step, soft_fails, net_step, online;
   uint8_t at_count, tcp_count;
   uint8_t at_i, tcp_i, early;
 } rc;
 
-/* Ступень паузы: 0, 1, 2 и дальше последняя. */
+/* РЎС‚СѓРїРµРЅСЊ РїР°СѓР·С‹: 0, 1, 2 Рё РґР°Р»СЊС€Рµ РїРѕСЃР»РµРґРЅСЏСЏ. */
 static uint32_t rc_pause(uint8_t first, uint8_t step)
 {
   return comm_timeouts[first + (step < 2u ? step : 2u)];
 }
 
-/* Перезапуск модема через pause мс. С питанием - модем на паузу выключен. */
+/* РџРµСЂРµР·Р°РїСѓСЃРє РјРѕРґРµРјР° С‡РµСЂРµР· pause РјСЃ. РЎ РїРёС‚Р°РЅРёРµРј - РјРѕРґРµРј РЅР° РїР°СѓР·Сѓ РІС‹РєР»СЋС‡РµРЅ. */
 static void rc_schedule(bool power, uint32_t pause)
 {
   if (power) comm_modem_off();
@@ -38,13 +38,13 @@ static void rc_schedule(bool power, uint32_t pause)
   rc.wait_ms = pause;
 }
 
-/* Питание сразу; если и после этого не помогло - по паузам 10/30/60 мин. */
+/* РџРёС‚Р°РЅРёРµ СЃСЂР°Р·Сѓ; РµСЃР»Рё Рё РїРѕСЃР»Рµ СЌС‚РѕРіРѕ РЅРµ РїРѕРјРѕРіР»Рѕ - РїРѕ РїР°СѓР·Р°Рј 10/30/60 РјРёРЅ. */
 static uint32_t rc_now_then_ladder(void)
 {
   return rc.power_step ? rc_pause(COMM_T_POWER_1, (uint8_t)(rc.power_step - 1u)) : 0;
 }
 
-/* Продвинуть ступень перезапуска со снятием питания. */
+/* РџСЂРѕРґРІРёРЅСѓС‚СЊ СЃС‚СѓРїРµРЅСЊ РїРµСЂРµР·Р°РїСѓСЃРєР° СЃРѕ СЃРЅСЏС‚РёРµРј РїРёС‚Р°РЅРёСЏ. */
 static void rc_power_ladder(uint32_t pause)
 {
   rc_schedule(true, pause);
@@ -52,13 +52,13 @@ static void rc_power_ladder(uint32_t pause)
   rc.soft_fails = 0;
 }
 
-/* Старые отметки удаляются каждый poll, в том числе до оборота millis.
-   Отдельное число отметок позволяет хранить событие в момент millis == 0. */
+/* РЎС‚Р°СЂС‹Рµ РѕС‚РјРµС‚РєРё СѓРґР°Р»СЏСЋС‚СЃСЏ РєР°Р¶РґС‹Р№ poll, РІ С‚РѕРј С‡РёСЃР»Рµ РґРѕ РѕР±РѕСЂРѕС‚Р° millis.
+   РћС‚РґРµР»СЊРЅРѕРµ С‡РёСЃР»Рѕ РѕС‚РјРµС‚РѕРє РїРѕР·РІРѕР»СЏРµС‚ С…СЂР°РЅРёС‚СЊ СЃРѕР±С‹С‚РёРµ РІ РјРѕРјРµРЅС‚ millis == 0. */
 static void rc_expire(uint32_t *t, uint8_t n, uint8_t i, uint8_t *count, uint8_t window)
 {
   while (*count && rc.now - t[(i + n - *count) % n] >= comm_timeouts[window]) --*count;
 }
-/* Добавить отказ и определить достижение порога раннего перезапуска. */
+/* Р”РѕР±Р°РІРёС‚СЊ РѕС‚РєР°Р· Рё РѕРїСЂРµРґРµР»РёС‚СЊ РґРѕСЃС‚РёР¶РµРЅРёРµ РїРѕСЂРѕРіР° СЂР°РЅРЅРµРіРѕ РїРµСЂРµР·Р°РїСѓСЃРєР°. */
 static bool rc_burst(uint32_t *t, uint8_t n, uint8_t *i, uint8_t *count, uint8_t window)
 {
   rc_expire(t, n, *i, count, window);
@@ -69,7 +69,7 @@ static bool rc_burst(uint32_t *t, uint8_t n, uint8_t *i, uint8_t *count, uint8_t
   return true;
 }
 
-/* Для восстановления нужны только окна AT/TCP, а не диагностическое кольцо. */
+/* Р”Р»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РЅСѓР¶РЅС‹ С‚РѕР»СЊРєРѕ РѕРєРЅР° AT/TCP, Р° РЅРµ РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРѕРµ РєРѕР»СЊС†Рѕ. */
 void comm_recover_failure(uint8_t step, uint8_t reason, uint32_t now_ms)
 {
   if (step < SLM_TCP) return;
@@ -80,16 +80,16 @@ void comm_recover_failure(uint8_t step, uint8_t reason, uint32_t now_ms)
     rc.early |= rc_burst(rc.tcp_times, 5, &rc.tcp_i, &rc.tcp_count, COMM_T_EARLY_TCP);
 }
 
-/* Попытка модема не удалась: что дальше - по причине. */
+/* РџРѕРїС‹С‚РєР° РјРѕРґРµРјР° РЅРµ СѓРґР°Р»Р°СЃСЊ: С‡С‚Рѕ РґР°Р»СЊС€Рµ - РїРѕ РїСЂРёС‡РёРЅРµ. */
 static void rc_failed(void)
 {
   const slm_status_t *s = comm_modem_status();
-  /* Журнал: не дошёл до сети - событие 11, до мобильного интернета - 12. */
+  /* Р–СѓСЂРЅР°Р»: РЅРµ РґРѕС€С‘Р» РґРѕ СЃРµС‚Рё - СЃРѕР±С‹С‚РёРµ 11, РґРѕ РјРѕР±РёР»СЊРЅРѕРіРѕ РёРЅС‚РµСЂРЅРµС‚Р° - 12. */
   if (s->reason == SLM_ERR_PDP || s->phase == SLM_PHASE_PDP) comm_server_note(COMM_LINK_NO_INTERNET);
   else if (s->phase == SLM_PHASE_SIM || s->phase == SLM_PHASE_NETWORK) comm_server_note(COMM_LINK_NO_NET);
   switch (s->reason) {
   case SLM_ERR_NO_ANSWER: case SLM_ERR_STREAM:
-    /* Замолчал посреди работы - питание сразу; молчит после включения - по паузам. */
+    /* Р—Р°РјРѕР»С‡Р°Р» РїРѕСЃСЂРµРґРё СЂР°Р±РѕС‚С‹ - РїРёС‚Р°РЅРёРµ СЃСЂР°Р·Сѓ; РјРѕР»С‡РёС‚ РїРѕСЃР»Рµ РІРєР»СЋС‡РµРЅРёСЏ - РїРѕ РїР°СѓР·Р°Рј. */
     rc_power_ladder(s->step >= SLM_TCP ? rc_now_then_ladder() : rc_pause(COMM_T_POWER_1, rc.power_step));
     return;
   case SLM_ERR_NO_SIM: case SLM_ERR_PIN: case SLM_ERR_PUK: case SLM_ERR_TYPE:
@@ -101,13 +101,13 @@ static void rc_failed(void)
   default:
     break;
   }
-  /* Сеть, мобильный интернет, ответ модема - заново с AT; три раза подряд - питание. */
+  /* РЎРµС‚СЊ, РјРѕР±РёР»СЊРЅС‹Р№ РёРЅС‚РµСЂРЅРµС‚, РѕС‚РІРµС‚ РјРѕРґРµРјР° - Р·Р°РЅРѕРІРѕ СЃ AT; С‚СЂРё СЂР°Р·Р° РїРѕРґСЂСЏРґ - РїРёС‚Р°РЅРёРµ. */
   if (++rc.soft_fails >= 3u) { rc_power_ladder(rc_pause(COMM_T_POWER_1, rc.power_step)); return; }
   rc_schedule(false, rc_pause(COMM_T_SOFT_1, rc.soft_step));
   if (rc.soft_step < 3u) rc.soft_step++;
 }
 
-/* Ночной перезапуск модема: окно 03:00-04:00 раз в сутки, без часов - сутки работы. */
+/* РќРѕС‡РЅРѕР№ РїРµСЂРµР·Р°РїСѓСЃРє РјРѕРґРµРјР°: РѕРєРЅРѕ 03:00-04:00 СЂР°Р· РІ СЃСѓС‚РєРё, Р±РµР· С‡Р°СЃРѕРІ - СЃСѓС‚РєРё СЂР°Р±РѕС‚С‹. */
 static void rc_night(void)
 {
   uint32_t t = rc.hooks->local_time();
@@ -125,16 +125,16 @@ static void rc_night(void)
   }
 }
 
-/* Диагностика (команда 112): ожидание, ступени питания/AT/интернета; остаток паузы, мс. */
+/* Р”РёР°РіРЅРѕСЃС‚РёРєР° (РєРѕРјР°РЅРґР° 112): РѕР¶РёРґР°РЅРёРµ, СЃС‚СѓРїРµРЅРё РїРёС‚Р°РЅРёСЏ/AT/РёРЅС‚РµСЂРЅРµС‚Р°; РѕСЃС‚Р°С‚РѕРє РїР°СѓР·С‹, РјСЃ. */
 #if DOMOVOI_DIAG
-/* Собрать ступени и остаток паузы для команды 112. */
+/* РЎРѕР±СЂР°С‚СЊ СЃС‚СѓРїРµРЅРё Рё РѕСЃС‚Р°С‚РѕРє РїР°СѓР·С‹ РґР»СЏ РєРѕРјР°РЅРґС‹ 112. */
 uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left)
 {
   *wait_left = rc.state == RC_WAIT && now_ms - rc.wait_since < rc.wait_ms ? rc.wait_ms - (now_ms - rc.wait_since) : 0;
   return rc.state | (uint32_t)rc.power << 4 | (uint32_t)rc.power_step << 8 | (uint32_t)rc.soft_step << 16 | (uint32_t)rc.net_step << 24;
 }
 #endif
-/* Начать надзор связи с обязательными обработчиками приложения. */
+/* РќР°С‡Р°С‚СЊ РЅР°РґР·РѕСЂ СЃРІСЏР·Рё СЃ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹РјРё РѕР±СЂР°Р±РѕС‚С‡РёРєР°РјРё РїСЂРёР»РѕР¶РµРЅРёСЏ. */
 void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms)
 {
   memset(&rc, 0, sizeof(rc));
@@ -142,8 +142,8 @@ void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms)
   rc.now = rc.last_start = now_ms;
 }
 
-/* TCP заново -> модем заново с AT (шаг QIDEACT сбрасывает мобильный интернет) ->
-   снятие питания сразу, дальше по паузам. */
+/* TCP Р·Р°РЅРѕРІРѕ -> РјРѕРґРµРј Р·Р°РЅРѕРІРѕ СЃ AT (С€Р°Рі QIDEACT СЃР±СЂР°СЃС‹РІР°РµС‚ РјРѕР±РёР»СЊРЅС‹Р№ РёРЅС‚РµСЂРЅРµС‚) ->
+   СЃРЅСЏС‚РёРµ РїРёС‚Р°РЅРёСЏ СЃСЂР°Р·Сѓ, РґР°Р»СЊС€Рµ РїРѕ РїР°СѓР·Р°Рј. */
 void comm_recover_no_internet(void)
 {
   comm_server_note(COMM_LINK_NO_INTERNET);
@@ -153,7 +153,7 @@ void comm_recover_no_internet(void)
   if (rc.net_step < 2u) rc.net_step++;
 }
 
-/* Исполнить назначенный перезапуск или проверить условия надзора. */
+/* РСЃРїРѕР»РЅРёС‚СЊ РЅР°Р·РЅР°С‡РµРЅРЅС‹Р№ РїРµСЂРµР·Р°РїСѓСЃРє РёР»Рё РїСЂРѕРІРµСЂРёС‚СЊ СѓСЃР»РѕРІРёСЏ РЅР°РґР·РѕСЂР°. */
 void comm_recover_poll(uint32_t now_ms)
 {
   rc.now = now_ms;
@@ -183,7 +183,7 @@ void comm_recover_poll(uint32_t now_ms)
     return;
   }
   if (state != SLM_READY) return;
-  /* В работе модем перестал отвечать или сбои пошли пачкой - сразу без питания. */
+  /* Р’ СЂР°Р±РѕС‚Рµ РјРѕРґРµРј РїРµСЂРµСЃС‚Р°Р» РѕС‚РІРµС‡Р°С‚СЊ РёР»Рё СЃР±РѕРё РїРѕС€Р»Рё РїР°С‡РєРѕР№ - СЃСЂР°Р·Сѓ Р±РµР· РїРёС‚Р°РЅРёСЏ. */
   if (early || comm_channel_fault()) { rc_power_ladder(rc_now_then_ladder()); return; }
   rc_night();
 }

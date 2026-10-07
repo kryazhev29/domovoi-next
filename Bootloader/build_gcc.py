@@ -1,11 +1,10 @@
-"""Independent ARM GCC build; no programmer or connected board is accessed."""
+"""Независимая сборка загрузчика v5 через ARM GCC, без подключения платы."""
 from pathlib import Path
 import subprocess, sys, xml.etree.ElementTree as E, shutil
 B=Path(__file__).resolve().parent
 cc=sys.argv[1] if len(sys.argv)>1 else shutil.which('arm-none-eabi-gcc')
 if not cc: raise SystemExit('Pass the full path to arm-none-eabi-gcc.exe')
-profile=sys.argv[2] if len(sys.argv)>2 else 'v5'
-if profile not in ('v5','mini','modem'):raise SystemExit('Unknown board profile')
+profile='v5'
 out=B/'build'/('gcc-'+profile);out.mkdir(parents=True,exist_ok=True)
 root=E.parse(B/'DomovoiBoot.ewp').getroot()
 cfg=root.find('configuration')
@@ -14,8 +13,6 @@ for o in cfg.findall('.//option'):
  if o.findtext('name')=='CCIncludePath2':
   includes += ['-I'+str(Path((s.text or '').replace('$PROJ_DIR$',str(B)))) for s in o.findall('state')]
 flags=['-mcpu=cortex-m3','-mthumb','-Os','-g','-std=c99','-ffunction-sections','-fdata-sections','-Wall','-Wextra','-Wno-unused-parameter','-DSTM32F10X_MD','-DUSE_STDPERIPH_DRIVER','-DBOOTLOADER']
-if profile=='mini':flags+=['-DBOOT_BOARD_MINI','-DBOOT_HW_VERSION=11']
-if profile=='modem':flags+=['-DBOOT_BOARD_MODEM']
 objects=[]
 for node in root.findall('file/name'):
  source=Path(node.text.replace('$PROJ_DIR$',str(B)))

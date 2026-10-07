@@ -15,7 +15,7 @@ HEADERS = ('Modules/comm_uart.h', 'Modules/comm_at.h', 'User/comm_timeouts.h',
 
 def unit(root=ROOT):
     def source(name):
-        return (root / name).read_bytes().decode('cp1251')
+        return (root / name).read_bytes().decode('utf-8')
     model = source('Tests/test_comm_uart.c').split('/* КОД МОДУЛЯ */', 1)[0]
     model = model.replace('static uint8_t at_command[128], frame[1040];', '')
     model = model.replace('/* ЗАГОЛОВОК МОДУЛЯ */', source('Modules/comm_uart.h'))
@@ -41,7 +41,7 @@ def arm(out):
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         tmp = Path(tmp)
         for name in HEADERS + MODULES + ('Modules/comm_at.c','User/domovoi_diag.h'):
-            (tmp / Path(name).name).write_text((ROOT / name).read_bytes().decode('cp1251').replace('\r\n', '\n'), encoding='utf-8', newline='\n')
+            (tmp / Path(name).name).write_text((ROOT / name).read_bytes().decode('utf-8').replace('\r\n', '\n'), encoding='utf-8', newline='\n')
         (tmp / 'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void*,const void*,size_t);\n'
                                     'void *memset(void*,int,size_t);\nint memcmp(const void*,const void*,size_t);\n'
                                     'size_t strlen(const char*);\n', encoding='ascii')

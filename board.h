@@ -1,13 +1,13 @@
-// Доработка: Кряжев А., 2026
-// Распиновка платы v5 (HW 139), уровни GPIO и адреса приложения.
-// USART1 принадлежит RS-485, USART3 — отдельному драйверу модема.
-// Заголовок 0x08008000 и векторы 0x08008200 сохраняют договор с загрузчиком.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р Р°СЃРїРёРЅРѕРІРєР° РїР»Р°С‚С‹ v5 (HW 139), СѓСЂРѕРІРЅРё GPIO Рё Р°РґСЂРµСЃР° РїСЂРёР»РѕР¶РµРЅРёСЏ.
+// USART1 РїСЂРёРЅР°РґР»РµР¶РёС‚ RS-485, USART3 вЂ” РѕС‚РґРµР»СЊРЅРѕРјСѓ РґСЂР°Р№РІРµСЂСѓ РјРѕРґРµРјР°.
+// Р—Р°РіРѕР»РѕРІРѕРє 0x08008000 Рё РІРµРєС‚РѕСЂС‹ 0x08008200 СЃРѕС…СЂР°РЅСЏСЋС‚ РґРѕРіРѕРІРѕСЂ СЃ Р·Р°РіСЂСѓР·С‡РёРєРѕРј.
 #ifndef BOARD_H
 #define BOARD_H
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_rcc.h"
 
-// Образ платы v5 и договор с загрузчиком.
+// РћР±СЂР°Р· РїР»Р°С‚С‹ v5 Рё РґРѕРіРѕРІРѕСЂ СЃ Р·Р°РіСЂСѓР·С‡РёРєРѕРј.
 #define DEVICETYPE               (uint8_t)0x8b
 #ifndef DOMOVOI_APP_HW
 #define DOMOVOI_APP_HW           139
@@ -21,7 +21,7 @@
 #define BOOT_VER                 *((uint8_t*)(APLICATION_BASE - 4))
 #define BOOTHW_VER               *((uint8_t*)(APLICATION_BASE - 3))
 
-// Реле: активная единица, индексы 0 и 1.
+// Р РµР»Рµ: Р°РєС‚РёРІРЅР°СЏ РµРґРёРЅРёС†Р°, РёРЅРґРµРєСЃС‹ 0 Рё 1.
 #define OUT1                     0
 #define OUT2                     1
 #define OUT1_ON                  GPIOB->BSRR = GPIO_Pin_3
@@ -31,7 +31,7 @@
 #define OUT2_OFF                 GPIOA->BRR = GPIO_Pin_0
 #define OUT2_IN                  ((GPIOA->ODR & GPIO_Pin_0) != (uint32_t)Bit_RESET)
 
-// Светодиоды: питание и сеть имеют рисунки, данные переключает приложение.
+// РЎРІРµС‚РѕРґРёРѕРґС‹: РїРёС‚Р°РЅРёРµ Рё СЃРµС‚СЊ РёРјРµСЋС‚ СЂРёСЃСѓРЅРєРё, РґР°РЅРЅС‹Рµ РїРµСЂРµРєР»СЋС‡Р°РµС‚ РїСЂРёР»РѕР¶РµРЅРёРµ.
 #define PWR_LED                  0
 #define NET_LED                  1
 #define LED1_ON                  GPIOB->BSRR = GPIO_Pin_8
@@ -41,7 +41,7 @@
 #define LED3_ON                  GPIOB->BSRR = GPIO_Pin_6
 #define LED3_OFF                 GPIOB->BRR = GPIO_Pin_6
 
-// Модем USART3: PC13 — питание, PC14 — ключ, PB13/PB14 — CTS/RTS.
+// РњРѕРґРµРј USART3: PC13 вЂ” РїРёС‚Р°РЅРёРµ, PC14 вЂ” РєР»СЋС‡, PB13/PB14 вЂ” CTS/RTS.
 #define GSM_PWR_ON               GPIOC->BSRR = GPIO_Pin_13
 #define GSM_PWR_OFF              GPIOC->BRR = GPIO_Pin_13
 #define GSM_KEY_ON               GPIOC->BRR = GPIO_Pin_14
@@ -50,16 +50,16 @@
 #define RTSG_LOW                 GPIOB->BRR = GPIO_Pin_14
 #define CTSG                     ((GPIOB->IDR & GPIO_Pin_13) == (uint32_t)Bit_RESET)
 
-// USB: PA11/PA12 — шина, PA8 — подтяжка, PB15 — детект кабеля.
+// USB: PA11/PA12 вЂ” С€РёРЅР°, PA8 вЂ” РїРѕРґС‚СЏР¶РєР°, PB15 вЂ” РґРµС‚РµРєС‚ РєР°Р±РµР»СЏ.
 #define USB_PULLUP_ON            GPIOA->BSRR = GPIO_Pin_8
 #define USB_PULLUP_OFF           GPIOA->BRR = GPIO_Pin_8
 #define USB_DETECT               ((GPIOB->IDR & GPIO_Pin_15) != (uint32_t)Bit_RESET)
 
-// Аналоговые входы PB0/PB1 — каналы 8/9; PA4 и приёмник 433 не используются.
+// РђРЅР°Р»РѕРіРѕРІС‹Рµ РІС…РѕРґС‹ PB0/PB1 вЂ” РєР°РЅР°Р»С‹ 8/9; PA4 Рё РїСЂРёС‘РјРЅРёРє 433 РЅРµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ.
 #define IN1_CHANEL               8u
 #define IN2_CHANEL               9u
 
-// Внешняя W25: PA5/PA6/PA7 — SPI1, PB12 — выбор флеш.
+// Р’РЅРµС€РЅСЏСЏ W25: PA5/PA6/PA7 вЂ” SPI1, PB12 вЂ” РІС‹Р±РѕСЂ С„Р»РµС€.
 #define SPI_CS_PIN               GPIO_Pin_12
 #define SPI_CS_PORT              GPIOB
 #define SPI_MOSI_SCK             GPIO_Pin_5 | GPIO_Pin_7
@@ -68,16 +68,16 @@
 #define CSEL_HIGH                GPIOB->BSRR = GPIO_Pin_12
 #define CSEL_LOW                 GPIOB->BRR = GPIO_Pin_12
 
-// Настроить выбранные линии EXTI при закрытых масках.
+// РќР°СЃС‚СЂРѕРёС‚СЊ РІС‹Р±СЂР°РЅРЅС‹Рµ Р»РёРЅРёРё EXTI РїСЂРё Р·Р°РєСЂС‹С‚С‹С… РјР°СЃРєР°С….
 void board_exti_config(uint32_t lines, uint8_t falling);
-// Разрешить IRQ с готовым приоритетом CMSIS.
+// Р Р°Р·СЂРµС€РёС‚СЊ IRQ СЃ РіРѕС‚РѕРІС‹Рј РїСЂРёРѕСЂРёС‚РµС‚РѕРј CMSIS.
 void board_irq_enable(uint8_t irq, uint8_t priority);
-// Настроить входы, безопасные уровни выходов и детектор питания.
+// РќР°СЃС‚СЂРѕРёС‚СЊ РІС…РѕРґС‹, Р±РµР·РѕРїР°СЃРЅС‹Рµ СѓСЂРѕРІРЅРё РІС‹С…РѕРґРѕРІ Рё РґРµС‚РµРєС‚РѕСЂ РїРёС‚Р°РЅРёСЏ.
 void board_init(void);
-// Сбросить GPIO и AFIO перед переходом к загрузчику.
-void board_deinit(void);
-// Запросить системный сброс.
-void board_reset(void);
-// Ограниченно ждать восстановление питания, обслуживая сторож.
-void board_waitPowerStability(void);
+// РЎР±СЂРѕСЃРёС‚СЊ GPIO Рё AFIO РїРµСЂРµРґ РїРµСЂРµС…РѕРґРѕРј Рє Р·Р°РіСЂСѓР·С‡РёРєСѓ.
+
+// Р—Р°РїСЂРѕСЃРёС‚СЊ СЃРёСЃС‚РµРјРЅС‹Р№ СЃР±СЂРѕСЃ.
+
+// РћРіСЂР°РЅРёС‡РµРЅРЅРѕ Р¶РґР°С‚СЊ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїРёС‚Р°РЅРёСЏ, РѕР±СЃР»СѓР¶РёРІР°СЏ СЃС‚РѕСЂРѕР¶.
+
 #endif

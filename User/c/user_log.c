@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Единое заполнение событий и очередь до получения времени сервера.
-// Неизвестное время заменяется ровно один раз; владелец журнала выполняет запись.
-// Очередь RAM теряется при сбросе, опубликованные записи восстанавливает кольцо журнала.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// Р•РґРёРЅРѕРµ Р·Р°РїРѕР»РЅРµРЅРёРµ СЃРѕР±С‹С‚РёР№ Рё РѕС‡РµСЂРµРґСЊ РґРѕ РїРѕР»СѓС‡РµРЅРёСЏ РІСЂРµРјРµРЅРё СЃРµСЂРІРµСЂР°.
+// РќРµРёР·РІРµСЃС‚РЅРѕРµ РІСЂРµРјСЏ Р·Р°РјРµРЅСЏРµС‚СЃСЏ СЂРѕРІРЅРѕ РѕРґРёРЅ СЂР°Р·; РІР»Р°РґРµР»РµС† Р¶СѓСЂРЅР°Р»Р° РІС‹РїРѕР»РЅСЏРµС‚ Р·Р°РїРёСЃСЊ.
+// РћС‡РµСЂРµРґСЊ RAM С‚РµСЂСЏРµС‚СЃСЏ РїСЂРё СЃР±СЂРѕСЃРµ, РѕРїСѓР±Р»РёРєРѕРІР°РЅРЅС‹Рµ Р·Р°РїРёСЃРё РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РєРѕР»СЊС†Рѕ Р¶СѓСЂРЅР°Р»Р°.
 #include "user_logic_internal.h"
 #include "../log_ring.h"
 #include "../user_format.h"
@@ -9,14 +9,14 @@ uint32_t log_lastIndex;
 cellLog_s log_pending[LOG_PENDING_MAX];
 uint8_t log_pendingCount, log_timeKnown;
 
-// Определить стёртую запись журнала.
+// РћРїСЂРµРґРµР»РёС‚СЊ СЃС‚С‘СЂС‚СѓСЋ Р·Р°РїРёСЃСЊ Р¶СѓСЂРЅР°Р»Р°.
 bool log_blank(const cellLog_s *cell){
   const uint8_t *p = (const uint8_t*)cell;
   for (uint16_t i = 0; i < sizeof(*cell); i++) if (p[i] != 0xFF) return false;
   return true;
 }
 
-// Передать первое ожидающее событие владельцу записи журнала.
+// РџРµСЂРµРґР°С‚СЊ РїРµСЂРІРѕРµ РѕР¶РёРґР°СЋС‰РµРµ СЃРѕР±С‹С‚РёРµ РІР»Р°РґРµР»СЊС†Сѓ Р·Р°РїРёСЃРё Р¶СѓСЂРЅР°Р»Р°.
 void log_storage_poll(uint32_t now)
 {
   if (!log_async_active()) {
@@ -29,7 +29,7 @@ void log_storage_poll(uint32_t now)
   memmove(log_pending, log_pending + 1, log_pendingCount * sizeof(log_pending[0]));
 }
 
-// Сохранить накопленные стартовые события синхронным путём до запуска.
+// РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°РєРѕРїР»РµРЅРЅС‹Рµ СЃС‚Р°СЂС‚РѕРІС‹Рµ СЃРѕР±С‹С‚РёСЏ СЃРёРЅС…СЂРѕРЅРЅС‹Рј РїСѓС‚С‘Рј РґРѕ Р·Р°РїСѓСЃРєР°.
 void log_flushPending(void){
   if (store_runtime) return;
   while (log_pendingCount) {
@@ -39,7 +39,7 @@ void log_flushPending(void){
   }
 }
 
-// Перевести время ожидающих событий из uptime в время сервера.
+// РџРµСЂРµРІРµСЃС‚Рё РІСЂРµРјСЏ РѕР¶РёРґР°СЋС‰РёС… СЃРѕР±С‹С‚РёР№ РёР· uptime РІ РІСЂРµРјСЏ СЃРµСЂРІРµСЂР°.
 void log_setTime(uint32_t now){
   device.datetime = now;
   id_endScan = true;
@@ -53,12 +53,12 @@ void log_setTime(uint32_t now){
   log_flushPending();
 }
 
-// Разрешить запись очереди после появления времени или истечения ожидания.
+// Р Р°Р·СЂРµС€РёС‚СЊ Р·Р°РїРёСЃСЊ РѕС‡РµСЂРµРґРё РїРѕСЃР»Рµ РїРѕСЏРІР»РµРЅРёСЏ РІСЂРµРјРµРЅРё РёР»Рё РёСЃС‚РµС‡РµРЅРёСЏ РѕР¶РёРґР°РЅРёСЏ.
 void log_checkPending(void){
   if (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)) log_flushPending();
 }
 
-// Принять событие в ограниченную очередь журнала.
+// РџСЂРёРЅСЏС‚СЊ СЃРѕР±С‹С‚РёРµ РІ РѕРіСЂР°РЅРёС‡РµРЅРЅСѓСЋ РѕС‡РµСЂРµРґСЊ Р¶СѓСЂРЅР°Р»Р°.
 static bool log_put(cellLog_s *cell){
   if (!(log_timeKnown || device.worktime >= LOG_TIME_WAIT)){
     log_flushPending();
@@ -66,13 +66,13 @@ static bool log_put(cellLog_s *cell){
   }
   if (log_pendingCount == LOG_PENDING_MAX) return false;
   log_pending[log_pendingCount] = *cell;
-  // до времени сервера datetime хранит uptime, затем переводится один раз
+  // РґРѕ РІСЂРµРјРµРЅРё СЃРµСЂРІРµСЂР° datetime С…СЂР°РЅРёС‚ uptime, Р·Р°С‚РµРј РїРµСЂРµРІРѕРґРёС‚СЃСЏ РѕРґРёРЅ СЂР°Р·
   if (!log_timeKnown) log_pending[log_pendingCount].datetime = device.worktime;
   log_pendingCount++;
   return true;
 }
 
-// Единожды заполнить общие поля записи события.
+// Р•РґРёРЅРѕР¶РґС‹ Р·Р°РїРѕР»РЅРёС‚СЊ РѕР±С‰РёРµ РїРѕР»СЏ Р·Р°РїРёСЃРё СЃРѕР±С‹С‚РёСЏ.
 static bool log_event(uint8_t type, const void *id, uint8_t passes, uint32_t argument)
 {
   cellLog_s cell;
@@ -85,11 +85,11 @@ static bool log_event(uint8_t type, const void *id, uint8_t passes, uint32_t arg
   return log_put(&cell);
 }
 
-// Записать системное событие с нулевыми аргументами.
+// Р—Р°РїРёСЃР°С‚СЊ СЃРёСЃС‚РµРјРЅРѕРµ СЃРѕР±С‹С‚РёРµ СЃ РЅСѓР»РµРІС‹РјРё Р°СЂРіСѓРјРµРЅС‚Р°РјРё.
 bool log_addSystemEvent(logSystem_e num)
 { return log_event((uint8_t)num, NULL, 0, 0); }
 
-// Преобразовать числовое значение системного события в поле ID.
+// РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ С‡РёСЃР»РѕРІРѕРµ Р·РЅР°С‡РµРЅРёРµ СЃРёСЃС‚РµРјРЅРѕРіРѕ СЃРѕР±С‹С‚РёСЏ РІ РїРѕР»Рµ ID.
 bool log_addSystemValue(logSystem_e num, int32_t value)
 {
   char id[12] = {0};
@@ -97,15 +97,15 @@ bool log_addSystemValue(logSystem_e num, int32_t value)
   return log_addSystemEventID(num, id);
 }
 
-// Записать системное событие с указанным ID.
+// Р—Р°РїРёСЃР°С‚СЊ СЃРёСЃС‚РµРјРЅРѕРµ СЃРѕР±С‹С‚РёРµ СЃ СѓРєР°Р·Р°РЅРЅС‹Рј ID.
 bool log_addSystemEventID(logSystem_e num, char *id)
 { return log_event((uint8_t)num, id, 0, 0); }
 
-// Записать событие доступа с ID и остатком проходов.
+// Р—Р°РїРёСЃР°С‚СЊ СЃРѕР±С‹С‚РёРµ РґРѕСЃС‚СѓРїР° СЃ ID Рё РѕСЃС‚Р°С‚РєРѕРј РїСЂРѕС…РѕРґРѕРІ.
 bool log_addControlEvent(logControl_e num, char *id, uint8_t cnt)
 { return log_event((uint8_t)num, id, cnt, 0); }
 
-// Записать событие обновления с версией, билдом и числовой причиной.
+// Р—Р°РїРёСЃР°С‚СЊ СЃРѕР±С‹С‚РёРµ РѕР±РЅРѕРІР»РµРЅРёСЏ СЃ РІРµСЂСЃРёРµР№, Р±РёР»РґРѕРј Рё С‡РёСЃР»РѕРІРѕР№ РїСЂРёС‡РёРЅРѕР№.
 bool log_addUpdateEvent(logUpdate_e num, uint32_t reason)
 {
   uint8_t id[10] = {0};
@@ -115,7 +115,7 @@ bool log_addUpdateEvent(logUpdate_e num, uint32_t reason)
   return log_event((uint8_t)num, id, 0, reason);
 }
 
-// Записать номер сохранённой фотографии в событие журнала.
+// Р—Р°РїРёСЃР°С‚СЊ РЅРѕРјРµСЂ СЃРѕС…СЂР°РЅС‘РЅРЅРѕР№ С„РѕС‚РѕРіСЂР°С„РёРё РІ СЃРѕР±С‹С‚РёРµ Р¶СѓСЂРЅР°Р»Р°.
 bool log_addPhotoEvent(uint32_t number)
 {
   uint8_t id[10] = {0};

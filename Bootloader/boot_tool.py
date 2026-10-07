@@ -1,13 +1,10 @@
-"""Package application images and upload over the new bootloader's USB CDC.
-No device is accessed unless the explicit upload subcommand is used.
-"""
 import argparse, struct, time, re
 from pathlib import Path
 MAX_CODE=0x17e00
-# boot_core.h BOOT_TRIAL_VECTOR/BOOT_TRIAL_MARKER: the application confirms itself after an update
+
 TRIAL_VECTOR=0x1c
 TRIAL_MARKER=0x4c495254
-# User/user_fun.c fw_image_foreign: reserved vector 8 holds 0x4857 and the HW number in the low byte
+
 HW_MARKER_VECTOR=0x20
 HW_MARKER_TAG=0x48570000
 def board_marker(data):

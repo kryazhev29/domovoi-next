@@ -1,7 +1,3 @@
-"""Execute the compiled ARM GPIO init/service with emulated register memory.
-Requires unicorn; proves register programming, not physical circuit behaviour.
-Run after build_gcc.py for all three profiles, passing --nm arm-none-eabi-nm.exe.
-"""
 from pathlib import Path
 import argparse,subprocess,struct
 from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_MEM_WRITE
@@ -27,7 +23,7 @@ def check(nm,profile,kib):
     u.hook_add(UC_HOOK_MEM_WRITE,lambda uc,access,address,size,value,data:writes.append((address,value)))
     stop=0x0801fff0
     def call(name,*args):
-        # Each direct function invocation starts outside an IT block.
+
         u.reg_write(UC_ARM_REG_XPSR,0x01000000)
         u.reg_write(UC_ARM_REG_SP,0x20004ff0);u.reg_write(UC_ARM_REG_LR,stop|1)
         for reg,value in zip((UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3),args):u.reg_write(reg,value)
@@ -38,19 +34,11 @@ def check(nm,profile,kib):
     def word(addr):return struct.unpack('<I',u.mem_read(addr,4))[0]
     call('boot_platform_init')
     assert call('boot_platform_supported')==(kib==128)
-    if profile=='mini':
-        assert word(0x40010c04)&15==4, 'PB8/RXD must be floating input'
-        assert (word(0x40010c04)>>4)&15==3, 'PB9/TXD must be push-pull output'
-        assert any(a==0x40010c10 and v&(1<<9) for a,v in writes), 'Set TXD high'
-        assert not any((a==0x40010c14 and v&0x300) or (a==0x40010c10 and v&(0x300<<16)) for a,v in writes), 'Never drive CAN low'
-        assert not any(a==0x40010c04 and v&3 for a,v in writes), 'RXD must never be output, even temporarily'
-    else:
-        assert word(0x40010c04)&15==3 and (word(0x40010c00)>>24)&15==3
+    assert word(0x40010c04)&15==3 and (word(0x40010c00)>>24)&15==3
     mark=len(writes)
     for ticks in (0,249,250,499,500,1000):
         u.mem_write(syms['ticks'],struct.pack('<I',ticks));call('boot_service')
-    if profile=='mini':assert not any(0x40010c00<=a<0x40010c1c for a,v in writes[mark:]), 'Watchdog servicing must not toggle CAN'
-    else:assert sum(0x40010c00<=a<0x40010c1c for a,v in writes[mark:])==12, 'PWR/DATA indication must still run'
+    assert sum(0x40010c00<=a<0x40010c1c for a,v in writes[mark:])==12, 'PWR/DATA indication must still run'
     if kib!=128:
         mark=len(writes)
         result=call('boot_int_erase',0x08008000)
@@ -61,5 +49,5 @@ def check(nm,profile,kib):
     print(profile,kib,'KiB: GPIO and Flash guards passed')
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--nm',required=True);args=p.parse_args()
-    for profile in ('v5','mini','modem'):
+    for profile in ('v5',):
         for kib in (128,64,0,65535):check(args.nm,profile,kib)

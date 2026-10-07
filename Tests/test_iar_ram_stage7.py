@@ -19,7 +19,7 @@ elif kind=='mem':
     m=Machine();m.init();assert m.map_size('mem')==80, ('mem table not reduced',m.map_size('mem'))
     from pathlib import Path
     import re
-    text=(Path(__file__).resolve().parents[1]/'structures.h').read_bytes().decode('cp1251')
+    text=(Path(__file__).resolve().parents[1]/'structures.h').read_bytes().decode('utf-8')
     values=[int(x) for x in re.findall(r'MB_[A-Z]+ = ([0-9]+)',text)]
     assert values==list(range(10)), values
     print('RAM mem[10]: map 80 bytes PASS')

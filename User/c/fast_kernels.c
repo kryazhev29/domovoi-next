@@ -1,4 +1,4 @@
-/* ���������: ������ �., 2026. Portable C kernels, no assembler intrinsics. */
+/* Доработка: Кряжев А., 2026. Переносимые C-ядра без ассемблерных вставок. */
 #include "fast_kernels.h"
 #include <string.h>
 uint32_t fast_fnv10(const uint8_t *p)
@@ -18,7 +18,7 @@ uint16_t fast_gf2_apply(const uint16_t *m, uint16_t x)
 }
 bool fast_all_ff(const uint8_t *p, uint16_t n)
 {
-  /* Preserve the first-byte early exit and bounded aligned word reads. */
+
   if (n) do {
     if (*p++ != 255u) return false;
     if (!--n) return true;

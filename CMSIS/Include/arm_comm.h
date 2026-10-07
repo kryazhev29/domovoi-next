@@ -1,14 +1,5 @@
-/***************************************************************************
- **
- **    Common definition for IAR EW ARM
- **
- **    Used with ARM IAR C/C++ Compiler and Assembler.
- **
- **    (c) Copyright IAR Systems 2006
- **
- **    $Revision: 30870 $
- **
- ***************************************************************************/
+
+
 #include <intrinsics.h>
 
 #ifndef __ARM_COMM_DEF_H
@@ -30,33 +21,32 @@
 #define NULL ((void*)0)
 #endif
 
-typedef double                Flo64;    // Double precision floating point
+typedef double                Flo64;
 typedef double              * pFlo64;
-typedef float                 Flo32;    // Single precision floating point
+typedef float                 Flo32;
 typedef float               * pFlo32;
-typedef signed   long long    Int64S;   // Signed   64 bit quantity
+typedef signed   long long    Int64S;
 typedef signed   long long  * pInt64S;
-typedef unsigned long long    Int64U;   // Unsigned 64 bit quantity
+typedef unsigned long long    Int64U;
 typedef unsigned long long  * pInt64U;
-typedef signed   int          Int32S;   // Signed   32 bit quantity
+typedef signed   int          Int32S;
 typedef signed   int        * pInt32S;
-typedef unsigned int          Int32U;   // Unsigned 32 bit quantity
+typedef unsigned int          Int32U;
 typedef unsigned int        * pInt32U;
-typedef signed   short        Int16S;   // Signed   16 bit quantity
+typedef signed   short        Int16S;
 typedef signed   short      * pInt16S;
-typedef unsigned short        Int16U;   // Unsigned 16 bit quantity
+typedef unsigned short        Int16U;
 typedef unsigned short      * pInt16U;
-typedef signed   char         Int8S;    // Signed    8 bit quantity
+typedef signed   char         Int8S;
 typedef signed   char       * pInt8S;
-typedef unsigned char         Int8U;    // Unsigned  8 bit quantity
+typedef unsigned char         Int8U;
 typedef unsigned char       * pInt8U;
-typedef unsigned int          Boolean;  // Boolean
+typedef unsigned int          Boolean;
 typedef unsigned int        * pBoolean;
 typedef unsigned int          DWORD;
 typedef unsigned char         BYTE;
-/* bool/true/false - стандартные (C99): один тип во всём проекте и в модулях связи. */
+/* bool/true/false - СЃС‚Р°РЅРґР°СЂС‚РЅС‹Рµ (C99): РѕРґРёРЅ С‚РёРї РІРѕ РІСЃС‘Рј РїСЂРѕРµРєС‚Рµ Рё РІ РјРѕРґСѓР»СЏС… СЃРІСЏР·Рё. */
 #include <stdbool.h>
-
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -70,8 +60,6 @@ typedef unsigned char         BYTE;
 typedef void * (*CommUserFpnt_t)(void *);
 typedef void   (*VoidFpnt_t)(void);
 
-// Atomic exchange of data between a memory cell and a register
-// return value of the memory cell
 #if __CORE__ < 7
 inline __arm Int32U AtomicExchange (Int32U State, pInt32U Flag)
 {
@@ -128,7 +116,7 @@ inline void EntrCritSection(void)
   {
     asm("CPSID i");
   }
-  // avoid lost of one count in case of simultaneously calling from both places
+
   ++CriticalSecCntr;
 }
 
@@ -174,4 +162,4 @@ Int32U Hold;
                             (((Int32U)__BIN(b3)) <<  8UL) + \
                               (Int32U)__BIN(b4))
 
-#endif // __ARM_COMM_DEF_H
+#endif

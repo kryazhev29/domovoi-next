@@ -8,7 +8,7 @@ from modem_sim import extract
 
 class Extraction(unittest.TestCase):
     def fixture(self, text):
-        raw = b'SLDN\x03\x00\xff\x01' + text.encode('cp1251')
+        raw = b'SLDN\x03\x00\xff\x01' + text.encode('utf-8')
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / 'synthetic.txt'
             path.write_bytes(raw)

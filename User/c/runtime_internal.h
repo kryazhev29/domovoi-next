@@ -1,7 +1,7 @@
-// Доработка: Кряжев А., 2026
-// Общие внутренние контракты автоматов хранилища.
-// Общий тип store используется сохранением настроек и сервисом прошивки.
-// Готовые аргументы не проверяются повторно; владение флешем и рабочей памятью обязательно.
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РћР±С‰РёРµ РІРЅСѓС‚СЂРµРЅРЅРёРµ РєРѕРЅС‚СЂР°РєС‚С‹ Р°РІС‚РѕРјР°С‚РѕРІ С…СЂР°РЅРёР»РёС‰Р°.
+// РћР±С‰РёР№ С‚РёРї store РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ СЃРѕС…СЂР°РЅРµРЅРёРµРј РЅР°СЃС‚СЂРѕРµРє Рё СЃРµСЂРІРёСЃРѕРј РїСЂРѕС€РёРІРєРё.
+// Р“РѕС‚РѕРІС‹Рµ Р°СЂРіСѓРјРµРЅС‚С‹ РЅРµ РїСЂРѕРІРµСЂСЏСЋС‚СЃСЏ РїРѕРІС‚РѕСЂРЅРѕ; РІР»Р°РґРµРЅРёРµ С„Р»РµС€РµРј Рё СЂР°Р±РѕС‡РµР№ РїР°РјСЏС‚СЊСЋ РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ.
 #ifndef C_RUNTIME_INTERNAL_H
 #define C_RUNTIME_INTERNAL_H
 #include "includes.h"
@@ -11,7 +11,7 @@
 #include "sector_runtime.h"
 #include "../asm/flash_owner.h"
 #include "../../Modules/comm_channel.h"
-// Состояние владельца настроек из user_store.c.
+// РЎРѕСЃС‚РѕСЏРЅРёРµ РІР»Р°РґРµР»СЊС†Р° РЅР°СЃС‚СЂРѕРµРє РёР· user_store.c.
 typedef struct {
   uint32_t erase, end, retry_at, usb_epoch;
   uint16_t cursor;
@@ -49,13 +49,13 @@ void upload_runtime_poll(void),upload_runtime_cancel(void),upload_runtime_quiet(
 void *fw_service_busy(void);
 bool fw_service_active(void),fw_service_begin(const uint8_t *,dataChanel_e,uint8_t);
 void fw_service_poll(void),fw_service_cancel(void),fw_service_quiet(uint8_t),fw_service_config_result(uint8_t);
-// Записывает 16 бит в порядке байтов протокола.
+// Р—Р°РїРёСЃС‹РІР°РµС‚ 16 Р±РёС‚ РІ РїРѕСЂСЏРґРєРµ Р±Р°Р№С‚РѕРІ РїСЂРѕС‚РѕРєРѕР»Р°.
 static inline void rt_put16(uint8_t *p, uint16_t v) { p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); }
-// Записывает 32 бита без требования выравнивания.
+// Р—Р°РїРёСЃС‹РІР°РµС‚ 32 Р±РёС‚Р° Р±РµР· С‚СЂРµР±РѕРІР°РЅРёСЏ РІС‹СЂР°РІРЅРёРІР°РЅРёСЏ.
 static inline void rt_put32(uint8_t *p, uint32_t v) { memcpy(p,&v,4); }
-// Читает 16 бит из проверенного тела кадра.
+// Р§РёС‚Р°РµС‚ 16 Р±РёС‚ РёР· РїСЂРѕРІРµСЂРµРЅРЅРѕРіРѕ С‚РµР»Р° РєР°РґСЂР°.
 static inline uint16_t rt_get16(const uint8_t *p) { uint16_t v; memcpy(&v,p,2); return v; }
-// Читает 32 бита из проверенного тела кадра.
+// Р§РёС‚Р°РµС‚ 32 Р±РёС‚Р° РёР· РїСЂРѕРІРµСЂРµРЅРЅРѕРіРѕ С‚РµР»Р° РєР°РґСЂР°.
 static inline uint32_t rt_get32(const uint8_t *p) { uint32_t v; memcpy(&v,p,4); return v; }
 #include "../id_crc_io.h"
 #define RT_ASSERT(name, condition) typedef char name[(condition)?1:-1]

@@ -60,7 +60,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='domovoi-format-') as tmp:
         folder=Path(tmp);source=folder/'format_test.c';exe=folder/'format_test.exe'
         source.write_text(C,encoding='utf-8')
-        zig=os.environ.get('DOMOVOI_ZIG',r'C:\Users\kryaz\Documents\Codex\2026-09-14\c-users-kryaz-desktop-domovoi-next\work\toolchain\ziglang\zig.exe')
+        zig=os.environ.get('DOMOVOI_ZIG',str(Path(__import__('tempfile').gettempdir())/'codex-zig/zig.exe'))
         command=[zig,'cc'] if Path(zig).name.lower()=='zig.exe' else [zig]
         subprocess.run([*command,'-std=c99','-O2','-Wall','-Wextra','-Werror',
                         '-I'+str(ROOT/'User'),str(source),str(ROOT/'User/user_format.c'),'-o',str(exe)],check=True)

@@ -1,13 +1,13 @@
-/* Доработка: Кряжев А., 2026. */
-/* Автомат фото: один шаг чтения или операции W25 за проход.
- * Каждый снимок владеет целыми секторами; стирание выполняется перед записью.
- * Метка формата публикует фото, один байт ACK сохраняет полное подтверждение.
- * После итогового ACK стирается первый сектор, остальные — лениво. */
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. */
+/* РђРІС‚РѕРјР°С‚ С„РѕС‚Рѕ: РѕРґРёРЅ С€Р°Рі С‡С‚РµРЅРёСЏ РёР»Рё РѕРїРµСЂР°С†РёРё W25 Р·Р° РїСЂРѕС…РѕРґ.
+ * РљР°Р¶РґС‹Р№ СЃРЅРёРјРѕРє РІР»Р°РґРµРµС‚ С†РµР»С‹РјРё СЃРµРєС‚РѕСЂР°РјРё; СЃС‚РёСЂР°РЅРёРµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РїРµСЂРµРґ Р·Р°РїРёСЃСЊСЋ.
+ * РњРµС‚РєР° С„РѕСЂРјР°С‚Р° РїСѓР±Р»РёРєСѓРµС‚ С„РѕС‚Рѕ, РѕРґРёРЅ Р±Р°Р№С‚ ACK СЃРѕС…СЂР°РЅСЏРµС‚ РїРѕР»РЅРѕРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ.
+ * РџРѕСЃР»Рµ РёС‚РѕРіРѕРІРѕРіРѕ ACK СЃС‚РёСЂР°РµС‚СЃСЏ РїРµСЂРІС‹Р№ СЃРµРєС‚РѕСЂ, РѕСЃС‚Р°Р»СЊРЅС‹Рµ вЂ” Р»РµРЅРёРІРѕ. */
 #include "photo_runtime.h"
 #include "runtime_internal.h"
 #include "usb_istr.h"
 photo_runtime_s pr;
-// Задача определяет ответ команды 21; фаза — следующий шаг флеш или транспорта.
+// Р—Р°РґР°С‡Р° РѕРїСЂРµРґРµР»СЏРµС‚ РѕС‚РІРµС‚ РєРѕРјР°РЅРґС‹ 21; С„Р°Р·Р° вЂ” СЃР»РµРґСѓСЋС‰РёР№ С€Р°Рі С„Р»РµС€ РёР»Рё С‚СЂР°РЅСЃРїРѕСЂС‚Р°.
 enum { PT_STORAGE, PT_REQUEST, PT_ACK, PT_SEND };
 enum {
   PR_IO = 1, PR_HEAD, PR_CAMERA, PR_LAZY_DONE,
@@ -21,23 +21,23 @@ static void photo_command(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
 static void photo_issue(void);
 static void photo_frame(uint8_t *, uint16_t);
 
-// Переходим к следующему сектору: чужих данных в секторе записи нет.
+// РџРµСЂРµС…РѕРґРёРј Рє СЃР»РµРґСѓСЋС‰РµРјСѓ СЃРµРєС‚РѕСЂСѓ: С‡СѓР¶РёС… РґР°РЅРЅС‹С… РІ СЃРµРєС‚РѕСЂРµ Р·Р°РїРёСЃРё РЅРµС‚.
 static uint32_t pr_next(uint32_t address, uint32_t size)
 {
   return (address + PHOTO_RECORD_HEAD + size + (MEMSECTORSIZE - 1u))&~(MEMSECTORSIZE - 1u);
 }
 
-// Разрешаем повтор команды 21 только при очистке уже восстановленной пустой очереди.
+// Р Р°Р·СЂРµС€Р°РµРј РїРѕРІС‚РѕСЂ РєРѕРјР°РЅРґС‹ 21 С‚РѕР»СЊРєРѕ РїСЂРё РѕС‡РёСЃС‚РєРµ СѓР¶Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРЅРѕР№ РїСѓСЃС‚РѕР№ РѕС‡РµСЂРµРґРё.
 bool photo_empty_cleanup(void) {
   return pr.cleanup && pr.initialized;
 }
 
-// Сообщаем арбитру, что автомат фото владеет флеш.
+// РЎРѕРѕР±С‰Р°РµРј Р°СЂР±РёС‚СЂСѓ, С‡С‚Рѕ Р°РІС‚РѕРјР°С‚ С„РѕС‚Рѕ РІР»Р°РґРµРµС‚ С„Р»РµС€.
 bool photo_storage_busy(void) {
   return pr.phase != 0;
 }
 
-// Отменяем запрос, но завершаем уже начатую публикацию или очистку.
+// РћС‚РјРµРЅСЏРµРј Р·Р°РїСЂРѕСЃ, РЅРѕ Р·Р°РІРµСЂС€Р°РµРј СѓР¶Рµ РЅР°С‡Р°С‚СѓСЋ РїСѓР±Р»РёРєР°С†РёСЋ РёР»Рё РѕС‡РёСЃС‚РєСѓ.
 void photo_storage_cancel(void)
 {
   pr.cancelled = pr.quiet = 1;
@@ -48,7 +48,7 @@ void photo_storage_cancel(void)
   }
 }
 
-// Освобождаем буфер передачи и владение флеш после операции.
+// РћСЃРІРѕР±РѕР¶РґР°РµРј Р±СѓС„РµСЂ РїРµСЂРµРґР°С‡Рё Рё РІР»Р°РґРµРЅРёРµ С„Р»РµС€ РїРѕСЃР»Рµ РѕРїРµСЂР°С†РёРё.
 static void pr_release(void)
 {
   work_release(pr.tx, WORK_PHOTO_PACKET);
@@ -57,11 +57,11 @@ static void pr_release(void)
   flash_release(FO_PHOTO);
 }
 
-// Закрываем операцию с ошибкой без повторных обращений к носителю.
+// Р—Р°РєСЂС‹РІР°РµРј РѕРїРµСЂР°С†РёСЋ СЃ РѕС€РёР±РєРѕР№ Р±РµР· РїРѕРІС‚РѕСЂРЅС‹С… РѕР±СЂР°С‰РµРЅРёР№ Рє РЅРѕСЃРёС‚РµР»СЋ.
 static void pr_fail(void)
 {
   pr.fault = 1;
-  /* При ошибке носителя новые операции разрешит только перезапуск. */
+  /* РџСЂРё РѕС€РёР±РєРµ РЅРѕСЃРёС‚РµР»СЏ РЅРѕРІС‹Рµ РѕРїРµСЂР°С†РёРё СЂР°Р·СЂРµС€РёС‚ С‚РѕР»СЊРєРѕ РїРµСЂРµР·Р°РїСѓСЃРє. */
   if (photo) {
     if (photo->stage) photo_stop();
     photo->pending = 0;
@@ -72,25 +72,25 @@ static void pr_fail(void)
   pr_release();
 }
 
-// Копируем данные в буфер владельца и запускаем запись по страницам.
+// РљРѕРїРёСЂСѓРµРј РґР°РЅРЅС‹Рµ РІ Р±СѓС„РµСЂ РІР»Р°РґРµР»СЊС†Р° Рё Р·Р°РїСѓСЃРєР°РµРј Р·Р°РїРёСЃСЊ РїРѕ СЃС‚СЂР°РЅРёС†Р°Рј.
 static void pr_write(uint32_t address, const uint8_t *p, uint16_t n, uint8_t after)
 {
   if (p != sjr.data) memcpy(sjr.data, p, n);
   pr.io_address = address;
-  pr.io_len = n; // Нулевая длина означает стирание сектора.
+  pr.io_len = n; // РќСѓР»РµРІР°СЏ РґР»РёРЅР° РѕР·РЅР°С‡Р°РµС‚ СЃС‚РёСЂР°РЅРёРµ СЃРµРєС‚РѕСЂР°.
   pr.io_done = 0;
   pr.after = after;
   pr.phase = PR_IO;
   flash_claim(FO_PHOTO);
 }
 
-// Стираем один сектор тем же асинхронным исполнителем W25.
+// РЎС‚РёСЂР°РµРј РѕРґРёРЅ СЃРµРєС‚РѕСЂ С‚РµРј Р¶Рµ Р°СЃРёРЅС…СЂРѕРЅРЅС‹Рј РёСЃРїРѕР»РЅРёС‚РµР»РµРј W25.
 static void pr_erase(uint32_t address, uint8_t after)
 {
   pr_write(address, sjr.data, 0, after);
 }
 
-// Начинаем проход очереди с первого заголовка.
+// РќР°С‡РёРЅР°РµРј РїСЂРѕС…РѕРґ РѕС‡РµСЂРµРґРё СЃ РїРµСЂРІРѕРіРѕ Р·Р°РіРѕР»РѕРІРєР°.
 static void pr_scan_begin(uint8_t task)
 {
   pr.task = task;
@@ -102,7 +102,7 @@ static void pr_scan_begin(uint8_t task)
   flash_claim(FO_PHOTO);
 }
 
-// Публикуем восстановленную очередь и результат поиска запроса.
+// РџСѓР±Р»РёРєСѓРµРј РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРЅСѓСЋ РѕС‡РµСЂРµРґСЊ Рё СЂРµР·СѓР»СЊС‚Р°С‚ РїРѕРёСЃРєР° Р·Р°РїСЂРѕСЃР°.
 static void pr_scan_finish(void)
 {
   if (pr.task == PT_SEND) {
@@ -127,7 +127,7 @@ static void pr_scan_finish(void)
   pr_release();
 }
 
-// Ограничиваем ожидание транспорта, не задерживая основной цикл.
+// РћРіСЂР°РЅРёС‡РёРІР°РµРј РѕР¶РёРґР°РЅРёРµ С‚СЂР°РЅСЃРїРѕСЂС‚Р°, РЅРµ Р·Р°РґРµСЂР¶РёРІР°СЏ РѕСЃРЅРѕРІРЅРѕР№ С†РёРєР».
 static uint8_t pr_reply_expired(uint32_t now)
 {
   if (!pr.reply_wait) {
@@ -137,14 +137,14 @@ static uint8_t pr_reply_expired(uint32_t now)
   return (int32_t)(now - pr.reply_until) >= 0;
 }
 
-// Разрешаем новую внешнюю команду после восстановления и освобождения флеш.
+// Р Р°Р·СЂРµС€Р°РµРј РЅРѕРІСѓСЋ РІРЅРµС€РЅСЋСЋ РєРѕРјР°РЅРґСѓ РїРѕСЃР»Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ Рё РѕСЃРІРѕР±РѕР¶РґРµРЅРёСЏ С„Р»РµС€.
 static uint8_t pr_command_ready(void)
 {
   return user_storage_command_ready() && pr.initialized && !pr.fault &&
     !device.status.readyToUpdate && photo_alloc() && !photo->stage;
 }
 
-// Проверяем внешнюю команду 7 и начинаем съёмку.
+// РџСЂРѕРІРµСЂСЏРµРј РІРЅРµС€РЅСЋСЋ РєРѕРјР°РЅРґСѓ 7 Рё РЅР°С‡РёРЅР°РµРј СЃСЉС‘РјРєСѓ.
 cmdCode_e photo_start(uint8_t address)
 {
   uint8_t found = 0;
@@ -156,7 +156,7 @@ cmdCode_e photo_start(uint8_t address)
   }
   if (!found || config.rs485Mode != 1) return CMD_PARAMERROR;
   if (!pr_command_ready()) return CMD_RUNERROR;
-  // Курсор уже проверен сканом и выровнен по сектору: остаток не меньше 4096 Б.
+  // РљСѓСЂСЃРѕСЂ СѓР¶Рµ РїСЂРѕРІРµСЂРµРЅ СЃРєР°РЅРѕРј Рё РІС‹СЂРѕРІРЅРµРЅ РїРѕ СЃРµРєС‚РѕСЂСѓ: РѕСЃС‚Р°С‚РѕРє РЅРµ РјРµРЅСЊС€Рµ 4096 Р‘.
   if ((!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start) ||
       device.newAddressPhoto >= photo_storage_end()) return CMD_RUNERROR;
   if (pr.last_number == 0xfffffffeu || device.datetime == 0xffffffffu) return CMD_RUNERROR;
@@ -168,7 +168,7 @@ cmdCode_e photo_start(uint8_t address)
   return CMD_SUCCESS;
 }
 
-// Проверяем размер от камеры до первой операции с её секторами.
+// РџСЂРѕРІРµСЂСЏРµРј СЂР°Р·РјРµСЂ РѕС‚ РєР°РјРµСЂС‹ РґРѕ РїРµСЂРІРѕР№ РѕРїРµСЂР°С†РёРё СЃ РµС‘ СЃРµРєС‚РѕСЂР°РјРё.
 static uint8_t pr_prepare(uint32_t size)
 {
   uint32_t end = photo_storage_end();
@@ -179,7 +179,7 @@ static uint8_t pr_prepare(uint32_t size)
   return 1;
 }
 
-// Лениво стираем сектор перед запросом данных для записи в него.
+// Р›РµРЅРёРІРѕ СЃС‚РёСЂР°РµРј СЃРµРєС‚РѕСЂ РїРµСЂРµРґ Р·Р°РїСЂРѕСЃРѕРј РґР°РЅРЅС‹С… РґР»СЏ Р·Р°РїРёСЃРё РІ РЅРµРіРѕ.
 static uint8_t pr_data_ready(void)
 {
   uint32_t used = photo->written + PHOTO_DATA;
@@ -191,7 +191,7 @@ static uint8_t pr_data_ready(void)
   return 0;
 }
 
-// Проверяем номер, контрольную сумму и остаток размера пакета камеры.
+// РџСЂРѕРІРµСЂСЏРµРј РЅРѕРјРµСЂ, РєРѕРЅС‚СЂРѕР»СЊРЅСѓСЋ СЃСѓРјРјСѓ Рё РѕСЃС‚Р°С‚РѕРє СЂР°Р·РјРµСЂР° РїР°РєРµС‚Р° РєР°РјРµСЂС‹.
 static void pr_frame(uint8_t *p, uint16_t n)
 {
   uint16_t id = p[0] | ((uint16_t)p[1] << 8), len = n - 6;
@@ -202,7 +202,7 @@ static void pr_frame(uint8_t *p, uint16_t n)
   pr_write(photo->address + PHOTO_RECORD_HEAD + photo->written, p + 4, len, PR_DATA_DONE);
 }
 
-// Принимаем серверный курсор команды 21 и начинаем поиск фото.
+// РџСЂРёРЅРёРјР°РµРј СЃРµСЂРІРµСЂРЅС‹Р№ РєСѓСЂСЃРѕСЂ РєРѕРјР°РЅРґС‹ 21 Рё РЅР°С‡РёРЅР°РµРј РїРѕРёСЃРє С„РѕС‚Рѕ.
 static cmdCode_e pr_request(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
   if (size && size != 6) return CMD_PARAMERROR;
@@ -222,10 +222,10 @@ static cmdCode_e pr_request(dataChanel_e channel, uint8_t id, const uint8_t *arg
   return (cmdCode_e)255;
 }
 
-// Отвечаем на команду 21, включая повтор ACK во время очистки.
+// РћС‚РІРµС‡Р°РµРј РЅР° РєРѕРјР°РЅРґСѓ 21, РІРєР»СЋС‡Р°СЏ РїРѕРІС‚РѕСЂ ACK РІРѕ РІСЂРµРјСЏ РѕС‡РёСЃС‚РєРё.
 void photo_request_answer(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
-  /* Повтор итогового ACK допустим и пока первый сектор стирается. */
+  /* РџРѕРІС‚РѕСЂ РёС‚РѕРіРѕРІРѕРіРѕ ACK РґРѕРїСѓСЃС‚РёРј Рё РїРѕРєР° РїРµСЂРІС‹Р№ СЃРµРєС‚РѕСЂ СЃС‚РёСЂР°РµС‚СЃСЏ. */
   if (photo_empty_cleanup() && (size == 0 || size == 6) && channel != CH_SMS &&
       !device.status.readyToUpdate && photo_alloc()) {
     photo->channel = channel;
@@ -242,7 +242,7 @@ void photo_request_answer(dataChanel_e channel, uint8_t id, const uint8_t *args,
   if ((uint8_t)r != 255) user_send_answer_comand(21, r, channel, id);
 }
 
-// Начинаем следующий пакет 14 с текущего курсора потока.
+// РќР°С‡РёРЅР°РµРј СЃР»РµРґСѓСЋС‰РёР№ РїР°РєРµС‚ 14 СЃ С‚РµРєСѓС‰РµРіРѕ РєСѓСЂСЃРѕСЂР° РїРѕС‚РѕРєР°.
 static void pr_send_begin(void)
 {
   pr.task = PT_SEND;
@@ -255,7 +255,7 @@ static void pr_send_begin(void)
   pr.reply_wait = 0;
 }
 
-// Удаляем первый сектор пустой очереди, остальные займёт новая запись.
+// РЈРґР°Р»СЏРµРј РїРµСЂРІС‹Р№ СЃРµРєС‚РѕСЂ РїСѓСЃС‚РѕР№ РѕС‡РµСЂРµРґРё, РѕСЃС‚Р°Р»СЊРЅС‹Рµ Р·Р°Р№РјС‘С‚ РЅРѕРІР°СЏ Р·Р°РїРёСЃСЊ.
 static void pr_cleanup_begin(void)
 {
   pr.cancelled = pr.quiet = 0;
@@ -264,7 +264,7 @@ static void pr_cleanup_begin(void)
   pr_erase(mem[MB_PHOTO].start, PR_CLEAN_END);
 }
 
-// Выполняем один ограниченный шаг хранения или формирования пакета.
+// Р’С‹РїРѕР»РЅСЏРµРј РѕРґРёРЅ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹Р№ С€Р°Рі С…СЂР°РЅРµРЅРёСЏ РёР»Рё С„РѕСЂРјРёСЂРѕРІР°РЅРёСЏ РїР°РєРµС‚Р°.
 void photo_storage_poll(uint32_t now)
 {
   uint32_t end = photo_storage_end();
@@ -320,7 +320,7 @@ void photo_storage_poll(uint32_t now)
       break;
     }
     if (pr.h[2] != PHOTO_FORMAT || !pr.h[1] || pr.h[1] > 65535 || pr.h[1] > end - pr.scan - PHOTO_RECORD_HEAD) {
-      /* Неверный первый заголовок очищаем; у конца очереди сохраняем предыдущие фото. */
+      /* РќРµРІРµСЂРЅС‹Р№ РїРµСЂРІС‹Р№ Р·Р°РіРѕР»РѕРІРѕРє РѕС‡РёС‰Р°РµРј; Сѓ РєРѕРЅС†Р° РѕС‡РµСЂРµРґРё СЃРѕС…СЂР°РЅСЏРµРј РїСЂРµРґС‹РґСѓС‰РёРµ С„РѕС‚Рѕ. */
       if (pr.scan == mem[MB_PHOTO].start) pr_cleanup_begin();
       else pr_scan_finish();
       break;
@@ -393,8 +393,8 @@ void photo_storage_poll(uint32_t now)
       pr_release();
       break;
     }
-    /* После очистки хвост старой очереди остаётся. Новый номер перекрывает
-     * первый старый заголовок за снимком, даже если RTC перевели назад. */
+    /* РџРѕСЃР»Рµ РѕС‡РёСЃС‚РєРё С…РІРѕСЃС‚ СЃС‚Р°СЂРѕР№ РѕС‡РµСЂРµРґРё РѕСЃС‚Р°С‘С‚СЃСЏ. РќРѕРІС‹Р№ РЅРѕРјРµСЂ РїРµСЂРµРєСЂС‹РІР°РµС‚
+     * РїРµСЂРІС‹Р№ СЃС‚Р°СЂС‹Р№ Р·Р°РіРѕР»РѕРІРѕРє Р·Р° СЃРЅРёРјРєРѕРј, РґР°Р¶Рµ РµСЃР»Рё RTC РїРµСЂРµРІРµР»Рё РЅР°Р·Р°Рґ. */
     uint32_t next = pr_next(photo->address, photo->size);
     if (next + PHOTO_RECORD_HEAD <= end) {
       if (!w25_read_data(next, (uint8_t*)pr.h, 12)) {
@@ -445,7 +445,7 @@ void photo_storage_poll(uint32_t now)
     pr_release();
     break;
   case PR_ACK_HEAD:
-    /* Заголовки до цели уже проверены при поиске запроса. */
+    /* Р—Р°РіРѕР»РѕРІРєРё РґРѕ С†РµР»Рё СѓР¶Рµ РїСЂРѕРІРµСЂРµРЅС‹ РїСЂРё РїРѕРёСЃРєРµ Р·Р°РїСЂРѕСЃР°. */
     if (!w25_read_data(pr.scan + 4, (uint8_t*) & pr.h[1], 4)) {
       pr_fail();
       break;
@@ -545,7 +545,7 @@ void photo_storage_poll(uint32_t now)
   }
 }
 
-// Обслуживаем камеру, запуск скана, поток передачи и отложенную очистку.
+// РћР±СЃР»СѓР¶РёРІР°РµРј РєР°РјРµСЂСѓ, Р·Р°РїСѓСЃРє СЃРєР°РЅР°, РїРѕС‚РѕРє РїРµСЂРµРґР°С‡Рё Рё РѕС‚Р»РѕР¶РµРЅРЅСѓСЋ РѕС‡РёСЃС‚РєСѓ.
 void photo_poll(void)
 {
   if (pr.phase || !user_storage_background_ready()) return;
@@ -569,7 +569,7 @@ void photo_poll(void)
           if (!photo->used) photo->frame_size = 6;
           photo->frame[photo->used++] = photo->rx[i];
           if (photo->stage == P_DATA && photo->used == 4) {
-            /* Размер внешнего кадра проверяем до заполнения буфера и сложения длины. */
+            /* Р Р°Р·РјРµСЂ РІРЅРµС€РЅРµРіРѕ РєР°РґСЂР° РїСЂРѕРІРµСЂСЏРµРј РґРѕ Р·Р°РїРѕР»РЅРµРЅРёСЏ Р±СѓС„РµСЂР° Рё СЃР»РѕР¶РµРЅРёСЏ РґР»РёРЅС‹. */
             if (photo->frame[3] || photo->frame[2] > PHOTO_DATA) {
               photo_stop();
               break;

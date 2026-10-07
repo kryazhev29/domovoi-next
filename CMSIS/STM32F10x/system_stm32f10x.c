@@ -1,32 +1,13 @@
-// Доработка: Кряжев А., 2026
-// Системный старт STM32F103CB платы v5: кварц 12 МГц, PLL 72 МГц.
-// AHB/APB2 работают на 72 МГц, APB1 — на 36 МГц; флеш ждёт два такта.
-// Отказ кварца или PLL приводит к сбросу, запуск с неверной частотой запрещён.
-/**
-  * @attention
-  *
-  * <h2><center>&copy; COPYRIGHT 2012 STMicroelectronics</center></h2>
-  *
-  * Licensed under MCD-ST Liberty SW License Agreement V2, (the "License");
-  * You may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at:
-  *
-  *        http://www.st.com/software_license_agreement_liberty_v2
-  *
-  * Unless required by applicable law or agreed to in writing, software 
-  * distributed under the License is distributed on an "AS IS" BASIS, 
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  *
-  ******************************************************************************
-  */
+// Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026
+// РЎРёСЃС‚РµРјРЅС‹Р№ СЃС‚Р°СЂС‚ STM32F103CB РїР»Р°С‚С‹ v5: РєРІР°СЂС† 12 РњР“С†, PLL 72 РњР“С†.
+// AHB/APB2 СЂР°Р±РѕС‚Р°СЋС‚ РЅР° 72 РњР“С†, APB1 вЂ” РЅР° 36 РњР“С†; С„Р»РµС€ Р¶РґС‘С‚ РґРІР° С‚Р°РєС‚Р°.
+// РћС‚РєР°Р· РєРІР°СЂС†Р° РёР»Рё PLL РїСЂРёРІРѕРґРёС‚ Рє СЃР±СЂРѕСЃСѓ, Р·Р°РїСѓСЃРє СЃ РЅРµРІРµСЂРЅРѕР№ С‡Р°СЃС‚РѕС‚РѕР№ Р·Р°РїСЂРµС‰С‘РЅ.
 
 #include "stm32f10x.h"
 
 uint32_t SystemCoreClock = 72000000u;
 
-// Ограниченно ждать PLL/переключение частоты; отказ запрещает дальнейший старт.
+// РћРіСЂР°РЅРёС‡РµРЅРЅРѕ Р¶РґР°С‚СЊ PLL/РїРµСЂРµРєР»СЋС‡РµРЅРёРµ С‡Р°СЃС‚РѕС‚С‹; РѕС‚РєР°Р· Р·Р°РїСЂРµС‰Р°РµС‚ РґР°Р»СЊРЅРµР№С€РёР№ СЃС‚Р°СЂС‚.
 static int clock_wait(volatile uint32_t *reg, uint32_t mask, uint32_t value)
 {
   uint32_t budget = 100000u;
@@ -36,7 +17,7 @@ static int clock_wait(volatile uint32_t *reg, uint32_t mask, uint32_t value)
   return 1;
 }
 
-// Запустить кварц 12 МГц и переключить ядро на PLL с множителем 6.
+// Р—Р°РїСѓСЃС‚РёС‚СЊ РєРІР°СЂС† 12 РњР“С† Рё РїРµСЂРµРєР»СЋС‡РёС‚СЊ СЏРґСЂРѕ РЅР° PLL СЃ РјРЅРѕР¶РёС‚РµР»РµРј 6.
 static void SetSysClockTo72(void)
 {
   uint32_t startup = 0;
@@ -60,7 +41,7 @@ static void SetSysClockTo72(void)
   (void)clock_wait(&RCC->CFGR, RCC_CFGR_SWS, RCC_CFGR_SWS_PLL);
 }
 
-// Сбросить настройки RCC и запустить единственную конфигурацию платы.
+// РЎР±СЂРѕСЃРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё RCC Рё Р·Р°РїСѓСЃС‚РёС‚СЊ РµРґРёРЅСЃС‚РІРµРЅРЅСѓСЋ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ РїР»Р°С‚С‹.
 #pragma call_graph_root="func"
 void SystemInit(void)
 {
@@ -71,6 +52,6 @@ void SystemInit(void)
   RCC->CFGR &= 0xFF80FFFFu;
   RCC->CIR = 0x009F0000u;
   SetSysClockTo72();
-  // Это исходное положение ST; приложение и загрузчик задают свой VTOR после старта.
+  // Р­С‚Рѕ РёСЃС…РѕРґРЅРѕРµ РїРѕР»РѕР¶РµРЅРёРµ ST; РїСЂРёР»РѕР¶РµРЅРёРµ Рё Р·Р°РіСЂСѓР·С‡РёРє Р·Р°РґР°СЋС‚ СЃРІРѕР№ VTOR РїРѕСЃР»Рµ СЃС‚Р°СЂС‚Р°.
   SCB->VTOR = FLASH_BASE;
 }

@@ -1,8 +1,8 @@
-/* Доработка: Кряжев А., 2026. TCP/QIRD перенесены из модели модема в канал.
-   Периферия и время моделируются; код проверяемого модуля берётся из проекта.
-   Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
+/* Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026. TCP/QIRD РїРµСЂРµРЅРµСЃРµРЅС‹ РёР· РјРѕРґРµР»Рё РјРѕРґРµРјР° РІ РєР°РЅР°Р».
+   РџРµСЂРёС„РµСЂРёСЏ Рё РІСЂРµРјСЏ РјРѕРґРµР»РёСЂСѓСЋС‚СЃСЏ; РєРѕРґ РїСЂРѕРІРµСЂСЏРµРјРѕРіРѕ РјРѕРґСѓР»СЏ Р±РµСЂС‘С‚СЃСЏ РёР· РїСЂРѕРµРєС‚Р°.
+   РљР°Р¶РґС‹Р№ СЃС†РµРЅР°СЂРёР№ РїСЂРѕРІРµСЂСЏРµС‚ РЅР°Р±Р»СЋРґР°РµРјРѕРµ РїРѕРІРµРґРµРЅРёРµ Р±РµР· РїР»Р°С‚С‹ Рё СЃРµСЂРІРµСЂР°. */
 static unsigned channel_opened, channel_closed, channel_faults;
-// Запомнить открытие, потерю и отказ канала.
+// Р—Р°РїРѕРјРЅРёС‚СЊ РѕС‚РєСЂС‹С‚РёРµ, РїРѕС‚РµСЂСЋ Рё РѕС‚РєР°Р· РєР°РЅР°Р»Р°.
 static void channel_model_event(uint8_t kind, uint8_t value)
 {
   (void)value;
@@ -10,17 +10,17 @@ static void channel_model_event(uint8_t kind, uint8_t value)
   if (kind == COMM_CH_CLOSED) ++channel_closed;
   if (kind == COMM_CH_FAULT) ++channel_faults;
 }
-// Начать независимый сценарий канала.
+// РќР°С‡Р°С‚СЊ РЅРµР·Р°РІРёСЃРёРјС‹Р№ СЃС†РµРЅР°СЂРёР№ РєР°РЅР°Р»Р°.
 static void channel_model_reset(void)
 {
   sim_reset();
   channel_opened = channel_closed = channel_faults = 0;
-  /* AT сначала инициализирует модем; канал назначается в том же сеансе. */
+  /* AT СЃРЅР°С‡Р°Р»Р° РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ РјРѕРґРµРј; РєР°РЅР°Р» РЅР°Р·РЅР°С‡Р°РµС‚СЃСЏ РІ С‚РѕРј Р¶Рµ СЃРµР°РЅСЃРµ. */
   sim_start(); comm_channel_init(channel_model_event);
   comm_channel_receive(sim_binary, sim_read_done);
   sim_poll = comm_channel_poll;
 }
-// Продвинуть модель до требуемого состояния канала.
+// РџСЂРѕРґРІРёРЅСѓС‚СЊ РјРѕРґРµР»СЊ РґРѕ С‚СЂРµР±СѓРµРјРѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ РєР°РЅР°Р»Р°.
 static void channel_until(uint32_t limit)
 {
   unsigned watchdog = 0;
@@ -28,7 +28,7 @@ static void channel_until(uint32_t limit)
       || ch.state == CH_PAUSE || ch.state == CH_OPENING) && watchdog++ < limit / 10u) sim_tick();
   CHECK(watchdog < limit / 10u);
 }
-// Проверить штатное открытие, передачу и закрытие TCP.
+// РџСЂРѕРІРµСЂРёС‚СЊ С€С‚Р°С‚РЅРѕРµ РѕС‚РєСЂС‹С‚РёРµ, РїРµСЂРµРґР°С‡Сѓ Рё Р·Р°РєСЂС‹С‚РёРµ TCP.
 static void channel_path_tests(void)
 {
   channel_model_reset();  channel_until(15000);
@@ -44,7 +44,7 @@ static void channel_path_tests(void)
   CHECK(power_trace[4].time == 5000 && power_trace[4].high);
   printf("SLM normal model: %u ms incl discharge, %u ms from PC13 on, %u polls\n",sim_now,sim_now-power_trace[2].time,sim_ticks);
   CHECK(!strcmp(slm_apn(), "internet.mts.ru"));
-  CHECK(sim_commands < 25); /* Нет команд регистрации на сервере. */
+  CHECK(sim_commands < 25); /* РќРµС‚ РєРѕРјР°РЅРґ СЂРµРіРёСЃС‚СЂР°С†РёРё РЅР° СЃРµСЂРІРµСЂРµ. */
   channel_model_reset(); test_config.modem_type = 255;  channel_until(15000);
   CHECK(comm_channel_ready() && sim_gmm == 1 && sim_found == 1);
   channel_model_reset(); sim_port_change = sim_rat_change = sim_early_open = 1;
@@ -52,7 +52,7 @@ static void channel_path_tests(void)
   CHECK(comm_channel_ready() && !strcmp(slm_apn(),"manual.apn"));
   DIAG_CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_URC_SET));
   DIAG_CHECK(slm.attempt.status.completed_steps & ((uint32_t)1u << SLM_RAT_SET));
-  /* Выбор APN по IMSI для всех операторов и неизвестного профиля. */
+  /* Р’С‹Р±РѕСЂ APN РїРѕ IMSI РґР»СЏ РІСЃРµС… РѕРїРµСЂР°С‚РѕСЂРѕРІ Рё РЅРµРёР·РІРµСЃС‚РЅРѕРіРѕ РїСЂРѕС„РёР»СЏ. */
   static const struct { const char *imsi, *apn; } profiles[] = {
     {"250010123456789\r\nOK\r\n", "internet.mts.ru"}, {"250020123456789\r\nOK\r\n", "internet"},
     {"250990123456789\r\nOK\r\n", "internet.beeline.ru"}, {"250200123456789\r\nOK\r\n", "internet.tele2.ru"},
@@ -64,7 +64,7 @@ static void channel_path_tests(void)
   }
   channel_model_reset(); sim_trickle = 1;  channel_until(20000); CHECK(comm_channel_ready());
 }
-// Проверить чтение QIRD, включая двоичные данные.
+// РџСЂРѕРІРµСЂРёС‚СЊ С‡С‚РµРЅРёРµ QIRD, РІРєР»СЋС‡Р°СЏ РґРІРѕРёС‡РЅС‹Рµ РґР°РЅРЅС‹Рµ.
 static void channel_read_tests(void)
 {
   channel_model_reset(); sim_empty_urc = 1;
@@ -72,7 +72,7 @@ static void channel_read_tests(void)
     CHECK(guard < 1500u); sim_tick();
   }
   sim_feed("+QIURC: \"recv\",0\r\n"); channel_until(15000);
-  CHECK(comm_channel_ready() && sim_qird == 0); /* Данные до TCP/вместимости не теряются. */
+  CHECK(comm_channel_ready() && sim_qird == 0); /* Р”Р°РЅРЅС‹Рµ РґРѕ TCP/РІРјРµСЃС‚РёРјРѕСЃС‚Рё РЅРµ С‚РµСЂСЏСЋС‚СЃСЏ. */
 #if DOMOVOI_DIAG
 #if DOMOVOI_DIAG
   uint16_t tcp_time = slm.diag.steps[SLM_TCP];
@@ -92,7 +92,7 @@ static void channel_read_tests(void)
   for (unsigned i = 0; i < 110; ++i) sim_tick();
   CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT && slm.attempt.status.step == SLM_READ && sim_read_reason == SLM_ERR_TIMEOUT);
 }
-// Проверить отказы и поздние ответы операций канала.
+// РџСЂРѕРІРµСЂРёС‚СЊ РѕС‚РєР°Р·С‹ Рё РїРѕР·РґРЅРёРµ РѕС‚РІРµС‚С‹ РѕРїРµСЂР°С†РёР№ РєР°РЅР°Р»Р°.
 static void channel_error_tests(void)
 {
   channel_model_reset(); sim_open_delay = 149000;  channel_until(170000);
@@ -103,7 +103,7 @@ static void channel_error_tests(void)
   CHECK(!comm_channel_ready());
   channel_model_reset(); sim_open_error = 1;  channel_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_TCP && slm.attempt.status.modem_code == 566);
 }
-// Проверить границы очереди и запрет передачи при вызове.
+// РџСЂРѕРІРµСЂРёС‚СЊ РіСЂР°РЅРёС†С‹ РѕС‡РµСЂРµРґРё Рё Р·Р°РїСЂРµС‚ РїРµСЂРµРґР°С‡Рё РїСЂРё РІС‹Р·РѕРІРµ.
 static void channel_edge_tests(void)
 {
   channel_model_reset();  channel_until(15000);
@@ -124,7 +124,7 @@ static void channel_edge_tests(void)
   CHECK(slm.attempt.status.reason == SLM_ERR_STREAM && sim_done_reads == 1 && sim_read_reason == SLM_ERR_STREAM);
   CHECK(!comm_channel_ready());
 }
-// Проверить снимок диагностики канала.
+// РџСЂРѕРІРµСЂРёС‚СЊ СЃРЅРёРјРѕРє РґРёР°РіРЅРѕСЃС‚РёРєРё РєР°РЅР°Р»Р°.
 static void channel_diagnostic_tests(void)
 {
   channel_model_reset();
@@ -142,7 +142,7 @@ static void channel_diagnostic_tests(void)
   for (unsigned i = 0; i < 20; ++i) sim_tick();
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
 }
-// Запустить проверки путей и отказов канала.
+// Р—Р°РїСѓСЃС‚РёС‚СЊ РїСЂРѕРІРµСЂРєРё РїСѓС‚РµР№ Рё РѕС‚РєР°Р·РѕРІ РєР°РЅР°Р»Р°.
 static void channel_regressions(void)
 {
   channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests();

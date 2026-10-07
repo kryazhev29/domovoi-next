@@ -1,12 +1,12 @@
-/* Замер времени по счётчику тактов ядра (DWT CYCCNT). Доработка: Кряжев А., 2026 */
+/* Р—Р°РјРµСЂ РІСЂРµРјРµРЅРё РїРѕ СЃС‡С‘С‚С‡РёРєСѓ С‚Р°РєС‚РѕРІ СЏРґСЂР° (DWT CYCCNT). Р”РѕСЂР°Р±РѕС‚РєР°: РљСЂСЏР¶РµРІ Рђ., 2026 */
 #include "includes.h"
 #include "prof.h"
 #include "../Modules/modem_slm336.h"
 #if DOMOVOI_DIAG
 
 #define PROF_COMMAND 113u
-#define PROF_SUM_SHIFT 8u                // сумма в единицах 256 тактов: uint32 хватает на 4 ч
-#define PROF_STALE (72000000u * 2u)      // карта без реле дольше 2 с - отказ, не считать
+#define PROF_SUM_SHIFT 8u                // СЃСѓРјРјР° РІ РµРґРёРЅРёС†Р°С… 256 С‚Р°РєС‚РѕРІ: uint32 С…РІР°С‚Р°РµС‚ РЅР° 4 С‡
+#define PROF_STALE (72000000u * 2u)      // РєР°СЂС‚Р° Р±РµР· СЂРµР»Рµ РґРѕР»СЊС€Рµ 2 СЃ - РѕС‚РєР°Р·, РЅРµ СЃС‡РёС‚Р°С‚СЊ
 
 typedef struct { uint32_t max, count, sum; } prof_s;
 static prof_s prof[PROF_N];
@@ -14,7 +14,7 @@ uint32_t prof_card_mark;
 
 void prof_init(void)
 {
-  /* В CMSIS проекта нет DWT - адреса из ARMv7-M: DEMCR.TRCENA, DWT_CYCCNT, DWT_CTRL.CYCCNTENA */
+  /* Р’ CMSIS РїСЂРѕРµРєС‚Р° РЅРµС‚ DWT - Р°РґСЂРµСЃР° РёР· ARMv7-M: DEMCR.TRCENA, DWT_CYCCNT, DWT_CTRL.CYCCNTENA */
   *(volatile uint32_t*)0xE000EDFCu |= 1u << 24;
   *(volatile uint32_t*)0xE0001004u = 0;
   *(volatile uint32_t*)0xE0001000u |= 1u;
@@ -37,8 +37,8 @@ void prof_relay_on(void)
   if (took < PROF_STALE) prof_add(PROF_CARD_RELAY, took);
 }
 
-/* Пакет 113: версия, затем на каждую точку max, count, sum (такты, штуки, такты/256).
- * После отправки счётчики обнуляются - каждый прогон отдельно. */
+/* РџР°РєРµС‚ 113: РІРµСЂСЃРёСЏ, Р·Р°С‚РµРј РЅР° РєР°Р¶РґСѓСЋ С‚РѕС‡РєСѓ max, count, sum (С‚Р°РєС‚С‹, С€С‚СѓРєРё, С‚Р°РєС‚С‹/256).
+ * РџРѕСЃР»Рµ РѕС‚РїСЂР°РІРєРё СЃС‡С‘С‚С‡РёРєРё РѕР±РЅСѓР»СЏСЋС‚СЃСЏ - РєР°Р¶РґС‹Р№ РїСЂРѕРіРѕРЅ РѕС‚РґРµР»СЊРЅРѕ. */
 void prof_send_comm(const uint8_t *reply, uint16_t size)
 {
   uint8_t b[8 + 3 + 4 + sizeof(prof) + 8 + 3 + 4 * (25 + SLM_STEP_COUNT)];
