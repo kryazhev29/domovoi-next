@@ -1,7 +1,7 @@
 """Доработка: Кряжев А., 2026. Синтетический журнал: границы и происхождение RX."""
 from pathlib import Path
 import hashlib
-import tempfile
+from temp_cleanup import TemporaryDirectory
 import unittest
 from modem_sim import extract
 
@@ -9,7 +9,7 @@ from modem_sim import extract
 class Extraction(unittest.TestCase):
     def fixture(self, text):
         raw = b'SLDN\x03\x00\xff\x01' + text.encode('utf-8')
-        with tempfile.TemporaryDirectory() as d:
+        with TemporaryDirectory() as d:
             path = Path(d) / 'synthetic.txt'
             path.write_bytes(raw)
             fixture = extract(path)

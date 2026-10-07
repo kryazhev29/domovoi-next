@@ -5,7 +5,7 @@ import json
 import os
 import struct
 import subprocess
-import tempfile
+from temp_cleanup import TemporaryDirectory
 from comm_at_host import ROOT, ZIG
 from source_select import diagnostic_header
 
@@ -48,7 +48,7 @@ def memory(obj):
 
 def arm(out):
     rows = []; stage_ram = 0
-    with tempfile.TemporaryDirectory(dir=out) as tmp:
+    with TemporaryDirectory(dir=out) as tmp:
         tmp = Path(tmp)
         for name in HEADERS + MODULES + ('Modules/comm_at.c','User/domovoi_diag.h'):
             (tmp / Path(name).name).write_text((ROOT / name).read_bytes().decode('utf-8').replace('\r\n', '\n'), encoding='utf-8', newline='\n')
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     if a.arm:
         arm(out)
     else:
-        with tempfile.TemporaryDirectory(dir=out) as tmp:
+        with TemporaryDirectory(dir=out) as tmp:
             tmp = Path(tmp)
             (tmp / 'test.c').write_text(unit().replace('\r\n', '\n'), encoding='utf-8', newline='\n')
             subprocess.run([ZIG, 'cc', '-std=c99', '-O2', '-Wall', '-Wextra', '-Werror',

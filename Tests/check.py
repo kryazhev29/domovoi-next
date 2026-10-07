@@ -18,10 +18,13 @@ ROOT=Path(__file__).resolve().parents[1]
 def main():
     p=argparse.ArgumentParser();mode=p.add_mutually_exclusive_group(required=True)
     mode.add_argument('--quick',action='store_true');mode.add_argument('--full',action='store_true')
+    p.add_argument('--jobs',type=int,help='Число независимых групп на профиль.')
     a=p.parse_args();start=time.monotonic()
+    if a.jobs is not None and a.jobs < 1:p.error('--jobs должен быть положительным')
     base=Path(os.environ.get('DOMOVOI_COMPARE_BUILD',Path(tempfile.gettempdir())/'domovoi-agent-build'))
     base.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy();env['DOMOVOI_COMPARE_BUILD']=str(base);env['PYTHONIOENCODING']='utf-8'
+    env['PYTHONDONTWRITEBYTECODE']='1'
     results={}
     try:
         for config in (('Release',) if a.quick else ('Release','ReleaseCustomer')):
@@ -38,6 +41,7 @@ def main():
                         shutil.copytree(base/folder/sub,scope/folder/sub,dirs_exist_ok=True)
                 profile_env['DOMOVOI_COMPARE_BUILD']=str(scope)
             cmd=[sys.executable,str(ROOT/'Tests/run_all.py'),'--config',config,'--output',str(base/f'run-all-{config}.json')]
+            if a.jobs is not None:cmd+=['--jobs',str(a.jobs)]
             if a.quick:cmd.append('--quick')
             log_path=base/f'check-{config}.log'
             with log_path.open('wb') as log:r=subprocess.run(cmd,cwd=ROOT,env=profile_env,stdout=log,stderr=subprocess.STDOUT)

@@ -2,7 +2,8 @@ import re
 """Доработка: Кряжев А., 2026. Канал/сервер на настоящих UART, AT и SLM."""
 from pathlib import Path
 from source_select import source_path, source_text, host_adapters
-import argparse, os, subprocess, tempfile
+import argparse, os, subprocess
+from temp_cleanup import TemporaryDirectory
 from comm_slm_host import unit as slm_unit, memory, ROOT, ZIG, HEADERS, MODULES
 
 NEW = ('Modules/comm_channel.c', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c', 'Modules/comm_call.c', 'Modules/comm_sms.c', 'Modules/comm_balance.c')
@@ -65,7 +66,7 @@ def unit():
 def arm(out):
     names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'User/c/user_comm_runtime.c')
     rows = []
-    with tempfile.TemporaryDirectory(dir=out) as tmp:
+    with TemporaryDirectory(dir=out) as tmp:
         tmp = Path(tmp)
         for name in names:
             (tmp / Path(name).name).write_text(source(name).replace('\r\n','\n').replace('../Modules/',''), encoding='utf-8')
@@ -83,7 +84,7 @@ def run(sanitize=False):
     out = ROOT/'Release/comm-stage4'; out.mkdir(parents=True, exist_ok=True)
     os.environ['ZIG_GLOBAL_CACHE_DIR'] = str(out/'zig-global')
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out/'zig-local')
-    with tempfile.TemporaryDirectory(dir=out) as tmp:
+    with TemporaryDirectory(dir=out) as tmp:
         tmp=Path(tmp); (tmp/'test.c').write_text(unit().replace('\r\n','\n'),encoding='utf-8')
         subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',*(['-fsanitize=undefined','-fno-sanitize-recover=all'] if sanitize else []),str(tmp/'test.c'),'-o',str(tmp/'test.exe')],check=True)
         subprocess.run([str(tmp/'test.exe')],check=True,timeout=300)
@@ -102,7 +103,7 @@ def mutations():
         ('dns-header-only','v[0] == 0 && v[1] > 0 ? 2 : 3','v[0] == 0 && v[1] > 0 ? 1 : 3'),
         ('event-repeat','!sv.flags.traffic_event && sv.handlers.no_traffic','sv.handlers.no_traffic'),
     )
-    with tempfile.TemporaryDirectory(dir=out) as tmp:
+    with TemporaryDirectory(dir=out) as tmp:
         tmp=Path(tmp)
         for label,old,new in faults:
             assert old in code, (label,old)
