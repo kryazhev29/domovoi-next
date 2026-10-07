@@ -104,7 +104,8 @@ def rollback():
     def failed_write():
         writes.append(m.args()[0]); m.ret(0)
     m.stubs[m.addr('w25_write_data')] = failed_write
-    m.checked('timers_set', 6, 1800000)
+    # Срок пробы вышел: метка старта на 30 минут раньше текущих миллисекунд.
+    m.write(m.addr('trial_started'), (m.checked('timers_getMillis') - 1800000) & 0xffffffff)
     def second():
         m.checked('timers_set', 3, 1000); m.checked('user_loop')
     second()
