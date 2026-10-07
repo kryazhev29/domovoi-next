@@ -107,10 +107,66 @@ static void photo_fail(const char *why)
   user_debug(text);
   photo_stop();
 }
+/* СТЕНД, ветка test/c328-stm485-invert (30.09.2026), в master не сливать.
+ * Пассивный преобразователь STM485 отдаёт на DB9-2 сигнал в полярности RS232 (покой 0 В),
+ * а C328 - TTL (покой 3,3 В). Команды камере передаются программно с перевёрнутыми уровнями
+ * на PA9: USART1 у F103 инверсии не умеет. Приём идёт через USART как обычно.
+ * На v5 низкий PA9 включает передатчик ADM485 (VT2), поэтому ножка возвращается USART
+ * сразу после стоп-бита, иначе ответ камеры не будет принят. */
+// Уровень ножки TX на каждый из 10 битов кадра 8N1 в перевёрнутой полярности.
+static void photo_line_bits(uint8_t b, uint8_t level[10])
+{
+  uint8_t i;
+  level[0] = 1; // старт-бит (0) перевёрнут
+  for (i = 0; i < 8; i++) level[1 + i] = (uint8_t)!((b >> i) & 1u);
+  level[9] = 0; // стоп-бит (1) перевёрнут
+}
+#if defined(USART1)
+#define PHOTO_DEMCR  (*(volatile uint32_t *)0xE000EDFCu)
+#define PHOTO_DWTCTL (*(volatile uint32_t *)0xE0001000u)
+#define PHOTO_CYCCNT (*(volatile uint32_t *)0xE0001004u)
+static void photo_wait_until(uint32_t t)
+{
+  while ((int32_t)(PHOTO_CYCCNT - t) < 0) {}
+}
+static void photo_uart_send(uint8_t *p, uint16_t n)
+{
+  GPIO_InitTypeDef pin;
+  uint32_t bit = SystemCoreClock / rs485_baud(), t;
+  uint8_t level[10], i;
+  while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET) {}
+  PHOTO_DEMCR |= 1u << 24; // TRCENA
+  PHOTO_DWTCTL |= 1u;      // CYCCNTENA
+  GPIOA->BRR = GPIO_Pin_9;  // покой для камеры
+  GPIO_StructInit(&pin);
+  pin.GPIO_Pin = GPIO_Pin_9;
+  pin.GPIO_Mode = GPIO_Mode_Out_PP;
+  pin.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_Init(GPIOA, &pin);
+  t = PHOTO_CYCCNT + bit * 20u; // покой 20 битов: до этого камера видела сплошной 0
+  photo_wait_until(t);
+  while (n--) {
+    photo_line_bits(*p++, level);
+    __disable_irq(); // 87 мкс на байт
+    for (i = 0; i < 10; i++) {
+      if (level[i]) GPIOA->BSRR = GPIO_Pin_9; else GPIOA->BRR = GPIO_Pin_9;
+      t += bit;
+      photo_wait_until(t);
+    }
+    __enable_irq();
+    t = PHOTO_CYCCNT;
+  }
+  photo_wait_until(t + bit); // ещё один стоп-бит
+  pin.GPIO_Mode = GPIO_Mode_AF_PP;
+  GPIO_Init(GPIOA, &pin);
+}
+#else
+#define photo_uart_send(p, n) ((void)photo_line_bits, uart_send(PORT1_PORT, p, n))
+#endif
 static void photo_command(uint8_t cmd, uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
   uint8_t p[6] = {0xAA, cmd, a, b, c, d};
-  uart_send(PORT1_PORT, p, sizeof(p));
+  photo_uart_send(p, sizeof(p));
   photo->last = timers_getMillis();
   photo->deadline = photo->last + 2000u;
 }
