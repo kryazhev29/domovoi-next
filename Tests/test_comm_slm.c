@@ -25,6 +25,9 @@ static unsigned sim_no_sim, sim_pin, sim_open_delay, sim_open_error, sim_rat_cha
 static unsigned sim_port_change, sim_network_wait, sim_early_open, sim_trickle;
 static unsigned sim_empty_urc, sim_pause, sim_send_sim2, sim_nwinfo_error, sim_csq;
 static const char *sim_imsi;
+static const char *sim_apn_response;
+static unsigned sim_apn_queries, sim_imsi_queries, sim_activations, sim_pdp_failures, sim_pdp_timeouts, sim_apn_count;
+static char sim_apn_commands[8][128];
 static unsigned sim_activation_delay, sim_data_echo, sim_send_race;
 static uint32_t sim_open_due;
 static bool sim_open_pending;
@@ -112,6 +115,8 @@ static void sim_reset(void)
   sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = 0;
   sim_send_sim2 = 1; sim_nwinfo_error = 0; sim_csq = 22; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
   sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
+  sim_apn_response = "OK\r\n";
+  sim_apn_queries = sim_imsi_queries = sim_activations = sim_pdp_failures = sim_pdp_timeouts = sim_apn_count = 0;
 }
 // Передать ответ имитатора в приёмное кольцо UART.
 static void sim_feed(const char *s)
@@ -156,12 +161,20 @@ static void sim_tx(void)
     sim_reply(sim_network_wait == 1 ? "+CGREG: 0,2\r\nOK\r\n" : (sim_network_wait == 2 || sim_network_wait == 4) ? "+CGREG: 0,3\r\nOK\r\n" : "+CGREG: 0,1\r\nOK\r\n", 80);
   } else if (!strcmp(sim_sent, "AT+CEREG?")) {
     sim_reply(sim_network_wait == 1 ? "+CEREG: 0,2\r\nOK\r\n" : (sim_network_wait == 3 || sim_network_wait == 4) ? "+CEREG: 0,3\r\nOK\r\n" : "+CEREG: 0,1\r\nOK\r\n", 80);
-  } else if (!strcmp(sim_sent, "AT+CIMI")) sim_reply(sim_imsi, 30);
+  } else if (!strcmp(sim_sent, "AT+CIMI")) { ++sim_imsi_queries; sim_reply(sim_imsi, 30); }
+  else if (!strcmp(sim_sent, "AT+CGCONTRDP=1")) { ++sim_apn_queries; sim_reply(sim_apn_response, 30); }
+  else if (!strncmp(sim_sent, "AT+QICSGP=", 10)) {
+    strcpy(sim_apn_commands[sim_apn_count++ % 8u], sim_sent); sim_reply("OK\r\n", 30);
+  }
   else if (!strcmp(sim_sent, "AT+QURCCFG=\"urcport\""))
     sim_reply(sim_port_change ? "+QURCCFG: \"urcport\",\"usbat\"\r\nOK\r\n" : "+QURCCFG: \"urcport\",\"uart1\"\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+QCFG=\"nwscanmode\""))
     sim_reply(sim_rat_change == 8 ? "+QCFG: \"nwscanmode\",8\r\nOK\r\n" : sim_rat_change ? "+QCFG: \"nwscanmode\",1\r\nOK\r\n" : "+QCFG: \"nwscanmode\",0\r\nOK\r\n", 30);
-  else if (!strcmp(sim_sent, "AT+QIACT=1")) sim_reply("OK\r\n", sim_activation_delay);
+  else if (!strcmp(sim_sent, "AT+QIACT=1")) {
+    ++sim_activations;
+    if (sim_activations <= sim_pdp_timeouts) return;
+    sim_reply(sim_activations <= sim_pdp_failures ? "ERROR\r\n" : "OK\r\n", sim_activation_delay);
+  }
   else if (!strncmp(sim_sent, "AT+QIOPEN=", 10)) {
     char expected[128];
     CHECK(snprintf(expected,sizeof(expected),"AT+QIOPEN=1,0,\"TCP\",\"%s\",%u,0,0",test_config.host,test_config.port) > 0);
@@ -223,7 +236,7 @@ static void path_tests(void)
   CHECK(power_trace[4].time == 5000 && power_trace[4].high);
   printf("SLM normal model: %u ms incl discharge, %u ms from PC13 on, %u polls\n",sim_now,sim_now-power_trace[2].time,sim_ticks);
   CHECK(!strcmp(slm_apn(), "internet.mts.ru"));
-  CHECK(sim_commands < 25); /* Нет команд регистрации на сервере. */
+  CHECK(sim_commands < 26); /* Нет команд регистрации на сервере. */
   sim_reset(); test_config.modem_type = 255; sim_start(); sim_until(15000);
   CHECK(comm_modem_ready() && sim_gmm == 1 && sim_found == 1);
   sim_reset(); sim_port_change = sim_rat_change = sim_early_open = 1;
@@ -266,7 +279,9 @@ static void timeout_step_tests(void)
   for (unsigned step = SLM_AT_READY; step <= SLM_DATA_ECHO; ++step) {
     sim_reset();
     test_config.modem_type = 255; sim_port_change = sim_rat_change = 1;
-    sim_silence_step = (int)step; sim_start(); sim_until(180000);
+    sim_silence_step = (int)step; sim_start();
+    if (step == SLM_ACTIVATE) slm.apn.source = SLM_APN_EMPTY; /* Срок последнего источника. */
+    sim_until(180000);
     CHECK(slm.attempt.status.state == SLM_FAILED && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
     CHECK(slm.attempt.status.step == step); DIAG_CHECK(slm.diag.failure_step[0] == step);
     DIAG_CHECK((slm.diag.steps[step] * 10u) > 0);
@@ -343,18 +358,72 @@ static void settings_tests(void)
   CHECK(comm_modem_side(&side));
   CHECK(comm_modem_restart(false,sim_now));
   CHECK(comm_modem_side_result(&side) == COMM_AT_ERROR);
-  sim_reset(); slm.settings = sim_settings;
+  sim_reset(); slm.settings = sim_settings; slm.apn.source = SLM_APN_MNC;
   for (unsigned i = 0; i < 5; ++i) {
     static const uint8_t mncs[] = {1,2,99,20,11};
     static const char *expected[] = {"internet.mts.ru","internet","internet.beeline.ru","internet.tele2.ru","internet.yota"};
-    slm.attempt.mnc = mncs[i]; CHECK(!strcmp(slm_apn(),expected[i]));
+    slm.apn.mnc = mncs[i]; CHECK(!strcmp(slm_apn(),expected[i]));
   }
-  slm.attempt.mnc = 88; CHECK(!slm_apn()[0]);
+  slm.apn.mnc = 88; CHECK(!slm_apn()[0]);
+}
+static const struct {
+  const char *name, *manual, *login, *password, *imsi, *network, *commands[4];
+  unsigned rejects, source, queries, imsi_queries, gsm, ready, count;
+} apn_cases[] = {
+/* СЦЕНАРИИ APN */
+};
+// Проверить источники по физическим QICSGP и ответы синтетических сценариев.
+static void apn_tests(void)
+{
+  for (unsigned i = 0; i < sizeof(apn_cases) / sizeof(apn_cases[0]); ++i) {
+    sim_reset();
+    strcpy(test_config.apn, apn_cases[i].manual); strcpy(test_config.login, apn_cases[i].login);
+    strcpy(test_config.password, apn_cases[i].password);
+    sim_imsi = apn_cases[i].imsi; sim_apn_response = apn_cases[i].network;
+    sim_pdp_failures = apn_cases[i].rejects;
+    if (apn_cases[i].gsm) { test_config.network_type = 1; sim_rat_change = 1; sim_network_wait = 3; }
+    sim_start(); sim_until(20000);
+    CHECK(comm_modem_ready() == apn_cases[i].ready && slm.apn.source == apn_cases[i].source);
+    CHECK(sim_apn_queries == apn_cases[i].queries && sim_imsi_queries == apn_cases[i].imsi_queries);
+    CHECK(sim_apn_count == apn_cases[i].count && sim_activations == apn_cases[i].count);
+    for (unsigned j = 0; j < sim_apn_count; ++j) CHECK(!strcmp(sim_apn_commands[j], apn_cases[i].commands[j]));
+    DIAG_CHECK(comm_modem_diag()->apn_source == apn_cases[i].source);
+    if (!apn_cases[i].ready) {
+      CHECK(slm.attempt.status.reason == SLM_ERR_PDP);
+      /* Без успешного источника следующая попытка начинает цепочку заново. */
+      sim_pdp_failures = 0;
+      CHECK(comm_modem_restart(false, sim_now)); sim_until(15000);
+      CHECK(comm_modem_ready() && slm.apn.source == SLM_APN_MANUAL);
+      CHECK(sim_apn_queries == apn_cases[i].queries && sim_activations == apn_cases[i].count + 1);
+      CHECK(!strcmp(sim_apn_commands[apn_cases[i].count], apn_cases[i].commands[0]));
+      continue;
+    }
+    /* Потеря PDP и мягкий запуск сохраняют источник, без CIMI/CGCONTRDP. */
+    comm_modem_data_failed(SLM_ERR_PDP); CHECK(comm_modem_restart(false, sim_now)); sim_until(15000);
+    CHECK(comm_modem_ready() && slm.apn.source == apn_cases[i].source && slm.apn.locked);
+    CHECK(sim_apn_queries == apn_cases[i].queries && sim_imsi_queries == apn_cases[i].imsi_queries);
+    CHECK(sim_apn_count == apn_cases[i].count + 1 && sim_activations == sim_apn_count);
+    CHECK(!strcmp(sim_apn_commands[sim_apn_count - 1], apn_cases[i].commands[apn_cases[i].count - 1]));
+  }
+  /* Новое питание снова читает сеть; отказ кэшированного источника не перебирает APN. */
+  sim_reset(); sim_apn_response = "+CGCONTRDP: 1,5,first.apn\r\nOK\r\n";
+  sim_start(); sim_until(15000); CHECK(comm_modem_ready());
+  sim_pdp_failures = 2;
+  CHECK(comm_modem_restart(false, sim_now)); sim_until(15000);
+  CHECK(!comm_modem_ready() && sim_apn_queries == 1 && sim_activations == 2);
+  sim_apn_response = "+CGCONTRDP: 1,5,second.apn\r\nOK\r\n";
+  CHECK(comm_modem_restart(true, sim_now)); sim_until(15000);
+  CHECK(comm_modem_ready() && sim_apn_queries == 2 && !strcmp(slm_apn(), "second.apn"));
+  /* Таймаут QIACT сохраняет 150 с; AT восстанавливает границы перед резервом. */
+  sim_reset(); sim_apn_response = "+CGCONTRDP: 1,5,m2m.apn\r\nOK\r\n"; sim_pdp_timeouts = 1;
+  sim_start(); sim_until(200000);
+  CHECK(comm_modem_ready() && sim_now >= 150000 && sim_activations == 2);
+  CHECK(slm.apn.source == SLM_APN_MNC && sim_apn_queries == 1 && sim_imsi_queries == 1);
 }
 // Запустить все сценарии этого стенда.
 int main(void)
 {
-  path_tests(); error_tests(); timeout_step_tests(); edge_tests(); diagnostic_tests(); settings_tests();
+  path_tests(); error_tests(); timeout_step_tests(); edge_tests(); diagnostic_tests(); settings_tests(); apn_tests();
   for (unsigned net = 2; net <= 3; ++net) {
     sim_reset(); sim_network_wait = net; sim_start(); sim_until(15000); CHECK(comm_modem_ready());
   }

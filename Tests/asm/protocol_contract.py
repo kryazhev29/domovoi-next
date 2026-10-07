@@ -140,7 +140,10 @@ def scenarios(totals):
     m=fixture(SyncMachine(),1,total=8192)
     execute('CRC-RAM-cold',m,lambda:(get(m),warm(m)))
     execute('CRC-RAM-delta',m,lambda:(m.command(13,cell(1,1),1),m.drain(),get(m)))
-    execute('CRC-RAM-cancel',m,lambda:(m.command(13,cell(1,2),1),m.checked('table_runtime_cancel'),m.drain(),get(m),warm(m)))
+    # table_runtime_cancel возвращает void: случайный R0 не является контрактом.
+    def cancel_crc():
+        m.checked('table_runtime_cancel')
+    execute('CRC-RAM-cancel',m,lambda:(m.command(13,cell(1,2),1),cancel_crc(),m.drain(),get(m),warm(m)))
     from test_stage5_log import boot,append,records
     m=UploadMachine();m.cmd=10;m.base=0x1d0000
     m.flash[0x1cf400:0x1cf400+128*32]=b''.join(log(i,True) for i in range(1,129))

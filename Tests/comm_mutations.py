@@ -31,6 +31,10 @@ def run():
     sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit(), channel=channel_unit())
     sources = {name: text.replace('\r\n', '\n') for name, text in sources.items()}
     cases = (
+        ('modem', 'apn-no-fallback', '&& !slm.apn.locked && slm.apn.source < SLM_APN_EMPTY', '&& 0'),
+        ('modem', 'apn-retry-keeps-failed-source', 'power || !slm.apn.locked', 'power'),
+        ('modem', 'apn-cached-source-fallback', '&& !slm.apn.locked && slm.apn.source', '&& slm.apn.source'),
+        ('modem', 'apn-long-line-fault', ' || comm_at_prefix(line, line_count, "+CGCONTRDP:")', ''),
         ('channel', 'ping-lost-during-ack', 'if (ch.probe_active == COMM_CH_PING) {', 'if (ch.operation != OP_ACK && ch.probe_active == COMM_CH_PING) {'),
         ('channel', 'dns-lost-during-ack', 'else if (ch.probe_active == COMM_CH_DNS && comm_at_prefix', 'else if (ch.operation != OP_ACK && ch.probe_active == COMM_CH_DNS && comm_at_prefix'),
         ('at', 'idle-fragment-never-times-out', 'if (state == IDLE && (line_count || cr) && expired(now_ms, recovery))', 'if (0)'),
@@ -62,7 +66,7 @@ def run():
         ('modem', 'QIACT-20s', '150000, /* Открытие контекста данных */', '20000, /* Открытие контекста данных */'),
         ('channel', 'TCP-before-URC', 'else if (!ch.flags.open_seen) return;', 'else if (!ch.flags.open_ack) return;'),
         ('channel', 'drop-QIRD-followup', 'ch.flags.recv = ch.flags.recv || ch.bytes;', 'ch.flags.recv = 0;'),
-        ('modem', 'ignore-manual-APN', 'if (*configured) return configured;', 'if (*configured) return "";'),
+        ('modem', 'ignore-manual-APN', 'if (slm.apn.source == SLM_APN_MANUAL) return slm_text(SLM_CFG_APN);', 'if (slm.apn.source == SLM_APN_MANUAL) return "";'),
         ('channel', 'grow-final-TCP-time', 'if (slm.attempt.recording) {', 'if (slm.attempt.status.state != SLM_IDLE) {'),
         ('channel', 'TCP-time-overwritten-by-read', 'slm.attempt.recording = next < SLM_STEP_COUNT;', 'slm.attempt.recording = 1;'),
         # Этап 6, звонок без ответа.
@@ -74,7 +78,7 @@ def run():
         ('channel', 'sms-udh-fill-bits', 'msg.skip = (uint8_t)(((o + 1u) * 8u + 6u) / 7u);', 'msg.skip = (uint8_t)(o + 1u);'),
         ('channel', 'sms-cmgs-length-with-smsc', 'uint16_t tpdu = (uint16_t)(msg.out_count / 2u - 1u);', 'uint16_t tpdu = (uint16_t)(msg.out_count / 2u);'),
         ('channel', 'sms-cms-error-not-final', '&& !comm_at_prefix(line, line_count, "+CMS ERROR:")', ''),
-        ('channel', 'ussd-long-line-fault', '    if (comm_at_prefix(line, line_count, "+CUSD:")) return;\n', ''),
+        ('channel', 'ussd-long-line-fault', 'comm_at_prefix(line, line_count, "+CUSD:") || ', ''),
         ('channel', 'ussd-ucs2-ignored', '  if (dcs == 72u) {', '  if (0) {'),
         ('channel', 'ussd-first-number-only', 'if (f) { s = f; break; }', 'if (0) { s = f; break; }'),
         ('channel', 'ussd-failure-waits-a-day', 'bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];', 'bal.next = bal.now + comm_timeouts[COMM_T_DAY];'),

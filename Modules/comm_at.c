@@ -313,8 +313,8 @@ static void byte(uint8_t value)
   }
   if (!value || cr) { fault(COMM_AT_BAD_FRAME); return; }
   if (line_count >= sizeof(line)) {
-    /* Ответ USSD с рекламой длиннее строки: нужное - в начале, хвост до CRLF отбрасывается. */
-    if (comm_at_prefix(line, line_count, "+CUSD:")) return;
+    /* USSD с рекламой и CGCONTRDP с IPv6: нужное в начале, хвост до CRLF отбрасывается. */
+    if (comm_at_prefix(line, line_count, "+CUSD:") || comm_at_prefix(line, line_count, "+CGCONTRDP:")) return;
     if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }
     event(COMM_AT_LINE, line, line_count, 1); line_count = 0; pdu_body = 2; /* кусок, дальше продолжение */
   }

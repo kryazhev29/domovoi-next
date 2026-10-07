@@ -1,0 +1,391 @@
+[
+  {
+    "name": "manual",
+    "manual": [
+      "private.apn",
+      "user",
+      "pass"
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 0,
+    "queries": 0,
+    "imsi_queries": 0,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"private.apn\",\"user\",\"pass\",1"
+    ]
+  },
+  {
+    "name": "m2m-network",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 1,
+    "queries": 1,
+    "imsi_queries": 0,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"m2m.megafon.ru\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "network-unquoted",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,m2m.megafon.ru,10.0.0.1\r\nOK\r\n",
+    "rejects": 0,
+    "source": 1,
+    "queries": 1,
+    "imsi_queries": 0,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"m2m.megafon.ru\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "all-sources",
+    "manual": [
+      "internet",
+      "gdata",
+      "gdata"
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 3,
+    "source": 3,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"gdata\",\"gdata\",1",
+      "AT+QICSGP=1,1,\"m2m.megafon.ru\",\"\",\"\",0",
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0",
+      "AT+QICSGP=1,1,\"\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "saved-factory-to-network",
+    "manual": [
+      "internet",
+      "gdata",
+      "gdata"
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 1,
+    "source": 1,
+    "queries": 1,
+    "imsi_queries": 0,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"gdata\",\"gdata\",1",
+      "AT+QICSGP=1,1,\"m2m.megafon.ru\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "network-error-to-mnc",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 1,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"m2m.megafon.ru\",\"\",\"\",0",
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "mnc-error-to-empty",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "OK\r\n",
+    "rejects": 1,
+    "source": 3,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0",
+      "AT+QICSGP=1,1,\"\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "unknown-mnc-empty",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250881234567890\r\nOK\r\n",
+    "network": "OK\r\n",
+    "rejects": 0,
+    "source": 3,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "no-context",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "OK\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "query-error",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "ERROR\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "empty-apn",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "gsm-no-context",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "ERROR\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 1,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "wrong-cid",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 2,5,\"wrong.apn\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "invalid-apn",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"bad;apn\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "query-final-error",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"10.0.0.1\"\r\nERROR\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "network-100-bytes",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 1,
+    "queries": 1,
+    "imsi_queries": 0,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "network-too-long",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "all-refused",
+    "manual": [
+      "bad.apn",
+      "user",
+      "pass"
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"10.0.0.1\"\r\nOK\r\n",
+    "rejects": 4,
+    "source": 3,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 0,
+    "commands": [
+      "AT+QICSGP=1,1,\"bad.apn\",\"user\",\"pass\",1",
+      "AT+QICSGP=1,1,\"m2m.megafon.ru\",\"\",\"\",0",
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0",
+      "AT+QICSGP=1,1,\"\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "network-ipv6-tail",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"m2m.megafon.ru\",\"2001:db8:1234:5678:9abc:def0:1234:5678\",\"2001:db8:1234:5678:9abc:def0:1234:5678\",\"2001:db8:1234:5678:9abc:def0:1234:5678\",\"2001:db8:1234:5678:9abc:def0:1234:5678\",\"2001:db8:1234:5678:9abc:def0:1234:5678\",\"2001:db8:1234:5678:9abc:def0:1234:5678\",\"2001:db8:1234:5678:9abc:def0:1234:5678\"\r\nOK\r\n",
+    "rejects": 0,
+    "source": 1,
+    "queries": 1,
+    "imsi_queries": 0,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"m2m.megafon.ru\",\"\",\"\",0"
+    ]
+  },
+  {
+    "name": "unclosed-apn",
+    "manual": [
+      "",
+      "",
+      ""
+    ],
+    "imsi": "250021234567890\r\nOK\r\n",
+    "network": "+CGCONTRDP: 1,5,\"broken.apn\r\nOK\r\n",
+    "rejects": 0,
+    "source": 2,
+    "queries": 1,
+    "imsi_queries": 1,
+    "gsm": 0,
+    "ready": 1,
+    "commands": [
+      "AT+QICSGP=1,1,\"internet\",\"\",\"\",0"
+    ]
+  }
+]

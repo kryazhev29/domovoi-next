@@ -14,7 +14,7 @@
 static struct {
   struct {
     uint8_t done, result, answer, query, recording;
-    uint8_t net_registered, mnc;
+    uint8_t net_registered;
     slm_status_t status;
     uint32_t step_started;
 #if DOMOVOI_DIAG
@@ -22,6 +22,8 @@ static struct {
 #endif
     uint32_t now, next;
   } attempt;
+  /* Удачный источник и APN живут до выключения модема, включая потерю PDP. */
+  struct { char network[101]; uint8_t source, locked, mnc; } apn;
   slm_settings_t settings;
   void (*type_found)(uint8_t);
   void (*imei_found)(const char *);
@@ -113,6 +115,29 @@ static void slm_fail(uint8_t reason)
   slm.attempt.status.state = SLM_FAILED;
 }
 
+/* Третье поле CGCONTRDP — APN активного CID 1, с кавычками или без них. */
+static void slm_network_apn(const uint8_t *p, uint16_t n)
+{
+  static const char prefix[] = "+CGCONTRDP:";
+  uint16_t pos = sizeof(prefix) - 1u;
+  uint32_t value;
+  if (slm.apn.network[0] || !comm_at_prefix(p, n, prefix)) return;
+  for (uint8_t i = 0; i < 2; ++i) {
+    if (!comm_at_scan(p, n, &pos, UINT16_MAX, &value) || (i == 0 && value != 1)
+        || pos >= n || p[pos++] != ',') return;
+  }
+  pos = comm_at_spaces(p, n, pos);
+  bool quoted = pos < n && p[pos] == '"';
+  if (quoted) ++pos;
+  uint16_t begin = pos;
+  while (pos < n && p[pos] != (quoted ? '"' : ',')) ++pos;
+  uint16_t len = pos - begin;
+  if (!len || len >= sizeof(slm.apn.network)) return;
+  if (quoted && (pos == n || (++pos < n && p[pos] != ','))) return;
+  memcpy(slm.apn.network, p + begin, len); slm.apn.network[len] = 0;
+  if (!comm_at_field(slm.apn.network, sizeof(slm.apn.network), true)) slm.apn.network[0] = 0;
+}
+
 /* Распределить AT между запуском, каналом и служебным владельцем. */
 static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
@@ -160,6 +185,9 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     if (step >= SLM_ACTIVATE) slm_fail(SLM_ERR_PDP);
   } else {
     switch (action) {
+    case MODEM_APN_QUERY:
+      slm_network_apn(p, n);
+      break;
     case MODEM_NETWORK:
       /* Возврат сети будит обычный запуск, не ждёт следующего секундного опроса. */
       if ((comm_at_parse(p,n,"+CGREG:\005",values) || comm_at_parse(p,n,"+CEREG:\005",values)
@@ -202,7 +230,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       if (n != 15) break;
       for (uint16_t i = 0; i < n; ++i) if (p[i] < '0' || p[i] > '9') return;
       slm.attempt.answer = 1;
-      slm.attempt.mnc = !memcmp(p,"250",3) ? (uint8_t)((p[3] - '0') * 10u + p[4] - '0') : 0;
+      slm.apn.mnc = !memcmp(p,"250",3) ? (uint8_t)((p[3] - '0') * 10u + p[4] - '0') : 0;
       break;
     }
   }
@@ -251,6 +279,7 @@ static void slm_begin(bool power, uint32_t now_ms)
 #endif
   memset(&slm.attempt, 0, sizeof(slm.attempt));
   slm_side_cancel(); slm.call_active = 0;
+  if (power || !slm.apn.locked) memset(&slm.apn, 0, sizeof(slm.apn));
   ++slm.session;
 #if DOMOVOI_DIAG
   slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
@@ -418,11 +447,11 @@ uint16_t comm_modem_build(char *cmd, uint16_t size, const char *p, const char *h
     switch (token) {
     case 1: number = slm.settings.number(SLM_CFG_NETWORK); break;
     case 2: text = slm_apn(); break;
-    case 3: text = slm_text(SLM_CFG_LOGIN); break;
-    case 4: text = slm_text(SLM_CFG_PASSWORD); break;
+    case 3: text = slm.apn.source == SLM_APN_MANUAL ? slm_text(SLM_CFG_LOGIN) : ""; break;
+    case 4: text = slm.apn.source == SLM_APN_MANUAL ? slm_text(SLM_CFG_PASSWORD) : ""; break;
     case 5: text = host; break;
     case 6: case 7: number = value; break;
-    case 8: number = slm_text(SLM_CFG_LOGIN)[0] || slm_text(SLM_CFG_PASSWORD)[0]; break;
+    case 8: number = slm.apn.source == SLM_APN_MANUAL && (slm_text(SLM_CFG_LOGIN)[0] || slm_text(SLM_CFG_PASSWORD)[0]); break;
     case 9: text = (slm.attempt.query ? "CEREG?" : "CGREG?"); break;
     default: cmd[n++] = (char)token; continue;
     }
@@ -447,22 +476,23 @@ static uint8_t slm_issue(uint8_t step)
 bool comm_modem_ready(void) { return slm.attempt.status.state == SLM_READY; }
 #if DOMOVOI_DIAG
 /* Выдать стендовые времена шагов и историю отказов. */
-const slm_diag_t *comm_modem_diag(void) { return &slm.diag; }
+const slm_diag_t *comm_modem_diag(void) { slm.diag.apn_source = slm.apn.source; return &slm.diag; }
 #endif
 /* Выдать текущее состояние и причину отказа модема. */
 const slm_status_t *comm_modem_status(void) { return &slm.attempt.status; }
 
-/* Выбрать настроенный APN или стандартный APN оператора SIM. */
+/* Данные выбранного источника; сетевой APN не подменяется таблицей. */
 static const char *slm_apn(void)
 {
   static const struct { uint8_t mnc, offset; } apn_map[] = {
     {1, 0}, {2, 16}, {99, 25}, {20, 45}, {11, 63}
   };
   static const char apns[] = "internet.mts.ru\0internet\0internet.beeline.ru\0internet.tele2.ru\0internet.yota\0";
-  const char *configured = slm_text(SLM_CFG_APN);
-  if (*configured) return configured;
+  if (slm.apn.source == SLM_APN_MANUAL) return slm_text(SLM_CFG_APN);
+  if (slm.apn.source == SLM_APN_NETWORK) return slm.apn.network;
+  if (slm.apn.source != SLM_APN_MNC) return "";
   for (uint8_t i = 0; i < sizeof(apn_map) / sizeof(apn_map[0]); ++i)
-    if (slm.attempt.mnc == apn_map[i].mnc) return apns + apn_map[i].offset;
+    if (slm.apn.mnc == apn_map[i].mnc) return apns + apn_map[i].offset;
   return "";
 }
 /* Запустить шаг или дождаться освобождения входного потока. */
@@ -482,7 +512,14 @@ static void slm_completed(void)
   uint8_t action = entry->action & 15u;
   slm.attempt.done = 0; slm.attempt.next = slm.attempt.now;
   /* MODEM_ANY: ответ модема есть (OK, ERROR, CME) - шаг пройден; срок или сбой потока - нет. */
-  if (slm.attempt.result != COMM_AT_OK && !(action == MODEM_ANY && slm.attempt.result < COMM_AT_GOT_PROMPT)) {
+  if (slm.attempt.result != COMM_AT_OK && !((action == MODEM_ANY || action == MODEM_APN_QUERY) && slm.attempt.result < COMM_AT_GOT_PROMPT)) {
+    if (action == MODEM_PDP && slm.attempt.result <= COMM_AT_TIMEOUT
+        && !slm.apn.locked && slm.apn.source < SLM_APN_EMPTY) {
+      ++slm.apn.source;
+      comm_modem_record(slm.apn.source == SLM_APN_NETWORK ? SLM_NET_APN
+        : slm.apn.source == SLM_APN_MNC ? SLM_IMSI : SLM_APN, 0, slm.attempt.status.modem_code);
+      return;
+    }
     uint8_t reason = slm.attempt.result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT
                      : slm.attempt.result > COMM_AT_TIMEOUT ? SLM_ERR_STREAM : SLM_ERR_AT;
     if (action == MODEM_SIM && (slm.attempt.status.modem_code == 10 || slm.attempt.answer == 4)) reason = SLM_ERR_NO_SIM;
@@ -493,15 +530,23 @@ static void slm_completed(void)
     slm_fail(reason); return;
   }
   switch (action) {
+  case MODEM_APN_QUERY:
+    slm.attempt.answer = slm.attempt.result == COMM_AT_OK && slm.apn.network[0];
+    if (!slm.attempt.answer) { slm.apn.network[0] = 0; slm.apn.source = SLM_APN_MNC; }
+    break;
+  case MODEM_PDP: slm.apn.locked = 1; break;
   case MODEM_NETWORK:
     if (!slm.attempt.answer) { slm_fail(SLM_ERR_RESPONSE); return; }
     if (slm.attempt.query == 0) { slm.attempt.query = 1; return; }
     if (!slm.attempt.net_registered) {
       slm.attempt.query = 0; slm.attempt.next = slm.attempt.now + comm_timeouts[COMM_T_NETWORK_POLL]; return;
     }
+    if (!slm.apn.locked && slm.apn.source <= SLM_APN_NETWORK)
+      slm.apn.source = slm_text(SLM_CFG_APN)[0] ? SLM_APN_MANUAL : SLM_APN_NETWORK;
     break;
   case MODEM_MODEL: case MODEM_IMEI: case MODEM_IMSI: case MODEM_RAT: case MODEM_PORT:
     if (!slm.attempt.answer) { slm_fail(action == MODEM_MODEL ? SLM_ERR_TYPE : SLM_ERR_RESPONSE); return; }
+    if (action == MODEM_IMSI && !slm_apn()[0]) slm.apn.source = SLM_APN_EMPTY;
     break;
   case MODEM_SIM:
     if (slm.attempt.answer != 1) {
@@ -510,7 +555,7 @@ static void slm_completed(void)
     break;
   }
   uint8_t alternate = action == MODEM_READY ? slm.settings.number(SLM_CFG_TYPE) == MODEM_TYPE_SLM336
-    : action == MODEM_NETWORK ? slm_text(SLM_CFG_APN)[0] != 0 : slm.attempt.answer == 1;
+    : action == MODEM_NETWORK ? slm.apn.locked || slm.apn.source != SLM_APN_NETWORK : slm.attempt.answer == 1;
   if (action == MODEM_MODEL) slm.type_found(MODEM_TYPE_SLM336);
   uint8_t next = alternate ? entry->alternate : entry->next;
   comm_modem_record(next, 0, slm.attempt.status.modem_code);

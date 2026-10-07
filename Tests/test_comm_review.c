@@ -60,6 +60,7 @@ static void review_settings(void)
   comm_endpoints();
   slm.settings.text = comm_text; slm.settings.number = comm_number;
   strcpy(config.netOperator, "private.apn,user,password");
+  slm.apn.source = SLM_APN_MANUAL;
   char cmd[128];
   const char *apn = slm_steps[SLM_APN - SLM_AT_READY].command;
   comm_modem_build(cmd, sizeof(cmd), apn, NULL, 0);
@@ -67,7 +68,7 @@ static void review_settings(void)
   strcpy(config.netOperator, "private.apn");
   comm_modem_build(cmd, sizeof(cmd), apn, NULL, 0);
   CHECK(!strcmp(cmd, "AT+QICSGP=1,1,\"private.apn\",\"\",\"\",0"));
-  config.netOperator[0] = 0; slm.attempt.mnc = 1;
+  config.netOperator[0] = 0; slm.apn.mnc = 1; slm.apn.source = SLM_APN_MNC;
   comm_modem_build(cmd, sizeof(cmd), apn, NULL, 0);
   CHECK(strstr(cmd, "internet.mts.ru"));
   strcpy(config.netOperator, "bad\"apn"); CHECK(!comm_modem_valid_settings());

@@ -22,7 +22,7 @@ CASES = (
     ('night-busy-ignored', b'  if (busy) return;\r\n', b'  if (busy && false) return;\r\n'),
     ('night-twice', b'&& day != rc.night_day', b''),
     ('no-ladder-reset', b'rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;', b'rc.soft_fails = 0;'),
-    ('deact-error-fails', b' && !(action == MODEM_ANY && slm.attempt.result < COMM_AT_GOT_PROMPT)', b'', MODEM),
+    ('deact-error-fails', b'action == MODEM_ANY || action == MODEM_APN_QUERY', b'action == MODEM_APN_QUERY', MODEM),
     ('query-error-reopens', b'  if (op == OP_QUERY) { query.cmd = NULL; return; }', b'  if (op == OP_QUERY) query.cmd = NULL;', CHANNEL),
     ('csq-not-parsed', b'info.v.csq = v[0] <= 99u ? (uint8_t)v[0] : 99u;', b'(void)v;', INFO),
     ('stale-info-offline', b'    info.v.csq = 99; info.v.creg', b'    info.v.csq = info.v.csq; info.v.creg', INFO),

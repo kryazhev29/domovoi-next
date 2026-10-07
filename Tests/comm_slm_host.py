@@ -1,6 +1,7 @@
 """Доработка: Кряжев А., 2026. Изолированная модель SLM336 и оценка ARM."""
 from pathlib import Path
 import argparse
+import json
 import os
 import struct
 import subprocess
@@ -24,7 +25,16 @@ def unit(root=ROOT):
     sources = '\n'.join(line for n in ('Modules/comm_uart.c', 'Modules/comm_at.c', *MODULES)
                         for line in source(n).splitlines() if not line.startswith('#include'))
     model_irq = source('Tests/test_comm_uart.c').split('/* КОД МОДУЛЯ */',1)[1].split('static void reset(void)',1)[0]
-    return diagnostic_header(root) + model + headers + sources + model_irq + '\n' + source('Tests/test_comm_slm.c')
+    rows = json.loads(source('Tests/fixtures/modem/apn-auto.json'))
+    cases = []
+    for row in rows:
+        strings = [row['name'], *row['manual'], row['imsi'], row['network']]
+        commands = ','.join(json.dumps(s) for s in row['commands'])
+        numbers = [row[k] for k in ('rejects','source','queries','imsi_queries','gsm','ready')]
+        cases.append('{' + ','.join(json.dumps(s) for s in strings) + ',{' + commands + '},'
+                     + ','.join(map(str, numbers)) + ',' + str(len(row['commands'])) + '}')
+    tests = source('Tests/test_comm_slm.c').replace('/* СЦЕНАРИИ APN */', ',\n'.join(cases))
+    return diagnostic_header(root) + model + headers + sources + model_irq + '\n' + tests
 
 
 def memory(obj):

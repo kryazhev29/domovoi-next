@@ -131,6 +131,11 @@ def run():
         accepted(m, good)
         assert m.uart_starts == 1, 'исправление не запустило связь'
         cases.append(name)
+    m = machine(good)
+    m.stubs[m.addr('user_writeConfigAndDevice')] = m.ret
+    m.checked('user_setdefault')
+    assert bytes(m.u.mem_read(m.addr('config') + offsets['netOperator'], 32)) == bytes(32), 'заводской APN не автоматический'
+    cases.append('заводской APN автоматический')
     return cases
 
 

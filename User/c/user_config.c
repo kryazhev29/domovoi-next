@@ -119,7 +119,6 @@ void user_setdefault (void)
   strcpy(config.server1, "gate.gsmgate.ru:15010");
   strcpy(config.server2, "gate.gsmgate.ru:15020");
   strcpy(config.countryCode, "+7");
-  strcpy(config.netOperator, "internet,gdata,gdata");
   config.useServer1 = 1;
 
   config.rele[0].onCmdServer = 1;

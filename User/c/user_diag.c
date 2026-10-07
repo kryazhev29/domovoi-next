@@ -53,9 +53,9 @@ void user_send_commDiag(uint8_t uniqId)
   comm_uart_stats_t u;
   uint32_t now = timers_getMillis();
   comm_uart_stats(&u);
-  v[0] = 1; v[1] = now;
+  v[0] = 2; v[1] = now;
   v[2] = s->state | (uint32_t)s->step << 8 | (uint32_t)s->phase << 16 | (uint32_t)s->reason << 24;
-  v[3] = s->modem_code | (uint32_t)s->at_fault << 16; v[4] = s->completed_steps;
+  v[3] = s->modem_code | (uint32_t)s->at_fault << 16 | (uint32_t)d->apn_source << 24; v[4] = s->completed_steps;
   v[5] = comm_channel_diag(); v[6] = comm_server_diag(); v[7] = comm_recover_diag(now, &v[8]);
   v[9] = u.errors; v[10] = u.overflow; v[11] = u.ore; v[12] = u.fe; v[13] = u.ne;
   v[14] = d->failure_count | (uint32_t)d->failure_next << 8 | (uint32_t)d->last_code << 16;
