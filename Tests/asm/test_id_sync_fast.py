@@ -390,7 +390,7 @@ def timing(count, unknown=False):
 # Запускает проверки модуля и сохраняет результаты в заданный файл.
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--variant', choices=('ASM', 'C'), required=True)
+    p.add_argument('--variant', choices=('C', 'HYBRID'), required=True)
     p.add_argument('--build-root', type=Path)
     p.add_argument('--output', type=Path)
     p.add_argument('--timing', action='store_true')

@@ -1,4 +1,4 @@
-"""Linked firmware: bench packets and customer unknown-command contract."""
+"""Собранная прошивка: диагностические пакеты и неизвестные команды профиля заказчика."""
 import os
 import struct
 from storage_machine import StorageMachine, crc16
@@ -57,7 +57,7 @@ def run():
                     answers, wires = command(m, code, channel, authorized)
                     assert not wires and len(answers) == len(reference)
                     assert [a[1:] for a in answers] == [a[1:] for a in reference]
-    # Actual linked USB recovery, including the customer ASM register path.
+
     for mask in (0, 1):
         from unicorn.arm_const import UC_ARM_REG_PRIMASK
         m.u.reg_write(UC_ARM_REG_PRIMASK, mask)

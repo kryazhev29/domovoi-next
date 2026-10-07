@@ -1,8 +1,16 @@
-"""Explicit IAR artifact selection; default paths retain existing test behavior."""
+"""Явный выбор собранного IAR-образа и его карты для тестов."""
 import os
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def result_path(name):
+    """Результаты новых прогонов хранятся рядом со сборками в TEMP."""
+    folder = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', Path(tempfile.gettempdir())/'domovoi-tests-build'))
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / name
 
 
 def image_paths(boot=False):

@@ -1,4 +1,4 @@
-"""Final IAR W25 async machine, modeled SPI/NOR; counts are NOT board timings."""
+"""Асинхронный W25 из IAR-образа с моделью SPI/NOR; счётчики не являются замерами платы."""
 from iar_irq_support import Machine, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2
 from unicorn import UC_HOOK_MEM_WRITE
 m=Machine();m.init();m.write(0x40013000,0x40,2)

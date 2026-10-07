@@ -236,5 +236,5 @@ def errors():
 if __name__=='__main__':
     out={'units':'Unicorn instructions with NOR/UART models; NOT cycles/time','normal':normal(),'upload':uploads(),'errors':errors()}
     out['elf_sha256']=hashlib.sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()
-    (ROOT/'Tests/asm/photo_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
+    (__import__('iar_image').result_path('photo_runtime_results.json')).write_text(json.dumps(out,indent=2)+'\n')
     print('PASS actual photo ASM/camera/main-loop: verified I/O, ownership, ABI, bounded work')

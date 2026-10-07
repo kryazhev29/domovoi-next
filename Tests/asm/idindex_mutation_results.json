@@ -1,9 +1,0 @@
-{
-  "detected": [
-    "pending-is-not-success",
-    "require-verified-result",
-    "read-budget-64"
-  ],
-  "status": "PASS",
-  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709"
-}

@@ -329,6 +329,6 @@ def test_ack_power():
 if __name__=='__main__':
     r=dict(normal=test_normal(),parser=test_parser(),media_gate=test_media_gate(),faults_and_gaps=test_gaps_and_faults(),busy_empty_cancel=test_busy_empty_cancel(),
            heap_ack=test_heap_ack(),ack_power_cuts=test_ack_power())
-    r['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest();r['status']='PASS'
-    (ROOT/'Tests/asm/upload_runtime_results.json').write_text(json.dumps(r,indent=2)+'\n')
+    r['elf_sha256']=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest();r['status']='PASS'
+    (__import__('iar_image').result_path('upload_runtime_results.json')).write_text(json.dumps(r,indent=2)+'\n')
     print(json.dumps({k:v for k,v in r.items() if k!='heap_ack'},indent=2))

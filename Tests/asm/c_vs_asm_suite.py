@@ -1,4 +1,4 @@
-"""Run current, linked IAR implementations; never overwrite historical JSON results."""
+"""Запуск тестов собранного IAR-кода; результаты сохраняются в папке сборок."""
 import argparse
 import contextlib
 import importlib
@@ -13,9 +13,13 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'Tests'))
-import iar_irq_support  # Existing dependency discovery and selected ELF support.
+import iar_irq_support
 
 CASES = {
+    'peripheral init': [('test_iar_peripheral_config','current')],
+    'protocol lengths': [('test_protocol_guards','lengths')],
+    'protocol config': [('test_protocol_guards','config_strings')],
+    'protocol text': [('test_protocol_guards','text_commands')],
     'sched16': [('test_sched16', n) for n in ('protocol','crc_paths','access','migration')],
     'ids boot read': [('test_ids_boot_read','main')],
     'sched16_power': [('test_sched16','migration_power')],
@@ -61,22 +65,19 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CORE = ('sched16','ids boot read','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
+CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 
 
 def select_image(variant, build_root=None):
     base = Path(build_root or os.environ.get('DOMOVOI_COMPARE_BUILD', Path(tempfile.gettempdir()) / 'domovoi-c-asm'))
-    folder = base / ('C-ReleaseSpeed' if variant == 'C_SPEED' else variant + '-' + os.environ.get('DOMOVOI_COMPARE_CONFIG','Release'))
+    folder = base / (variant + '-' + os.environ.get('DOMOVOI_COMPARE_CONFIG','Release'))
     stem = 'DomovoiNext_C' if variant.startswith('C') else 'DomovoiNext_' + variant
     os.environ.update(DOMOVOI_ELF=str(folder/'ExePath/DomovoiNext.out'),
                       DOMOVOI_BIN=str(folder/'ExePath'/f'{stem}.bin'),
                       DOMOVOI_MAP=str(folder/'ListPath/DomovoiNext.map'))
-    if variant == 'C_SPEED':
-        os.environ.update(DOMOVOI_MODEL_FLASH_BYTES='0x40000',DOMOVOI_MODEL_RAM_BYTES='0x10000')
-    else:
-        os.environ.pop('DOMOVOI_MODEL_FLASH_BYTES',None)
-        os.environ.pop('DOMOVOI_MODEL_RAM_BYTES',None)
+    os.environ.pop('DOMOVOI_MODEL_FLASH_BYTES',None)
+    os.environ.pop('DOMOVOI_MODEL_RAM_BYTES',None)
     return folder
 
 
@@ -92,8 +93,8 @@ def run_cases(cases):
                     if name is None:
                         runpy.run_path(str(ROOT/'Tests/asm'/f'{module}.py'))
                     elif case == 'usb_replies':
-                        # Instruction cost is measured separately for each implementation.
-                        # Keep every wire, ownership and bounded-I/O assertion unchanged.
+
+
                         details[name] = importlib.import_module(module).run(instruction_limit=None)
                     else:
                         details[name] = getattr(importlib.import_module(module), name)()
@@ -115,7 +116,7 @@ def run_cases(cases):
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument('--variant',choices=('ASM','C','C_SPEED','HYBRID'),required=True)
+    p.add_argument('--variant',choices=('C','HYBRID'),required=True)
     p.add_argument('--build-root',type=Path)
     p.add_argument('--case',action='append',choices=tuple(CASES))
     p.add_argument('--power',action='store_true')

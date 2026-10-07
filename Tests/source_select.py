@@ -1,24 +1,26 @@
-"""Select C production inputs for source-extracting host checks."""
+"""Настоящие исходники для host-проверок фрагментов кода."""
 import os
 import re
 from pathlib import Path
 
 
 def source_path(root, name):
-    path = Path(name)
-    if os.environ.get('DOMOVOI_SOURCES', '').lower() == 'c' and str(path).replace('\\', '/').startswith('Tests/asm/reference/'):
-        suffix = '_runtime' if path.suffix == '.c' else ''
-        candidate = root / 'User/c' / (path.stem + suffix + path.suffix)
-        if candidate.exists():
-            return candidate
-        raise FileNotFoundError('No production C counterpart: ' + name)
-    return root / path
+    """Все стенды читают исходники рабочего проекта независимо от варианта ELF."""
+    return root / name
 
 
 def source_text(root, name):
-    """Select the ordinary C branch before extracting declaration fragments."""
-    text=source_path(root,name).read_bytes().decode('cp1251')
-    # Ordinary C host fragments use the same local linkage as the C project.
+    """Выделить обычную C-ветку перед извлечением фрагментов."""
+    if name == 'User/c/user_*.c':
+        # Общие объявления и тематические модули берутся из живой прошивки.
+        # Команды идут последними: выделение case ограничивается их функцией.
+        paths = [root/'User/c/user_logic_internal.h', root/'User/c/runtime_internal.h']
+        paths += sorted(p for p in (root/'User/c').glob('user_*.c') if p.name != 'user_commands.c')
+        paths += [root/'User/c/user_commands.c']
+        text = '\r\n'.join(p.read_bytes().decode('cp1251') for p in paths)
+    else:
+        text=source_path(root,name).read_bytes().decode('cp1251')
+    # Фрагменты используют локальную видимость обычного C-проекта.
     text=text.replace('HYBRID_LOCAL ', 'static ')
     text=re.sub(r'^\s*#include [\"<][^\n]*domovoi_diag\.h[\">]\s*$', '', text, flags=re.M)
     if '#include "../usb_ring_size.h"' in text:
@@ -59,12 +61,11 @@ def diagnostic_header(root):
 
 
 def host_adapters(root):
-    # Extracted host protocol fixtures supply allocation/error stubs. Workspace
-    # exclusion, real storage lifetimes and cancellation run on the linked ELF.
+    # Стенды протокола задают отказы выделения памяти. Владение рабочей памятью
+    # и отмена операций проверяются на связанном ELF.
     header=(root/'User/user_format.h').read_bytes().decode('cp1251')
     implementation=(root/'User/user_format.c').read_bytes().decode('cp1251').replace('#include "user_format.h"','')
-    # Private production helpers share this extracted fixture translation unit
-    # with host stubs (comm_at's text, for example). Keep their names local.
+    # Имена внутренних помощников форматирования не пересекаются с заглушками стенда.
     implementation=implementation.replace('text(', 'domovoi_format_text(').replace('decimal(', 'domovoi_format_decimal(')
     return (diagnostic_header(root)+'#ifndef DOMOVOI_HOST_ADAPTERS_DEFINED\n#define DOMOVOI_HOST_ADAPTERS_DEFINED\n'
             '#define work_acquire(size,slot) malloc(size)\n'

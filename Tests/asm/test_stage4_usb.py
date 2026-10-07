@@ -1,4 +1,4 @@
-"""Real linked RX/diagnostic TX, bounded calls and independent framing oracle."""
+"""Настоящие RX/диагностический TX из ELF: ограничение вызовов и независимая проверка кадров."""
 import os
 import struct
 from test_usb_source import SourceMachine
@@ -30,7 +30,7 @@ def run(baseline=False):
         if command in (111, 112) and os.environ.get('DOMOVOI_TEST_DIAG') == '0':
             continue
         m = SourceMachine()
-        # Match the real startup stack paint, including diagnostic stack margins.
+
         m.u.mem_write(m.bottom, bytes.fromhex('a5a55a5a') * ((m.top - m.bottom) // 4))
         m.write(m.addr('device') + fields('device_s')['userAutorized'], 1, 1)
         m.stubs[m.addr('user_storage_command_ready')] = lambda: m.ret(1)
@@ -49,14 +49,14 @@ def run(baseline=False):
             assert wire[0][9:-2] == bytes(m.u.mem_read(m.addr('config'), 512))
         assert m.read(m.addr('usb_buffer_count'), 2) == 0
 
-    # Largest response, using the actual publisher/copy and one RX invocation.
+
     for mask in (0, 1):
         m = SourceMachine(); m.configure(mask)
         m.stubs[m.addr('user_storage_command_ready')] = lambda: m.ret(1)
         response = bytes((i * 19 + 7) & 255 for i in range(1038))
         m.u.mem_write(0x21000000, response)
         def answer():
-            # Tail-call the actual USB sender, preserving the caller's LR.
+
             from iar_irq_support import UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_PC
             m.u.reg_write(UC_ARM_REG_R0, 0x21000000)
             m.u.reg_write(UC_ARM_REG_R1, len(response))
@@ -69,7 +69,7 @@ def run(baseline=False):
         assert m.steps < 21600
         assert m.u.reg_read(UC_ARM_REG_PRIMASK) == mask
         if not baseline:
-            # Busy EP applies backpressure to RX; no consumption and no wait.
+
             m.call('usb_check_data')
             assert m.steps < 500
             assert m.read(m.addr('usb_buffer_count'), 2) == 0
@@ -80,7 +80,7 @@ def run(baseline=False):
         assert m.drain() == response
         assert max(map(len, m.packets)) <= 64
         if not baseline:
-            # The retained command is consumed after the final IN acknowledgement.
+
             m.packets.clear()
             m.call('usb_check_data')
             assert m.steps < 21600 and m.read(m.addr('usb_buffer_count'), 2) == 0

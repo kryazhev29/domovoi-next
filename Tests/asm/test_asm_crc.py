@@ -76,13 +76,14 @@ uint32_t nibble_crc32_update(uint32_t c, const uint8_t *p, uint16_t n) {
 # Собирает эталон C и проверяемое ядро IAR в отдельной папке.
 def build(out):
     source = lambda p: (ROOT / p).read_text(encoding='cp1251')
-    journal = source('User/sector_journal.c')
+    journal = source('User/c/crc_asm.c')
     name = 'crc32_update' if 'uint32_t crc32_update(' in journal else 'sj_crc'
     c = function(journal, name).replace('static ', '').replace(name, 'crc32_update')
+    c = re.search(r'static const uint32_t crc32_nibble\[16\]\s*=\s*\{.*?\};', journal, re.S).group(0) + '\n' + c
     (out / 'ref.c').write_text('#include <stdint.h>\n' + c, encoding='utf-8')
     (out / 'nibble.c').write_text(nibble_reference(), encoding='utf-8')
     objs = []
-    for i, src in enumerate([ROOT / 'Tests/asm/reference/User/crc.c', out / 'ref.c', out / 'nibble.c']):
+    for i, src in enumerate([ROOT / 'User/c/crc_runtime.c', out / 'ref.c', out / 'nibble.c']):
         obj = out / f'c{i}.o'
         run([IAR / 'iccarm.exe', src, '--cpu', 'Cortex-M3', '--thumb', '-Ohz', '-e',
              '-I', ROOT / 'User', *('-D' + f + '=ref_' + f for f in FUNCS), '-o', obj])

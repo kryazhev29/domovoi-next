@@ -1,4 +1,4 @@
-"""Whole production poll including the real nonblocking USB queue writer."""
+"""Полный рабочий poll с настоящей неблокирующей очередью ответов USB."""
 import hashlib
 import json
 import struct
@@ -8,46 +8,43 @@ from test_upload_runtime import UploadMachine, log, wire as upload_wire
 from test_idclear_runtime import ClearMachine, wire as clear_wire
 from test_photo_runtime import PhotoMachine
 from test_fw_service_runtime import FirmwareMachine
-from verification_usb_try import init_transport
+from test_usb_source import init_transport
 
 
 def transport(m, busy=False):
     m.stubs.pop(m.addr('usb_try_send'), None)
-    init_transport(m, inp=0, out=int(busy), epoch=0)
-    if 'usb_tx_source' in m.symbols:
-        m.usb_wire=[]
-        def copy():
-            p, _, n, _ = m.args()
-            assert 0 < n <= 64
-            m.usb_wire.append(bytes(m.u.mem_read(p,n))); m.ret(0)
-        m.stubs[m.addr('UserToPMABufferCopy')]=copy
-        for name in ('SetEPTxCount','SetEPTxValid'):
-            m.stubs[m.addr(name)]=lambda: m.ret(0)
-    if busy and 'usb_tx_source' in m.symbols:
-        # A preceding immutable IN source still waits for its final ACK.
+    init_transport(m, epoch=0)
+    m.usb_wire=[]
+    def copy():
+        p, _, n, _ = m.args()
+        assert 0 < n <= 64
+        m.usb_wire.append(bytes(m.u.mem_read(p,n))); m.ret(0)
+    m.stubs[m.addr('UserToPMABufferCopy')]=copy
+    for name in ('SetEPTxCount','SetEPTxValid'):
+        m.stubs[m.addr(name)]=lambda: m.ret(0)
+    if busy:
         m.u.mem_write(0x21000f00,b'P')
         m.write(m.addr('usb_tx_length'),1,2)
         m.write(m.addr('usb_tx_source'),0x21000f00)
 
 
-def word(m, name):
-    if name == 'USART_Rx_ptr_in' and 'usb_tx_source' in m.symbols:
-        p=int.from_bytes(m.u.mem_read(m.addr('usb_tx_source'),4),'little')
-        return int.from_bytes(m.u.mem_read(m.addr('usb_tx_length'),2),'little') if p and p!=0x21000f00 else 0
-    return int.from_bytes(m.u.mem_read(m.addr(name), 4), 'little')
+def tx_length(m):
+    p=int.from_bytes(m.u.mem_read(m.addr('usb_tx_source'),4),'little')
+    return int.from_bytes(m.u.mem_read(m.addr('usb_tx_length'),2),'little') if p and p!=0x21000f00 else 0
 
 
 def payload(m, length):
-    p=int.from_bytes(m.u.mem_read(m.addr('usb_tx_source'),4),'little') if 'usb_tx_source' in m.symbols else m.addr('USART_Rx_Buffer')
+    p=int.from_bytes(m.u.mem_read(m.addr('usb_tx_source'),4),'little')
     return bytes(m.u.mem_read(p,length))
 
 
 def check_pma(m, packet):
-    if 'usb_tx_source' not in m.symbols: return
     assert not m.checked('work_acquire',1,11), 'pending source was reused'
     m.checked('Handle_USBAsynchXfer')
-    while m.checked('USB_Tx_SourceBusy'):
+    for _ in range(64):
+        if not m.checked('USB_Tx_SourceBusy'): break
         m.checked('EP1_IN_Callback')
+    else: raise AssertionError('передача USB не завершилась за 64 пакета')
     assert b''.join(m.usb_wire)==packet, 'owner changed before final IN'
 
 
@@ -93,30 +90,27 @@ def run(instruction_limit=12000):
             if instruction_limit is not None:
                 assert control.steps < instruction_limit, (kind, control.steps)
         else: raise AssertionError(('not complete', kind))
-        length = word(control, 'USART_Rx_ptr_in')
+        length = tx_length(control)
         assert length > 0
         packet = payload(control,length)
         if expected is not None: assert packet == expected, kind
         else:
             assert length == 534 and packet[20:-2] == bytes(range(256)) * 2
-        # Retry exactly the same operation with a full real ring, without new RX.
+
         m, active, _ = setup(kind, True)
         rejected = []
         for _ in range(len(costs) + 3):
             m.now += 1; m.checked('user_storage_poll'); rejected.append(m.steps)
             if instruction_limit is not None:
                 assert m.steps < instruction_limit, (kind, m.steps)
-            assert word(m, 'USART_Rx_ptr_in') == 0
+            assert tx_length(m) == 0
         assert active(), ('lost owned reply on busy', kind)
-        if 'usb_tx_source' in m.symbols:
-            m.checked('USB_Tx_Reset')
-        else:
-            m.write(m.addr('USART_Rx_ptr_out'), 0)
+        m.checked('USB_Tx_Reset')
         for _ in range(3):
             m.now += 1; m.checked('user_storage_poll')
             if not active(): break
         assert not active(), ('retry did not complete', kind)
-        assert word(m, 'USART_Rx_ptr_in') == length
+        assert tx_length(m) == length
         assert payload(m,length) == packet
         check_pma(control,packet); check_pma(m,packet)
         results[kind] = {'packet_bytes': length, 'polls': len(costs),
@@ -132,5 +126,5 @@ def run(instruction_limit=12000):
 
 if __name__ == '__main__':
     result = run()
-    (ROOT/'Tests/asm/owned_usb_replies_results.json').write_text(json.dumps(result, indent=2)+'\n')
+    (__import__('iar_image').result_path('owned_usb_replies_results.json')).write_text(json.dumps(result, indent=2)+'\n')
     print(json.dumps(result, indent=2))

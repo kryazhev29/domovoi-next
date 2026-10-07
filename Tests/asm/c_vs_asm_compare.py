@@ -1,7 +1,4 @@
-"""Compare linked IAR images on identical fixtures; count instructions, not board time.
-
-Output defaults to TEMP. Diagnostic High/Speed image is never a flashable artifact.
-"""
+"""Сравнение живых IAR C/HYBRID: результаты сценариев и число инструкций."""
 import argparse
 import copy
 import hashlib
@@ -37,12 +34,11 @@ def public_inventory():
 
 
 class Profile:
-    """Inclusive per-export counters, including private callees and library code.
+    """Счётчики экспортируемых функций, включая внутренние вызовы и библиотечный код.
 
-    Two transparent estimates are provided: one cycle/instruction and a deliberately
-    conservative no-prefetch fetch model (two wait cycles per 32-bit Flash word).
-    Neither is a Cortex-M3 cycle-accurate simulation. External NOR time is excluded.
-    """
+    Две оценки: одна инструкция за такт и консервативная выборка без предзагрузки
+    с двумя тактами ожидания на 32-битное слово Flash. Это не потактовая модель
+    Cortex-M3; время внешней NOR сюда не входит."""
     def __init__(self, machine, totals):
         self.m=machine; self.totals=totals; self.stack=[]; self.n=0; self.wait=0
         self.enabled=False; self.cache={}; self.word=None
@@ -66,7 +62,7 @@ class Profile:
         while self.stack and a==self.stack[-1][1]:self.finish()
         if a in self.names and a not in self.m.stubs:
             self.stack.append((self.names[a],u.reg_read(UC_ARM_REG_LR)&~1,self.n,self.wait))
-        # Stubbed hardware boundaries contribute no invented CPU instructions.
+
         if a in self.m.stubs:return
         self.n+=1
         if 0x08000000<=a<0x08100000:
@@ -81,7 +77,7 @@ class Profile:
 
 
 def snapshot(m):
-    """Only externally meaningful bytes; RAM addresses differ between links."""
+    """Только наблюдаемые снаружи байты; адреса RAM различаются между сборками."""
     result={'nor':bytes(m.flash)} if hasattr(m,'flash') else {}
     for name in ('sent','wires','answers','timestamps','events','loads','logs','expiry_events','commands'):
         if hasattr(m,name):result[name]=copy.deepcopy(getattr(m,name))
@@ -108,7 +104,7 @@ def scenarios(totals):
     from test_service_runtime import ServiceMachine
     from test_memory_runtime import config_machine
     from test_idindex_runtime import IndexMachine
-    from verification_usb_try import init_transport
+    from test_usb_source import init_transport
     out={}
     def execute(name,m,fn):
         p=Profile(m,totals);value=p.run(fn)
@@ -151,7 +147,7 @@ def scenarios(totals):
     execute('log-old-format-discard',m,lambda:(boot(m)[0],m.request(),m.drain_upload()))
     execute('log-after-format-upload',m,lambda:(append(m,129),records(m),m.request(0,8),m.drain_upload()))
 
-    # Compare actual persistent state after interruption of each journal action.
+
     m=StorageMachine();m.record_changes=True;initial=bytes(m.flash)
     m.command(13,rows([1]),1);m.drain();flash=bytearray(initial)
     recover=[]
@@ -193,8 +189,8 @@ def scenarios(totals):
     m=IndexMachine();m.setup((1,2,128,256))
     execute('index',m,m.drain_index)
 
-    # Full physical ID area: 1,601,536 bytes / 32-byte cells, last ID matches.
-    # The model records the real call to loads_load at the relay boundary.
+
+
     for match in (True,False):
         m=AccessMachine();m.put_group(1)
         for cell in range(1,50049):m.put_id(cell,b'%010d'%cell)
@@ -204,20 +200,17 @@ def scenarios(totals):
 
     for cmd in (17,18):
         m=ServiceMachine(8192,1601536)
-        m.stubs.pop(m.addr('usb_try_send'),None);init_transport(m,inp=0,out=0,epoch=0)
+        m.stubs.pop(m.addr('usb_try_send'),None);init_transport(m,epoch=0)
         def server():
             m.packet(cmd)
             for _ in range(40000):
                 if not m.active():break
                 m.now+=1;m.checked('user_storage_poll')
             else:raise AssertionError('service did not complete')
-            if 'usb_tx_source' in m.symbols:
-                p=int.from_bytes(m.u.mem_read(m.addr('usb_tx_source'),4),'little')
-                n=int.from_bytes(m.u.mem_read(m.addr('usb_tx_length'),2),'little')
-                return bytes(m.u.mem_read(p,n)) if p else b''
-            n=int.from_bytes(m.u.mem_read(m.addr('USART_Rx_ptr_in'),4),'little')
-            return bytes(m.u.mem_read(m.addr('USART_Rx_Buffer'),n))
-        execute('packet-'+str(cmd)+'-usb-ring',m,server)
+            p=int.from_bytes(m.u.mem_read(m.addr('usb_tx_source'),4),'little')
+            n=int.from_bytes(m.u.mem_read(m.addr('usb_tx_length'),2),'little')
+            return bytes(m.u.mem_read(p,n)) if p else b''
+        execute('packet-'+str(cmd)+'-usb-source',m,server)
     return out
 
 
@@ -247,8 +240,8 @@ def kernel_scenarios(totals):
 def main_iteration(totals):
     from storage_machine import StorageMachine
     m=StorageMachine();p=Profile(m,totals)
-    # Do not run hardware startup. Execute the actual main loop with initialized
-    # runtime BSS/data, idle peripherals, no modem RX, no card and no storage job.
+
+
     for name in ('board_init','NVIC_SetVectorTable','led_load',
                  'timers_init','spi_init','adc_init','delay_ms','timers_pause','wdt_init','user_init','usb_init'):
         if name in m.symbols:m.stubs[m.addr(name)]=m.ret
@@ -269,7 +262,7 @@ def main_iteration(totals):
 
 
 def coverage(totals):
-    """Additional measured calls from existing boundary and failure fixtures."""
+    """Дополнительные вызовы из существующих граничных сценариев и отказов."""
     import importlib
     original_init=support.Machine.__init__;original_call=support.Machine.call
     def init(m,*args,**kw):
@@ -306,13 +299,13 @@ def coverage(totals):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--variant',choices=('ASM','C','C_SPEED','HYBRID'))
+    parser=argparse.ArgumentParser();parser.add_argument('--variant',choices=('C','HYBRID'))
     parser.add_argument('--kernels-only',action='store_true');parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--main-only',action='store_true')
     parser.add_argument('--coverage-only',action='store_true')
     parser.add_argument('--paired',action='store_true')
     parser.add_argument('--config',choices=('Release','ReleaseCustomer'),default='Release')
-    parser.add_argument('--variants',nargs='+',choices=('ASM','C','C_SPEED','HYBRID'),default=('ASM','C','C_SPEED'))
+    parser.add_argument('--variants',nargs='+',choices=('C','HYBRID'),default=('C','HYBRID'))
     args=parser.parse_args()
     os.environ['DOMOVOI_COMPARE_CONFIG']=args.config
     if args.paired:
@@ -320,6 +313,8 @@ def main():
         for variant in args.variants:
             select_image(variant);totals={};raw=kernel_scenarios(totals)
             raw.update(scenarios(totals));raw['main-idle']=main_iteration(totals)
+            from c_vs_asm_paths import run as complete_paths
+            raw.update(complete_paths()['scenarios'])
             if oracle is None:oracle=raw
             else:
                 assert set(raw)==set(oracle)

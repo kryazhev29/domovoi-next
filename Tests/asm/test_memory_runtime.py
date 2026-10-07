@@ -138,15 +138,8 @@ if __name__=='__main__':
     out['config']=config_ownership();out['faults']=config_faults()
     print('shared scratch/ownership/real heap/I/O/OOM PASS',flush=True)
     if args.power:out['config_power_cuts']=power_cuts();print('config cuts',out['config_power_cuts'],'PASS',flush=True)
-    if not args.power:
-        previous=ROOT/'Tests/asm/memory_runtime_results.json'
-        if previous.exists():
-            old=json.loads(previous.read_text())
-            if old.get('config_power_cuts'):
-                out['config_power_cuts']=old['config_power_cuts']
-                out['power_elf_sha256']=old.get('power_elf_sha256',old.get('elf_sha256'))
-    out['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
+    out['elf_sha256']=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()
     m=StorageMachine();out['static_gap']=m.addr('fault_record')-m.addr('HEAP$$Limit')
     out['heap_bytes']=m.heap_bytes;out['stack_bytes']=m.top-m.bottom
     assert m.map_size('sjr')==128 and m.map_size('cfg_job')==36
-    (ROOT/'Tests/asm/memory_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
+    (__import__('iar_image').result_path('memory_runtime_results.json')).write_text(json.dumps(out,indent=2)+'\n')

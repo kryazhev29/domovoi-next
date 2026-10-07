@@ -1,4 +1,4 @@
-"""Linked W26 parity, delivery, noise and bounded snapshot instructions."""
+"""W26 из ELF: чётность, доставка, шум и ограниченное число инструкций снимка."""
 from iar_irq_support import Machine, UC_ARM_REG_PRIMASK
 
 

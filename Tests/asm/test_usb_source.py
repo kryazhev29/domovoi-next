@@ -9,6 +9,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from iar_irq_support import Machine, UC_ARM_REG_PRIMASK, UC_ARM_REG_R0, UC_ARM_REG_R2, UC_HOOK_CODE
 
 
+def init_transport(m, *, epoch=7, enabled=1, configured=5, connected=True):
+    """Подготовить состояние настоящего транспорта USB в выбранном ELF."""
+    m.write(m.addr('pInformation'), m.addr('Device_Info'))
+    m.write(m.addr('bDeviceState'), configured)
+    m.write(m.addr('usb_enabled'), enabled, 1)
+    m.write(m.addr('usb_bus_resets'), epoch)
+    m.write(m.addr('store') + 12, epoch)
+    m.write(0x40010c08, 32768 if connected else 0)
+
+
 class SourceMachine(Machine):
     # Готовит модель прошивки и перехватывает запись пакетов PMA.
     def __init__(self):
@@ -23,11 +33,7 @@ class SourceMachine(Machine):
 
     # Настраивает работающий сеанс CDC и маску прерываний.
     def configure(self, mask=0):
-        self.write(self.addr('bDeviceState'), 5)
-        self.write(self.addr('usb_enabled'), 1, 1)
-        self.write(self.addr('usb_bus_resets'), 7)
-        self.write(self.addr('store') + 12, 7)
-        self.write(0x40010c08, 32768)
+        init_transport(self)
         self.u.reg_write(UC_ARM_REG_PRIMASK, mask)
 
     # Сохраняет очередной пакет, переданный аппаратной PMA.

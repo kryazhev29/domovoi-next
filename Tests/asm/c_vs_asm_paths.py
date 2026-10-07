@@ -1,4 +1,4 @@
-"""Decoded Wiegand frame -> physical GPIO write; server RX stream -> wire reply."""
+"""Пути в ELF: кадр Wiegand до записи GPIO и серверный поток RX до отправки ответа."""
 import argparse,hashlib,json,struct
 from pathlib import Path
 from c_vs_asm_compare import Profile,serial
@@ -21,7 +21,9 @@ def run():
     raw=(value<<1)|(((value&4095).bit_count()^1)&1)|(((value>>12).bit_count()&1)<<25)
     m.write(m.addr('wgData'),raw);m.write(m.addr('wgBitCount'),26,1)
     m.write(m.addr('wgTime'),100);m.write(m.addr('milliSeconds'),400)
-    m.write(m.addr('prof_card_mark'),1)
+    # Маркер измерения присутствует в диагностическом профиле; GPIO проверяется в обоих.
+    if 'prof_card_mark' in m.symbols:
+        m.write(m.addr('prof_card_mark'),1)
     p=Profile(m,totals);relay=[]
     def gpio(u,access,a,n,value,_):
         if value==8:relay.append({'instructions':p.n,'fetch_estimate':p.n+p.wait,'register':hex(a),'value':value})
@@ -53,6 +55,6 @@ def run():
     return {'functions':totals,'scenarios':out,'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('ASM','C','C_SPEED','HYBRID'),required=True);p.add_argument('--output',type=Path,required=True)
+    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('C','HYBRID'),required=True);p.add_argument('--output',type=Path,required=True)
     a=p.parse_args();select_image(a.variant);result=run();result['variant']=a.variant
     a.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8');print('PASS decoded card/GPIO and server-stream paths')

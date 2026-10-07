@@ -34,9 +34,9 @@ def durable_empty():
                     break
             else:raise AssertionError(('cleanup stuck',cmd,channel,seen))
             assert not m.sent and m.cursor(channel)==0
-            # Server keeps US_REPLY while busy; USB starts its privately owned
-            # empty packet, which must survive SEND retries without new input.
-            # Empty ring cleanup now formats all 24 sectors cooperatively.
+
+
+
             for _ in range(400):
                 m.tick_upload()
                 if channel==0 and m.phase()==5:break
@@ -105,5 +105,5 @@ if __name__=='__main__':
     out=dict(status='PASS',elf_sha256=hashlib.sha256(image_paths()[0].read_bytes()).hexdigest(),
         durable_empty=durable_empty(),reachable_ack=reachable_ack(),recovery_gate=recovery_gate(),
         units='Unicorn instructions with modeled NOR/transport; not board cycles or time')
-    Path(__file__).with_name('verification_upload_lifetime_results.json').write_text(json.dumps(out,indent=2)+'\n')
+    __import__('iar_image').result_path('verification_upload_lifetime_results.json').write_text(json.dumps(out,indent=2)+'\n')
     print(json.dumps(out,indent=2))

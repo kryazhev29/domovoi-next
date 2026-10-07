@@ -172,5 +172,5 @@ if __name__=='__main__':
     out['cancel_sessions_io']=sessions_cancel_faults();out['guards_oom']=guards()
     print('cancel/reset/USB reconnect/I/O/bounds/OOM PASS',flush=True)
     out['power']=bulk_power()
-    out['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
-    (ROOT/'Tests/asm/idclear_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
+    out['elf_sha256']=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()
+    (__import__('iar_image').result_path('idclear_runtime_results.json')).write_text(json.dumps(out,indent=2)+'\n')

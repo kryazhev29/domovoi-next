@@ -1,13 +1,12 @@
-"""Exercise IAR fault handlers/status frames in Unicorn; no device access.
-Run with Unicorn installed (or its directory on PYTHONPATH), after Release build.
-"""
+"""Проверка обработчиков отказов и кадров состояния IAR-образа в Unicorn."""
 from pathlib import Path
 import re, struct
 from functools import lru_cache
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.arm_const import *
 R=Path(__file__).resolve().parents[1]
-text=(R/'Release/List/DomovoiNext.map').read_text()
+from iar_image import image_paths
+text=image_paths()[2].read_text()
 @lru_cache(None)
 def sym(name):
     m=re.search(r'^'+re.escape(name)+r'\s+(0x[0-9a-f\x27]+)',text,re.M)
@@ -16,7 +15,7 @@ def sym(name):
 def machine():
     u=Uc(UC_ARCH_ARM,UC_MODE_THUMB|UC_MODE_MCLASS)
     for a,n in [(0x08000000,0x20000),(0x20000000,0x5000),(0x40000000,0x24000),(0xe000e000,0x2000)]:u.mem_map(a,n)
-    u.mem_write(0x08008200,(R/'Release/Exe/DomovoiNext.bin').read_bytes())
+    u.mem_write(0x08008200,image_paths()[1].read_bytes())
     return u
 record=sym('fault_record');assert record==0x20004fc0
 handlers=['HardFault_Handler','MemManage_Handler','BusFault_Handler','UsageFault_Handler']
@@ -43,7 +42,7 @@ for handler in handlers:
             assert all(record<=a and a+n<=record+48 for a,n in writes),writes
             assert u.reg_read(UC_ARM_REG_PRIMASK)==1
 print('Fault handlers: 32 MSP/PSP/frame cases; no stack or watchdog writes')
-# Actual IAR C runtime initialization must retain the record across a warm start.
+
 u=machine();saved=struct.pack('<12I',0x31544c46,*range(1,12));u.mem_write(record,saved)
 u.reg_write(UC_ARM_REG_MSP,sym('CSTACK$$Limit'))
 reached=[]
@@ -53,7 +52,7 @@ h=u.hook_add(UC_HOOK_CODE,at_main)
 u.emu_start(sym('__iar_program_start'),0,count=200000)
 assert reached and bytes(u.mem_read(record,48))==saved
 u.hook_del(h)
-# Read the actual command 101 wire buffer, including its CRC.
+
 def crc16(b):
     c=0xffff
     for x in b:
@@ -67,7 +66,7 @@ for present in [False,True]:
             frames.append(bytes(uc.mem_read(uc.reg_read(UC_ARM_REG_R0),uc.reg_read(UC_ARM_REG_R1))));uc.emu_stop()
     h=u.hook_add(UC_HOOK_CODE,capture)
     u.reg_write(UC_ARM_REG_MSP,sym('CSTACK$$Limit'));u.reg_write(UC_ARM_REG_R0,0)
-    # CH_USB is defined in user_fun.h; check the enumerator below if this changes.
+
     u.emu_start(sym('user_send_statusPackToConfigurator'),0,count=10000)
     u.hook_del(h)
     assert len(frames)==1,'CH_USB enumeration / status output'

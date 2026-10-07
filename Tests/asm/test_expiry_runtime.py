@@ -175,12 +175,5 @@ if __name__=='__main__':
     print('cancel/reset/session/I/O/OOM/priority PASS',flush=True)
     out['full_scan_heap']=full_scan_and_heap();print('full ID/heap/fragmentation/coalescing PASS',flush=True)
     if a.power:out['power_cuts']=power();print('power cuts',out['power_cuts'],'PASS',flush=True)
-    if not a.power:
-        previous=ROOT/'Tests/asm/expiry_runtime_results.json'
-        if previous.exists():
-            old=json.loads(previous.read_text())
-            if old.get('power_cuts'):
-                out['power_cuts']=old['power_cuts']
-                out['power_elf_sha256']=old.get('power_elf_sha256',old.get('elf_sha256'))
-    out['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
-    (ROOT/'Tests/asm/expiry_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
+    out['elf_sha256']=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()
+    (__import__('iar_image').result_path('expiry_runtime_results.json')).write_text(json.dumps(out,indent=2)+'\n')

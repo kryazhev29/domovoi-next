@@ -1,3 +1,4 @@
+import re
 """Доработка: Кряжев А., 2026. Канал/сервер на настоящих UART, AT и SLM."""
 from pathlib import Path
 from source_select import source_path, source_text, host_adapters
@@ -12,7 +13,7 @@ def source(name):
 
 def function(text, name):
     import re
-    m = re.search(r'(?m)^(?:static )?(?:(?:void|bool|uint16_t|unsigned short)\s+|const char\s*\*\s*)' + name + r'\s*\([^;]*?\)\s*\{', text)
+    m = re.search(r'(?m)^(?:static )?(?:(?:void|bool|uint8_t|uint16_t|unsigned short)\s+|(?:const char|uint8_t)\s*\*\s*)' + name + r'\s*\([^;]*?\)\s*\{', text)
     assert m, name
     depth = 1; i = m.end()
     while depth:
@@ -27,18 +28,27 @@ def unit():
     old = old.replace('  sim_tx();', '  legacy_sim_tx();')
     headers = '\n'.join(line for n in NEW_HEADERS for line in source(n).splitlines() if not line.startswith('#include "'))
     code = '\n'.join(line for n in NEW for line in source(n).splitlines() if not line.startswith('#include'))
-    user = source('Tests/asm/reference/User/user_fun.c')
-    rx = user[user.index('#define SERVER_RX_CAPACITY'):user.index('// принято СМС')]
+    user = source('User/c/user_*.c')
+    rx = 'void server_rx_process(void);\n' + function(source('User/c/runtime_internal.h').replace('static inline ','static '),'rt_get16') + '\n' + re.sub(r'^#include[^\n]*', '', source('User/c/user_rx.c'), flags=re.M)
     # Сохранённый сборщик и его стык QIRD; настоящие CRC/границы/отложенное исполнение.
-    helpers = user[user.index('/* Назначение кадра серверу'):user.index('void user_send_anyData(')]
+    helpers = '\n'.join(function(user,n) for n in ('user_comm_acquire','user_comm_free'))
     producers = ('user_send_registrationData', 'user_send_statusPack', 'user_send_anyData', 'user_send_smsToServer')
     legacy = '\n'.join(function(user, n).replace(n, 'legacy_' + n).replace('user_comm_acquire(', 'legacy_acquire(').replace('comm_tx_acquire(', 'legacy_tx_acquire(')
                        .replace('comm_tx_commit(', 'legacy_commit(').replace('packet_send(', 'legacy_packet_send(').replace('user_comm_free(', 'legacy_free(') for n in producers)
     current = '\n'.join(function(user, n) for n in producers)
-    status = user[user.index('#define STATUS_EVENT_MASK'):user.index('/* Режим обновления, бит 11 статуса 1')]
-    packet = function(source('User/packet.c'),'packet_send') if 'packet_send(' in current else ''
-    producer_code = status + helpers + packet + '\n' + packet.replace('packet_send(', 'legacy_packet_send(').replace('comm_tx_commit(', 'legacy_commit(') + '\n' + legacy + '\n' + current
-    producer_code += '\n' + function(user, 'user_send_statusUpdateFW')
+    status = re.search(r'enum \{ STATUS_EVENT_MASK[^}]*\};', user).group(0)
+    status += '\n'+re.search(r'static struct \{ uint8_t due, percent, code, id; \} fw_status_pending;', user).group(0)
+    status += '\n'+re.search(r'static uint16_t status_reported;\s*static uint32_t status_reported_ms;', user).group(0)
+    status += '\n'+re.search(r'static struct \{ char id\[10\]; uint8_t due; \} unreg_sms_pending;', user).group(0)
+    status += '\n'+ '\n'.join(function(user,n) for n in ('status_event_due','status_event_sent'))
+    status = 'uint8_t status_event_due(uint16_t,uint32_t);\nvoid status_event_sent(uint16_t,uint32_t);\n'+status
+
+    status += '\n'+re.search(r'static struct \{ uint8_t state; char id\[10\]; \} reader_out;', user).group(0)
+    status += '\n'+'\n'.join(function(user,n) for n in ('user_send_readedIDtoServer','reader_reply_poll'))
+    status += '\n'+'\n'.join(function(source('User/c/runtime_internal.h').replace('static inline ','static '),n) for n in ('rt_put16','rt_put32'))
+    packet = function(source('User/packet.c'),'packet_frame')+'\n'+function(source('User/packet.c'),'packet_send')
+    producer_code = 'uint8_t *user_comm_acquire(uint16_t);\nbool packet_send(uint8_t*,uint16_t,uint8_t);\n' + status + helpers + packet + '\n' + packet.replace('packet_frame(', 'legacy_packet_frame(').replace('packet_send(', 'legacy_packet_send(').replace('comm_tx_commit(', 'legacy_commit(') + '\n' + legacy + '\n' + current
+    producer_code += '\n' + '\n'.join(function(user,n) for n in ('user_send_statusUpdateFW','fw_status_poll','unreg_sms_note','unreg_sms_poll'))
     if '/* >>> ход обновления */' in user:
         producer_code = user[user.index('/* >>> ход обновления */'):user.index('/* <<< ход обновления */')] + producer_code
 
@@ -50,10 +60,10 @@ def unit():
     # Автоматы хранения проверяются на связанном ELF; здесь модель модема
     # проверяет уведомление владельцев при смене сеанса.
     old += '\n#define service_crc_quiet(ch) ((void)(ch))\n#define upload_runtime_quiet(ch) ((void)(ch))\n#define fw_service_quiet(ch) ((void)(ch))\n'
-    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* КОНТРОЛЬНАЯ СУММА */', function(source('Tests/asm/reference/User/crc.c'), 'crc16_calc')+'\n'+function(source('Tests/asm/reference/User/crc.c'), 'crc16_calcInit')).replace('/* ПРИЁМ */', rx).replace('/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */', producer_code).replace('/* ВОССТАНОВЛЕНИЕ */', source('Tests/test_comm_recover.c')).replace('/* ВЫЗОВ */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
+    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* КОНТРОЛЬНАЯ СУММА */', function(source('User/c/crc_runtime.c'), 'crc16_calcInit')+'\n'+function(source('User/c/crc_runtime.c'), 'crc16_calc')).replace('/* ПРИЁМ */', rx).replace('/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */', producer_code).replace('/* ВОССТАНОВЛЕНИЕ */', source('Tests/test_comm_recover.c')).replace('/* ВЫЗОВ */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):
-    names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'Tests/asm/reference/User/user_comm.c')
+    names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'User/c/user_comm_runtime.c')
     rows = []
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         tmp = Path(tmp)
@@ -62,7 +72,7 @@ def arm(out):
         (tmp/'string.h').write_text('#include <stddef.h>\nvoid *memcpy(void*,const void*,size_t);\nvoid *memset(void*,int,size_t);\nvoid *memmove(void*,const void*,size_t);\nint memcmp(const void*,const void*,size_t);\nsize_t strlen(const char*);\nint strcmp(const char*,const char*);\nchar *strncpy(char*,const char*,size_t);\nchar *strstr(const char*,const char*);\n', encoding='ascii')
         (tmp/'stdio.h').write_text('#include <stddef.h>\nint snprintf(char*,size_t,const char*,...);\n', encoding='ascii')
         (tmp/'user_fun.h').write_text('#include <stdint.h>\n#include <stdbool.h>\n#define CH_SERVER 1\ntypedef uint8_t logSystem_e;\nvoid user_send_registrationData(unsigned);\nvoid user_send_statusPack(unsigned);\nbool log_addSystemEvent(logSystem_e);\nuint32_t user_comm_local_time(void);\nbool user_comm_busy(void);\n#define CT_PHONE 1\nbool user_incomingcall(char*,uint8_t);\nbool user_smsreceived(char*,char*);\nbool user_storage_flash_ready(void);\n',encoding='ascii')
-        for name in (*MODULES, *NEW, 'Modules/comm_at.c', 'Tests/asm/reference/User/user_comm.c'):
+        for name in (*MODULES, *NEW, 'Modules/comm_at.c', 'User/c/user_comm_runtime.c'):
             stem = Path(name).stem; obj = out/(stem+'.o')
             subprocess.run([ZIG,'cc','-target','thumb-freestanding-eabi','-mcpu=cortex_m3','-mthumb','-Oz','-std=c99','-Wall','-Wextra','-Werror','-fstack-usage','-I'+str(tmp),'-c',str(tmp/(stem+'.c')),'-o',str(obj)],check=True)
             ram, flash = memory(obj); rows.append(f'{stem}: RAM={ram} Flash={flash} heap=0')

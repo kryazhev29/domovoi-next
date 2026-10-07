@@ -1,28 +1,28 @@
-"""Доработка: Кряжев А., 2026.
-Мутации ограничения работы приёма в изолированных копиях исходников.
-Источники данных и отказы задаются моделью; результат проверяется утверждениями.
-"""
-import os, pathlib, shutil, subprocess, sys, tempfile
-ROOT=pathlib.Path(__file__).resolve().parents[1]
-CASES=(
- ('refill-in-process','  server_rx_scan(); /* Also resume','  server_rx_work = SERVER_RX_WORK;\r\n  server_rx_scan(); /* Also resume'),
- ('lost-crc','server_rx_crc = crc16_calcInit(p + server_rx_pos, n, server_rx_crc);','server_rx_crc = crc16_calcInit(p + server_rx_pos, n, 0xffffu);'),
- ('unbounded-crc','if (n > server_rx_work) n = server_rx_work;','if (0) n = server_rx_work;'),
- ('stalled-input','  server_rx_scan(); /* Also resume','  if (0) server_rx_scan(); /* Also resume'),
- ('stale-reset','server_rx_ready = server_rx_offset = server_rx_total = server_rx_pos = 0;','server_rx_ready = server_rx_offset = 0;'),
- ('bad-crc-exec','if (server_rx_crc == ((uint16_t)p[server_rx_total - 2u] |','if (server_rx_crc != ((uint16_t)p[server_rx_total - 2u] |'),
- ('lost-partial','if (left < 6u) break;','if (left < 6u) { ++server_rx_offset; continue; }'),
-)
-with tempfile.TemporaryDirectory() as d:
-    dst=pathlib.Path(d)
-    shutil.copytree(ROOT/'User',dst/'User');shutil.copytree(ROOT/'Tests',dst/'Tests',ignore=shutil.ignore_patterns('__pycache__'))
-    p=dst/'Tests/asm/reference/User/user_fun.c';original=p.read_bytes()
-    for label,old,new in CASES:
-        assert old.encode() in original,label
-        p.write_bytes(original.replace(old.encode(),new.encode(),1))
-        r=subprocess.run([sys.executable,str(dst/'Tests/run_host.py'),'work','serverrx'],capture_output=True,timeout=60,
-                         env={**os.environ,'DOMOVOI_ROOT':str(dst)})
-        p.write_bytes(original)
-        assert r.returncode and b'FAIL' in r.stderr,(label,r.stderr[-1000:])
-        print(label,'detected',flush=True)
-print('PASS RX mutations: 7/7')
+"""Доработка: Кряжев А., 2026. Мутации настоящего ELF: CRC, RX, срок кадра и TCP."""
+import sys
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parent/'asm'))
+from c_vs_asm_suite import select_image
+import os
+if 'DOMOVOI_ELF' not in os.environ: select_image(os.environ.get('DOMOVOI_TEST_PROJECT','HYBRID'))
+import test_logic_cleanup as logic
+
+original=logic.rx_machine
+logic.rx_contracts()
+for symbol in ('user_comm_rx','server_rx_process','server_rx_begin_pass','user_comm_session',
+               'crc16_calc','user_comm_rx_capacity'):
+    def mutated(symbol=symbol):
+        machine=original()
+        assert symbol in machine.symbols, symbol
+        machine.stubs[machine.addr(symbol)]=lambda:machine.ret(0)
+        return machine
+    logic.rx_machine=mutated
+    try:
+        logic.rx_contracts()
+    except AssertionError:
+        print('DETECTED',symbol,flush=True)
+    else:
+        raise AssertionError(('survived',symbol))
+    finally:
+        logic.rx_machine=original
+print('PASS RX mutations: 6/6')

@@ -1,4 +1,4 @@
-; Cortex-M3 AAPCS leaf kernels. Byte inputs accept every alignment.
+; Ядра Cortex-M3 AAPCS без вложенных вызовов; байтовые входы допускают любое выравнивание.
         PRESERVE8
         CFI Names fast_names
         CFI StackFrame CFA R13 DATA

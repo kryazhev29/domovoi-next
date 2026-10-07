@@ -1,6 +1,8 @@
 """Доработка: Кряжев А., 2026. Мутации восстановления связи: группа commserver обязана ловить каждую."""
 import subprocess
 import sys
+import os
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +19,7 @@ CASES = (
     ('no-soft-step', b'else if (rc.net_step == 1u) rc_schedule(false, 0);', b'else if (rc.net_step == 1u) rc_schedule(true, 0);'),
     ('early-counts-startup', b'if (step < SLM_TCP) return;', b'if (step > 200u) return;'),
     ('early-window', b'>= comm_timeouts[window]', b'>= comm_timeouts[window] * 10u'),
-    ('night-busy-ignored', b'  if (busy) return;\r\n', b''),
+    ('night-busy-ignored', b'  if (busy) return;\r\n', b'  if (busy && false) return;\r\n'),
     ('night-twice', b'&& day != rc.night_day', b''),
     ('no-ladder-reset', b'rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;', b'rc.soft_fails = 0;'),
     ('deact-error-fails', b' && !(action == MODEM_ANY && slm.attempt.result < COMM_AT_GOT_PROMPT)', b'', MODEM),
@@ -29,24 +31,25 @@ CASES = (
 
 
 def main():
-    originals = {path: path.read_bytes() for path in (SOURCE, MODEM, INFO, CHANNEL)}
-    missed = []
-    try:
-        for name, old, new, *where in CASES:
-            path = where[0] if where else SOURCE
-            original = originals[path]
-            assert original.count(old) == 1, name
-            path.write_bytes(original.replace(old, new))
-            run = subprocess.run([sys.executable, str(ROOT / 'Tests/run_host.py'), 'work', 'commserver'], capture_output=True, timeout=900)
-            print(name, 'detected' if run.returncode else 'MISSED')
-            if not run.returncode:
-                missed.append(name)
-            path.write_bytes(original)
-    finally:
-        for path, data in originals.items():
-            path.write_bytes(data)
-    print('recover mutations:', len(CASES) - len(missed), '/', len(CASES), 'detected')
-    sys.exit(1 if missed else 0)
+    from comm_server_host import unit
+    from comm_at_host import ZIG
+    production = unit().replace('\r\n', '\n')
+    base = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', tempfile.gettempdir()))/'recover-mutations'
+    base.mkdir(parents=True, exist_ok=True)
+    for name, old, new, *where in CASES:
+        old, new = (data.decode('cp1251').replace('\r\n', '\n') for data in (old, new))
+        assert production.count(old) == 1, name
+        with tempfile.TemporaryDirectory(dir=base) as directory:
+            folder=Path(directory);source=folder/'test.c';executable=folder/'test.exe'
+            source.write_text(production.replace(old,new),encoding='utf-8')
+            compiler=subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(source),'-o',str(executable)],capture_output=True)
+            (base/(name+'-compile.log')).write_bytes(compiler.stdout+compiler.stderr)
+            compiler.check_returncode()
+            result=subprocess.run([str(executable)],capture_output=True,timeout=120)
+            (base/(name+'.log')).write_bytes(result.stdout+result.stderr)
+            assert result.returncode and b'FAIL' in result.stderr, ('undetected',name)
+        print(name,'detected',flush=True)
+    print('recover mutations:',len(CASES),'/',len(CASES),'detected')
 
 
 if __name__ == '__main__':

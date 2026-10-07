@@ -1,9 +1,0 @@
-{
-  "capture_prefix": {
-    "cuts": 738,
-    "max_resume_instructions": 701
-  },
-  "acknowledgements": 10,
-  "cleanup": 42,
-  "elf_sha256": "4b863dce03910fc114e7c413410c2aaa507bde0818b5a0143cef3b5c0fa04709"
-}

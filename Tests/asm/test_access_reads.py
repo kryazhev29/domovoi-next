@@ -21,10 +21,9 @@ class AccessMachine(StorageMachine):
         self.write(self.addr('config') + fields('config_s')['rele'] + rele['onWiegand'], 1, 1)
 
     def read(self):
-        # Замороженный ASM читает до 1024 байт, текущий C — до 256 байт.
-        # Общая модель NOR допускает оба размера для исторических сравнений.
+        # Живой поиск читает не более страницы за один вызов.
         a, p, n, _ = self.args(); self.read_budget += n
-        assert 0 < n <= 1024 and a + n <= len(self.flash), (hex(a), n)
+        assert 0 < n <= 256 and a + n <= len(self.flash), (hex(a), n)
         if self.failed('read'): self.ret(0); return
         self.u.mem_write(p, bytes(self.flash[a:a + n])); self.ret(1)
 
@@ -121,6 +120,6 @@ def access():
 if __name__ == '__main__':
     res = {'units': 'Unicorn instructions; NOT cycles/time', 'table_cells': table_cells(), 'holidays': holidays(),
            'find_id': find_id(), 'access': access(),
-           'elf_sha256': hashlib.sha256((ROOT / 'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()}
-    (ROOT / 'Tests/asm/access_reads_results.json').write_text(json.dumps(res, indent=2) + '\n')
+           'elf_sha256': hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()}
+    (__import__('iar_image').result_path('access_reads_results.json')).write_text(json.dumps(res, indent=2) + '\n')
     print('PASS access reads: group/schedule by cell, holiday 0/1/2, find ID read error != absent, no 65 or relay on error')

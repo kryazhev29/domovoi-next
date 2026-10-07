@@ -273,5 +273,5 @@ def exact_failure_logs():
 
 if __name__=='__main__':
     r={'normal':normal(),'heap':heap_reservation(),'boundaries':boundaries_errors(),'io_faults':io_faults(),'busy_cancel':busy_cancel(),'power_cuts':power_cuts(),'real_spi':real_spi(),'exact_failure_logs':exact_failure_logs()}
-    r['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest();r['status']='PASS'
-    (ROOT/'Tests/asm/fw_service_runtime_results.json').write_text(json.dumps(r,indent=2)+'\n');print(json.dumps(r,indent=2))
+    r['elf_sha256']=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest();r['status']='PASS'
+    (__import__('iar_image').result_path('fw_service_runtime_results.json')).write_text(json.dumps(r,indent=2)+'\n');print(json.dumps(r,indent=2))

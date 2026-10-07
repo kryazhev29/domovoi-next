@@ -1,4 +1,4 @@
-"""Bottom canary and stackless FLT1/STAK stop in the actual linked image."""
+"""Защитное слово стека и остановка FLT1/STAK без стека в собранном образе."""
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

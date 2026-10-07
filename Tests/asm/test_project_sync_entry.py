@@ -1,4 +1,4 @@
-"""Current asynchronous entry contract replacing the inactive sync extraction."""
+"""Асинхронный вход синхронизации из текущего проекта вместо неактивной синхронной версии."""
 from storage_machine import StorageMachine
 from test_table_runtime import rows
 

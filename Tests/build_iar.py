@@ -1,8 +1,7 @@
-"""Build original IAR project commands under TEMP, including link/map/BIN.
+"""Сборка команд исходного IAR-проекта в TEMP: компиляция, линковка, карта и BIN.
 
-IarBuild -jsondb preserves project options; direct tools avoid its sandbox path
-canonicalization failure. This does not claim that IarBuild -build succeeded.
-"""
+IarBuild -jsondb сохраняет параметры проекта; прямой запуск инструментов обходит
+ошибку разрешения путей в песочнице. Успех IarBuild -build этим не подтверждается."""
 import argparse
 import concurrent.futures
 import json
@@ -15,14 +14,15 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def build(variant, base, config='Release', mfc=False):
-    stem = 'DomovoiNext_' + variant
+def build(variant, base, config='Release', mfc=False, project_path=None):
+    project_path = Path(project_path or ROOT / ('DomovoiNext_' + variant + '.ewp'))
+    stem = project_path.stem
     folder = base / (variant + '-' + config)
     folder.mkdir(parents=True, exist_ok=True)
-    tree = ET.parse(ROOT / (stem + '.ewp'))
+    tree = ET.parse(project_path)
     for node in tree.findall('.//state') + tree.findall('.//file/name'):
         if node.text:
-            node.text = node.text.replace('$PROJ_DIR$', str(ROOT))
+            node.text = node.text.replace('$PROJ_DIR$', str(project_path.parent))
     for opt in tree.findall('.//option'):
         if opt.findtext('name') in ('ExePath', 'ObjPath', 'ListPath'):
             opt.find('state').text = str(folder / opt.findtext('name'))
@@ -36,8 +36,8 @@ def build(variant, base, config='Release', mfc=False):
     result.check_returncode()
     commands = json.loads(database.read_text(encoding='utf-8-sig'))
     if mfc:
-        # Assembly-layout adapters intentionally describe storage as byte arrays.
-        # Keep them as separate translation units; group the typed application.
+
+
         sources=[c for c in commands if Path(c['arguments'][0]).stem.lower()=='iccarm'
                  and Path(c['file']).parent != ROOT/'User/c']
         first=sources[0]
@@ -64,7 +64,7 @@ def build(variant, base, config='Release', mfc=False):
             Path(output).parent.mkdir(parents=True, exist_ok=True)
         r = subprocess.run(command['arguments'], cwd=ROOT, capture_output=True)
         return command, r
-    # Compiler/assembler commands are independent; linker and ielftool are not.
+
     compilers = [c for c in commands if Path(c['arguments'][0]).stem.lower() in ('iccarm', 'iasmarm')]
     logs = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
@@ -90,7 +90,7 @@ def build(variant, base, config='Release', mfc=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--project', choices=('ASM', 'C', 'HYBRID'), required=True)
+    parser.add_argument('--project', choices=('C', 'HYBRID'), required=True)
     parser.add_argument('--build-root', type=Path, default=Path(tempfile.gettempdir())/'domovoi-c-asm')
     parser.add_argument('--config', default='Release')
     parser.add_argument('--mfc', action='store_true', help='Explicit compiler experiment: group identical C commands with --mfc')

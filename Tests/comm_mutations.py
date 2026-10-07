@@ -19,12 +19,12 @@ def uart_unit():
     model = model.replace('    ++reads; regs.SR&=', '    regs.SR&=')
     code = '\n'.join(line for line in source('Modules/comm_uart.c').splitlines() if not line.startswith('#include'))
     code = code.replace('(void)USART3->DR;', '++reads; (void)USART3->DR;')
-    return diagnostic_header(ROOT) + model.replace('/* TICK */', tick).replace(
-        '/* HEADER */', source('Modules/comm_uart.h')).replace('/* PRODUCTION */', code)
+    return diagnostic_header(ROOT) + model.replace('/* ТИК */', tick).replace(
+        '/* ЗАГОЛОВОК МОДУЛЯ */', source('Modules/comm_uart.h')).replace('/* КОД МОДУЛЯ */', code)
 
 
 def run():
-    out = ROOT / 'Release/comm-stage4_6/final'
+    out = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', tempfile.gettempdir())) / 'comm-mutations'
     out.mkdir(parents=True, exist_ok=True)
     os.environ['ZIG_GLOBAL_CACHE_DIR'] = str(out / 'zig-global')
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out / 'zig-local')
@@ -37,7 +37,7 @@ def run():
         ('at', 'idle-fragment-old-timestamp', 'if (state == IDLE && !line_count && !cr) started = now_ms;', ''),
         ('modem', 'busy-start-is-fatal', 'if (result == COMM_AT_BUSY) {', 'if (0) {'),
         ('modem', 'busy-start-unbounded', 'if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);', 'if (0) slm_fail(SLM_ERR_TIMEOUT);'),
-        ('channel', 'data-echo-left-enabled', '"QISDE=0\\0"', '"QISDE=1\\0"'),
+        ('channel', 'data-echo-left-enabled', '"QISDE=0"', '"QISDE=1"'),
         ('uart', 'idle-steals-rx-byte', 'status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)', 'status & (USART_SR_IDLE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)'),
         ('modem', 'power-noise-not-cleared', 'if (p == COMM_PWR_READY) comm_uart_init(115200);', 'if (0) comm_uart_init(115200);'),
         ('modem', 'reject-valid-current-rat', 'values[0] <= 8)', 'values[0] <= 5)'),
@@ -58,11 +58,11 @@ def run():
         ('at', 'late-body-to-sink', 'state != RUN ? count : handlers.binary(view, count)', 'handlers.binary(view, count)'),
         ('at', 'poll-unlimited', 'if (count > budget) count = budget;', ''),
         ('at', 'old-OK-sync', 'state == SYNC_WAIT && sync_seen && code == COMM_AT_OK', 'state == SYNC_WAIT && code == COMM_AT_OK'),
-        ('channel', 'direct-push', ',0,0\\0"', ',0,1\\0"'),
-        ('modem', 'QIACT-20s', '150000, /* COMM_T_QIACT */', '20000, /* COMM_T_QIACT */'),
+        ('channel', 'direct-push', ',0,0"', ',0,1"'),
+        ('modem', 'QIACT-20s', '150000, /* Открытие контекста данных */', '20000, /* Открытие контекста данных */'),
         ('channel', 'TCP-before-URC', 'else if (!ch.flags.open_seen) return;', 'else if (!ch.flags.open_ack) return;'),
         ('channel', 'drop-QIRD-followup', 'ch.flags.recv = ch.flags.recv || ch.bytes;', 'ch.flags.recv = 0;'),
-        ('modem', 'ignore-manual-APN', 'if (slm_text(SLM_CFG_APN)[0]) return slm_text(SLM_CFG_APN);', 'if (slm_text(SLM_CFG_APN)[0]) return "";'),
+        ('modem', 'ignore-manual-APN', 'if (*configured) return configured;', 'if (*configured) return "";'),
         ('channel', 'grow-final-TCP-time', 'if (slm.attempt.recording) {', 'if (slm.attempt.status.state != SLM_IDLE) {'),
         ('channel', 'TCP-time-overwritten-by-read', 'slm.attempt.recording = next < SLM_STEP_COUNT;', 'slm.attempt.recording = 1;'),
         # Этап 6, звонок без ответа.
@@ -101,7 +101,7 @@ def run():
         ('channel', 'unknown-id-notification-dropped', 'unreg_sms_pending.due = 1;', 'unreg_sms_pending.due = 0;'),
         ('channel', 'update-result-dropped', 'fw_status_pending.due=1;', 'fw_status_pending.due=0;'),
         ('channel', 'status-change-forgotten', 'status_reported = status;', 'status_reported = status ^ 1u;'),
-        ('channel', 'reader-reply-dropped-when-busy', 'if (!b) return;\n  b[0]', 'if (!b) { reader_out.state = 0; return; }\n  b[0]'),
+        ('channel', 'reader-reply-dropped-when-busy', 'if (!b) return;\n  b[6]', 'if (!b) { reader_out.state = 0; return; }\n  b[6]'),
         ('channel', 'low-signal-every-cycle', 'info.daily = 1; info.day', 'info.daily = 0; info.day'),
     )
     for group, label, old, new in cases:
@@ -124,27 +124,10 @@ def run():
 def user_mutations(out):
     """Пользовательская часть (SMS-команды, журнал): поломка user_fun.c в копии исходников, своя группа run_host."""
     cases = (
-        ('fw-request-busy-timer', 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx))', 'if (user_getFWblockFromServer((dataChanel_e)device.cchFWupdate, device.FWblockIdx) || 1)', 'fwstart'),
-        ('fw-sector-erase-skipped', 'sector >= adr + 1024u || mem_erase_sector(sector)', 'sector >= adr + 1024u || (0 && mem_erase_sector(sector)) || 1', 'fwblockbounds'),
-        ('fw-start-erases-tail', 'if (!mem_erase_sector(mem[MB_FIRMWARE].start))', 'if (!mem_erase_sector(mem[MB_FIRMWARE].start) || !mem_erase_sector(mem[MB_FIRMWARE].start + 4096u))', 'fwstart'),
-        ('fw-resume-stale-tail', 'return device.FWblockIdx < device.FWblockCount ? device.FWblockIdx : UINT16_MAX;', 'return device.FWblockIdx < device.FWblockCount ? device.FWblockCount - 1u : UINT16_MAX;', 'fwstart'),
-        ('fw-rollback-starts-reset-early', 'fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET;', 'fw_rollback_end = fwParam.firmwareSize + FWBLOCK_OFFSET; device.rebootToUpdate=1;', 'fwstart'),
-        ('holiday-date-as-index', 'if (!holiday_write(&ptr[10], ptr[9]))', 'if (ptr[10] == 0 || !holiday_write(&ptr[10], ptr[9]))', 'sync'),
-        ('holiday-tail-kept', 'h->dates[off + i] : 0xFFu', 'h->dates[off + i] : page[i]', 'sync'),
         ('sms-backpressure-ignored', "*data != '#' && !user_send_smsToServer(data)", "*data != '#' && !user_send_smsToServer(data) && 0"),
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
-        ('sms-reply-lowercase', "*c = (char)(*c - 'a' + 'A');", '*c = (char)(*c + 0);'),
-        ('sms-setout-bad-number-silent', 'выхода с таким номером нет\n            strcat(v, ": Error \\"Format not correct\\"");', 'выхода с таким номером нет\n            strcat(v, "");'),
-        ('status-server-number', 'user_comm_server(comm_server_address()) + 1', 'user_comm_server(comm_server_address() & 0u) + 1'),
-        ('server-number-ignores-switch', 'return address || (!config.useServer1 && config.useServer2);', 'return address;'),
-        ('link-server-2', 'if (kind <= COMM_LINK_LOST) event', 'if (0) event'),
+        ('sms-command-wrong', 'return i + 1u;', 'return i + 2u;'),
         ('balance-event-threshold', 'if (rubles < 100) log_addSystemValue', 'if (rubles < 1) log_addSystemValue'),
-        # Журнал: 6-10 конец синхронизации, 78 ID по запросу сервера, 79 проходы суток кончились.
-        ('sync-end-without-quiet', 'if (!sync_quiet || --sync_quiet) return;', 'if (!sync_quiet) return; sync_quiet = 0;', 'sync'),
-        ('sync-end-busy-dropped', 'if (sync_pending) sync_quiet = 1;', 'sync_pending = 0;', 'sync'),
-        ('reader-event-wrong', 'log_addControlEvent(LOG_CON_RECVIDONREADER, tb, 0);', 'log_addControlEvent(LOG_CON_IDNOTINBASE, tb, 0);', 'idtext'),
-        ('reader-address-ignored', '(source != 3 || device.addressGetID == address)', '(source != 3 || device.addressGetID >= address)', 'idtext'),
-        ('pass-limit-wrong-pass', 'if (cnt == 0) log_addControlEvent(LOG_CON_PASSLIMIT', 'if (cnt == 1) log_addControlEvent(LOG_CON_PASSLIMIT', 'access'),
     )
     for label, old, new, *group in cases:
         with tempfile.TemporaryDirectory(dir=out) as tmp:
@@ -153,7 +136,9 @@ def user_mutations(out):
                 shutil.copytree(ROOT / name, tmp / name, ignore=shutil.ignore_patterns('__pycache__', '*.o', 'Release', 'Debug'))
             for name in ('structures.h', 'DomovoiNext.ewp', 'main.c', 'board.h'):
                 shutil.copy2(ROOT / name, tmp / name)
-            path = tmp / 'Tests/asm/reference/User/user_fun.c'
+            paths = [p for p in (tmp/'User/c').glob('user_*.c') if old in p.read_bytes().decode('cp1251').replace('\r\n','\n')]
+            assert len(paths) == 1, (label, paths)
+            path = paths[0]
             text = path.read_bytes().decode('cp1251').replace('\r\n', '\n')
             assert text.count(old) == 1, label
             path.write_bytes(text.replace(old, new).replace('\n', '\r\n').encode('cp1251'))

@@ -83,7 +83,7 @@ if __name__ == '__main__':
     from storage_machine import ROOT
     out = {'expiry_scheduler': expiry_scheduler(), 'clear_scheduler': clear_scheduler(), 'status': 'PASS',
            'elf_sha256': hashlib.sha256(
-               (ROOT / 'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()}
-    (ROOT / 'Tests/asm/owner_integration_results.json').write_text(
+               (__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()}
+    (__import__('iar_image').result_path('owner_integration_results.json')).write_text(
         json.dumps(out, indent=2) + '\n')
     print('PASS production expiry/clear scheduler, reset drain and cross-owner exclusion')

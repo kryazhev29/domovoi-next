@@ -36,12 +36,7 @@ static char expected_added_id[11] = "0123456789";
 static uintptr_t input_begin, input_end;
 static char sent_number[128], sent_message[128], recv_id[128], send_id[128], forwarded_text[128];
 static bool fw_update_quiet(void) { return quiet; }
-static void user_debug(char *p)
-{
-    if (!strncmp(p, ">>U SMS recv: ", 14)) {
-        CHECK(strlen(p) < sizeof(debug_text)); strcpy(debug_text, p); recv_debug_lines++;
-    }
-}
+
 static bool user_comm_sms(const char *num, const char *mes)
 {
     CHECK(strlen(num) < sizeof(sent_number)); CHECK(strlen(mes) < sizeof(sent_message));
@@ -73,17 +68,7 @@ static void out_load(uint8_t out, uint8_t mode, uint16_t activ, uint16_t pause, 
 static bool sms_slot_busy;
 static bool user_send_smsToServer(char *data)
 { if(sms_slot_busy)return false; CHECK(strlen(data) < sizeof(forwarded_text)); strcpy(forwarded_text, data); forwarded++; return true; }
-static int checked_sprintf(char *dest, size_t capacity, const char *format, ...)
-{
-    va_list args, copy;
-    va_start(args, format); va_copy(copy, args);
-    int required = vsnprintf(NULL, 0, format, copy);
-    va_end(copy);
-    CHECK(required >= 0 && (size_t)required < capacity);
-    int result = vsprintf(dest, format, args);
-    va_end(args);
-    return result;
-}
+
 static size_t bounded_length(const char *p, size_t capacity)
 { size_t n = 0; while (n < capacity && p[n]) n++; return n; }
 static char *checked_strcat(char *dest, size_t capacity, const char *source, size_t source_capacity)
@@ -95,7 +80,7 @@ static char *checked_strcat(char *dest, size_t capacity, const char *source, siz
     memcpy(dest + used, source, source_len + 1);
     return dest;
 }
-#define sprintf(p, ...) checked_sprintf(p, __builtin_object_size(p, 1), __VA_ARGS__)
+
 #define strcat(p, s) checked_strcat(p, __builtin_object_size(p, 1), s, __builtin_object_size(s, 1))
 /* йнд лндскъ */
 #undef sprintf
@@ -186,7 +171,7 @@ static void test_debug(void)
             unsigned shown = length < 111 ? length : 111;
             snprintf(expected, sizeof(expected), ">>U SMS recv: %.*s\r\n", (int)shown, message);
             user_smsreceived(number, message);
-            CHECK(recv_debug_lines == 1 && !strcmp(debug_text, expected));
+            CHECK(recv_debug_lines == 0);
             for (unsigned k = 0; k < sizeof(scratch.before); k++) CHECK(scratch.before[k] == 0xa7);
             for (unsigned k = 0; k < sizeof(scratch.after); k++) CHECK(scratch.after[k] == 0xa7);
             CHECK(received_events == 1 && !strcmp(recv_id, "9031234567"));

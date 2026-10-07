@@ -68,7 +68,9 @@ static void channel_path_tests(void)
 static void channel_read_tests(void)
 {
   channel_model_reset(); sim_empty_urc = 1;
-  while (slm.attempt.status.step != SLM_TCP) sim_tick();
+  for (unsigned guard = 0; slm.attempt.status.step != SLM_TCP; ++guard) {
+    CHECK(guard < 1500u); sim_tick();
+  }
   sim_feed("+QIURC: \"recv\",0\r\n"); channel_until(15000);
   CHECK(comm_channel_ready() && sim_qird == 0); /* Данные до TCP/вместимости не теряются. */
 #if DOMOVOI_DIAG
@@ -126,7 +128,9 @@ static void channel_edge_tests(void)
 static void channel_diagnostic_tests(void)
 {
   channel_model_reset();
-  while (slm.attempt.status.step != SLM_TCP) sim_tick();
+  for (unsigned guard = 0; slm.attempt.status.step != SLM_TCP; ++guard) {
+    CHECK(guard < 1500u); sim_tick();
+  }
   for (unsigned i = 0; i < 25; ++i) sim_tick();
   DIAG_CHECK(slm.diag.steps[SLM_TCP] == 25 && slm.diag.phases[SLM_PHASE_TCP] == 25);
   channel_until(15000);

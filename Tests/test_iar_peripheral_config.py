@@ -110,7 +110,7 @@ def snapshot(baud, stop, cable, seed):
     if cable:
         m.call('usb_init')
     assert m.call('adc_ready')
-    assert m.read(0x40012438) in (0x222500, 0x14A000)
+    assert m.read(0x40012438) == 0x14A000
     result = {}
     for base, length in REGIONS:
         for address in range(base, base + length, 4):
@@ -145,6 +145,20 @@ def values():
     assert m.call('adc_getinjectedvalue_mV', 4) == 0
 
 # Собрать пары снимков обоих профилей и вариантов и сохранить артефакт только вне дерева.
+def current():
+    """Проверить живую инициализацию с разными исходными регистрами и UART."""
+    count = 0
+    for seed in (0, 0x44444444):
+        for baud in (9600, 115200):
+            for stop in (1, 2):
+                for cable in (False, True):
+                    registers = snapshot(baud, stop, cable, seed)
+                    assert registers['40010800'] & 0x000F00F0 == seed & 0x000F00F0
+                    assert registers['40012438'] == 0x14A000
+                    count += 1
+    return count
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--before', type=Path, required=True)

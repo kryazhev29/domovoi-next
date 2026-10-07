@@ -334,8 +334,8 @@ if __name__ == '__main__':
                   boundaries=test_boundaries(), real_w25=test_real_w25())
     if args.power:
         result['power_cuts'] = test_power()
-    result['elf_sha256'] = hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
+    result['elf_sha256'] = hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()
     result['index_bss_bytes'] = 24
     result['status'] = 'PASS'
-    (ROOT/'Tests/asm/idindex_runtime_results.json').write_text(json.dumps(result, indent=2) + '\n')
+    (__import__('iar_image').result_path('idindex_runtime_results.json')).write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))

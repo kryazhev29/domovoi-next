@@ -393,7 +393,7 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(); p.add_argument('--output', type=Path)
     args = p.parse_args()
     out = {'units': 'Unicorn instructions; modeled NOR; NOT cycles or milliseconds',
-           'elf_sha256': hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()}
+           'elf_sha256': hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()}
     out['wire'] = wire_and_budgets(); print('service wire/ownership/budgets PASS', flush=True)
     out['faults_lifetime'] = faults_and_lifetime(); print('service faults/OOM/cancel/session/reset PASS', flush=True)
     out['config_reply'] = config_reply(); print('service config timestamp PASS', flush=True)

@@ -618,4 +618,4 @@ static void reader_tests(void)
 /* ÂÎÑÑÒÀÍÎÂËÅÍÈÅ */
 /* ÂÛÇÎÂ */
 int main(void)
-{ CHECK(slm_regressions()==0); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }

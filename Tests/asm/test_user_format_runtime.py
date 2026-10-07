@@ -1,4 +1,4 @@
-"""Byte-exact formatters in the linked image, including seven stack arguments."""
+"""Побайтная проверка форматтеров ELF, включая семь аргументов через стек."""
 import struct
 from iar_irq_support import Machine, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_PC
 
@@ -15,8 +15,8 @@ def run():
             assert length==len(expected)
             assert bytes(m.u.mem_read(dst,length+2))==expected.encode()+b'\x00\xA7'
             cases+=1
-    # format_u32 can be discarded by the linker: STATUS's decimal helper is
-    # also exercised here with 0 and UINT32_MAX. The host oracle tests its API.
+
+
     signals=(0,1,31,99,100,255,0xffffffff)
     networks=('Not network','gprs','edge','3G','4G','5G')
     for signal in signals:

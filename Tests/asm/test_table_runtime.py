@@ -149,11 +149,6 @@ if __name__=='__main__':
     out['corruption']=test_corrupt();print('backup corruption PASS',flush=True)
     out['interaction_heap']=test_interaction_and_heap();print('full ID/ownership/reset/real heap PASS',flush=True)
     if a.power:out['power_cuts']=test_power();print('power',out['power_cuts'],'PASS',flush=True)
-    else:
-        previous=ROOT/'Tests/asm/table_runtime_results.json'
-        if previous.exists():
-            old=json.loads(previous.read_text())
-            if old.get('power_cuts'):out['power_cuts']=old['power_cuts'];out['power_elf_sha256']=old.get('power_elf_sha256',old.get('elf_sha256'))
-    out['elf_sha256']=hashlib.sha256((ROOT/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest()
-    (ROOT/'Tests/asm/table_runtime_results.json').write_text(json.dumps(out,indent=2)+'\n')
+    out['elf_sha256']=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()
+    (__import__('iar_image').result_path('table_runtime_results.json')).write_text(json.dumps(out,indent=2)+'\n')
     print('PASS table runtime: actual callers, ownership, CRC, ABI, boundaries, finite steps')

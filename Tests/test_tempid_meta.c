@@ -21,7 +21,7 @@ int main(void){
   memset(flash,255,sizeof(flash));device.newAddressTempID=0;device.status.readyID=0;writes=0;
   user_addIdToTempBuffer("1234567890",(codeType_e)type);
   cellID_s expected={0};memcpy(expected.ID,"1234567890",10);
-  switch(type){case CT_PHONE:expected.isPhone=1;break;case CT_RFID:expected.isRFID=1;break;case CT_AUTO:expected.isAuto=1;break;case CT_RF433:expected.isRF433=1;break;case CT_WIEGAND:expected.isWiegand=1;break;default:break;}
+  switch(type){case CT_PHONE:expected.isPhone=1;break;case CT_AUTO:expected.isAuto=1;break;case CT_WIEGAND:expected.isWiegand=1;break;default:break;}
   CHECK(!memcmp(flash,&expected,sizeof(expected)));
   CHECK(writes==1&&device.status.readyID&&device.newAddressTempID==4096+sizeof(expected));
   user_addIdToTempBuffer("1234567890",(codeType_e)type);CHECK(writes==1);

@@ -1,4 +1,4 @@
-/* IAR comparison references, kept independent of the selected implementation. */
+
 #include <stdint.h>
 #include <string.h>
 #include <intrinsics.h>
@@ -65,7 +65,7 @@ uint32_t opt_id_equal(const uint8_t *a, const uint8_t *b) {
 #undef E
   return 1;
 }
-/* Preserve a matching partial prefix at the end, as server_rx_scan does. */
+
 uint32_t old_sldn(const uint8_t *p, uint16_t n) {
   uint16_t i = 0;
   while (i < n && memcmp(p+i, "SLDN", n-i < 4 ? n-i : 4)) i++;

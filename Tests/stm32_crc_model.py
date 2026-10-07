@@ -1,4 +1,4 @@
-"""STM32 F1 word CRC: reset, persistent DR, 0x04c11db7, no reflection/XOR."""
+"""Модель словного CRC STM32 F1: сброс, сохранение DR, полином 0x04c11db7 без отражения/XOR."""
 from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 
 

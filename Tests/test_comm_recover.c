@@ -2,11 +2,11 @@
    решени€ модул€ (пауза, со сн€тием питани€ или с AT) и сами перезапуски,
    модельное врем€ без ожиданий. ѕодключаетс€ в сборку comm_server после его тестов. */
 static struct { uint32_t at, ms; uint8_t power; unsigned opens; } rc_log[16];
-static unsigned rc_logged, rc_power_starts, rc_soft_starts;
+static unsigned rc_logged, rc_power_starts, rc_soft_starts, rc_session_resets;
 static uint32_t rc_last_since, rc_last_attempt, rc_clock = UINT32_MAX;
 static bool rc_busy_flag;
 // «апомнить новый сеанс восстановлени€.
-static void rc_session(void) { socket_model=false; comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done); }
+static void rc_session(void) { ++rc_session_resets; socket_model=false; comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done); }
 // ¬ыдать моделируемое врем€ восстановлени€.
 static uint32_t rc_time(void) { return rc_clock == UINT32_MAX ? UINT32_MAX : rc_clock + sim_now / 1000u; }
 // —ообщить о зан€тости вызовом или приложением.
@@ -21,7 +21,9 @@ static void rc_tick(unsigned ms)
   transport_tick(ms);
   comm_info_poll(sim_now);
   rc_note(); /* решение могло прийти из сервера (нет интернета) и исполнитьс€ в этом же такте */
+  unsigned session_before = slm.session, resets_before = rc_session_resets;
   comm_recover_poll(sim_now);
+  if (slm.session != session_before) CHECK(rc_session_resets == resets_before + 1u);
   rc_note();
 }
 // «апомнить событие восстановлени€.
@@ -152,4 +154,12 @@ static void recover_tests(void)
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(700000u); CHECK(rc.power_step == 2);
   sim_no_sim = 0; rc_run(1800000u + 700000u); CHECK(comm_server_online() && rc.power_step == 0);
   printf("comm_recover: no SIM, no network, silent modem, silence in work, PDP loss, silent server, no internet, early AT/TCP, night/day restart, ladder reset PASS\n");
+}
+
+static void reset_session_contract(void)
+{
+  server_reset(); comm_recover_init(&rc_hooks, sim_now);
+  unsigned before = rc_session_resets;
+  rc_schedule(true, 0); comm_recover_poll(sim_now);
+  CHECK(rc_session_resets == before + 1u);
 }

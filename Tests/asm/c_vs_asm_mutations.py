@@ -1,7 +1,7 @@
 """Same semantic faults applied to actual Thumb code in both linked images.
 
 Patch setup is outside the expected assertion. Production files never change.
-Original ASM-specific opcode mutation sets are also retained and run for ASM.
+Мутации применяются к машинному коду обоих поддерживаемых вариантов.
 """
 import argparse
 import contextlib
@@ -52,7 +52,6 @@ def cases():
     from test_photo_runtime import PhotoMachine
     from test_expiry_runtime import ExpiryMachine,record
     from test_idclear_runtime import ClearMachine
-    from verification_usb_try import UsbTryMachine
     result=[]
     def add(label,m,symbol,mode,check):result.append((label,m,symbol,mode,check))
     def kernel(name,args,expected,data=b'abcdefghij'):
@@ -106,14 +105,10 @@ def cases():
     def clear(m=m):
         m.checked('idclear_runtime_cancel');m.clear_drain();assert not m.wires
     add('clear-cancel',m,'idclear_runtime_cancel','no-op',clear)
-    if 'USB_Tx_SourceBusy' in Machine().symbols:
-        from test_usb_source import SourceMachine
-        m=SourceMachine();m.u.mem_write(0x21000000,b'AB')
-        assert m.call('usb_try_send',0x21000000,1)
-        def queue(m=m):assert m.call('usb_try_send',0x21000001,1)==0
-    else:
-        m=UsbTryMachine();m.expected_stack=None;m.instruction_limit=None
-        def queue(m=m):assert m.run(inp=0,out=1,length=1)[0]==0
+    from test_usb_source import SourceMachine
+    m=SourceMachine();m.u.mem_write(0x21000000,b'AB')
+    assert m.call('usb_try_send',0x21000000,1)
+    def queue(m=m):assert m.call('usb_try_send',0x21000001,1)==0
     add('usb-full-queue',m,'usb_try_send','return-one',queue)
     return result
 
@@ -121,29 +116,18 @@ def cases():
 def run(variant):
     result={}
     for label,m,symbol,mode,check in cases():
-        detail=patch(m,symbol,mode)  # A setup error is NOT a detected mutant.
+        detail=patch(m,symbol,mode)
         try:check()
         except (AssertionError,UcError) as exc:
             detail.update(status='DETECTED',assertion=str(exc));result[label]=detail
         else:raise AssertionError((label,'survived'))
         print('DETECTED',label,flush=True)
-    legacy={}
-    if variant=='ASM':
-        with contextlib.redirect_stdout(io.StringIO()):
-            for name in ('test_table_mutations','test_photo_asm_mutations','test_runtime_port_mutations'):
-                runpy.run_path(str(ROOT/'Tests/asm'/f'{name}.py'));legacy[name]='PASS'
-            for name in ('test_idindex_asm_mutations','verification_service_mutations'):
-                legacy[name]=importlib.import_module(name).run()
-            if 'USB_Tx_SourceBusy' not in Machine().symbols:
-                legacy['usb_try']=importlib.import_module('verification_usb_try').mutations()
-            else:
-                legacy['usb_try']='source admission covered by paired mutation'
-    return {'paired':result,'legacy_asm_opcode_sets':legacy,
-            'legacy_limit':'Original opcode signatures target ASM only; paired mutations above apply to both variants.'}
+    return {'paired':result}
+
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('ASM','C','HYBRID'),required=True);p.add_argument('--output',type=Path,required=True)
+    p=argparse.ArgumentParser();p.add_argument('--variant',choices=('C','HYBRID'),required=True);p.add_argument('--output',type=Path,required=True)
     a=p.parse_args();select_image(a.variant);result=run(a.variant)
     result.update(variant=a.variant,elf_sha256=__import__('hashlib').sha256(image_paths()[0].read_bytes()).hexdigest())
     a.output.write_text(json.dumps(result,indent=2,default=str)+'\n',encoding='utf-8');print('PASS mutations',flush=True)

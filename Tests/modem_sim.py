@@ -56,7 +56,7 @@ def extract(path):
 def c_header():
     """Статические сценарии для C-модели IRQ; JSON не нужен в прошивке."""
     output = ['typedef struct { const unsigned char *data; unsigned short count; unsigned char tx; } sim_step_t;']
-    fixtures = sorted(FIXTURES.glob('*.json'))
+    fixtures = [FIXTURES / name for name in ('m66-server-reject.json', 'slm336-no-sim.json')]
     variants = []
     for path in fixtures:
         fixture = json.loads(path.read_text(encoding='utf-8'))

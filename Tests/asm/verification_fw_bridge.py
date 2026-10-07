@@ -87,7 +87,7 @@ def abort_cases():
             assert m.io is None and not m.checked('fw_service_busy')
             assert not m.read_word(m.device+164,1) and not m.read_word(m.addr('fw_rollback_end'))
             if phase<10 or phase==16:assert not m.sent
-            # WAIT_CONFIG already copied into an independent config allocation.
+
             if m.checked('mem_config_result')==1:
                 m.until(lambda:m.checked('mem_config_result') in (2,3))
             count+=1
@@ -104,7 +104,7 @@ def abort_cases():
 if __name__=='__main__':
     result=dict(status='PASS',ack_order=ack_order(),config_failure=config_failure(),
         quiet_reconnect_usb=quiet_cases(),abort_reset=abort_cases(),
-        elf_sha256=hashlib.sha256((arg.project/'Release/Exe/DomovoiNext.out').read_bytes()).hexdigest(),
+        elf_sha256=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest(),
         scope='Real linked callers and storage scheduler; modeled NOR/transport. No board timing.')
-    Path(__file__).with_name('verification_fw_bridge_results.json').write_text(json.dumps(result,indent=2)+'\n')
+    __import__('iar_image').result_path('verification_fw_bridge_results.json').write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))

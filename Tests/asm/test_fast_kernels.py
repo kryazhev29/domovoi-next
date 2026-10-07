@@ -13,7 +13,7 @@ from elftools.elf.elffile import ELFFile
 from unicorn import UcError
 from test_asm_crc import (ROOT, IAR, Machine, run, BUF, STACK, UC_ARM_REG_SP,
                           UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, function)
-from test_perf_scan import count_call, ff_reference
+from kernel_oracle import count_call, ff_reference
 
 KINDS = ('fnv10', 'gf2', 'all_ff', 'id_equal', 'sldn')
 ASM = dict(zip(KINDS, ('fast_fnv10', 'fast_gf2_apply', 'fast_all_ff',
@@ -40,8 +40,9 @@ def build(out, assembly=None, production=None):
         keep.extend(prefix+n for n in names)
     run([IAR/'iasmarm.exe', assembly or ROOT/'Tests/asm/fast_candidates.s',
          '--cpu', 'Cortex-M3', '-o', out/'asm.o'])
-    body = function((ROOT/'Tests/asm/reference/User/crc.c').read_text(encoding='cp1251'), 'crc16_ffInit')
+    body = function((ROOT/'User/c/crc_runtime.c').read_text(encoding='cp1251'), 'crc16_ffInit')
     wrappers = 'extern unsigned short crc16_calcInit(unsigned char*, unsigned short, unsigned short);\n'
+    wrappers += '#include <stdint.h>\n' + (ROOT/'User/c/service_ff.inc').read_text(encoding='cp1251') + '\n'
     for name in variants('gf2'):
         wrappers += 'extern unsigned short '+name+'(const unsigned short*, unsigned short);\n'
         wrappers += body.replace('gf2_apply(', name+'(').replace('crc16_ffInit', 'ff_'+name)+'\n'

@@ -1,7 +1,7 @@
 # Контракт владения Flash и пошагового доступа — 05.10.2026
 
 База: `fabf212` (ветка `codex/comm-core`). Исходная сборка IAR Release совпадает с отчётом
-`Tests/ASM_MEMORY_BOUNDED_20261005.md` байт в байт:
+`docs/history/ASM_MEMORY_BOUNDED_20261005.md` байт в байт:
 
 | Показатель | Значение |
 |---|---|
