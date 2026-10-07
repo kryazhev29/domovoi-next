@@ -50,6 +50,7 @@ void log_setTime(uint32_t now){
     }
   }
   log_timeKnown = 1;
+  user_unblock_recheck(false);
   log_flushPending();
 }
 

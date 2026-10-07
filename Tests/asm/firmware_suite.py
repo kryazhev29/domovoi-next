@@ -24,6 +24,7 @@ CASES = {
     'protocol config': [('test_protocol_guards','config_strings'), ('test_protocol_guards','pin_config')],
     'protocol text': [('test_protocol_guards','text_commands'), ('test_protocol_guards','pin_commands')],
     'sched16': [('test_sched16', n) for n in ('protocol','crc_paths','access','migration')],
+    'unblock': [('test_unblock', n) for n in ('manual','scenes','offline','restart_and_commands')],
     'ids boot read': [('test_ids_boot_read','main')],
     'log time pending': [('test_log_time_pending','main')],
     'sched16_power': [('test_sched16','migration_power')],
@@ -71,6 +72,7 @@ CASES = {
 }
 CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
+CORE += ('unblock',)
 
 
 def select_image(build_root=None):
