@@ -39,7 +39,7 @@ def second_begin():
         m = StorageMachine()
         before = dict(m.counts)
         args = 0
-        slot = {IDCLEAR:7, EXPIRY:3, TABLE:14, FWBLOCK:13}.get(kind,0)
+        slot = {IDCLEAR:7, EXPIRY:3, FWSERVICE:4, UPLOAD:9, TABLE:14, FWBLOCK:13}.get(kind,0)
         if slot or kind in (INDEX, PHOTO, LOG):
             import struct
             from test_work_memory import take

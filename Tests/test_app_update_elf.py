@@ -46,10 +46,21 @@ def machine():
     return m
 
 
+def request(m):
+    assert m.checked('app_boot_request') == 0xffffffff
+    for _ in range(3000):
+        m.now += 1
+        m.checked('flash_exec_poll',m.now)
+        assert m.io_budget <= 1 and m.read_budget <= 128
+        if m.checked('app_boot_request_ready'):
+            return m.checked('app_boot_request')
+    raise AssertionError('install did not finish')
+
+
 # Отвергнуть каждое неудачное чтение образа до стирания журнала и публикации magic.
 def request_faults():
     m = machine()
-    assert m.checked('app_boot_request') == 1
+    assert request(m) == 1
     assert m.flash[:4] == struct.pack('<I', MAGIC)
     reads = m.counts['read']
     assert reads == 3, 'лишняя перепроверка W25 в приложении'
@@ -57,12 +68,12 @@ def request_faults():
         m = machine()
         before = bytes(m.flash)
         m.fault = ('read', failure)
-        assert m.checked('app_boot_request') == 0
+        assert request(m) == 0
         assert bytes(m.flash) == before
-    for name in ('w25_erase_sector', 'w25_write_data'):
+    for address in (JOURNAL, 0):
         m = machine()
-        m.stubs[m.addr(name)] = lambda m=m: m.ret(0)
-        assert m.checked('app_boot_request') == 0
+        m.stubs[m.addr('w25_async_start')] = lambda m=m, address=address: m.ret(0) if m.args()[0] == address else m.start()
+        assert request(m) == 0
         assert m.flash[:4] == bytes([255]) * 4
     return reads + 2
 
@@ -76,7 +87,7 @@ def request_boundaries():
         m = machine()
         m.flash[offset:offset + width] = value.to_bytes(width, 'little')
         before = bytes(m.flash)
-        assert m.checked('app_boot_request') == 0, name
+        assert request(m) == 0, name
         assert bytes(m.flash) == before
         assert m.counts['read'] == (3 if name == 'crc' else 1)
     vectors = [(0x20000000, 0x08008209), (0x20004ff9, 0x08008209),
@@ -87,7 +98,7 @@ def request_boundaries():
         m.flash[512:520] = struct.pack('<II', sp, reset)
         m.flash[12:16] = struct.pack('<I', image_crc(m.flash[512:648]))
         before = bytes(m.flash)
-        assert m.checked('app_boot_request') == 0, (sp, reset)
+        assert request(m) == 0, (sp, reset)
         assert bytes(m.flash) == before and m.counts['read'] == 2
     return len(cases) + len(vectors)
 

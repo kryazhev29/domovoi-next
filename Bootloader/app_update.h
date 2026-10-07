@@ -6,8 +6,11 @@
 #ifndef DOMOVOI_APP_UPDATE_H
 #define DOMOVOI_APP_UPDATE_H
 #include <stdint.h>
+#include <stdbool.h>
 /* Возвращает 0 при ошибке; сам не перезагружает и не записывает загрузчик. */
 int app_boot_request(void);
+bool app_boot_request_ready(void);
+void app_boot_request_poll(uint32_t now);
 // Прочитать версию загрузчика и состояние пробного запуска.
 void app_boot_metadata(void);
 // Отметить ошибку установки как переданную серверу.

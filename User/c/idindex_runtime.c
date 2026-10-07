@@ -101,7 +101,7 @@ int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 // Принимает квант индекса после CRC-фона, без I/O и без второго polling.
 bool idindex_runtime_begin(void)
 {
-  if (!storage_has_index() || store.job || store_reset_requested ||
+  if (!storage_has_index() || store.intent || store_reset_requested ||
       mem_config_result() || fw_event_waiting() || store.clear == 9) return false;
   if (ix.state != IX_INVALIDATE && ix.state != IX_FILL &&
       (ix.state < IX_ERASE || ix.state > IX_PUBLISH)) return false;

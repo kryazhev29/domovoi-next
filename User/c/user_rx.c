@@ -84,7 +84,7 @@ void server_rx_process(void)
   uint32_t epoch;
   if (server_rx_busy || server_rx_pending) return;
   server_rx_scan();
-  if (!server_rx_ready || comm_tx_busy() || !store_command_allowed(server_rx_buffer[8])) return;
+  if (!server_rx_ready || comm_tx_busy() || !user_command_ready(server_rx_buffer + 4, false)) return;
   total = server_rx_ready;
   epoch = server_rx_epoch;
   server_rx_busy = 1;
@@ -130,12 +130,9 @@ void user_comm_rx_done(uint16_t count, uint8_t reason)
 void user_comm_session(bool open)
 {
   server_rx_reset();
-  fw_service_quiet(CH_SERVER); upload_runtime_quiet(CH_SERVER);
-  fw_async_quiet(CH_SERVER);
-  table_runtime_quiet(CH_SERVER); service_crc_quiet(CH_SERVER);
+  flash_exec_quiet(CH_SERVER);
   device.connectionhandle = 0; device.registredOnServer = 0;
   /* Поколение TCP отменяет неподтверждённый пакет; сохранённые курсоры и USB не трогаем. */
-  if (store.job && store.channel == CH_SERVER) store.quiet = 1;
   log_unacked[1] = temp_unacked[1] = 0; store.seen &= 5u;
   if (!open) photo_connection_lost(); /* «подключён» пишет user_comm_link после регистрации */
 }

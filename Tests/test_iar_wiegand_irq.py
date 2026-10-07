@@ -7,7 +7,7 @@ m.stubs[m.addr('w25_read_available')]=lambda:m.ret(1)
 m.stubs[m.addr('WG_readedID')]=lambda:(delivered.append(m.read(m.addr('wgID'))),m.ret())
 # Готовит законченный кадр и очищает список принятых кодов.
 def setup():
-    delivered.clear();m.init();m.write(m.addr('wgData'),seed);m.write(m.addr('wgTime'),100);m.write(m.addr('wgBitCount'),26,1);m.write(m.addr('milliSeconds'),400)
+    delivered.clear();m.init();m.write(m.addr('mem_storage_ready'),1,1);m.write(m.addr('wgData'),seed);m.write(m.addr('wgTime'),100);m.write(m.addr('wgBitCount'),26,1);m.write(m.addr('milliSeconds'),400)
 setup();m.call('WG_process');steps=m.steps;max_stack=0
 for at in range(steps):
     setup();m.call('WG_process',inject_at=at,irq=('EXTI3_IRQHandler',()))

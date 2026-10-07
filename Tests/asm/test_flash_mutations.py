@@ -17,18 +17,18 @@ MAIN = 'User/c/user_main.c'
 APP = 'Bootloader/app_update.c'
 MUTATIONS = {
     'E01': ('wiegand', [(MAIN, 'if (config.wiegandType != 0)\n    WG_process();',
-                        'if (config.wiegandType != 0 && user_storage_flash_ready())\n    WG_process();')]),
+                        'if (config.wiegandType != 0 && flash_exec_read_allowed())\n    WG_process();')]),
     'E02': ('scenes', [('User/c/user_access.c',
                         'else if (device.triggers.sheduleUnBlock && log_timeKnown) {',
-                        'else if (device.triggers.sheduleUnBlock && log_timeKnown && mem_tables_ready()) {')]),
+                        'else if (device.triggers.sheduleUnBlock && log_timeKnown && flash_exec_read_allowed()) {')]),
     'E03': ('server_frame', [('User/c/user_rx.c', '!server_rx_busy && !server_rx_ready && server_rx_count',
                             '!server_rx_busy && server_rx_count')]),
     'E04': ('rollback', [(MAIN, 'if (app_trial_rollback()) user_savereset();',
                          'app_trial_rollback(); user_savereset();')]),
     'E05': ('factory_reset', [
-        (MAIN, 'if (device.timeToDefault > 1) --device.timeToDefault;\n      else if (user_storage_command_ready()) user_factoryReset();',
+        (MAIN, 'if (device.timeToDefault > 1) --device.timeToDefault;\n      else if (flash_exec_idle()) user_factoryReset();',
          'if (--device.timeToDefault == 0) user_factoryReset();'),
-        ('User/c/user_config.c', '  if (store_runtime && !user_storage_command_ready()) {\n    device.timeToDefault = 1;\n    return;\n  }\n', '')]),
+        ('User/c/user_config.c', '  if (store_runtime && !flash_exec_idle()) {\n    device.timeToDefault = 1;\n    return;\n  }\n', '')]),
     'E06': ('firmware_events', [('User/c/user_fw.c',
         'if (!fw_event(code == FW_REASON_TRIAL_FAIL ? LOG_FW_ROLLBACK : LOG_FW_FAIL, code)) return;',
         'fw_event(code == FW_REASON_TRIAL_FAIL ? LOG_FW_ROLLBACK : LOG_FW_FAIL, code);')]),
@@ -37,10 +37,10 @@ MUTATIONS = {
         'fw_event(num, reason); return;')]),
     'E07': ('manual_read', [(APP, 'return mem_read(BOOT_CANDIDATE+off,data,n);',
                             'mem_read(BOOT_CANDIDATE+off,data,n);return 1;')]),
-    'E08': ('manual_write', [(APP, 'return mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);',
-                             'mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);return 1;')]),
-    'E09': ('manual_erase', [(APP, 'return mem_erase_sector(BOOT_CANDIDATE+off);',
-                             'mem_erase_sector(BOOT_CANDIDATE+off);return 1;')]),
+    'E08': ('manual_write', [(APP, 'bool ok = mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);',
+                             'mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);bool ok = true;')]),
+    'E09': ('manual_erase', [(APP, 'bool ok = mem_erase_sector(BOOT_CANDIDATE+off);',
+                             'mem_erase_sector(BOOT_CANDIDATE+off);bool ok = true;')]),
 }
 
 

@@ -38,11 +38,12 @@ static void user_comm_reset_session(void)
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
 }
 /* Номер из CLIP - прежней проверке доступа; строка вызова только для чтения. */
-static void user_comm_call(const char *number)
+static bool user_comm_call(const char *number)
 {
   char num[21]; /* CLIP уже проверен; проверка доступа может изменить свою копию. */
   strcpy(num, number);
-  user_incomingcall(num, CT_PHONE);
+  if (!user_access_ready(user_last10digitsnumber(num))) return false;
+  return user_incomingcall(num, CT_PHONE);
 }
 /* Запустить связь и назначить её обязательных владельцев. */
 bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)
@@ -71,8 +72,8 @@ void user_comm_poll(uint32_t now_ms)
   comm_server_poll(now_ms);
   comm_recover_poll(now_ms);
   comm_info_poll(now_ms);
-  comm_call_poll(now_ms, user_storage_flash_ready());
+  comm_call_poll(now_ms, flash_exec_read_allowed());
   /* Обработчик вызова мог сменить владельца флеша: для SMS нужен свежий снимок. */
-  if (user_storage_flash_ready()) comm_sms_poll(now_ms);
+  if (flash_exec_read_allowed()) comm_sms_poll(now_ms);
   comm_balance_poll(now_ms);
 }

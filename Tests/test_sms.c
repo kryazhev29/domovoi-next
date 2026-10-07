@@ -54,15 +54,16 @@ static bool log_addSystemEventID(logSystem_e event, char *id)
     else { CHECK(event == LOG_SYS_SENDSMS); strcpy(send_id, id); sent_events++; }
     return true;
 }
-static void user_addIdToTempBuffer(char *id, codeType_e type)
+static bool user_addIdToTempBuffer(char *id, codeType_e type)
 {
     uintptr_t address = (uintptr_t)id;
     if (address >= input_begin && address < input_end) CHECK(input_end - address >= 10);
-    CHECK(type == CT_OTHER && !memcmp(id, expected_added_id, 10)); added++;
+    CHECK(type == CT_OTHER && !memcmp(id, expected_added_id, 10)); added++; return true;
 }
 static bool log_addControlEvent(logControl_e event, char *id, uint8_t cnt)
 { CHECK(event == LOG_CON_IDADDBYSMS && !memcmp(id, expected_added_id, 10) && cnt == 0); controls++; return true; }
-static void user_factoryReset(void) { resets++; }
+static bool store_factory_request(uint8_t channel, uint8_t uniq, uint8_t delay, const char *number)
+{ CHECK(channel == 2 && uniq == 0 && delay == 0 && strlen(number) > 0); resets++; return true; }
 static void out_load(uint8_t out, uint8_t mode, uint16_t activ, uint16_t pause, uint8_t period)
 { CHECK(mode == OUT_ON && activ == 0 && pause == 0 && period == 0); last_output = out; outputs++; }
 static bool sms_slot_busy;
@@ -253,7 +254,7 @@ int main(int argc, char **argv)
     run_case("#setout 1234", "SETOUT: Error \"Format not correct\"", 0); CHECK(!outputs);
     run_case("#setout 1234,3", "SETOUT: Error \"Format not correct\"", 0); CHECK(!outputs);
     run_case("#setout 1234,0", "SETOUT: Error \"Format not correct\"", 0); CHECK(!outputs);
-    run_case("#default 1234,", "DEFAULT: Complete", 0); CHECK(resets == 1);
+    run_case("#default 1234,", NULL, 0); CHECK(resets == 1);
     run_case("#imei 9999,", "IMEI: Error \"Pin not valid\"", 0);
     run_case("#unknown 1234,", NULL, 0);
     run_case("#update 1234,", NULL, 0);

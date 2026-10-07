@@ -14,6 +14,14 @@ static struct {uint32_t newAddressTempID;struct {unsigned readyID;} status;} dev
 static uint8_t flash[96];
 static unsigned writes,fail_read,fail_write;
 static bool mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a>=4096&&a+n<=4192);memcpy(p,flash+a-4096,n);return !fail_read;}
+enum { FS_SYNC = 33, FX_STORE = 12, FX_OK = 2, FX_ERROR = 3 };
+typedef struct { void *context; uint8_t step; } flash_exec_args_t;
+static bool occupied;
+static bool flash_exec_idle(void) { return !occupied; }
+static bool flash_exec_begin(unsigned kind, const flash_exec_args_t *args)
+{ CHECK(kind == FX_STORE && args->step == FS_SYNC && !occupied); occupied = true; return true; }
+static void flash_exec_finish(unsigned result) { CHECK(occupied && (result == FX_OK || result == FX_ERROR)); }
+static void flash_exec_take_result(void) { CHECK(occupied); occupied = false; }
 static bool mem_write(uint32_t a,uint8_t *p,uint16_t n){CHECK(a>=4096&&a+n<=4192);if(fail_write)return false;memcpy(flash+a-4096,p,n);writes++;return true;}
 /* КОД МОДУЛЯ */
 int main(void){
@@ -33,7 +41,7 @@ int main(void){
  CHECK(!writes&&!device.status.readyID&&!device.newAddressTempID);
  fail_write=0;user_addIdToTempBuffer("1234567890",CT_RFID);
  CHECK(writes==1&&user_findTempID("1234567890"));
- fail_read=1;CHECK(!user_findTempID("1234567890"));
+ fail_read=1;CHECK(user_findTempID("1234567890") == 2);
  user_addIdToTempBuffer("0987654321",CT_RFID);
  CHECK(writes==1&&device.newAddressTempID==4096+sizeof(cellID_s));
  fail_read=0;

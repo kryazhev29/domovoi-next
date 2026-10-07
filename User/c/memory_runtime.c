@@ -28,8 +28,6 @@ void sj_io_service(void) { wdt_reload(); }
 bool mem_recover(void) { mem_storage_ready = sj_recover(); return mem_storage_ready; }
 #include "sector_runtime.h"
 extern uint8_t table_fault;
-// Разрешает таблицы после восстановления и при свободной флеш-памяти.
-bool mem_tables_ready(void) { return flash_exec_read_allowed() && !table_fault && !sj_runtime_blocked() && mem_storage_ready; }
 // Проверяет готовность таблиц, если диапазон затрагивает их сектора.
 static bool mem_guard(uint32_t adr, uint16_t n)
 {
@@ -37,7 +35,7 @@ static bool mem_guard(uint32_t adr, uint16_t n)
   if (n == 0) return true;
   last = (adr + n - 1u) & ~4095u;
   for (sector = adr & ~4095u; ; sector += MEMSECTORSIZE) {
-    if (sj_destination(sector)) return mem_tables_ready();
+    if (sj_destination(sector)) return mem_storage_ready && !table_fault && !sj_runtime_blocked();
     if (sector == last) return true;
   }
 }
@@ -83,7 +81,6 @@ static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
 // Целый старый образ переносится только при отсутствии обоих слотов.
 // Сохранение меняет только неактивный слот; старое место больше не записывается.
 volatile uint32_t mem_config_errors = 0;
-uint8_t flash_owner;
 static uint8_t cfg_boot_done;
 uint32_t cfg_cached_active = MEM_CONFIG_LEGACY, cfg_cached_generation;
 #define CFG_MAGIC 0x32474643u
@@ -230,7 +227,7 @@ bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *
   uint32_t size = (uint32_t)nfirst + nsecond;
   if (cfg_range(adr, (uint16_t)size)) return cfg_commit_parts((uint16_t)(adr - MEM_CONFIG_LEGACY), first, nfirst, second, nsecond);
   uint32_t sector = adr & ~4095u;
-  if (!mem_tables_ready()) return false;
+  if (!flash_exec_read_allowed()) return false;
   mem_image_s image = {sector, adr - sector, first, second, nfirst, nsecond};
   return mem_replace_pages(sector, mem_image_page, &image);
 }
@@ -274,10 +271,11 @@ void mem_config_reset(void)
 // Принимает готовые config/device, не сохраняя указатели вызывающего.
 bool mem_config_begin(const uint8_t *first, const uint8_t *second)
 {
-  if (flash_owner || table_fault || sj_runtime_blocked() || cfg_job.result || w25_async_active() || !cfg_boot_done) return false;
+  if (table_fault || sj_runtime_blocked() || cfg_job.result || w25_async_active() || !cfg_boot_done) return false;
   cfg_job.snapshot = work_acquire(1024, WORK_CONFIG);
   if (!cfg_job.snapshot) return false;
-  if (!flash_exec_begin(FX_CONFIG, NULL)) {
+  if (flash_job.kind != FX_STORE && flash_job.kind != FX_FWSERVICE &&
+      !flash_exec_begin(FX_CONFIG, NULL)) {
     work_release(cfg_job.snapshot, WORK_CONFIG);
     cfg_job.snapshot = NULL;
     return false;
@@ -341,7 +339,7 @@ void mem_config_poll(uint32_t now)
   case CA_DONE:
     if (cfg_job.changed || cfg_job.first) { cfg_cached_active = cfg_job.target; cfg_cached_generation = cfg_job.header[1]; }
     cfg_job.result = 2;
-    flash_exec_finish(FX_OK);
+    if (flash_job.kind == FX_CONFIG) flash_exec_finish(FX_OK);
     return;
   default: goto fail;
   }
@@ -350,21 +348,6 @@ void mem_config_poll(uint32_t now)
 fail:
   DOMOVOI_DIAG_INC(mem_config_errors);
   cfg_job.result = 3;
-  flash_exec_finish(FX_ERROR);
+  if (flash_job.kind == FX_CONFIG) flash_exec_finish(FX_ERROR);
 }
 
-// Закрепляет флеш за владельцем, допускающим своё повторное обращение.
-uint8_t flash_claim(uint8_t owner) {
-  if (flash_owner && ((flash_owner ^ owner) & 0x7fu)) return 0;
-  if (!flash_exec_legacy_claim(owner)) return 0;
-  flash_owner=owner;
-  return 1;
-}
-// Освобождает флеш и сообщает кэшу CRC о завершении операции.
-uint8_t flash_release(uint8_t owner) {
-  if (!((flash_owner ^ owner) & 0x7fu)) flash_owner=0;
-  flash_exec_legacy_release(owner);
-  idcrc_owner_released(); return 0;
-}
-// Разрешает чтение, если владелец не запретил его на время записи.
-uint8_t flash_read_allowed(void) { return !(flash_owner & 0x80u); }

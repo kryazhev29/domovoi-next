@@ -149,7 +149,8 @@ def dispatcher_ownership():
         def begin_store():
             # Хвостовой вызов настоящего begin внутри исполняемого user_comm_poll.
             m.u.reg_write(UC_ARM_REG_R0, 12)
-            m.u.reg_write(UC_ARM_REG_R1, 0)
+            m.u.mem_write(0x21000400, struct.pack('<IB3x',0,30))
+            m.u.reg_write(UC_ARM_REG_R1, 0x21000400)
             m.u.reg_write(UC_ARM_REG_PC, m.addr('flash_exec_begin') | 1)
         def server_poll():
             if server_busy:begin_store()
@@ -171,7 +172,7 @@ def dispatcher_ownership():
         m.stubs[m.addr('comm_sms_poll')] = sms_poll
         m.checked('user_comm_poll', 100)
         assert calls == [expected_call] and len(sms) == expected_sms, (server_busy, call_busy, calls, sms)
-        assert m.exec_state() == ((12,0,1) if server_busy or call_busy else (0,0,0))
+        assert m.exec_state() == ((12,30,1) if server_busy or call_busy else (0,0,0))
         assert not m.io_budget
     # Единственный выбранный сервер 2 не должен резервировать сам себя.
     config = configuration()

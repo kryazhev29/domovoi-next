@@ -349,7 +349,8 @@ void usb_check_data (void)
   __set_PRIMASK(mask);
   crc = (uint16_t)usb_buffer[total - 2] | ((uint16_t)usb_buffer[total - 1] << 8);
   if (crc == crc16_calc(usb_buffer + 4, body + 2)) {
-    if (!usb_rx_discard) usb_data_reading(usb_buffer, total);
+    if (!user_command_ready(usb_buffer + 4, true)) total = 0;
+    else if (!usb_rx_discard) usb_data_reading(usb_buffer, total);
   } else {
 #if DOMOVOI_DIAG
     usb_rx_errors++;

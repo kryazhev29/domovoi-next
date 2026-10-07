@@ -66,7 +66,7 @@ def recovery_gate():
             if bad_state=='not_recovered':m.write(m.addr('mem_storage_ready'),0,1)
             if bad_state=='table_fault':m.write(m.addr('table_fault'),1,1)
             if bad_state=='journal_fault':m.write(m.addr('sjr')+59,1,1)
-            assert not m.checked('mem_tables_ready')
+            assert not m.checked('flash_exec_read_allowed')
             m.seed_pending(1)
             if through_parser:
                 packet=struct.pack('<HBBB',3,0,7,10)

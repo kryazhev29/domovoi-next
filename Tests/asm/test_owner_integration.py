@@ -15,10 +15,10 @@ def expiry_scheduler():
         assert m.expiry_active()
         costs = []
         for i in range(2500):
-            assert not m.checked('user_storage_command_ready')
-            assert not m.checked('user_storage_flash_ready')
-            assert not m.checked('user_storage_background_ready')
-            assert not m.checked('mem_tables_ready')
+            assert not m.checked('flash_exec_idle')
+            assert not m.checked('flash_exec_read_allowed')
+            assert not m.checked('flash_exec_idle')
+            assert not m.checked('flash_exec_read_allowed')
             previous = dict(m.counts)
             assert not m.checked('mem_config_begin', m.addr('config'), m.addr('device'))
             assert m.counts == previous, 'competing config touched NOR'
@@ -52,8 +52,8 @@ def clear_scheduler():
         m = ClearMachine(); m.parse(); assert m.clear_active()
         costs = []
         for i in range(500):
-            for gate in ('user_storage_command_ready', 'user_storage_flash_ready',
-                         'user_storage_background_ready', 'mem_tables_ready'):
+            for gate in ('flash_exec_idle', 'flash_exec_read_allowed',
+                         'flash_exec_idle', 'flash_exec_read_allowed'):
                 assert not m.checked(gate), (action, gate)
             before = dict(m.counts)
             assert not m.checked('mem_config_begin', m.addr('config'), m.addr('device'))

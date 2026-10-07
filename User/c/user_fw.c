@@ -65,7 +65,7 @@ void fw_event_poll(void)
 // После принятия события повторяется только метка, чтобы отказ записи не дал дубль.
 void fw_boot_event_poll(void)
 {
-  if (!device.registredOnServer || !user_storage_flash_ready()) return;
+  if (!device.registredOnServer || !flash_exec_read_allowed()) return;
   if (!boot_event_accepted) {
     if (!app_boot_error_unreported()) return;
     fw_reason_e code = (fw_reason_e)app_boot_error_code();
@@ -237,7 +237,7 @@ void fw_async_reply(uint8_t id)
 // Скопировать проверенный блок и захватить флеш для фоновой записи.
 static bool fw_async_begin(const uint8_t *data, uint32_t address, dataChanel_e channel)
 {
-  if (!flash_exec_idle() || store.job || mem_config_result()) return false;
+  if (!flash_exec_idle() || store.intent || mem_config_result()) return false;
   uint8_t *snapshot = work_acquire(1024u, WORK_FW_BLOCK);
   if (!snapshot) return false;
   memcpy(snapshot, data, 1024u);

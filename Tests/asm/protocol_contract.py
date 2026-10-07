@@ -310,7 +310,11 @@ def main():
     config=os.environ.get('DOMOVOI_COMPARE_CONFIG','Release')
     expected=json.loads((ROOT/'Tests/fixtures'/f'protocol-{config}.json').read_text(encoding='utf-8'))
     actual={k:{field:serial(v.get(field)) for field in ('result','returned')} for k,v in raw.items()}
-    assert actual==expected, [k for k in set(actual)|set(expected) if actual.get(k)!=expected.get(k)]
+    if actual != expected:
+        differences = {k: {'actual': actual.get(k), 'expected': expected.get(k)}
+                       for k in set(actual) | set(expected) if actual.get(k) != expected.get(k)}
+        args.output.with_suffix('.actual.json').write_text(json.dumps(differences, indent=2), encoding='utf-8')
+    assert actual == expected, list(differences) if actual != expected else []
     artifact={'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest(),'cases':len(actual),'mismatches':0}
     args.output.write_text(json.dumps(artifact,indent=2)+'\n',encoding='utf-8')
     print('PASS protocol contract',len(actual))

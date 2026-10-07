@@ -1,0 +1,151 @@
+"""Главные контракты шагов 4–7 единого исполнителя, без модели платы."""
+import struct
+
+from test_flash_executor import state, STORE, FWSERVICE, NONE, PENDING
+from test_memory_runtime import config_machine
+from test_fw_service_runtime import FirmwareMachine
+
+
+def nested_config():
+    m = FirmwareMachine()
+    m.fixture()
+    m.begin(2)
+    seen = False
+    for _ in range(3000):
+        if m.checked('mem_config_result') == 1:
+            seen = True
+            assert state(m)[0] == FWSERVICE, 'A/B changed the accepted kind'
+            assert not m.sent, 'reply preceded A/B verify'
+        m.tick_fw()
+        if m.phase() == 16:
+            assert state(m)[0] == NONE, 'ready reply retained kind'
+            break
+    else:
+        raise AssertionError('FW-service did not finish A/B')
+    assert seen
+    m.drain()
+    assert len(m.sent) == 1 and m.sent[0][9:11] == bytes((19, 0))
+    return {'nested_kind': 'FWSERVICE', 'reply_after_verify': True}
+
+
+def factory_reset():
+    outcomes = []
+    for fail in (False, True):
+        m, _, _ = config_machine()
+        # Небольшие реальные диапазоны, включая частичный сектор таблицы.
+        blocks = {2: (0x41000, 4096), 3: (0x1c9000, 4096),
+                  4: (0x1ca800, 2048), 5: (0x1cc000, 1024),
+                  7: (0x1d0000, 4096), 8: (0x1e8000, 4096), 9: (0x200000, 4096)}
+        for mb, (address, size) in blocks.items():
+            m.u.mem_write(m.addr('mem') + 8 * mb, struct.pack('<II', address, size))
+            m.flash[address:address + size] = b'\x5a' * size
+        m.flash[0x1ca000:0x1ca800] = b'\x37' * 2048
+        m.write(m.addr('store_runtime'), 1, 1)
+        m.stubs[m.addr('user_comm_boot')] = m.ret
+        m.stubs[m.addr('w25_read_devID')] = lambda: m.ret(0x17c2)
+        # Завершение factory не вызывает стартовое форматирование журнала.
+        def startup_format():
+            raise AssertionError('factory used startup synchronous format')
+        m.stubs[m.addr('log_getRecordsCount')] = startup_format
+        m.stubs[m.addr('log_addSystemEvent')] = lambda: m.ret(1)
+        assert m.checked('store_factory_request', 0, 73, 0, 0)
+        m.checked('user_factoryReset')
+        assert state(m)[0] == STORE and not m.answers
+        if fail:
+            m.fault = ('poll', 1)
+        for _ in range(5000):
+            m.now += 1
+            m.checked('user_storage_poll')
+            if m.answers:
+                break
+            if state(m)[0] == STORE:
+                assert not m.answers, 'factory success before completion'
+        else:
+            raise AssertionError('factory reset did not answer')
+        assert m.answers == [(3, 2 if fail else 0, 0, 73)], m.answers
+        if not fail:
+            for address, size in blocks.values():
+                assert m.flash[address:address + size] == b'\xff' * size
+            assert m.flash[0x1ca000:0x1ca800] == b'\x37' * 2048
+            m.checked('user_storage_poll')
+            assert len(m.answers) == 1
+        outcomes.append('error' if fail else 'success_after_final_save')
+    return outcomes
+
+
+def mutations():
+    from test_flash_mutations import run
+    return run({'step4-nested-config': ('nested_config', [
+        ('User/c/memory_runtime.c',
+         'flash_job.kind != FX_STORE && flash_job.kind != FX_FWSERVICE &&',
+         'flash_job.kind != FX_STORE &&'),
+    ]), 'step6-short-write': ('short_write_ownership', [
+        ('Bootloader/app_update.c',
+         'if (!trial || !flash_exec_begin(FX_STORE, &args)) return;',
+         'if (!trial) return;'),
+    ])}, 'test_flash_executor_steps47', 'executor-steps47-mutations')
+
+
+def run_step4():
+    return {'nested_config': nested_config(), 'factory': factory_reset()}
+
+
+def reads_between_steps():
+    from test_unblock import UnblockMachine
+    from test_flash_executor import hold_clear, release_clear, finish, LOG
+    m = UnblockMachine(mask=0)
+    m.put_group(1)
+    m.put_id(1, b'0000000042')
+    m.u.mem_write(0x21000800, bytes(32))
+    m.u.mem_write(0x21000900, struct.pack('<IB3x', 0x21000800, 1))
+    assert m.checked('flash_exec_begin', LOG, 0x21000900)
+    assert m.checked('flash_exec_read_allowed')
+    m.u.mem_write(0x21000a00, b'0000000042\0')
+    assert m.checked('user_access_ready', 0x21000a00)
+    packet = struct.pack('<HBBB', 16, 255, 7, 8) + bytes((1, 1, 0)) + b'0000000042'
+    m.u.mem_write(0x21000b00, packet)
+    assert m.checked('user_command_ready', 0x21000b00)
+    m.checked('user_checkIdAndControl', 0x21000a00, 2)
+    assert m.outputs()[0] == 1
+    assert m.checked('w25_async_start', 0x300000, 0, 0, 0)
+    assert not m.checked('flash_exec_read_allowed')
+    assert not m.checked('user_access_ready', 0x21000a00)
+    while m.io is not None:
+        m.now += 1
+        m.checked('w25_async_poll', m.now)
+    finish(m)
+    hold_clear(m)
+    assert not m.checked('flash_exec_read_allowed')
+    release_clear(m)
+    return {'pure_card_between_steps': True, 'physical_busy_and_tables': 'WAIT'}
+
+
+def run():
+    return {**run_step4(), 'reads': reads_between_steps(), 'short_write': short_write_ownership()}
+
+
+def short_write_ownership():
+    from storage_machine import StorageMachine
+    from test_flash_executor import hold_clear, release_clear
+    m = StorageMachine()
+    m.write(0x08007ffc, 0x40, 1)
+    m.flash[0x20004:0x20008] = bytes(4)
+    m.flash[0x20018:0x2001c] = bytes(4)
+    m.checked('app_boot_metadata')
+    assert m.checked('app_trial_active')
+    writes = []
+    def write():
+        writes.append(state(m))
+        assert state(m)[0] == STORE and state(m)[2] == PENDING, 'write bypassed executor'
+        m.ret(0)
+    m.stubs[m.addr('w25_write_data')] = write
+    hold_clear(m)
+    m.checked('app_trial_confirm')
+    assert not writes and m.checked('app_trial_active'), 'BUSY changed the trial marker'
+    release_clear(m)
+    m.checked('app_trial_confirm')
+    assert len(writes) == 1 and m.checked('app_trial_active') and state(m)[0] == NONE
+    m.stubs[m.addr('w25_write_data')] = m.sync_write
+    m.checked('app_trial_confirm')
+    assert not m.checked('app_trial_active') and state(m)[0] == NONE
+    return {'BUSY': 'retained', 'IO-fault': 'trial retained', 'success': 'STORE released'}

@@ -19,6 +19,7 @@ uint8_t sched16_get(uint16_t number, cellShedule_s *schedule);
 void sched16_restore(const device_s *saved);
 // Очищает старый формат и публикует маркер после журнальной записи.
 bool sched16_boot(void);
-// Сначала сохраняет отсутствие маркера, затем повторяет переход формата.
-bool sched16_clear(void);
+// Готовит маркер заводской очистки; сохранением владеет STORE.
+void sched16_reset_mark(bool complete);
+
 #endif

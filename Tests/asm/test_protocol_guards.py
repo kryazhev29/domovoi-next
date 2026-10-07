@@ -294,11 +294,11 @@ def pin_commands():
     m.flash[0x1cd400:0x1cd600] = bytes(m.u.mem_read(m.addr('config'), 512))
     m.checked('user_comm_boot')
     execute(m, 12, received, 1)
-    job = m.addr('store') + fields('store_state_s')['job']
-    assert m.u.mem_read(job, 1)[0] and not m.answers
+    job = m.addr('store') + fields('store_state_s')['intent']
+    assert m.exec_active(12) and not m.answers
     m.limit_reads = 256
     for _ in range(2000):
-        if not m.u.mem_read(job, 1)[0] and not m.active(): break
+        if not m.u.mem_read(job, 1)[0] and not m.exec_active(12) and not m.active(): break
         StorageMachine.tick(m)
     else: raise AssertionError('command 12 did not complete')
     assert int.from_bytes(m.u.mem_read(m.addr('config')+c['pinCode'], 4), 'little') == 20140
@@ -310,7 +310,7 @@ def pin_commands():
     received[-2:] = struct.pack('<H', crc16(received[:-2]))
     execute(m, 12, received, 1)
     for _ in range(2000):
-        if not m.u.mem_read(job, 1)[0] and not m.active(): break
+        if not m.u.mem_read(job, 1)[0] and not m.exec_active(12) and not m.active(): break
         StorageMachine.tick(m)
     else: raise AssertionError('command 12 did not complete')
     assert int.from_bytes(m.u.mem_read(m.addr('config')+c['pinCode'], 4), 'little') == 4321

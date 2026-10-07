@@ -96,6 +96,7 @@ def reset_paths():
             for _ in range(16 if mode == 'queued' else 1):
                 assert m.checked('log_addSystemEvent', 33)
             m.checked('user_saveindex')
+        transitions = []
         try:
             if mode in ('queued', 'sync'):
                 if mode == 'sync':
@@ -105,7 +106,10 @@ def reset_paths():
                 m.advance()
                 m.checked('user_loop', budget=8000000)
                 m.call('user_storage_poll', budget=100000)
-            raise AssertionError('перезапуск не дошёл до SYSRESETREQ за 15 с модели')
+                state = (m.exec_state(), bytes(m.u.mem_read(m.addr('cfg_job') + 30, 5)).hex())
+                if not transitions or transitions[-1][1] != state:
+                    transitions.append((m.now, state))
+            raise AssertionError(('перезапуск не дошёл до SYSRESETREQ за 15 с модели', mode, m.exec_state(), m.read8('store_reset_requested'), m.checked('mem_config_result'), transitions[-16:]))
         except ResetReached:
             pass
         assert m.reloads and m.max_gap < 3000

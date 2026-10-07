@@ -108,8 +108,8 @@ def test_interaction_and_heap():
     m=StorageMachine();live=[(PHOTO,take(m,PHOTO))]
     assert all(p for slot,p in live)
     m.command(13,rows(range(1,64)),63);assert m.active()
-    assert m.checked('user_storage_command_ready')==0 and m.checked('user_storage_flash_ready')==0
-    assert m.checked('mem_tables_ready')==0
+    assert m.checked('flash_exec_idle')==0 and m.checked('flash_exec_read_allowed')==0
+    assert m.checked('flash_exec_read_allowed')==0
     m.command(19,b'',0);assert m.answers[-1][1]==2 and m.active()
     m.checked('user_savereset');m.drain();assert not m.timestamps
     assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1'

@@ -1434,7 +1434,7 @@
     },
     "returned": [
       null,
-      356
+      354
     ]
   },
   "fw-2": {
@@ -1460,7 +1460,7 @@
     },
     "returned": [
       null,
-      298
+      296
     ]
   },
   "fw-0": {
@@ -1507,7 +1507,7 @@
     },
     "returned": [
       null,
-      24
+      23
     ]
   },
   "fw-failure-read": {
@@ -1549,7 +1549,7 @@
     },
     "returned": [
       null,
-      25
+      24
     ]
   },
   "expiry": {

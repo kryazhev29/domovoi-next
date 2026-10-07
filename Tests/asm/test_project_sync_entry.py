@@ -26,7 +26,7 @@ def run():
                     count = 2 if cmd != 16 else 1
                     expected = 1
                 elif scenario == 'media':
-                    m.stubs[m.addr('mem_tables_ready')] = lambda: m.ret(0)
+                    m.stubs[m.addr('flash_exec_read_allowed')] = lambda: m.ret(0)
                     expected = 2
                 elif scenario == 'oom':
                     m.stubs[m.addr('work_acquire')] = lambda: m.ret(0)

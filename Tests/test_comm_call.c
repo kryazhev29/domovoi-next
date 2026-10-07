@@ -4,12 +4,13 @@
 static unsigned calls, chups_at_call, answers_at_call, call_actions; static char call_seen[24];
 static uint32_t call_action_at;
 // Запомнить номер и результат проверки доступа до ответа.
-static void call_caller(const char *number)
+static bool call_caller(const char *number)
 {
   ++calls; chups_at_call=chups; answers_at_call=answers; call_action_at=sim_now;
   CHECK(strlen(number)<sizeof(call_seen)); memcpy(call_seen,number,strlen(number)+1u);
   /* Модель допуска: скрытый и чужой номер не открывают. Производственный доступ прежний. */
   if (number[0] && strcmp(number,"+79990000000")) ++call_actions;
+  return true;
 }
 // Смоделировать занятость приложения обновлением прошивки.
 static bool user_comm_busy_model(void) { return comm_call_active(); }

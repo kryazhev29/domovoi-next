@@ -78,10 +78,10 @@ failed:
 }
 // Учитывает подготовку CRC и незавершённую команду W25.
 bool idcrc_io_active(void) { return ic.state>IC_READY || w25_async_active(); }
-// Сбрасывает CRC недоступной базы; ноль сохраняет контракт flash_release.
+// Сбрасывает CRC недоступной базы; завершение операции открывает следующий квант.
 uint8_t idcrc_release_tail(void)
 {
-  if(!mem_tables_ready()) invalidate();
+  if(!flash_exec_read_allowed()) invalidate();
   return 0;
 }
 // Дожидается результата синхронного писателя с обслуживанием сторожевого таймера.
@@ -119,7 +119,7 @@ bool idcrc_get(uint16_t *crc)
 // Намерение сканирования остаётся в ic; исполнитель принимает только один квант.
 bool idcrc_background_begin(void)
 {
-  if (ic.state || !user_storage_background_ready() || !mem_tables_ready()) return false;
+  if (ic.state || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
   return flash_exec_begin(FX_CRC, NULL);
 }
 // Читает до 64 Б за проход; чужая работа не сбрасывает готовый префикс.

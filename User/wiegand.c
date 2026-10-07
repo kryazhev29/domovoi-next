@@ -6,6 +6,7 @@
 #include "wiegand.h"
 #include "prof.h"
 #include "user_fun.h"
+#include "user_format.h"
 
 volatile uint32_t wgData = 0;
 volatile uint32_t wgTime = 0;
@@ -78,9 +79,14 @@ void WG_process(void){
       ++wg_count;
     } else ++wg_overflows;
   }
-  if (!wg_count || !user_storage_flash_ready()) return;
+  if (!wg_count || !flash_exec_read_allowed()) return;
   data = wg_frames[wg_head].data;
   count = wg_frames[wg_head].count;
+  if (count == 26 && (!WG_PARITY || wg_parity_valid(data))) {
+    char id[11];
+    format_id(id, NULL, (data >> 1) & 0x03FFFFFFu);
+    if (!user_access_ready(id)) return;
+  }
   wg_head = (wg_head + 1u) & 3u;
   --wg_count;
   if (count == 26 && (!WG_PARITY || wg_parity_valid(data))) {

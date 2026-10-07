@@ -33,9 +33,9 @@ def main():
     for name, old, new in faults:
         assert old in code, (name, old)
         changed.append((name, code.replace(old, new)))
-    old = 'call.caller(call.number);'
+    old = 'if (call.caller(call.number)) call.pending = 2;'
     assert code.count(old) == 1
-    mutant = code.replace(old, '')
+    mutant = code.replace(old, 'call.pending = 2;')
     old = 'if (r == COMM_AT_OK) { call.answered = now_ms;'
     assert old in mutant
     changed.append(('answer-before-action', mutant.replace(old, 'if (r == COMM_AT_OK) { call.caller(call.number); call.answered = now_ms;', 1)))

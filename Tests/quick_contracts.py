@@ -24,7 +24,7 @@ def storage():
     m=StorageMachine();m.command(13,payload,2);m.drain()
     assert m.flash[0x41000:0x41020]==payload[:32]
     assert m.flash[0x42000:0x42020]==payload[32:]
-    assert m.checked('user_storage_flash_ready')
+    assert m.checked('flash_exec_read_allowed')
     return 2
 
 def power():

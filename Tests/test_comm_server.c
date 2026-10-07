@@ -49,7 +49,7 @@ static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_coun
 // Обозначить границу фото, не участвующую в данном сценарии.
 static void photo_connection_lost(void) {}
 static void user_parse_comand(uint8_t *p, unsigned channel);
-static void call_caller(const char *number);
+static bool call_caller(const char *number);
 /* КОНТРОЛЬНАЯ СУММА */
 /* ПРИЁМ */
 

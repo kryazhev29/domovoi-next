@@ -119,8 +119,7 @@ uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer,uint16_t Nb_bytes)
 // Разрешить новую команду только после освобождения прежнего ответа.
 uint8_t USB_Tx_CommandReady(void)
 {
-  extern bool user_storage_command_ready(void);
-  return user_storage_command_ready() && !USB_Tx_SourceBusy();
+  return !USB_Tx_SourceBusy();
 }
 
 // Передать ответ только в исходную USB-сессию, сохраняя источник при занятости.

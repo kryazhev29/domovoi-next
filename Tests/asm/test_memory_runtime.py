@@ -43,7 +43,7 @@ def run_config(m):
         assert m.io_budget<=1 and m.read_budget<=192
         # Общий участок нельзя выдать прямому входу таблицы или камеры.
         assert not m.checked('sj_runtime_begin',0x41000,0x08010001,0)
-        assert not m.checked('user_storage_command_ready')
+        assert not m.checked('flash_exec_idle')
     else:raise AssertionError('config did not terminate')
     return {'passes':len(costs),'maximum_instructions':max(costs),'total_instructions':sum(costs),
             'maximum_read_bytes':max(reads),'stack':m.stack_peak}

@@ -71,7 +71,7 @@ def quiet_cases():
             for phase in (8,16):
                 m=FirmwareMachine();m.fixture();m.begin(number,ch,True);m.until(lambda:m.phase()==phase)
                 m.checked('fw_service_quiet',1-ch)
-                assert not m.read_word(m.ptr()+122,1),'other session muted this reply'
+                assert not m.read_word(m.ptr()+fields('fw_service_s')['quiet'],1),'other session muted this reply'
                 if ch:m.checked('user_comm_session',0)
                 else:m.write(m.addr('usb_bus_resets'),1);m.tick_fw()
                 m.drain();assert not m.sent and not m.ptr() and m.io is None

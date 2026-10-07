@@ -152,7 +152,7 @@ static uint8_t pr_reply_expired(uint32_t now)
 // Разрешаем новую внешнюю команду после восстановления и освобождения флеш.
 static uint8_t pr_command_ready(void)
 {
-  return user_storage_command_ready() && pr.initialized && !pr.fault &&
+  return flash_exec_idle() && pr.initialized && !pr.fault &&
     !device.status.readyToUpdate && photo_alloc() && !photo->stage;
 }
 
@@ -556,7 +556,7 @@ void photo_storage_poll(uint32_t now)
 // Обслуживаем камеру, запуск скана, поток передачи и отложенную очистку.
 void photo_poll(void)
 {
-  if (!user_storage_background_ready()) return;
+  if (!flash_exec_idle()) return;
   uint32_t now = timers_getMillis();
   if (!pr.initialized && !pr.fault) {
     if (!pr_begin(PR_HEAD)) return;
@@ -624,4 +624,13 @@ void photo_poll(void)
   }
   if (!pr.fault && !device.countPhoto && device.newAddressPhoto > mem[MB_PHOTO].start &&
     (!photo || !photo->stage) && pr_begin(PR_IO)) pr_cleanup_begin();
+}
+
+void photo_storage_reset(void)
+{
+  photo_storage_cancel();
+  work_release(pr.tx, WORK_PHOTO_PACKET);
+  memset(&pr, 0, sizeof(pr));
+  photo_erased_to = 0;
+  photo_pending_since = 0;
 }

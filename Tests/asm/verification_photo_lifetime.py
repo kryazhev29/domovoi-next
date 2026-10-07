@@ -21,8 +21,8 @@ def run():
         pointer = m.rget('tx',4); assert pointer
         assert owned(m)==(1<<(PHOTO-1))|(1<<(PHOTO_PACKET-1))|(1<<(UP_PACKET-1))
         assert m.exec_active(8)
-        assert not m.checked('user_storage_command_ready')
-        assert not m.checked('user_storage_background_ready')
+        assert not m.checked('flash_exec_idle')
+        assert not m.checked('flash_exec_idle')
         assert not m.checked('mem_config_begin',0x21000000,0x21000200)
         before = dict(m.counts); saved = bytes(m.u.mem_read(pointer,534))
         for cmd in (9,10,13):

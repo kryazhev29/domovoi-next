@@ -36,6 +36,11 @@ def run():
     row=bytearray(a.flash[BASE:BASE+32]);row[15]^=3
     a.u.mem_write(0x21000400,bytes(row))
     assert a.checked('user_updateID',0x21000400,budget=5000000)==1
+    for _ in range(3000):
+        a.now += 1
+        a.checked('user_storage_poll')
+        if not a.exec_active(12): break
+    else: raise AssertionError('ID update did not finish')
     assert get(a)==oracle(a);assert warm(a)==oracle(a)
     e=ExpiryMachine();e.install([record(1)],(0,));assert warm(e)==oracle(e)
     e.start_expiry();e.expiry_drain();assert get(e)==oracle(e);assert warm(e)==oracle(e)

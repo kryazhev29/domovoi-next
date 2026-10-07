@@ -59,6 +59,14 @@ static const uint32_t sched16_mark[2]={SCHED16_MAGIC,~SCHED16_MAGIC};
 void sched16_restore(const device_s *saved)
 { memcpy(device.reserv+SCHED16_MARK_OFFSET,saved->reserv+SCHED16_MARK_OFFSET,8); }
 
+// Заводская очистка сохраняет отсутствие маркера до завершения таблицы.
+void sched16_reset_mark(bool complete)
+{
+  device.datetimeShedule = 0;
+  if (complete) memcpy(device.reserv + SCHED16_MARK_OFFSET, sched16_mark, 8);
+  else memset(device.reserv + SCHED16_MARK_OFFSET, 0, 8);
+}
+
 // Готовит пустую страницу расписаний для журнальной очистки.
 static uint8_t sched16_empty_page(const void *context,uint16_t offset,uint8_t *page)
 {
@@ -75,7 +83,7 @@ bool sched16_boot(void)
   device.datetimeShedule=0;
   // Отсутствие маркера означает незавершённый переход; после восстановления
   // журнала очищаем расписания и только затем публикуем маркер.
-  if (!mem_tables_ready() ||
+  if (!flash_exec_read_allowed() ||
       !mem_replace_pages(mem[MB_SHEDULE].start&~4095u,sched16_empty_page,0)) goto bad;
   memcpy(device.reserv+SCHED16_MARK_OFFSET,sched16_mark,8);
   if (user_writeConfigAndDevice()) return true;
@@ -85,12 +93,3 @@ bad:
   return false;
 }
 
-// Сначала сохраняет отсутствие маркера, затем очищает расписания.
-bool sched16_clear(void)
-{
-  // При заводской очистке сначала сохраняем отсутствие маркера.
-  device.datetimeShedule=0;
-  memset(device.reserv+SCHED16_MARK_OFFSET,0,8);
-  if (!user_writeConfigAndDevice()) { table_fault=1; return false; }
-  return sched16_boot();
-}

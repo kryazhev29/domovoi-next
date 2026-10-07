@@ -85,8 +85,7 @@ class IndexMachine(StorageMachine):
         primask = self.u.reg_read(UC_ARM_REG_PRIMASK)
         if glue:
             assert self.owner()
-            assert not self.checked('user_storage_flash_ready')
-            assert not self.checked('mem_tables_ready')
+            assert bool(self.checked('flash_exec_read_allowed')) == (self.io is None)
             self.checked('user_storage_poll')
         else:
             self.checked('user_storage_poll')

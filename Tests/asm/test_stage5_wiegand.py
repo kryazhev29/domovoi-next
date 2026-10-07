@@ -7,7 +7,7 @@ def frame(value):
 
 
 def run(parity=True):
-    m = Machine(); m.init()
+    m = Machine(); m.init(); m.write(m.addr('mem_storage_ready'),1,1)
     # Приём теперь отделён от доступа; этот тест задаёт свободную физическую NOR.
     m.stubs[m.addr('w25_read_available')] = lambda: m.ret(1)
     ids = []

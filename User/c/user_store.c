@@ -3,32 +3,56 @@
 // Единственный владелец флеша завершает операцию до отправки её результата.
 // Маркеры публикуются до стирания и снимаются после сохранения новых курсоров.
 #include "user_logic_internal.h"
+#include "user_comm.h"
+#include "user_fw_reason.h"
+#include "../../Bootloader/app_update.h"
+#include "../../Bootloader/boot_manual.h"
+#include "../../Bootloader/boot_core.h"
 #include "../log_ring.h"
 #include "../table_runtime.h"
+#include "../sched16.h"
 #include "photo_runtime.h"
 #include "../../Modules/comm_modem.h"
 enum { US_SAVE=1, US_ACK, US_MARK, US_ERASE, US_CLEAN, US_CONFIG, US_RESET, US_REPLY,
-       US_COMMAND, US_RECOVER, US_RECOVER_CLEAN };
+       US_COMMAND, US_RECOVER, US_RECOVER_CLEAN, US_FACTORY };
 static void store_usb_session(void);
 uint8_t store_runtime, store_save_requested, store_reset_requested;
 store_state_s store;
 flash_exec_job_t flash_job;
 static void store_poll(uint32_t now, uint8_t result);
-
+static void factory_poll(uint32_t now);
+static void store_io_poll(uint32_t now);
+static uint8_t store_phase(void)
+{
+  return flash_job.kind == FX_STORE && flash_job.step < FS_ID ? flash_job.step : store.intent;
+}
+static void store_phase_set(uint8_t step)
+{
+  if (flash_job.kind == FX_STORE && flash_job.step < FS_ID) flash_job.step = step;
+  else store.intent = step;
+}
+static void factory_reply(void);
+static struct {
+  uint32_t epoch;
+  uint8_t channel, uniq, reply, code;
+  char number[24];
+} factory;
 // Приём не выполняет I/O; отказ оставляет запрос и память у вызывающего.
 bool flash_exec_idle(void)
 {
   return flash_job.kind == FX_NONE && flash_job.result == FX_IDLE &&
-    !flash_owner && !w25_async_active() && w25_read_available();
+    !w25_async_active() && w25_read_available();
 }
-
 bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
 {
   if (kind == FX_NONE || kind > FX_STORE || !flash_exec_idle()) return false;
-  static const uint8_t slots[] = { 0, WORK_IDCLEAR, WORK_EXPIRY, 0, 0, 0,
+  static const uint8_t slots[] = { 0, WORK_IDCLEAR, WORK_EXPIRY, WORK_FW_CONTEXT, WORK_UPLOAD_CONTEXT, 0,
     WORK_SERVICE, WORK_TABLE, 0, WORK_FW_BLOCK, 0, 0, 0 };
   void *context = args ? args->context : NULL;
   uint8_t step = args ? args->step : 0;
+  if ((kind == FX_EXPIRY || kind == FX_PHOTO || (kind == FX_CRC && !context)) &&
+      (store.intent || store_reset_requested || store_save_requested || fw_event_waiting() ||
+       (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)))) return false;
   uint8_t slot = slots[kind];
   if (kind == FX_CRC && !context) slot = 0;
   if (slot && !work_live(context, slot)) return false;
@@ -45,7 +69,6 @@ bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
   flash_job.kind = kind;
   return true;
 }
-
 void flash_exec_finish(flash_result_t result)
 {
   if (flash_job.result != FX_PENDING) return;
@@ -53,7 +76,6 @@ void flash_exec_finish(flash_result_t result)
   if (flash_job.kind == FX_IDCLEAR || flash_job.kind == FX_EXPIRY ||
       flash_job.kind == FX_INDEX || flash_job.kind == FX_CRC) idcrc_owner_released();
 }
-
 // Конечный результат и union снимаются ровно один раз.
 flash_result_t flash_exec_take_result(void)
 {
@@ -61,45 +83,18 @@ flash_result_t flash_exec_take_result(void)
   if (result < FX_OK) return result;
   uint8_t kind = flash_job.kind;
   memset(&flash_job, 0, sizeof(flash_job));
-  if (kind >= FX_TABLE && kind <= FX_LOG) idcrc_owner_released();
+  if ((kind >= FX_TABLE && kind <= FX_LOG) || kind == FX_STORE) idcrc_owner_released();
   return result;
 }
-
-// Gate перенесённых типов сохраняет прежний запрет чтений.
+// Единый допуск чтения: физическая команда и непубликованные таблицы закрывают NOR.
 bool flash_exec_read_allowed(void)
 {
-  uint8_t kind = flash_job.kind;
+  if (w25_async_active() || !w25_read_available() || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
   if (flash_job.result == FX_PENDING &&
-      ((kind >= FX_IDCLEAR && kind <= FX_EXPIRY) ||
-       (kind >= FX_INDEX && kind <= FX_TABLE))) return false;
-  return flash_read_allowed();
+      (flash_job.kind == FX_IDCLEAR || flash_job.kind == FX_EXPIRY || flash_job.kind == FX_TABLE ||
+       (flash_job.kind == FX_STORE && (store.clear || store_phase() == US_FACTORY || flash_job.step == FS_ID)))) return false;
+  return true;
 }
-
-bool flash_exec_legacy_claim(uint8_t owner)
-{
-  flash_kind_t kind = owner & 0x7fu;
-  // Мосты FW-service/UPLOAD остаются до шага 4.
-  if (flash_job.kind == kind && flash_job.result == FX_PENDING) return true;
-  // Мост FW-service забирает завершённый A/B до mem_config_reset.
-  if (flash_job.kind == FX_CONFIG && flash_job.result >= FX_OK)
-    flash_exec_take_result();
-  return flash_exec_begin(kind, NULL);
-}
-
-void flash_exec_legacy_release(uint8_t owner)
-{
-  if (flash_job.kind != (owner & 0x7fu)) return;
-  flash_exec_finish(FX_OK);
-  flash_exec_take_result();
-}
-
-void flash_exec_legacy_yield_store(void)
-{
-  if (flash_job.kind != FX_STORE) return;
-  flash_exec_finish(FX_OK);
-  flash_exec_take_result();
-}
-
 void flash_exec_cancel(void)
 {
   switch (flash_job.kind) {
@@ -135,9 +130,12 @@ void flash_exec_cancel(void)
     break;
   }
 }
-
 void flash_exec_quiet(uint8_t channel)
 {
+  if (store.channel == channel) store.quiet = 1;
+  if (factory.channel == channel) factory.reply = 0;
+  if (flash_job.kind == FX_STORE && flash_job.step == FS_ID && flash_job.data.storeio.channel == channel)
+    flash_job.data.storeio.reply = 0;
   idclear_runtime_quiet(channel);
   fw_service_quiet(channel);
   upload_runtime_quiet(channel);
@@ -145,16 +143,18 @@ void flash_exec_quiet(uint8_t channel)
   table_runtime_quiet(channel);
   service_crc_quiet(channel);
 }
-
 // Принятый kind не вытесняется; фон заканчивает квант в этом же проходе.
 static void pick_next(bool below_crc)
 {
   if (flash_job.kind != FX_NONE) return;
   if (!below_crc && idcrc_background_begin()) return;
   if (idindex_runtime_begin()) return;
-  if (flash_job.kind == FX_NONE) flash_exec_begin(FX_STORE, NULL);
+  if (store.intent == US_REPLY) return;
+  if (!store.intent && !store_save_requested && !store_reset_requested &&
+      !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT))) return;
+  flash_exec_args_t args = { NULL, store.intent };
+  if (flash_exec_begin(FX_STORE, &args)) store.intent = 0;
 }
-
 void flash_exec_poll(uint32_t now)
 {
   bool picked_idle = flash_job.kind == FX_NONE;
@@ -187,7 +187,7 @@ dispatch:
     idclear_runtime_poll(now);
     return;
   case FX_FWSERVICE:
-    if (fw_service_store_waiting()) store_poll(now, mem_config_result());
+    if (mem_config_result() == 1) mem_config_poll(now);
     else fw_service_poll();
     return;
   case FX_TABLE:
@@ -204,46 +204,48 @@ dispatch:
     return;
   case FX_CONFIG:
     if (log_ring_ack_poll()) return;
-    fw_service_config_result(mem_config_result());
     if (mem_config_result() == 1) mem_config_poll(now);
     else store_poll(now, mem_config_result());
     return;
   case FX_STORE:
-    store_poll(now, mem_config_result());
-    if (!w25_async_active()) flash_exec_legacy_yield_store();
+    if (flash_job.step >= FS_ID) {
+      store_io_poll(now);
+      if (flash_job.result >= FX_OK) flash_exec_take_result();
+      return;
+    }
+    if (mem_config_result() == 1) mem_config_poll(now);
+    else if (!log_ring_ack_poll()) store_poll(now, mem_config_result());
+    if (flash_job.kind == FX_STORE && (!store_phase() || store_phase() == US_REPLY) && !mem_config_result() && !w25_async_active()) {
+      if (store_phase() == US_REPLY) store.intent = US_REPLY;
+      flash_exec_finish(FX_OK);
+      flash_exec_take_result();
+    }
     return;
   default:
     return;
   }
 }
-
-// Проверить свободу владельца флеша и её операций.
-#pragma inline=forced
-static inline bool storage_idle(void) { return flash_exec_idle();
-}
-
-// Определить готовность хранения после обработки поколения USB.
-bool user_storage_command_ready(void) {
-store_usb_session();
-return !fw_event_waiting() && !store.job && !store_reset_requested && !mem_config_result() && storage_idle();
-}
-
-// Разрешить команду с учётом её владельца и состояния хранения.
-bool store_command_allowed(uint8_t cmd) { return cmd == 24 || cmd == 27 || (cmd == 21 && photo_empty_cleanup()) || user_storage_command_ready();
-}
-
-// Разрешить обычное чтение флеша вне очистки и записи.
-bool user_storage_flash_ready(void) {
-return store.clear!=9 && storage_idle();
-}
-
-// Разрешить фоновую работу после приоритетных сохранений.
-bool user_storage_background_ready(void)
+// Приём команды проверяет намерения и транспорт отдельно от разрешения чтения.
+bool store_command_allowed(uint8_t cmd)
 {
-  return user_storage_command_ready() && !store_save_requested &&
-    !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
+  store_usb_session();
+  if (cmd == 24 || cmd == 27 || (cmd == 21 && photo_empty_cleanup())) return true;
+  if (cmd == 8) return flash_exec_read_allowed();
+  return !fw_event_waiting() && !store_phase() && !store_reset_requested && flash_exec_idle();
 }
-
+// Полный кадр команды 8 остаётся у источника, если доступ потребует записи ID.
+bool user_command_ready(const uint8_t *ptr, bool usb_input)
+{
+  if (!store_command_allowed(ptr[4])) return false;
+  if (usb_input && ptr[4] != 8 && !(ptr[4] == 21 && photo_empty_cleanup()) && !flash_exec_idle()) return false;
+  if (ptr[4] != 8 || flash_exec_idle()) return true;
+  uint16_t length = rt_get16(ptr);
+  if (length < 16 || !ptr[5] || (ptr[6] != 1 && ptr[7] != 1)) return true;
+  char id[11];
+  memcpy(id, ptr + 8, 10);
+  id[10] = 0;
+  return user_access_ready(id);
+}
 // Отменить ответы и подтверждения предыдущего поколения USB.
 // Проверка поколения вызывается на каждом шаге автомата; встраивание убирает переход.
 #pragma inline=forced
@@ -254,9 +256,8 @@ static inline void store_usb_session(void)
   flash_exec_quiet(CH_USB);
   log_unacked[0] = temp_unacked[0] = 0;
   store.seen &= 10u;
-  if (store.job && store.channel == CH_USB) store.quiet = 1;
+  if (store_phase() && store.channel == CH_USB) store.quiet = 1;
 }
-
 // Записать намерение очистки и её конец в резерв device.
 static void store_marker(uint8_t cmd, uint32_t end)
 {
@@ -264,16 +265,18 @@ static void store_marker(uint8_t cmd, uint32_t end)
   memcpy(device.reserv + DEVICE_CLEAR_MARK_OFFSET, &mark, 4);
   memcpy(device.reserv + DEVICE_CLEAR_END_OFFSET, &end, 4);
 }
-
 // Передать снимок config/device атомарному сохранению.
 bool store_snapshot(void)
 {
-  flash_exec_legacy_yield_store();
+  if (flash_job.kind == FX_NONE) {
+    flash_exec_args_t args = { NULL, store.intent };
+    if (!flash_exec_begin(FX_STORE, &args)) return false;
+    store.intent = 0;
+  }
   config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
   device.crc = crc16_calc((uint8_t*)&device, sizeof(device) - 2);
   return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
 }
-
 // Восстановить незавершённую долговечную очистку после старта.
 void store_restore(const device_s *saved)
 {
@@ -288,17 +291,16 @@ void store_restore(const device_s *saved)
   store_marker(cmd, end);
   store.clear = store.cmd = cmd;
   store.end = end;
-  store.job = US_RECOVER;
+  store_phase_set(US_RECOVER);
   store.waiting = 0;
   store.quiet = 1;
   store.erase = start;
 }
-
 // Принять новый запрос выгрузки без повторного подтверждения.
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 {
   uint8_t slot = (cmd == 10 ? 0 : 2) + (cch == CH_USB ? 0 : 1);
-  if (store.job || mem_config_result()) return false;
+  if (store_phase() || mem_config_result()) return false;
   store.cmd = cmd;
   store.channel = cch;
   store.uniq = uniq;
@@ -308,7 +310,6 @@ bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
   store.seen |= 1u << slot;
   return true;
 }
-
 // Начать долговечное сохранение подтверждённого курсора.
 bool store_ack(uint8_t cmd, dataChanel_e cch)
 {
@@ -322,11 +323,10 @@ bool store_ack(uint8_t cmd, dataChanel_e cch)
   bool accepted = store_snapshot();
   upload_setIndex(cmd, cch, old);
   upload_store();
-  if (accepted) store.job = US_ACK;
+  if (accepted) store_phase_set(US_ACK);
   else store.seen &= ~(1u << ((cmd == 10 ? 0 : 2) + channel));
   return false;
 }
-
 // Сохранить намерение очистки до её первого стирания.
 bool store_finish(uint8_t cmd)
 {
@@ -340,12 +340,10 @@ bool store_finish(uint8_t cmd)
   store.erase = start & ~4095u;
   store.end = end;
   store_marker(cmd, end);
-
-  store.job = US_MARK;
+  store_phase_set(US_MARK);
   if (!store_snapshot()) store.retry_at = timers_getMillis() + 1000u;
   return false;
 }
-
 // Зафиксировать поля отложенного ответа владельца хранения.
 void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 {
@@ -353,12 +351,11 @@ void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
   store.channel = cch;
   store.uniq = uniq;
   store.quiet = 0;
-  if (store_snapshot()) { store.job = US_COMMAND;
+  if (store_snapshot()) { store_phase_set(US_COMMAND);
     store_save_requested = 0;
   }
   else user_send_answer_comand(cmd, CMD_RUNERROR, cch, uniq);
 }
-
 // Применить сохранённую конфигурацию к RS485 и адресам модема.
 static void store_config_complete(void)
 {
@@ -370,54 +367,60 @@ static void store_config_complete(void)
   sync_packet(SYNC_CONFIG);
   if (comm_modem_state() == SLM_IDLE) user_comm_boot();
 }
-
 // Начать сохранение временно подставленной новой конфигурации.
 bool store_config_start(void)
 {
-  if (store.job || !store_snapshot()) return false;
-  store.job = US_CONFIG;
+  if (store_phase() || !store_snapshot()) return false;
+  store_phase_set(US_CONFIG);
   return true;
 }
-
 // Передать долговечный результат по исходному каналу.
 static void store_reply(void)
 {
 uint8_t cmd=store.cmd,id=store.uniq,quiet=store.quiet;
   dataChanel_e cch=(dataChanel_e)store.channel;
   if(!quiet && cch==CH_SERVER && comm_tx_busy()) return;
-  if(!quiet && cmd==12) { if(service_crc_begin_config(cch,id)) store.job=0;
+  if(!quiet && cmd==12) { if(service_crc_begin_config(cch,id)) store_phase_set(0);
     return;
   }
-  store.job=0;
+  store_phase_set(0);
   if(quiet) return;
   if(cmd==10) user_send_logRecords(cch,id);
   else if(cmd==9) user_send_tempIDs(cch,id);
-  else user_send_answer_comand(cmd,CMD_SUCCESS,cch,id);
+  else user_send_answer_comand(cmd,cmd == 8 ? (cmdCode_e)store.code : CMD_SUCCESS,cch,id);
 }
-
 // Продвинуть одного владельца хранения в порядке приоритетов.
 void user_storage_poll(void)
 {
   store_usb_session();
+  factory_reply();
+  bool replied = fw_service_reply_poll();
+  if (upload_reply_poll()) replied = true;
+  if (store_phase() == US_REPLY) store_reply();
+  // Освободившийся TX завершает проход; следующая запись принимается отдельно.
+  if (replied && flash_job.kind == FX_NONE) return;
   flash_exec_poll(timers_getMillis());
   uint8_t cmd = flash_job.kind == FX_TABLE ? flash_job.data.table.cmd : 0;
-  if (flash_job.kind <= FX_LOG && flash_job.kind != FX_FWSERVICE &&
-      flash_job.kind != FX_UPLOAD) {
+  if (flash_job.kind <= FX_LOG) {
     flash_result_t result = flash_exec_take_result();
-    // Сцены читаются после снятия результата TABLE и открытия прежних gates.
+    // Сцены читаются после публикации TABLE и снятия результата.
     if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(cmd == 14);
   }
 }
-
 static void store_poll(uint32_t now, uint8_t result)
 {
-  if (store.job == US_REPLY) {
-    flash_exec_legacy_yield_store();
-    store_reply();
+  if (store_phase() == US_FACTORY) {
+    factory_poll(now);
     return;
   }
-  if (store.job == US_RECOVER) {
-
+  if (store_phase() == US_REPLY) {
+    if (flash_job.kind == FX_STORE) {
+      flash_exec_finish(FX_OK);
+      flash_exec_take_result();
+    }
+    return;
+  }
+  if (store_phase() == US_RECOVER) {
     uint8_t b[64];
     uint32_t start = mem[store.clear == 10 ? MB_LOG : MB_TEMPID].start;
     if ((int32_t)(now - store.retry_at) < 0) return;
@@ -427,18 +430,18 @@ static void store_poll(uint32_t now, uint8_t result)
     for (uint16_t i = 0; i < sizeof(b); ++i) if (b[i] != 255u) {
       upload_reset(store.clear);
       store_marker(0, 0);
-      store.job = US_RECOVER_CLEAN;
+      store_phase_set(US_RECOVER_CLEAN);
       if (!store_snapshot()) store.retry_at = now + 1000u;
       return;
     }
     store.erase += sizeof(b);
     if (!(store.erase & 4095u) || store.erase >= store.end) {
       store.erase = start & ~4095u;
-      store.job = US_ERASE;
+      store_phase_set(US_ERASE);
     }
     return;
   }
-  if (store.job == US_ERASE) {
+  if (store_phase() == US_ERASE) {
     if ((int32_t)(now - store.retry_at) < 0) return;
     if (store.waiting) {
       uint8_t r = w25_async_poll(now);
@@ -466,19 +469,18 @@ static void store_poll(uint32_t now, uint8_t result)
       device.newAddressTempID = mem[MB_TEMPID].start;
     }
     store_marker(0, 0);
-    store.job = US_CLEAN;
+    store_phase_set(US_CLEAN);
     if (!store_snapshot()) store.retry_at = now + 1000u;
     return;
   }
   if (result == 3) {
     mem_config_reset();
-    if (store.job == US_MARK || store.job == US_CLEAN || store.job == US_RECOVER_CLEAN) {
-
+    if (store_phase() == US_MARK || store_phase() == US_CLEAN || store_phase() == US_RECOVER_CLEAN) {
       store.retry_at = now + 1000u;
       return;
     }
-    uint8_t job = store.job;
-    store.job = 0;
+    uint8_t job = store_phase();
+    store_phase_set(0);
     if (job == US_SAVE) store_save_requested = 1;
     if (job == US_ACK) store.seen &= ~(1u << ((store.cmd == 10 ? 0 : 2) + (store.channel == CH_USB ? 0 : 1)));
     if ((job == US_CONFIG || job == US_COMMAND) && !store.quiet)
@@ -486,7 +488,7 @@ static void store_poll(uint32_t now, uint8_t result)
     return;
   }
   if (result == 2) {
-    uint8_t job = store.job;
+    uint8_t job = store_phase();
     if (job == US_CONFIG) {
       store_config_complete();
     }
@@ -496,35 +498,38 @@ static void store_poll(uint32_t now, uint8_t result)
       upload_setIndex(store.cmd, (dataChanel_e)store.channel, store.cursor);
       upload_store();
       pending[store.channel == CH_USB ? 0 : 1] = 0;
-      store.job = US_REPLY;
+      store_phase_set(US_REPLY);
     } else if (job == US_MARK) {
       upload_reset(store.clear);
-      store.job = US_ERASE;
+      store_phase_set(US_ERASE);
       store.retry_at = now;
     } else if (job == US_CLEAN || job == US_RECOVER_CLEAN) {
       store.clear = 0;
-      store.job = US_REPLY;
-    } else if (job == US_CONFIG || job == US_COMMAND) store.job = US_REPLY;
+      store_phase_set(US_REPLY);
+    } else if (job == US_CONFIG || job == US_COMMAND) store_phase_set(US_REPLY);
     else if (job == US_RESET) {
       if (log_pendingCount || store_save_requested) {
-        store.job = 0;
+        store_phase_set(0);
         store_save_requested = 0;
         return;
       }
       store_reset_requested = 0;
-      store.job = 0;
+      store_phase_set(0);
       USB_PULLUP_OFF;
       comm_modem_off();
       NVIC_SystemReset();
-    } else store.job = 0;
+    } else store_phase_set(0);
     return;
   }
-  if (store.job == US_MARK || store.job == US_CLEAN || store.job == US_RECOVER_CLEAN) {
+  if (store_phase() == US_MARK || store_phase() == US_CLEAN || store_phase() == US_RECOVER_CLEAN) {
     if ((int32_t)(now - store.retry_at) >= 0 && !store_snapshot()) store.retry_at = now + 1000u;
     return;
   }
-  if (store.job || !w25_read_available()) return;
-  flash_exec_legacy_yield_store();
+  if (store_phase() || !w25_read_available()) return;
+  if (flash_job.kind == FX_STORE) {
+    flash_exec_finish(FX_OK);
+    flash_exec_take_result();
+  }
   if (log_pendingCount && store.clear != 10 &&
       (store_reset_requested || (!store_save_requested && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)))) {
     log_storage_poll(now);
@@ -533,11 +538,16 @@ static void store_poll(uint32_t now, uint8_t result)
   if (store_reset_requested) {
     log_flushPending();
     if (log_pendingCount) return;
-    if (store_snapshot()) store.job = US_RESET;
+    if (store_snapshot()) {
+      store_save_requested = 0;
+      store_phase_set(US_RESET);
+    }
   } else if (store_save_requested) {
-    if (store_snapshot()) { store_save_requested = 0;
-      store.job = US_SAVE;
+    if (store_snapshot()) {
+      store_save_requested = 0;
+      store_phase_set(US_SAVE);
     }
   }
 }
-
+#include "factory_runtime.inc"
+#include "store_io.inc"

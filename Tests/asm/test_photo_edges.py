@@ -96,7 +96,7 @@ def transport_and_heap():
 # Проверить исключительное владение NOR и приоритет фоновых владельцев.
 def ownership():
     m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request();m.feed(frame(b'x'*58));m.tick()
-    assert m.io and not m.checked('user_storage_command_ready') and not m.checked('user_storage_flash_ready')
+    assert m.io and not m.checked('flash_exec_idle') and not m.checked('flash_exec_read_allowed')
     for cmd in (12,13,19,20,21):
         m.packet(cmd);assert m.answers[-1][1]==2 and m.io
     m.checked('user_savereset');m.drain()

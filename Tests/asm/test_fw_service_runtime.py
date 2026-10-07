@@ -36,12 +36,12 @@ class FirmwareMachine(UploadMachine):
         if a==self.addr('work_acquire'):self.alloc_trace.append(('malloc',self.args()[0]))
         if a==self.addr('work_release'):self.alloc_trace.append(('free',self.args()[0]))
         if a==self.addr('store_snapshot'):
-            self.alloc_trace.append(('snapshot',0));self.snapshot_ctx=self.read_word(self.addr('fw_service_context'))
+            self.alloc_trace.append(('snapshot',0));self.snapshot_ctx=self.ptr()
         if a==self.addr('mem_config_begin'):self.alloc_trace.append(('config_begin',0))
     # Читает адрес текущего контекста из связанного образа.
-    def ptr(self):return self.read_word(self.addr('fw_service_context'))
+    def ptr(self):return self.read_word(self.addr('flash_job')+4) if self.exec_active(3) else self.read_word(self.addr('fw_reply'))
     # Читает фазу рабочего автомата.
-    def phase(self):return self.read_word(self.ptr()+120,1) if self.ptr() else 0
+    def phase(self):return self.read_word(self.addr('flash_job')+1,1)&127 if self.exec_active(3) else self.read_word(self.ptr()+120,1) if self.ptr() else 0
     # Готовит базу и метаданные заданного сценария.
     def fixture(self,size=132):
         self.image=bytes((i*17+3)&255 for i in range(size));self.head=header(self.image)
@@ -101,7 +101,7 @@ def heap_reservation():
     m.until(lambda:m.phase()==6);trace=len(m.alloc_trace);m.tick_fw()
     events=m.alloc_trace[trace:]
     assert events[:4]==[('free',reserve),('snapshot',0),('config_begin',0),('malloc',1024)],events
-    assert m.snapshot_ctx==0 and m.read_word(m.addr('cfg_job'))==reserve
+    assert m.snapshot_ctx==ctx and m.exec_active(3) and m.read_word(m.addr('cfg_job'))==reserve
     assert owned(m)==(1<<(PHOTO-1))|(1<<(FW_CONTEXT-1))|(1<<(CONFIG-1))
     m.drain();drop(m,PHOTO,photo);assert owned(m)==0
     for slot in (REPLY,CONFIG):
@@ -254,7 +254,7 @@ def real_spi():
         active=m.exec_active(3);wire['read']=wire['status']=0;m.tick_fw()
         mxread=max(mxread,wire['read']);mxstatus=max(mxstatus,wire['status'])
         if active:fwread=max(fwread,wire['read']);assert wire['read']<=64
-        assert wire['status']<=4
+        assert wire['status']<=4, (n, m.phase(), wire, m.exec_state())
     else:raise AssertionError('real SPI stuck')
     assert m.flash[0x1200:0x1200+len(m.image)]==m.image and m.sent[0][10]==0
     assert m.read_word(m.device+171,1)==1

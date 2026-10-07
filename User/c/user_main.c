@@ -117,6 +117,20 @@ void user_loop(void)
   unreg_sms_poll();
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
 
+  // Установка принимается в каждом проходе до фонового save, без вытеснения работы.
+  if (device.rebootToUpdate && (flash_exec_idle() || app_boot_request_ready())) {
+    int result = app_boot_request();
+    if (result >= 0) {
+      device.rebootToUpdate = 0;
+      if (result) {
+        fw_event_request(LOG_FW_INSTALL, FW_REASON_NONE);
+        user_savereset();
+      } else {
+        fw_stop(FW_REASON_INSTALL, uniqIDCnt++);
+      }
+    }
+  }
+
   // каждые 50 мс
   if (timers_get(1) >= 50)
   {
@@ -190,7 +204,7 @@ void user_loop(void)
     device.worktime++; // время работы от момента включения, в секундах
     device.datetime++; // внутренние часы
     log_checkPending(); // события, ждущие времени от сервера
-    if (user_storage_flash_ready()) user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
+    if (flash_exec_read_allowed()) user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
     // вычислим день недели, час и минуту
     device.day = user_getweakday(device.datetime);
     device.hour = device.datetime % 86400u / 3600u;
@@ -215,7 +229,7 @@ void user_loop(void)
     // сброс на заводские
     if (device.timeToDefault){
       if (device.timeToDefault > 1) --device.timeToDefault;
-      else if (user_storage_command_ready()) user_factoryReset();
+      else if (flash_exec_idle()) user_factoryReset();
     }
 
     // таймаут на отправку ID
@@ -229,18 +243,6 @@ void user_loop(void)
     }
     sync_end_tick(); // события 6-10
 
-    /* Перезагрузиться в режим обновления FW. Занятая флеш (журнал, база) отказала бы
-       в чтении образа: ждём следующей секунды, а не теряем загрузку (плата 07.10). */
-    if (device.rebootToUpdate && user_storage_command_ready()){
-      device.rebootToUpdate = 0;
-      if (app_boot_request()) {
-        fw_event_request(LOG_FW_INSTALL, FW_REASON_NONE);
-        user_savereset();
-      } else {
-        fw_stop(FW_REASON_INSTALL, uniqIDCnt++);
-      }
-    }
-
     // таймаут обновления
     if (device.updateTimeout){
       if (--device.updateTimeout == 0){
@@ -252,13 +254,13 @@ void user_loop(void)
 
     /* Прошивка дошла до сервера - проба подтверждается записью во флеш. Занятая флеш -
        повтор через секунду: иначе через 30 мин загрузчик откатил бы годную прошивку (07.10). */
-    if (app_trial_active() && device.registredOnServer && user_storage_command_ready()){
+    if (app_trial_active() && device.registredOnServer && flash_exec_idle()){
       app_trial_confirm();
       if (!app_trial_active()) fw_event_request(LOG_FW_DONE, FW_REASON_NONE);
     }
 
     // пробная прошивка после обновления так и не зарегистрировалась на сервере - откат
-    if (app_trial_expired() && user_storage_command_ready()){
+    if (app_trial_expired() && flash_exec_idle()){
       if (app_trial_rollback()) user_savereset();
     }
     fw_boot_event_poll();
@@ -285,7 +287,7 @@ void user_loop(void)
 // Обработать RS485 после окончания кадра и освободить приёмный буфер.
 void port_check_data(void)
 {
-  if (!user_storage_flash_ready()) return;
+  if (!flash_exec_read_allowed()) return;
   photo_poll();
   if (!device.getPhoto && uart_getstate() && !uart_isReceiving())
     uart_clear();

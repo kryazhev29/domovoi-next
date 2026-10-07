@@ -101,7 +101,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     return;
   }
 
-  if (!server_verified && !store_command_allowed(ptr[4])) {
+  if (!server_verified && !user_command_ready(ptr, false)) {
     user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId); return;
   }
   switch (ptr[4]) // команда
@@ -166,13 +166,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 3: // команда установить заводские настройки
-      if (ptr[5] == 0){
-        user_factoryReset();
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
-      } else{
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // кода 5 в ответе 11 нет (строка 537)
-        device.timeToDefault = ptr[5];
-      }
+      if (!store_factory_request((uint8_t)cch, uniqId, ptr[5], NULL))
+        user_send_answer_comand(3, CMD_RUNERROR, cch, uniqId);
       break;
 
     case 5: // Установка состояния триггерных функций
@@ -246,7 +241,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
                            (ptr[7] == 1) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer))
             res8 = CMD_RUNERROR;
         }
-        user_send_answer_comand(ptr[4], res8, cch, uniqId);
+        if (flash_job.kind == FX_STORE && flash_job.step == FS_ID) store_access_reply((uint8_t)cch, uniqId);
+        else user_send_answer_comand(ptr[4], res8, cch, uniqId);
       }
       else{
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -494,6 +490,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       if (device.FWinProgress || device.rebootToUpdate || app_trial_active()) {
         user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+        break;
+      }
+      if (boot_manual_prepare(&ptr[5], (uint16_t)(len-3))) {
+        if (!store_manual_begin(&ptr[5], (uint16_t)(len-3), uniqId))
+          user_send_answer_comand(MANUAL_BOOT_COMMAND, CMD_RUNNING, cch, uniqId);
         break;
       }
       boot_manual_command(1, &ptr[5], (uint16_t)(len-3), response);

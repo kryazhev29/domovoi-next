@@ -55,7 +55,7 @@ bool user_smsreceived(char *num, char *data)
   case SMS_ADD:
     if (!validFormat) goto format_error;
     strncpy(tempStrBuffer + 96, arg, 10); tempStrBuffer[106] = 0;
-    user_addIdToTempBuffer(tempStrBuffer + 96, CT_OTHER);
+    if (!user_addIdToTempBuffer(tempStrBuffer + 96, CT_OTHER)) return false;
     log_addControlEvent(LOG_CON_IDADDBYSMS, tempStrBuffer + 96, 0);
     strcat(reply, ": "); strcat(reply, tempStrBuffer + 96); strcat(reply, " - Ok");
     break;
@@ -85,8 +85,7 @@ bool user_smsreceived(char *num, char *data)
     break;
   }
   case SMS_DEFAULT:
-    user_factoryReset(); strcat(reply, ": Complete");
-    break;
+    return store_factory_request(2, 0, 0, num);
   default: return true;
   }
   user_sendsms(reply, num);

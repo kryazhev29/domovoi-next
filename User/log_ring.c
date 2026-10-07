@@ -54,6 +54,17 @@ static uint32_t pair(uint16_t v)
 {
   return v|((uint32_t)(uint16_t)~v<<16);
 }
+// Полная очистка уже проверена STORE: публикуем пустой журнал без повторного erase.
+void log_ring_cleared(void)
+{
+  memset(&lr, 0, sizeof(lr));
+  lr.head = NONE;
+  lr.forced = NONE;
+  lr.ready = 1;
+  device.logsCount = 0;
+  device.status.readyLogData = 0;
+  device.newAddressLog = mem[MB_LOG].start + 32;
+}
 // Требует повторного чтения заголовков перед следующей операцией.
 void log_ring_invalidate(void)
 {
@@ -352,7 +363,7 @@ uint8_t log_async_step(uint32_t now)
 // Записывает стартовое событие синхронно тем же автоматом.
 bool log_addEvent(cellLog_s *cell)
 {
-  if(!user_storage_flash_ready()) return false;
+  if(!flash_exec_read_allowed()) return false;
   log_async_begin(cell);
   if (flash_job.kind != FX_LOG || flash_job.result != FX_PENDING) return false;
   while (flash_job.result == FX_PENDING) {

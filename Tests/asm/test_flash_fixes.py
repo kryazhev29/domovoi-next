@@ -122,8 +122,7 @@ def factory_reset():
     m = UnblockMachine(); starts = []
     m.stubs[m.addr('expiry_runtime_begin')] = lambda: m.ret(0)
     m.stubs[m.addr('user_writeConfigAndDevice')] = lambda: m.ret(1)
-    m.stubs[m.addr('user_clearMemBlock')] = lambda: m.ret(1)
-    m.stubs[m.addr('user_setdefault')] = lambda: (starts.append(True), m.ret())
+    m.stubs[m.addr('store_factory_begin')] = lambda: (starts.append(True), m.ret(1))
     m.stubs[m.addr('user_initvariables')] = m.ret
     timer = m.device + m.d['timeToDefault']
     m.write(timer, 2, 1); hold_clear(m)
@@ -169,7 +168,7 @@ def firmware_events():
     m = StorageMachine()
     for _ in range(16): assert m.checked('log_addSystemEvent', 13) == 1
     m.checked('fw_event_request', 133, 9); m.checked('fw_event_request', 137, 0)
-    assert not m.checked('user_storage_command_ready')
+    assert m.checked('flash_exec_idle') and not m.checked('store_command_allowed', 19)
     m.checked('fw_event_poll'); assert m.checked('fw_event_waiting')
     m.write(m.addr('log_pendingCount'), 14, 1)
     m.checked('fw_event_poll'); m.checked('fw_event_poll')

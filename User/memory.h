@@ -27,7 +27,7 @@ const uint8_t *mem_config_snapshot(void);
 // Восстанавливает зафиксированный секторный журнал при старте.
 bool mem_recover(void);
 // Проверяет доступность таблиц без повторного восстановления.
-bool mem_tables_ready(void);
+#include "flash_exec.h"
 typedef uint8_t (*mem_page_reader)(const void *context, uint16_t offset, uint8_t *page);
 // Атомарно заменяет сектор из источника страниц.
 bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context);

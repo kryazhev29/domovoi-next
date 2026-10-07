@@ -29,11 +29,13 @@ bool user_incomingcall (char* num, uint8_t typ);
 // инициализация
 void user_init (void);
 // очистить блок памяти
-bool user_clearMemBlock(memBlock_e mb);
+
 // циклический обработчик
 void user_loop(void);
 // инициализация переменных
 void user_initvariables (void);
+// Применить проверенный снимок заводской очистки без чтения и записи NOR.
+void user_factory_variables(device_s *saved);
 // Чтение конфигурации с памяти
 void user_readconfig(void);
 // запись конфигурации в память
@@ -95,9 +97,9 @@ uint8_t user_getweakday (uint32_t t);
 // поиск ID в памяти, если есть то возвращаются параметры ячейки
 uint8_t user_findID(char *id, cellID_s *cell);
 // поиск ID во временном буфере
-bool user_findTempID(char *id);
+uint8_t user_findTempID(char *id);
 // добавляет ID во временный буфер
-void user_addIdToTempBuffer(char *id, codeType_e tp);
+bool user_addIdToTempBuffer(char *id, codeType_e tp);
 // проверка ID по параметрам и управление выходом
 void user_checkIdAndControl(char *id, codeType_e tp);
 // управление выходом в соответствии с настройками
@@ -145,10 +147,11 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc);
 // Продвинуть единственного активного владельца флеша.
 void user_storage_poll(void);
 // Разрешить новую команду записи при свободном хранилище.
-bool user_storage_command_ready(void);
+bool user_command_ready(const uint8_t *ptr, bool usb_input);
 // Разрешить фоновую операцию без конфликта с командой.
-bool user_storage_background_ready(void);
+
 // Проверить, доступен ли флеш обработчикам вызова и SMS.
-bool user_storage_flash_ready(void);
+#include "flash_exec.h"
+bool user_access_ready(const char *id);
 
 #endif

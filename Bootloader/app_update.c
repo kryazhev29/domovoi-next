@@ -6,6 +6,7 @@
 */
 #include "../includes.h"
 #include "app_update.h"
+#include "../User/c/runtime_internal.h"
 #include "../User/c/user_fw_reason.h"
 #include "boot_core.h"
 #include "boot_manual.h"
@@ -29,30 +30,83 @@ static uint32_t crc_word(uint32_t crc, uint32_t word)
   return crc;
 }
 
-// Проверить образ и опубликовать кандидата только после проверенного стирания журнала.
+static uint8_t install_result;
+
+bool app_boot_request_ready(void) { return install_result != 0; }
+
 int app_boot_request(void)
 {
-  BootHeader header;
-  uint32_t crc = UINT32_MAX, words[32], count, magic = BOOT_MAGIC;
-  if (BOOT_VER < BOOT_VERSION ||
-      *(const volatile uint16_t *)BOOT_FLASH_SIZE_ADDRESS != BOOT_REQUIRED_FLASH_KIB) return 0;
-  if (!mem_read(BOOT_CANDIDATE, (uint8_t *)&header, sizeof(header))) return 0;
-  if (header.hardware != BOOTHW_VER || header.size < 8 ||
-      header.size > BOOT_MAX_CODE || (header.size & 3u)) return 0;
-  for (uint32_t pos = 0; pos < header.size; pos += count) {
-    count = header.size - pos;
-    if (count > sizeof(words)) count = sizeof(words);
-    if (!mem_read(BOOT_HEADER_SIZE + pos, (uint8_t *)words, count)) return 0;
-    if (!pos && (words[0] < 0x20000008u || words[0] > 0x20005000u || (words[0] & 7u) ||
-        !(words[1] & 1u) || (words[1] & ~1u) < BOOT_APP_VECTOR ||
-        (words[1] & ~1u) >= BOOT_APP_VECTOR + header.size)) return 0;
-    for (uint32_t i = 0; i < count / 4u; ++i) crc = crc_word(crc, words[i]);
-    wdt_reload();
+  if (install_result) {
+    bool ok = install_result == 2;
+    install_result = 0;
+    return ok;
   }
-  /* Во время пробы журнал и резерв принадлежат загрузчику. Стёртая magic отличает
-     незавершённое стирание журнала от опубликованного кандидата. */
-  if (crc != header.crc || trial || header.magic != UINT32_MAX) return 0;
-  return mem_erase_sector(BOOT_JOURNAL) && mem_write(BOOT_CANDIDATE, (uint8_t *)&magic, sizeof(magic));
+  flash_exec_args_t args = { NULL, FS_BOOT };
+  if (!flash_exec_begin(FX_STORE, &args)) return -1;
+  flash_job.data.storeio.crc = UINT32_MAX;
+  return -1;
+}
+
+// Проверка образа, стирание журнала и magic принадлежат одному STORE.
+void app_boot_request_poll(uint32_t now)
+{
+  store_io_s *p = &flash_job.data.storeio;
+  BootHeader header;
+  uint32_t words[32], count;
+  uint8_t result;
+  if (p->mode == 0) {
+    if (BOOT_VER < BOOT_VERSION || trial ||
+        *(const volatile uint16_t *)BOOT_FLASH_SIZE_ADDRESS != BOOT_REQUIRED_FLASH_KIB ||
+        !mem_read(BOOT_CANDIDATE, (uint8_t *)&header, sizeof(header))) goto fail;
+    if (header.hardware != BOOTHW_VER || header.size < 8 || header.size > BOOT_MAX_CODE ||
+        (header.size & 3u) || header.magic != UINT32_MAX) goto fail;
+    p->end = header.size;
+    p->expected = header.crc;
+    p->mode = 1;
+    return;
+  }
+  if (p->mode == 1) {
+    count = p->end - p->position;
+    if (count > sizeof(words)) count = sizeof(words);
+    if (!mem_read(BOOT_HEADER_SIZE + p->position, (uint8_t *)words, (uint16_t)count)) goto fail;
+    if (!p->position && (words[0] < 0x20000008u || words[0] > 0x20005000u || (words[0] & 7u) ||
+        !(words[1] & 1u) || (words[1] & ~1u) < BOOT_APP_VECTOR ||
+        (words[1] & ~1u) >= BOOT_APP_VECTOR + p->end)) goto fail;
+    for (uint32_t i = 0; i < count / 4; ++i) p->crc = crc_word(p->crc, words[i]);
+    p->position += count;
+    wdt_reload();
+    if (p->position == p->end) {
+      if (p->crc != p->expected) goto fail;
+      p->mode = 2;
+    }
+    return;
+  }
+  if (p->waiting) {
+    result = w25_async_poll(now);
+    if (result == 1) return;
+    p->waiting = 0;
+    if (result != 2) goto fail;
+    if (p->mode == 4) {
+      install_result = 2;
+      flash_exec_finish(FX_OK);
+      return;
+    }
+    p->mode = 3;
+    return;
+  }
+  if (p->mode == 2) {
+    if (!w25_async_start(BOOT_JOURNAL, NULL, 0, now)) goto fail;
+  } else {
+    uint32_t magic = BOOT_MAGIC;
+    memcpy(p->data, &magic, 4);
+    if (!w25_async_start(BOOT_CANDIDATE, p->data, 4, now)) goto fail;
+    p->mode = 4;
+  }
+  p->waiting = 1;
+  return;
+fail:
+  install_result = 3;
+  flash_exec_finish(FX_ERROR);
 }
 
 // Прочитать версию приложения и состояние пробы из долговечного журнала.
@@ -90,14 +144,24 @@ int app_trial_active(void) { return trial; }
 void app_trial_confirm(void)
 {
   uint32_t zero = 0;
-  if (trial && mem_write(BOOT_JOURNAL + BOOT_JOURNAL_CONFIRMED, (uint8_t *)&zero, sizeof(zero))) trial = 0;
+  flash_exec_args_t args = { NULL, FS_SYNC };
+  if (!trial || !flash_exec_begin(FX_STORE, &args)) return;
+  bool ok = mem_write(BOOT_JOURNAL + BOOT_JOURNAL_CONFIRMED, (uint8_t *)&zero, sizeof(zero));
+  flash_exec_finish(ok ? FX_OK : FX_ERROR);
+  flash_exec_take_result();
+  if (ok) trial = 0;
 }
 
 // Запросить восстановление резервной копии при следующем старте загрузчика.
 int app_trial_rollback(void)
 {
   uint32_t zero = 0;
-  return trial && mem_write(BOOT_JOURNAL + BOOT_JOURNAL_ROLLBACK, (uint8_t *)&zero, sizeof(zero));
+  flash_exec_args_t args = { NULL, FS_SYNC };
+  if (!trial || !flash_exec_begin(FX_STORE, &args)) return 0;
+  bool ok = mem_write(BOOT_JOURNAL + BOOT_JOURNAL_ROLLBACK, (uint8_t *)&zero, sizeof(zero));
+  flash_exec_finish(ok ? FX_OK : FX_ERROR);
+  flash_exec_take_result();
+  return ok;
 }
 
 // Проверить срок неподтверждённой пробы по времени от чтения метаданных.
@@ -131,8 +195,12 @@ uint32_t app_boot_error_code(void)
 int app_boot_error_reported(void)
 {
   uint32_t reported = 0;
-  return app_boot_error_unreported() &&
-    mem_write(BOOT_JOURNAL + BOOT_JOURNAL_REPORTED, (uint8_t *)&reported, sizeof(reported));
+  flash_exec_args_t args = { NULL, FS_SYNC };
+  if (!flash_exec_read_allowed() || !app_boot_error_unreported() || !flash_exec_begin(FX_STORE, &args)) return 0;
+  bool ok = mem_write(BOOT_JOURNAL + BOOT_JOURNAL_REPORTED, (uint8_t *)&reported, sizeof(reported));
+  flash_exec_finish(ok ? FX_OK : FX_ERROR);
+  flash_exec_take_result();
+  return ok;
 }
 /* Кандидат готовится через имеющийся драйвер внешней флеш-памяти работающей прошивки.
  * Встроенного образа загрузчика нет, автоматического запроса при старте нет. */
@@ -150,17 +218,28 @@ int manual_board_hw(uint8_t hw) {
 // Прочитать часть подготовленного образа из внешнего флеша.
 int manual_stage_read(uint32_t off,void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
+ if (!flash_exec_read_allowed()) return 0;
  return mem_read(BOOT_CANDIDATE+off,data,n);
 }
 // Записать часть подготовленного образа с проверкой драйвером W25.
 int manual_stage_write(uint32_t off,const void *data,uint32_t n) {
  if(off>MANUAL_BOOT_SIZE||n>MANUAL_BOOT_SIZE-off)return 0;
- return mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);
+ flash_exec_args_t args = { NULL, FS_SYNC };
+ if (!flash_exec_begin(FX_STORE, &args)) return 0;
+ bool ok = mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);
+ flash_exec_finish(ok ? FX_OK : FX_ERROR);
+ flash_exec_take_result();
+ return ok;
 }
 // Стереть сектор области подготовки образа.
 int manual_stage_erase(uint32_t off) {
  if(off>=MANUAL_BOOT_SIZE||(off&4095u))return 0;
- return mem_erase_sector(BOOT_CANDIDATE+off);
+ flash_exec_args_t args = { NULL, FS_SYNC };
+ if (!flash_exec_begin(FX_STORE, &args)) return 0;
+ bool ok = mem_erase_sector(BOOT_CANDIDATE+off);
+ flash_exec_finish(ok ? FX_OK : FX_ERROR);
+ flash_exec_take_result();
+ return ok;
 }
 // Обслужить сторожевой таймер во время ручного обновления.
 void manual_service(void) {wdt_reload();}
@@ -229,14 +308,20 @@ __ramfunc static void replace_ram(const uint32_t *page_crc) {
 int manual_program(uint32_t expected_crc) {
  uint32_t page_crc[32],page,i,w,c,whole=0xffffffffu;uint8_t data[256];
  if(!manual_platform_supported())return 0;
+ flash_exec_args_t args = { NULL, FS_SYNC };
+ if (!flash_exec_begin(FX_STORE, &args)) return 0;
  for(page=0;page<32;page++) {
   c=0xffffffffu;
   for(i=0;i<1024;i+=sizeof(data)) {
-   unsigned j;if(!manual_stage_read(page*1024+i,data,sizeof(data)))return 0;
+   unsigned j;if(!manual_stage_read(page*1024+i,data,sizeof(data)))goto failed;
    for(j=0;j<sizeof(data);j+=4){memcpy(&w,data+j,4);c=crc_word(c,w);whole=crc_word(whole,w);}
   }
   page_crc[page]=c;wdt_reload();
  }
- if(whole!=expected_crc)return 0;
- replace_ram(page_crc);return 0;
+ if(whole!=expected_crc)goto failed;
+ replace_ram(page_crc);
+failed:
+ flash_exec_finish(FX_ERROR);
+ flash_exec_take_result();
+ return 0;
 }

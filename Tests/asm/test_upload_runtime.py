@@ -66,7 +66,7 @@ class UploadMachine(StorageMachine):
 
     # Читает адрес текущего контекста из связанного образа.
     def ptr(self):
-        return self.read_word(self.addr('upload_runtime_context'))
+        return self.read_word(self.addr('flash_job')+4) if self.exec_active(4) else self.read_word(self.addr('upload_reply'))
 
     # Читает слово состояния из связанной памяти.
     def read_word(self, at, n=4):
@@ -74,7 +74,7 @@ class UploadMachine(StorageMachine):
 
     # Читает фазу рабочего автомата.
     def phase(self):
-        return self.read_word(self.ptr()+31, 1) if self.ptr() else 0
+        return self.read_word(self.addr('flash_job')+1,1) if self.exec_active(4) else self.read_word(self.ptr()+31,1) if self.ptr() else 0
 
     # Готовит базу и метаданные заданного сценария.
     def fixture(self, cmd, slots):
@@ -200,7 +200,7 @@ def test_media_gate():
             m=UploadMachine();m.fixture(reply,[temp(1) if reply==9 else log(1)])
             if blocked=='not-ready':m.write(m.addr('mem_storage_ready'),0,1)
             else:m.stubs[m.addr('sj_runtime_blocked')]=lambda:m.ret(1)
-            assert not m.checked('mem_tables_ready')
+            assert not m.checked('flash_exec_read_allowed')
             before=bytes(m.flash);m.request()
             assert not m.ptr() and not any(m.counts.values()) and not m.sent
             body=struct.pack('<HBBB',3,0,7,19-reply);body+=struct.pack('<H',crc16(body))

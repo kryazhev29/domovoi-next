@@ -17,6 +17,8 @@ typedef struct {
 void photo_storage_poll(uint32_t now);
 // Отменить запрос после завершения уже принятой операции W25.
 void photo_storage_cancel(void);
+// Сбросить курсоры после фактической заводской очистки области фото.
+void photo_storage_reset(void);
 // Обработать команду 21 и ответить по исходному каналу.
 void photo_request_answer(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size);
 #endif

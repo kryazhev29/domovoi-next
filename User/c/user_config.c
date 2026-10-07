@@ -40,24 +40,6 @@ bool config_pin_number(uint32_t *pin)
   return *pin <= 99999u || user_parse_pin((const char *)pin, sizeof(*pin), pin);
 }
 
-// Стереть указанную область синхронно при стартовом восстановлении.
-bool user_clearMemBlock(memBlock_e mb){
-  if (mb==MB_SHEDULE) return sched16_clear();
-
-  if (mem[mb].size == 0) return true;
-
-  uint32_t adr;
-  uint32_t endAdr = mem[mb].start + mem[mb].size;
-
-  // по секторно стираем
-  for (adr = mem[mb].start; adr < endAdr; adr += 4096){
-    if (!mem_erase_sector(adr)) return false;
-    wdt_reload();
-  }
-  if (mb == MB_ID) idindex_scanned(0, 0); /* база пуста - индекс пересобирается в фоне */
-  return true;
-}
-
 // Восстановить device, курсоры и стартовые счётчики.
 void user_initvariables (void)
 {
@@ -74,14 +56,11 @@ void user_initvariables (void)
 
   user_comm_boot();
 
-  // смотрим сколько в памяти номеров
   device.numbersCount = user_getNumbersCount();
   device.logsCount = log_getRecordsCount();
-  if (device.logsCount)
-    device.status.readyLogData = 1;
+  if (device.logsCount) device.status.readyLogData = 1;
   device.tempIDsCount = user_getTempIDRecordsCount();
-  if (device.tempIDsCount)
-    device.status.readyID = 1;
+  if (device.tempIDsCount) device.status.readyID = 1;
   // Очередь фото восстановит единственный асинхронный скан.
   device.countPhoto = 0;
   device.status.readyPhoto = 0;
@@ -140,7 +119,7 @@ void user_readconfig(void)
 }
 
 // Сформировать заводские настройки текущего профиля.
-void user_setdefault (void)
+void user_default_values(void)
 {
   wdt_reload();
 
@@ -164,49 +143,74 @@ void user_setdefault (void)
   device.status.defaultConfig = 1;
   log_addSystemEvent(LOG_SYS_DEFCONF);
 
+}
+
+void user_setdefault(void)
+{
+  user_default_values();
   user_writeConfigAndDevice();
 }
 
 // Передать согласованный протокольный сброс владельцу хранения.
 void user_factoryReset (void){
-  if (store_runtime && !user_storage_command_ready()) {
+  if (store_runtime && !flash_exec_idle()) {
     device.timeToDefault = 1;
     return;
   }
-  device.timeToDefault = 0; // Запрос снимается только при старте сброса.
-  fw_async_cancel();
+  if (!store_factory_begin()) {
+    device.timeToDefault = 1;
+    return;
+  }
+  device.timeToDefault = 0;
+}
 
-  // закрываем соединение с сервером
-  upload_reset(10);
-  upload_reset(9);
-  if (!user_writeConfigAndDevice()) return; // не стираем с сохранённым старым курсором
+// Применить уже проверенное устойчивое состояние без I/O.
+static void user_restore_device(device_s *saved)
+{
+  saved->IMEIGSM[sizeof(saved->IMEIGSM) - 1] = 0; // Завершаем после проверки CRC.
+  strcpy(device.IMEIGSM, saved->IMEIGSM); // восстанавливаем IMEI GSM
 
-  // чистим память абонентов
-  user_clearMemBlock(MB_ID);
-  // чистим память групп
-  user_clearMemBlock(MB_GROUP);
-  // чистим память расписаний
-  user_clearMemBlock(MB_SHEDULE);
-  // чистим память праздников
-  user_clearMemBlock(MB_HOLIDAY);
-  // чистим память журнала
-  user_clearMemBlock(MB_LOG);
-  // чистим память временные ID
-  user_clearMemBlock(MB_TEMPID);
-  // чистим память фото
-  user_clearMemBlock(MB_PHOTO);
+  device.hardwareVersion = saved->hardwareVersion;
+  device.firmwareVersion = saved->firmwareVersion;
+  device.bootVersion = saved->bootVersion;
+  device.buildDate = saved->buildDate;
 
-  /* Заводской сброс отменяет загрузку: user_setdefault сохраняет это состояние, и после
-     перезапуска ничего не продолжается. */
-  device.FWinProgress = 0;
-  device.status.readyToUpdate = 0;
-  device.updateTimeout = 0;
+  device.datetimeConfig = saved->datetimeConfig;
+  device.datetimeID = saved->datetimeID;
+  device.datetimeShedule = saved->datetimeShedule;
+  device.datetimeGroup = saved->datetimeGroup;
+  device.datetimeHoliday = saved->datetimeHoliday;
 
-  // чистим конфиг
-  user_setdefault();
-  // реинициализируем переменные
-  user_initvariables();
+  device.triggers = saved->triggers;
 
+  device.firmwareSize = saved->firmwareSize;
+  device.firmwareCRC = saved->firmwareCRC;
+  device.FWblockCount = saved->FWblockCount;
+  device.FWblockIdx = saved->FWblockIdx;
+  device.firmwarePercent = saved->firmwarePercent;
+  device.FWinProgress = saved->FWinProgress;
+  device.updateTimeout = saved->updateTimeout;
+
+  device.moduleType = saved->moduleType;
+  upload_restore(saved);
+  store_restore(saved);
+  sched16_restore(saved);
+}
+// Завершить заводскую очистку из удержанного снимка A/B, без стартовых сканов.
+void user_factory_variables(device_s *saved)
+{
+  uint32_t memory = device.memID;
+  memset(&device, 0, sizeof(device));
+  device.connectionhandle = -1;
+  device.memID = memory;
+  device.freeBufferSize = 2048;
+  user_restore_device(saved);
+  device.protocolVersion = PROTOCOL_VERSION;
+  device.FWblockCount = 0;
+  device.FWblockIdx = 0;
+  user_comm_boot();
+  log_ring_cleared();
+  device.newAddressTempID = mem[MB_TEMPID].start;
 }
 
 // Восстановить устойчивые поля device и незавершённые действия.
@@ -216,35 +220,7 @@ void user_readsavedinformation (void)
   wdt_reload();
   if (mem_read(mem[MB_CONFIG].start + sizeof(config), (uint8_t *)&DV, sizeof(DV)) &&
     DV.crc == crc16_calc((uint8_t *)&DV, sizeof(DV) - 2u)) {
-    DV.IMEIGSM[sizeof(DV.IMEIGSM) - 1] = 0; // Завершаем после проверки CRC.
-    strcpy(device.IMEIGSM, DV.IMEIGSM); // восстанавливаем IMEI GSM
-
-    device.hardwareVersion = DV.hardwareVersion;
-    device.firmwareVersion = DV.firmwareVersion;
-    device.bootVersion = DV.bootVersion;
-    device.buildDate = DV.buildDate;
-
-    device.datetimeConfig = DV.datetimeConfig;
-    device.datetimeID = DV.datetimeID;
-    device.datetimeShedule = DV.datetimeShedule;
-    device.datetimeGroup = DV.datetimeGroup;
-    device.datetimeHoliday = DV.datetimeHoliday;
-
-    device.triggers = DV.triggers;
-
-    device.firmwareSize = DV.firmwareSize;
-    device.firmwareCRC = DV.firmwareCRC;
-    device.FWblockCount = DV.FWblockCount;
-    device.FWblockIdx = DV.FWblockIdx;
-    device.firmwarePercent = DV.firmwarePercent;
-    device.FWinProgress = DV.FWinProgress;
-    device.updateTimeout = DV.updateTimeout;
-
-    device.moduleType = DV.moduleType;
-    upload_restore(&DV);
-    store_restore(&DV);
-    sched16_restore(&DV);
-
+    user_restore_device(&DV);
   }
   fw_resume_after_boot();
 }

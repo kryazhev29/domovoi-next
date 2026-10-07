@@ -36,7 +36,7 @@ void user_unblock_recheck(bool restart)
     if (device.triggers.handUnBlock) next = 1;
     else if (device.triggers.sheduleUnBlock && log_timeKnown) {
       uint8_t scenes[8], r;
-      if (!mem_tables_ready() || !user_storage_flash_ready()) return;
+      if (!flash_exec_read_allowed()) return;
       device.day = user_getweakday(device.datetime);
       device.hour = device.datetime % 86400u / 3600u;
       device.minute = device.datetime % 3600u / 60u;
@@ -147,7 +147,7 @@ bool user_incomingcall (char* num, uint8_t typ)
 
 // Проверить все условия доступа ID до включения выходов.
 void user_checkIdAndControl(char *id, codeType_e tp){
-  if (!mem_tables_ready()) return;
+  if (!flash_exec_read_allowed()) return;
 
   if (unblock_active) return;
 
@@ -330,13 +330,30 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
       id_watch_end(id_time_end(&cellId));
       started = save = true;
     }
-    if (save && !user_updateID(&cellId)) return false;
+    if (save) {
+      if (!user_updateID(&cellId)) return false;
+      store_io_s *p = &flash_job.data.storeio;
+      p->outputs = (uint8_t)(run[0] | (run[1] << 1));
+      p->type = (uint8_t)tp;
+      p->count = cnt;
+      p->started = started;
+      p->event = (uint16_t)server_out_event;
+      return true;
+    }
   }
 
+  user_access_complete((uint8_t)(run[0] | (run[1] << 1)), tp, id, cnt, started);
+  return true;
+}
+
+// Реле и события публикуются после долговечной записи счётчика проходов.
+void user_access_complete(uint8_t outputs, codeType_e tp, char *id, uint8_t cnt, bool started)
+{
+  uint8_t out;
   /* Реле - сразу после решения (счётчик проходов уже сохранён, B25), журнал - после:
      запись событий не задерживает щелчок. */
   for (out = 0; out < 2; out++){
-    if (!run[out]) continue;
+    if (!(outputs & (1u << out))) continue;
     // импульс
     if (config.rele[out].mode == 0){
       out_load(out, OUT_IMP, config.rele[out].tImpulse, config.rele[out].tPause, config.rele[out].cnt);
@@ -365,7 +382,7 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
   if (cnt != 255) log_addControlEvent(LOG_CON_PASSCOUNT, id, cnt);
   if (cnt == 0) log_addControlEvent(LOG_CON_PASSLIMIT, id, 0); // 79: последний проход суток
   if (started) log_addControlEvent(LOG_CON_IDTIMESTART, id, 255);
-  return true;
+
 }
 
 // Вернуть последние десять символов телефонного номера.
@@ -374,4 +391,18 @@ char* user_last10digitsnumber (char* num)
   uint16_t l = strlen(num);
 
   return (l <= 10)?num:(num + (l-10));
+}
+
+// Чистый доступ идёт между шагами; доступ с изменением ID ждёт свободного исполнителя.
+bool user_access_ready(const char *id)
+{
+  if (!flash_exec_read_allowed()) return false;
+  if (flash_exec_idle() || unblock_active) return true;
+  if (device.status.autoRegistration) return false;
+  cellID_s cell;
+  uint8_t found = user_findID((char *)id, &cell);
+  if (found > 1) return false;
+  if (found && (cell.cntPassOnDay != 255 ||
+      (cell.useTime && !id_first_pass(&cell) && device.datetime >= ID_TIME_VALID))) return false;
+  return true;
 }

@@ -248,14 +248,14 @@ def migration():
     r=migration_machine(m.flash); assert restore(r)
     assert bytes(r.flash[BASE:BASE+2048])==saved
     assert int.from_bytes(r.u.mem_read(r.device+r.d['datetimeShedule'],4),'little')==123456
-    assert r.checked('user_clearMemBlock',4,budget=3000000); migrated(r,neighbor)
+    assert factory_schedule(r); migrated(r,neighbor)
     # Ошибка чтения закрывает доступ к таблице и сохраняет нулевую отметку времени.
     r=migration_machine(initial); r.fault=('read',1)
     assert not r.checked('sched16_boot',budget=3000000)
-    assert not r.checked('mem_tables_ready')
+    assert not r.checked('flash_exec_read_allowed')
     r=migration_machine(initial)
     r.stubs[r.addr('user_writeConfigAndDevice')]=lambda:r.ret(0)
-    assert not restore(r) and not r.checked('mem_tables_ready')
+    assert not restore(r) and not r.checked('flash_exec_read_allowed')
     r=migration_machine(r.flash); assert restore(r); migrated(r,neighbor)
     # Проверяем настоящий вызов user_init; периферия и прочая стартовая
     # работа заменены заглушками, восстановление устройства проверено выше.
@@ -270,6 +270,21 @@ def migration():
 
 
 # Проверяет повтор перехода после каждого устойчивого обрыва.
+def factory_schedule(m):
+    m.write(m.addr('store_runtime'),1,1)
+    # Проверяем сектор расписаний и прежние соседние байты; другие области нулевые.
+    for mb in (2,3,5,7,8,9):
+        m.write(m.addr('mem')+8*mb+4,0)
+    m.stubs[m.addr('user_initvariables')] = m.ret
+    assert m.checked('store_factory_begin')
+    for _ in range(5000):
+        m.now += 1
+        m.checked('user_storage_poll')
+        if not m.exec_active(12):
+            return m.checked('mem_recover',budget=3000000)
+    raise AssertionError('factory schedule clear did not finish')
+
+
 def migration_power():
     initial=legacy(); neighbor=initial[BASE-2048:BASE]
     count=0; operations=0; distinct=0
@@ -284,7 +299,7 @@ def migration_power():
         else:
             image=initial; m=migration_machine(image)
         m.record_changes=True
-        assert (m.checked('user_clearMemBlock',4,budget=3000000) if factory else restore(m))
+        assert (factory_schedule(m) if factory else restore(m))
         state=bytearray(image); operations+=len(m.changes); seen=set()
         for kind,address,data in m.changes:
             for n in sorted({0,1,len(data)//2,len(data)-1,len(data)}):

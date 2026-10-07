@@ -118,7 +118,7 @@ uint8_t user_findID(char *id, cellID_s *cell){
 }
 
 // Найти ID среди уже записанных временных записей.
-bool user_findTempID(char *id){
+uint8_t user_findTempID(char *id){
 
   uint32_t adr;
   cellID_s cellId;
@@ -128,7 +128,7 @@ bool user_findTempID(char *id){
 
   // проверим, что такого ID нет в буфере
   for (adr = mem[MB_TEMPID].start; adr < startAddress; adr += sizeof(cellID_s)){
-    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return false;
+    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return 2;
     // такой ID есть
     if (id_equal(cellId.ID, id)){
       return true;
@@ -139,7 +139,8 @@ bool user_findTempID(char *id){
 }
 
 // Добавить отсутствующий ID в первое свободное место временной таблицы.
-void user_addIdToTempBuffer(char *id, codeType_e tp){
+bool user_addIdToTempBuffer(char *id, codeType_e tp){
+  if (!flash_exec_idle()) return false;
 
   uint32_t adr;
   uint32_t endAdr = mem[MB_TEMPID].start + mem[MB_TEMPID].size;
@@ -148,11 +149,13 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
 
   if (startAddress < mem[MB_TEMPID].start) startAddress = mem[MB_TEMPID].start;
 
-  if (user_findTempID(id)) return;
+  uint8_t found = user_findTempID(id);
+  if (found == 1) return true;
+  if (found > 1) return false;
 
   // по странично
   for (adr = startAddress; adr < endAdr; adr += sizeof(cellID_s)){
-    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
+    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return false;
     // ячейка пустая, она должна быть стерта
     if (cellId.index == 0xffff){
       memset(&cellId, 0, sizeof(cellId)); // новая запись без чужих флагов и резерва
@@ -163,12 +166,18 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
         case CT_WIEGAND: cellId.isWiegand = 1; break;
         default: break;
       }
-      if (!mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
+      flash_exec_args_t args = { NULL, FS_SYNC };
+      if (!flash_exec_begin(FX_STORE, &args)) return false;
+      bool ok = mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s));
+      flash_exec_finish(ok ? FX_OK : FX_ERROR);
+      flash_exec_take_result();
+      if (!ok) return false;
       device.newAddressTempID = adr + sizeof(cellID_s);
       device.status.readyID = 1;
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 // Сверить стартовую базу с меткой индекса и вернуть число живых ID.
@@ -249,6 +258,7 @@ uint16_t user_getTempIDRecordsCount(void){
 
 // Записать изменённые параметры ID и обновить соответствие индекса.
 bool user_updateID(cellID_s *c){
+  if (!flash_exec_idle()) return false;
   uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
   uint8_t stored[32];
   uint16_t index;
@@ -272,7 +282,7 @@ bool user_updateID(cellID_s *c){
   }
   idcrc_unknown(); return false;
 update: {
-  bool result=mem_patch(adr,(const uint8_t*)c,sizeof(cellID_s));
+  bool result = store_id_begin(adr, c);
   if(!result) idcrc_unknown();
   return result;
 }

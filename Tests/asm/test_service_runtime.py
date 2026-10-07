@@ -143,8 +143,8 @@ def wire_and_budgets():
             m = ServiceMachine(used, total)
             m.packet(cmd, idx, channel)
             assert m.active() and not m.sent
-            assert not m.checked('user_storage_command_ready')
-            assert not m.checked('user_storage_flash_ready')
+            assert not m.checked('flash_exec_idle')
+            assert m.checked('flash_exec_read_allowed'), 'CRC must allow clean reads between steps'
             assert not m.acquisitions, 'transport held while reading flash'
             m.drain(60000)
             assert m.sent == [m.expected(cmd, idx)], (cmd, idx, used, channel)
@@ -222,12 +222,12 @@ def faults_and_lifetime():
 def config_reply():
     m = ServiceMachine(); s = fields('store_state_s')
     base = m.addr('store')
-    for name, value in (('job', 8), ('cmd', 12), ('channel', 0), ('uniq', 37)):
+    for name, value in (('intent', 8), ('cmd', 12), ('channel', 0), ('uniq', 37)):
         m.write(base + s[name], value, 1)
     m.write(m.addr('config') + fields('config_s')['datetime'], 123456789)
     held = take(m,REPLY); assert held
     m.tick(); assert not m.active() and not m.sent
-    assert int.from_bytes(m.u.mem_read(base+s['job'], 1), 'little') == 8
+    assert int.from_bytes(m.u.mem_read(base+s['intent'], 1), 'little') == 8
     drop(m,REPLY,held)
     m.tick(); assert m.active() and not m.timestamps
     m.busy = True
@@ -378,7 +378,7 @@ def real_w25():
 def unrecovered_storage():
     # Ошибка старта оставляет таблицы закрытыми: внутренний запрос не повторяет восстановление.
     m=ServiceMachine();m.write(m.addr('mem_storage_ready'),0,1);m.write(m.addr('store_runtime'),0,1)
-    reads=m.counts['read'];assert not m.checked('mem_tables_ready') and m.counts['read']==reads
+    reads=m.counts['read'];assert not m.checked('flash_exec_read_allowed') and m.counts['read']==reads
     for mode in ('not-recovered', 'journal-fault'):
         m = ServiceMachine()
         if mode == 'not-recovered': m.write(m.addr('mem_storage_ready'), 0, 1)

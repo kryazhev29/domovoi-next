@@ -70,6 +70,6 @@ uint8_t shedule_window(const cellShedule_s *s)
 uint8_t user_checkShedule(uint8_t number)
 {
   cellShedule_s shedule;
-  uint8_t r = mem_tables_ready() ? sched16_get(number, &shedule) : 2;
+  uint8_t r = flash_exec_read_allowed() ? sched16_get(number, &shedule) : 2;
   return r != 1 ? r : shedule.blocked ? 0 : shedule_window(&shedule);
 }

@@ -22,7 +22,7 @@ def append(m,index):
             assert m.checked('flash_exec_take_result') == 2
             return
         assert r!=3,('append failure',m.now)
-    raise AssertionError('append stuck')
+    raise AssertionError(('append stuck', m.exec_state(), m.checked('mem_config_result')))
 
 # Возвращает действующие логические записи кольца.
 def records(m):

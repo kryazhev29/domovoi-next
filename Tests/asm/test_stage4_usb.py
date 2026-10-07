@@ -33,7 +33,7 @@ def run(baseline=False):
 
         m.u.mem_write(m.bottom, bytes.fromhex('a5a55a5a') * ((m.top - m.bottom) // 4))
         m.write(m.addr('device') + fields('device_s')['userAutorized'], 1, 1)
-        m.stubs[m.addr('user_storage_command_ready')] = lambda: m.ret(1)
+        m.stubs[m.addr('user_command_ready')] = lambda: m.ret(1)
         m.u.mem_write(m.addr('usb_buffer'), packet(command))
         m.write(m.addr('usb_buffer_count'), 11, 2)
         m.call('usb_check_data', budget=20000000)
@@ -52,7 +52,7 @@ def run(baseline=False):
 
     for mask in (0, 1):
         m = SourceMachine(); m.configure(mask)
-        m.stubs[m.addr('user_storage_command_ready')] = lambda: m.ret(1)
+        m.stubs[m.addr('user_command_ready')] = lambda: m.ret(1)
         response = bytes((i * 19 + 7) & 255 for i in range(1038))
         m.u.mem_write(0x21000000, response)
         def answer():
