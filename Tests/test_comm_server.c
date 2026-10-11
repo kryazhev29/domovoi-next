@@ -5,7 +5,7 @@ static struct {
   int8_t connectionhandle; uint8_t registredOnServer, answerTimeout, answerID;
   char IMEIGSM[16]; uint8_t protocolVersion, hardwareVersion;
   uint32_t datetime, datetimeID, datetimeGroup, datetimeShedule, datetimeConfig, datetimeHoliday;
-  uint16_t status, freeBufferSize; uint8_t firmwarePercent;
+  uint16_t status; uint8_t firmwarePercent;
 } device;
 #define CH_SERVER 1
 static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)];
@@ -375,7 +375,7 @@ static void server_reset(void)
   device.protocolVersion=2; device.hardwareVersion=139;
   device.datetime=1790900000u; device.datetimeID=1; device.datetimeGroup=2;
   device.datetimeShedule=3; device.datetimeConfig=4; device.datetimeHoliday=5;
-  device.status=0x1234; device.freeBufferSize=2048; device.answerID=0; incoming_count=sent_count=0;
+  device.status=0x1234; device.answerID=0; incoming_count=sent_count=0;
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   call_access_ready=true; call_registration_noise=false;

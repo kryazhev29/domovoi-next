@@ -374,3 +374,182 @@ def waiting_rechecks():
         assert m.effective() and m.outputs() == (0, 0)
         assert not any(x[1] == 3 for x in m.loads), 'оба ИК или ни одного: открытия нет'
     return {'restart_store_recheck_and_relay_changes': 'PASS'}
+
+
+def sms(m, text):
+    """Настоящий разбор SMS; перехватывается только отправка текста модему."""
+    replies = []
+    def send():
+        p = m.args()[0]
+        replies.append(bytes(m.u.mem_read(p, 128)).split(b'\0', 1)[0])
+        m.ret()
+    m.stubs[m.addr('user_sendsms')] = send
+    m.stubs[m.addr('log_addSystemEventID')] = lambda: m.ret(1)
+    m.write(m.addr('config') + m.cfg['pinCode'], 1234)
+    m.u.mem_write(0x21000400, b'+79031234567\0')
+    m.u.mem_write(0x21000500, text + b'\0')
+    assert m.checked('user_smsreceived', 0x21000400, 0x21000500) == 1
+    return replies
+
+
+def sms_outputs():
+    for out in range(2):
+        command = b'#setout 1234,' + str(out + 1).encode()
+        enabled = b'SETOUT: Out ' + str(out + 1).encode() + b' enabled'
+        blocked = [b'SETOUT: Error, Out is blocked']
+        m = UnblockMachine(mask=0)
+        m.set_relay(out, 'tPause', 2)
+        m.set_relay(out, 'cnt', 2)
+        m.checked('out_load', out ^ 1, 1, 0, 0, 0)
+        assert sms(m, command) == [enabled]
+        assert m.loads[-1] == (out, 3, 1, 2, 2) and m.outputs() == (1, 1)
+        assert not m.events, 'SMS не добавляет события управления'
+        m.advance(1100)
+        assert m.outputs()[out] == 0, 'SMS-импульс должен выключиться сам'
+        state = m.outputs(), bytes(m.u.mem_read(m.addr('out_time'), 4)), list(m.loads)
+        assert sms(m, command) == blocked
+        assert state == (m.outputs(), bytes(m.u.mem_read(m.addr('out_time'), 4)), m.loads)
+        m.advance(2000)
+        assert m.outputs()[out] == 1
+        m.advance(1000)
+        assert m.outputs()[out] == 0
+        m.advance(2000)
+        assert m.checked('out_getmodestate', out) == 0
+        assert sms(m, command) == [enabled]
+        for reason in ('onCmdServer', 'useInBlock', 'unblock'):
+            m = UnblockMachine(mask=0)
+            if reason == 'unblock':
+                m.triggers_command(hand=1)
+                assert m.effective() == 1
+            else:
+                m.set_relay(out, reason, int(reason == 'useInBlock'))
+            before = m.outputs(), list(m.loads)
+            assert sms(m, command) == blocked, reason
+            assert before == (m.outputs(), m.loads) and not m.events, reason
+        m = UnblockMachine(mask=0)
+        m.set_relay(out, 'mode', 1)
+        assert sms(m, command) == [enabled]
+        assert sms(m, command) == [enabled]
+        m.advance(5000)
+        assert m.outputs()[out] == 1, 'уровень включается, а не инвертируется'
+    return {'both_relays_pulse_pause_repeats_level_and_guards': 'PASS'}
+
+
+def sms_format():
+    m = UnblockMachine(mask=0)
+    for arg in (b'', b'257', b'1abc', b'12', b'01', b'+1', b'-255', b'1,2', b'1 2'):
+        assert sms(m, b'#setout 1234,' + arg) == [b'SETOUT: Error "Format not correct"'], arg
+        assert not m.loads
+    assert sms(m, b'#setout 1234,   2') == [b'SETOUT: Out 2 enabled']
+    return {'exact_output_number': 'PASS'}
+
+
+def capture_id():
+    # Известный ID после захвата снова открывает; неизвестный даёт 65 только после захвата.
+    for known in (False, True):
+        m = UnblockMachine(mask=0)
+        m.put_group(1)
+        if known:
+            m.put_id(1, b'0000123456')
+        parse(m, 6, b'\x02\x01\x00')
+        assert m.answers[-1][:2] == (6, 0)
+        m.checked('WG_readedID', 0x123456)
+        assert m.events == [(78, b'0000123456', 0)] and not m.loads
+        assert bytes(m.u.mem_read(m.device + m.d['timeToGetID'], 2)) == b'\0\0'
+        packets = []
+        m.stubs[m.addr('comm_tx_acquire')] = lambda: m.ret(0x21000800)
+        def commit():
+            packets.append(bytes(m.u.mem_read(0x21000800, m.args()[0])))
+            m.ret(1)
+        m.stubs[m.addr('comm_tx_commit')] = commit
+        m.checked('reader_reply_poll')
+        assert len(packets) == 1 and packets[0][8:20] == b'\x08\x01' + b'0000123456'
+        m.checked('reader_reply_poll')
+        assert len(packets) == 1
+        m.events.clear()
+        m.checked('WG_readedID', 0x123456)
+        assert m.events[0][0] == (71 if known else 65), m.events
+        assert bool(m.loads) == known
+    # Чужой интерфейс захвата тоже не разрешает проход по Wiegand.
+    m = UnblockMachine(mask=0)
+    m.put_group(1)
+    m.put_id(1, b'0000123456')
+    parse(m, 6, b'\x01\x03\x01')
+    m.checked('WG_readedID', 0x123456)
+    assert not m.events and not m.loads
+    m.write(m.addr('id_endScan'), 0, 1)
+    m.checked('timers_set', 3, 1000)
+    m.checked('user_loop', budget=1000000)
+    assert bytes(m.u.mem_read(m.device + m.d['timeToGetID'], 2)) == b'\0\0'
+    assert m.u.mem_read(m.addr('reader_out'), 1)[0] == 255
+    m.checked('WG_readedID', 0x123456)
+    assert m.loads and m.events[-1][0] == 71
+    # Захват не мешает звонку и команде сервера.
+    for caller in ('phone', 'server'):
+        m = UnblockMachine(mask=0)
+        m.put_group(1)
+        m.put_id(1, b'0000123456')
+        parse(m, 6, b'\x02\x01\x00')
+        if caller == 'phone':
+            m.u.mem_write(0x21000600, b'0000123456\0')
+            # Телефонный доступ проверяется настоящим путём временного ID.
+            assert m.checked('user_addIdToTempBuffer', 0x21000600, 1) == 1
+            m.checked('user_incomingcall', 0x21000600, 1)
+        else:
+            parse(m, 8, b'\x01\x01\x00')
+            assert m.answers[-1][:2] == (8, 0)
+        assert m.loads and m.u.mem_read(m.device + m.d['timeToGetID'], 1)[0] == 2
+    return {'capture_packet_event_only_and_resume': 'PASS'}
+
+
+def registration_write():
+    for arg in (b'', b'123456789', b'12345678901', b'a234567890', b'123456789a'):
+        m = UnblockMachine(mask=0)
+        assert sms(m, b'#add 1234,' + arg) == [b'ADD: Error "Format not correct"']
+        assert not m.events
+    for origin in ('sms', 'auto'):
+        for fault in ('none', 'full', 'read', 'write'):
+            m = UnblockMachine(mask=0)
+            m.write(m.addr('mem') + 8 * 8 + 4, 96)
+            start, size = struct.unpack('<II', m.u.mem_read(m.addr('mem') + 8 * 8, 8))
+            if fault == 'full':
+                m.write(m.device + m.d['newAddressTempID'], start + size)
+                m.flash[start:start+size] = bytes(size)
+            elif fault == 'read':
+                m.stubs[m.addr('w25_read_data')] = lambda: m.ret(0)
+            elif fault == 'write':
+                m.stubs[m.addr('w25_write_data')] = lambda: m.ret(0)
+            before = bytes(m.flash[start:start+size])
+            if origin == 'sms':
+                replies = sms(m, b'#add 1234,0123456789')
+                assert replies == ([b'ADD: 0123456789 - Ok'] if fault == 'none' else []), fault
+            else:
+                # status.autoRegistration — бит 5, определён контрактом структуры status_s.
+                status = int.from_bytes(m.u.mem_read(m.device + m.d['status'], 2), 'little')
+                m.write(m.device + m.d['status'], status | (1 << 5), 2)
+                m.u.mem_write(0x21000600, b'0123456789\0')
+                m.checked('user_checkIdAndControl', 0x21000600, 2, budget=2000000)
+            additions = [e[0] for e in m.events if e[0] in (67, 68)]
+            assert additions == ([67 if origin == 'sms' else 68] if fault == 'none' else []), (origin, fault, m.events)
+            assert (bytes(m.flash[start:start+size]) != before) == (fault == 'none')
+    return {'invalid_ID_and_write_failures_no_false_success': 'PASS'}
+
+
+def repeats255():
+    for pause in (0, 1):
+        m = UnblockMachine()
+        m.set_relay(0, 'cnt', 255)
+        m.set_relay(0, 'tPause', pause)
+        m.triggers_command(hand=1)
+        rises = 1
+        previous = 1
+        for _ in range(2550 * (pause + 1)):
+            m.checked('out_process')
+            state = m.outputs()[0]
+            rises += int(state and not previous)
+            previous = state
+        assert m.outputs()[0] == 0 and m.checked('out_getmodestate', 0) == 0
+        assert rises == (255 if pause else 1), rises
+        m.checked('user_unblock_poll')
+        assert m.outputs() == (0, 0), 'ИК размыкается после конечной серии'
+    return {'255_finite_pulses_and_unblock_completion': 'PASS'}

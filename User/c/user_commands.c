@@ -242,8 +242,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           /* Запрошенный выход не включился (не разрешён, занят, кончились проходы) - ответ 2,
              а не «выполнено»: сервер должен знать, что дверь не открылась (18.09.2026). */
           if ((ptr[6] == 1 || ptr[7] == 1) &&
-              !user_activateOut((ptr[6] == 1) && config.rele[0].onCmdServer,
-                           (ptr[7] == 1) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer))
+              !user_activateOut(ptr[6] == 1, ptr[7] == 1, CT_SERVER, tempStrBuffer))
             res8 = CMD_RUNERROR;
         }
         user_send_answer_comand(ptr[4], res8, cch, uniqId);

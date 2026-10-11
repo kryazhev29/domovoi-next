@@ -64,7 +64,7 @@ def setup(kind, busy):
     elif kind == 'fw_setup':
         m = FirmwareMachine(); m.fixture(); transport(m, busy); m.begin(2, 0, True)
         body = struct.pack('<HBBBBBIH', 11, 255, 7, 11, 19, 0,
-                           m.read_word(m.device+47), m.read_word(m.device+165, 2))
+                           m.read_word(m.device+47), 2048)
         expected = b'SLDN' + body + struct.pack('<H', crc16(body))
         active = lambda: bool(m.ptr())
     elif kind == 'clear':

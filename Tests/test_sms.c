@@ -12,7 +12,6 @@
 #define DEBUG_USER
 #define OUT1 0
 #define OUT2 1
-#define OUT_ON 1
 static struct { uint8_t before[16]; char bytes[128]; uint8_t after[16]; } scratch;
 #define tempStrBuffer scratch.bytes
 static char debug_text[128];
@@ -29,7 +28,7 @@ static uint8_t comm_server_address(void) { return server_address; }
 static unsigned value_events, plain_events; static logSystem_e last_event; static char value_id[11];
 static bool log_refuse;
 static bool log_addSystemEvent(logSystem_e event) { if (log_refuse) return false; last_event = event; plain_events++; return true; }
-static bool quiet;
+static bool quiet, add_ok;
 static unsigned sent, received_events, sent_events, added, controls, resets, outputs, forwarded;
 static unsigned last_output;
 static char expected_added_id[11] = "0123456789";
@@ -54,17 +53,27 @@ static bool log_addSystemEventID(logSystem_e event, char *id)
     else { CHECK(event == LOG_SYS_SENDSMS); strcpy(send_id, id); sent_events++; }
     return true;
 }
-static void user_addIdToTempBuffer(char *id, codeType_e type)
+static bool user_addIdToTempBuffer(char *id, codeType_e type)
 {
     uintptr_t address = (uintptr_t)id;
     if (address >= input_begin && address < input_end) CHECK(input_end - address >= 10);
-    CHECK(type == CT_OTHER && !memcmp(id, expected_added_id, 10)); added++;
+    CHECK(type == CT_OTHER && !memcmp(id, expected_added_id, 10));
+    if (!add_ok) return false;
+    added++;
+    return true;
 }
 static bool log_addControlEvent(logControl_e event, char *id, uint8_t cnt)
 { CHECK(event == LOG_CON_IDADDBYSMS && !memcmp(id, expected_added_id, 10) && cnt == 0); controls++; return true; }
 static void user_factoryReset(void) { resets++; }
-static void out_load(uint8_t out, uint8_t mode, uint16_t activ, uint16_t pause, uint8_t period)
-{ CHECK(mode == OUT_ON && activ == 0 && pause == 0 && period == 0); last_output = out; outputs++; }
+static bool user_activateOut(bool out1, bool out2, codeType_e type, char *id)
+{
+    CHECK(type == CT_SERVER && id == NULL && out1 != out2);
+    unsigned out = out2 ? 1 : 0;
+    if (!config.rele[out].onCmdServer) return false;
+    last_output = out;
+    outputs++;
+    return true;
+}
 static bool sms_slot_busy;
 static bool user_send_smsToServer(char *data)
 { if(sms_slot_busy)return false; CHECK(strlen(data) < sizeof(forwarded_text)); strcpy(forwarded_text, data); forwarded++; return true; }
@@ -96,7 +105,7 @@ static void init(void)
     config.useServer1 = config.useServer2 = 1; server_address = 0;
     value_events = plain_events = 0; log_refuse = false;
     sent = received_events = sent_events = added = controls = resets = outputs = forwarded = 0;
-    quiet = false; last_output = 255;
+    quiet = false; add_ok = true; last_output = 255;
     strcpy(expected_added_id, "0123456789"); input_begin = input_end = 0;
 }
 static void run_case(const char *command, const char *reply, unsigned mode)
@@ -104,6 +113,7 @@ static void run_case(const char *command, const char *reply, unsigned mode)
     char number[] = "+79031234567", message[100];
     init(); CHECK(strlen(command) < sizeof(message)); strcpy(message, command);
     quiet = mode == 1; if (mode == 2) config.rele[0].onCmdServer = false;
+    if (mode == 3) add_ok = false;
     device.triggers.smsToAdmin = true;
     user_smsreceived(number, message);
     CHECK(received_events == 1 && !strcmp(recv_id, "9031234567"));
@@ -195,17 +205,17 @@ static void test_add_bounds(bool short_only)
         char *message = malloc(prefix + length + 1); CHECK(message != NULL);
         memcpy(message, "#add 1234,", prefix); memcpy(message + prefix, expected_added_id, length + 1);
         input_begin = (uintptr_t)message; input_end = input_begin + prefix + length + 1;
-        memset(&tempStrBuffer[106], 'Q', sizeof(tempStrBuffer) - 106);
         char number[] = "+79031234567", expected[64];
-        snprintf(expected, sizeof(expected), "ADD: %s - Ok", expected_added_id);
+        if (length == 10) snprintf(expected, sizeof(expected), "ADD: %s - Ok", expected_added_id);
+        else strcpy(expected, "ADD: Error \"Format not correct\"");
         user_smsreceived(number, message);
-        CHECK(added == 1 && controls == 1 && sent == 1);
+        CHECK(added == (length == 10) && controls == added && sent == 1);
         CHECK(!strcmp(sent_message, expected) && !strcmp(sent_number, number));
         CHECK(!strcmp(send_id, "9031234567"));
         for (unsigned j = 0; j < sizeof(scratch.after); j++) CHECK(scratch.after[j] == 0xa7);
         free(message); input_begin = input_end = 0;
     }
-    puts("smsadd: 10-byte ID terminates; short arguments are copied and zero-padded within bounds passed");
+    puts("smsadd: exactly 10 digits accepted; short arguments rejected within bounds PASS");
 }
 // Те же разбор и проверка, что в прошивке: длина, ведущие нули и неверный IMEI.
 static void test_pin(void)
@@ -243,6 +253,14 @@ int main(int argc, char **argv)
     run_case("#setout 1234,1", "SETOUT: Error \"Update in progress\"", 1); CHECK(!outputs);
     run_case("#default 1234,", "DEFAULT: Error \"Update in progress\"", 1); CHECK(!resets);
     run_case("#add 1234,0123456789", "ADD: 0123456789 - Ok", 0); CHECK(added == 1 && controls == 1);
+    run_case("#add 1234,0123456789", NULL, 3); CHECK(!added && !controls);
+    run_case("#add 1234,01234567890", "ADD: Error \"Format not correct\"", 0); CHECK(!added && !controls);
+    for (unsigned i = 0; i < 10; i++) {
+        char text[] = "#add 1234,0123456789";
+        text[10 + i] = 'a';
+        run_case(text, "ADD: Error \"Format not correct\"", 0);
+        CHECK(!added && !controls);
+    }
     run_case("#add 1234", "ADD: Error \"Format not correct\"", 0); CHECK(!added && !controls);
     run_case("#imei 1234,", "IMEI: 123456789012345", 0);
     run_case("#status 1234,", "STATUS:\r\n-SIGNAL: 17\r\n-NET: 4G\r\n-CLOUD: 1/1\r\n-FW: 71\r\n-TRIG: 0/0/0/0", 0);
@@ -251,6 +269,14 @@ int main(int argc, char **argv)
     run_case("#setout 1234,2", "SETOUT: Out 2 enabled", 0); CHECK(outputs == 1 && last_output == OUT2);
     run_case("#setout 1234,1", "SETOUT: Error, Out is blocked", 2); CHECK(!outputs);
     run_case("#setout 1234", "SETOUT: Error \"Format not correct\"", 0); CHECK(!outputs);
+    run_case("#setout 1234,   2", "SETOUT: Out 2 enabled", 0); CHECK(outputs == 1 && last_output == OUT2);
+    const char *bad_out[] = {"", "257", "1abc", "12", "01", "+1", "-255", "1,2", "1 2"};
+    for (unsigned i = 0; i < sizeof(bad_out) / sizeof(bad_out[0]); i++) {
+        char text[64];
+        snprintf(text, sizeof(text), "#setout 1234,%s", bad_out[i]);
+        run_case(text, "SETOUT: Error \"Format not correct\"", 0);
+        CHECK(!outputs);
+    }
     run_case("#setout 1234,3", "SETOUT: Error \"Format not correct\"", 0); CHECK(!outputs);
     run_case("#setout 1234,0", "SETOUT: Error \"Format not correct\"", 0); CHECK(!outputs);
     run_case("#default 1234,", "DEFAULT: Complete", 0); CHECK(resets == 1);

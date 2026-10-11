@@ -139,7 +139,7 @@ bool user_findTempID(char *id){
 }
 
 // Добавить отсутствующий ID в первое свободное место временной таблицы.
-void user_addIdToTempBuffer(char *id, codeType_e tp){
+bool user_addIdToTempBuffer(char *id, codeType_e tp){
 
   uint32_t adr;
   uint32_t endAdr = mem[MB_TEMPID].start + mem[MB_TEMPID].size;
@@ -148,11 +148,11 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
 
   if (startAddress < mem[MB_TEMPID].start) startAddress = mem[MB_TEMPID].start;
 
-  if (user_findTempID(id)) return;
+  if (user_findTempID(id)) return true;
 
   // по странично
   for (adr = startAddress; adr < endAdr; adr += sizeof(cellID_s)){
-    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
+    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return false;
     // ячейка пустая, она должна быть стерта
     if (cellId.index == 0xffff){
       memset(&cellId, 0, sizeof(cellId)); // новая запись без чужих флагов и резерва
@@ -163,12 +163,13 @@ void user_addIdToTempBuffer(char *id, codeType_e tp){
         case CT_WIEGAND: cellId.isWiegand = 1; break;
         default: break;
       }
-      if (!mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return;
+      if (!mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return false;
       device.newAddressTempID = adr + sizeof(cellID_s);
       device.status.readyID = 1;
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 // Сверить стартовую базу с меткой индекса и вернуть число живых ID.

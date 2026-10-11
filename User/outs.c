@@ -78,8 +78,7 @@ void out_process (void)
           if (out_timepause[i] == 0) // формирование длинного импульса без паузы
           {
             out_time[i] = out_timeactiv[i];
-            if (out_period[i] != 255)
-              out_period[i]--;
+            out_period[i]--;
             if (out_period[i] == 0)
               out_set (i, 0); // закончился повтор - выключаем выход
           }
@@ -93,8 +92,7 @@ void out_process (void)
         {
           out_activpause |= (1<<i);
           out_time[i] = out_timeactiv[i];
-          if (out_period[i] != 255)
-            out_period[i]--;
+          out_period[i]--;
         }
       }
     }

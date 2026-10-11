@@ -97,7 +97,7 @@ uint8_t user_findID(char *id, cellID_s *cell);
 // поиск ID во временном буфере
 bool user_findTempID(char *id);
 // добавляет ID во временный буфер
-void user_addIdToTempBuffer(char *id, codeType_e tp);
+bool user_addIdToTempBuffer(char *id, codeType_e tp);
 // проверка ID по параметрам и управление выходом
 void user_checkIdAndControl(char *id, codeType_e tp);
 // управление выходом в соответствии с настройками

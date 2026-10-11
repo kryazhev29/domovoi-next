@@ -321,3 +321,31 @@ def pin_commands():
         assert m.answers[-1] == (12, 1, 1, 42)
         assert (bytes(m.u.mem_read(m.addr('config'), 512)), bytes(m.flash)) == before
     return {'pin_command_cases': count + 7}
+
+
+def rx_capacity():
+    for channel in (0, 1):
+        m = ServiceMachine()
+        for used in (0, 1, 100, 2048, 0):
+            m.write(m.addr('server_rx_count'), used, 2)
+            m.write(m.device + m.d['freeBufferSize'], 777, 2)
+            assert m.checked('user_comm_rx_capacity') == 2048 - used
+            m.write(m.addr('uniqIDCnt'), 42, 1)
+            m.checked('user_send_statusPack', channel)
+            body = struct.pack('<HBBBIHH', 18, 15, 42, 2, 0x78563412, 0, 2048 - used) + bytes(7)
+            assert m.sent[-1] == b'SLDN' + body + struct.pack('<H', crc16(body)), (channel, used, m.sent[-1].hex())
+            m.checked('answer11', 0x21000300, 42, 8, 0)
+            body = struct.pack('<HBBBBBIH', 11, 255, 42, 11, 8, 0, 0x78563412, 2048 - used)
+            assert bytes(m.u.mem_read(0x21000300, 19)) == b'SLDN' + body + struct.pack('<H', crc16(body))
+    return {'status1_answer11_dynamic_free_and_full_frames': 'PASS'}
+
+
+def fw_request_ttl():
+    for channel in (0, 1):
+        m = ServiceMachine()
+        for block in (0, 7, 65535):
+            m.write(m.addr('uniqIDCnt'), 42, 1)
+            assert m.checked('user_getFWblockFromServer', channel, block) == 1
+            body = struct.pack('<HBBBH', 5, 20, 42, 13, block)
+            assert m.sent[-1] == b'SLDN' + body + struct.pack('<H', crc16(body))
+    return {'request13_TTL20_and_unchanged_frame': 'PASS'}
