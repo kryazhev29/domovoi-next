@@ -17,9 +17,7 @@ static struct {
     uint8_t net_registered;
     slm_status_t status;
     uint32_t step_started;
-#if DOMOVOI_DIAG
     uint32_t phase_started, attempt_started;
-#endif
     uint32_t now, next;
   } attempt;
   /* Удачный источник и APN живут до выключения модема, включая потерю PDP. */
@@ -35,12 +33,10 @@ static struct {
   /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
      данные уходят в том же poll; результат забирает только владелец req. */
   struct { const comm_side_t *req; uint8_t queued, running, prompted, done, result; } side;
-#if DOMOVOI_DIAG
   slm_diag_t diag;
-#endif
 } slm;
 #if DOMOVOI_DIAG
-typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 128u) ? 1 : -1];
+typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 136u) ? 1 : -1];
 #endif
 
 #if DOMOVOI_DIAG
@@ -51,18 +47,32 @@ static uint16_t slm_elapsed(uint32_t start)
   return ticks > UINT16_MAX ? UINT16_MAX : (uint16_t)ticks;
 }
 #endif
+/* Записать сбой, не изменяя рабочий шаг модема. */
+void comm_modem_failure(uint8_t reason, uint16_t code)
+{
+  uint8_t slot = slm.diag.failure_next;
+  uint32_t seconds = (slm.attempt.now - slm.attempt.attempt_started) / 1000u;
+  slm.diag.failures[slot] = slm.attempt.status.phase | (uint32_t)reason << 3 | seconds << 8;
+  slm.diag.failure_next = slot == 9u ? 0 : (uint8_t)(slot + 1u);
+  if (slm.diag.failure_count < 10u) ++slm.diag.failure_count;
+#if DOMOVOI_DIAG
+  slm.diag.last_code = code;
+#else
+  (void)code;
+#endif
+}
 /* Единственная запись длительностей, завершений и кольца сбоев.
    STEP_COUNT+1 — текущий снимок, STEP_COUNT — завершение без нового шага. */
 void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
 {
-#if DOMOVOI_DIAG
   if (slm.attempt.recording) {
+#if DOMOVOI_DIAG
     slm.diag.steps[slm.attempt.status.step] = slm_elapsed(slm.attempt.step_started);
+#endif
     if (!(slm.attempt.status.completed_phases & (1u << slm.attempt.status.phase)))
-      slm.diag.phases[slm.attempt.status.phase] = slm_elapsed(slm.attempt.phase_started);
+      slm.diag.phases[slm.attempt.status.phase] = slm.attempt.now - slm.attempt.phase_started;
   }
   if (next > SLM_STEP_COUNT) return;
-#endif
   slm.attempt.status.modem_code = code;
   slm.attempt.status.reason = reason;
 #if DOMOVOI_DIAG
@@ -72,34 +82,26 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
     : next < SLM_AT_READY ? SLM_PHASE_POWER : next >= SLM_TCP ? SLM_PHASE_TCP
     : (uint8_t)(slm_steps[next - SLM_AT_READY].action >> 4);
   if (phase != slm.attempt.status.phase) {
-#if DOMOVOI_DIAG
     slm.attempt.status.completed_phases |= (uint8_t)(1u << slm.attempt.status.phase);
-#endif
     if (phase < SLM_PHASE_COUNT) {
       slm.attempt.status.phase = phase;
-#if DOMOVOI_DIAG
       slm.attempt.phase_started = slm.attempt.now;
       if (!(slm.attempt.status.completed_phases & (1u << phase))) slm.diag.phases[phase] = 0;
-#endif
     }
   }
   if (reason && !comm_channel_expected()) {
     comm_recover_failure(slm.attempt.status.step, reason, slm.attempt.now);
-#if DOMOVOI_DIAG
-    uint8_t slot = slm.diag.failure_next;
-    uint32_t seconds = (slm.attempt.now - slm.attempt.attempt_started) / 1000u;
-    slm.diag.failure_seconds[slot] = seconds > UINT16_MAX ? UINT16_MAX : (uint16_t)seconds;
-    slm.diag.failure_step[slot] = slm.attempt.status.step;
-    slm.diag.failure_reason[slot] = reason;
-    slm.diag.last_code = code;
-    slm.diag.failure_next = slot + 1u == sizeof(slm.diag.failure_step) ? 0 : (uint8_t)(slot + 1u);
-    if (slm.diag.failure_count < sizeof(slm.diag.failure_step)) ++slm.diag.failure_count;
-#endif
+    comm_modem_failure(reason, code);
   }
   if (next == SLM_STEP_COUNT && slm.attempt.status.step == SLM_READ && !reason)
     slm.attempt.status.step = SLM_TCP;
   slm.attempt.recording = next < SLM_STEP_COUNT;
   if (slm.attempt.recording) {
+    if (next == SLM_TCP) {
+      slm.attempt.status.completed_phases &= (uint8_t)~(1u << SLM_PHASE_TCP);
+      slm.attempt.phase_started = slm.attempt.now;
+      slm.diag.phases[SLM_PHASE_TCP] = 0;
+    }
     slm.attempt.status.step = next; slm.attempt.step_started = slm.attempt.now;
 #if DOMOVOI_DIAG
     slm.diag.steps[next] = 0;
@@ -275,17 +277,15 @@ static void slm_begin(bool power, uint32_t now_ms)
   static const comm_at_handlers_t at_handlers = {slm_event, NULL};
 #if DOMOVOI_DIAG
   memset(slm.diag.steps, 0, sizeof(slm.diag.steps));
-  memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
 #endif
+  memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
   memset(&slm.attempt, 0, sizeof(slm.attempt));
   slm_side_cancel(); slm.call_active = 0;
   if (power || !slm.apn.locked) memset(&slm.apn, 0, sizeof(slm.apn));
   ++slm.session;
-#if DOMOVOI_DIAG
-  slm.attempt.now = slm.attempt.attempt_started = slm.attempt.phase_started = now_ms;
-#else
   slm.attempt.now = now_ms;
-#endif
+  slm.attempt.attempt_started = now_ms;
+  slm.attempt.phase_started = now_ms;
   slm.attempt.status.state = SLM_STARTING; slm.attempt.recording = 1;
   comm_uart_abort();
   comm_uart_init(115200);
@@ -468,10 +468,13 @@ static uint8_t slm_issue(uint8_t step)
 
 /* Сообщить, готовы ли SIM, сеть и мобильный интернет. */
 bool comm_modem_ready(void) { return slm.attempt.status.state == SLM_READY; }
+const slm_diag_t *comm_modem_diag(void)
+{
 #if DOMOVOI_DIAG
-/* Выдать стендовые времена шагов и историю отказов. */
-const slm_diag_t *comm_modem_diag(void) { slm.diag.apn_source = slm.apn.source; return &slm.diag; }
+  slm.diag.apn_source = slm.apn.source;
 #endif
+  return &slm.diag;
+}
 /* Выдать текущее состояние и причину отказа модема. */
 const slm_status_t *comm_modem_status(void) { return &slm.attempt.status; }
 
@@ -560,12 +563,10 @@ void comm_modem_poll(uint32_t now_ms)
 {
   if (slm.attempt.status.state == SLM_IDLE) return;
   slm.attempt.now = now_ms;
+  comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
   /* При снятом/нарастающем питании UART может ловить FE и шум загрузки.
      Это не ответ AT: начинаем чистый поток после выдержки POWER_BOOT. */
   if (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step <= SLM_POWER_BOOT) {
-#if DOMOVOI_DIAG
-    comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
-#endif
     comm_power_v5_poll(now_ms);
     uint8_t p = comm_power_v5_state();
     if (p != slm.attempt.status.step + 1u) {
@@ -577,9 +578,6 @@ void comm_modem_poll(uint32_t now_ms)
   comm_at_poll(now_ms); /* После ошибки шага завершаем ресинхронизацию. */
   slm_side_issue();
   if (slm.attempt.status.state != SLM_STARTING) return;
-#if DOMOVOI_DIAG
-  comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
-#endif
   if (slm.attempt.done) slm_completed();
   if (slm.attempt.status.state != SLM_STARTING) return;
   if (slm.call_active && slm_side_allowed()) return;

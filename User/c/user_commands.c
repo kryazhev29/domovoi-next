@@ -20,7 +20,7 @@ static bool usb_cmd_without_pin(uint8_t cmd)
 #if DOMOVOI_DIAG
   return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND || cmd == USB_COMM_DIAG_COMMAND;
 #else
-  return cmd == 100 || cmd == 101 || cmd == 102;
+  return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_COMM_DIAG_COMMAND;
 #endif
 }
 
@@ -481,11 +481,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if (cch == CH_USB)
         user_send_usbDiag(uniqId);
       break;
+    #endif
     case USB_COMM_DIAG_COMMAND:
       if (cch == CH_USB) { user_send_commDiag(uniqId); }
       break;
 
-    #endif
     case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */
       uint8_t response[8];
       if (cch != CH_USB || len < 4) {

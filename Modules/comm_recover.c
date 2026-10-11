@@ -125,9 +125,22 @@ static void rc_night(void)
   }
 }
 
-/* Диагностика (команда 112): ожидание, ступени питания/AT/интернета; остаток паузы, мс. */
+/* Сервисный код выбирается из действующих состояний, без своего автомата. */
+uint8_t comm_recover_link(uint32_t now_ms, uint32_t *wait_left)
+{
+  *wait_left = rc.state == RC_WAIT && now_ms - rc.wait_since < rc.wait_ms ? rc.wait_ms - (now_ms - rc.wait_since) : 0;
+  if (rc.state == RC_WAIT) return LINK_RESTART_WAIT;
+  const slm_status_t *s = comm_modem_status();
+  if (s->state == SLM_STARTING) return LINK_CONNECTING;
+  if (s->reason == SLM_ERR_NO_SIM || s->reason == SLM_ERR_PIN || s->reason == SLM_ERR_PUK) return LINK_NO_SIM;
+  if (s->reason == SLM_ERR_NETWORK || (s->state == SLM_FAILED && s->phase == SLM_PHASE_NETWORK)) return LINK_NO_NETWORK;
+  if (s->reason == SLM_ERR_PDP || (s->state == SLM_FAILED && s->phase == SLM_PHASE_PDP)) return LINK_NO_INTERNET;
+  if (s->state != SLM_READY) return LINK_CONNECTING;
+  return comm_server_condition();
+}
+/* Отладочная диагностика (команда 111): ожидание, ступени питания/AT/интернета; остаток паузы, мс. */
 #if DOMOVOI_DIAG
-/* Собрать ступени и остаток паузы для команды 112. */
+/* Собрать ступени и остаток паузы для команды 111. */
 uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left)
 {
   *wait_left = rc.state == RC_WAIT && now_ms - rc.wait_since < rc.wait_ms ? rc.wait_ms - (now_ms - rc.wait_since) : 0;

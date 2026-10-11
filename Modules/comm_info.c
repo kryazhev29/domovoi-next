@@ -18,7 +18,7 @@ static struct {
   comm_info_t v;
   uint32_t next, day; /* day - срок суточной проверки сигнала */
   uint8_t step, ps, daily; /* ps: бит 0 - CGREG, бит 1 - CEREG; daily - срок day назначен */
-} info = {{99, 0, 0, 0}, 0, 0, 0, 0, 0};
+} info = {{99, 0, 0, 0, {0}}, 0, 0, 0, 0, 0};
 static void (*info_low)(uint8_t);
 /* Подключить запись события слабого сигнала. */
 void comm_info_low_signal(void (*handler)(uint8_t csq)) { info_low = handler; info.daily = 0; }
@@ -44,6 +44,17 @@ static void info_line(const uint8_t *p, uint16_t n)
     info.v.cgreg = info.ps != 0;
   }
   else if (comm_at_prefix(p, n, "+QNWINFO:")) {
+    memset(info.v.operator_code, 0, sizeof(info.v.operator_code));
+    const uint8_t *field = memchr(p, ',', n);
+    if (field) {
+      uint16_t pos = comm_at_spaces(p, n, (uint16_t)(field - p + 1u));
+      uint8_t digits = 0;
+      if (pos < n && p[pos++] == '"') {
+        while (pos < n && digits < 6u && p[pos] >= '0' && p[pos] <= '9')
+          info.v.operator_code[digits++] = (char)p[pos++];
+        if (pos >= n || p[pos] != '"' || digits < 5u) memset(info.v.operator_code, 0, sizeof(info.v.operator_code));
+      }
+    }
     /* Первое поле - технология: "LTE"/"FDD LTE"/"TDD LTE", "GSM"/"EDGE"/"GPRS", "WCDMA"/"HSPA"... */
     info.v.net = info_has(p, n, "LTE") ? 4u
       : info_has(p, n, "GSM") || info_has(p, n, "EDGE") || info_has(p, n, "GPRS") ? 1u
@@ -57,6 +68,7 @@ void comm_info_poll(uint32_t now_ms)
   /* Модем не на связи - цифры прошлого сеанса не показываем, опрос заново с начала. */
   if (!comm_modem_ready()) {
     info.v.csq = 99; info.v.creg = info.v.cgreg = info.v.net = info.ps = 0;
+    memset(info.v.operator_code, 0, sizeof(info.v.operator_code));
     info.step = 0; info.next = now_ms; return;
   }
   if ((int32_t)(now_ms - info.next) < 0) return;

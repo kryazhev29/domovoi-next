@@ -109,6 +109,15 @@ def run():
         ('channel', 'reader-reply-dropped-when-busy', 'if (!b) return;\n  b[6]', 'if (!b) { reader_out.state = 0; return; }\n  b[6]'),
         ('channel', 'low-signal-every-cycle', 'info.daily = 1; info.day', 'info.daily = 0; info.day'),
     )
+    cases += tuple(('channel', 'usb-link-code-' + code.lower(), 'return LINK_' + code + ';', 'return 255;')
+                   for code in ('CONNECTING', 'NO_SIM', 'NO_NETWORK', 'NO_INTERNET', 'IMEI_REJECTED', 'RESTART_WAIT', 'ONLINE'))
+    cases += (
+        ('channel', 'usb-link-server', '? LINK_CONNECTING : LINK_NO_SERVER;', '? LINK_CONNECTING : LINK_ONLINE;'),
+        ('channel', 'usb-link-ring-wrap', 'slot == 9u ? 0 : (uint8_t)(slot + 1u)', 'slot == 8u ? 0 : (uint8_t)(slot + 1u)'),
+        ('channel', 'usb-link-ring-capacity', 'if (slm.diag.failure_count < 10u)', 'if (slm.diag.failure_count < 9u)'),
+        ('channel', 'usb-link-ring-order', 'd->failure_count == 10u ? d->failure_next : 0u', '0u'),
+        ('channel', 'usb-link-ring-seconds', '(slm.attempt.now - slm.attempt.attempt_started) / 1000u', '(slm.attempt.now - slm.attempt.attempt_started) / 100u'),
+    )
     for group, label, old, new in cases:
         text = sources[group]
         assert old in text, label

@@ -23,27 +23,22 @@ enum { SLM_IDLE, SLM_STARTING, SLM_READY, SLM_FAILED };
 enum { SLM_APN_MANUAL, SLM_APN_NETWORK, SLM_APN_MNC, SLM_APN_EMPTY };
 enum { SLM_ERR_NONE, SLM_ERR_TIMEOUT, SLM_ERR_AT, SLM_ERR_RESPONSE,
        SLM_ERR_NO_SIM, SLM_ERR_PIN, SLM_ERR_PUK, SLM_ERR_NETWORK,
-       SLM_ERR_PDP, SLM_ERR_TCP, SLM_ERR_STREAM, SLM_ERR_NO_ANSWER, SLM_ERR_TYPE };
-#if DOMOVOI_DIAG
-/* Снимок команды 112: времена шагов и десять последних сбоев. */
+       SLM_ERR_PDP, SLM_ERR_TCP, SLM_ERR_STREAM, SLM_ERR_NO_ANSWER, SLM_ERR_TYPE, SLM_ERR_IMEI, SLM_ERR_SERVER, SLM_ERR_PROBE };
+/* Шесть этапов и кольцо сбоев общие для сервисного экрана и отладки. */
 typedef struct {
-  uint16_t steps[SLM_STEP_COUNT], phases[SLM_PHASE_COUNT];
-  uint16_t failure_seconds[10];
-  uint8_t failure_step[10], failure_reason[10];
-  uint16_t last_code;
-  uint8_t failure_next, failure_count, apn_source;
-} slm_diag_t;
+  uint32_t phases[SLM_PHASE_COUNT], failures[10];
+  uint8_t failure_next, failure_count;
+#if DOMOVOI_DIAG
+  uint16_t steps[SLM_STEP_COUNT], last_code;
+  uint8_t apn_source;
 #endif
+} slm_diag_t;
 typedef struct {
 #if DOMOVOI_DIAG
   uint32_t completed_steps;
 #endif
   uint16_t modem_code;
-#if DOMOVOI_DIAG
   uint8_t state, step, phase, reason, completed_phases, at_fault;
-#else
-  uint8_t state, step, phase, reason, at_fault;
-#endif
 } slm_status_t;
 /* Тип модема в настройках и статусе (Протокол2, команда 105): значения прежние. */
 enum { MODEM_TYPE_AUTO = 0, MODEM_TYPE_SLM336 = 2,
@@ -82,12 +77,12 @@ bool comm_modem_ready(void);
 uint8_t comm_modem_state(void);
 /* UINT8_MAX означает, что DONE ещё не получен; результат забирается один раз. */
 uint8_t comm_modem_result(void);
+/* Записать серверный сбой в общее кольцо без перехода шага модема. */
+void comm_modem_failure(uint8_t reason, uint16_t code);
 /* STEP_COUNT завершает текущий шаг, STEP_COUNT+1 обновляет снимок. */
 void comm_modem_record(uint8_t step, uint8_t reason, uint16_t code);
-#if DOMOVOI_DIAG
-/* Выдать стендовые времена шагов и историю отказов. */
+/* Выдать времена этапов и историю отказов без опроса модема. */
 const slm_diag_t *comm_modem_diag(void);
-#endif
 /* Выдать текущее состояние и причину отказа модема. */
 const slm_status_t *comm_modem_status(void);
 /* Снять питание и отменить прежний сеанс UART. */

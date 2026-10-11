@@ -50,6 +50,7 @@ def unit():
     packet = function(source('User/packet.c'),'packet_frame')+'\n'+function(source('User/packet.c'),'packet_send')
     producer_code = 'uint8_t *user_comm_acquire(uint16_t);\nbool packet_send(uint8_t*,uint16_t,uint8_t);\n' + status + helpers + packet + '\n' + packet.replace('packet_frame(', 'legacy_packet_frame(').replace('packet_send(', 'legacy_packet_send(').replace('comm_tx_commit(', 'legacy_commit(') + '\n' + legacy + '\n' + current
     producer_code += '\n' + '\n'.join(function(user,n) for n in ('user_send_statusUpdateFW','fw_status_poll','unreg_sms_note','unreg_sms_poll'))
+    producer_code += '\n' + function(source('User/c/user_diag.c'), 'user_send_commDiag').replace('USB_COMM_DIAG_COMMAND', '112')
     if '/* >>> ход обновления */' in user:
         producer_code = user[user.index('/* >>> ход обновления */'):user.index('/* <<< ход обновления */')] + producer_code
 
@@ -61,7 +62,7 @@ def unit():
     # Автоматы хранения проверяются на связанном ELF; здесь модель модема
     # проверяет уведомление владельцев при смене сеанса.
     old += '\n#define service_crc_quiet(ch) ((void)(ch))\n#define upload_runtime_quiet(ch) ((void)(ch))\n#define fw_service_quiet(ch) ((void)(ch))\n'
-    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* КОНТРОЛЬНАЯ СУММА */', function(source('Tests/reference/crc_runtime.c'), 'crc16_calcInit')+'\n'+function(source('Tests/reference/crc_runtime.c'), 'crc16_calc')).replace('/* ПРИЁМ */', rx).replace('/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */', producer_code).replace('/* ВОССТАНОВЛЕНИЕ */', source('Tests/test_comm_recover.c')).replace('/* ВЫЗОВ */', source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
+    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* КОНТРОЛЬНАЯ СУММА */', function(source('Tests/reference/crc_runtime.c'), 'crc16_calcInit')+'\n'+function(source('Tests/reference/crc_runtime.c'), 'crc16_calc')).replace('/* ПРИЁМ */', rx).replace('/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */', producer_code).replace('/* ВОССТАНОВЛЕНИЕ */', source('Tests/test_comm_recover.c')).replace('/* ВЫЗОВ */', source('Tests/test_link_diag.c') + source('Tests/test_comm_call.c') + source('Tests/test_comm_sms.c') + source('Tests/test_comm_balance.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):
     names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'User/c/user_comm_runtime.c')

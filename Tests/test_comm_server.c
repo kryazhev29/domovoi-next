@@ -100,8 +100,16 @@ typedef unsigned dataChanel_e;
 #define _2B(x) ((uint8_t)((x)>>8))
 static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
-// Обозначить границу USB, не участвующую в данном сценарии.
-static bool usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; return true; }
+static uint8_t link_wire[93];
+static uint16_t link_wire_size;
+// Перехватить настоящий кадр 112 на границе USB.
+static bool usb_send(uint8_t *p, uint16_t n)
+{
+  CHECK(n == sizeof(link_wire));
+  memcpy(link_wire, p, n);
+  link_wire_size = n;
+  return true;
+}
 /* Эталон: те же сборщики кадров пишут в отдельный буфер, кадр канала сверяется с ним байт в байт. */
 static uint8_t legacy_buffer[1040];
 // Выдать отдельный буфер для независимого эталона кадра.
@@ -622,4 +630,4 @@ static void reader_tests(void)
 /* ВОССТАНОВЛЕНИЕ */
 /* ВЫЗОВ */
 int main(void)
-{ CHECK(slm_regressions()==0); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }

@@ -27,7 +27,7 @@ def frames(wire):
 def run(baseline=False):
     costs = {}
     for command in (101, 106, 111, 112):
-        if command in (111, 112) and os.environ.get('DOMOVOI_TEST_DIAG') == '0':
+        if command == 111 and os.environ.get('DOMOVOI_TEST_DIAG') == '0':
             continue
         m = SourceMachine()
 
@@ -41,7 +41,7 @@ def run(baseline=False):
         if not baseline:
             assert m.steps < 21600, (command, m.steps)
         wire = frames(m.drain())
-        assert [p[8] for p in wire] == ([112] if baseline and command == 112 else [112, 113] if command == 112 else [command]), [p[8] for p in wire]
+        assert [p[8] for p in wire] == ([111, 113] if not baseline and command == 111 else [command]), [p[8] for p in wire]
         if command in (111, 112):
             assert all(p[7] == 73 for p in wire), wire
         if command == 106:

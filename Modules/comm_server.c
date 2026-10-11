@@ -6,13 +6,14 @@
 #include "domovoi_diag.h"
 #include "comm_server.h"
 #include "comm_channel.h"
+#include "comm_modem.h"
 #include "comm_timeouts.h"
 #include <string.h>
 static struct {
   comm_server_handlers_t handlers;
   uint32_t now, registration_since, status_since, periodic_since, stable_since, silent_since;
   uint8_t state, registrations, misses, status_id, last_status_id, silent_step, address;
-  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1, first_status:1; } flags;
+  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1, first_status:1, rejected:1, probe_failed:1; } flags;
 } sv;
 enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
 /* Вне sv: переживают comm_server_init при перезапуске модема. */
@@ -48,7 +49,11 @@ static void server_channel_event(uint8_t kind, uint8_t value)
       sv.flags.check_pending = 0;
       if (value) { sv.state = SV_SILENT; sv.silent_since = sv.now; }
       else if (sv.state == SV_PING) sv.state = SV_DNS;
-      else sv_no_internet(); /* ping и DNS не прошли: решает восстановление */
+      else {
+        sv.flags.probe_failed = 1;
+        comm_modem_failure(SLM_ERR_PROBE, 0);
+        sv_no_internet();
+      }
     }
     return;
   }
@@ -65,8 +70,15 @@ void comm_server_init(const comm_server_handlers_t *handlers)
 }
 /* Сообщить, принял ли сервер регистрацию. */
 bool comm_server_online(void) { return sv.state >= SV_ONLINE; }
+uint8_t comm_server_condition(void)
+{
+  if (sv.flags.rejected) return LINK_IMEI_REJECTED;
+  if (sv.state == SV_ONLINE) return LINK_ONLINE;
+  if (sv.flags.probe_failed) return LINK_NO_INTERNET;
+  return sv.state == SV_REG || sv.state == SV_REG_WAIT ? LINK_CONNECTING : LINK_NO_SERVER;
+}
 #if DOMOVOI_DIAG
-/* Собрать состояние надзора для стендовой команды 112. */
+/* Собрать состояние надзора для стендовой команды 111. */
 uint32_t comm_server_diag(void)
 { return sv.state | (uint32_t)sv.misses << 8 | (uint32_t)sv.registrations << 16; }
 #endif
@@ -74,7 +86,14 @@ uint32_t comm_server_diag(void)
 void comm_server_registered(uint8_t success)
 {
   if (sv.state != SV_REG_WAIT) return;
-  if (!success) { comm_channel_reopen(0); return; }
+  if (!success) {
+    sv.flags.rejected = 1;
+    comm_modem_failure(SLM_ERR_IMEI, 0);
+    comm_channel_reopen(0);
+    return;
+  }
+  sv.flags.rejected = 0;
+  sv.flags.probe_failed = 0;
   comm_channel_registered(); sv.state = SV_ONLINE; sv.flags.traffic_event = sv.misses = sv.flags.status_wait = 0;
   sv.flags.stable = 1; sv.stable_since = sv.periodic_since = sv.now;
   sv.flags.first_status = 1;
@@ -117,6 +136,7 @@ void comm_server_poll(uint32_t now_ms)
   comm_channel_poll(now_ms);
   if (sv.state == SV_OFF) return;
   if (sv.state == SV_REG_WAIT && now_ms - sv.registration_since >= comm_timeouts[COMM_T_SERVER_REPLY]) {
+    comm_modem_failure(SLM_ERR_SERVER, 0);
     if (sv.registrations < 2) sv.state = SV_REG;
     else { comm_channel_reopen(0); return; }
   }
@@ -135,7 +155,12 @@ void comm_server_poll(uint32_t now_ms)
   if (!comm_tx_busy() && !sv.flags.status_due) sv.handlers.process();
   if (sv.flags.stable && now_ms - sv.stable_since >= comm_timeouts[COMM_T_STABLE]) { sv.silent_step = 0; sv.flags.stable = 0; comm_channel_stable(); }
   if (comm_channel_call_pending()) return;
-  if (sv.state == SV_ONLINE && sv.misses >= 3) { sv.state = SV_PING; sv.flags.stable = 0; }
+  if (sv.state == SV_ONLINE && sv.misses >= 3) {
+    comm_modem_failure(SLM_ERR_SERVER, 0);
+    sv.flags.probe_failed = 0;
+    sv.state = SV_PING;
+    sv.flags.stable = 0;
+  }
   if ((sv.state == SV_PING || sv.state == SV_DNS) && !sv.flags.check_pending)
     sv.flags.check_pending = comm_channel_probe(sv.state == SV_PING ? COMM_CH_PING : COMM_CH_DNS);
   if (sv.state == SV_SILENT) {
