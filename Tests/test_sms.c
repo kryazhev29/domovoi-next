@@ -28,7 +28,8 @@ static uint8_t comm_server_address(void) { return server_address; }
 static unsigned value_events, plain_events; static logSystem_e last_event; static char value_id[11];
 static bool log_refuse;
 static bool log_addSystemEvent(logSystem_e event) { if (log_refuse) return false; last_event = event; plain_events++; return true; }
-static bool quiet, add_ok;
+static bool quiet, add_ok, flash_busy;
+static bool flash_exec_idle(void) { return !flash_busy; }
 static unsigned sent, received_events, sent_events, added, controls, resets, outputs, forwarded;
 static unsigned last_output;
 static char expected_added_id[11] = "0123456789";
@@ -106,7 +107,7 @@ static void init(void)
     config.useServer1 = config.useServer2 = 1; server_address = 0;
     value_events = plain_events = 0; log_refuse = false;
     sent = received_events = sent_events = added = controls = resets = outputs = forwarded = 0;
-    quiet = false; add_ok = true; last_output = 255;
+    quiet = flash_busy = false; add_ok = true; last_output = 255;
     strcpy(expected_added_id, "0123456789"); input_begin = input_end = 0;
 }
 static void run_case(const char *command, const char *reply, unsigned mode)
@@ -254,7 +255,12 @@ int main(int argc, char **argv)
     run_case("#setout 1234,1", "SETOUT: Error \"Update in progress\"", 1); CHECK(!outputs);
     run_case("#default 1234,", "DEFAULT: Error \"Update in progress\"", 1); CHECK(!resets);
     run_case("#add 1234,0123456789", "ADD: 0123456789 - Ok", 0); CHECK(added == 1 && controls == 1);
-    run_case("#add 1234,0123456789", NULL, 3); CHECK(!added && !controls);
+    run_case("#add 1234,0123456789", "ADD: Error", 3); CHECK(!added && !controls);
+    { char number[] = "+79031234567", message[] = "#add 1234,0123456789";
+      init(); flash_busy = true;
+      CHECK(!user_smsreceived(number, message) && !added && !sent);
+      flash_busy = false;
+      CHECK(user_smsreceived(number, message) && added == 1 && sent == 1); }
     run_case("#add 1234,01234567890", "ADD: Error \"Format not correct\"", 0); CHECK(!added && !controls);
     for (unsigned i = 0; i < 10; i++) {
         char text[] = "#add 1234,0123456789";

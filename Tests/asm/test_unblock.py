@@ -376,7 +376,7 @@ def waiting_rechecks():
     return {'restart_store_recheck_and_relay_changes': 'PASS'}
 
 
-def sms(m, text):
+def sms(m, text, accepted=1):
     """Настоящий разбор SMS; перехватывается только отправка текста модему."""
     replies = []
     def send():
@@ -388,7 +388,7 @@ def sms(m, text):
     m.write(m.addr('config') + m.cfg['pinCode'], 1234)
     m.u.mem_write(0x21000400, b'+79031234567\0')
     m.u.mem_write(0x21000500, text + b'\0')
-    assert m.checked('user_smsreceived', 0x21000400, 0x21000500) == 1
+    assert m.checked('user_smsreceived', 0x21000400, 0x21000500) == accepted
     return replies
 
 
@@ -503,6 +503,15 @@ def capture_id():
 
 
 def registration_write():
+    from test_flash_executor import hold_clear, release_clear
+    m = UnblockMachine(mask=0)
+    hold_clear(m)
+    before = bytes(m.flash)
+    assert sms(m, b'#add 1234,0123456789', accepted=0) == []
+    assert bytes(m.flash) == before and not m.events
+    release_clear(m)
+    assert sms(m, b'#add 1234,0123456789') == [b'ADD: 0123456789 - Ok']
+    assert m.flash[0x1e8002:0x1e800c] == b'0123456789'
     for arg in (b'', b'123456789', b'12345678901', b'a234567890', b'123456789a'):
         m = UnblockMachine(mask=0)
         assert sms(m, b'#add 1234,' + arg) == [b'ADD: Error "Format not correct"']
@@ -522,7 +531,7 @@ def registration_write():
             before = bytes(m.flash[start:start+size])
             if origin == 'sms':
                 replies = sms(m, b'#add 1234,0123456789')
-                assert replies == ([b'ADD: 0123456789 - Ok'] if fault == 'none' else []), fault
+                assert replies == ([b'ADD: 0123456789 - Ok'] if fault == 'none' else [b'ADD: Error']), fault
             else:
                 # status.autoRegistration — бит 5, определён контрактом структуры status_s.
                 status = int.from_bytes(m.u.mem_read(m.device + m.d['status'], 2), 'little')

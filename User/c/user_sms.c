@@ -56,7 +56,8 @@ bool user_smsreceived(char *num, char *data)
     if (!validFormat || strlen(arg) != 10u) goto format_error;
     for (uint8_t i = 0; i < 10; i++)
       if (arg[i] < '0' || arg[i] > '9') goto format_error;
-    if (!user_addIdToTempBuffer(arg, CT_OTHER)) return true;
+    if (!flash_exec_idle()) return false;
+    if (!user_addIdToTempBuffer(arg, CT_OTHER)) { strcat(reply, ": Error"); break; }
     log_addControlEvent(LOG_CON_IDADDBYSMS, arg, 0);
     strcat(reply, ": ");
     strcat(reply, arg);
