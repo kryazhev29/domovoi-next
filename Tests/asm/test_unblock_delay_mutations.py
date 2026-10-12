@@ -1,4 +1,4 @@
-"""Две регрессии разблокировки: отдельный IAR ELF в TEMP и отказ assertion."""
+"""Регрессии разблокировки: отдельный IAR ELF в TEMP и отказ assertion."""
 from test_flash_mutations import run as run_mutations
 
 
@@ -12,4 +12,15 @@ def run():
             'else if (!next && (unblock_level & (1u << i))) state = unblock_level >> 2;',
             'else if (!next && (unblock_level & (1u << i))) continue;')]),
     }
+    mutations.update({
+        'restore-opens': ('restart_and_commands', [(source,
+            'unblock_pending |= restore ? 2u : 1u;',
+            'unblock_pending |= 1u; (void)restore;')]),
+        'gate-no-debounce': ('gate_sensor', [(source,
+            'if (closed != (unblock_gate & 1u)) unblock_gate ^= 1u;',
+            'if (0) unblock_gate ^= 1u;')]),
+        'gate-repeats': ('gate_sensor', [(source,
+            'unblock_active && !(unblock_gate & 2u)',
+            'unblock_active')]),
+    })
     return run_mutations(mutations, 'test_unblock', 'unblock-delay-mutations')

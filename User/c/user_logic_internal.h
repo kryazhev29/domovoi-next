@@ -34,6 +34,8 @@ extern uint32_t id_nextEnd, log_lastIndex;
 extern bool id_endScan;
 extern logControl_e server_out_event;
 extern uint8_t unblock_active;
+enum { INPUT_GATE_CLOSED = 8 }; // Временный номер функции входа; менять только здесь.
+void user_unblock_input_poll(void);
 void user_unblock_poll(void);
 void user_unblock_recheck(bool restore);
 extern unsigned int loop_max_ms, loop_stalls;

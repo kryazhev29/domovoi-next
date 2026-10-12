@@ -325,6 +325,8 @@ void user_readinputs (void){
   device.status.stateIn1 = (adc_getinjectedvalue_mV(IN1_CHANEL) > 3000)?1:0;
   device.status.stateIn2 = (adc_getinjectedvalue_mV(IN2_CHANEL) > 3000)?1:0;
 
+  user_unblock_input_poll();
+
   // вход 1
 
   if (device.laststatus.stateIn1 != device.status.stateIn1){

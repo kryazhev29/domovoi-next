@@ -15,10 +15,49 @@ static uint32_t unblock_offline_since, unblock_minute;
    бит 2 — это состояние до разблокировки; 0 — ничего не запомнено. */
 static uint32_t unblock_wait_since;
 static uint8_t unblock_wait, unblock_level;
+/* Бит 0 — предыдущий опрос датчика, бит 1 — закрытие уже обработано. */
+static uint8_t unblock_gate;
 
 static void unblock_set(uint8_t i, uint8_t state)
 {
   out_load(i, state, 0, 0, 0);
+}
+
+// При включении ждём штатное открытие; датчик даёт один импульс при разорванной ИК.
+static void unblock_open(uint8_t relays, bool entry)
+{
+  if (!relays || relays == 3) return;
+  uint8_t i = relays & 1u;
+  if (entry) {
+    unblock_set(i ^ 1u, OUT_ON);
+    unblock_wait = i + 1;
+  }
+  if (config.rele[i].mode == 0)
+    out_load(i, OUT_IMP, config.rele[i].tImpulse,
+             entry ? config.rele[i].tPause : 0, entry ? config.rele[i].cnt : 1);
+  else {
+    if (!(unblock_level & (1u << i)))
+      unblock_level = (i + 1) | (out_getstate(i) << 2);
+    unblock_set(i, OUT_ON);
+    if (entry) {
+      unblock_wait |= 4;
+      unblock_wait_since = timers_getMillis();
+    }
+  }
+}
+
+// Два одинаковых успешных опроса АЦП; повтор разрешён после двух опросов «открыто».
+void user_unblock_input_poll(void)
+{
+  uint8_t closed = (config.inputMode[0] == INPUT_GATE_CLOSED && device.status.stateIn1) ||
+                   (config.inputMode[1] == INPUT_GATE_CLOSED && device.status.stateIn2);
+  if (!unblock_active) unblock_gate &= 1u;
+  if (closed != (unblock_gate & 1u)) unblock_gate ^= 1u;
+  else if (!closed) unblock_gate = 0;
+  else if (unblock_active && !(unblock_gate & 2u)) {
+    unblock_gate |= 2u;
+    unblock_open(unblock_relays, false);
+  }
 }
 
 // Пересчитать намерение; занятое хранилище откладывает только чтение сцен.
@@ -51,21 +90,8 @@ void user_unblock_recheck(bool restore)
   }
   relays = !!config.rele[0].useInBlock | (!!config.rele[1].useInBlock << 1);
   if (!(unblock_pending & 2u) && !unblock_active && next) {
-    if (next && relays && relays != 3) {
-      uint8_t i = relays & 1u;
-      // При новом включении сначала открытие, затем разрыв ИК.
-      unblock_set(i ^ 1u, OUT_ON);
-      unblock_wait = i + 1;
-      if (config.rele[i].mode == 0)
-        out_load(i, OUT_IMP, config.rele[i].tImpulse, config.rele[i].tPause, config.rele[i].cnt);
-      else {
-        if (!(unblock_level & (1u << i)))
-          unblock_level = unblock_wait | (out_getstate(i) << 2);
-        unblock_set(i, OUT_ON);
-        unblock_wait |= 4;
-        unblock_wait_since = timers_getMillis();
-      }
-    }
+    unblock_open(relays, true);
+    unblock_gate |= 2u; // Рабочее включение уже открыло: датчик не дублирует его.
   }
   if (!next || (unblock_pending & 2u)) unblock_wait = 0;
   // Сначала ИК, затем возврат уровня; смена назначения не обрывает импульс.
