@@ -117,9 +117,22 @@ def access():
     return out
 
 
+def temp_read_error():
+    # Ошибка временной таблицы должна остановить даже режим «открывать всем».
+    for open_any in (0, 1):
+        m = AccessMachine(); ident = 0x21000400
+        m.u.mem_write(ident, b'9999999999')
+        m.write(m.device + m.d['newAddressTempID'], 0x1e8020, 4)
+        m.write(m.device + m.d['status'], open_any << 4, 2)
+        m.fail_read()
+        m.checked('user_checkIdAndControl', ident, 2)
+        assert not m.loads and not m.events, ('temp read error granted access', open_any, m.loads)
+    return {'no_output_on_read_error': True}
+
+
 if __name__ == '__main__':
     res = {'units': 'Unicorn instructions; NOT cycles/time', 'table_cells': table_cells(), 'holidays': holidays(),
-           'find_id': find_id(), 'access': access(),
+           'find_id': find_id(), 'access': access(), 'temp_read_error': temp_read_error(),
            'elf_sha256': hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()}
     (__import__('iar_image').result_path('access_reads_results.json')).write_text(json.dumps(res, indent=2) + '\n')
     print('PASS access reads: group/schedule by cell, holiday 0/1/2, find ID read error != absent, no 65 or relay on error')

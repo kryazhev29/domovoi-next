@@ -181,7 +181,9 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   }
 
   // проверяем ID из временного буфера
-  if (user_findTempID(id)){
+  uint8_t temp = user_findTempID(id);
+  if (temp > 1) return;
+  if (temp == 1){
     user_activateOut(onOut[0], onOut[1], tp, id);
     return;
   }
