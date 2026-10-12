@@ -237,11 +237,10 @@ def restart_and_commands():
         r.stubs[r.addr(name)] = r.ret
     r.stubs[r.addr('w25_read_devID')] = lambda: r.ret(0x17c2)
     r.checked('user_init', budget=12000000)
-    assert r.effective() == 1 and r.outputs() == (1, 1)
-    assert any(x[:2] == (0, 3) for x in r.loads) and not any(x[:2] == (1, 0) for x in r.loads)
-    opening = next(i for i, x in enumerate(r.loads) if x[:2] == (0, 3))
-    assert any(x[:2] == (1, 1) for x in r.loads[:opening]), 'старт: ИК не замкнута до щелчка'
+    assert r.effective() == 1 and r.outputs() == (0, 0)
+    assert not any(x[0] == 0 for x in r.loads), 'старт повторил управление'
     r.advance(1000); assert r.outputs() == (0, 0)
+    m.advance(1000)
     # Настройки проходят настоящий разбор, A/B и применение снимка; модем не запускается.
     m.stubs[m.addr('comm_modem_valid_settings')] = lambda: m.ret(1)
     for name in ('comm_endpoints', 'user_comm_boot', 'rs485_init'): m.stubs[m.addr(name)] = m.ret
@@ -256,17 +255,19 @@ def restart_and_commands():
         assert m.effective() == 1
         m.advance(2000)
         assert m.outputs() == (0, 0), (mask, m.outputs())
-        if mask in (0, 3): assert all(x[1] != 3 for x in m.loads), 'нет реле управления'
+        assert all(x[1] != 3 for x in m.loads), 'команда 12 повторила импульс'
     m.loads.clear(); m.command(14, record(1)+tail(bytes([1])+bytes(7)), 1); m.drain()
-    assert any(x[:2] == (0, 3) for x in m.loads)
-    m.advance(1000); assert m.loads[-1][:2] == (1, 0)
+    assert not any(x[0] == 0 for x in m.loads), 'команда 14 повторила управление'
+    assert m.outputs() == (0, 0)
+    m.loads.clear(); m.command(16, bytes(4), 1); m.drain()
+    assert not any(x[0] == 0 for x in m.loads), 'команда 16 повторила управление'
     m.set_trigger('handUnBlock', 0); m.set_trigger('sheduleUnBlock', 1)
     m.write(m.addr('log_timeKnown'), 1, 1); m.checked('user_unblock_recheck', 0); assert m.effective() == 2
     m.command(14, record(1, blocked=1)+tail(bytes([1])+bytes(7)), 1); m.drain()
     assert not m.effective() and m.outputs()[1] == 1
     m = UnblockMachine(); m.set_relay(0, 'mode', 1); m.set_trigger('handUnBlock', 1)
-    for _ in range(2): m.checked('user_unblock_recheck', 1); assert m.outputs() == (1, 1)
-    m.advance(1000); assert m.outputs() == (1, 0)
+    for _ in range(2): m.checked('user_unblock_recheck', 1); assert m.outputs() == (0, 0)
+    m.advance(1000); assert m.outputs() == (0, 0)
     assert not m.checked('out_getmodestate', 0)
     return {'startup_config12_schedule14_level': 'PASS'}
 
@@ -301,10 +302,10 @@ def level_restore():
             m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0)
             assert m.outputs() == (1, 1), 'ИК разорвана при включении уровня'
             m.advance(999); assert m.outputs() == (1, 1), 'ИК разорвана раньше 1 с'
-            m.checked('user_unblock_recheck', 1)  # Не сбрасывает время и исходный уровень.
+            m.checked('user_unblock_recheck', 0)  # Не сбрасывает время и исходный уровень.
             m.advance(1); assert m.outputs()[1-relay] == 0, 'ИК не разорвана через 1 с'
             m.loads.clear(); m.checked('user_unblock_recheck', 1)
-            assert m.loads[:2] == [(1-relay, 1, 0, 0, 0), (relay, 1, 0, 0, 0)], 'перезапуск уровня: ИК не замкнута до щелчка'
+            assert m.loads == [(1-relay, 0, 0, 0, 0)], 'восстановление повторило уровень'
             m.advance(1000); assert m.outputs()[1-relay] == 0
             m.loads.clear(); m.set_trigger('handUnBlock', 0); m.checked('user_unblock_recheck', 0)
             assert m.outputs()[1-relay] == 1 and m.outputs()[relay] == initial, 'уровень не возвращён'
@@ -336,17 +337,17 @@ def waiting_rechecks():
     m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0); m.advance(400)
     m.loads.clear()
     for restart in (0, 1, 0, 1): m.checked('user_unblock_recheck', restart)
-    m.triggers_command(hand=1)  # Применение снимка в user_store вызывает restart=true.
+    m.triggers_command(hand=1)
     assert not any(x[:2] == (0, 3) for x in m.loads), 'recheck повторил импульс'
-    m.advance(500); assert m.outputs()[1] == 1
-    m.advance(100); assert m.outputs() == (0, 0), 'recheck перезапустил ожидание'
+    assert m.outputs()[1] == 0, 'восстановление не разорвало ИК сразу'
+    m.advance(600); assert m.outputs() == (0, 0), 'recheck перезапустил ожидание'
     assert m.system_events == [30]
     for relay in (0, 1):
         r = UnblockMachine(mask=1 << (1-relay)); r.checked('user_unblock_recheck', 1)
         r.set_trigger('handUnBlock', 1); r.checked('user_unblock_recheck', 0); r.advance(1000)
         r.loads.clear(); r.checked('user_unblock_recheck', 1)
-        assert r.loads[0][:2] == (1-relay, 1) and r.loads[1][:2] == (relay, 3), 'перезапуск импульса: ИК не замкнута до щелчка'
-        r.advance(900); assert r.outputs() == (1, 1)
+        assert r.loads == [(1-relay, 0, 0, 0, 0)], 'восстановление повторило импульс'
+        r.advance(900); assert r.outputs() == (0, 0)
         r.advance(100); assert r.outputs() == (0, 0) and r.system_events == [30]
     # Реле с идущим импульсом становится ИК: нельзя погасить его назначением.
     for mask in (1, 3, 0):
@@ -354,7 +355,7 @@ def waiting_rechecks():
         m.set_trigger('handUnBlock', 1); m.checked('user_unblock_recheck', 0); m.advance(400)
         m.loads.clear()
         for i in range(2): m.set_relay(i, 'useInBlock', (mask >> i) & 1)
-        m.checked('user_unblock_recheck', 1)
+        m.checked('user_unblock_recheck', 0)
         assert m.outputs()[0] == 1 and m.checked('out_getmodestate', 0), 'смена назначения оборвала импульс'
         assert not any(x[1] == 3 for x in m.loads), 'смена назначения повторила импульс'
         m.advance(500); assert m.outputs()[0] == 1

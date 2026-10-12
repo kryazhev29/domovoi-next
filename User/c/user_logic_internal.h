@@ -35,7 +35,7 @@ extern bool id_endScan;
 extern logControl_e server_out_event;
 extern uint8_t unblock_active;
 void user_unblock_poll(void);
-void user_unblock_recheck(bool restart);
+void user_unblock_recheck(bool restore);
 extern unsigned int loop_max_ms, loop_stalls;
 // Разрешить команду с учётом её владельца и состояния хранения.
 bool store_command_allowed(uint8_t cmd);

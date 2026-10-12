@@ -404,7 +404,7 @@ void user_storage_poll(void)
   if (flash_job.kind <= FX_LOG) {
     flash_result_t result = flash_exec_take_result();
     // Сцены читаются после публикации TABLE и снятия результата.
-    if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(cmd == 14);
+    if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(true);
   }
 }
 static void store_poll(uint32_t now, uint8_t result)

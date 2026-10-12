@@ -8,7 +8,7 @@
 #include "../photo.h"
 logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 uint8_t unblock_active;
-static uint8_t unblock_relays, unblock_pending, unblock_restart, unblock_offline;
+static uint8_t unblock_relays, unblock_pending, unblock_offline;
 static uint32_t unblock_offline_since, unblock_minute;
 /* Ожидание разрыва ИК: unblock_wait — бит 0/1 реле управления, бит 2 — выдержка уровня 1 с
    от unblock_wait_since. unblock_level — бит 0/1 реле уровня, чьё состояние запомнено,
@@ -22,13 +22,13 @@ static void unblock_set(uint8_t i, uint8_t state)
 }
 
 // Пересчитать намерение; занятое хранилище откладывает только чтение сцен.
-void user_unblock_recheck(bool restart)
+void user_unblock_recheck(bool restore)
 {
   uint8_t next = 0, relays = 0;
   device.status.unblockHand = device.triggers.handUnBlock;
   device.status.unblockOnScene = device.triggers.sheduleUnBlock;
-  unblock_pending = 1;
-  unblock_restart |= restart;
+  // Бит 1 сохраняет восстановление при отложенном чтении сцен.
+  unblock_pending |= restore ? 2u : 1u;
   if (device.registredOnServer) {
     unblock_offline_since = device.worktime;
     unblock_offline = 0;
@@ -50,11 +50,10 @@ void user_unblock_recheck(bool restart)
     }
   }
   relays = !!config.rele[0].useInBlock | (!!config.rele[1].useInBlock << 1);
-  if ((unblock_restart && !unblock_wait) || (!unblock_active && next)) {
-    // Повторный recheck во время ожидания сохраняет уже запущенное открытие.
+  if (!(unblock_pending & 2u) && !unblock_active && next) {
     if (next && relays && relays != 3) {
       uint8_t i = relays & 1u;
-      // После перезапуска ИК должна быть замкнута уже в момент щелчка.
+      // При новом включении сначала открытие, затем разрыв ИК.
       unblock_set(i ^ 1u, OUT_ON);
       unblock_wait = i + 1;
       if (config.rele[i].mode == 0)
@@ -68,9 +67,9 @@ void user_unblock_recheck(bool restart)
       }
     }
   }
-  if (!next) unblock_wait = 0;
+  if (!next || (unblock_pending & 2u)) unblock_wait = 0;
   // Сначала ИК, затем возврат уровня; смена назначения не обрывает импульс.
-  if (unblock_restart || (!!next != !!unblock_active) || relays != unblock_relays)
+  if ((unblock_pending & 2u) || (!!next != !!unblock_active) || relays != unblock_relays)
     for (uint8_t n = 0; n < 2; ++n) {
       uint8_t i = (relays & 1u ? 0 : 1) ^ n, state;
       if (unblock_wait & (1u << i)) continue;
@@ -88,7 +87,7 @@ void user_unblock_recheck(bool restart)
   unblock_active = next;
   unblock_relays = relays;
   unblock_minute = device.datetime / 60u;
-  unblock_pending = unblock_restart = 0;
+  unblock_pending = 0;
 }
 
 // Оффлайн считается по uptime; сцены — при смене минуты часов контроллера.
