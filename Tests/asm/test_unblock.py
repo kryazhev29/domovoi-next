@@ -209,9 +209,14 @@ def offline():
         parse(m, 23, struct.pack('<I', 1789948800+12*3600))
         m.checked('user_unblock_recheck', 1); assert not m.effective()
         m.stubs[m.addr('comm_server_registered')] = m.ret
+        # Здесь проверяется разблокировка; модем и его настройки стенд не запускает.
+        reopened = []
+        m.stubs[m.addr('comm_channel_reopen')] = lambda: (reopened.append(m.args()[0]), m.ret())
         parse(m, 1, b'\x02', channel=1); assert not m.effective()
+        assert reopened == [0]
         m.loads.clear()
         parse(m, 1, b'\x00'+struct.pack('<I', 1789948800+12*3600), channel=1)
+        assert reopened == [0]
         assert m.effective() and m.outputs() == (1, 1)
         m.advance(1000)
         assert m.outputs() == (0, 0) and m.loads[-1][:2] == (1, 0)

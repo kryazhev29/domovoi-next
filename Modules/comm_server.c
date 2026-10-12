@@ -38,13 +38,21 @@ uint8_t comm_server_address(void) { return sv.address; }
 /* Проверить интернет перед новой попыткой сервера; отсчёт между попытками, не после ping. */
 static void server_check(void)
 {
-  sv.state = SV_PING;
   sv.flags.status_wait = sv.flags.status_due = sv.flags.stable = sv.flags.probe_failed = 0;
-  if (!sv.flags.traffic_event) sv.silent_since = sv.now;
+  if (sv.state == SV_ONLINE) sv.silent_since = sv.now;
+  /* Отказ основного до регистрации: резерв сразу, проверка интернета после него. */
+  if (sv.state != SV_ONLINE && !sv.address && comm_modem_reserve()) {
+    comm_channel_reopen(0); sv.state = SV_OFF;
+  } else sv.state = SV_PING;
 }
 /* Применить открытие, потерю или результат проверки канала. */
 static void server_channel_event(uint8_t kind, uint8_t value)
 {
+  if (kind == COMM_CH_OPENING) {
+    /* Начало пары или первая попытка на прежний резервный после звонка. */
+    if (!value || sv.address) sv.silent_since = sv.now;
+    return;
+  }
   if (kind == COMM_CH_OPENED) {
     sv.state = SV_REG; sv.registrations = sv.misses = 0; sv.address = value;
   } else if (kind == COMM_CH_CLOSED || kind == COMM_CH_FAULT) {
@@ -176,7 +184,6 @@ void comm_server_poll(uint32_t now_ms)
     uint8_t t = sv.silent_step < 3 ? (uint8_t)(COMM_T_SERVER_RETRY_1 + sv.silent_step) : COMM_T_SERVER_RETRY_MAX;
     if (now_ms - sv.silent_since >= comm_timeouts[t]) {
       if (sv.silent_step < 3) ++sv.silent_step;
-      sv.silent_since = now_ms;
       // Пауза уже выдержана сервером: внутренний откат канала не прибавляем.
       comm_channel_stable();
       comm_channel_reopen(0);

@@ -105,7 +105,7 @@ static void server_outage_tests(void)
     if (opens==observed) continue;
     unsigned i=opens-1u; observed=opens;
     unsigned attempt=i-closed_first;
-    CHECK(open_addresses[i]==(attempt/3u)%2u);
+    CHECK(open_addresses[i]==attempt%2u);
     if (!attempt) continue;
     uint32_t gap=open_times[i]-open_times[i-1];
     if (attempt%3u) CHECK(gap<1000u);
@@ -119,6 +119,29 @@ static void server_outage_tests(void)
   CHECK(opens>closed_first+12u);
   printf("server closed before registration: 15 min, %u attempts, max 3 per burst, 30/60/120/300 s, alternating addresses PASS\n",opens-closed_first);
   rc_keep_opens=false;
+  /* Основной мёртв, резерв работает: без ya.ru и паузы. Обрыв резерва начинает с основного. */
+  rc_online(); reserve_enabled=1; reserve_works=true; sim_open_error=1;
+  unsigned first=opens; uint32_t begin=sim_now;
+  comm_channel_reopen(0);
+  while (!comm_server_online() && sim_now-begin<2000u) rc_tick(10);
+  CHECK(comm_server_online() && comm_server_address()==1 && opens==first+2u && !pings && !dns_requests && !event13);
+  CHECK(!open_addresses[first] && open_addresses[first+1u]==1 && open_times[first+1u]-open_times[first]<1000u);
+  first=opens; socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n");
+  for (unsigned i=0;opens<first+2u || !comm_server_online();++i) { CHECK(i<200); rc_tick(10); }
+  CHECK(!open_addresses[first] && open_addresses[first+1u]==1 && !pings && !event13);
+  CHECK(link_count(COMM_LINK_FAIL,0)==2 && !link_count(COMM_LINK_FAIL,1));
+  /* Резерв отключён: ни одной попытки второго адреса, обычная лестница. */
+  rc_online(); sim_open_error=1; rc_keep_opens=true; first=opens;
+  comm_channel_reopen(0); rc_run(900000u);
+  for (unsigned i=first;i<opens;++i) {
+    CHECK(!open_addresses[i]);
+    if (i>first) {
+      unsigned step=i-first-1u; uint32_t gap=open_times[i]-open_times[i-1u];
+      CHECK(gap>=closed_delays[step<4u ? step : 3u] && gap<closed_delays[step<4u ? step : 3u]+1000u);
+    }
+  }
+  CHECK(opens>first+4u && event13==1 && !rc_logged && !rc_power_starts && !rc_soft_starts);
+  rc_keep_opens=false;
   /* Плата 12.10: закрытый сеанс, статус/журнал в TX, первый адрес отказывает,
      второй молчит до таймаута QIOPEN. Интернет всё время работает. */
   for (unsigned packet=0;packet<5;++packet) {
@@ -129,34 +152,51 @@ static void server_outage_tests(void)
     socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n");
     rc_keep_opens=true;
     unsigned first=opens;
-    if (packet>=2) { /* Поздний closed после отказа QIOPEN отменяет ещё не начатую пробу. */
-      for (unsigned i=0;!ch.probe;++i) { CHECK(i<500); rc_tick(10); }
+    if (packet>=2) { /* Поздний closed пробу сохраняет; публичное переоткрытие её отменяет. */
+      for (unsigned i=0;!ch.probe;++i) { CHECK(i<16000); rc_tick(10); }
       CHECK(!ch.probe_active && !pings);
       if (packet==4) comm_channel_reopen(0); /* Отмена через публичный запрос нового TCP. */
       else sim_feed("+QIURC: \"closed\",0\r\n");
-      if (packet!=4) { rc_tick(10); CHECK(ch.probe_active==COMM_CH_PING && opens==first+1u); }
+      if (packet!=4) { rc_tick(10); CHECK(ch.probe_active==COMM_CH_PING && opens==first+2u); }
     }
-    rc_run(10000u);
+    rc_run(comm_timeouts[COMM_T_QIOPEN]+10000u);
     printf("board outage packet=%u: sv=%u ch=%u tx=%u probe=%u pings=%u opens=%u event13=%u\n",
       packet,sv.state,ch.state,ch.tx_state,ch.probe,pings,opens,event13);
     CHECK(pings && comm_channel_probe_result()==COMM_CH_PING && event13==1);
-    unsigned checked=opens-1u;
+    unsigned checked=opens;
     rc_run(3600000u);
     CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && event13==1 && !rc.soft_fails);
     CHECK(opens>first+6);
-    for (unsigned i=first;i<opens;++i) CHECK(open_addresses[i]==((i-first)/3u)%2u);
-    static const uint32_t delays[]={30000u,60000u,120000u,300000u};
-    for (unsigned i=checked+1;i<opens;++i) {
-      uint32_t want=delays[i-checked<4 ? i-checked-1u : 3u];
-      uint32_t limit=want+300u;
-      if (open_addresses[i-1] && want<comm_timeouts[COMM_T_QIOPEN]) {
-        want=comm_timeouts[COMM_T_QIOPEN]; limit=want+2000u; /* Идущий QIOPEN не прерывается. */
+    CHECK(link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_FAIL,1)==1);
+    for (unsigned i=first;i<opens;++i) {
+      CHECK(open_addresses[i]==(i-first)%2u);
+      if (open_addresses[i]) CHECK(open_times[i]-open_times[i-1]<1000u);
+      else if (i>=checked+2u) {
+        uint32_t gap=open_times[i]-open_times[i-2];
+        unsigned step=(i-first)/2u-1u-(packet==4); /* Отменённая проба ступень не расходует. */
+        uint32_t want=closed_delays[step<4u ? step : 3u];
+        if (want<comm_timeouts[COMM_T_QIOPEN]) want=comm_timeouts[COMM_T_QIOPEN]+1000u;
+        CHECK(gap>=want && gap<want+2000u); /* QIOPEN и ya.ru должны закончиться. */
       }
-      CHECK(open_times[i]-open_times[i-1]>=want && open_times[i]-open_times[i-1]<limit);
     }
-    uint32_t back=sim_now; sim_open_error=0;
-    while (!comm_server_online() && sim_now-back<=300000u) rc_tick(10);
-    CHECK(comm_server_online() && sim_now-back<=300000u && event13==1);
+    uint32_t back=sim_now; primary_restored=true;
+    while (!comm_server_online() && sim_now-back<=302000u) rc_tick(10);
+    CHECK(comm_server_online() && !comm_server_address() && sim_now-back<=302000u && event13==1);
+    rc_keep_opens=false;
+  }
+  /* Возврат только основного в разных фазах зрелой пары, включая уже начатый QIOPEN. */
+  static const uint32_t phases[]={0u,10u,40u,1000u,149990u,150010u,152000u,299900u};
+  for (unsigned phase=0;phase<sizeof(phases)/sizeof(phases[0]);++phase) {
+    rc_online(); reserve_enabled=1; sim_open_error=3; rc_keep_opens=true;
+    first=opens; comm_channel_reopen(0);
+    for (unsigned i=0;opens<first+9u;++i) { CHECK(i<150000); rc_tick(10); }
+    CHECK(!open_addresses[opens-1u] && sv.silent_step==3);
+    rc_run(phases[phase]);
+    uint32_t back=sim_now; primary_restored=true;
+    while (!comm_server_online() && sim_now-back<=302000u) rc_tick(10);
+    CHECK(comm_server_online() && !comm_server_address() && sim_now-back<=302000u);
+    CHECK(event13==1 && !rc_logged && !rc_power_starts && !rc_soft_starts);
+    printf("primary restored phase=%u ms: registered in %u ms, backup still dead PASS\n",phases[phase],sim_now-back);
     rc_keep_opens=false;
   }
   /* Регистрация не отвечает: поставленный кадр уступает принятой пробе. */
@@ -185,16 +225,20 @@ static void server_outage_tests(void)
     CHECK(!rc.soft_fails && !rc.early && comm_modem_ready() && pings>=4);
     if (failure==3) CHECK(dns_requests>=4 && comm_channel_probe_result()==COMM_CH_DNS);
     CHECK(opens>first+4);
-    for (unsigned i=first;i<opens;++i) CHECK(open_addresses[i]==((i-first)/3u)%2u);
-    if (failure!=4) {
-      CHECK(open_times[first+1]-open_times[first]>=30000u && open_times[first+1]-open_times[first]<50000u);
-      CHECK(open_times[first+2]-open_times[first+1]>=60000u && open_times[first+2]-open_times[first+1]<65000u);
-      CHECK(open_times[first+3]-open_times[first+2]>=120000u && open_times[first+3]-open_times[first+2]<125000u);
+    for (unsigned i=first;i<opens;++i) {
+      CHECK(open_addresses[i]==(i-first)%2u);
+      if (open_addresses[i]) CHECK(open_times[i]-open_times[i-1]<(failure==4 ? comm_timeouts[COMM_T_QIOPEN]+1000u : 12000u));
+      else if (i>first) {
+        unsigned step=(i-first)/2u-1u;
+        uint32_t want=closed_delays[step<4u ? step : 3u];
+        if (failure==4 && want<2u*comm_timeouts[COMM_T_QIOPEN]) want=2u*comm_timeouts[COMM_T_QIOPEN];
+        uint32_t gap=open_times[i]-open_times[i-2];
+        CHECK(gap>=want && gap<=want+(failure==4 ? 2000u : failure==3 ? 19000u : 1000u));
+      }
     }
-    for (unsigned i=first+4;i<opens;++i) CHECK(open_times[i]-open_times[i-1]>=300000u && open_times[i]-open_times[i-1]<=300100u);
     uint32_t back=sim_now; sim_open_error=drop_register=reject_register=0;
-    while (!comm_server_online() && sim_now-back<=300000u) rc_tick(10);
-    CHECK(comm_server_online() && sim_now-back<=300000u);
+    while (!comm_server_online() && sim_now-back<=302000u) rc_tick(10);
+    CHECK(comm_server_online() && sim_now-back<=302000u);
     CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && event13==1);
     rc_keep_opens=false;
     printf("server outage %u: 1h no restarts; one event13; restored in %u ms PASS\n",failure,sim_now-back);

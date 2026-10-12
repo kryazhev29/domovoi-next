@@ -17,7 +17,7 @@ static struct {
   uint32_t now, tx_since, operation_since, ack_next, reopen_pause, dns_since, probe_since;
   uint16_t frame_count, capacity, bytes, open_code;
   uint8_t state, tx_state, operation, answer;
-  uint8_t address, address_failures, connections, retry_step, probe;
+  uint8_t address, connections, retry_step, probe;
   uint8_t probe_active, probe_answer;
   struct { uint8_t active:1, expected:1, lost:1, pdp_lost:1; } call;
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
@@ -89,7 +89,7 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
   uint32_t v[8];
   if (comm_at_parse(p,n,"+QIURC: \"recv\",\005",v) && v[0] == 0) ch.flags.recv = 1;
   if (comm_at_parse(p,n,"+QIURC: \"closed\",\005",v) && v[0] == 0) {
-    if (ch.state == CH_PROBE) return; /* QIOPEN уже отказал: сокета нет, пробу не отменяем. */
+    if (ch.state == CH_PROBE || ch.state == CH_OPENING) return; /* До успешного QIOPEN поздний closed не меняет попытку/пробу. */
     channel_read_done(SLM_ERR_TCP);
     if (!ch.call.expected && comm_modem_ready()) comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, comm_modem_status()->modem_code);
     ch.flags.peer_closed = 1; comm_channel_reopen(0); return;
@@ -178,7 +178,7 @@ void comm_channel_stable(void) { ch.retry_step = ch.connections = 0; }
 /* Зафиксировать принятый сервером новый сеанс. */
 void comm_channel_registered(void)
 {
-  ch.connections = 0; ch.address_failures = 0; ch.flags.registered_session = 1; ch.call.expected = ch.call.lost = 0;
+  ch.connections = 0; ch.flags.registered_session = 1; ch.call.expected = ch.call.lost = 0;
 }
 /* Закрыть прежний TCP и назначить обычную повторную попытку. */
 void comm_channel_reopen(uint32_t pause_ms)
@@ -188,13 +188,11 @@ void comm_channel_reopen(uint32_t pause_ms)
   if (ch.state == CH_INITIAL) ch.connections = 1;
   bool had_socket = ch.state == CH_OPEN;
   ch.state = CH_CLOSE; ch.reopen_pause = pause_ms; ch.probe = ch.probe_active = ch.probe_answer = 0;
-  if (!ch.call.expected && !ch.flags.registered_session && ++ch.address_failures >= 3) {
-    ch.address_failures = 0;
-    if (comm_modem_reserve()) ch.address ^= 1u;
-  }
+  /* Основной -> резервный -> новая цепочка; после звонка один раз прежний адрес. */
+  if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();
   ch.flags.registered_session = 0;
   if (ch.call.expected) ch.reopen_pause = 0;
-  else if (ch.connections >= 3) {
+  else if (had_socket && ch.connections >= 3) {
     uint8_t t = ch.retry_step < 3 ? (uint8_t)(COMM_T_SERVER_RETRY_1 + ch.retry_step) : COMM_T_SERVER_RETRY_MAX;
     if (ch.reopen_pause < comm_timeouts[t]) ch.reopen_pause = comm_timeouts[t];
     if (ch.retry_step < 3) ++ch.retry_step;
@@ -366,6 +364,7 @@ void comm_channel_poll(uint32_t now_ms)
     if (!channel_command(NULL, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_OPEN)) return;
     ch.flags.peer_closed = 0;
     ch.state = CH_OPENING;
+    channel_emit(COMM_CH_OPENING, ch.address);
     if (!ch.call.expected) ++ch.connections;
     ch.call.expected = ch.call.lost = 0;
     return;

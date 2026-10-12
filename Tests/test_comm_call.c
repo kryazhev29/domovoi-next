@@ -243,7 +243,7 @@ static void call_tests(void)
   /* Ожидаемый обрыв по URC: один обычный reconnect без роста ступеней. */
   for (unsigned loss=1;loss<=2;++loss) {
     call_reset(); call_drop=loss; call_drop_urc=1;
-    ch.connections=3; ch.retry_step=2; ch.address_failures=2;
+    ch.connections=3; ch.retry_step=2;
     rc.power_step=rc.soft_step=rc.net_step=2;
 #if DOMOVOI_DIAG
     unsigned failures=slm.diag.failure_next;
@@ -255,6 +255,21 @@ static void call_tests(void)
     DIAG_CHECK(slm.diag.failure_next==failures);
     CHECK(links==3 && link_kinds[1]==COMM_LINK_LOST && link_kinds[2]==COMM_LINK_UP);
     printf("comm_call: loss=%u URC hangup->server=%u ms\n",loss,(unsigned)elapsed);
+  }
+  /* Звонок на резерве: сначала тот же адрес; его отказ возвращает цепочку с основного. */
+  for (unsigned fail=0;fail<2;++fail) {
+    call_reset(); reserve_enabled=1; sim_open_error=1; reserve_works=true;
+    comm_channel_reopen(0); until_online(); CHECK(comm_server_address()==1);
+    unsigned first=opens; uint32_t began=sim_now;
+    call_drop=call_drop_urc=1; reserve_works=!fail;
+    ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
+    if (!fail) {
+      CHECK(call_until_registered()<=1580u && opens==first+1u && open_addresses[first]==1 && !pings && !event13);
+    } else {
+      for (unsigned i=0;opens<first+3u;++i) { CHECK(i<5000); transport_tick(10); comm_recover_poll(sim_now); }
+      CHECK(open_addresses[first]==1 && !open_addresses[first+1u] && open_addresses[first+2u]==1);
+      CHECK(pings && event13==1 && open_times[first+1u]-open_times[first]>=30000u && sim_now-began<50000u);
+    }
   }
   /* Первая попытка после звонка не расходует счётчик: TCP закрывают до регистрации.
      При двух прежних попытках следующая идёт сразу, а после неё уже нужна пауза. */

@@ -20,7 +20,8 @@ static uint8_t incoming[2048], sent_frame[1040];
 static uint16_t sent_count;
 static unsigned reject_register;
 static bool socket_model, read_pending;
-static uint32_t dns_late, ping_reply_due, open_closed_due;
+static bool primary_restored, reserve_works;
+static uint32_t dns_late, ping_reply_due, open_closed_due, primary_closed_due;
 static unsigned ping_reply_kind, read_error, long_lines;
 static uint32_t open_times[64];
 static uint8_t open_addresses[64];
@@ -322,12 +323,14 @@ static void transport_tx(void)
     } else if (!strncmp(cmd,"AT+QIOPEN=",10)) {
       CHECK(call_pdp_model && !socket_model && opens<sizeof(open_addresses));
       open_times[opens]=sim_now; open_addresses[opens]=ch.address;
-      socket_model=!sim_open_error || sim_open_error==4; ++opens;
-      if (sim_open_error==3 || sim_open_error==4)
-        open_closed_due=sim_now+(sim_open_error==3 && ch.address ? comm_timeouts[COMM_T_QIOPEN]+10u : 40u);
+      unsigned error=(!ch.address && primary_restored) || (ch.address && reserve_works) ? 0u : sim_open_error;
+      socket_model=!error || error==4; ++opens;
+      if (error==3 || error==4)
+        open_closed_due=sim_now+(error==3 && ch.address ? comm_timeouts[COMM_T_QIOPEN]+10u : 40u);
+      if (error==3 && !ch.address) primary_closed_due=sim_now+1000u;
       CHECK(strstr(cmd,ch.address ? "backup.local" : "test.local"));
       if (call_drop) { sim_reply("OK\r\n",30); call_tcp_due=sim_now+300; }
-      else sim_reply((sim_open_error==2 || (sim_open_error==3 && ch.address)) ? "OK\r\n" : !socket_model ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
+      else sim_reply((error==2 || (error==3 && ch.address)) ? "OK\r\n" : !socket_model ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
     } else if (!strncmp(cmd,"AT+QPING=",9)) {
       CHECK(!strcmp(cmd,"AT+QPING=1,\"ya.ru\",3,2")); ++pings;
       sim_reply("OK\r\n",20); ping_reply_due=sim_now+1000;
@@ -351,6 +354,9 @@ static void transport_tx(void)
 static void transport_tick(unsigned increment)
 {
   writes = 0;
+  if (primary_closed_due && (int32_t)(sim_now-primary_closed_due)>=0) {
+    primary_closed_due=0; sim_feed("+QIURC: \"closed\",0\r\n");
+  }
   if (open_closed_due && (int32_t)(sim_now-open_closed_due)>=0 &&
       (ch.state==CH_PROBE || (sim_open_error==4 && ch.state==CH_OPEN))) {
     open_closed_due=0; socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n");
@@ -359,7 +365,7 @@ static void transport_tick(unsigned increment)
     answer_due=0; sim_feed(answer_mode==1 ? "ERROR\r\n" : answer_mode==2 ? "NO CARRIER\r\n" : "OK\r\n");
   }
   if (hangup_due && (int32_t)(sim_now-hangup_due)>=0) { hangup_due=0; sim_feed("OK\r\n"); }
-  if (call_tcp_due && (int32_t)(sim_now-call_tcp_due)>=0) { call_tcp_due=0; sim_feed(sim_open_error && sim_open_error!=4 ? "+QIOPEN: 0,566\r\n" : "+QIOPEN: 0,0\r\n"); }
+  if (call_tcp_due && (int32_t)(sim_now-call_tcp_due)>=0) { call_tcp_due=0; sim_feed(socket_model ? "+QIOPEN: 0,0\r\n" : "+QIOPEN: 0,566\r\n"); }
   if (call_network_due && (int32_t)(sim_now-call_network_due)>=0) {
     call_network_due=0; sim_network_wait=0; call_cereg_model=1; sim_feed("+CEREG: 1,\"1234\",\"ABCDEF\",7\r\n");
   }
@@ -392,7 +398,8 @@ static void server_reset_start(bool cold)
   device.datetime=1790900000u; device.datetimeID=1; device.datetimeGroup=2;
   device.datetimeShedule=3; device.datetimeConfig=4; device.datetimeHoliday=5;
   device.status=0x1234; device.answerID=0; incoming_count=sent_count=0;
-  socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=open_closed_due=0; ping_reply_kind=0;
+  socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=open_closed_due=primary_closed_due=0; ping_reply_kind=0;
+  primary_restored=reserve_works=false;
   if (cold) comm_power_v5_cold_start();
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   call_access_ready=true; call_registration_noise=false;
@@ -496,9 +503,10 @@ static void server_tests(void)
   advance(30000); CHECK(closes==2 && opens==3);
   server_reset(); drop_register=1; reserve_enabled=1; comm_channel_reopen(0); advance(1200000);
   CHECK(opens>=8 && sv.silent_step==3);
-  for (unsigned i=1;i<8;++i) CHECK(open_addresses[i]==((i-1u)/3u)%2u);
-  CHECK(open_times[2]-open_times[1]>=comm_timeouts[COMM_T_SERVER_RETRY_1]);
-  CHECK(open_times[3]-open_times[2]>=comm_timeouts[COMM_T_SERVER_RETRY_2]);
+  for (unsigned i=1;i<8;++i) CHECK(open_addresses[i]==(i-1u)%2u);
+  CHECK(open_times[2]-open_times[1]<12000u);
+  CHECK(open_times[3]-open_times[1]>=comm_timeouts[COMM_T_SERVER_RETRY_1]);
+  CHECK(open_times[5]-open_times[3]>=comm_timeouts[COMM_T_SERVER_RETRY_2]);
   server_reset(); comm_channel_priority(true); CHECK(!comm_tx_acquire(&cap)); comm_channel_priority(false);
   p=comm_tx_acquire(&cap); CHECK(p && !comm_tx_acquire(&cap));
   CHECK(!comm_tx_commit(cap+1u)); comm_tx_release(); CHECK(!comm_tx_busy());

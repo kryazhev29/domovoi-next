@@ -13,8 +13,12 @@ INFO = ROOT / 'Modules/comm_info.c'
 SERVER = ROOT / 'Modules/comm_server.c'
 CHANNEL = ROOT / 'Modules/comm_channel.c'
 CASES = (
+    ('server-pair-order', b'if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();',
+     b'if (!ch.call.expected) ch.address = comm_modem_reserve() && (ch.flags.registered_session || !ch.address);', CHANNEL),
+    ('server-ping-between-addresses', b'sv.state != SV_ONLINE && !sv.address && comm_modem_reserve()', b'false', SERVER),
     ('server-probe-starved-by-queue', b'ch.tx_state == TX_QUEUED && (!ch.probe || ch.probe_active)', b'ch.tx_state == TX_QUEUED', CHANNEL),
-    ('server-closed-cancels-probe', '    if (ch.state == CH_PROBE) return; /* QIOPEN уже отказал: сокета нет, пробу не отменяем. */'.encode('utf-8'), b'', CHANNEL),
+    ('server-closed-cancels-probe', '    if (ch.state == CH_PROBE || ch.state == CH_OPENING) return; /* До успешного QIOPEN поздний closed не меняет попытку/пробу. */'.encode('utf-8'), b'', CHANNEL),
+    ('server-late-closed-cancels-reserve', b'ch.state == CH_PROBE || ch.state == CH_OPENING', b'ch.state == CH_PROBE', CHANNEL),
     ('server-dns-fence-as-failure', 'return; // Старое окно DNS ещё не означает отсутствие интернета.'.encode('utf-8'), b'ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, 0);', CHANNEL),
     ('server-retry-cancels-open', 'sv.state = SV_OFF; // Канал сообщит результат; таймер не прерывает идущий QIOPEN.'.encode('utf-8'), b'/* timer still active */', SERVER),
     ('server-tcp-counted-early', b'  if (step < SLM_TCP || (step == SLM_TCP && reason == SLM_ERR_TIMEOUT)) return;', b'  if (reason == SLM_ERR_TCP) { rc.now = now_ms; rc_power_ladder(0); return; }\r\n  if (step < SLM_TCP || (step == SLM_TCP && reason == SLM_ERR_TIMEOUT)) return;'),
@@ -66,6 +70,15 @@ def main():
         assert stale.count(old) == 1, old
         stale = stale.replace(old,new)
     changes.append(('server-cancelled-probe-pending', stale))
+    # Вернуть старую смену адреса после трёх отказов вместе с её счётчиком.
+    old='if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();'
+    three=production.replace('uint8_t address, connections, retry_step, probe;',
+                             'uint8_t address, address_failures, connections, retry_step, probe;')
+    three=three.replace('ch.connections = 0; ch.flags.registered_session = 1;',
+                        'ch.connections = ch.address_failures = 0; ch.flags.registered_session = 1;')
+    assert three.count(old)==1
+    three=three.replace(old,'if (!ch.call.expected && !ch.flags.registered_session && ++ch.address_failures >= 3) { ch.address_failures=0; if (comm_modem_reserve()) ch.address ^= 1u; }')
+    changes.append(('server-address-after-three',three))
     for name,mutant in changes:
         with TemporaryDirectory(dir=base) as directory:
             folder=Path(directory);source=folder/'test.c';executable=folder/'test.exe'
