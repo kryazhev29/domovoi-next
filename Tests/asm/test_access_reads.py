@@ -130,9 +130,43 @@ def temp_read_error():
     return {'no_output_on_read_error': True}
 
 
+def autoregistration():
+    from test_sched16 import record, tail
+    for restriction in ('none', 'group', 'schedule', 'date', 'passes', 'read'):
+        m = AccessMachine(); ident = 0x21000400
+        m.u.mem_write(ident, b'0000000042')
+        m.put_id(1, b'0000000042'); m.put_group(1)
+        m.write(m.device + m.d['status'], 1 << 5, 2)
+        c, g = fields('cellID_s'), fields('cellGroup_s')
+        if restriction == 'group': m.flash[GROUP + g['blocked']] = 1
+        if restriction == 'schedule':
+            m.flash[GROUP + g['sheduleNumber']] = 1
+            m.flash[SHEDULE:SHEDULE+16] = record(1, days=bytes(7))
+            m.flash[SHEDULE+1024:SHEDULE+1040] = tail()
+        if restriction == 'date':
+            m.flash[IDS+c['blockTime']:IDS+c['blockTime']+4] = struct.pack('<I', TODAY - 1)
+        if restriction == 'passes':
+            m.flash[IDS+c['cntPassOnDay']] = 0
+            m.flash[IDS+c['cntPass']] = 0
+        for _ in range(2):
+            if restriction == 'read': m.fail_read()
+            m.loads.clear()
+            m.checked('user_checkIdAndControl', ident, 2)
+            assert bool(m.loads) == (restriction == 'none'), (restriction, m.loads)
+            assert m.flash[0x1e8000:0x1e8020] == b'\xff' * 32, restriction
+            assert all(e[0] != 68 for e in m.events), (restriction, m.events)
+    m = AccessMachine(); m.write(m.device + m.d['status'], 1 << 5, 2)
+    m.u.mem_write(ident, b'0000000042')
+    m.checked('user_checkIdAndControl', ident, 2)
+    assert m.flash[0x1e8002:0x1e800c] == b'0000000042'
+    assert sum(e[0] == 68 for e in m.events) == 1
+    return {'known_restrictions_preserved': True, 'unknown_registered': True}
+
+
 if __name__ == '__main__':
     res = {'units': 'Unicorn instructions; NOT cycles/time', 'table_cells': table_cells(), 'holidays': holidays(),
            'find_id': find_id(), 'access': access(), 'temp_read_error': temp_read_error(),
+           'autoregistration': autoregistration(),
            'elf_sha256': hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()}
     (__import__('iar_image').result_path('access_reads_results.json')).write_text(json.dumps(res, indent=2) + '\n')
     print('PASS access reads: group/schedule by cell, holiday 0/1/2, find ID read error != absent, no 65 or relay on error')

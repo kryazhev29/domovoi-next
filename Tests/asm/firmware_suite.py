@@ -56,7 +56,7 @@ CASES = {
     'workspace': [('test_work_memory', 'run')],
     'id_sync_fast': [('test_id_sync_fast', 'contracts'), ('test_id_sync_fast', 'mutations')],
     **{n:[('elf_contracts',n)] for n in ('event_append','fw_blocks','fw_bridge','usb_queue','owner_lifetimes')},
-    'access': [('test_access_reads', n) for n in ('table_cells','holidays','find_id','access')],
+    'access': [('test_access_reads', n) for n in ('table_cells','holidays','find_id','access','temp_read_error','autoregistration')],
     'config': [('test_memory_runtime', n) for n in ('allocator','cached_reads','config_ownership','config_faults')],
     'index': [('test_idindex_runtime', n) for n in ('test_normal','test_faults','test_cancel_restart','test_boundaries','test_real_w25')],
     'service': [('test_service_runtime', n) for n in ('wire_and_budgets','faults_and_lifetime','config_reply','config_cached_source','ff_affine','pending_timeout','real_w25','unrecovered_storage')],

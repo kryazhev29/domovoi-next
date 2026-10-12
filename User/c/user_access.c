@@ -188,9 +188,14 @@ void user_checkIdAndControl(char *id, codeType_e tp){
     return;
   }
 
-  // авторегистрация
-  if (device.status.autoRegistration && user_addIdToTempBuffer(id, tp)){
-    log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0);
+  cellID_s cellId;
+  uint8_t found = 0;
+  // Авторегистрация не переносит известные ID в обход их ограничений.
+  if (device.status.autoRegistration){
+    found = user_findID(id, &cellId);
+    if (found > 1) return;
+    if (found == 0 && user_addIdToTempBuffer(id, tp))
+      log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0);
   }
 
   // открывать всем без разбора
@@ -211,10 +216,8 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 
   // можно, ищем ID
   if (onOut[0] || onOut[1]){
-    cellID_s cellId;
-
     // ID найден
-    uint8_t found=user_findID(id,&cellId);
+    if (!device.status.autoRegistration) found = user_findID(id, &cellId);
     if(found>1) return;
     if (found){
       // проверим разрешение по дате запрета
