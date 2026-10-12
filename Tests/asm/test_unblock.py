@@ -265,6 +265,9 @@ def restart_and_commands():
     m.write(m.addr('log_timeKnown'), 1, 1); m.checked('user_unblock_recheck', 0); assert m.effective() == 2
     m.command(14, record(1, blocked=1)+tail(bytes([1])+bytes(7)), 1); m.drain()
     assert not m.effective() and m.outputs()[1] == 1
+    # Команда 14 снова включила сцену во время работы — это включение: открыть и разорвать ИК.
+    m.loads.clear(); m.command(14, record(1)+tail(bytes([1])+bytes(7)), 1); m.drain()
+    assert m.effective() == 2 and any(x[:2] == (0, 3) for x in m.loads), 'команда 14 включила сцену без открытия'
     m = UnblockMachine(); m.set_relay(0, 'mode', 1); m.set_trigger('handUnBlock', 1)
     for _ in range(2): m.checked('user_unblock_recheck', 1); assert m.outputs() == (0, 0)
     m.advance(1000); assert m.outputs() == (0, 0)

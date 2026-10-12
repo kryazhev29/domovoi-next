@@ -363,7 +363,8 @@ static void store_config_complete(void)
   comm_endpoints();
   device.datetimeConfig = config.datetime;
   device.status.defaultConfig = 0;
-  user_unblock_recheck(true);
+  // Действующая разблокировка не открывает повторно; включение новой настройкой открывает.
+  user_unblock_recheck(false);
   sync_packet(SYNC_CONFIG);
   if (comm_modem_state() == SLM_IDLE) user_comm_boot();
 }
@@ -404,7 +405,7 @@ void user_storage_poll(void)
   if (flash_job.kind <= FX_LOG) {
     flash_result_t result = flash_exec_take_result();
     // Сцены читаются после публикации TABLE и снятия результата.
-    if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(true);
+    if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(false);
   }
 }
 static void store_poll(uint32_t now, uint8_t result)
