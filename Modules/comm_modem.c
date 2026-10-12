@@ -32,7 +32,7 @@ static struct {
   uint8_t session; /* растёт с каждой попыткой запуска */
   /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
      данные уходят в том же poll; результат забирает только владелец req. */
-  struct { const comm_side_t *req; uint8_t queued, running, prompted, done, result; } side;
+  struct { const comm_side_t *req; uint32_t started; uint8_t queued, running, prompted, done, result; } side;
   slm_diag_t diag;
 } slm;
 #if DOMOVOI_DIAG
@@ -366,6 +366,12 @@ bool comm_modem_call_side(const comm_side_t *req)
   if (!slm_side_queue(req)) return false;
   slm_side_issue(); return true;
 }
+/* Выдать время фактического начала голосовой команды. */
+bool comm_modem_side_started(const comm_side_t *req, uint32_t *since)
+{
+  if (slm.side.req != req || slm.side.queued || !(slm.side.running || slm.side.done)) return false;
+  *since = slm.side.started; return true;
+}
 /* Передать движку AT аварийный отбой. */
 bool comm_modem_call_abort(uint32_t now_ms) { return comm_at_call_abort(now_ms); }
 /* Выдать результат служебного запроса только его владельцу. */
@@ -392,7 +398,7 @@ static void slm_side_issue(void)
     if (r == COMM_AT_BUSY) return;
     slm.side.queued = 0;
   }
-  if (r == COMM_AT_ACCEPTED) slm.side.running = 1;
+  if (r == COMM_AT_ACCEPTED) { slm.side.running = 1; slm.side.started = slm.attempt.now; }
   else { slm.side.done = 1; slm.side.result = COMM_AT_ERROR; }
 }
 /* Сообщить о занятом AT или восстановлении его границ. */

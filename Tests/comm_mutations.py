@@ -72,8 +72,8 @@ def run():
         ('channel', 'TCP-time-overwritten-by-read', 'slm.attempt.recording = next < SLM_STEP_COUNT;', 'slm.attempt.recording = 1;'),
         # Этап 6, звонок без ответа.
         ('channel', 'call-command-after-prompt', 'comm_at_busy() || comm_at_prompt()) return;', 'comm_at_busy()) return;'),
-        ('channel', 'call-second-open', 'call.state == CALL_DONE && call.number[0] && strcmp(number, call.number)', 'call.state == CALL_DONE && 0'),
-        ('channel', 'call-hidden-number-ignored', 'if (now_ms - call.since < comm_timeouts[COMM_T_CALL_NUMBER]) break;', 'if (1) break;'),
+        ('channel', 'call-second-open', 'call.state != CALL_IDLE && call.state != CALL_WAIT_NUMBER && !strcmp(number, call.number)', 'call.state != CALL_IDLE && call.state != CALL_WAIT_NUMBER'),
+        ('channel', 'call-hidden-number-ignored', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_ANSWER;', 'comm_timeouts[COMM_T_CALL_NUMBER]) call.state = CALL_DONE;'),
         ('channel', 'sms-long-body-fault', 'if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }', 'if (1) { fault(COMM_AT_LINE_OVERFLOW); return; }'),
         ('channel', 'sms-bad-cell-kept', 'msg.erase = msg.queue[0];', 'msg.erase = r == COMM_AT_OK ? msg.queue[0] : 0;'),
         ('channel', 'sms-udh-fill-bits', 'msg.skip = (uint8_t)(((o + 1u) * 8u + 6u) / 7u);', 'msg.skip = (uint8_t)(o + 1u);'),
@@ -87,7 +87,7 @@ def run():
         ('channel', 'volte-unsupported-retried', 'call.volte_modem = VOLTE_UNSUPPORTED;', 'call.volte_modem = VOLTE_UNKNOWN;'),
         ('channel', 'volte-during-call', 'call.state != CALL_IDLE || call.volte_modem', 'call.volte_modem'),
         ('channel', 'volte-written-every-time', 'call.volte_modem != want ? &volte_set[want] : NULL', '&volte_set[want]'),
-        ('channel', 'volte-new-start-not-checked', 'call.session = session;\n    call.volte_modem = VOLTE_UNKNOWN;', 'call.session = session;'),
+        ('channel', 'volte-new-start-not-checked', 'call.session = session; call.volte_modem = VOLTE_UNKNOWN;', 'call.session = session;'),
         ('channel', 'call-side-kept-after-restart', '  memset(&slm.attempt, 0, sizeof(slm.attempt));\n  slm_side_cancel();', '  memset(&slm.attempt, 0, sizeof(slm.attempt));'),
         # Доводка этапа 6: журнал связи 11, 12, 14-19, 38.
         ('channel', 'link-fail-every-time', 'if ((sv_noted & bit)) return;', ''),

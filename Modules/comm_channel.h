@@ -48,7 +48,7 @@ void comm_channel_reopen(uint32_t pause_ms);
 void comm_channel_registered(void);
 /* Снять ступени отката после устойчивой связи. */
 void comm_channel_stable(void);
-/* Вызов: обнаруженный обрыв допускает одну попытку без ступени отката. */
+/* Вызов/проверка данных: ожидаемый обрыв не увеличивает ступени отката. */
 void comm_channel_call(bool active);
 /* Первое восстановление после вызова пропускает счёт и откат. */
 bool comm_channel_expected(void);

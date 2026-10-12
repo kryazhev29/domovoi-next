@@ -27,10 +27,10 @@ static uint8_t open_addresses[64];
 static uint32_t timers_getMillis(void) { return sim_now; }
 /* Звонок: сколько раз сброшен, ответ модема на сброс, последняя команда перед данными. */
 static bool call_access_ready, call_registration_noise;
-static unsigned chups, chup_silence, answers, aths, ath_mode, ath_delay;
+static unsigned chups, chup_silence, answers, aths, answer_mode, answer_delay, ath_silence;
 static unsigned call_drop, call_drop_urc, call_activations, call_activation_error, call_net_queries, call_pdp_queries, call_tcp_queries;
 static uint8_t call_cgreg_model, call_cereg_model, call_creg_model, call_pdp_model, call_other_pdp, call_other_socket;
-static uint32_t ath_at, hangup_at, hangup_due, chup_due, call_network_due, call_tcp_due;
+static uint32_t answer_at, answer_due, hangup_at, hangup_due, call_network_due, call_tcp_due;
 static char last_command[32];
 /* SMS: ячейки SIM 1..10 (PDU hex), журнал команд SMS, последняя отправленная PDU. */
 static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
@@ -252,21 +252,17 @@ static void transport_tx(void)
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
     if (!strcmp(cmd,"ATA")) {
-      ++answers;
-      sim_reply("OK\r\n",40);
-    } else if (!strcmp(cmd,"ATH")) {
-      ++aths;
-      ath_at=hangup_at=sim_now;
-      if (ath_mode!=3) hangup_due=sim_now+ath_delay;
+      ++answers; answer_at=sim_now;
+      if (answer_mode!=3) answer_due=sim_now+answer_delay;
       if (call_drop) {
         socket_model=false;
         if (call_drop==2) call_pdp_model=0;
         if (call_drop_urc) sim_feed(call_drop==2 ? "+QIURC: \"pdpdeact\",1\r\n" : "+QIURC: \"closed\",0\r\n");
       }
     } else {
-      ++chups;
       hangup_at=sim_now;
-      if (!chup_silence) chup_due=sim_now+40;
+      if (!strcmp(cmd,"ATH")) { ++aths; if (!ath_silence) hangup_due=sim_now+40; }
+      else { ++chups; if (!chup_silence) hangup_due=sim_now+40; }
     }
     return;
   }
@@ -339,11 +335,10 @@ static void transport_tx(void)
 static void transport_tick(unsigned increment)
 {
   writes = 0;
-  if (hangup_due && (int32_t)(sim_now-hangup_due)>=0) {
-    hangup_due=0;
-    sim_feed(ath_mode==1 ? "ERROR\r\n" : ath_mode==2 ? "+CME ERROR: 3\r\n" : ath_mode==4 ? "NO CARRIER\r\n" : "OK\r\n");
+  if (answer_due && (int32_t)(sim_now-answer_due)>=0) {
+    answer_due=0; sim_feed(answer_mode==1 ? "ERROR\r\n" : answer_mode==2 ? "NO CARRIER\r\n" : "OK\r\n");
   }
-  if (chup_due && (int32_t)(sim_now-chup_due)>=0) { chup_due=0; sim_feed("OK\r\n"); }
+  if (hangup_due && (int32_t)(sim_now-hangup_due)>=0) { hangup_due=0; sim_feed("OK\r\n"); }
   if (call_tcp_due && (int32_t)(sim_now-call_tcp_due)>=0) { call_tcp_due=0; sim_feed(sim_open_error ? "+QIOPEN: 0,566\r\n" : "+QIOPEN: 0,0\r\n"); }
   if (call_network_due && (int32_t)(sim_now-call_network_due)>=0) {
     call_network_due=0; sim_network_wait=0; call_cereg_model=1; sim_feed("+CEREG: 1,\"1234\",\"ABCDEF\",7\r\n");
@@ -379,8 +374,8 @@ static void server_reset(void)
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   call_access_ready=true; call_registration_noise=false;
-  chups=chup_silence=answers=aths=ath_mode=0; ath_delay=40;
-  ath_at=chup_due=hangup_at=hangup_due=call_network_due=call_tcp_due=0;
+  chups=chup_silence=answers=aths=answer_mode=ath_silence=0; answer_delay=40;
+  answer_at=answer_due=hangup_at=hangup_due=call_network_due=call_tcp_due=0;
   call_drop=call_drop_urc=call_activations=call_activation_error=call_net_queries=call_pdp_queries=call_tcp_queries=0;
   call_cgreg_model=call_cereg_model=call_creg_model=call_pdp_model=1; call_other_pdp=call_other_socket=0;
   chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(call_caller, volte_flag_model);
@@ -419,6 +414,7 @@ static void server_tests(void)
   uint8_t sms_unique=uniqIDCnt; legacy_user_send_smsToServer(sms); uniqIDCnt=sms_unique; user_send_smsToServer(sms);
   CHECK(ch.frame_count==1040 && !memcmp(frame,legacy_frame,1040)); advance(500);
   sms[1029]='S'; user_send_smsToServer(sms); CHECK(!comm_tx_busy());
+  user_send_smsToServer(NULL); CHECK(!comm_tx_busy());
   /* Первый период — 5 с; внеочередной статус не переносит следующий период 15 с. */
   server_reset(); CHECK(comm_server_online() && registrations_sent==1);
   advance(4490); CHECK(statuses_sent==0);

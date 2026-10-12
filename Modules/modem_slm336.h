@@ -111,6 +111,8 @@ void comm_modem_call(bool active);
 void comm_modem_data_failed(uint8_t reason);
 /* Поставить голосовую команду с приоритетом над запуском данных. */
 bool comm_modem_call_side(const comm_side_t *req);
+/* Выдать время фактического начала голосовой команды. */
+bool comm_modem_side_started(const comm_side_t *req, uint32_t *since);
 /* Передать движку AT аварийный отбой. */
 bool comm_modem_call_abort(uint32_t now_ms);
 /* UINT8_MAX - ещё в работе или не req; результат AT один раз, перезапуск даёт ERROR. */
