@@ -13,7 +13,7 @@ static struct {
   comm_server_handlers_t handlers;
   uint32_t now, registration_since, status_since, periodic_since, stable_since, silent_since;
   uint8_t state, registrations, misses, status_id, last_status_id, silent_step, address;
-  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, check_pending:1, first_status:1, rejected:1, probe_failed:1; } flags;
+  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, first_status:1, rejected:1, probe_failed:1; } flags;
 } sv;
 enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
 /* Вне sv: переживают comm_server_init при перезапуске модема. */
@@ -55,7 +55,6 @@ static void server_channel_event(uint8_t kind, uint8_t value)
       sv.address = value; server_link(COMM_LINK_FAIL, value); server_check(); return;
     }
     if (kind == COMM_CH_PROBE_DONE && (sv.state == SV_PING || sv.state == SV_DNS)) {
-      sv.flags.check_pending = 0;
       if (value) sv.state = SV_SILENT;
       else if (sv.state == SV_PING) sv.state = SV_DNS;
       else {
@@ -66,7 +65,7 @@ static void server_channel_event(uint8_t kind, uint8_t value)
     }
     return;
   }
-  sv.flags.status_wait = sv.flags.status_due = sv.flags.check_pending = 0;
+  sv.flags.status_wait = sv.flags.status_due = 0;
   sv.handlers.session(kind == COMM_CH_OPENED);
 }
 /* Начать регистрацию нового сеанса канала. */
@@ -123,7 +122,7 @@ void comm_server_status_ack(uint8_t unique_id)
 {
   if (!comm_server_online() || !sv.flags.status_wait || (unique_id != sv.status_id && unique_id != sv.last_status_id)) return;
   comm_channel_alive();
-  sv.flags.status_wait = sv.misses = sv.flags.traffic_event = sv.flags.check_pending = 0;
+  sv.flags.status_wait = sv.misses = sv.flags.traffic_event = 0;
   sv.state = SV_ONLINE;
   if (!sv.flags.stable) { sv.flags.stable = 1; sv.stable_since = sv.now; }
 }
@@ -169,8 +168,9 @@ void comm_server_poll(uint32_t now_ms)
     comm_modem_failure(SLM_ERR_SERVER, 0);
     server_check();
   }
-  if ((sv.state == SV_PING || sv.state == SV_DNS) && !sv.flags.check_pending)
-    sv.flags.check_pending = comm_channel_probe(sv.state == SV_PING ? COMM_CH_PING : COMM_CH_DNS);
+  /* Канал хранит принятую пробу сам; после отмены переоткрытием запрос повторяется. */
+  if (sv.state == SV_PING || sv.state == SV_DNS)
+    comm_channel_probe(sv.state == SV_PING ? COMM_CH_PING : COMM_CH_DNS);
   if (sv.state == SV_SILENT) {
     if (!sv.flags.traffic_event) sv.flags.traffic_event = sv.handlers.no_traffic();
     uint8_t t = sv.silent_step < 3 ? (uint8_t)(COMM_T_SERVER_RETRY_1 + sv.silent_step) : COMM_T_SERVER_RETRY_MAX;

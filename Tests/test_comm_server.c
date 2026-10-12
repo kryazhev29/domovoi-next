@@ -20,7 +20,7 @@ static uint8_t incoming[2048], sent_frame[1040];
 static uint16_t sent_count;
 static unsigned reject_register;
 static bool socket_model, read_pending;
-static uint32_t dns_late, ping_reply_due;
+static uint32_t dns_late, ping_reply_due, open_closed_due;
 static unsigned ping_reply_kind, read_error, long_lines;
 static uint32_t open_times[64];
 static uint8_t open_addresses[64];
@@ -323,9 +323,10 @@ static void transport_tx(void)
       CHECK(call_pdp_model && !socket_model && opens<sizeof(open_addresses));
       open_times[opens]=sim_now; open_addresses[opens]=ch.address;
       socket_model=!sim_open_error; ++opens;
+      if (sim_open_error==3) open_closed_due=sim_now+(ch.address ? comm_timeouts[COMM_T_QIOPEN]+10u : 40u);
       CHECK(strstr(cmd,ch.address ? "backup.local" : "test.local"));
       if (call_drop) { sim_reply("OK\r\n",30); call_tcp_due=sim_now+300; }
-      else sim_reply(sim_open_error==2 ? "OK\r\n" : sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
+      else sim_reply((sim_open_error==2 || (sim_open_error==3 && ch.address)) ? "OK\r\n" : sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
     } else if (!strncmp(cmd,"AT+QPING=",9)) {
       CHECK(!strcmp(cmd,"AT+QPING=1,\"ya.ru\",3,2")); ++pings;
       sim_reply("OK\r\n",20); ping_reply_due=sim_now+1000;
@@ -349,6 +350,9 @@ static void transport_tx(void)
 static void transport_tick(unsigned increment)
 {
   writes = 0;
+  if (open_closed_due && (int32_t)(sim_now-open_closed_due)>=0 && ch.state==CH_PROBE) {
+    open_closed_due=0; sim_feed("+QIURC: \"closed\",0\r\n");
+  }
   if (answer_due && (int32_t)(sim_now-answer_due)>=0) {
     answer_due=0; sim_feed(answer_mode==1 ? "ERROR\r\n" : answer_mode==2 ? "NO CARRIER\r\n" : "OK\r\n");
   }
@@ -386,7 +390,7 @@ static void server_reset_start(bool cold)
   device.datetime=1790900000u; device.datetimeID=1; device.datetimeGroup=2;
   device.datetimeShedule=3; device.datetimeConfig=4; device.datetimeHoliday=5;
   device.status=0x1234; device.answerID=0; incoming_count=sent_count=0;
-  socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
+  socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=open_closed_due=0; ping_reply_kind=0;
   if (cold) comm_power_v5_cold_start();
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   call_access_ready=true; call_registration_noise=false;
@@ -527,7 +531,9 @@ static void probe_overlap_tests(void)
     server_reset(); drop_status=1; ping_success=probe==COMM_CH_PING;
     for (unsigned i=0;ch.probe_active!=probe && i<10000;++i) transport_tick(10);
     CHECK(ch.probe_active==probe);
-    ping_reply_kind=0; dns_late=0; advance(50);
+    ping_reply_kind=0; dns_late=0;
+    for (unsigned i=0;comm_tx_busy();++i) { CHECK(i<100); transport_tick(10); }
+    advance(50);
     uint16_t capacity; uint8_t *p=comm_tx_acquire(&capacity);
     CHECK(p && capacity>=12); memset(p,0,12); CHECK(comm_tx_commit(12));
     for (unsigned i=0;ch.operation!=OP_ACK && i<100;++i) transport_tick(10);

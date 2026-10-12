@@ -89,6 +89,7 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
   uint32_t v[8];
   if (comm_at_parse(p,n,"+QIURC: \"recv\",\005",v) && v[0] == 0) ch.flags.recv = 1;
   if (comm_at_parse(p,n,"+QIURC: \"closed\",\005",v) && v[0] == 0) {
+    if (ch.state == CH_PROBE) return; /* QIOPEN уже отказал: сокета нет, пробу не отменяем. */
     channel_read_done(SLM_ERR_TCP);
     if (!ch.call.expected && comm_modem_ready()) comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, comm_modem_status()->modem_code);
     ch.flags.peer_closed = 1; comm_channel_reopen(0); return;
@@ -370,13 +371,13 @@ void comm_channel_poll(uint32_t now_ms)
     return;
   }
   if ((ch.state != CH_OPEN && ch.state != CH_PROBE) || ch.operation) return;
-  if (ch.tx_state == TX_QUEUED) {
+  if (ch.tx_state == TX_QUEUED && (!ch.probe || ch.probe_active)) {
     char cmd[32]; uint16_t n = comm_at_copy(cmd, sizeof(cmd), 0, "AT+QISEND=0,");
     n = comm_at_decimal(cmd, sizeof(cmd), n, ch.frame_count);
     if (n < sizeof(cmd) && channel_command(cmd, COMM_AT_PROMPT, COMM_T_SEND_PROMPT, OP_PROMPT)) ch.tx_state = TX_PROMPT;
   } else if (ch.tx_state == TX_ACK && (int32_t)(now_ms - ch.ack_next) >= 0)
     channel_command("AT+QISEND=0,0", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_ACK);
-  else if (ch.tx_state == TX_FREE && ch.probe && !ch.probe_active) {
+  else if ((ch.tx_state == TX_FREE || ch.tx_state == TX_QUEUED) && ch.probe && !ch.probe_active) {
     bool dns = ch.probe == COMM_CH_DNS;
     /* URC DNS не содержит ID: новое поколение не запускаем в старом окне. */
     if (dns && ch.flags.dns_fence && now_ms - ch.dns_since < comm_timeouts[COMM_T_DNS_FENCE]) {

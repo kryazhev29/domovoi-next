@@ -94,6 +94,54 @@ static void info_tests(void)
 /* Рабочий интернет отделён от отказа TCP и регистрации; час без перезапуска. */
 static void server_outage_tests(void)
 {
+  /* Плата 12.10: закрытый сеанс, статус/журнал в TX, первый адрес отказывает,
+     второй молчит до таймаута QIOPEN. Интернет всё время работает. */
+  for (unsigned packet=0;packet<5;++packet) {
+    rc_online(); reserve_enabled=1; sim_open_error=3; probe_result=0;
+    if (!(packet&1u)) user_send_statusPack(CH_SERVER);
+    else { uint8_t data[16]={0}; user_send_anyData(8,data,sizeof(data),CH_SERVER,1); }
+    CHECK(comm_tx_busy());
+    socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n");
+    rc_keep_opens=true;
+    unsigned first=opens;
+    if (packet>=2) { /* Поздний closed после отказа QIOPEN отменяет ещё не начатую пробу. */
+      for (unsigned i=0;!ch.probe;++i) { CHECK(i<500); rc_tick(10); }
+      CHECK(!ch.probe_active && !pings);
+      if (packet==4) comm_channel_reopen(0); /* Отмена через публичный запрос нового TCP. */
+      else sim_feed("+QIURC: \"closed\",0\r\n");
+      if (packet!=4) { rc_tick(10); CHECK(ch.probe_active==COMM_CH_PING && opens==first+1u); }
+    }
+    rc_run(10000u);
+    printf("board outage packet=%u: sv=%u ch=%u tx=%u probe=%u pings=%u opens=%u event13=%u\n",
+      packet,sv.state,ch.state,ch.tx_state,ch.probe,pings,opens,event13);
+    CHECK(pings && comm_channel_probe_result()==COMM_CH_PING && event13==1);
+    unsigned checked=opens-1u;
+    rc_run(3600000u);
+    CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && event13==1 && !rc.soft_fails);
+    CHECK(opens>first+6);
+    for (unsigned i=first;i<opens;++i) CHECK(open_addresses[i]==((i-first)/3u)%2u);
+    static const uint32_t delays[]={30000u,60000u,120000u,300000u};
+    for (unsigned i=checked+1;i<opens;++i) {
+      uint32_t want=delays[i-checked<4 ? i-checked-1u : 3u];
+      uint32_t limit=want+300u;
+      if (open_addresses[i-1] && want<comm_timeouts[COMM_T_QIOPEN]) {
+        want=comm_timeouts[COMM_T_QIOPEN]; limit=want+2000u; /* Идущий QIOPEN не прерывается. */
+      }
+      CHECK(open_times[i]-open_times[i-1]>=want && open_times[i]-open_times[i-1]<limit);
+    }
+    uint32_t back=sim_now; sim_open_error=0;
+    while (!comm_server_online() && sim_now-back<=300000u) rc_tick(10);
+    CHECK(comm_server_online() && sim_now-back<=300000u && event13==1);
+    rc_keep_opens=false;
+  }
+  /* Регистрация не отвечает: поставленный кадр уступает принятой пробе. */
+  rc_online(); drop_register=1; comm_channel_reopen(0);
+  for (unsigned i=0;!ch.probe;++i) { CHECK(i<3000); rc_tick(10); }
+  CHECK(!comm_tx_busy() && !ch.probe_active);
+  { uint8_t data[16]={0}; user_send_anyData(8,data,sizeof(data),CH_SERVER,1); }
+  CHECK(comm_tx_busy());
+  rc_tick(10); CHECK(ch.probe_active==COMM_CH_PING && ch.tx_state==TX_QUEUED);
+  rc_run(2000u); CHECK(pings && event13==1);
   for (unsigned failure=0; failure<5; ++failure) {
     rc_online(); reserve_enabled=1;
     if (failure==4) sim_open_error=2;
@@ -127,8 +175,9 @@ static void server_outage_tests(void)
     printf("server outage %u: 1h no restarts; one event13; restored in %u ms PASS\n",failure,sim_now-back);
   }
   /* При отказе открытия TCP без интернета остаётся прежняя лестница TCP/AT/питание. */
-  rc_online(); sim_open_error=1; ping_success=dns_success=0;
-  comm_channel_reopen(0); rc_run(1800000u);
+  rc_online(); reserve_enabled=1; sim_open_error=3; ping_success=dns_success=0; probe_result=0;
+  user_send_statusPack(CH_SERVER); socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n"); rc_run(1800000u);
+  CHECK(pings && dns_requests && comm_channel_probe_result()==3);
   CHECK(rc_logged>=3 && rc_soft_starts==1 && rc_power_starts>=1 && !event13);
   rc_expect(0,0,0); rc_expect(1,0,1); rc_expect(2,600000u,1);
 }

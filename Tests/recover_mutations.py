@@ -13,6 +13,8 @@ INFO = ROOT / 'Modules/comm_info.c'
 SERVER = ROOT / 'Modules/comm_server.c'
 CHANNEL = ROOT / 'Modules/comm_channel.c'
 CASES = (
+    ('server-probe-starved-by-queue', b'ch.tx_state == TX_QUEUED && (!ch.probe || ch.probe_active)', b'ch.tx_state == TX_QUEUED', CHANNEL),
+    ('server-closed-cancels-probe', '    if (ch.state == CH_PROBE) return; /* QIOPEN уже отказал: сокета нет, пробу не отменяем. */'.encode('utf-8'), b'', CHANNEL),
     ('server-dns-fence-as-failure', 'return; // Старое окно DNS ещё не означает отсутствие интернета.'.encode('utf-8'), b'ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, 0);', CHANNEL),
     ('server-retry-cancels-open', 'sv.state = SV_OFF; // Канал сообщит результат; таймер не прерывает идущий QIOPEN.'.encode('utf-8'), b'/* timer still active */', SERVER),
     ('server-tcp-counted-early', b'  if (step < SLM_TCP || (step == SLM_TCP && reason == SLM_ERR_TIMEOUT)) return;', b'  if (reason == SLM_ERR_TCP) { rc.now = now_ms; rc_power_ladder(0); return; }\r\n  if (step < SLM_TCP || (step == SLM_TCP && reason == SLM_ERR_TIMEOUT)) return;'),
@@ -47,12 +49,27 @@ def main():
     production = unit().replace('\r\n', '\n')
     base = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', tempfile.gettempdir()))/'recover-mutations'
     base.mkdir(parents=True, exist_ok=True)
+    changes = []
     for name, old, new, *where in CASES:
         old, new = (data.decode('utf-8').replace('\r\n', '\n') for data in (old, new))
         assert production.count(old) == 1, name
+        changes.append((name, production.replace(old,new)))
+    # Вернуть прежнюю копию pending: отмена пробы поздним closed оставит её навсегда.
+    stale = production
+    for old,new in (
+        ('stable:1, first_status:1', 'stable:1, check_pending:1, first_status:1'),
+        ('if (value) sv.state = SV_SILENT;', 'sv.flags.check_pending = 0; if (value) sv.state = SV_SILENT;'),
+        ('sv.flags.status_wait = sv.flags.status_due = 0;', 'sv.flags.status_wait = sv.flags.status_due = sv.flags.check_pending = 0;'),
+        ('if (sv.state == SV_PING || sv.state == SV_DNS)\n    comm_channel_probe(',
+         'if ((sv.state == SV_PING || sv.state == SV_DNS) && !sv.flags.check_pending)\n    sv.flags.check_pending = comm_channel_probe('),
+    ):
+        assert stale.count(old) == 1, old
+        stale = stale.replace(old,new)
+    changes.append(('server-cancelled-probe-pending', stale))
+    for name,mutant in changes:
         with TemporaryDirectory(dir=base) as directory:
             folder=Path(directory);source=folder/'test.c';executable=folder/'test.exe'
-            source.write_text(production.replace(old,new),encoding='utf-8')
+            source.write_text(mutant,encoding='utf-8')
             compiler=subprocess.run([ZIG,'cc','-std=c99','-O2','-Wall','-Wextra','-Werror',str(source),'-o',str(executable)],capture_output=True)
             (base/(name+'-compile.log')).write_bytes(compiler.stdout+compiler.stderr)
             compiler.check_returncode()
@@ -60,7 +77,7 @@ def main():
             (base/(name+'.log')).write_bytes(result.stdout+result.stderr)
             assert result.returncode and b'FAIL' in result.stderr, ('undetected',name)
         print(name,'detected',flush=True)
-    print('recover mutations:',len(CASES),'/',len(CASES),'detected')
+    print('recover mutations:',len(changes),'/',len(changes),'detected')
 
 
 if __name__ == '__main__':
