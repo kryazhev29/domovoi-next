@@ -79,7 +79,7 @@ bool comm_at_field(const char *text, size_t capacity, bool host);
 bool comm_at_busy(void);
 /* После приглашения '>' модем ждёт данные: посторонняя команда стала бы их частью. */
 bool comm_at_prompt(void);
-/* Только ATA/ATH: CHUP до ресинхронизации, поздние финалы ограждены CMEE. */
+/* Голосовой режим ATA/CHUP/CLCC: CHUP до ресинхронизации, поздние финалы ограждены CMEE. */
 bool comm_at_call_abort(uint32_t now_ms);
 /* Преобразовать шестнадцатеричную цифру PDU; 16 означает недопустимый символ. */
 uint8_t comm_at_hex(uint8_t value);

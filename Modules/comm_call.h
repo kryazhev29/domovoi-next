@@ -7,9 +7,10 @@
 #define COMM_CALL_H
 #include <stdint.h>
 #include <stdbool.h>
-/* caller(NULL) - допуск голоса без доступа к флеш; false требует ATH без ATA.
+/* caller(NULL) - допуск голоса без доступа к флеш; false требует CHUP без ATA.
    caller(number) - проверка номера и открытие до ATA, один раз на вызов.
-   После OK ответ длится CALL_HOLD; аварийный CHUP до CALL_LIMIT от ATA. */
+   После OK ответ длится CALL_HOLD; CHUP и проверка CLCC, аварийный CHUP до CALL_LIMIT.
+   После аварийного отбоя данные отпускаются, доступ ждёт пустого CLCC. */
 /* volte() - настройка VoLTE (команда 12): модем приводится к ней в каждом запуске. */
 void comm_call_init(bool (*caller)(const char *number), uint8_t (*volte)(void));
 /* access_ready откладывает только действие: таймеры отбоя работают всегда. */

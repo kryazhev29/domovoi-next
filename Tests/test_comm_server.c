@@ -27,7 +27,8 @@ static uint8_t open_addresses[64];
 static uint32_t timers_getMillis(void) { return sim_now; }
 /* Звонок: сколько раз сброшен, ответ модема на сброс, последняя команда перед данными. */
 static bool call_access_ready, call_registration_noise;
-static unsigned chups, chup_silence, answers, aths, answer_mode, answer_delay, ath_silence;
+static unsigned chups, chup_silence, answers, answer_mode, answer_delay;
+static unsigned call_present, hangup_ignored, clccs, clcc_error, clcc_silence;
 static unsigned call_drop, call_drop_urc, call_activations, call_activation_error, call_net_queries, call_pdp_queries, call_tcp_queries;
 static uint8_t call_cgreg_model, call_cereg_model, call_creg_model, call_pdp_model, call_other_pdp, call_other_socket;
 static uint32_t answer_at, answer_due, hangup_at, hangup_due, call_network_due, call_tcp_due;
@@ -248,11 +249,22 @@ static void transport_tx(void)
     else { sim_reply("OK\r\n",30); cusd_due=sim_now+2000; }
     return;
   }
-  if (!strcmp(cmd,"ATA") || !strcmp(cmd,"ATH") || !strcmp(cmd,"AT+CHUP")) {
+  CHECK(strcmp(cmd,"ATH")); /* SLM336: ATH даёт OK, но вызов не завершает. */
+  if (!strcmp(cmd,"AT+CLCC")) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    ++clccs;
+    if (!clcc_silence) sim_reply(clcc_error ? "ERROR\r\n" : call_present==2
+        ? "+CLCC: 1,1,0,0,0,\"+79161234567\",145\r\nOK\r\n" : call_present
+        ? "+CLCC: 1,1,4,0,0,\"+79161234567\",145\r\nOK\r\n" : "OK\r\n", 30);
+    return;
+  }
+  if (!strcmp(cmd,"ATA") || !strcmp(cmd,"AT+CHUP")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
     if (!strcmp(cmd,"ATA")) {
       ++answers; answer_at=sim_now;
+      if (!answer_mode) call_present=2;
       if (answer_mode!=3) answer_due=sim_now+answer_delay;
       if (call_drop) {
         socket_model=false;
@@ -261,8 +273,9 @@ static void transport_tx(void)
       }
     } else {
       hangup_at=sim_now;
-      if (!strcmp(cmd,"ATH")) { ++aths; if (!ath_silence) hangup_due=sim_now+40; }
-      else { ++chups; if (!chup_silence) hangup_due=sim_now+40; }
+      ++chups;
+      if (hangup_ignored) --hangup_ignored; else call_present=0;
+      if (!chup_silence) hangup_due=sim_now+40;
     }
     return;
   }
@@ -374,7 +387,8 @@ static void server_reset(void)
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   call_access_ready=true; call_registration_noise=false;
-  chups=chup_silence=answers=aths=answer_mode=ath_silence=0; answer_delay=40;
+  chups=chup_silence=answers=answer_mode=0; answer_delay=40;
+  call_present=hangup_ignored=clccs=clcc_error=clcc_silence=0;
   answer_at=answer_due=hangup_at=hangup_due=call_network_due=call_tcp_due=0;
   call_drop=call_drop_urc=call_activations=call_activation_error=call_net_queries=call_pdp_queries=call_tcp_queries=0;
   call_cgreg_model=call_cereg_model=call_creg_model=call_pdp_model=1; call_other_pdp=call_other_socket=0;

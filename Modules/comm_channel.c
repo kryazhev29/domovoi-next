@@ -42,6 +42,8 @@ void comm_channel_alive(void) { if (!ch.call.active) ch.call.expected = 0; }
 /* Отметить голос и восстановить только уже обнаруженную потерю. */
 void comm_channel_call(bool active)
 {
+  /* Во время голоса ACK не опрашивался: дать данным полный срок после отбоя. */
+  if (!active && ch.call.active) ch.tx_since = ch.now;
   ch.call.active = (uint8_t)active;
   if (active) ch.call.expected = 1;
   else {

@@ -322,7 +322,7 @@ static void byte(uint8_t value)
 }
 
 /* Голосовая команда не имеет бинарного тела/приглашения: её можно прервать.
-   CHUP уходит раньше CMEE; ответы ATA/ATH/CHUP не подтверждают следующий запрос. */
+   CHUP уходит раньше CMEE; поздние финалы голосовых команд не подтверждают следующий запрос. */
 bool comm_at_call_abort(uint32_t now_ms)
 {
   static const uint8_t stop[] = "AT+CHUP\r";
