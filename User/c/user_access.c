@@ -5,6 +5,7 @@
 #include "user_logic_internal.h"
 #include "../user_format.h"
 #include "../sched16.h"
+#include "../photo.h"
 logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 uint8_t unblock_active;
 static uint8_t unblock_relays, unblock_pending, unblock_restart, unblock_offline;
@@ -371,6 +372,13 @@ void user_access_complete(uint8_t outputs, codeType_e tp, char *id, uint8_t cnt,
       out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
     }
   }
+  // Штатное фото не задерживает реле; занятая или недоступная камера пропускается.
+  if (outputs && config.rs485Mode == 1)
+    for (out = 0; out < 8; out++)
+      if (config.rs485Periphery[out].type == 3) {
+        photo_start(config.rs485Periphery[out].address);
+        break;
+      }
   switch (tp){
   case CT_PHONE:
     log_addControlEvent(LOG_CON_OUTONBYPHONE, id, cnt);

@@ -65,6 +65,7 @@ CASES = {
     'expiry': [('test_expiry_runtime', n) for n in ('cancel_and_sessions','faults','full_scan_and_heap')],
     'firmware': [('test_fw_service_runtime', n) for n in ('normal','heap_reservation','boundaries_errors','io_faults','busy_cancel','real_spi','exact_failure_logs')],
     'photo': [('test_photo_runtime', n) for n in ('normal','uploads','errors')],
+    'photo access': [('test_photo_access', n) for n in ('passage','skipped','same_camera_path')],
     'photo_edges': [('test_photo_edges', n) for n in ('cancellation','corrupt','failures','stream','transport_and_heap','ownership','full_cleanup','headers_and_space')],
     'table': [('test_table_runtime', n) for n in ('test_cancel_and_reconnect','test_faults','test_corrupt','test_interaction_and_heap')],
     'owners': [('test_owner_integration', n) for n in ('expiry_scheduler','clear_scheduler')],
@@ -82,6 +83,7 @@ CASES = {
 CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','fw install wait','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
+CORE += ('photo access',)
 CORE += ('call FW',)
 CORE += ('flash fixes',)
 CASES['fixes1 mutations'] = [('test_fixes1_mutations', 'run')]
