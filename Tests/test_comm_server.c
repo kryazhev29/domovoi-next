@@ -18,6 +18,7 @@ static uint16_t incoming_count;
 static uint16_t log_unacked[2], temp_unacked[2];
 static uint8_t incoming[2048], sent_frame[1040];
 static uint16_t sent_count;
+static unsigned reject_register;
 static bool socket_model, read_pending;
 static uint32_t dns_late, ping_reply_due;
 static unsigned ping_reply_kind, read_error, long_lines;
@@ -74,7 +75,7 @@ static void user_parse_comand(uint8_t *p, unsigned channel)
 {
   CHECK(channel == CH_SERVER && !comm_tx_busy() && server_rx_verified(p)); ++server_commands;
   /* Модель разрешает только законные ответы. Любая мусорная команда — ошибка теста. */
-  if (p[4] == 1) { CHECK(p[5] == 0); comm_server_registered(1); }
+  if (p[4] == 1) { comm_server_registered(p[5] == 0); }
   else if (p[4] == 24) comm_server_status_ack(p[5]);
   else if (p[4] == 27) {
     uint16_t capacity; uint8_t *out = comm_tx_acquire(&capacity); CHECK(out && capacity >= 12);
@@ -199,7 +200,7 @@ static void transport_tx(void)
     else if (send_silence == 2) sim_reply("SEND FAIL\r\n",20);
     else if (send_silence == 3) sim_reply("OK\r\n",20);
     uint8_t response[32], args[5]={0}; uint16_t n=0;
-    if (sent_frame[8]==1 && !drop_register) n=server_frame(response,1,0,args,sizeof(args));
+    if (sent_frame[8]==1 && !drop_register) { args[0]=reject_register ? 2 : 0; n=server_frame(response,1,0,args,sizeof(args)); }
     else if (sent_frame[8]==2 && !drop_status) { args[0]=sent_frame[7]; n=server_frame(response,24,0,args,1); }
     if (n) enqueue(response,n);
     return;
@@ -321,10 +322,10 @@ static void transport_tx(void)
     } else if (!strncmp(cmd,"AT+QIOPEN=",10)) {
       CHECK(call_pdp_model && !socket_model && opens<sizeof(open_addresses));
       open_times[opens]=sim_now; open_addresses[opens]=ch.address;
-      socket_model=true; ++opens;
+      socket_model=!sim_open_error; ++opens;
       CHECK(strstr(cmd,ch.address ? "backup.local" : "test.local"));
       if (call_drop) { sim_reply("OK\r\n",30); call_tcp_due=sim_now+300; }
-      else sim_reply(sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
+      else sim_reply(sim_open_error==2 ? "OK\r\n" : sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
     } else if (!strncmp(cmd,"AT+QPING=",9)) {
       CHECK(!strcmp(cmd,"AT+QPING=1,\"ya.ru\",3,2")); ++pings;
       sim_reply("OK\r\n",20); ping_reply_due=sim_now+1000;
@@ -378,7 +379,7 @@ static void server_reset_start(bool cold)
   comm_modem_transport(NULL); sim_reset();
   info.next=0; info.step=0; /* время модели начинается заново */
   server_commands=server_sessions=event13=event_retry=registrations_sent=statuses_sent=opens=closes=pings=dns_requests=0;
-  tx_unacked=drop_register=drop_status=close_error=send_silence=prompt_silence=reserve_enabled=junk_mode=0;
+  reject_register=tx_unacked=drop_register=drop_status=close_error=send_silence=prompt_silence=reserve_enabled=junk_mode=0;
   ping_success=dns_success=1; unique=last_status=uniqIDCnt=0;
   memcpy(device.IMEIGSM,"123456789012345",sizeof(device.IMEIGSM));
   device.protocolVersion=2; device.hardwareVersion=139;
@@ -485,12 +486,13 @@ static void server_tests(void)
   server_reset(); close_error=1; comm_channel_reopen(0); advance(1000); CHECK(closes==1 && opens==1 && ch.state==CH_FAULT);
   server_reset(); drop_register=1; comm_channel_reopen(0); advance(9000);
   CHECK(registrations_sent==3 && opens==2 && closes==1);
-  advance(2000); CHECK(closes==2 && opens==3);
-  server_reset(); drop_register=1; reserve_enabled=1; comm_channel_reopen(0); advance(210000);
-  CHECK(opens>=8 && ch.retry_step>=2);
+  advance(4000); CHECK(pings==1 && event13==1 && closes==1);
+  advance(30000); CHECK(closes==2 && opens==3);
+  server_reset(); drop_register=1; reserve_enabled=1; comm_channel_reopen(0); advance(1200000);
+  CHECK(opens>=8 && sv.silent_step==3);
   for (unsigned i=1;i<8;++i) CHECK(open_addresses[i]==((i-1u)/3u)%2u);
-  CHECK(open_times[4]-open_times[3]>=comm_timeouts[COMM_T_SERVER_RETRY_1]);
-  CHECK(open_times[7]-open_times[6]>=comm_timeouts[COMM_T_SERVER_RETRY_2]);
+  CHECK(open_times[2]-open_times[1]>=comm_timeouts[COMM_T_SERVER_RETRY_1]);
+  CHECK(open_times[3]-open_times[2]>=comm_timeouts[COMM_T_SERVER_RETRY_2]);
   server_reset(); comm_channel_priority(true); CHECK(!comm_tx_acquire(&cap)); comm_channel_priority(false);
   p=comm_tx_acquire(&cap); CHECK(p && !comm_tx_acquire(&cap));
   CHECK(!comm_tx_commit(cap+1u)); comm_tx_release(); CHECK(!comm_tx_busy());
@@ -510,7 +512,7 @@ static void server_tests(void)
     advance(6000); CHECK(closes>=1 && opens>=2);
   }
   server_reset(); drop_status=1; ping_success=dns_success=0; advance(70000);
-  CHECK(dns_requests==1 && statuses_sent==5 && ch.probe_active==COMM_CH_DNS && opens==1);
+  CHECK(dns_requests==1 && statuses_sent==4 && ch.probe_active==COMM_CH_DNS && opens==1);
   advance(3000); CHECK(opens>=2 && event13==0);
   sim_feed("+QIURC: \"dnsgip\",0,1,60\r\n+QIURC: \"dnsgip\",\"1.2.3.4\"\r\n");
   advance(500); CHECK(event13==0);
@@ -592,6 +594,8 @@ static void link_tests(void)
   /* TCP открыт, регистрацию сервер не принял - ошибка соединения, не «подключён» и не «потеря». */
   server_reset(); drop_register=1; comm_channel_reopen(0); advance(30000);
   CHECK(link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_UP,0)==1); /* UP - от server_reset */
+  advance(15000); /* После проверки интернета сокет закрывается перед повтором. */
+  CHECK(link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_UP,0)==1);
   /* Журнал не принял запись - повтор при следующей неудаче. */
   server_reset(); link_refuse=1; sim_open_error=1; comm_channel_reopen(0); link_refuse=1;
   for (unsigned i=0;opens<4 && i<100000;++i) transport_tick(10);

@@ -1,5 +1,5 @@
 /* Доработка: Кряжев А., 2026.
-   Восстанавливает связь по причинам отказа и окнам AT/TCP.
+   Восстанавливает связь по причинам отказа и окну отказов AT.
    Ступени задают паузы перезапуска модема, процессор не перезагружается.
    Ожидаемая потеря PDP после звонка получает первую попытку без отката.
 */
@@ -15,11 +15,11 @@ enum { RC_WATCH, RC_WAIT };
 static struct {
   const comm_recover_hooks_t *hooks;
   uint32_t now, wait_since, wait_ms, online_since, last_start;
-  uint32_t at_times[3], tcp_times[5];   /* millis последних таймаутов AT и неудач TCP в работе */
+  uint32_t at_times[3];                /* millis последних таймаутов AT в работе */
   uint16_t night_day;                   /* сутки последнего ночного перезапуска */
   uint8_t state, power, power_step, soft_step, soft_fails, net_step, online;
-  uint8_t at_count, tcp_count;
-  uint8_t at_i, tcp_i, early;
+  uint8_t at_count;
+  uint8_t at_i, early;
 } rc;
 
 /* Ступень паузы: 0, 1, 2 и дальше последняя. */
@@ -68,15 +68,13 @@ static bool rc_burst(uint32_t *t, uint8_t n, uint8_t *i, uint8_t *count, uint8_t
   return true;
 }
 
-/* Для восстановления нужны только окна AT/TCP, а не диагностическое кольцо. */
+/* Отказы TCP проверяет сервер через ping/DNS; здесь только окно отказов AT. */
 void comm_recover_failure(uint8_t step, uint8_t reason, uint32_t now_ms)
 {
-  if (step < SLM_TCP) return;
+  if (step < SLM_TCP || (step == SLM_TCP && reason == SLM_ERR_TIMEOUT)) return;
   rc.now = now_ms;
   if (reason == SLM_ERR_TIMEOUT || reason == SLM_ERR_NO_ANSWER)
     rc.early |= rc_burst(rc.at_times, 3, &rc.at_i, &rc.at_count, COMM_T_EARLY_AT);
-  else if (reason == SLM_ERR_TCP)
-    rc.early |= rc_burst(rc.tcp_times, 5, &rc.tcp_i, &rc.tcp_count, COMM_T_EARLY_TCP);
 }
 
 /* Попытка модема не удалась: что дальше - по причине. */
@@ -176,7 +174,6 @@ void comm_recover_poll(uint32_t now_ms)
 {
   rc.now = now_ms;
   rc_expire(rc.at_times, 3, rc.at_i, &rc.at_count, COMM_T_EARLY_AT);
-  rc_expire(rc.tcp_times, 5, rc.tcp_i, &rc.tcp_count, COMM_T_EARLY_TCP);
   if (comm_channel_call_pending() && !comm_modem_status()->at_fault) return;
   bool early = rc.early;
   rc.early = 0;

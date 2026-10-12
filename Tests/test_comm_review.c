@@ -31,9 +31,9 @@ static void review_idle_fragment(void)
 static void review_error_windows(void)
 {
   rc_online();
-  comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000);
-  comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(65537000u);
-  comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(100);
+  comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000);
+  comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(65537000u);
+  comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(100);
   CHECK(!rc_logged && comm_server_online());
   /* Точная граница и оборот миллисекунд, включая отметку времени ноль. */
   uint32_t times[3]; uint8_t index = 0, count = 0;

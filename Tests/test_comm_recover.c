@@ -4,7 +4,7 @@
 static struct { uint32_t at, ms; uint8_t power; unsigned opens; } rc_log[16];
 static unsigned rc_logged, rc_power_starts, rc_soft_starts, rc_session_resets;
 static uint32_t rc_last_since, rc_last_attempt, rc_clock = UINT32_MAX;
-static bool rc_busy_flag;
+static bool rc_busy_flag, rc_keep_opens;
 // Запомнить новый сеанс восстановления.
 static void rc_session(void) { ++rc_session_resets; socket_model=false; comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done); }
 // Выдать моделируемое время восстановления.
@@ -35,7 +35,7 @@ static void rc_note(void)
     if (rc_logged < sizeof(rc_log) / sizeof(rc_log[0])) { rc_log[rc_logged].at = sim_now; rc_log[rc_logged].ms = rc.wait_ms; rc_log[rc_logged].power = rc.power; rc_log[rc_logged].opens = opens; }
     ++rc_logged;
   }
-  if (opens > 8) opens = 0; /* учёт модели, не поведение */
+  if (!rc_keep_opens && opens > 8) opens = 0; /* учёт модели, не поведение */
   if (slm.session != rc_last_attempt) {
     rc_last_attempt = slm.session;
     socket_model = false; /* новая попытка модема: старого сокета нет */
@@ -91,8 +91,50 @@ static void info_tests(void)
   sim_csq = 22;
 }
 // Проверить ступени восстановления при отказах и смене суток.
+/* Рабочий интернет отделён от отказа TCP и регистрации; час без перезапуска. */
+static void server_outage_tests(void)
+{
+  for (unsigned failure=0; failure<5; ++failure) {
+    rc_online(); reserve_enabled=1;
+    if (failure==4) sim_open_error=2;
+    else if (failure==0 || failure==3) sim_open_error=1;
+    else if (failure==1) drop_register=1;
+    else reject_register=1;
+    if (failure==3) ping_success=0; /* DNS подтверждает интернет после отказа ping. */
+    rc_keep_opens=true;
+    unsigned first=opens;
+    if (failure==0) { /* Сервер недоступен уже при первом TCP-сеансе. */
+      socket_model=false; // Первый сеанс начинается без сокета от подготовительного подключения.
+      comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx,user_comm_rx_done);
+    } else comm_channel_reopen(0);
+    for (uint32_t start=sim_now; sim_now-start<3600000u;) rc_tick(10);
+    CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && event13==1);
+    CHECK(!rc.soft_fails && !rc.early && comm_modem_ready() && pings>=4);
+    if (failure==3) CHECK(dns_requests>=4 && comm_channel_probe_result()==COMM_CH_DNS);
+    CHECK(opens>first+4);
+    for (unsigned i=first;i<opens;++i) CHECK(open_addresses[i]==((i-first)/3u)%2u);
+    if (failure!=4) {
+      CHECK(open_times[first+1]-open_times[first]>=30000u && open_times[first+1]-open_times[first]<50000u);
+      CHECK(open_times[first+2]-open_times[first+1]>=60000u && open_times[first+2]-open_times[first+1]<65000u);
+      CHECK(open_times[first+3]-open_times[first+2]>=120000u && open_times[first+3]-open_times[first+2]<125000u);
+    }
+    for (unsigned i=first+4;i<opens;++i) CHECK(open_times[i]-open_times[i-1]>=300000u && open_times[i]-open_times[i-1]<=300100u);
+    uint32_t back=sim_now; sim_open_error=drop_register=reject_register=0;
+    while (!comm_server_online() && sim_now-back<=300000u) rc_tick(10);
+    CHECK(comm_server_online() && sim_now-back<=300000u);
+    CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && event13==1);
+    rc_keep_opens=false;
+    printf("server outage %u: 1h no restarts; one event13; restored in %u ms PASS\n",failure,sim_now-back);
+  }
+  /* При отказе открытия TCP без интернета остаётся прежняя лестница TCP/AT/питание. */
+  rc_online(); sim_open_error=1; ping_success=dns_success=0;
+  comm_channel_reopen(0); rc_run(1800000u);
+  CHECK(rc_logged>=3 && rc_soft_starts==1 && rc_power_starts>=1 && !event13);
+  rc_expect(0,0,0); rc_expect(1,0,1); rc_expect(2,600000u,1);
+}
 static void recover_tests(void)
 {
+  server_outage_tests();
   info_tests();
   /* 1. Нет SIM час: только снятие питания, паузы 10/30 мин, AT-перезапусков нет. */
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(3600000u);
@@ -151,19 +193,19 @@ static void recover_tests(void)
   CHECK(link_count(COMM_LINK_NO_INTERNET, 0) >= 1 && !link_count(COMM_LINK_NO_NET, 0)); /* ping и DNS молчат - событие 12 */
   /* 8. Ранний перезапуск: 3 таймаута AT в работе за 10 мин - питание сразу; 2 - нет. */
   rc_online();
-  comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000);
+  comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000);
   CHECK(!rc_logged);
-  comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(100); rc_expect(0, 0, 1);
+  comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(100); rc_expect(0, 0, 1);
   rc_online();  /* те же три, но растянуты больше чем на 10 мин - не считаются пачкой */
-  for (int i = 0; i < 3; ++i) { comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(330000u); }
+  for (int i = 0; i < 3; ++i) { comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(330000u); }
   CHECK(!rc_logged);
   /* Таймауты при запуске модема (нет сети) не копятся в пачку с таймаутом в работе. */
   rc_online(); sim_network_wait = 1; rc_fresh(); rc_run(150000u); CHECK(rc_logged == 2);
   sim_network_wait = 0; rc_run(120000u); CHECK(comm_server_online());
-  { unsigned before = rc_logged; comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); CHECK(rc_logged == before); }
-  /* 5 неудач TCP за час - питание сразу. */
-  rc_online(); for (int i = 0; i < 4; ++i) { comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, 566); rc_run(1000); }
-  CHECK(!rc_logged); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, 566); rc_run(100); rc_expect(0, 0, 1);
+  { unsigned before = rc_logged; comm_modem_record(SLM_READ, 0, 0); comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TIMEOUT, 0); rc_run(1000); CHECK(rc_logged == before); }
+  /* Отказы TCP не доказывают потерю интернета и не дают ранний перезапуск. */
+  rc_online(); for (int i = 0; i < 5; ++i) { comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, 566); rc_run(1000); }
+  CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts);
   /* 9. Ночь: в 03:00 модем перезапускается раз; занят - ждёт; без часов - раз в сутки работы. */
   rc_online(); rc_clock = 1790899200u + 2u * 3600u + 3590u; /* 02:59:50 по модели */
   rc_busy_flag = true; rc_run(60000u); CHECK(!rc_logged);
@@ -173,7 +215,7 @@ static void recover_tests(void)
   /* 10 мин устойчивой связи - ступени с начала. */
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(700000u); CHECK(rc.power_step == 2);
   sim_no_sim = 0; rc_run(1800000u + 700000u); CHECK(comm_server_online() && rc.power_step == 0);
-  printf("comm_recover: powered pauses, registration URC wake, no SIM/network/internet, silent modem 10/30/60 min, early AT/TCP, night/day, ladder reset PASS\n");
+  printf("comm_recover: powered pauses, registration URC wake, no SIM/network/internet, silent modem 10/30/60 min, early AT, TCP classified by ping/DNS, night/day, ladder reset PASS\n");
 }
 
 static void reset_session_contract(void)

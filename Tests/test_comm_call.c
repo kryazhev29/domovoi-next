@@ -251,7 +251,7 @@ static void call_tests(void)
     ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
     uint32_t elapsed=call_until_registered();
     CHECK(elapsed <= (loss==1 ? 1580u : 1660u) && opens==2);
-    CHECK(!rc.soft_fails && !rc.tcp_count && rc.power_step==2 && rc.soft_step==2 && rc.net_step==2);
+    CHECK(!rc.soft_fails && rc.power_step==2 && rc.soft_step==2 && rc.net_step==2);
     DIAG_CHECK(slm.diag.failure_next==failures);
     CHECK(links==3 && link_kinds[1]==COMM_LINK_LOST && link_kinds[2]==COMM_LINK_UP);
     printf("comm_call: loss=%u URC hangup->server=%u ms\n",loss,(unsigned)elapsed);
@@ -262,7 +262,7 @@ static void call_tests(void)
   CHECK(opens==1 && !call_net_queries && !call_pdp_queries && !call_tcp_queries);
   user_send_statusPack(CH_SERVER);
   for (unsigned i=0;opens<2;++i) { CHECK(i<400); transport_tick(10); comm_recover_poll(sim_now); }
-  uint32_t elapsed=call_until_registered(); CHECK(elapsed<=1580 && opens==2 && !rc.tcp_count);
+  uint32_t elapsed=call_until_registered(); CHECK(elapsed<=1580 && opens==2);
   printf("comm_call: TCP no URC normal send hangup->server=%u ms\n",(unsigned)elapsed);
   /* Потеря 4G и возврат: работает обычный запуск сети, без второго автомата. */
   for (unsigned wait=4000;wait<=6000;wait+=2000) {
@@ -283,7 +283,8 @@ static void call_tests(void)
   CHECK(rc.wait_ms==10000 && rc.soft_fails==1 && call_activations==1);
   call_reset(); call_drop=1; call_drop_urc=1; sim_open_error=1;
   ring("+CLIP: \"+79161234567\",145\r\n"); advance(2500);
-  CHECK(!comm_channel_expected() && ch.retry_step==1 && ch.reopen_pause==30000 && opens==5);
+  CHECK(!comm_channel_expected() && opens==2);
+  advance(5000); CHECK(pings==1 && event13==1 && opens==2);
   DIAG_CHECK(slm.diag.failure_next);
   puts("comm_call: access/ATA/CHUP, deadlines/CHUP, repeats, prompt, FW/night, ordinary recovery PASS");
 }

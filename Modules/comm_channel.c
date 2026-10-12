@@ -22,7 +22,7 @@ static struct {
   struct { uint8_t active:1, expected:1, lost:1, pdp_lost:1; } call;
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
 } ch;
-enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT };
+enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT, CH_PROBE };
 enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_ACK };
 enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY };
 /* Служебный запрос (сигнал, регистрация): одна команда, строки ответа - заказчику. */
@@ -173,7 +173,7 @@ bool comm_tx_commit(uint16_t count)
 /* Отменить ещё не переданный каналу кадр. */
 void comm_tx_release(void) { if (ch.tx_state == TX_BUILD) ch.tx_state = TX_FREE; }
 /* Снять ступени отката после устойчивой связи. */
-void comm_channel_stable(void) { ch.retry_step = 0; }
+void comm_channel_stable(void) { ch.retry_step = ch.connections = 0; }
 /* Зафиксировать принятый сервером новый сеанс. */
 void comm_channel_registered(void)
 {
@@ -210,7 +210,8 @@ bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t)
 /* Поставить проверку интернета по запросу надзора сервера. */
 bool comm_channel_probe(uint8_t kind)
 {
-  if (!comm_channel_ready() || ch.probe || ch.probe_active || (kind != COMM_CH_PING && kind != COMM_CH_DNS)) return false;
+  if ((ch.state != CH_OPEN && ch.state != CH_PROBE) || ch.probe || ch.probe_active ||
+      (kind != COMM_CH_PING && kind != COMM_CH_DNS)) return false;
   ch.probe = kind; return true;
 }
 /* Собрать и запустить одну операцию канала. */
@@ -259,7 +260,7 @@ static void channel_completed(void)
       : result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT : SLM_ERR_TCP;
     comm_modem_record(SLM_STEP_COUNT, reason, ch.flags.open_seen ? ch.open_code : comm_modem_status()->modem_code);
     if (ch.state == CH_OPENING) {
-      if (reason) { channel_emit(COMM_CH_OPEN_FAILED, ch.address); comm_channel_reopen(0); }
+      if (reason) { ch.state = CH_PROBE; channel_emit(COMM_CH_OPEN_FAILED, ch.address); }
       else { ch.state = CH_OPEN; channel_emit(COMM_CH_OPENED, ch.address); }
     }
     return;
@@ -368,7 +369,7 @@ void comm_channel_poll(uint32_t now_ms)
     ch.call.expected = ch.call.lost = 0;
     return;
   }
-  if (ch.state != CH_OPEN || ch.operation) return;
+  if ((ch.state != CH_OPEN && ch.state != CH_PROBE) || ch.operation) return;
   if (ch.tx_state == TX_QUEUED) {
     char cmd[32]; uint16_t n = comm_at_copy(cmd, sizeof(cmd), 0, "AT+QISEND=0,");
     n = comm_at_decimal(cmd, sizeof(cmd), n, ch.frame_count);
@@ -379,7 +380,7 @@ void comm_channel_poll(uint32_t now_ms)
     bool dns = ch.probe == COMM_CH_DNS;
     /* URC DNS не содержит ID: новое поколение не запускаем в старом окне. */
     if (dns && ch.flags.dns_fence && now_ms - ch.dns_since < comm_timeouts[COMM_T_DNS_FENCE]) {
-      ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, 0);
+      return; // Старое окно DNS ещё не означает отсутствие интернета.
     } else if (channel_command(dns ? "AT+QIDNSGIP=1,\"ya.ru\"" : "AT+QPING=1,\"ya.ru\",3,2",
                               COMM_AT_TEXT, COMM_T_AT_SIMPLE, dns ? OP_DNS : OP_PING)) {
       if (dns) { ch.flags.dns_fence = 1; ch.dns_since = now_ms; }

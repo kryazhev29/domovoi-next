@@ -45,6 +45,6 @@ void comm_server_registered(uint8_t success);
 void comm_server_status_ack(uint8_t unique_id);
 /* Начать срок ожидания подтверждения отправленного статуса. */
 void comm_server_status_sent(uint8_t unique_id);
-/* Сообщить, принял ли сервер регистрацию. */
+/* Действующая подтверждённая регистрация; проверка интернета не означает online. */
 bool comm_server_online(void);
 #endif

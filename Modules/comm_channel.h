@@ -56,7 +56,7 @@ bool comm_channel_expected(void);
 void comm_channel_alive(void);
 /* Сообщить, занят ли AT голосовым вызовом. */
 bool comm_channel_call_pending(void);
-/* Поставить проверку интернета по запросу надзора сервера. */
+/* Поставить проверку интернета при открытом TCP или после отказа QIOPEN. */
 bool comm_channel_probe(uint8_t kind);
 /* Последний законченный ya.ru: 0 нет, 1 ping, 2 DNS, 3 отказ. */
 uint8_t comm_channel_probe_result(void);
