@@ -225,7 +225,7 @@ bool comm_sms_send(const char *number, const char *text)
   if (*number == '+') { ++number; type = 0x91; }
   while (number[n]) { if (number[n] < '0' || number[n] > '9' || ++n > 20u) return false; }
   if (!n) return false;
-  if (n >= 11u) type = 0x91; /* код страны с цифрами без '+' */
+  if (n >= 11u && (n != 11u || number[0] != '8')) type = 0x91; /* 8XXXXXXXXXX без '+' — национальный */
   bool gsm = true;
   while (text[len] && len < 255u) { if ((uint8_t)text[len] >= 0x80u) gsm = false; ++len; }
   uint8_t chars = gsm ? (len > SMS_UD * 8u / 7u ? (uint8_t)(SMS_UD * 8u / 7u) : len)

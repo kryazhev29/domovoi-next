@@ -88,9 +88,24 @@ static void sms_tests(void)
   advance(300);
   CHECK(strstr(sms_log,"AT+CMGS=110;") && !strncmp(sms_sent_pdu,"001100048121430000AA72C16030180C0683",36) && strlen(sms_sent_pdu)==222);
   CHECK(!comm_sms_send("+7916x",".") && !comm_sms_send("",".") && !comm_sms_send("123456789012345678901","."));
+  /* Только национальные 11 цифр с 8 получают 0x81; '+' и прочие формы прежние. */
+  { static const struct { const char *number, *prefix; } cases[] = {
+      {"89035551122", "0011000B819830551521F2"},
+      {"+89035551122", "0011000B919830551521F2"},
+      {"79035551122", "0011000B919730551521F2"},
+      {"8903555112", "0011000A819830551521"},
+      {"890355511222", "0011000C91983055152122"}
+    };
+    for (unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);++i) {
+      sms_reset(); CHECK(comm_sms_send(cases[i].number,"x")); advance(300);
+      CHECK(!strncmp(sms_sent_pdu,cases[i].prefix,strlen(cases[i].prefix)));
+    }
+  }
   /* Ответ из обработчика уходит; отказ сети освобождает очередь. */
   sms_reset(); sms_reply_to="#status: Ok"; sms_arrive(1,pdu_cmd7); advance(300);
   CHECK(strstr(sms_log,"AT+CMGD=1;AT+CMGS=") && comm_server_online());
+  sms_reset(); sms_reply_to="ADD: Error"; sms_arrive(1,pdu_concat); advance(300);
+  CHECK(!strncmp(sms_sent_pdu,"0011000B819830551521F2",20));
   cmgs_error=1; CHECK(comm_sms_send("+79161234567","x")); advance(300); CHECK(comm_sms_send("+79161234567","y"));
   /* Перезапуск модема: настройка заново, ожидающая команда снимается. */
   sms_reset(); CHECK(comm_modem_restart(false,sim_now)); sms_log[0]=0;
