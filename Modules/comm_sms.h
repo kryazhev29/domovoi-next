@@ -7,9 +7,16 @@
 #define COMM_SMS_H
 #include <stdint.h>
 #include <stdbool.h>
-/* received(номер, текст) - из главного цикла, строки в cp1251, живут до возврата;
-   true разрешает удаление с SIM, false оставляет SMS до повторного вызова. Текст PDU - hex: не может притвориться ответом модема. */
-void comm_sms_init(bool (*received)(char *number, char *text));
+#include "../User/domovoi_diag.h"
+/* received(номер, текст, first) — из главного цикла; приложение сбрасывает *first
+   после записи события, включая битую PDU (пустой текст).
+   true разрешает удаление, false — повтор.
+   Строки cp1251 живут до возврата. PDU hex не становится ответом модема. */
+void comm_sms_init(bool (*received)(char *number, char *text, bool *first));
+#if DOMOVOI_DIAG
+/* Восемь слов хвоста USB 111; номера полей описаны в отчёте SMS. */
+void comm_sms_diag(uint32_t *v);
+#endif
 /* Продвинуть очередь SIM и передать готовое сообщение приложению. */
 void comm_sms_poll(uint32_t now_ms);
 /* Номер "+7..." или цифры; текст cp1251. Только латиница - GSM 7 бит до 114 символов,

@@ -36,9 +36,10 @@ static uint8_t call_cgreg_model, call_cereg_model, call_creg_model, call_pdp_mod
 static uint32_t answer_at, answer_due, hangup_at, hangup_due, call_network_due, call_tcp_due;
 static char last_command[32];
 /* SMS: ячейки SIM 1..10 (PDU hex), журнал команд SMS, последняя отправленная PDU. */
-static const char *sim_store[11]; static char sms_log[512]; static char sms_sent_pdu[300];
-static unsigned cmgs_error, sms_received_count;
-static bool sms_received_model(char *number, char *text);
+static const char *sim_store[11], *sim_me[11]; static char sms_log[512]; static char sms_sent_pdu[300];
+static unsigned cmgs_error, sms_received_count, sms_events, sms_storage, cnmi_error, cmgf_error, cmgr_error, cmgd_error, cpms_error;
+static bool sms_received_model(char *number, char *text, bool *first);
+static char sms_listing[4096]; static unsigned sms_listing_pos, sms_listing_len;
 /* VoLTE: настройка, состояние модема, ответ ERROR, счётчики запросов и записей. */
 static uint8_t volte_flag, volte_modem; static unsigned volte_error, volte_queries, volte_sets;
 // Выдать требуемую настройку VoLTE.
@@ -216,18 +217,39 @@ static void transport_tx(void)
     strcat(sms_log,cmd); strcat(sms_log,";");
     unsigned i;
     char head[48];
-    if (!strcmp(cmd,"AT+CMGL=4")) {
-      for (i=1;i<11;++i) if (sim_store[i]) {
-        snprintf(head,sizeof(head),"+CMGL: %u,0,,%u\r\n",i,(unsigned)strlen(sim_store[i])/2u-8u);
-        sim_feed(head); sim_feed(sim_store[i]); sim_feed("\r\n");
+    const char **store = sms_storage == 2u ? sim_me : sim_store;
+    if (!strncmp(cmd,"AT+CNMI=",8)) {
+      /* Common V2.24: mode поддерживает только 0. */
+      sim_reply(strcmp(cmd,"AT+CNMI=0,1,0,0,0") || cnmi_error ? "ERROR\r\n" : "OK\r\n",30);
+    } else if (!strcmp(cmd,"AT+CMGF=0") && cmgf_error) { --cmgf_error; sim_reply("ERROR\r\n",30); }
+    else if (!strncmp(cmd,"AT+CPMS=",8)) {
+      if (cpms_error) { --cpms_error; sim_reply("+CMS ERROR: 313\r\n",30); return; }
+      sms_storage = cmd[10]=='E' ? 2u : cmd[10]=='T' ? 3u : 1u;
+      store=sms_storage==2u ? sim_me : sim_store;
+      unsigned used=0;for(i=0;i<11;++i)used+=store[i]!=NULL;
+      snprintf(head,sizeof(head),"+CPMS: %u,11,%u,11,%u,11\r\nOK\r\n",used,used,used);
+      sim_reply(head,30);
+    } else if (!strcmp(cmd,"AT+CMGL=4")) {
+      sms_listing_pos=sms_listing_len=0;
+      for (i=0;i<11;++i) if (store[i]) {
+        unsigned smsc=(unsigned)strtoul((char[]){store[i][0],store[i][1],0},NULL,16);
+        snprintf(head,sizeof(head),"+CMGL: %u,%u,,%u\r\n",i,i%4,(unsigned)strlen(store[i])/2u-smsc-1u);
+        int added=snprintf(sms_listing+sms_listing_len,sizeof(sms_listing)-sms_listing_len,"%s%s\r\n",head,store[i]);
+        CHECK(added>0 && (unsigned)added<sizeof(sms_listing)-sms_listing_len);sms_listing_len+=(unsigned)added;
       }
-      sim_feed("\r\nOK\r\n");
+      strcpy(sms_listing+sms_listing_len,"\r\nOK\r\n");sms_listing_len+=6;
     } else if (sscanf(cmd,"AT+CMGR=%u",&i)==1) {
-      if (i<11 && sim_store[i]) {
-        snprintf(head,sizeof(head),"+CMGR: 0,,%u\r\n",(unsigned)strlen(sim_store[i])/2u-8u);
-        sim_feed(head); sim_feed(sim_store[i]); sim_feed("\r\n\r\nOK\r\n");
+      if (cmgr_error) { --cmgr_error; sim_reply("+CMS ERROR: 500\r\n",30); }
+      else if (i<11 && store[i]) {
+        unsigned smsc=(unsigned)strtoul((char[]){store[i][0],store[i][1],0},NULL,16);
+        snprintf(head,sizeof(head),"+CMGR: 0,,%u\r\n",(unsigned)strlen(store[i])/2u-smsc-1u);
+        sim_feed(head); sim_feed(store[i]); sim_feed("\r\n\r\nOK\r\n");
       } else sim_feed("+CMS ERROR: 321\r\n");
-    } else if (sscanf(cmd,"AT+CMGD=%u",&i)==1) { CHECK(i<11); sim_store[i]=NULL; sim_reply("OK\r\n",30); }
+    } else if (sscanf(cmd,"AT+CMGD=%u",&i)==1) {
+      CHECK(i<11);
+      if (cmgd_error) { --cmgd_error; sim_reply("+CMS ERROR: 500\r\n",30); }
+      else { store[i]=NULL; sim_reply("OK\r\n",30); }
+    }
     else if (!strncmp(cmd,"AT+CMGS=",8)) sim_reply("> ",30);
     else sim_reply("OK\r\n",30);
     return;
@@ -353,6 +375,10 @@ static void transport_tx(void)
 // Продвинуть UART, модем, канал и сервер на один шаг.
 static void transport_tick(unsigned increment)
 {
+  if(!rts_stop && sms_listing_pos<sms_listing_len) {
+    unsigned n=sms_listing_len-sms_listing_pos;if(n>64)n=64;
+    for(unsigned i=0;i<n;++i)interrupt_byte((uint8_t)sms_listing[sms_listing_pos++],USART_SR_RXNE);
+  }
   writes = 0;
   if (primary_closed_due && (int32_t)(sim_now-primary_closed_due)>=0) {
     primary_closed_due=0; sim_feed("+QIURC: \"closed\",0\r\n");
@@ -377,7 +403,9 @@ static void transport_tick(unsigned increment)
   if (ping_reply_kind && (int32_t)(sim_now-ping_reply_due)>=0) {
     sim_feed(ping_reply_kind==3 ? "+QPING: 0,2,1,1,30,30,30\r\n" : ping_reply_kind==1 ? "+QPING: 0,\"1.2.3.4\",32,30,64\r\n+QPING: 0,2,1,1,30,30,30\r\n" : "+QPING: 0,2,0,2,0,0,0\r\n"); ping_reply_kind=0;
   }
-  server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now); comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
+  server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now);
+  CHECK(msg.count <= sizeof(msg.queue)/sizeof(msg.queue[0]));
+  comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
   if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
   transport_tx(); sim_now+=increment;
 }
@@ -409,7 +437,8 @@ static void server_reset_start(bool cold)
   call_drop=call_drop_urc=call_activations=call_activation_error=call_net_queries=call_pdp_queries=call_tcp_queries=0;
   call_cgreg_model=call_cereg_model=call_creg_model=call_pdp_model=1; call_other_pdp=call_other_socket=0;
   chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(user_comm_call, volte_flag_model);
-  sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
+  sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=sms_events=sms_storage=0; comm_sms_init(sms_received_model);
+  sms_listing_pos=sms_listing_len=0;
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
   comm_balance_init(ussd_model, balance_model);
   /* Выход к TCP — принятой моделью этапа 3. */
@@ -417,6 +446,8 @@ static void server_reset_start(bool cold)
   comm_server_init(&test_server_handlers); links=link_refuse=0;
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
   for (unsigned i=0;!comm_server_online() && i<1500;++i) transport_tick(10);
+  if(!comm_server_online() || !comm_modem_ready() || sim_now>=11000)
+    printf("startup SMS now=%u ready=%u op=%u count=%u scan=%u erase=%u events=%u modem=%u step=%u reason=%u cmd=%s\n",(unsigned)sim_now,msg.ready,msg.op,msg.count,msg.scan,msg.erase,sms_events,comm_modem_state(),comm_modem_status()->step,comm_modem_status()->reason,last_command);
   CHECK(comm_server_online() && comm_modem_ready() && sim_now<11000);
   advance(500); call_activations=call_net_queries=call_pdp_queries=call_tcp_queries=0;
 }

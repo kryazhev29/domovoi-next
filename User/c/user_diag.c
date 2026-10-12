@@ -10,6 +10,7 @@
 #include "../../Modules/comm_recover.h"
 #include "../../Modules/comm_uart.h"
 #include "../../Modules/comm_modem.h"
+#include "../../Modules/comm_sms.h"
 #if DOMOVOI_DIAG
 // Прочитать окрашенный свободный стек; реализация принадлежит main.c.
 uint32_t stack_free_bytes(void);
@@ -21,7 +22,7 @@ void user_send_usbDiag(uint8_t uniqId)
   uint8_t send_buffer[8 + 3 + sizeof(v)];
   uint16_t len = 3 + sizeof(v);
 
-  v[0] = 6;
+  v[0] = 7;
   v[1] = device.worktime;
   v[2] = timers_getMillis();
   usb_diag_fill(&v[3]);
@@ -46,6 +47,7 @@ void user_send_usbDiag(uint8_t uniqId)
   v[63] = comm_channel_diag();
   v[64] = comm_server_diag();
   v[65] = comm_recover_diag(timers_getMillis(), &v[66]);
+  comm_sms_diag(&v[67]);
 
   send_buffer[6] = 0;
   send_buffer[7] = uniqId;

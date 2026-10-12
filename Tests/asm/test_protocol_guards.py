@@ -256,7 +256,8 @@ def pin_commands():
         m.stubs[m.addr('user_sendsms')] = send
         m.u.mem_write(0x21000000, b'#imei ' + text + b',\0')
         m.u.mem_write(0x21000400, b'+79031234567\0')
-        assert m.checked('user_smsreceived', 0x21000400, 0x21000000)
+        m.u.mem_write(0x21000800, b'\x01')
+        assert m.checked('user_smsreceived', 0x21000400, 0x21000000, 0x21000800)
         imei = bytes(m.u.mem_read(m.device + m.d['IMEIGSM'], 16)).split(b'\0')[0]
         expected = b'IMEI: ' + imei if valid else b'IMEI: Error "Pin not valid"'
         assert replies == [(expected, b'+79031234567')], (text, replies)

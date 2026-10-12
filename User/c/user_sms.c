@@ -20,15 +20,21 @@ static uint8_t sms_command(const char *name)
 }
 
 // Проверить ПИН и выполнить одну принятую SMS-команду.
-bool user_smsreceived(char *num, char *data)
+bool user_smsreceived(char *num, char *data, bool *first)
 {
   char *lineEnd, *pin, *arg, *reply = tempStrBuffer;
   char name[11];
   uint8_t command;
   uint32_t pinValue;
   bool validPin = false, validFormat;
+  if (*first) {
+    char id[10] = {0}, *tail = user_last10digitsnumber(num);
+    memcpy(id, tail, strlen(tail));
+    if (!log_addSystemEventID(LOG_SYS_RECVSMS, id)) return false;
+    *first = false;
+  }
+  if (!*data) return true; /* битая PDU: событие есть, команды нет */
   if (device.triggers.smsToAdmin && *data != '#' && !user_send_smsToServer(data)) return false;
-  log_addSystemEventID(LOG_SYS_RECVSMS, user_last10digitsnumber(num));
   lineEnd = skipchar('\n', data, 1);
   if (lineEnd != data) *(lineEnd - 1) = 0;
   if (*data != '#') return true;

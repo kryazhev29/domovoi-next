@@ -85,6 +85,11 @@ static void fault(uint8_t reason)
                  : state == IDLE ? COMM_AT_STREAM_ERROR : COMM_AT_NO_ANSWER;
   /* После потери границ ни оставшееся тело, ни его OK не разбираются. */
   state = FAULT;
+  if (pdu_body == 3) {
+    /* Оборванная CMT тоже завершает SMS событием, без исполнения текста. */
+    pdu_body = 0; event(COMM_AT_URC, (const uint8_t *)"!", 1, 0);
+    event(COMM_AT_URC, NULL, 0, 0);
+  }
   event(kind, NULL, 0, reason);
 }
 
@@ -131,7 +136,7 @@ void comm_at_sink(uint16_t (*binary)(const uint8_t *, uint16_t))
 /* Сообщить, занят ли движок запросом или восстановлением границ. */
 bool comm_at_busy(void)
 {
-  return state != IDLE;
+  return state != IDLE || pdu_body != 0;
 }
 /* Сообщить, ждёт ли модем данные после приглашения. */
 bool comm_at_prompt(void) { return state == IDLE && result == COMM_AT_GOT_PROMPT; }
@@ -248,10 +253,19 @@ static void complete_line(void)
 {
   uint8_t code;
   /* Тело кончилось ровно на границе куска: пустой последний кусок. */
-  if (!line_count) { if (pdu_body == 2) { pdu_body = 0; event(COMM_AT_LINE, line, 0, 0); } return; }
+  if (!line_count) {
+    if (pdu_body == 3) { pdu_body = 0; event(COMM_AT_URC, line, 0, 0); }
+    else if (pdu_body == 2) { pdu_body = 0; event(COMM_AT_LINE, line, 0, 0); }
+    return;
+  }
   if ((state == RUN || state == SYNC_WAIT) && line_count + 1u == command_count
       && !memcmp(line, command, line_count)) return; /* Эхо до ATE0. */
-  if (pdu_body) { pdu_body = 0; event(COMM_AT_LINE, line, line_count, 0); return; }
+  if (pdu_body) {
+    uint8_t kind = pdu_body == 3 ? COMM_AT_URC : COMM_AT_LINE;
+    pdu_body = 0; event(kind, line, line_count, 0);
+    if (kind == COMM_AT_URC) event(kind, line, 0, 0);
+    return;
+  }
   if (comm_at_prefix(line, line_count, "+QIRD:")
       && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
           || mode != COMM_AT_SLM_QIRD)) {
@@ -280,7 +294,10 @@ static void complete_line(void)
     uint16_t pos = comm_at_spaces(line, line_count, sizeof("+CMEE:") - 1u); uint32_t value;
     sync_seen = comm_at_number(line, line_count, &pos, 2, &value) && pos == line_count;
   }
-  if (urc()) event(COMM_AT_URC, line, line_count, 0);
+  if (urc()) {
+    event(COMM_AT_URC, line, line_count, 0);
+    if (comm_at_prefix(line, line_count, "+CMT:")) pdu_body = 3;
+  }
   else if (state == RUN) {
     event(COMM_AT_LINE, line, line_count, 0);
     if (mode == COMM_AT_PDU && solicited()) pdu_body = 1; /* +CMGR:/+CMGL: - дальше тело */
@@ -315,8 +332,9 @@ static void byte(uint8_t value)
   if (line_count >= sizeof(line)) {
     /* USSD с рекламой и CGCONTRDP с IPv6: нужное в начале, хвост до CRLF отбрасывается. */
     if (comm_at_prefix(line, line_count, "+CUSD:") || comm_at_prefix(line, line_count, "+CGCONTRDP:")) return;
-    if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }
-    event(COMM_AT_LINE, line, line_count, 1); line_count = 0; pdu_body = 2; /* кусок, дальше продолжение */
+    if (!pdu_body || (state != RUN && pdu_body != 3)) { fault(COMM_AT_LINE_OVERFLOW); return; }
+    event(pdu_body == 3 ? COMM_AT_URC : COMM_AT_LINE, line, line_count, 1);
+    line_count = 0; if (pdu_body != 3) pdu_body = 2;
   }
   line[line_count++] = value;
 }
@@ -368,7 +386,7 @@ void comm_at_poll(uint32_t now_ms)
       if (!remaining) grammar = BODY_CR;
     } else {
       used = 1;
-      if (state == IDLE && !line_count && !cr) started = now_ms;
+      if (state == IDLE && !line_count && !cr && !pdu_body) started = now_ms;
       byte(*view);
     }
     if (state == FAULT) break;
@@ -376,7 +394,7 @@ void comm_at_poll(uint32_t now_ms)
     budget = (uint16_t)(budget - used);
   }
   /* Оборванный URC без активной команды иначе навсегда запрещает новый AT. */
-  if (state == IDLE && (line_count || cr) && expired(now_ms, recovery)) fault(COMM_AT_BAD_FRAME);
+  if (state == IDLE && (line_count || cr || pdu_body) && expired(now_ms, recovery)) fault(COMM_AT_BAD_FRAME);
   if (state == CALL_DRAIN && expired(now_ms, timeout)) state = SYNC_SEND;
   if (state == DRAIN && grammar == LINES && !line_count && !cr) state = SYNC_SEND;
   if ((state == COMPLETE || state == SYNC_COMPLETE || state == SYNC_SEND)

@@ -31,7 +31,7 @@ def run():
              'prof_card_mark', 'user_send_usbDiag',
              'usb_diag_fill', 'usb_diag_fill_regs', 'usb_diag_fill_errors',
              'usb_diag_fill_addr', 'comm_channel_diag', 'comm_server_diag',
-             'comm_recover_diag', 'stack_free_bytes')
+             'comm_recover_diag', 'comm_sms_diag', 'stack_free_bytes')
     for name in names:
         assert (name in m.symbols) == enabled, name
     for name in ('fault_capture', 'fault_record', 'stack_paint', 'stack_canary_check'):
@@ -57,6 +57,9 @@ def run():
                 assert packet[:4] == b'SLDN' and packet[7] == 37
                 assert len(packet) == int.from_bytes(packet[4:6], 'little') + 8
                 assert crc16(packet[4:-2]) == int.from_bytes(packet[-2:], 'little')
+                if packet[8] == 111:
+                    assert len(packet) == 311 and struct.unpack_from('<I', packet, 9)[0] == 7
+                    assert len(packet[277:-2]) == 32  # v[67..74]: SMS
     else:
         for channel in (0, 1):
             for authorized in (0, 1):

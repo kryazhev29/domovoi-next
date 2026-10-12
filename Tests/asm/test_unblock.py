@@ -402,7 +402,8 @@ def sms(m, text, accepted=1):
     m.write(m.addr('config') + m.cfg['pinCode'], 1234)
     m.u.mem_write(0x21000400, b'+79031234567\0')
     m.u.mem_write(0x21000500, text + b'\0')
-    assert m.checked('user_smsreceived', 0x21000400, 0x21000500) == accepted
+    m.u.mem_write(0x21000800, b'\x01')
+    assert m.checked('user_smsreceived', 0x21000400, 0x21000500, 0x21000800) == accepted
     return replies
 
 

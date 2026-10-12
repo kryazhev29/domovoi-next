@@ -117,4 +117,6 @@ bool comm_modem_side_started(const comm_side_t *req, uint32_t *since);
 bool comm_modem_call_abort(uint32_t now_ms);
 /* UINT8_MAX - ещё в работе или не req; результат AT один раз, перезапуск даёт ERROR. */
 uint8_t comm_modem_side_result(const comm_side_t *req);
+/* Код CMS/CME: читать сразу после результата своего служебного запроса. */
+uint16_t comm_modem_side_code(void);
 #endif

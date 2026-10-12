@@ -31,6 +31,7 @@ static bool log_addSystemEvent(logSystem_e event) { if (log_refuse) return false
 static bool quiet, add_ok, flash_busy;
 static bool flash_exec_idle(void) { return !flash_busy; }
 static unsigned sent, received_events, sent_events, added, controls, resets, outputs, forwarded;
+static bool sms_log_full;
 static unsigned last_output;
 static char expected_added_id[11] = "0123456789";
 static uintptr_t input_begin, input_end;
@@ -45,7 +46,10 @@ static bool user_comm_sms(const char *num, const char *mes)
 }
 static bool log_addSystemEventID(logSystem_e event, char *id)
 {
-    if (event == LOG_SYS_RECVSMS) { strcpy(recv_id, id); received_events++; }
+    if (event == LOG_SYS_RECVSMS) {
+        if (sms_log_full) return false;
+        memcpy(recv_id, id, 10); recv_id[10]=0; received_events++;
+    }
     else if (event == LOG_SYS_LOWBALANCE || event == LOG_SYS_LOWSIGNAL) {
         /* Поле ID - 10 байт: число текстом, остаток нули. */
         last_event = event; memcpy(value_id, id, 10); value_id[10] = 0; value_events++;
@@ -94,6 +98,7 @@ static char *checked_strcat(char *dest, size_t capacity, const char *source, siz
 
 #define strcat(p, s) checked_strcat(p, __builtin_object_size(p, 1), s, __builtin_object_size(s, 1))
 /* КОД МОДУЛЯ */
+#define sms_received_call(n,d,first) user_smsreceived(n,d,(bool[]){first})
 #undef sprintf
 #undef strcat
 static void init(void)
@@ -107,6 +112,7 @@ static void init(void)
     config.useServer1 = config.useServer2 = 1; server_address = 0;
     value_events = plain_events = 0; log_refuse = false;
     sent = received_events = sent_events = added = controls = resets = outputs = forwarded = 0;
+    sms_log_full=false;
     quiet = flash_busy = false; add_ok = true; last_output = 255;
     strcpy(expected_added_id, "0123456789"); input_begin = input_end = 0;
 }
@@ -117,7 +123,7 @@ static void run_case(const char *command, const char *reply, unsigned mode)
     quiet = mode == 1; if (mode == 2) config.rele[0].onCmdServer = false;
     if (mode == 3) add_ok = false;
     device.triggers.smsToAdmin = true;
-    user_smsreceived(number, message);
+    sms_received_call(number, message,true);
     CHECK(received_events == 1 && !strcmp(recv_id, "9031234567"));
     /* Пакет 7 - только SMS, которые не команды (лист «SMS», таблица 03.10). */
     CHECK(forwarded == (command[0] != '#'));
@@ -134,7 +140,7 @@ static void status_case(unsigned net, unsigned connected, uint8_t address, uint8
     char number[] = "+79031234567", message[] = "#status 1234,", expected[128];
     init(); device.netType = net; device.connected = connected; server_address = address; config.useServer1 = use1;
     device.triggers.handUnBlock = 1; device.triggers.autoregistration = 1; device.triggers.openAll = 0;
-    user_smsreceived(number, message);
+    sms_received_call(number, message,true);
     snprintf(expected, sizeof(expected), "STATUS:\r\n-SIGNAL: 17\r\n-NET: %s\r\n-CLOUD: %s\r\n-FW: 71\r\n-TRIG: 1/0/1/0", net_text, cloud);
     CHECK(sent == 1 && !strcmp(sent_message, expected));
 }
@@ -182,7 +188,7 @@ static void test_debug(void)
             message[length] = 0;
             unsigned shown = length < 111 ? length : 111;
             snprintf(expected, sizeof(expected), ">>U SMS recv: %.*s\r\n", (int)shown, message);
-            user_smsreceived(number, message);
+            sms_received_call(number, message,true);
             CHECK(recv_debug_lines == 0);
             for (unsigned k = 0; k < sizeof(scratch.before); k++) CHECK(scratch.before[k] == 0xa7);
             for (unsigned k = 0; k < sizeof(scratch.after); k++) CHECK(scratch.after[k] == 0xa7);
@@ -210,7 +216,7 @@ static void test_add_bounds(bool short_only)
         char number[] = "+79031234567", expected[64];
         if (length == 10) snprintf(expected, sizeof(expected), "ADD: %s - Ok", expected_added_id);
         else strcpy(expected, "ADD: Error \"Format not correct\"");
-        user_smsreceived(number, message);
+        sms_received_call(number, message,true);
         CHECK(added == (length == 10) && controls == added && sent == 1);
         CHECK(!strcmp(sent_message, expected) && !strcmp(sent_number, number));
         CHECK(!strcmp(send_id, "9031234567"));
@@ -233,14 +239,14 @@ static void test_pin(void)
         init(); config.pinCode = cases[i].pin;
         strcpy(device.IMEIGSM, "867442070217472");
         snprintf(message, sizeof(message), "#imei %s,", cases[i].text);
-        CHECK(user_smsreceived(number, message));
+        CHECK(sms_received_call(number, message,true));
         CHECK(sent == 1 && !strcmp(sent_message, cases[i].valid ?
               "IMEI: 867442070217472" : "IMEI: Error \"Pin not valid\""));
     }
     init(); config.pinCode = 4321u; device.IMEIGSM[0] = 0;
-    strcpy(message, "#imei 32768,"); CHECK(user_smsreceived(number, message));
+    strcpy(message, "#imei 32768,"); CHECK(sms_received_call(number, message,true));
     CHECK(!strcmp(sent_message, "IMEI: Error \"Pin not valid\""));
-    strcpy(message, "#imei 48074,"); CHECK(user_smsreceived(number, message));
+    strcpy(message, "#imei 48074,"); CHECK(sms_received_call(number, message,true));
     CHECK(!strcmp(sent_message, "IMEI: Error \"Pin not valid\""));
 }
 int main(int argc, char **argv)
@@ -255,12 +261,15 @@ int main(int argc, char **argv)
     run_case("#setout 1234,1", "SETOUT: Error \"Update in progress\"", 1); CHECK(!outputs);
     run_case("#default 1234,", "DEFAULT: Error \"Update in progress\"", 1); CHECK(!resets);
     run_case("#add 1234,0123456789", "ADD: 0123456789 - Ok", 0); CHECK(added == 1 && controls == 1);
+    { char number[]="+79161234567",message[]="#add 4321,9990001234";
+      init();config.pinCode=4321;strcpy(expected_added_id,"9990001234");
+      CHECK(sms_received_call(number,message,true) && added==1 && controls==1 && received_events==1); }
     run_case("#add 1234,0123456789", "ADD: Error", 3); CHECK(!added && !controls);
     { char number[] = "+79031234567", message[] = "#add 1234,0123456789";
       init(); flash_busy = true;
-      CHECK(!user_smsreceived(number, message) && !added && !sent);
+      CHECK(!sms_received_call(number, message,true) && !added && !sent);
       flash_busy = false;
-      CHECK(user_smsreceived(number, message) && added == 1 && sent == 1); }
+      CHECK(sms_received_call(number, message,false) && added == 1 && sent == 1 && received_events == 1); }
     run_case("#add 1234,01234567890", "ADD: Error \"Format not correct\"", 0); CHECK(!added && !controls);
     for (unsigned i = 0; i < 10; i++) {
         char text[] = "#add 1234,0123456789";
@@ -291,9 +300,14 @@ int main(int argc, char **argv)
     run_case("#unknown 1234,", NULL, 0);
     run_case("#update 1234,", NULL, 0);
     run_case("plain text", NULL, 0);
+    { char number[]="",message[]="";bool first=true;init();sms_log_full=true;
+      CHECK(!user_smsreceived(number,message,&first) && first && !received_events);
+      sms_log_full=false;CHECK(user_smsreceived(number,message,&first) && !first && received_events==1);
+      for(unsigned i=0;i<10;++i)CHECK(!recv_id[i]); }
     {char number[]="+79031234567",message[]="text";unsigned before=forwarded,events=received_events;
-     sms_slot_busy=true;CHECK(!user_smsreceived(number,message)&&forwarded==before&&received_events==events);
-     sms_slot_busy=false;CHECK(user_smsreceived(number,message)&&forwarded==before+1&&received_events==events+1);}
+     device.triggers.smsToAdmin=1;
+     sms_slot_busy=true;CHECK(!sms_received_call(number,message,true)&&forwarded==before&&received_events==events+1);
+     sms_slot_busy=false;CHECK(sms_received_call(number,message,false)&&forwarded==before+1&&received_events==events+1);}
     test_status();
     puts("sms: all reply sites preserve recipient, reply text and journal number passed");
     test_journal();

@@ -32,7 +32,7 @@ static struct {
   uint8_t session; /* растёт с каждой попыткой запуска */
   /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
      данные уходят в том же poll; результат забирает только владелец req. */
-  struct { const comm_side_t *req; uint32_t started; uint8_t queued, running, prompted, done, result; } side;
+  struct { const comm_side_t *req; uint32_t started; uint8_t queued, running, prompted, done, result; uint16_t code; } side;
   slm_diag_t diag;
 } slm;
 #if DOMOVOI_DIAG
@@ -162,7 +162,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     if (kind == COMM_AT_DONE) {
       slm.side.running = 0;
       if (detail == COMM_AT_GOT_PROMPT && slm.side.req->payload) { slm.side.prompted = 1; return; }
-      slm.side.done = 1; slm.side.result = (uint8_t)detail;
+      slm.side.done = 1; slm.side.result = (uint8_t)detail; slm.side.code = n;
       if (detail <= COMM_AT_TIMEOUT) return;
       kind = COMM_AT_STREAM_ERROR; /* поток потерян - как у любой команды */
     }
@@ -356,7 +356,7 @@ static bool slm_side_queue(const comm_side_t *req)
 {
   if (slm.side.queued || slm.side.running
       || slm.side.prompted || (slm.side.done && slm.side.req != req) || !slm_side_allowed()) return false;
-  slm.side.req = req; slm.side.queued = 1; slm.side.done = 0;
+  slm.side.req = req; slm.side.queued = 1; slm.side.done = 0; slm.side.code = 0;
   return true;
 }
 /* Передать голосу приоритет в служебном слоте. */
@@ -387,6 +387,8 @@ uint8_t comm_modem_side_result(const comm_side_t *req)
   if (!slm.side.done || slm.side.req != req) return UINT8_MAX;
   slm.side.done = 0; return slm.side.result;
 }
+/* Снимок CMS/CME сохраняется до следующего владельца, а не следующей AT-команды. */
+uint16_t comm_modem_side_code(void) { return slm.side.code; }
 /* Вне очереди: между командами канала и шагами запуска, но не после '>'. */
 static void slm_side_issue(void)
 {
