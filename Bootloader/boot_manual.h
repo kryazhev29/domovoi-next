@@ -11,11 +11,9 @@ enum { MANUAL_OK=0, MANUAL_BAD=1, MANUAL_IO=2, MANUAL_BUSY=3,
  * 2 COMMIT, 3 CANCEL, 4 STATUS. Все целые поля - младшим байтом вперёд.
  * COMMIT только взводит запрос в ОЗУ; применение - явной командой, никогда при старте. */
 void boot_manual_command(int usb,const uint8_t *p,uint16_t n,uint8_t reply[8]);
-int boot_manual_prepare(const uint8_t *p, uint16_t n);
-void boot_manual_ready(const uint8_t *p, uint16_t n, int ok, uint8_t reply[8]);
 int boot_manual_busy(void);
 int boot_manual_apply(void);
-/* Слой платы. Все смещения - внутри слота кандидата. */
+/* Слой платы. Все смещения — внутри слота кандидата; приложение уже владеет STORE. */
 int manual_stage_read(uint32_t off,void *data,uint32_t n);
 int manual_stage_write(uint32_t off,const void *data,uint32_t n);
 int manual_stage_erase(uint32_t off);

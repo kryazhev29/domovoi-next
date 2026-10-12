@@ -37,10 +37,10 @@ MUTATIONS = {
         'fw_event(num, reason); return;')]),
     'E07': ('manual_read', [(APP, 'return mem_read(BOOT_CANDIDATE+off,data,n);',
                             'mem_read(BOOT_CANDIDATE+off,data,n);return 1;')]),
-    'E08': ('manual_write', [(APP, 'bool ok = mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);',
-                             'mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);bool ok = true;')]),
-    'E09': ('manual_erase', [(APP, 'bool ok = mem_erase_sector(BOOT_CANDIDATE+off);',
-                             'mem_erase_sector(BOOT_CANDIDATE+off);bool ok = true;')]),
+    'E08': ('manual_write', [(APP, 'return mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);',
+                             'mem_write(BOOT_CANDIDATE+off,(uint8_t*)data,n);return 1;')]),
+    'E09': ('manual_erase', [(APP, 'return mem_erase_sector(BOOT_CANDIDATE+off);',
+                             'mem_erase_sector(BOOT_CANDIDATE+off);return 1;')]),
 }
 
 

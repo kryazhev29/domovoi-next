@@ -47,14 +47,9 @@ def machine():
 
 
 def request(m):
-    assert m.checked('app_boot_request') == 0xffffffff
-    for _ in range(3000):
-        m.now += 1
-        m.checked('flash_exec_poll',m.now)
-        assert m.io_budget <= 1 and m.read_budget <= 128
-        if m.checked('app_boot_request_ready'):
-            return m.checked('app_boot_request')
-    raise AssertionError('install did not finish')
+    result = m.checked('app_boot_request', budget=8000000)
+    assert m.exec_state() == (0, 0, 0), 'синхронный владелец не освобождён'
+    return result
 
 
 # Отвергнуть каждое неудачное чтение образа до стирания журнала и публикации magic.
@@ -70,15 +65,57 @@ def request_faults():
         m.fault = ('read', failure)
         assert request(m) == 0
         assert bytes(m.flash) == before
-    for address in (JOURNAL, 0):
+    for boundary in ('w25_erase_sector', 'w25_write_data'):
         m = machine()
-        m.stubs[m.addr('w25_async_start')] = lambda m=m, address=address: m.ret(0) if m.args()[0] == address else m.start()
+        m.stubs[m.addr(boundary)] = lambda: m.ret(0)
         assert request(m) == 0
         assert m.flash[:4] == bytes([255]) * 4
     return reads + 2
 
 
-# Отвергнуть несовместимую плату, размеры и векторы до первой записи.
+# USB 110 удерживает одного владельца до синхронного verify и ответа.
+def manual_sync():
+    from test_flash_executor import hold_clear, release_clear
+    m = machine(); replies = []; reloads = []; ownership = []
+    m.stubs[m.addr('wdt_reload')] = lambda: (reloads.append(1), m.ret())[-1]
+    def reply():
+        cmd, ptr, count, channel = m.args()
+        assert cmd == 110 and count == 8 and channel == 0
+        replies.append(bytes(m.u.mem_read(ptr, count))); m.ret()
+    m.stubs[m.addr('user_send_anyData')] = reply
+    def boundary(fn):
+        def owned():
+            assert m.exec_state()[0] == 12 and m.exec_state()[2] == 1
+            ownership.append(fn.__name__); fn()
+        return owned
+    m.stubs[m.addr('w25_write_data')] = boundary(m.sync_write)
+    m.stubs[m.addr('w25_erase_sector')] = boundary(m.sync_erase)
+    def command(payload):
+        packet = struct.pack('<HBBB', 3 + len(payload), 0, 77, 110) + payload
+        m.u.mem_write(0x21000800, packet)
+        m.checked('user_parse_comand', 0x21000800, 0, budget=8000000)
+        assert m.exec_state() == (0, 0, 0)
+    begin = b'\0' + struct.pack('<IIB', 32768, 0, 139)
+    hold_clear(m)
+    m.u.mem_write(0x21000800, struct.pack('<HBBB', 13, 0, 77, 110) + begin)
+    assert not m.checked('user_command_ready', 0x21000800, 1)
+    release_clear(m)
+    command(begin)
+    assert replies[-1][:2] == b'\0\0' and len(ownership) == 8 and len(reloads) >= 8
+    assert m.flash[:32768] == b'\xff' * 32768
+    payload = b'\1' + struct.pack('<I', 0) + bytes(range(256))
+    command(payload); assert replies[-1][:2] == b'\1\0'
+    assert m.flash[:256] == bytes(range(256))
+    before = len(ownership)
+    command(payload); assert len(ownership) == before, 'повтор DATA переписал флеш'
+    m.stubs[m.addr('w25_write_data')] = lambda: m.ret(0)
+    command(b'\1' + struct.pack('<I', 256) + b'bad')
+    assert replies[-1][:2] == b'\1\2'
+    m.stubs[m.addr('w25_erase_sector')] = lambda: m.ret(0)
+    command(begin); assert replies[-1][:2] == b'\0\2'
+    return 5
+
+
 def request_boundaries():
     cases = [('hardware', 4, 140, 1), ('empty', 8, 0, 4),
              ('alignment', 8, 137, 4), ('large', 8, 0x40000, 4),
@@ -157,7 +194,7 @@ def main():
     args = parser.parse_args()
     os.environ['DOMOVOI_COMPARE_CONFIG'] = args.config
     select_image(args.build_root)
-    result = {'checks': request_faults() + request_boundaries() + trial_faults() + error_faults(),
+    result = {'checks': request_faults() + request_boundaries() + trial_faults() + error_faults() + manual_sync(),
               'elf_sha256': hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
     if args.output:
         args.output.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')

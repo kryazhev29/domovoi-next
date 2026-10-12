@@ -189,6 +189,7 @@ def manual_read():
 
 def manual_write():
     m = StorageMachine(); m.u.mem_write(0x21000000, b'\x5a'*16)
+    assert m.checked('flash_exec_begin', 12, 0) # Владелец — команда USB 110.
     m.stubs[m.addr('w25_write_data')] = lambda: m.ret(0)
     assert m.checked('manual_stage_write', 0, 0x21000000, 16) == 0
     m.stubs[m.addr('w25_write_data')] = m.sync_write
@@ -199,6 +200,7 @@ def manual_write():
 
 def manual_erase():
     m = StorageMachine(); m.stubs[m.addr('w25_erase_sector')] = lambda: m.ret(0)
+    assert m.checked('flash_exec_begin', 12, 0)
     assert m.checked('manual_stage_erase', 0) == 0
     m.stubs[m.addr('w25_erase_sector')] = m.sync_erase
     assert m.checked('manual_stage_erase', 0) == 1

@@ -119,7 +119,7 @@ void user_loop(void)
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
 
   // Установка принимается в каждом проходе до фонового save, без вытеснения работы.
-  if (device.rebootToUpdate && (flash_exec_idle() || app_boot_request_ready())) {
+  if (device.rebootToUpdate && flash_exec_idle()) {
     int result = app_boot_request();
     if (result >= 0) {
       device.rebootToUpdate = 0;

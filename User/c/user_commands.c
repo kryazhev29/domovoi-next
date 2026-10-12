@@ -491,9 +491,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
         break;
       }
-      if (boot_manual_prepare(&ptr[5], (uint16_t)(len-3))) {
-        if (!store_manual_begin(&ptr[5], (uint16_t)(len-3), uniqId))
-          user_send_answer_comand(MANUAL_BOOT_COMMAND, CMD_RUNNING, cch, uniqId);
+      flash_exec_args_t args = { NULL, FS_SYNC };
+      if (!flash_exec_begin(FX_STORE, &args)) {
+        user_send_answer_comand(MANUAL_BOOT_COMMAND, CMD_RUNNING, cch, uniqId);
         break;
       }
       boot_manual_command(1, &ptr[5], (uint16_t)(len-3), response);
@@ -504,6 +504,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         response[1] = (uint8_t)boot_manual_apply();
         user_send_anyData(MANUAL_BOOT_COMMAND, response, sizeof(response), cch, uniqId);
       }
+      flash_exec_finish(response[1] == MANUAL_OK ? FX_OK : FX_ERROR);
+      flash_exec_take_result();
       break;
     }
 

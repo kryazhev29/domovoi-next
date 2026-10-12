@@ -28,7 +28,7 @@ static int validate(void) {
  return c==expected_crc?MANUAL_OK:MANUAL_CRC;
 }
 int boot_manual_busy(void) {return session||armed;}
-static void manual_command(int usb,const uint8_t *p,uint16_t n,int prepared,uint8_t reply[8]) {
+void boot_manual_command(int usb,const uint8_t *p,uint16_t n,uint8_t reply[8]) {
  uint8_t op=n?p[0]:255,status=MANUAL_BAD,b[256];uint32_t off,i;uint16_t count;
  if(!usb){status=MANUAL_DENIED;goto done;}
  if(!n)goto done;
@@ -39,8 +39,7 @@ static void manual_command(int usb,const uint8_t *p,uint16_t n,int prepared,uint
   if(n!=10||get32(p+1)!=MANUAL_BOOT_SIZE||(p[9]!=11&&p[9]!=139&&p[9]!=140)||!manual_board_hw(p[9]))goto done;
   if(!manual_platform_supported()){status=MANUAL_DENIED;goto done;}
   session=0;received=0;target_hw=0;
-  if(prepared < 0){status=MANUAL_IO;goto done;}
-  for(off=0;!prepared && off<MANUAL_BOOT_SIZE;off+=4096) {
+  for(off=0;off<MANUAL_BOOT_SIZE;off+=4096) {
    if(!manual_stage_erase(off)){status=MANUAL_IO;goto done;}
    for(i=0;i<4096;i+=sizeof(b)) {
     unsigned j;if(!manual_stage_read(off+i,b,sizeof(b))){status=MANUAL_IO;goto done;}
@@ -58,7 +57,7 @@ static void manual_command(int usb,const uint8_t *p,uint16_t n,int prepared,uint
    if(!manual_stage_read(off,b,count)){status=MANUAL_IO;goto done;}
    status=memcmp(b,p+5,count)?MANUAL_BAD:MANUAL_OK;goto done;
   }
-  if(prepared < 0 || (!prepared && !manual_stage_write(off,p+5,count))||!manual_stage_read(off,b,count)||memcmp(b,p+5,count)) {
+  if(!manual_stage_write(off,p+5,count)||!manual_stage_read(off,b,count)||memcmp(b,p+5,count)) {
    session=0;status=MANUAL_IO;goto done;
   }
   received+=count;status=MANUAL_OK;
@@ -76,25 +75,4 @@ int boot_manual_apply(void) {
  if(!armed)return MANUAL_DENIED;
  armed=0;result=validate();if(result)return result;
  return manual_program(expected_crc)?MANUAL_OK:MANUAL_IO;
-}
-
-// Валидируем намерение до приёма памяти исполнителем; ошибочные команды идут прежним путём.
-int boot_manual_prepare(const uint8_t *p, uint16_t n)
-{
-  if (!n || armed) return 0;
-  if (p[0] == 0 && n == 10 && get32(p+1) == MANUAL_BOOT_SIZE &&
-      (p[9] == 11 || p[9] == 139 || p[9] == 140) && manual_board_hw(p[9]) && manual_platform_supported()) return 1;
-  if (p[0] == 1 && session && n >= 6 && n <= 261 && get32(p+1) == received &&
-      get32(p+1) <= MANUAL_BOOT_SIZE && n-5u <= MANUAL_BOOT_SIZE-get32(p+1)) return 2;
-  return 0;
-}
-
-void boot_manual_command(int usb, const uint8_t *p, uint16_t n, uint8_t reply[8])
-{
-  manual_command(usb, p, n, 0, reply);
-}
-
-void boot_manual_ready(const uint8_t *p, uint16_t n, int ok, uint8_t reply[8])
-{
-  manual_command(1, p, n, ok ? 1 : -1, reply);
 }

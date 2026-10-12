@@ -12,16 +12,14 @@
 #include "../flash_exec.h"
 struct flash_exec_args { void *context; uint8_t step; };
 enum { FX_INDEX_READ = 7 };
-enum { FS_ID = 30, FS_BOOT, FS_MANUAL, FS_SYNC };
+enum { FS_ID = 30, FS_SYNC };
 typedef struct {
-  uint8_t *source;
-  uint32_t address, end, position, crc, expected, epoch;
-  uint16_t length, event;
-  uint8_t mode, waiting, count, type, outputs, started, reply, channel, uniq;
-  uint8_t data[128];
+  uint32_t address, epoch;
+  uint16_t event;
+  uint8_t mode, count, type, outputs, started, reply, channel, uniq;
+  uint8_t data[32];
 } store_io_s;
 bool store_id_begin(uint32_t address, const cellID_s *cell);
-bool store_manual_begin(const uint8_t *data, uint16_t length, uint8_t uniq);
 void store_access_reply(uint8_t channel, uint8_t uniq);
 void user_access_complete(uint8_t outputs, codeType_e type, char *id, uint8_t count, bool started);
 // Источники и продолжения принятой работы живут до verify и снятия результата.
