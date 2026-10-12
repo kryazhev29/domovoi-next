@@ -122,6 +122,34 @@ def reset_paths():
     return results
 
 
+def scheduled_reset():
+    from iar_layout import fields
+    from test_flash_executor import hold_clear, release_clear
+    for reason in ('call', 'download', 'install', 'flash', 'disabled', 'early'):
+        m = StorageMachine(); requested = []
+        m.stubs[m.addr('user_savereset')] = lambda: (requested.append('reset'), m.ret())[-1]
+        m.stubs[m.addr('log_addSystemEvent')] = lambda: m.ret(1)
+        m.stubs[m.addr('app_boot_request')] = lambda: m.ret(0xffffffff)
+        m.write(m.addr('config') + fields('config_s')['restartTime'], 0 if reason == 'disabled' else 1, 1)
+        m.write(m.device + m.d['worktime'], 3599 if reason == 'early' else 3600, 4)
+        m.stubs[m.addr('comm_call_active')] = lambda: m.ret(reason == 'call')
+        if reason == 'download': m.write(m.device + m.d['FWinProgress'], 1, 1)
+        if reason == 'install': m.write(m.device + m.d['rebootToUpdate'], 1, 1)
+        if reason == 'flash': hold_clear(m)
+        def minute():
+            m.checked('timers_set', 5, 60000)
+            m.checked('user_loop', budget=1000000)
+        minute(); assert not requested, reason
+        if reason == 'flash': release_clear(m)
+        m.stubs[m.addr('comm_call_active')] = lambda: m.ret(0)
+        for field in ('FWinProgress', 'rebootToUpdate'):
+            m.write(m.device + m.d[field], 0, 1)
+        m.write(m.addr('config') + fields('config_s')['restartTime'], 1, 1)
+        m.write(m.device + m.d['worktime'], 3600, 4)
+        minute(); assert requested == ['reset'], reason
+    return {'deferred_until_idle_then_next_minute': True}
+
+
 def mutations():
     from test_flash_mutations import run
     return run({

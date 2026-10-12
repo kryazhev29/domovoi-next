@@ -11,6 +11,7 @@
 #include "../../Modules/comm_server.h"
 #include "../../Modules/comm_info.h"
 #include "../../Modules/comm_modem.h"
+#include "../../Modules/comm_call.h"
 #include "../../Bootloader/app_update.h"
 #pragma data_alignment=4
 uint8_t port_buffer[PORTBUFSIZE];
@@ -275,7 +276,9 @@ void user_loop(void)
 
     // задано время на перезагрузку
     if (config.restartTime != 0){
-      if (device.worktime >= ((uint32_t)config.restartTime*3600)){
+      if (device.worktime >= ((uint32_t)config.restartTime*3600) &&
+          !device.FWinProgress && !device.rebootToUpdate &&
+          !comm_call_active() && flash_exec_idle()){
         log_addSystemEvent(LOG_SYS_RESETONTIMER);
         user_savereset();
       }
