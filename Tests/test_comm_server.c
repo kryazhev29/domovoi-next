@@ -322,11 +322,12 @@ static void transport_tx(void)
     } else if (!strncmp(cmd,"AT+QIOPEN=",10)) {
       CHECK(call_pdp_model && !socket_model && opens<sizeof(open_addresses));
       open_times[opens]=sim_now; open_addresses[opens]=ch.address;
-      socket_model=!sim_open_error; ++opens;
-      if (sim_open_error==3) open_closed_due=sim_now+(ch.address ? comm_timeouts[COMM_T_QIOPEN]+10u : 40u);
+      socket_model=!sim_open_error || sim_open_error==4; ++opens;
+      if (sim_open_error==3 || sim_open_error==4)
+        open_closed_due=sim_now+(sim_open_error==3 && ch.address ? comm_timeouts[COMM_T_QIOPEN]+10u : 40u);
       CHECK(strstr(cmd,ch.address ? "backup.local" : "test.local"));
       if (call_drop) { sim_reply("OK\r\n",30); call_tcp_due=sim_now+300; }
-      else sim_reply((sim_open_error==2 || (sim_open_error==3 && ch.address)) ? "OK\r\n" : sim_open_error ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
+      else sim_reply((sim_open_error==2 || (sim_open_error==3 && ch.address)) ? "OK\r\n" : !socket_model ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
     } else if (!strncmp(cmd,"AT+QPING=",9)) {
       CHECK(!strcmp(cmd,"AT+QPING=1,\"ya.ru\",3,2")); ++pings;
       sim_reply("OK\r\n",20); ping_reply_due=sim_now+1000;
@@ -350,14 +351,15 @@ static void transport_tx(void)
 static void transport_tick(unsigned increment)
 {
   writes = 0;
-  if (open_closed_due && (int32_t)(sim_now-open_closed_due)>=0 && ch.state==CH_PROBE) {
-    open_closed_due=0; sim_feed("+QIURC: \"closed\",0\r\n");
+  if (open_closed_due && (int32_t)(sim_now-open_closed_due)>=0 &&
+      (ch.state==CH_PROBE || (sim_open_error==4 && ch.state==CH_OPEN))) {
+    open_closed_due=0; socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n");
   }
   if (answer_due && (int32_t)(sim_now-answer_due)>=0) {
     answer_due=0; sim_feed(answer_mode==1 ? "ERROR\r\n" : answer_mode==2 ? "NO CARRIER\r\n" : "OK\r\n");
   }
   if (hangup_due && (int32_t)(sim_now-hangup_due)>=0) { hangup_due=0; sim_feed("OK\r\n"); }
-  if (call_tcp_due && (int32_t)(sim_now-call_tcp_due)>=0) { call_tcp_due=0; sim_feed(sim_open_error ? "+QIOPEN: 0,566\r\n" : "+QIOPEN: 0,0\r\n"); }
+  if (call_tcp_due && (int32_t)(sim_now-call_tcp_due)>=0) { call_tcp_due=0; sim_feed(sim_open_error && sim_open_error!=4 ? "+QIOPEN: 0,566\r\n" : "+QIOPEN: 0,0\r\n"); }
   if (call_network_due && (int32_t)(sim_now-call_network_due)>=0) {
     call_network_due=0; sim_network_wait=0; call_cereg_model=1; sim_feed("+CEREG: 1,\"1234\",\"ABCDEF\",7\r\n");
   }

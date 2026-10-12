@@ -94,12 +94,37 @@ static void info_tests(void)
 /* Рабочий интернет отделён от отказа TCP и регистрации; час без перезапуска. */
 static void server_outage_tests(void)
 {
+  /* TCP принят, но закрыт до регистрации: ограничитель канала ещё необходим. */
+  rc_online(); reserve_enabled=1; sim_open_error=4; rc_keep_opens=true;
+  unsigned closed_first=opens;
+  comm_channel_reopen(0);
+  static const uint32_t closed_delays[]={30000u,60000u,120000u,300000u};
+  unsigned observed=opens;
+  for (uint32_t start=sim_now;sim_now-start<15u*60000u;) {
+    rc_tick(10);
+    if (opens==observed) continue;
+    unsigned i=opens-1u; observed=opens;
+    unsigned attempt=i-closed_first;
+    CHECK(open_addresses[i]==(attempt/3u)%2u);
+    if (!attempt) continue;
+    uint32_t gap=open_times[i]-open_times[i-1];
+    if (attempt%3u) CHECK(gap<1000u);
+    else {
+      unsigned step=attempt/3u-1u;
+      uint32_t pause=closed_delays[step<4u ? step : 3u];
+      CHECK(gap>=pause && gap<pause+1000u);
+    }
+  }
+  CHECK(!comm_server_online() && !rc_logged && !rc_power_starts && !rc_soft_starts);
+  CHECK(opens>closed_first+12u);
+  printf("server closed before registration: 15 min, %u attempts, max 3 per burst, 30/60/120/300 s, alternating addresses PASS\n",opens-closed_first);
+  rc_keep_opens=false;
   /* Плата 12.10: закрытый сеанс, статус/журнал в TX, первый адрес отказывает,
      второй молчит до таймаута QIOPEN. Интернет всё время работает. */
   for (unsigned packet=0;packet<5;++packet) {
     rc_online(); reserve_enabled=1; sim_open_error=3; probe_result=0;
     if (!(packet&1u)) user_send_statusPack(CH_SERVER);
-    else { uint8_t data[16]={0}; user_send_anyData(8,data,sizeof(data),CH_SERVER,1); }
+    else { uint8_t data[35]={0}; data[2]=1; user_send_anyData(10,data,sizeof(data),CH_SERVER,1); }
     CHECK(comm_tx_busy());
     socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n");
     rc_keep_opens=true;

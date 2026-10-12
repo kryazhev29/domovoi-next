@@ -626,12 +626,13 @@ def gate_sensor():
         m=setup(mask=mask); m.set_trigger('handUnBlock',1); m.checked('user_unblock_recheck',1)
         if mask == 2: m.write(m.addr('config')+m.cfg['inputMode'],0,1)
         sample(m,3300); sample(m,3300); assert not pulses(m)
-    # Команда 14 включает ранее отсутствовавшую сцену: только датчик открывает.
+    # Команда 14 включает ранее отсутствовавшую сцену: одно открытие, датчик его не дублирует.
     m=setup(); m.set_trigger('sheduleUnBlock',1); m.write(m.addr('log_timeKnown'),1,1)
     sample(m,3300); sample(m,3300)
     m.command(14,record(1)+tail(bytes([1])+bytes(7)),1); m.drain()
-    assert m.effective() == 2 and not pulses(m) and m.outputs()[1] == 0
+    assert m.effective() == 2 and pulses(m) == [(0, 3, 1, 0, 1)] and m.outputs() == (1,1)
     sample(m,3300); assert len(pulses(m)) == 1
+    m.advance(1000); assert m.outputs() == (0,0) and len(pulses(m)) == 1
     # Датчик сохраняет режим уровня и исходное состояние при снятии.
     for initial in (0,1):
         m=setup(); m.set_relay(0,'mode',1); m.checked('out_load',0,initial,0,0,0)

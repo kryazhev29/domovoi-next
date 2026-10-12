@@ -27,6 +27,7 @@ def main():
         ('prompt-guard', 'comm_at_busy() || comm_at_prompt()) return;', 'comm_at_busy()) return;'),
         ('fast-reopen', 'if (ch.call.expected) ch.reopen_pause = 0;', 'if (ch.call.expected) ch.reopen_pause = 30000;'),
         ('first-open-counted', 'if (!ch.call.expected) ++ch.connections;', '++ch.connections;'),
+        ('pre-registration-unlimited', 'else if (ch.connections >= 3)', 'else if (0)'),
         ('live-TCP-reopened', 'if (ch.call.lost) comm_channel_reopen(0);', 'comm_channel_reopen(0);'),
         ('expected-PDP-pause', 'if (comm_channel_expected() && comm_modem_status()->reason == SLM_ERR_PDP) rc_schedule(false, 0);', 'if (0) rc_schedule(false, 0);'),
         ('network-URC-ignored', 'if ((comm_at_parse(p,n,"+CGREG:\\005",&registered)', 'if (0 && (comm_at_parse(p,n,"+CGREG:\\005",&registered)'),

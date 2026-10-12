@@ -256,6 +256,16 @@ static void call_tests(void)
     CHECK(links==3 && link_kinds[1]==COMM_LINK_LOST && link_kinds[2]==COMM_LINK_UP);
     printf("comm_call: loss=%u URC hangup->server=%u ms\n",loss,(unsigned)elapsed);
   }
+  /* Первая попытка после звонка не расходует счётчик: TCP закрывают до регистрации.
+     При двух прежних попытках следующая идёт сразу, а после неё уже нужна пауза. */
+  call_reset(); ch.connections=2; ch.retry_step=0;
+  call_drop=call_drop_urc=1; sim_open_error=4;
+  unsigned first_open=opens;
+  ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
+  for (unsigned i=0;opens<first_open+2u;++i) { CHECK(i<200); transport_tick(10); }
+  CHECK(open_times[first_open+1u]-open_times[first_open]<1000u && !comm_channel_expected());
+  for (unsigned i=0;opens<first_open+3u;++i) { CHECK(i<3300); transport_tick(10); }
+  CHECK(open_times[first_open+2u]-open_times[first_open+1u]>=30000u);
   /* Без URC потерю TCP обнаруживает обычная отправка; дополнительного опроса нет. */
   call_reset(); call_drop=1;
   ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup(); advance(100);
