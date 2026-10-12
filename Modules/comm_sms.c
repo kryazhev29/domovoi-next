@@ -9,18 +9,19 @@
 #include <string.h>
 #define SMS_TEXT 160u
 #define SMS_UD 100u /* данные отправки: UCS2 50 символов, GSM 114 */
-/* Поля SMS-DELIVER (23.040 §9.2.2.1) по порядку разбора. */
-enum { P_SMSC_LEN, P_SMSC, P_FO, P_OA_LEN, P_OA_TYPE, P_OA, P_PID, P_DCS, P_SCTS, P_UDL, P_UDHL, P_UD, P_END, P_BAD };
+/* Поля SMS-DELIVER (23.040 §9.2.2.1) по порядку разбора; P_NONE - ответ CMGR без заголовка. */
+enum { P_SMSC_LEN, P_SMSC, P_FO, P_OA_LEN, P_OA_TYPE, P_OA, P_PID, P_DCS, P_SCTS, P_UDL, P_UDHL, P_UD, P_END, P_BAD, P_NONE };
 enum { CODE_GSM, CODE_8BIT, CODE_UCS2 };
-enum { SMS_OP_NONE, SMS_OP_SETUP, SMS_OP_STORAGE, SMS_OP_LIST, SMS_OP_READ, SMS_OP_DELETE, SMS_OP_SEND };
+enum { SMS_OP_NONE, SMS_OP_SETUP, SMS_OP_LIST, SMS_OP_READ, SMS_OP_DELETE, SMS_OP_SEND };
+/* SLM336 принимает только CNMI mode 0 (Common V2.24 §8.12); mt=1 - SMS на SIM и +CMTI. */
 static const char *const sms_setup[] = { "AT+CMGF=0", "AT+CPMS=\"SM\",\"SM\",\"SM\"", "AT+CNMI=0,1,0,0,0" };
 static struct {
   bool (*received)(char *, char *, bool *);
   uint32_t now, retry, scan_due;
   comm_side_t req;
-  uint16_t acc, out_count;
-  uint16_t erase, queue[8]; /* старший байт: SM=1, ME=2, MT=3; 0 — нет удаления */
-  uint8_t session, step, op, ready, scan, deliver, tx, count, storage, direct, notice;
+  uint16_t acc, out_count, erase; /* erase: 0x100 | индекс, ячейка 0 допустима */
+  uint8_t session, step, op, ready, scan, deliver, tx;
+  uint8_t queue[8], count;
   /* Разбор PDU потоком: hex -> октет -> поле; 7 бит - через накопитель acc. */
   uint8_t field, left, half, hi, nib_half, nib, alpha, coding, udh, skip, bits, septets, nlen, tlen;
   char cmd[24], tx_cmd[16]; /* чтение/стирание и отправка не делят строку */
@@ -28,18 +29,9 @@ static struct {
   char text[SMS_TEXT + 1u];
   uint8_t out[2u * (19u + SMS_UD) + 1u];
 #if DOMOVOI_DIAG
-  struct { uint32_t cmti, cmgl, deleted; uint16_t used, total, cms, index;
-           uint8_t setup, read, stop; } diag;
+  struct { uint32_t cmti, cmgl, deleted; uint16_t used, total; uint8_t setup, read, stop, index; } diag;
 #endif
 } msg;
-/* Сохранить поле, на котором внешний PDU оказался неверным. */
-static void sms_bad(void)
-{
-#if DOMOVOI_DIAG
-  if (msg.field != P_BAD) msg.diag.stop = msg.field;
-#endif
-  msg.field = P_BAD;
-}
 /* Добавить декодированный символ в ограниченное поле SMS. */
 static void sms_char(char c)
 {
@@ -68,8 +60,8 @@ static void sms_octet(uint8_t o)
   switch (msg.field) {
   case P_SMSC_LEN: msg.left = o; msg.field = o ? P_SMSC : P_FO; break;
   case P_SMSC: if (!--msg.left) msg.field = P_FO; break;
-  case P_FO: msg.udh = o & 0x40u; if (o & 3u) sms_bad(); else msg.field = P_OA_LEN; break;
-  case P_OA_LEN: msg.left = msg.septets = o; if (!o || o > 20u) sms_bad(); else msg.field = P_OA_TYPE; break;
+  case P_FO: msg.udh = o & 0x40u; msg.field = (o & 3u) ? P_BAD : P_OA_LEN; break; /* только DELIVER */
+  case P_OA_LEN: msg.left = o; msg.field = o > 20u ? P_BAD : P_OA_TYPE; break;
   case P_OA_TYPE:
     msg.alpha = (o & 0x70u) == 0x50u;
     if (o == 0x91u && !msg.alpha) msg.number[msg.nlen++] = '+';
@@ -80,15 +72,11 @@ static void sms_octet(uint8_t o)
     if (msg.alpha) sms_unpack(o);
     else for (uint8_t i = 0; i < 2u; ++i, o >>= 4) {
       uint8_t d = o & 15u;
-      if (msg.septets) { if (d > 9u || msg.nlen + 1u >= sizeof(msg.number)) { sms_bad(); return; }
-        --msg.septets; msg.number[msg.nlen++] = (char)('0' + d); }
-      else if (d != 15u) { sms_bad(); return; }
+      if (d < 10u && msg.nlen + 1u < sizeof(msg.number)) msg.number[msg.nlen++] = (char)('0' + d);
     }
     if (!--msg.left) { msg.alpha = 0; msg.field = P_PID; } break;
   case P_PID: msg.field = P_DCS; break;
   case P_DCS: { /* группы 00xx/01xx: биты 2-3; 1110 - UCS2; 1111 - бит 2 */
-    if ((o < 0x80u && ((o & 0x20u) || (o & 0x0Cu) == 0x0Cu))
-        || (o >= 0x80u && o < 0xC0u)) { sms_bad(); break; }
     uint8_t a = (o & 0x80u) == 0 ? (o >> 2) & 3u : (o & 0xF0u) == 0xE0u ? 2u
               : (o & 0xF0u) == 0xF0u ? (o >> 2) & 1u : 0u;
     msg.coding = a == 2u ? CODE_UCS2 : a == 1u ? CODE_8BIT : CODE_GSM;
@@ -96,12 +84,10 @@ static void sms_octet(uint8_t o)
   }
   case P_SCTS: if (!--msg.left) msg.field = P_UDL; break;
   case P_UDL:
-    if (o > (msg.coding == CODE_GSM ? 160u : 140u) || (msg.coding == CODE_UCS2 && !msg.udh && (o & 1u))) { sms_bad(); break; }
     msg.left = o; msg.septets = o; msg.acc = msg.bits = msg.skip = msg.half = 0;
     if (msg.coding == CODE_GSM) msg.left = (uint8_t)(((uint16_t)o * 7u + 7u) / 8u);
     msg.field = !msg.left ? P_END : msg.udh ? P_UDHL : P_UD; break;
   case P_UDHL: /* заголовок склейки: октеты пропускаются, в 7 битах - с заполнением */
-    if (o >= msg.left || (msg.coding == CODE_UCS2 && ((msg.left - o - 1u) & 1u))) { sms_bad(); break; }
     if (msg.coding == CODE_GSM) { msg.skip = (uint8_t)(((o + 1u) * 8u + 6u) / 7u); sms_unpack(o); }
     else msg.skip = o;
     msg.field = --msg.left ? P_UD : P_END; break;
@@ -113,10 +99,10 @@ static void sms_octet(uint8_t o)
     else if (!msg.half) { msg.hi = o; msg.half = 1; }
     else { sms_char(comm_at_cp1251((uint16_t)(msg.hi << 8 | o))); msg.half = 0; }
     if (!--msg.left) msg.field = P_END; break;
-  default: sms_bad(); break; /* данные после конца */
+  default: msg.field = P_BAD; break; /* данные после конца */
   }
 }
-/* Проверить индекс сообщения в ограниченном ответе SIM. */
+/* Проверить индекс сообщения в ограниченном ответе SIM; ячейка 0 допустима. */
 static bool sms_index(const uint8_t *p, uint16_t n, uint16_t pos, uint16_t *index)
 {
   uint32_t v;
@@ -126,102 +112,57 @@ static bool sms_index(const uint8_t *p, uint16_t n, uint16_t pos, uint16_t *inde
   *index = (uint16_t)v; return true;
 }
 /* Добавить новый индекс SIM без дубля или назначить повторный обзор. */
-static void sms_queue(uint16_t index)
+static void sms_queue(uint8_t index)
 {
   for (uint8_t i = 0; i < msg.count; ++i) if (msg.queue[i] == index) return;
-  if (msg.count < sizeof(msg.queue) / sizeof(msg.queue[0])) msg.queue[msg.count++] = index;
-  else msg.scan |= (uint8_t)(1u << ((index >> 8) - 1u));
-}
-/* Начать отдельный PDU; недостающий заголовок не использует прошлый номер. */
-static void sms_begin(void)
-{
-  msg.field = P_SMSC_LEN; msg.nlen = msg.tlen = msg.half = msg.nib_half = msg.alpha = 0;
-#if DOMOVOI_DIAG
-  msg.diag.stop = P_SMSC_LEN;
-#endif
-}
-static void sms_pdu(const uint8_t *p, uint16_t n)
-{
-  for (uint16_t i = 0; i < n && msg.field != P_BAD; ++i) {
-    uint8_t v = comm_at_hex(p[i]);
-    if (v > 15u) { sms_bad(); break; }
-    if (!msg.nib_half) { msg.nib = v; msg.nib_half = 1; }
-    else { msg.nib_half = 0; sms_octet((uint8_t)(msg.nib << 4 | v)); }
-  }
-}
-/* Битая SMS тоже передаётся приложению для одного события, без команды. */
-static void sms_deliver(void)
-{
-#if DOMOVOI_DIAG
-  if (msg.field != P_BAD) msg.diag.stop = msg.field;
-#endif
-  msg.number[msg.nlen] = 0;
-  if (msg.field != P_END || msg.nib_half || !msg.nlen) msg.tlen = 0;
-  msg.text[msg.tlen] = 0; msg.deliver = 1;
+  if (msg.count < sizeof(msg.queue)) msg.queue[msg.count++] = index;
+  else msg.scan = 1; /* не влезло - повторный обзор SIM после разбора очереди */
 }
 /* Разобрать заголовок или очередной кусок тела SMS. */
 static void sms_line(const uint8_t *p, uint16_t n, uint16_t detail)
 {
+  uint16_t i;
   (void)detail;
-  if ((msg.op == SMS_OP_SETUP || msg.op == SMS_OP_STORAGE) && comm_at_prefix(p, n, "+CPMS:")) {
-    uint8_t storage = msg.req.cmd[10] == 'E' ? 2u : msg.req.cmd[10] == 'T' ? 3u : 1u;
-    uint32_t v[2];
-    if (comm_at_parse(p, n, "+CPMS:\005,\005,*", v) && v[0] <= v[1]) {
-      if (v[0]) msg.scan |= (uint8_t)(1u << (storage - 1u));
 #if DOMOVOI_DIAG
-      if (storage == 1u) { msg.diag.used = (uint16_t)v[0]; msg.diag.total = (uint16_t)v[1]; }
-#endif
-    }
-    return;
+  uint32_t u[2];
+  if (msg.op == SMS_OP_SETUP && comm_at_parse(p, n, "+CPMS:\005,\005,*", u)) {
+    msg.diag.used = (uint16_t)u[0]; msg.diag.total = (uint16_t)u[1]; return;
   }
+#endif
   if (msg.op == SMS_OP_LIST) {
     /* +CMGL: <index>,<stat>,[<alpha>],<length>; тело - мимо */
-    uint16_t i;
     if (comm_at_prefix(p, n, "+CMGL:") && sms_index(p, n, 6, &i)) {
 #if DOMOVOI_DIAG
       ++msg.diag.cmgl;
 #endif
-      sms_queue((uint16_t)(msg.storage << 8) | i);
+      sms_queue((uint8_t)i);
     }
     return;
   }
   if (msg.op != SMS_OP_READ) return;
   if (comm_at_prefix(p, n, "+CMGR:")) {
-    sms_begin(); return;
+    msg.field = P_SMSC_LEN; msg.nlen = msg.tlen = msg.half = msg.nib_half = msg.alpha = 0; return;
   }
-  sms_pdu(p, n);
+  for (i = 0; i < n && msg.field < P_END; ++i) {
+    uint8_t v = comm_at_hex(p[i]);
+    if (v > 15u) { msg.field = P_BAD; break; }
+    if (!msg.nib_half) { msg.nib = v; msg.nib_half = 1; } else { msg.nib_half = 0; sms_octet((uint8_t)(msg.nib << 4 | v)); }
+  }
 }
 /* +CMTI: <mem>,<index> - новая SMS уже на SIM. */
 static void sms_urc(const uint8_t *p, uint16_t n)
 {
-  if (msg.direct) {
-    if (n) { if (msg.direct == 1u) sms_pdu(p, n); }
-    else { if (msg.direct == 1u) sms_deliver(); else if (msg.notice != UINT8_MAX) ++msg.notice; msg.direct = 0; }
-    return;
-  }
-  if (comm_at_prefix(p, n, "+CMT:")) {
-    msg.direct = msg.deliver || msg.op == SMS_OP_READ ? 2u : 1u;
-    if (msg.direct == 1u) sms_begin();
-    return;
-  }
   if (!comm_at_prefix(p, n, "+CMTI:")) return;
 #if DOMOVOI_DIAG
   ++msg.diag.cmti;
 #endif
-  uint16_t pos = comm_at_spaces(p, n, 6);
-  if (pos + 4u > n || p[pos] != '"' || p[pos + 3u] != '"') return;
-  uint8_t storage = !memcmp(p + pos + 1u, "ME", 2) ? 2u
-                  : !memcmp(p + pos + 1u, "MT", 2) ? 3u : !memcmp(p + pos + 1u, "SM", 2) ? 1u : 0u;
-  pos = comm_at_spaces(p, n, pos + 4u);
-  if (!storage || pos == n || p[pos++] != ',') return;
-  uint16_t i;
-  if (sms_index(p, n, pos, &i)) {
-    i |= (uint16_t)storage << 8;
+  uint16_t pos = n, i;
+  while (pos && p[pos - 1u] != ',') --pos;
+  if (!pos || !sms_index(p, n, pos, &i)) return;
 #if DOMOVOI_DIAG
-    msg.diag.index = i;
+  msg.diag.index = (uint8_t)i;
 #endif
-    sms_queue(i);
-  }
+  sms_queue((uint8_t)i);
 }
 /* Назначить приём SMS приложением и начать новый сеанс. */
 void comm_sms_init(bool (*received)(char *, char *, bool *))
@@ -239,57 +180,55 @@ static bool sms_issue(uint8_t op, const char *cmd, uint8_t mode, uint8_t timeout
   msg.req.cmd = cmd; msg.req.mode = mode; msg.req.timeout = timeout;
   msg.req.line = sms_line; msg.req.payload = op == SMS_OP_SEND ? msg.out : NULL; msg.req.count = msg.out_count;
   if (!comm_modem_side(&msg.req)) return false;
-  if (op == SMS_OP_READ) { sms_begin(); msg.field = P_BAD; }
+  if (op == SMS_OP_READ) msg.field = P_NONE; /* пустая ячейка не повторит прошлый номер */
   msg.op = op; return true;
 }
 /* Собрать команду чтения, удаления или обзора SIM. */
-static bool sms_command(uint8_t op, const char *at, uint16_t index, uint8_t mode, uint8_t timeout)
+static void sms_command(uint8_t op, const char *at, uint8_t index, uint8_t mode, uint8_t timeout)
 {
   uint16_t n = comm_at_copy(msg.cmd, sizeof(msg.cmd), 0, at);
-  if (op == SMS_OP_READ || op == SMS_OP_DELETE) n = comm_at_decimal(msg.cmd, sizeof(msg.cmd), n, (uint8_t)index);
-  (void)n; return sms_issue(op, msg.cmd, mode, timeout);
+  if (op != SMS_OP_LIST) n = comm_at_decimal(msg.cmd, sizeof(msg.cmd), n, index);
+  (void)n; sms_issue(op, msg.cmd, mode, timeout);
 }
 /* Применить завершение настройки, чтения, удаления или отправки SMS. */
 static void sms_done(uint8_t r)
 {
   uint8_t op = msg.op;
   msg.op = SMS_OP_NONE;
+  if (r != COMM_AT_OK) msg.retry = msg.now + comm_timeouts[COMM_T_SMS_RETRY];
   if (op == SMS_OP_SETUP) {
 #if DOMOVOI_DIAG
-    msg.diag.setup = r; msg.diag.cms = comm_modem_side_code();
+    msg.diag.setup = r;
 #endif
-    if (r != COMM_AT_OK && msg.step != 2u) { msg.retry = msg.now + comm_timeouts[COMM_T_SMS_RETRY]; return; }
+    /* Отказ CNMI не мешает: обзор SIM раз в 15 с находит SMS и без +CMTI. */
+    if (r != COMM_AT_OK && msg.step < 2u) return;
     if (++msg.step == sizeof(sms_setup) / sizeof(sms_setup[0])) {
-      msg.ready = r == COMM_AT_OK ? 1u : 2u; msg.scan = 3;
-      msg.scan_due = msg.now + comm_timeouts[COMM_T_STATUS];
+      msg.ready = r == COMM_AT_OK ? 1u : 2u; msg.scan = 1; msg.retry = msg.now;
     }
   } else if (op == SMS_OP_READ) {
 #if DOMOVOI_DIAG
-    msg.diag.read = r;
-    if (msg.field != P_BAD) msg.diag.stop = msg.field;
+    msg.diag.read = r; msg.diag.stop = msg.field;
 #endif
-    if (r != COMM_AT_OK) {
-      if (r == COMM_AT_CME && comm_modem_side_code() == 321u) memmove(msg.queue, msg.queue + 1, --msg.count * sizeof(msg.queue[0]));
-      else msg.retry = msg.now + comm_timeouts[COMM_T_SMS_RETRY];
-      return;
-    }
-    msg.erase = msg.queue[0];
-    memmove(msg.queue, msg.queue + 1, --msg.count * sizeof(msg.queue[0]));
-    sms_deliver();
+    /* CMS - ячейки нет: убрать из очереди, обзор найдёт её снова, если она есть. */
+    if (r != COMM_AT_OK && r != COMM_AT_CME) return;
+    uint8_t index = msg.queue[0];
+    memmove(msg.queue, msg.queue + 1, --msg.count);
+    if (r != COMM_AT_OK || msg.field == P_NONE) return;
+    /* Прочитанная или битая - стирается, иначе SIM заполнится и новые SMS не придут.
+       Битая (разбор не дошёл до конца) - только событие, без команды. */
+    msg.erase = 0x100u | index;
+    msg.number[msg.nlen] = 0;
+    if (msg.field != P_END || msg.nib_half || !msg.nlen) msg.tlen = 0;
+    msg.text[msg.tlen] = 0; msg.deliver = 1;
   } else if (op == SMS_OP_DELETE) {
-    if (r == COMM_AT_OK) {
+    /* CMS 321 - ячейки уже нет; иначе повтор, чтобы не прочитать SMS второй раз. */
+    if (r == COMM_AT_OK || (r == COMM_AT_CME && comm_modem_side_code() == 321u)) msg.erase = 0;
 #if DOMOVOI_DIAG
-      ++msg.diag.deleted;
+    if (r == COMM_AT_OK) ++msg.diag.deleted;
 #endif
-      msg.erase = 0;
-    } else msg.retry = msg.now + comm_timeouts[COMM_T_SMS_RETRY];
-  } else if (op == SMS_OP_STORAGE) {
-    if (r == COMM_AT_OK) msg.storage = msg.req.cmd[10] == 'E' ? 2u : msg.req.cmd[10] == 'T' ? 3u : 1u;
-    else msg.retry = msg.now + comm_timeouts[COMM_T_SMS_RETRY];
   } else if (op == SMS_OP_LIST) {
-    if (r != COMM_AT_OK) { msg.scan |= (uint8_t)(1u << (msg.storage - 1u)); msg.retry = msg.now + comm_timeouts[COMM_T_SMS_RETRY]; }
-  }
-  else if (op == SMS_OP_SEND) msg.tx = 0;
+    if (r != COMM_AT_OK) msg.scan = 1;
+  } else if (op == SMS_OP_SEND) msg.tx = 0;
 }
 /* Продвинуть очередь SIM и передать готовое сообщение приложению. */
 void comm_sms_poll(uint32_t now_ms)
@@ -298,10 +237,7 @@ void comm_sms_poll(uint32_t now_ms)
   uint8_t session = comm_modem_session();
   if (session != msg.session) { /* новый запуск модема: настройка и обзор SIM заново */
     if (msg.op) { (void)comm_modem_side_result(&msg.req); msg.op = SMS_OP_NONE; }
-    if (msg.direct == 1u) sms_deliver();
-    else if (msg.direct && msg.notice != UINT8_MAX) ++msg.notice;
-    msg.direct = 0;
-    msg.session = session; msg.step = msg.ready = 0; msg.storage = 1; msg.retry = now_ms;
+    msg.session = session; msg.step = msg.ready = 0; msg.retry = now_ms;
   }
   if (msg.op) {
     uint8_t r = comm_modem_side_result(&msg.req);
@@ -309,41 +245,33 @@ void comm_sms_poll(uint32_t now_ms)
     sms_done(r);
   }
   if (msg.deliver) {
+    /* first: событие о приёме пишется один раз, даже если команда ждёт флеш. */
     bool first = msg.deliver == 1u;
     bool done = msg.received(msg.number, msg.text, &first);
     msg.deliver = first ? 1u : 2u;
     if (!done) return;
     msg.deliver = 0;
   }
-  if (msg.notice) { bool first = true; if (!msg.received("", "", &first)) return; --msg.notice; }
-  if (msg.direct) return;
   const slm_status_t *st = comm_modem_status();
   if (st->state != SLM_READY && !(st->state >= SLM_STARTING && st->step > SLM_SIM)) return;
-  if (!msg.ready) {
-    if ((int32_t)(now_ms - msg.retry) >= 0) sms_issue(SMS_OP_SETUP, sms_setup[msg.step], COMM_AT_TEXT, COMM_T_SMS);
-  } else if ((int32_t)(now_ms - msg.retry) < 0) return;
-  else {
-    if (!msg.scan && (int32_t)(now_ms - msg.scan_due) >= 0) { msg.scan = 3; msg.scan_due = now_ms + comm_timeouts[COMM_T_STATUS]; }
-    uint8_t storage = msg.erase ? (uint8_t)(msg.erase >> 8) : msg.count ? (uint8_t)(msg.queue[0] >> 8)
-      : msg.scan & 1u ? 1u : 2u;
-    if ((msg.erase || msg.count || msg.scan) && storage != msg.storage) {
-      const char *cmd = storage == 1u ? sms_setup[1] : storage == 2u ? "AT+CPMS=\"ME\",\"SM\",\"SM\"" : "AT+CPMS=\"MT\",\"SM\",\"SM\"";
-      sms_issue(SMS_OP_STORAGE, cmd, COMM_AT_TEXT, COMM_T_SMS);
-    } else if (msg.erase) sms_command(SMS_OP_DELETE, "AT+CMGD=", msg.erase, COMM_AT_TEXT, COMM_T_SMS);
-    else if (msg.tx) sms_issue(SMS_OP_SEND, msg.tx_cmd, COMM_AT_PROMPT, COMM_T_SMS_SEND);
-    else if (msg.count) sms_command(SMS_OP_READ, "AT+CMGR=", msg.queue[0], COMM_AT_PDU, COMM_T_SMS);
-    else if (msg.scan && sms_command(SMS_OP_LIST, "AT+CMGL=4", 0, COMM_AT_PDU, COMM_T_SMS)) msg.scan &= (uint8_t)~(1u << (msg.storage - 1u));
-  }
+  if ((int32_t)(now_ms - msg.retry) < 0) return;
+  if (!msg.ready) { sms_issue(SMS_OP_SETUP, sms_setup[msg.step], COMM_AT_TEXT, COMM_T_SMS); return; }
+  /* Обзор SIM раз в 15 с: +CMTI при mode 0 может не прийти. */
+  if ((int32_t)(now_ms - msg.scan_due) >= 0) { msg.scan = 1; msg.scan_due = now_ms + comm_timeouts[COMM_T_STATUS]; }
+  if (msg.erase) sms_command(SMS_OP_DELETE, "AT+CMGD=", (uint8_t)msg.erase, COMM_AT_TEXT, COMM_T_SMS);
+  else if (msg.tx) sms_issue(SMS_OP_SEND, msg.tx_cmd, COMM_AT_PROMPT, COMM_T_SMS_SEND);
+  else if (msg.count) sms_command(SMS_OP_READ, "AT+CMGR=", msg.queue[0], COMM_AT_PDU, COMM_T_SMS);
+  else if (msg.scan) { msg.scan = 0; sms_command(SMS_OP_LIST, "AT+CMGL=4", 0, COMM_AT_PDU, COMM_T_SMS); }
 }
 #if DOMOVOI_DIAG
+/* Семь слов хвоста USB 111: настройка, SIM, +CMTI, CMGL, CMGR, CMGD. */
 void comm_sms_diag(uint32_t *v)
 {
   v[0] = msg.step | (uint32_t)msg.ready << 8 | (uint32_t)msg.diag.setup << 16;
-  v[1] = msg.diag.cms;
-  v[2] = msg.diag.used | (uint32_t)msg.diag.total << 16;
-  v[3] = msg.diag.cmti; v[4] = msg.diag.index; v[5] = msg.diag.cmgl;
-  v[6] = msg.diag.read | (uint32_t)msg.diag.stop << 8;
-  v[7] = msg.diag.deleted;
+  v[1] = msg.diag.used | (uint32_t)msg.diag.total << 16;
+  v[2] = msg.diag.cmti; v[3] = msg.diag.index; v[4] = msg.diag.cmgl;
+  v[5] = msg.diag.read | (uint32_t)msg.diag.stop << 8;
+  v[6] = msg.diag.deleted;
 }
 #endif
 /* Добавить октет в шестнадцатеричное тело исходящей SMS. */

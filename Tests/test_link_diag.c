@@ -12,7 +12,7 @@ static void link_diag_tests(void)
 {
   rc_online();
   link_expect(LINK_ONLINE);
-  const uint32_t times[6]={7000,340,100,250,960,30}; /* +40 мс: CPMS/CMGL памяти ME */
+  const uint32_t times[6]={7000,340,100,250,920,30};
   CHECK(!memcmp(slm.diag.phases,times,sizeof(times)));
   advance(1000);
   CHECK(!memcmp(slm.diag.phases,times,sizeof(times)));

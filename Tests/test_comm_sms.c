@@ -28,7 +28,7 @@ static const struct { const char *number, *text, *pdu; } sms_phone[] = { /* СЦ
 // Сбросить очередь и наблюдения модели SMS.
 static void sms_reset(void)
 {
-  memset(sim_store, 0, sizeof(sim_store)); memset(sim_me, 0, sizeof(sim_me));
+  memset(sim_store, 0, sizeof(sim_store));
   cnmi_error=cmgf_error=cmgr_error=cmgd_error=cpms_error=0; sms_hold=false; sms_reply_to=NULL; call_reset();
   sms_got_number[0]=sms_got_text[0]=0;
 }
@@ -136,7 +136,7 @@ static void sms_tests(void)
   for (unsigned i=0;i<sizeof(sms_phone)/sizeof(sms_phone[0]);++i) {
     sms_reset();sms_arrive(0,sms_phone[i].pdu);sms_expect(sms_phone[i].number,sms_phone[i].text);
     CHECK(sms_events==1 && !sim_store[0] && strstr(sms_log,"AT+CMGR=0;AT+CMGD=0;"));
-    DIAG_CHECK(msg.diag.cmti==1 && msg.diag.index==0x100 && msg.diag.read==COMM_AT_OK && msg.diag.stop==P_END && msg.diag.deleted==1);
+    DIAG_CHECK(msg.diag.cmti==1 && msg.diag.index==0 && msg.diag.read==COMM_AT_OK && msg.diag.stop==P_END && msg.diag.deleted==1);
   }
   /* CPMS: пустая и полная SIM; очередь 8 — повторный CMGL. */
   sms_reset();DIAG_CHECK(msg.diag.used==0 && msg.diag.total==11);
@@ -152,12 +152,8 @@ static void sms_tests(void)
   sms_reset();cmgf_error=1;call_reset();CHECK(!msg.ready && msg.step==0);
   advance(31000);CHECK(msg.ready==1);
   sms_reset();cpms_error=1;sim_store[0]=sms_phone[0].pdu;call_reset();CHECK(!msg.ready && msg.step==1);
-  DIAG_CHECK(msg.diag.setup==COMM_AT_CME && msg.diag.cms==313);
+  DIAG_CHECK(msg.diag.setup==COMM_AT_CME);
   advance(31000);CHECK(msg.ready==1 && sms_events==1 && !sim_store[0]);
-  /* Индексы ME/MT выбирают свою mem1. */
-  sms_reset();sim_me[5]=sms_phone[0].pdu;sim_feed("+CMTI: \"ME\",5\r\n");advance(500);
-  sms_expect(sms_phone[0].number,sms_phone[0].text);CHECK(!sim_me[5]);
-  sim_store[2]=sms_phone[0].pdu;sim_feed("+CMTI: \"MT\",2\r\n");advance(500);CHECK(sms_events==2 && !sim_store[2]);
   /* Транзитная ошибка чтения/удаления оставляет ячейку. */
   sms_reset();cmgr_error=1;sms_arrive(0,sms_phone[0].pdu);CHECK(!sms_events && sim_store[0]);
   advance(31000);CHECK(sms_events==1 && !sim_store[0]);
@@ -165,28 +161,11 @@ static void sms_tests(void)
   advance(31000);CHECK(sms_events==1 && !sim_store[0]);
   sms_reset();sms_hold=true;sms_arrive(0,sms_phone[0].pdu);advance(1000);CHECK(sms_events==1 && sim_store[0]);
   sms_hold=false;advance(500);CHECK(sms_events==1 && !sim_store[0]);
-  /* Неожиданная +CMT: отдельное тело, при занятом PDU — событие без команды. */
-  sms_reset();sim_feed("+CMT: ,37\r\n");sim_feed(sms_phone[0].pdu);sim_feed("\r\n");advance(300);
-  sms_expect(sms_phone[0].number,sms_phone[0].text);CHECK(sms_events==1 && !strstr(sms_log,"AT+CMGD="));
-  sms_reset();sim_feed("+CMT: ,159\r\n");sim_feed(pdu_long7);sim_feed("\r\n");advance(300);
-  {char expected[161];memset(expected,'x',160);expected[160]=0;sms_expect("+79160000002",expected);CHECK(sms_events==1);}
-  sms_reset();sms_hold=true;sms_arrive(1,sms_phone[0].pdu);
-  sim_feed("+CMT: ,37\r\n");sim_feed(sms_phone[0].pdu);sim_feed("\r\n");advance(300);
-  sms_hold=false;advance(500);CHECK(sms_events==2 && sms_received_count==1 && !sim_store[1]);
-  /* Разрыв между заголовком CMT и телом запрещает чужой AT; обрыв даёт событие. */
-  sms_reset();for(unsigned i=0;comm_at_busy() && i<100;++i)advance(10);
-  sim_feed("+CMT: ,37\r\n");advance(20);CHECK(comm_at_busy() && msg.direct);
-  advance(500);CHECK(msg.direct && !sms_events);
-  sim_feed(sms_phone[0].pdu);sim_feed("\r\n");advance(300);
-  sms_expect(sms_phone[0].number,sms_phone[0].text);CHECK(sms_events==1);
-  sms_reset();for(unsigned i=0;comm_at_busy() && i<100;++i)advance(10);
-  sim_feed("+CMT: ,37\r\n");advance(2200);CHECK(sms_events==1 && !sms_received_count && !msg.direct);
-  /* DCS, UDH, лишний/неполный октет: событие и удаление, команды нет. */
-  { char pdu[300];for(unsigned i=0;i<4;++i) {
-      strcpy(pdu,sms_phone[i==1?2:0].pdu);
-      if(i==0){pdu[36]='2';pdu[37]='0';}
-      if(i==1){pdu[54]='F';pdu[55]='F';}
-      if(i==2)strcat(pdu,"00");if(i==3)pdu[strlen(pdu)-1]=0;
+  /* Неверная длина UDH и оборванный октет: событие и удаление, команды нет. */
+  { char pdu[300];for(unsigned i=0;i<2;++i) {
+      strcpy(pdu,sms_phone[i==0?2:0].pdu);
+      if(i==0){pdu[54]='F';pdu[55]='F';}
+      else pdu[strlen(pdu)-1]=0;
       sms_reset();sms_arrive(1,pdu);CHECK(sms_events==1 && !sms_received_count && !sim_store[1]);
   }}
   /* TCP и 4 статуса за минуту: SMS не голодает. */
@@ -195,5 +174,5 @@ static void sms_tests(void)
     if(k%10==0)sms_arrive(0,sms_phone[0].pdu);advance(1000);CHECK(comm_server_online());
   }
   CHECK(sms_events==6 && sms_received_count==6 && !sim_store[0]);
-  puts("comm_sms: SLM336 setup/CPMS full/CMGL, index 0, phone GSM/UCS2/UDH, ME/MT/CMT, retries/events, TCP/status PASS");
+  puts("comm_sms: SLM336 setup/CPMS full/CMGL, index 0, phone GSM/UCS2/UDH, retries/events, TCP/status PASS");
 }

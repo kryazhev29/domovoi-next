@@ -14,7 +14,7 @@
    Строки cp1251 живут до возврата. PDU hex не становится ответом модема. */
 void comm_sms_init(bool (*received)(char *number, char *text, bool *first));
 #if DOMOVOI_DIAG
-/* Восемь слов хвоста USB 111; номера полей описаны в отчёте SMS. */
+/* Семь слов хвоста USB 111 (v[67..73]): настройка, SIM, +CMTI, CMGL, CMGR, CMGD. */
 void comm_sms_diag(uint32_t *v);
 #endif
 /* Продвинуть очередь SIM и передать готовое сообщение приложению. */

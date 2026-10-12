@@ -58,8 +58,8 @@ def run():
                 assert len(packet) == int.from_bytes(packet[4:6], 'little') + 8
                 assert crc16(packet[4:-2]) == int.from_bytes(packet[-2:], 'little')
                 if packet[8] == 111:
-                    assert len(packet) == 311 and struct.unpack_from('<I', packet, 9)[0] == 7
-                    assert len(packet[277:-2]) == 32  # v[67..74]: SMS
+                    assert len(packet) == 307 and struct.unpack_from('<I', packet, 9)[0] == 7
+                    assert len(packet[277:-2]) == 28  # v[67..73]: SMS
     else:
         for channel in (0, 1):
             for authorized in (0, 1):
