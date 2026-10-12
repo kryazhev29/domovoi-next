@@ -107,7 +107,7 @@ static void call_volte(void)
   }
   const slm_status_t *st = comm_modem_status();
   if (call.state != CALL_IDLE || call.volte_modem == VOLTE_UNSUPPORTED
-      || (st->state != SLM_READY && !(st->state == SLM_STARTING && st->step > SLM_SIM))) return;
+      || (st->state != SLM_READY && !(st->state >= SLM_STARTING && st->step > SLM_SIM))) return;
   uint8_t want = call.volte() ? 1u : 0u;
   const comm_side_t *op = call.volte_modem == VOLTE_UNKNOWN ? &volte_query
                         : call.volte_modem != want ? &volte_set[want] : NULL;

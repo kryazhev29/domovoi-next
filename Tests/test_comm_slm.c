@@ -7,6 +7,7 @@
 bool comm_channel_expected(void) { return false; }
 // Обозначить границу восстановления изолированного модема.
 void comm_recover_failure(uint8_t step,uint8_t reason,uint32_t now) { (void)step; (void)reason; (void)now; }
+void comm_recover_registered(void) {}
 #endif
 // Обозначить неиспользуемую в изолированном стенде доставку событий.
 static void ignore_event(uint8_t k,const uint8_t *p,uint16_t n,uint16_t d) { (void)k; (void)p; (void)n; (void)d; }
@@ -32,6 +33,7 @@ static unsigned sim_activation_delay, sim_data_echo, sim_send_race;
 static uint32_t sim_open_due;
 static bool sim_open_pending;
 static unsigned power_events;
+static bool sim_power_on;
 static struct { uint32_t time; uint8_t pin, high; } power_trace[16];
 static struct {
   char host[64], apn[31], login[31], password[31];
@@ -65,6 +67,7 @@ static const slm_settings_t sim_settings = {sim_text, sim_number};
 static void sim_gpio(uint8_t pin, bool high)
 {
   CHECK((pin == 13 || pin == 14) && power_events < sizeof(power_trace) / sizeof(power_trace[0]));
+  if (pin == 13) sim_power_on = high;
   power_trace[power_events].time = sim_now;
   power_trace[power_events].pin = pin;
   power_trace[power_events++].high = (uint8_t)high;
@@ -426,6 +429,10 @@ int main(void)
   for (unsigned net = 2; net <= 3; ++net) {
     sim_reset(); sim_network_wait = net; sim_start(); sim_until(15000); CHECK(comm_modem_ready());
   }
+  /* URC того же домена во время CGREG? приходит как LINE, но будит регистрацию. */
+  sim_reset(); sim_network_wait=1; sim_start();
+  for (unsigned i=0;slm.attempt.status.step!=SLM_NETWORK || state!=RUN;++i) { CHECK(i<1500); sim_tick(); }
+  sim_feed("+CGREG: 1\r\n"); sim_until(sim_now+15000); CHECK(comm_modem_ready());
   sim_reset(); sim_network_wait = 4; sim_start(); sim_until(80000); CHECK(slm.attempt.status.reason == SLM_ERR_TIMEOUT);
   sim_reset(); sim_rat_change = 8; sim_start(); sim_until(15000); CHECK(comm_modem_ready());
   /* Шум выключения/включения не должен стать ошибкой уже новой попытки. */

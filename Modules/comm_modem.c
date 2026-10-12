@@ -145,6 +145,18 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
 {
   if (kind == COMM_AT_URC)
     for (uint8_t i = 0; i < COMM_URC_COUNT; ++i) slm.urc[i](p, n);
+  /* Во время одноимённого запроса движок выдаёт URC как LINE; формат одинарный. */
+  if (kind == COMM_AT_URC || kind == COMM_AT_LINE) {
+    uint32_t registered;
+    /* Регистрация будит и отказавшую попытку; CREG не заменяет проверку пакетной сети. */
+    if ((comm_at_parse(p,n,"+CGREG:\005",&registered) || comm_at_parse(p,n,"+CEREG:\005",&registered)
+        || comm_at_parse(p,n,"+CGREG:\005,\"*",&registered) || comm_at_parse(p,n,"+CEREG:\005,\"*",&registered))
+        && (registered == 1 || registered == 5)) {
+      slm.attempt.net_registered = 1; slm.attempt.next = slm.attempt.now;
+      comm_recover_registered();
+    } else if ((comm_at_parse(p,n,"+CREG:\005",&registered) || comm_at_parse(p,n,"+CREG:\005,\"*",&registered))
+        && (registered == 1 || registered == 5)) comm_recover_registered();
+  }
   if (slm.side.running) {
     if (kind == COMM_AT_LINE) { if (slm.side.req->line) slm.side.req->line(p, n, detail); return; }
     if (kind == COMM_AT_DONE) {
@@ -191,11 +203,6 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       slm_network_apn(p, n);
       break;
     case MODEM_NETWORK:
-      /* Возврат сети будит обычный запуск, не ждёт следующего секундного опроса. */
-      if ((comm_at_parse(p,n,"+CGREG:\005",values) || comm_at_parse(p,n,"+CEREG:\005",values)
-          || comm_at_parse(p,n,"+CGREG:\005,\"*",values) || comm_at_parse(p,n,"+CEREG:\005,\"*",values)) && (values[0] == 1 || values[0] == 5)) {
-        slm.attempt.net_registered = 1; slm.attempt.next = slm.attempt.now;
-      }
       if (comm_at_parse(p,n,(slm.attempt.query ? "+CEREG:\005,\005|" : "+CGREG:\005,\005|"),values) && values[0] <= 2 && values[1] <= 5) {
         slm.attempt.answer = 1; /* Один домен может быть запрещён при регистрации в другом. */
         if (values[1] == 1 || values[1] == 5) slm.attempt.net_registered = 1;
@@ -338,11 +345,11 @@ void comm_modem_transport(void (*event)(uint8_t, const uint8_t *, uint16_t, uint
 void comm_modem_listen(uint8_t slot, void (*urc)(const uint8_t *, uint16_t)) { slm.urc[slot] = urc; }
 /* Выдать поколение запуска для отмены старых запросов. */
 uint8_t comm_modem_session(void) { return slm.session; }
-/* Модем принимает служебную команду после настройки порта (эхо выключено). */
+/* После настройки порта служебные AT работают и в паузе отказавшего подключения. */
 static bool slm_side_allowed(void)
 {
   return slm.attempt.status.state == SLM_READY
-    || (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
+    || (slm.attempt.status.state >= SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
 }
 /* Занять служебный слот для его владельца. */
 static bool slm_side_queue(const comm_side_t *req)

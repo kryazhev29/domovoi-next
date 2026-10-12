@@ -29,7 +29,7 @@ def main():
         ('first-open-counted', 'if (!ch.call.expected) ++ch.connections;', '++ch.connections;'),
         ('live-TCP-reopened', 'if (ch.call.lost) comm_channel_reopen(0);', 'comm_channel_reopen(0);'),
         ('expected-PDP-pause', 'if (comm_channel_expected() && comm_modem_status()->reason == SLM_ERR_PDP) rc_schedule(false, 0);', 'if (0) rc_schedule(false, 0);'),
-        ('network-URC-ignored', 'if ((comm_at_parse(p,n,"+CGREG:\\005",values)', 'if (0 && (comm_at_parse(p,n,"+CGREG:\\005",values)'),
+        ('network-URC-ignored', 'if ((comm_at_parse(p,n,"+CGREG:\\005",&registered)', 'if (0 && (comm_at_parse(p,n,"+CGREG:\\005",&registered)'),
         ('TCP-attempt-failure-free', 'if (!ch.call.expected) ++ch.connections;\n    ch.call.expected = ch.call.lost = 0;', 'if (!ch.call.expected) ++ch.connections;'),
     )
     changed = []

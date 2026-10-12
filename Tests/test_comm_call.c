@@ -43,6 +43,33 @@ static uint32_t call_until_registered(void)
 // Проверить доступ, сроки ATA/CHUP и восстановление данных после вызова.
 static void call_tests(void)
 {
+  /* Нет мобильного интернета: в длинной паузе номер открывает, затем ATA и CHUP. */
+  rc_online(); call_writer_ready=true; calls=call_actions=0; sim_error_step=SLM_ACTIVATE; rc_fresh(); rc_wait_power();
+  unsigned powers=rc_power_starts, resets=rc_session_resets; uint32_t pause=rc.wait_since;
+  ring("+CLIP: \"+79161234567\",145\r\n");
+  for (unsigned i=0; !chups || comm_channel_call_pending(); ++i) { CHECK(i<400); rc_tick(10); }
+  CHECK(calls==1 && call_actions==1 && answers==1 && chups==1 && !call_present);
+  CHECK(call_action_at<=answer_at && answer_at<hangup_at && hangup_at-answer_at<=2500);
+  CHECK(rc.state==RC_WAIT && rc.wait_since==pause && rc_power_starts==powers && rc_session_resets==resets && sim_power_on);
+  /* Конец паузы во время разговора ждёт штатного отбоя. */
+  advance(10000); ring("+CLIP: \"+79161234567\",145\r\n"); rc_tick(10);
+  rc.wait_since=sim_now-rc.wait_ms; rc_tick(500);
+  CHECK(comm_channel_call_pending() && rc_power_starts==powers && sim_power_on);
+  for (unsigned i=0; rc_power_starts==powers; ++i) { CHECK(i<500); rc_tick(10); }
+  CHECK(chups==2 && rc_power_starts==powers+1u);
+
+  /* Сломанный AT в звонке не должен заблокировать назначенный перезапуск. */
+  rc_online(); call_writer_ready=true; sim_error_step=SLM_ACTIVATE; rc_fresh(); rc_wait_power();
+  ring("+CLIP: \"+79161234567\",145\r\n");
+  for (unsigned i=0; !answers; ++i) { CHECK(i<100); rc_tick(10); }
+  CHECK(comm_channel_call_pending()); powers=rc_power_starts;
+  interrupt_byte(0,USART_SR_ORE); rc_tick(10);
+  CHECK(comm_modem_status()->at_fault);
+  rc.wait_since=sim_now-rc.wait_ms; rc_tick(10);
+  CHECK(rc_power_starts==powers+1u && comm_power_v5_state()==COMM_PWR_DISCHARGE);
+  sim_error_step=-1; rc_run(30000u);
+  CHECK(comm_server_online() && !comm_channel_call_pending());
+
   /* OK от CHUP при живом вызове: CLCC требует повтор, без повторного доступа.
      После предела CHUP больше не отправляется, но даже пауза RING > 8 с не даёт доступ. */
   for (unsigned fw=0; fw<2; ++fw) {

@@ -28,10 +28,9 @@ static uint32_t rc_pause(uint8_t first, uint8_t step)
   return comm_timeouts[first + (step < 2u ? step : 2u)];
 }
 
-/* Перезапуск модема через pause мс. С питанием - модем на паузу выключен. */
+/* Перезапуск через pause мс; до него питание и служебные AT сохраняются. */
 static void rc_schedule(bool power, uint32_t pause)
 {
-  if (power) comm_modem_off();
   rc.power = (uint8_t)power;
   rc.state = RC_WAIT;
   rc.wait_since = rc.now;
@@ -166,13 +165,19 @@ void comm_recover_no_internet(void)
   if (rc.net_step < 2u) rc.net_step++;
 }
 
+/* Модем сам зарегистрировался: подключаться с AT, отменив остаток паузы. */
+void comm_recover_registered(void)
+{
+  if (rc.state == RC_WAIT) { rc.power = 0; rc.wait_ms = 0; }
+}
+
 /* Исполнить назначенный перезапуск или проверить условия надзора. */
 void comm_recover_poll(uint32_t now_ms)
 {
   rc.now = now_ms;
   rc_expire(rc.at_times, 3, rc.at_i, &rc.at_count, COMM_T_EARLY_AT);
   rc_expire(rc.tcp_times, 5, rc.tcp_i, &rc.tcp_count, COMM_T_EARLY_TCP);
-  if (comm_channel_call_pending() && comm_modem_state() != SLM_FAILED) return;
+  if (comm_channel_call_pending() && !comm_modem_status()->at_fault) return;
   bool early = rc.early;
   rc.early = 0;
   if (comm_server_online()) {
@@ -196,7 +201,7 @@ void comm_recover_poll(uint32_t now_ms)
     return;
   }
   if (state != SLM_READY) return;
-  /* В работе модем перестал отвечать или сбои пошли пачкой - сразу без питания. */
+  /* В работе модем перестал отвечать или сбои пошли пачкой - короткий перезапуск. */
   if (early || comm_channel_fault()) { rc_power_ladder(rc_now_then_ladder()); return; }
   rc_night();
 }

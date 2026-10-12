@@ -42,6 +42,13 @@ static void sms_expect(const char *number, const char *text)
 // Проверить PDU, кодировки, границы и очередь отправки SMS.
 static void sms_tests(void)
 {
+  /* SMS читается и стирается на SIM при отказе PDP, без отмены длинной паузы. */
+  sms_reset(); comm_server_no_internet(comm_recover_no_internet);
+  sim_error_step=SLM_ACTIVATE; rc_fresh(); rc_wait_power();
+  unsigned powers=rc_power_starts; sms_arrive(1,pdu_hello); advance(1000);
+  sms_expect("27838890001","hellohello");
+  CHECK(!sim_store[1] && rc.state==RC_WAIT && rc_power_starts==powers && sim_power_on);
+
   /* Непринятое SMS остаётся на SIM и в текущем буфере до освобождения канала. */
   sms_reset();sms_hold=true;sms_arrive(1,pdu_hello);advance(1000);
   CHECK(!sms_received_count && sim_store[1] && !strstr(sms_log,"AT+CMGD=1;"));

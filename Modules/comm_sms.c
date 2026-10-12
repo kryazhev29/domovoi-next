@@ -197,7 +197,7 @@ void comm_sms_poll(uint32_t now_ms)
     msg.deliver = 0;
   }
   const slm_status_t *st = comm_modem_status();
-  if (st->state != SLM_READY && !(st->state == SLM_STARTING && st->step > SLM_SIM)) return;
+  if (st->state != SLM_READY && !(st->state >= SLM_STARTING && st->step > SLM_SIM)) return;
   if (!msg.ready) {
     if ((int32_t)(now_ms - msg.retry) >= 0) sms_issue(SMS_OP_SETUP, sms_setup[msg.step], COMM_AT_TEXT, COMM_T_SMS);
   } else if (msg.erase) sms_command(SMS_OP_DELETE, "AT+CMGD=", msg.erase, COMM_AT_TEXT, COMM_T_SMS);

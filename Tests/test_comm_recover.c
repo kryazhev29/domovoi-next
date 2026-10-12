@@ -23,6 +23,7 @@ static void rc_tick(unsigned ms)
   rc_note(); /* решение могло прийти из сервера (нет интернета) и исполниться в этом же такте */
   unsigned session_before = slm.session, resets_before = rc_session_resets;
   comm_recover_poll(sim_now);
+  if (rc.state == RC_WAIT) CHECK(sim_power_on && comm_power_v5_state() == COMM_PWR_READY);
   if (slm.session != session_before) CHECK(rc_session_resets == resets_before + 1u);
   rc_note();
 }
@@ -54,6 +55,12 @@ static void rc_online(void)
 }
 /* Перезапуск со снятием питания, как после сбоя: дальше модем идёт уже с флагами сценария. */
 static void rc_fresh(void) { CHECK(comm_modem_restart(true, sim_now)); rc_session(); }
+/* Дойти настоящими отказами до первой длинной паузы при включённом модеме. */
+static void rc_wait_power(void)
+{
+  for (unsigned i = 0; rc.state != RC_WAIT || !rc.power; ++i) { CHECK(i < 60000); rc_tick(10); }
+  CHECK(rc.wait_ms == 600000u && sim_power_on);
+}
 // Проверить ожидаемую ступень и срок восстановления.
 static void rc_expect(unsigned i, uint32_t ms, uint8_t power)
 {
@@ -97,6 +104,19 @@ static void recover_tests(void)
   rc_expect(0, 10000u, 0); rc_expect(1, 30000u, 0); rc_expect(2, 600000u, 1);
   rc_expect(3, 60000u, 0); rc_expect(4, 60000u, 0); rc_expect(5, 1800000u, 1);
   CHECK(link_count(COMM_LINK_NO_NET, 0) == 1);
+  /* Каждый домен регистрации снимает длинную паузу без перезапуска питания. */
+  static const char *const registered[] = {"+CREG: 1\r\n", "+CGREG: 5,\"1234\",\"5678\"\r\n", "+CEREG: 1\r\n"};
+  for (unsigned i = 0; i < 3; ++i) {
+    rc_online(); sim_network_wait = 1; rc_fresh(); rc_wait_power();
+    sim_feed("+CEREG: 2\r\n+CGREG: 0\r\n+CREG: 3\r\n"); rc_tick(10);
+    CHECK(rc.state == RC_WAIT && rc.wait_ms == 600000u);
+    unsigned powers = rc_power_starts; uint32_t begin = sim_now;
+    sim_network_wait = 0; sim_feed(registered[i]); rc_tick(10);
+    CHECK(rc.state == RC_WATCH && rc_soft_starts == 3 && rc_power_starts == powers);
+    for (unsigned n = 0; !comm_server_online(); ++n) { CHECK(n < 1500); rc_tick(10); }
+    CHECK(sim_now - begin < 15000u && sim_power_on);
+  }
+  rc_online(); sim_network_wait = 1; rc_fresh(); rc_run(3600000u);
   /* Сеть нашлась, связь есть - при следующей потере сети событие 11 снова. */
   sim_network_wait = 0; rc_run(3600000u); CHECK(comm_server_online());
   sim_network_wait = 1; rc_fresh(); rc_run(150000u); CHECK(link_count(COMM_LINK_NO_NET, 0) == 2);
@@ -153,7 +173,7 @@ static void recover_tests(void)
   /* 10 мин устойчивой связи - ступени с начала. */
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(700000u); CHECK(rc.power_step == 2);
   sim_no_sim = 0; rc_run(1800000u + 700000u); CHECK(comm_server_online() && rc.power_step == 0);
-  printf("comm_recover: no SIM, no network, silent modem, silence in work, PDP loss, silent server, no internet, early AT/TCP, night/day restart, ladder reset PASS\n");
+  printf("comm_recover: powered pauses, registration URC wake, no SIM/network/internet, silent modem 10/30/60 min, early AT/TCP, night/day, ladder reset PASS\n");
 }
 
 static void reset_session_contract(void)
