@@ -264,6 +264,10 @@ int main(int argc, char **argv)
     { char number[]="+79161234567",message[]="#add 4321,9990001234";
       init();config.pinCode=4321;strcpy(expected_added_id,"9990001234");
       CHECK(sms_received_call(number,message,true) && added==1 && controls==1 && received_events==1); }
+    /* Пробел после запятой и в конце, CR перед LF - как с телефона. */
+    { char number[]="+79161234567",message[]="#add 4321, 9990001234 \r\n";
+      init();config.pinCode=4321;strcpy(expected_added_id,"9990001234");
+      CHECK(sms_received_call(number,message,true) && added==1 && controls==1); }
     run_case("#add 1234,0123456789", "ADD: Error", 3); CHECK(!added && !controls);
     { char number[] = "+79031234567", message[] = "#add 1234,0123456789";
       init(); flash_busy = true;

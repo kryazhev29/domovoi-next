@@ -37,6 +37,8 @@ bool user_smsreceived(char *num, char *data, bool *first)
   if (device.triggers.smsToAdmin && *data != '#' && !user_send_smsToServer(data)) return false;
   lineEnd = skipchar('\n', data, 1);
   if (lineEnd != data) *(lineEnd - 1) = 0;
+  /* Клавиатура телефона дописывает пробел в конце (плата №1, 12.10). */
+  for (lineEnd = data + strlen(data); lineEnd > data && (lineEnd[-1] == ' ' || lineEnd[-1] == '\r'); ) *--lineEnd = 0;
   if (*data != '#') return true;
   pin = skipchar(' ', data, 1);
   arg = skipchar(',', data, 1);
@@ -44,6 +46,7 @@ bool user_smsreceived(char *num, char *data, bool *first)
   if (pin != data && (arg == data || arg > pin))
     validPin = user_parse_pin(pin, arg == data ? strlen(pin) : (uint32_t)(arg - pin - 1),
                               &pinValue) && user_pin_valid(pinValue);
+  while (*arg == ' ') arg++; /* пробел после запятой */
   user_strcpy(name, data + 1, ' ', 10);
   command = sms_command(name);
   strcpy(reply, name);
@@ -86,7 +89,6 @@ bool user_smsreceived(char *num, char *data, bool *first)
   case SMS_SETOUT: {
     uint8_t out;
     if (!validFormat) goto format_error;
-    while (*arg == ' ') arg++;
     if ((arg[0] != '1' && arg[0] != '2') || arg[1] != 0) goto format_error;
     out = arg[0] - '0';
     if (user_activateOut(out == 1, out == 2, CT_SERVER, NULL)) {
