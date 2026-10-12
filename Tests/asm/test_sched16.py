@@ -124,7 +124,7 @@ def crc_paths():
 # Проверяет доступ через расписания, праздники и триггеры.
 def access():
     cases = 0
-    for holiday in (1, 2, 3):
+    for holiday in (0, 1, 2, 3, 4, 255):
         for today_holiday in (False, True):
             for day in (0, 3, 6):
                 for minute in (8*60+29, 8*60+30, 12*60, 18*60+14, 18*60+15):
@@ -137,7 +137,7 @@ def access():
                     if today_holiday:
                         m.flash[0x1cc000:0x1cc004] = struct.pack('<I', TODAY)
                     allowed = 8*60+30 <= minute <= 18*60+15 and (
-                        holiday==1 or (holiday==2 and today_holiday) or (holiday==3 and not today_holiday))
+                        holiday not in (2, 3) or (holiday==2 and today_holiday) or (holiday==3 and not today_holiday))
                     assert bool(m.checked('user_checkShedule', 1)) == allowed, (holiday, today_holiday, day, minute)
                     # Доступ через расписание группы использует общую политику праздников.
                     m.put_group(1); m.put_id(1,b'1234567890')

@@ -60,8 +60,7 @@ uint8_t shedule_window(const cellShedule_s *s)
 {
   uint8_t holiday;
   if (!s->day[device.day] || !shedule_time_ok(s)) return 0;
-  if (s->onHoliday == 1) return 1;
-  if (s->onHoliday != 2 && s->onHoliday != 3) return 0;
+  if (s->onHoliday != 2 && s->onHoliday != 3) return 1;
   holiday = user_dayIsHoliday();
   return holiday == 2 ? 2 : holiday == (s->onHoliday == 2);
 }

@@ -162,14 +162,14 @@ def scenes():
     for hour, minute, active in ((21, 59, 0), (22, 0, 2), (23, 59, 2), (0, 0, 2), (6, 0, 2), (6, 1, 0)):
         m.clock(hour, minute); m.checked('user_unblock_poll'); assert m.effective() == active
     cases = 0
-    for holiday in (1, 2, 3):
+    for holiday in (0, 1, 2, 3, 4, 255):
         for today_holiday in (False, True):
             m = UnblockMachine(); m.schedule(holiday=holiday)
             if today_holiday:
                 stamp = int.from_bytes(m.u.mem_read(m.device+m.d['datetime'], 4), 'little')
                 m.flash[HOLIDAY:HOLIDAY+4] = struct.pack('<I', stamp)
             m.checked('user_unblock_recheck', 1)
-            expected = holiday == 1 or (holiday == 2 and today_holiday) or (holiday == 3 and not today_holiday)
+            expected = holiday not in (2, 3) or (holiday == 2 and today_holiday) or (holiday == 3 and not today_holiday)
             assert bool(m.effective()) == expected, (holiday, today_holiday)
             cases += 1
     for rec, numbers, enabled, known in (
