@@ -30,7 +30,9 @@ def nested_config():
 
 def factory_reset():
     outcomes = []
-    for fail in (False, True):
+    for channel, fail, reset in ((0, False, False), (0, True, False), (0, False, True),
+                                  (1, False, False), (1, True, False),
+                                  (2, False, False), (2, True, False)):
         m, _, _ = config_machine()
         # Небольшие реальные диапазоны, включая частичный сектор таблицы.
         blocks = {2: (0x41000, 4096), 3: (0x1c9000, 4096),
@@ -48,28 +50,43 @@ def factory_reset():
             raise AssertionError('factory used startup synchronous format')
         m.stubs[m.addr('log_getRecordsCount')] = startup_format
         m.stubs[m.addr('log_addSystemEvent')] = lambda: m.ret(1)
-        assert m.checked('store_factory_request', 0, 73, 0, 0)
+        ready = False; messages = []
+        m.stubs[m.addr('comm_tx_busy')] = lambda: m.ret(not ready)
+        number = 0x21000c00
+        m.u.mem_write(number, b'89035551122\0')
+        def sms_reply():
+            if ready:
+                args = m.args()
+                messages.append(tuple(bytes(m.u.mem_read(p, 32)).split(b'\0', 1)[0] for p in args[:2]))
+            m.ret(ready)
+        m.stubs[m.addr('user_comm_sms')] = sms_reply
+        assert m.checked('store_factory_request', channel, 73, 0, number if channel == 2 else 0)
         m.checked('user_factoryReset')
         assert state(m)[0] == STORE and not m.answers
+        if reset: m.write(m.addr('usb_bus_resets'), 1, 4)
         if fail:
             m.fault = ('poll', 1)
         for _ in range(5000):
             m.now += 1
             m.checked('user_storage_poll')
-            if m.answers:
+            if state(m)[0] != STORE:
                 break
-            if state(m)[0] == STORE:
-                assert not m.answers, 'factory success before completion'
+            assert not m.answers and not messages, 'factory success before completion'
         else:
-            raise AssertionError('factory reset did not answer')
-        assert m.answers == [(3, 2 if fail else 0, 0, 73)], m.answers
+            raise AssertionError('factory reset did not finish')
+        for _ in range(3): m.checked('user_storage_poll')
+        if channel or reset: assert not m.answers and not messages, 'занятый или старый канал получил ответ'
+        ready = True
+        for _ in range(3): m.checked('user_storage_poll')
+        assert m.answers == ([] if reset or channel == 2 else [(3, 2 if fail else 0, channel, 73)]), m.answers
+        assert messages == ([(b'89035551122', b'DEFAULT: Error' if fail else b'DEFAULT: Complete')] if channel == 2 else []), messages
         if not fail:
             for address, size in blocks.values():
                 assert m.flash[address:address + size] == b'\xff' * size
             assert m.flash[0x1ca000:0x1ca800] == b'\x37' * 2048
             m.checked('user_storage_poll')
-            assert len(m.answers) == 1
-        outcomes.append('error' if fail else 'success_after_final_save')
+            assert len(m.answers) + len(messages) == (0 if reset else 1)
+        outcomes.append({'channel': channel, 'failure': fail, 'USB_reset': reset})
     return outcomes
 
 
