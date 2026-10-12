@@ -26,24 +26,17 @@ static uint8_t store_id_chunk(const void *context, uint16_t offset, uint8_t *dat
 }
 static void store_io_done(bool ok)
 {
-  store_io_s *p = &flash_job.data.storeio;
-  uint8_t outputs = p->outputs, type = p->type, count = p->count, started = p->started;
-  uint8_t reply = p->reply, channel = p->channel, uniq = p->uniq;
-  uint16_t event = p->event;
-  uint32_t epoch = p->epoch;
-  char id[11];
-  memcpy(id, ((cellID_s *)p->data)->ID, 10);
-  id[10] = 0;
+  store_io_s done = flash_job.data.storeio;
   flash_exec_finish(ok ? FX_OK : FX_ERROR);
   flash_exec_take_result();
-  if (ok && outputs && !unblock_active) {
-    server_out_event = (logControl_e)event;
-    user_access_complete(outputs, (codeType_e)type, id, count, started);
+  if (ok && done.outputs && !unblock_active) {
+    server_out_event = (logControl_e)done.event;
+    user_access_complete(done.outputs, (codeType_e)done.type, ((cellID_s *)done.data)->ID, done.count, done.started);
   }
-  if (reply && (channel != CH_USB || epoch == usb_bus_resets)) {
+  if (done.reply && (done.channel != CH_USB || done.epoch == usb_bus_resets)) {
     store.cmd = 8;
-    store.channel = channel;
-    store.uniq = uniq;
+    store.channel = done.channel;
+    store.uniq = done.uniq;
     store.quiet = 0;
     store.code = ok ? CMD_SUCCESS : CMD_RUNERROR;
     store_phase_set(US_REPLY);

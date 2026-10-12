@@ -104,7 +104,37 @@ def mutations():
 
 
 def run_step4():
-    return {'nested_config': nested_config(), 'factory': factory_reset()}
+    return {'nested_config': nested_config(), 'factory': factory_reset(), 'completion': store_completion()}
+
+
+def store_completion():
+    from test_access_reads import AccessMachine, IDS
+    from storage_machine import fields
+    peaks = []
+    for fail, reset in ((False, False), (True, False), (False, True)):
+        m = AccessMachine(); m.put_id(1, b'0123456789')
+        record = bytearray(m.flash[IDS:IDS+32])
+        record[fields('cellID_s')['cntPass']] = 0
+        m.u.mem_write(0x21000400, bytes(record))
+        assert m.checked('store_id_begin', IDS, 0x21000400)
+        m.checked('store_access_reply', 0, 97)
+        offsets = fields('store_io_s')
+        for name, value in (('outputs', 3), ('type', 6), ('count', 0), ('started', 1), ('event', 74)):
+            m.write(m.job + offsets[name], value, 2 if name == 'event' else 1)
+        if fail: m.fault = ('poll', 1)
+        if reset: m.write(m.addr('usb_bus_resets'), 1, 4)
+        for _ in range(3000):
+            m.checked('user_storage_poll')
+            if state(m)[0] == NONE: break
+            assert not m.loads and not m.events and not m.answers
+        else: raise AssertionError('ID completion stuck')
+        m.checked('user_storage_poll')
+        assert len(m.loads) == (0 if fail else 2), m.loads
+        assert m.events == ([] if fail else [(74, b'0123456789', 0), (131, b'0123456789', 0),
+                                            (79, b'0123456789', 0), (139, b'0123456789', 255)]), m.events
+        assert m.answers == ([] if reset else [(8, 2 if fail else 0, 0, 97)]), m.answers
+        peaks.append(m.stack_peak)
+    return {'id_events_outputs_reply_preserved': True, 'stack_peak': max(peaks)}
 
 
 def reads_between_steps():
