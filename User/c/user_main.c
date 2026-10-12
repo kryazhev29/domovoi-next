@@ -42,6 +42,10 @@ void user_init(void)
 {
   // Загрузчик, startup и периферия флаги не стирают; сохраняем до восстановления.
   const uint32_t reset_csr = RCC->CSR;
+  /* F103: PORRSTF — общий POR/PDR. Старый POR рядом с WDT/SW не холодный старт. */
+  if ((reset_csr & (RCC_CSR_PORRSTF | RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF |
+                    RCC_CSR_SFTRSTF | RCC_CSR_LPWRRSTF)) == RCC_CSR_PORRSTF)
+    comm_power_v5_cold_start();
   bool reset_saved = true;
   // Определяем тип памяти
   device.memID = w25_read_devID();

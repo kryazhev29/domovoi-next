@@ -300,7 +300,7 @@ static void slm_begin(bool power, uint32_t now_ms)
   if (power) {
     slm.attempt.status.phase = SLM_PHASE_POWER;
     comm_power_v5_start(slm.gpio, now_ms);
-    slm.attempt.status.step = SLM_DISCHARGE;
+    slm.attempt.status.step = (uint8_t)(comm_power_v5_state() - 1u);
   } else {
     slm.attempt.status.phase = SLM_PHASE_SETUP;
     slm.attempt.status.step = SLM_AT_READY;

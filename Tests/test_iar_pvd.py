@@ -82,3 +82,12 @@ assert m.read(marker,2)==magic, 'failed log insertion must retain marker'
 startup(magic)
 assert len(records)==2 and records[-1][8]==event and m.read(marker,2)==0
 print('PVD IAR: startup event 39 once, second startup silent, invalid marker ignored, failed insertion retained PASS')
+
+# Настоящий user_init читает CSR до RMVF; старый POR не скрывает WDT/SW.
+por=1<<27; pin=1<<26
+for flags,cold in ((0,False),(por,True),(por|pin,True),(pin,False),
+                   *((bit,False) for bit in (1<<28,1<<29,1<<30,1<<31)),
+                   *((por|bit,False) for bit in (1<<28,1<<29,1<<30,1<<31))):
+    fresh(0);m.write(0x40021024,flags);m.call('user_init')
+    assert m.read(m.addr('power_state'),1)==(7 if cold else 0), ('cold modem start',hex(flags),cold)
+print('modem IAR: POR/PDR skips discharge once; pin/SW/IWDG/WWDG/LPWR and retained POR keep discharge PASS')

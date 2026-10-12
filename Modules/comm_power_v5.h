@@ -8,11 +8,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 enum { COMM_PWR_OFF, COMM_PWR_DISCHARGE, COMM_PWR_LEAD, COMM_PWR_RAIL,
-       COMM_PWR_KEY, COMM_PWR_BOOT, COMM_PWR_READY };
+       COMM_PWR_KEY, COMM_PWR_BOOT, COMM_PWR_READY, COMM_PWR_COLD };
 /* pin — номер вывода порта C (13 или 14), high — физический уровень.
    Адаптер GPIO подключается только при замене старого владельца питания. */
 typedef void (*comm_power_gpio_t)(uint8_t pin, bool high);
-/* Начать включение платы v5 с полного разряда питания. */
+/* Первое включение после POR/PDR не требует разряда; повторное требует. */
+void comm_power_v5_cold_start(void);
+/* Начать включение платы v5, потребив отметку холодного старта. */
 void comm_power_v5_start(comm_power_gpio_t gpio, uint32_t now_ms);
 /* Выполнить один переход после полной выдержки его срока. */
 void comm_power_v5_poll(uint32_t now_ms);

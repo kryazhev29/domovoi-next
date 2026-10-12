@@ -14,13 +14,16 @@ void comm_power_v5_off(void)
   if (power_gpio) { power_gpio(13, false); power_gpio(14, true); }
   power_state = COMM_PWR_OFF;
 }
-/* Начать включение платы v5 с полного разряда питания. */
+/* Отметка первого включения использует уже существующее состояние питания. */
+void comm_power_v5_cold_start(void) { power_state = COMM_PWR_COLD; }
+/* Начать включение: POR/PDR без разряда только один раз, иначе полный разряд. */
 void comm_power_v5_start(comm_power_gpio_t gpio, uint32_t now_ms)
 {
+  uint8_t first = power_state == COMM_PWR_COLD ? COMM_PWR_LEAD : COMM_PWR_DISCHARGE;
   power_gpio = gpio;
   comm_power_v5_off();
   power_started = now_ms;
-  power_state = COMM_PWR_DISCHARGE;
+  power_state = first;
 }
 /* Выдать текущую ступень питания. */
 uint8_t comm_power_v5_state(void) { return power_state; }

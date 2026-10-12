@@ -373,7 +373,7 @@ static void advance(unsigned ms) { uint32_t begin=sim_now; while (sim_now-begin<
 // Запросить обычное восстановление после отказа ping и DNS.
 static void server_no_internet(void) { comm_channel_reopen(0); }
 // Начать независимый сеанс модема и зарегистрироваться на сервере.
-static void server_reset(void)
+static void server_reset_start(bool cold)
 {
   comm_modem_transport(NULL); sim_reset();
   info.next=0; info.step=0; /* время модели начинается заново */
@@ -386,6 +386,7 @@ static void server_reset(void)
   device.datetimeShedule=3; device.datetimeConfig=4; device.datetimeHoliday=5;
   device.status=0x1234; device.answerID=0; incoming_count=sent_count=0;
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
+  if (cold) comm_power_v5_cold_start();
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   call_access_ready=true; call_registration_noise=false;
   chups=chup_silence=answers=answer_mode=0; answer_delay=40;
@@ -404,6 +405,16 @@ static void server_reset(void)
   for (unsigned i=0;!comm_server_online() && i<1500;++i) transport_tick(10);
   CHECK(comm_server_online() && comm_modem_ready() && sim_now<11000);
   advance(500); call_activations=call_net_queries=call_pdp_queries=call_tcp_queries=0;
+}
+static void server_reset(void) { server_reset_start(false); }
+/* Регистрация сервера по настоящему автомату: POR экономит только разряд. */
+static void server_startup_tests(void)
+{
+  server_reset(); uint32_t warm=sim_now-500u, from_rail=warm-power_trace[2].time;
+  server_reset_start(true); uint32_t cold=sim_now-500u;
+  CHECK(warm-cold==2000u && power_trace[2].time==100u && cold-power_trace[2].time==from_rail);
+  DIAG_CHECK(slm.diag.phases[SLM_PHASE_POWER]==5000u);
+  printf("server startup model: warm=%u ms, cold=%u ms, from PC13=%u ms both\n",warm,cold,from_rail);
 }
 // Проверить кадры, сроки статусов, регистрацию и отказы сервера.
 static void server_tests(void)
@@ -641,4 +652,4 @@ static void reader_tests(void)
 /* ВОССТАНОВЛЕНИЕ */
 /* ВЫЗОВ */
 int main(void)
-{ CHECK(slm_regressions()==0); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }

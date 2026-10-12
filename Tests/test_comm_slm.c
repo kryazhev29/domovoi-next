@@ -238,6 +238,18 @@ static void path_tests(void)
   printf("SLM normal model: %u ms incl discharge, %u ms from PC13 on, %u polls\n",sim_now,sim_now-power_trace[2].time,sim_ticks);
   CHECK(!strcmp(slm_apn(), "internet.mts.ru"));
   CHECK(sim_commands < 26); /* Нет команд регистрации на сервере. */
+  uint32_t warm_ms=sim_now;
+  sim_reset(); comm_power_v5_cold_start(); sim_start();
+  CHECK(comm_power_v5_state()==COMM_PWR_LEAD && slm.attempt.status.step==SLM_POWER_LEAD);
+  sim_until(15000);
+  CHECK(comm_modem_ready() && sim_now==warm_ms-2000u);
+  CHECK(power_trace[2].time==100 && power_trace[3].time==1000 && power_trace[4].time==3000);
+  printf("SLM cold model: %u ms, PC13 at 100 ms; PWRKEY and boot unchanged\n",sim_now);
+  /* После холодного старта перезапуск по питанию снова разряжается полностью. */
+  uint32_t begin=sim_now; power_events=0; CHECK(comm_modem_restart(true,sim_now));
+  CHECK(comm_power_v5_state()==COMM_PWR_DISCHARGE);
+  for (unsigned i=0;comm_modem_state()==SLM_STARTING;++i) { CHECK(i<1500); sim_tick(); }
+  CHECK(comm_modem_ready() && power_trace[4].pin==13 && power_trace[4].high && power_trace[4].time-begin==2100u);
   sim_reset(); test_config.modem_type = 255; sim_start(); sim_until(15000);
   CHECK(comm_modem_ready() && sim_gmm == 1 && sim_found == 1);
   sim_reset(); sim_port_change = sim_rat_change = sim_early_open = 1;
