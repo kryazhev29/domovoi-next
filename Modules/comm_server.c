@@ -36,6 +36,8 @@ void comm_server_note(uint8_t kind) { server_link(kind, 0); }
 /* Выдать адрес текущего серверного соединения. */
 uint8_t comm_server_address(void) { return sv.address; }
 /* Проверить интернет перед новой попыткой сервера; отсчёт между попытками, не после ping. */
+/* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
 static void server_check(void)
 {
   sv.flags.status_wait = sv.flags.status_due = sv.flags.stable = sv.flags.probe_failed = 0;
@@ -135,6 +137,8 @@ void comm_server_status_ack(uint8_t unique_id)
   if (!sv.flags.stable) { sv.flags.stable = 1; sv.stable_since = sv.now; }
 }
 /* Продвинуть регистрацию, статусы и надзор ответов сервера. */
+/* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
 void comm_server_poll(uint32_t now_ms)
 {
   sv.now = now_ms;

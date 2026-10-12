@@ -76,6 +76,8 @@ static uint16_t channel_binary(const uint8_t *p, uint16_t n)
   return used;
 }
 /* Разобрать ответы канала и уведомления о потере соединения. */
+/* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
@@ -181,6 +183,8 @@ void comm_channel_registered(void)
   ch.connections = 0; ch.flags.registered_session = 1; ch.call.expected = ch.call.lost = 0;
 }
 /* Закрыть прежний TCP и назначить обычную повторную попытку. */
+/* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
 void comm_channel_reopen(uint32_t pause_ms)
 {
   if (ch.call.active) { ch.call.lost = 1; return; }

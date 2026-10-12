@@ -70,6 +70,8 @@ void fw_service_cancel(void)
   if (flash_job.kind == FX_FWSERVICE) flash_exec_finish(FX_CANCELLED);
 }
 // Проверяет команду 19 на границе и выбирает загрузку либо откат.
+/* Проверено на плате №1 12.10.2026: загрузка по USB 5 раз (до f822023) и с сервера (216fc73) -
+   события 132/135/136, установка и выход на связь. */
 bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
 {
   fw_service_s *p;

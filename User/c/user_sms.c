@@ -20,6 +20,8 @@ static uint8_t sms_command(const char *name)
 }
 
 // Проверить ПИН и выполнить одну принятую SMS-команду.
+/* Проверено на плате №1 12.10.2026 (eed4de6): #add 4321,9990001234 -> ID добавлен, событие 67, ответ Ok.
+   Изменено 12.10.2026 (f822023): пробелы после запятой и в конце - на плате не проверено. */
 bool user_smsreceived(char *num, char *data, bool *first)
 {
   char *lineEnd, *pin, *arg, *reply = tempStrBuffer;

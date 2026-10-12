@@ -191,6 +191,8 @@ static void sms_command(uint8_t op, const char *at, uint8_t index, uint8_t mode,
   (void)n; sms_issue(op, msg.cmd, mode, timeout);
 }
 /* Применить завершение настройки, чтения, удаления или отправки SMS. */
+/* Проверено на плате №1 12.10.2026 (eed4de6): CNMI=0,1 принят, +CMTI модем не шлёт - SMS находит
+   обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ. */
 static void sms_done(uint8_t r)
 {
   uint8_t op = msg.op;
@@ -231,6 +233,8 @@ static void sms_done(uint8_t r)
   } else if (op == SMS_OP_SEND) msg.tx = 0;
 }
 /* Продвинуть очередь SIM и передать готовое сообщение приложению. */
+/* Проверено на плате №1 12.10.2026 (eed4de6): CNMI=0,1 принят, +CMTI модем не шлёт - SMS находит
+   обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ. */
 void comm_sms_poll(uint32_t now_ms)
 {
   msg.now = now_ms;
