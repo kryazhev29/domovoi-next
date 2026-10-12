@@ -41,7 +41,7 @@ void prof_relay_on(void)
  * После отправки счётчики обнуляются - каждый прогон отдельно. */
 void prof_send_comm(const uint8_t *reply, uint16_t size)
 {
-  uint8_t b[8 + 3 + 4 + sizeof(prof) + 8 + 3 + 4 * (25 + SLM_STEP_COUNT)];
+  uint8_t b[8 + 3 + 4 + sizeof(prof) + 8 + 3 + 4 * USB_DIAG_VALUES];
   uint8_t uniqId = reply[7];
   uint8_t *p = b + size;
   memcpy(b, reply, size);

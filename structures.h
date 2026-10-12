@@ -308,7 +308,7 @@ typedef struct {
   bool useServer2; // флаг указывает что работаем с резервным сервером
   uint8_t reconnectCount;
   uint8_t FWinProgress;
-  uint16_t freeBufferSize;
+  uint16_t freeBufferSize; // Не используется; поле сохранено для формата device во флеш.
   uint16_t readPhotoIndex;
   uint8_t moduleType; // тип модуля gsm
   uint8_t logBits; // тип включенного лога

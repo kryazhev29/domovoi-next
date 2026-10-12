@@ -97,9 +97,7 @@ static const slm_handlers_t sim_handlers = {sim_gpio, sim_type, sim_imei};
 static void sim_reset(void)
 {
   comm_modem_off();
-#if DOMOVOI_DIAG
   memset(&slm.diag, 0, sizeof(slm.diag));
-#endif
   comm_modem_transport(ignore_event);
   for (uint8_t i=0;i<COMM_URC_COUNT;++i) comm_modem_listen(i,ignore_urc);
   memset(&slm.attempt.status, 0, sizeof(slm.attempt.status));
@@ -267,7 +265,8 @@ static void error_tests(void)
 {
   sim_reset(); sim_no_sim = 1; sim_start(); sim_until(15000);
   CHECK(!comm_modem_ready() && slm.attempt.status.reason == SLM_ERR_NO_SIM && slm.attempt.status.step == SLM_SIM);
-  DIAG_CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
+  CHECK((slm.diag.failures[0] & 7u) == SLM_PHASE_SIM);
+  CHECK(slm.diag.failure_count == 1);
   sim_reset(); sim_pin = 1; sim_start(); sim_until(15000); CHECK(slm.attempt.status.reason == SLM_ERR_PIN);
   sim_reset(); sim_error_step = SLM_ACTIVATE; sim_start(); sim_until(15000);
   CHECK(slm.attempt.status.reason == SLM_ERR_PDP && slm.attempt.status.step == SLM_ACTIVATE);
@@ -283,7 +282,7 @@ static void timeout_step_tests(void)
     if (step == SLM_ACTIVATE) slm.apn.source = SLM_APN_EMPTY; /* Срок последнего источника. */
     sim_until(180000);
     CHECK(slm.attempt.status.state == SLM_FAILED && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
-    CHECK(slm.attempt.status.step == step); DIAG_CHECK(slm.diag.failure_step[0] == step);
+    CHECK(slm.attempt.status.step == step); CHECK((slm.diag.failures[0] & 7u) == slm.attempt.status.phase);
     DIAG_CHECK((slm.diag.steps[step] * 10u) > 0);
   }
   /* Питание: скачки тиков, wrap и точные границы без сжатия пауз. */
@@ -322,22 +321,22 @@ static void diagnostic_tests(void)
 #endif
   for (unsigned i = 0; i < 20; ++i) sim_tick();
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
-  DIAG_CHECK(sizeof(slm.diag) <= 128);
+  DIAG_CHECK(sizeof(slm.diag) <= 136);
   comm_modem_off(); sim_no_sim = 1; sim_start(); sim_until(15000);
   CHECK(slm.attempt.status.reason == SLM_ERR_NO_SIM); DIAG_CHECK(slm.diag.steps[SLM_SIM] == 10);
-  DIAG_CHECK(slm.diag.failure_step[0] == SLM_SIM); DIAG_CHECK(slm.diag.failure_count == 1);
+  CHECK((slm.diag.failures[0] & 7u) == SLM_PHASE_SIM);
+  CHECK(slm.diag.failure_count == 1);
   DIAG_CHECK(slm.diag.steps[SLM_ACTIVATE] == 0 && slm.diag.phases[SLM_PHASE_TCP] == 0);
   /* Десять сбоев, оборачивание кольца и сохранение между попытками. */
   for (unsigned i = 0; i < 12; ++i) {
     comm_modem_off(); power_events = 0; sim_start(); sim_until(sim_now + 15000u);
   }
-  DIAG_CHECK(slm.diag.failure_next == 3); DIAG_CHECK(slm.diag.failure_count == 10);
-#if DOMOVOI_DIAG
-  for (unsigned i = 0; i < sizeof(slm.diag.failure_step); ++i)
-    CHECK(slm.diag.failure_step[i] == SLM_SIM && slm.diag.failure_reason[i] == SLM_ERR_NO_SIM);
-#endif
+  CHECK(slm.diag.failure_next == 3);
+  CHECK(slm.diag.failure_count == 10);
+  for (unsigned i = 0; i < 10u; ++i)
+    CHECK((slm.diag.failures[i] & 255u) == (SLM_PHASE_SIM | SLM_ERR_NO_SIM << 3));
   sim_reset(); sim_start(); sim_now = 1500; comm_modem_poll(sim_now);
-  DIAG_CHECK((slm.diag.steps[SLM_DISCHARGE] * 10u) == 1500 && (slm.diag.phases[SLM_PHASE_POWER] * 10u) == 1500);
+  DIAG_CHECK((slm.diag.steps[SLM_DISCHARGE] * 10u) == 1500 && slm.diag.phases[SLM_PHASE_POWER] == 1500);
   slm.attempt.now = slm.attempt.step_started + 1000000u; DIAG_CHECK(slm_elapsed(slm.attempt.step_started) == UINT16_MAX);
 }
 // Проверить отказ неверных настроек до запуска UART.

@@ -13,6 +13,7 @@
 #include "../../Modules/comm_call.h"
 #include "../../Modules/comm_sms.h"
 #include "../../Modules/comm_balance.h"
+extern device_s device;
 /* Обработать уже проверенные кадры сервера вне приёма AT. */
 void server_rx_process(void);
 /* Начать ограниченный проход приёма кадров сервера. */
@@ -37,9 +38,11 @@ static void user_comm_reset_session(void)
   comm_server_init(&server_handlers);
   comm_channel_receive(user_comm_rx, user_comm_rx_done);
 }
-/* Номер из CLIP - прежней проверке доступа; строка вызова только для чтения. */
+/* NULL проверяет только допуск голоса; номер из CLIP передаётся проверке доступа. */
 static bool user_comm_call(const char *number)
 {
+  if (device.status.readyToUpdate) return false;
+  if (!number) return true;
   char num[21]; /* CLIP уже проверен; проверка доступа может изменить свою копию. */
   strcpy(num, number);
   if (!user_access_ready(user_last10digitsnumber(num))) return false;

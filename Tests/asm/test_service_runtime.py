@@ -28,7 +28,6 @@ class ServiceMachine(StorageMachine):
         self.write(self.addr('cfg_boot_done' if 'cfg_boot_done' in self.symbols else 'cfg_legacy_checked'), 1, 1)
         self.write(self.addr('cfg_cached_active'), 0x1cd400)
         self.write(self.device+self.d['datetime'], 0x78563412)
-        self.write(self.device+self.d['freeBufferSize'], 0xa9b8, 2)
         for name, fn in [('usb_send', self.send_usb), ('comm_tx_acquire', self.acquire),
                          ('comm_tx_release', self.ret), ('comm_tx_commit', self.commit),
                          ('comm_tx_busy', lambda: self.ret(self.busy)),
@@ -126,7 +125,7 @@ class ServiceMachine(StorageMachine):
     # Собирает ожидаемые байты ответа об ошибке.
     def expected_error(self, cmd, uniq=73):
         timestamp = int.from_bytes(self.u.mem_read(self.device+self.d['datetime'], 4), 'little')
-        free = int.from_bytes(self.u.mem_read(self.device+self.d['freeBufferSize'], 2), 'little')
+        free = 2048 - int.from_bytes(self.u.mem_read(self.addr('server_rx_count'), 2), 'little')
         body = struct.pack('<HBBBBBIH', 11, 255, uniq, 11, cmd, 2, timestamp, free)
         return b'SLDN' + body + struct.pack('<H', crc16(body))
 

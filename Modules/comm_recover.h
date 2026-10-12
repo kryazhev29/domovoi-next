@@ -29,12 +29,14 @@ void comm_recover_init(const comm_recover_hooks_t *hooks, uint32_t now_ms);
 void comm_recover_poll(uint32_t now_ms);
 /* Новый отказ транспорта сразу обновляет окна раннего восстановления. */
 void comm_recover_failure(uint8_t step, uint8_t reason, uint32_t now_ms);
-/* Собрать ступени и остаток паузы для команды 112. */
+/* Собрать ступени и остаток паузы для команды 111. */
 #if DOMOVOI_DIAG
 // Выдать ступень восстановления и оставшийся срок ожидания.
 uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left);
 #endif
 /* Сервер молчит, ping и DNS не прошли: TCP заново, потом модем с AT, потом питание. */
 void comm_recover_no_internet(void);
+/* Код экрана связи и остаток ожидания перезапуска, мс. */
+uint8_t comm_recover_link(uint32_t now_ms, uint32_t *wait_left);
 
 #endif

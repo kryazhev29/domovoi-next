@@ -38,6 +38,20 @@ int main(void){
   CHECK(run_while(1,1,1000)==10);CHECK(run_while(1,0,1000)==1000);
   /* Длинный импульс без паузы: 255 с не переполняет счёт. */
   reset();out_load(0,OUT_IMP,255,0,1);CHECK(pin[0]==1);CHECK(run_while(0,1,100000)==2550);CHECK(pin[0]==0);
+  /* 255 повторов конечны: с паузой ровно 255 фронтов, без паузы 255 секунд уровня. */
+  reset();out_load(0,OUT_IMP,1,1,255);
+  unsigned rises=1;
+  for(unsigned i=0;i<5100;i++){
+    int before=pin[0];
+    out_process();
+    if(!before&&pin[0]) rises++;
+  }
+  CHECK(rises==255&&!pin[0]&&!out_getmodestate(0));
+  for(unsigned i=0;i<100;i++)out_process();
+  CHECK(!pin[0]);
+  reset();out_load(1,OUT_IMP,1,0,255);
+  CHECK(run_while(1,1,3000)==2550);
+  CHECK(!out_getmodestate(1));
   /* Ноль повторов или нулевое время - выход не трогается, как раньше. */
   reset();out_load(0,OUT_IMP,3,1,0);CHECK(pin[0]==0);for(int i=0;i<100;i++)out_process();CHECK(pin[0]==0);
   reset();out_load(0,OUT_IMP,0,1,1);CHECK(pin[0]==0);

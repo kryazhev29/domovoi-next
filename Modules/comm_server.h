@@ -27,7 +27,10 @@ void comm_server_link(bool (*handler)(uint8_t kind, uint8_t address));
 /* Передать событие сети или интернета от восстановления. */
 void comm_server_note(uint8_t kind); /* NO_NET, NO_INTERNET - от восстановления */
 uint8_t comm_server_address(void);
-/* Собрать состояние надзора для стендовой команды 112. */
+enum { LINK_CONNECTING, LINK_NO_SIM, LINK_NO_NETWORK, LINK_NO_INTERNET,
+       LINK_NO_SERVER, LINK_IMEI_REJECTED, LINK_RESTART_WAIT, LINK_ONLINE };
+uint8_t comm_server_condition(void);
+/* Собрать состояние надзора для стендовой команды 111. */
 #if DOMOVOI_DIAG
 // Выдать состояние регистрации и счётчики надзора.
 uint32_t comm_server_diag(void);

@@ -27,6 +27,9 @@ enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_ACK }
 enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY };
 /* Служебный запрос (сигнал, регистрация): одна команда, строки ответа - заказчику. */
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
+/* Последний законченный тест переживает переподключение канала. */
+static uint8_t probe_result;
+uint8_t comm_channel_probe_result(void) { return probe_result; }
 /* Передать изменение канала владельцу сервера. */
 static void channel_emit(uint8_t kind, uint8_t value)
 { ch.event(kind, value); }
@@ -39,6 +42,8 @@ void comm_channel_alive(void) { if (!ch.call.active) ch.call.expected = 0; }
 /* Отметить голос и восстановить только уже обнаруженную потерю. */
 void comm_channel_call(bool active)
 {
+  /* Во время голоса ACK не опрашивался: дать данным полный срок после отбоя. */
+  if (!active && ch.call.active) ch.tx_since = ch.now;
   ch.call.active = (uint8_t)active;
   if (active) ch.call.expected = 1;
   else {
@@ -143,7 +148,7 @@ bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
 /* Сообщить о потере границ AT, требующей перезапуска модема. */
 bool comm_channel_fault(void) { return ch.state == CH_FAULT; }
 #if DOMOVOI_DIAG
-/* Собрать состояние канала для стендовой команды 112. */
+/* Собрать состояние канала для стендовой команды 111. */
 uint32_t comm_channel_diag(void)
 { return ch.state | (uint32_t)ch.tx_state << 8 | (uint32_t)ch.operation << 16 | (uint32_t)ch.connections << 24; }
 #endif
@@ -275,6 +280,7 @@ static void channel_completed(void)
   if (op == OP_QUERY) { query.cmd = NULL; return; } /* ответ разобран; ERROR - не повод рвать TCP */
   if (op == OP_PING || op == OP_DNS) {
     if (result != COMM_AT_OK && ch.probe_active == (op == OP_PING ? COMM_CH_PING : COMM_CH_DNS)) {
+      probe_result = 3;
       ch.probe = ch.probe_active = 0; channel_emit(COMM_CH_PROBE_DONE, 0);
     }
     return;
@@ -312,10 +318,6 @@ void comm_channel_poll(uint32_t now_ms)
   ch.now = now_ms;
   comm_modem_poll(now_ms);
   if (ch.state == CH_FAULT) return;
-#if DOMOVOI_DIAG
-  if (ch.operation == OP_OPEN || ch.operation == OP_READ)
-    comm_modem_record(SLM_STEP_COUNT + 1u, 0, comm_modem_status()->modem_code);
-#endif
   if (ch.operation) channel_completed();
   if (ch.state == CH_INITIAL) {
     if (!comm_modem_ready()) return;
@@ -327,7 +329,10 @@ void comm_channel_poll(uint32_t now_ms)
   if (ch.probe_active) {
     uint8_t t = ch.probe_active == COMM_CH_PING ? COMM_T_PING : COMM_T_DNS;
     if (ch.probe_answer == 1 || now_ms - ch.probe_since >= comm_timeouts[t] || (ch.probe_active == COMM_CH_DNS && ch.probe_answer == 3)) {
-      uint8_t ok = ch.probe_answer == 1; ch.probe_active = ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, ok);
+      uint8_t ok = ch.probe_answer == 1;
+      probe_result = ok ? ch.probe_active : 3u;
+      ch.probe_active = ch.probe = 0;
+      channel_emit(COMM_CH_PROBE_DONE, ok);
     }
   }
   if (comm_modem_busy()) return; /* В том числе безопасная ресинхронизация AT. */

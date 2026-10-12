@@ -14,6 +14,7 @@
 
 typedef struct {
   uint8_t csq, creg, cgreg, net;
+  char operator_code[7];
 } comm_info_t;
 
 /* Поставить очередной фоновый запрос сведений. */

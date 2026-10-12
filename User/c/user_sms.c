@@ -53,11 +53,14 @@ bool user_smsreceived(char *num, char *data)
   }
   switch (command) {
   case SMS_ADD:
-    if (!validFormat) goto format_error;
-    strncpy(tempStrBuffer + 96, arg, 10); tempStrBuffer[106] = 0;
-    if (!user_addIdToTempBuffer(tempStrBuffer + 96, CT_OTHER)) return false;
-    log_addControlEvent(LOG_CON_IDADDBYSMS, tempStrBuffer + 96, 0);
-    strcat(reply, ": "); strcat(reply, tempStrBuffer + 96); strcat(reply, " - Ok");
+    if (!validFormat || strlen(arg) != 10u) goto format_error;
+    for (uint8_t i = 0; i < 10; i++)
+      if (arg[i] < '0' || arg[i] > '9') goto format_error;
+    if (!user_addIdToTempBuffer(arg, CT_OTHER)) return true;
+    log_addControlEvent(LOG_CON_IDADDBYSMS, arg, 0);
+    strcat(reply, ": ");
+    strcat(reply, arg);
+    strcat(reply, " - Ok");
     break;
   case SMS_IMEI:
     strcat(reply, ": "); strcat(reply, device.IMEIGSM);
@@ -76,10 +79,10 @@ bool user_smsreceived(char *num, char *data)
   case SMS_SETOUT: {
     uint8_t out;
     if (!validFormat) goto format_error;
-    out = (uint8_t)user_decimal(arg);
-    if (out != 1 && out != 2) goto format_error;
-    if (config.rele[out - 1u].onCmdServer) {
-      out_load(out == 1 ? OUT1 : OUT2, OUT_ON, 0, 0, 0);
+    while (*arg == ' ') arg++;
+    if ((arg[0] != '1' && arg[0] != '2') || arg[1] != 0) goto format_error;
+    out = arg[0] - '0';
+    if (user_activateOut(out == 1, out == 2, CT_SERVER, NULL)) {
       strcat(reply, out == 1 ? ": Out 1 enabled" : ": Out 2 enabled");
     } else strcat(reply, ": Error, Out is blocked");
     break;

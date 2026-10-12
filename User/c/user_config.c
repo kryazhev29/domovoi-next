@@ -48,7 +48,6 @@ void user_initvariables (void)
 
   device.connectionhandle = -1;
   device.memID = w25_read_devID();
-  device.freeBufferSize = 2048;
 
   // чтение сохранённой информации
   user_readsavedinformation();

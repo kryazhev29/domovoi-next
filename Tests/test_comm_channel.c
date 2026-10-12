@@ -132,7 +132,7 @@ static void channel_diagnostic_tests(void)
     CHECK(guard < 1500u); sim_tick();
   }
   for (unsigned i = 0; i < 25; ++i) sim_tick();
-  DIAG_CHECK(slm.diag.steps[SLM_TCP] == 25 && slm.diag.phases[SLM_PHASE_TCP] == 25);
+  DIAG_CHECK(slm.diag.steps[SLM_TCP] == 25 && slm.diag.phases[SLM_PHASE_TCP] == 250);
   channel_until(15000);
   CHECK(channel_opened == 1); DIAG_CHECK(slm.diag.steps[SLM_TCP] == 50);
   channel_model_reset();  channel_until(15000);

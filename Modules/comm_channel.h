@@ -27,9 +27,9 @@ bool comm_channel_ready(void);
 bool comm_channel_fault(void);
 /* Служебная команда при свободном канале; false - занят или нет соединения. */
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t));
-/* Собрать состояние канала для стендовой команды 112. */
+/* Собрать состояние канала для стендовой команды 111. */
 #if DOMOVOI_DIAG
-// Выдать состояние канала для стендовой команды 112.
+// Выдать состояние канала для стендовой команды 111.
 uint32_t comm_channel_diag(void);
 #endif
 /* Производитель пишет прямо сюда; capacity по sizeof слота. Занято/приоритет — NULL. */
@@ -58,4 +58,6 @@ void comm_channel_alive(void);
 bool comm_channel_call_pending(void);
 /* Поставить проверку интернета по запросу надзора сервера. */
 bool comm_channel_probe(uint8_t kind);
+/* Последний законченный ya.ru: 0 нет, 1 ping, 2 DNS, 3 отказ. */
+uint8_t comm_channel_probe_result(void);
 #endif

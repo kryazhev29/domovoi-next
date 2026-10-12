@@ -5,7 +5,7 @@ static struct {
   int8_t connectionhandle; uint8_t registredOnServer, answerTimeout, answerID;
   char IMEIGSM[16]; uint8_t protocolVersion, hardwareVersion;
   uint32_t datetime, datetimeID, datetimeGroup, datetimeShedule, datetimeConfig, datetimeHoliday;
-  uint16_t status, freeBufferSize; uint8_t firmwarePercent;
+  uint16_t status; uint8_t firmwarePercent;
 } device;
 #define CH_SERVER 1
 static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)];
@@ -27,7 +27,8 @@ static uint8_t open_addresses[64];
 static uint32_t timers_getMillis(void) { return sim_now; }
 /* Звонок: сколько раз сброшен, ответ модема на сброс, последняя команда перед данными. */
 static bool call_access_ready, call_registration_noise;
-static unsigned chups, chup_silence, answers, aths, answer_mode, answer_delay, ath_silence;
+static unsigned chups, chup_silence, answers, answer_mode, answer_delay;
+static unsigned call_present, hangup_ignored, clccs, clcc_error, clcc_silence;
 static unsigned call_drop, call_drop_urc, call_activations, call_activation_error, call_net_queries, call_pdp_queries, call_tcp_queries;
 static uint8_t call_cgreg_model, call_cereg_model, call_creg_model, call_pdp_model, call_other_pdp, call_other_socket;
 static uint32_t answer_at, answer_due, hangup_at, hangup_due, call_network_due, call_tcp_due;
@@ -49,7 +50,7 @@ static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_coun
 // Обозначить границу фото, не участвующую в данном сценарии.
 static void photo_connection_lost(void) {}
 static void user_parse_comand(uint8_t *p, unsigned channel);
-static bool call_caller(const char *number);
+static bool user_comm_call(const char *number);
 /* КОНТРОЛЬНАЯ СУММА */
 /* ПРИЁМ */
 
@@ -100,8 +101,16 @@ typedef unsigned dataChanel_e;
 #define _2B(x) ((uint8_t)((x)>>8))
 static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
-// Обозначить границу USB, не участвующую в данном сценарии.
-static bool usb_send(uint8_t *p, uint16_t n) { (void)p; (void)n; return true; }
+static uint8_t link_wire[93];
+static uint16_t link_wire_size;
+// Перехватить настоящий кадр 112 на границе USB.
+static bool usb_send(uint8_t *p, uint16_t n)
+{
+  CHECK(n == sizeof(link_wire));
+  memcpy(link_wire, p, n);
+  link_wire_size = n;
+  return true;
+}
 /* Эталон: те же сборщики кадров пишут в отдельный буфер, кадр канала сверяется с ним байт в байт. */
 static uint8_t legacy_buffer[1040];
 // Выдать отдельный буфер для независимого эталона кадра.
@@ -240,11 +249,22 @@ static void transport_tx(void)
     else { sim_reply("OK\r\n",30); cusd_due=sim_now+2000; }
     return;
   }
-  if (!strcmp(cmd,"ATA") || !strcmp(cmd,"ATH") || !strcmp(cmd,"AT+CHUP")) {
+  CHECK(strcmp(cmd,"ATH")); /* SLM336: ATH даёт OK, но вызов не завершает. */
+  if (!strcmp(cmd,"AT+CLCC")) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    ++clccs;
+    if (!clcc_silence) sim_reply(clcc_error ? "ERROR\r\n" : call_present==2
+        ? "+CLCC: 1,1,0,0,0,\"+79161234567\",145\r\nOK\r\n" : call_present
+        ? "+CLCC: 1,1,4,0,0,\"+79161234567\",145\r\nOK\r\n" : "OK\r\n", 30);
+    return;
+  }
+  if (!strcmp(cmd,"ATA") || !strcmp(cmd,"AT+CHUP")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
     if (!strcmp(cmd,"ATA")) {
       ++answers; answer_at=sim_now;
+      if (!answer_mode) call_present=2;
       if (answer_mode!=3) answer_due=sim_now+answer_delay;
       if (call_drop) {
         socket_model=false;
@@ -253,8 +273,9 @@ static void transport_tx(void)
       }
     } else {
       hangup_at=sim_now;
-      if (!strcmp(cmd,"ATH")) { ++aths; if (!ath_silence) hangup_due=sim_now+40; }
-      else { ++chups; if (!chup_silence) hangup_due=sim_now+40; }
+      ++chups;
+      if (hangup_ignored) --hangup_ignored; else call_present=0;
+      if (!chup_silence) hangup_due=sim_now+40;
     }
     return;
   }
@@ -362,15 +383,16 @@ static void server_reset(void)
   device.protocolVersion=2; device.hardwareVersion=139;
   device.datetime=1790900000u; device.datetimeID=1; device.datetimeGroup=2;
   device.datetimeShedule=3; device.datetimeConfig=4; device.datetimeHoliday=5;
-  device.status=0x1234; device.freeBufferSize=2048; device.answerID=0; incoming_count=sent_count=0;
+  device.status=0x1234; device.answerID=0; incoming_count=sent_count=0;
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=0; ping_reply_kind=0;
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
   call_access_ready=true; call_registration_noise=false;
-  chups=chup_silence=answers=aths=answer_mode=ath_silence=0; answer_delay=40;
+  chups=chup_silence=answers=answer_mode=0; answer_delay=40;
+  call_present=hangup_ignored=clccs=clcc_error=clcc_silence=0;
   answer_at=answer_due=hangup_at=hangup_due=call_network_due=call_tcp_due=0;
   call_drop=call_drop_urc=call_activations=call_activation_error=call_net_queries=call_pdp_queries=call_tcp_queries=0;
   call_cgreg_model=call_cereg_model=call_creg_model=call_pdp_model=1; call_other_pdp=call_other_socket=0;
-  chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(call_caller, volte_flag_model);
+  chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(user_comm_call, volte_flag_model);
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
   comm_balance_init(ussd_model, balance_model);
@@ -618,4 +640,4 @@ static void reader_tests(void)
 /* ВОССТАНОВЛЕНИЕ */
 /* ВЫЗОВ */
 int main(void)
-{ CHECK(slm_regressions()==0); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }

@@ -122,7 +122,7 @@ void user_send_statusPack(dataChanel_e cch){
   tmp32 = device.datetime;
   memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
   memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // статус
-  tmp32 = device.freeBufferSize;
+  tmp32 = user_comm_rx_capacity();
   memcpy(&send_buffer[15], (uint8_t*)&tmp32, 2); // Размер буфера входящих данных
 
   memset(&send_buffer[17], 0, 7); // резерв
@@ -382,7 +382,7 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   if (!send_buffer) return false;
   uint16_t len = 5;
 
-  send_buffer[6] = 255; // таймаут актуальности команды
+  send_buffer[6] = 20; // таймаут актуальности команды
   send_buffer[7] = uniqIDCnt++;
   send_buffer[8] = 13;
   send_buffer[9] = _1B(block);  // номер блока

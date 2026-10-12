@@ -28,7 +28,7 @@ def run():
     m.stubs[m.addr('usb_send')] = send
     before = bytes(m.flash)
     names = ('prof_init', 'prof_add', 'prof_relay_on', 'prof_send_comm',
-             'prof_card_mark', 'user_send_usbDiag', 'user_send_commDiag',
+             'prof_card_mark', 'user_send_usbDiag',
              'usb_diag_fill', 'usb_diag_fill_regs', 'usb_diag_fill_errors',
              'usb_diag_fill_addr', 'comm_channel_diag', 'comm_server_diag',
              'comm_recover_diag', 'stack_free_bytes')
@@ -36,9 +36,18 @@ def run():
         assert (name in m.symbols) == enabled, name
     for name in ('fault_capture', 'fault_record', 'stack_paint', 'stack_canary_check'):
         assert name in m.symbols, name
+    assert 'user_send_commDiag' in m.symbols
     packets = []
+    for authorized in (0, 1):
+        answers, wires = command(m, 112, 0, authorized)
+        payload = bytes((3, 0, 0, 99)) + bytes(78)
+        expected = struct.pack('<HBBB', 85, 0, 37, 112) + payload
+        expected = b'SLDN' + expected + struct.pack('<H', crc16(expected))
+        assert not answers and wires == [expected], [p.hex() for p in wires]
+        _, wires = command(m, 112, 1, authorized)
+        assert not wires
     if enabled:
-        for code, expected in ((111, [111]), (112, [112, 113])):
+        for code, expected in ((111, [111, 113]), (112, [112])):
             answers, wires = command(m, code, 0, 0)
             from test_stage4_usb import frames
             wires = frames(b''.join(wires))
@@ -53,7 +62,7 @@ def run():
             for authorized in (0, 1):
                 reference, wire = command(m, 250, channel, authorized)
                 assert reference and not wire
-                for code in (111, 112, 113):
+                for code in (111, 113):
                     answers, wires = command(m, code, channel, authorized)
                     assert not wires and len(answers) == len(reference)
                     assert [a[1:] for a in answers] == [a[1:] for a in reference]
@@ -76,6 +85,6 @@ def run():
         else:
             assert 'usb_out_ago' not in m.symbols
     assert bytes(m.flash) == before
-    return {'diagnostics': enabled, 'customer_cases': 12 if not enabled else 0,
-            'bench_packets': [111, 112, 113] if enabled else [],
+    return {'diagnostics': enabled, 'customer_cases': 8 if not enabled else 0,
+            'bench_packets': [111, 112, 113] if enabled else [112],
             'bench_hex': packets, 'usb_recovery_primask': [0, 1], 'nor_unchanged': True}

@@ -15,6 +15,9 @@ def main():
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out / 'zig-local')
     code = unit().replace('\r\n', '\n')
     faults = (
+        ('SLM336-ATH', '{"AT+CHUP", NULL, NULL, 0, COMM_AT_CALL', '{"ATH", NULL, NULL, 0, COMM_AT_CALL'),
+        ('CHUP-OK-with-live-call', 'if (r == COMM_AT_OK && !call.seen) call_finished();', 'if (r == COMM_AT_OK) call_finished();'),
+        ('call-ACK-deadline', 'if (!active && ch.call.active) ch.tx_since = ch.now;', ''),
         ('hold-timer', 'now_ms - call.answered >= comm_timeouts[COMM_T_CALL_HOLD]', 'now_ms - call.answered >= comm_timeouts[COMM_T_STABLE]'),
         ('call-queue-delay', 'slm_side_issue(); return true;', 'return true;'),
         ('startup-preempts-call', 'if (slm.call_active && slm_side_allowed()) return;', ''),

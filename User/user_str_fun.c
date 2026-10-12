@@ -20,22 +20,6 @@ void user_strcpy(char *dest, char *src, char ch, unsigned char lmt)
   *dest = 0;
 }
 
-// Разобрать внешний десятичный аргумент без библиотеки преобразования IAR.
-uint32_t user_decimal(const char *text)
-{
-  uint32_t value = 0;
-  bool negative;
-  while (*text == ' ' || (*text >= '\t' && *text <= '\r')) ++text;
-  negative = *text == '-';
-  if (*text == '+' || *text == '-') ++text;
-  while (*text >= '0' && *text <= '9') {
-    uint32_t digit = (uint32_t)(*text++ - '0');
-    if (value > (UINT32_MAX - digit) / 10u) return negative ? 1u : UINT32_MAX;
-    value = value * 10u + digit;
-  }
-  return negative ? 0u - value : value;
-}
-
 // Разобрать ПИН числом, сохраняя допустимость ведущих нулей.
 bool user_parse_pin(const char *text, uint32_t length, uint32_t *value)
 {

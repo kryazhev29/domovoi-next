@@ -20,7 +20,7 @@ static bool usb_cmd_without_pin(uint8_t cmd)
 #if DOMOVOI_DIAG
   return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND || cmd == USB_COMM_DIAG_COMMAND;
 #else
-  return cmd == 100 || cmd == 101 || cmd == 102;
+  return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_COMM_DIAG_COMMAND;
 #endif
 }
 
@@ -212,7 +212,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 8: // управление выходами
-      if (fw_update_quiet() || unblock_active){
+      if (device.status.readyToUpdate || fw_update_quiet() || unblock_active){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }
@@ -237,8 +237,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           /* Запрошенный выход не включился (не разрешён, занят, кончились проходы) - ответ 2,
              а не «выполнено»: сервер должен знать, что дверь не открылась (18.09.2026). */
           if ((ptr[6] == 1 || ptr[7] == 1) &&
-              !user_activateOut((ptr[6] == 1) && config.rele[0].onCmdServer,
-                           (ptr[7] == 1) && config.rele[1].onCmdServer, CT_SERVER, tempStrBuffer))
+              !user_activateOut(ptr[6] == 1, ptr[7] == 1, CT_SERVER, tempStrBuffer))
             res8 = CMD_RUNERROR;
         }
         if (flash_job.kind == FX_STORE && flash_job.step == FS_ID) store_access_reply((uint8_t)cch, uniqId);
@@ -477,11 +476,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if (cch == CH_USB)
         user_send_usbDiag(uniqId);
       break;
+    #endif
     case USB_COMM_DIAG_COMMAND:
       if (cch == CH_USB) { user_send_commDiag(uniqId); }
       break;
 
-    #endif
     case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */
       uint8_t response[8];
       if (cch != CH_USB || len < 4) {

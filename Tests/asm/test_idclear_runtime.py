@@ -16,7 +16,7 @@ class ClearMachine(StorageMachine):
         if flash is None:self.flash[BASE:BASE+8192]=b'\x5a'*8192
         self.write(self.device+81,7,2);self.write(self.addr('id_cells_end'),129,2)
         self.write(self.addr('id_used_bytes'),8192)
-        self.write(self.device+47,1700000400);self.write(self.device+165,987,2)
+        self.write(self.device+47,1700000400);self.write(self.addr('server_rx_count'),2048-987,2)
     # Читает модельную NOR с контролем диапазона и заданным отказом.
     def read(self):
         assert self.legacy or ('idcrc_io_poll' in self.symbols and self.args()[2]<=64), 'CRC delta reads are bounded to 64 bytes'
@@ -122,7 +122,7 @@ def sessions_cancel_faults():
         for point in points:
             m=ClearMachine();m.fault=(kind,point);m.busy=3;assert m.start_clear()
             while not m.wires:m.clear_tick()
-            m.write(m.device+47,100);m.write(m.device+165,0,2);m.clear_drain()
+            m.write(m.device+47,100);m.write(m.addr('server_rx_count'),2048,2);m.clear_drain()
             assert m.wires==[wire(True)]*4 and m.counters()==(7,129,8192)
             assert m.u.mem_read(m.addr('mem_storage_ready'),1)==b'\0' and m.io is None
             assert not m.start_clear();count+=1

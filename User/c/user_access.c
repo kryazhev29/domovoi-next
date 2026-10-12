@@ -117,10 +117,14 @@ void WG_readedID(uint32_t id){
   char tb[11];
 
   format_id(tb, NULL, id);
-  if (device.sourceGetID == 1) {
-    device.timeToGetID = device.sourceGetID = 0;
-    log_addControlEvent(LOG_CON_RECVIDONREADER, tb, 0);
-    user_send_readedIDtoServer((uint8_t *)tb, 1);
+  if (device.timeToGetID) {
+    if (device.sourceGetID == 1) {
+      device.timeToGetID = 0;
+      device.sourceGetID = 0;
+      log_addControlEvent(LOG_CON_RECVIDONREADER, tb, 0);
+      user_send_readedIDtoServer((uint8_t *)tb, 1);
+    }
+    return;
   }
   user_checkIdAndControl(tb, CT_WIEGAND);
 }
@@ -183,8 +187,7 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   }
 
   // авторегистрация
-  if (device.status.autoRegistration){
-    user_addIdToTempBuffer(id, tp);
+  if (device.status.autoRegistration && user_addIdToTempBuffer(id, tp)){
     log_addControlEvent(LOG_CON_IDADDBYAUTOREG, id, 0);
   }
 
@@ -289,11 +292,12 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
 
   if (unblock_active) return false;
 
-  bool run[2];
+  bool run[2] = {out1, out2};
   uint8_t out;
 
-  run[0] = out1 && !config.rele[0].useInBlock && !out_getmodestate(0);
-  run[1] = out2 && !config.rele[1].useInBlock && !out_getmodestate(1);
+  for (out = 0; out < 2; out++)
+    run[out] = run[out] && !config.rele[out].useInBlock &&
+      (tp != CT_SERVER || config.rele[out].onCmdServer) && !out_getmodestate(out);
   if (!run[0] && !run[1])
   {
     return false;
@@ -373,7 +377,7 @@ void user_access_complete(uint8_t outputs, codeType_e tp, char *id, uint8_t cnt,
     log_addControlEvent(LOG_CON_OUTONBYAVTO, id, cnt);
     break;
   case CT_SERVER:
-    log_addControlEvent(server_out_event, id, cnt);
+    if (id != NULL) log_addControlEvent(server_out_event, id, cnt);
     break;
   default:
     break;
