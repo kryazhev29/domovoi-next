@@ -4,13 +4,17 @@
 static unsigned calls, chups_at_call, answers_at_call, call_actions; static char call_seen[24];
 static uint32_t call_action_at;
 // Запомнить номер и результат проверки доступа до ответа.
-static void call_caller(const char *number)
+#define CT_PHONE 1
+static bool user_incomingcall(char *number, uint8_t typ)
 {
+  CHECK(typ == CT_PHONE);
   ++calls; chups_at_call=chups; answers_at_call=answers; call_action_at=sim_now;
   CHECK(strlen(number)<sizeof(call_seen)); memcpy(call_seen,number,strlen(number)+1u);
   /* Модель допуска: скрытый и чужой номер не открывают. Производственный доступ прежний. */
   if (number[0] && strcmp(number,"+79990000000")) ++call_actions;
+  return true;
 }
+/* ОБРАБОТЧИК ЗВОНКА ПРИЛОЖЕНИЯ */
 // Смоделировать занятость приложения обновлением прошивки.
 static bool user_comm_busy_model(void) { return comm_call_active(); }
 // Сбросить наблюдения и модель вызова.
@@ -32,6 +36,29 @@ static uint32_t call_until_registered(void)
 // Проверить доступ, сроки ATA/ATH и восстановление данных после вызова.
 static void call_tests(void)
 {
+  /* Настоящий допуск приложения: бит 11 отсекает доступ и ATA даже без CLIP
+     и при занятой флеш. Живое TCP-соединение после ATH остаётся открытым. */
+  for (unsigned busy=0; busy<2; ++busy) {
+    for (unsigned clip=0; clip<2; ++clip) {
+      call_reset(); unsigned fw_opens=opens, fw_closes=closes;
+      device.status |= 1u << 11; call_access_ready=!busy;
+      ring(clip ? "+CLIP: \"+79161234567\",145\r\n" : NULL);
+      advance(200);
+      CHECK(!calls && !call_actions && !answers && aths==1 && !chups);
+      CHECK(comm_server_online() && opens==fw_opens && closes==fw_closes);
+      ring(clip ? "+CLIP: \"+79161234567\",145\r\n" : NULL); advance(200);
+      CHECK(!calls && !answers && aths==1);
+      device.status &= ~(1u << 11); call_access_ready=true;
+      advance(8100); ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700);
+      CHECK(calls==1 && call_actions==1 && answers==1 && aths==2);
+      CHECK(hangup_at-answer_at>=1000 && hangup_at-answer_at<=2500);
+    }
+  }
+  /* Загрузка началась между CLIP и отложенной проверкой доступа. */
+  call_reset(); call_access_ready=false;
+  ring("+CLIP: \"+79161234567\",145\r\n"); advance(100);
+  device.status |= 1u << 11; advance(200);
+  CHECK(!calls && !call_actions && !answers && aths==1);
   call_reset(); unsigned opened=opens;
   ring("+CLIP: \"+79161234567\",145,\"\",0,\"\",0\r\n"); advance(1700);
   CHECK(calls==1 && call_actions==1 && !strcmp(call_seen,"+79161234567"));
@@ -99,9 +126,9 @@ static void call_tests(void)
   ring("+CLIP: \"+79161112233\",145\r\n"); advance(50); CHECK(!answers);
   prompt_silence=0; socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n> "); advance(2000);
   CHECK(calls==1 && answers==1 && aths==1 && opens==2 && comm_server_online());
-  /* Обновление FW не запрещает телефонный доступ/ответ. */
+  /* Прогресс загрузки не меняет запрет телефонного доступа/ответа. */
   call_reset(); device.status|=1u<<11; device.firmwarePercent=37;
-  ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700); CHECK(calls==1 && answers==1 && aths==1);
+  ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700); CHECK(!calls && !answers && aths==1);
   /* Ночной перезапуск проходит только после тихого конца вызова и проверки данных. */
   call_reset(); rc_clock=86400u+3u*3600u; static const comm_recover_hooks_t hooks={rc_session,rc_time,user_comm_busy_model};
   comm_recover_init(&hooks,sim_now); uint8_t session=comm_modem_session();

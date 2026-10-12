@@ -49,7 +49,7 @@ static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_coun
 // Обозначить границу фото, не участвующую в данном сценарии.
 static void photo_connection_lost(void) {}
 static void user_parse_comand(uint8_t *p, unsigned channel);
-static void call_caller(const char *number);
+static bool user_comm_call(const char *number);
 /* КОНТРОЛЬНАЯ СУММА */
 /* ПРИЁМ */
 
@@ -378,7 +378,7 @@ static void server_reset(void)
   answer_at=answer_due=hangup_at=hangup_due=call_network_due=call_tcp_due=0;
   call_drop=call_drop_urc=call_activations=call_activation_error=call_net_queries=call_pdp_queries=call_tcp_queries=0;
   call_cgreg_model=call_cereg_model=call_creg_model=call_pdp_model=1; call_other_pdp=call_other_socket=0;
-  chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(call_caller, volte_flag_model);
+  chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(user_comm_call, volte_flag_model);
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=0; comm_sms_init(sms_received_model);
   ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
   comm_balance_init(ussd_model, balance_model);

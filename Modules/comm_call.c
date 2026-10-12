@@ -14,7 +14,7 @@ enum { CALL_IDLE, CALL_WAIT_NUMBER, CALL_NUMBER, CALL_ANSWER, CALL_QUEUED,
 /* VoLTE модема: неизвестно до запроса, не поддержан - больше не спрашивать в этом запуске. */
 enum { VOLTE_UNKNOWN = 0xFF, VOLTE_UNSUPPORTED = 0xFE };
 static struct {
-  void (*caller)(const char *);
+  bool (*caller)(const char *);
   uint8_t (*volte)(void);
   const comm_side_t *volte_op;
   uint32_t now, since, last, answered;
@@ -75,7 +75,7 @@ static void call_urc(const uint8_t *p, uint16_t n)
   if (call.state == CALL_WAIT_NUMBER) call.state = CALL_NUMBER;
 }
 /* Назначить обработчик доступа и настройку VoLTE. */
-void comm_call_init(void (*caller)(const char *), uint8_t (*volte)(void))
+void comm_call_init(bool (*caller)(const char *), uint8_t (*volte)(void))
 {
   memset(&call, 0, sizeof(call));
   call.caller = caller; call.volte = volte;
@@ -120,6 +120,11 @@ void comm_call_poll(uint32_t now_ms, bool access_ready)
     call.pending = 0; call_finished();
   }
   call_volte();
+  /* Запрет приложения действует уже на RING, без номера и ожидания флеш. */
+  if (call.state != CALL_IDLE && call.state != CALL_DONE && !call.caller(NULL)) {
+    call.pending = 0;
+    if (call.state <= CALL_ANSWER) { call.since = now_ms; call.state = CALL_HANGUP; }
+  }
   /* Флеш может отложить проверку номера, но уже снятая трубка ждёт только таймер. */
   if (call.pending == 1u && access_ready) {
     call.pending = 2;

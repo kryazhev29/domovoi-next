@@ -217,7 +217,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 8: // управление выходами
-      if (fw_update_quiet() || unblock_active){
+      if (device.status.readyToUpdate || fw_update_quiet() || unblock_active){
         user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
         break;
       }

@@ -28,6 +28,7 @@ CASES = {
     'sched16': [('test_sched16', n) for n in ('protocol','crc_paths','access','migration')],
     'unblock': [('test_unblock', n) for n in ('manual','scenes','offline','restart_and_commands','pulse_delay','level_restore','cancel_wait','waiting_rechecks','sms_outputs','sms_format','capture_id','registration_write','repeats255')],
     'unblock delay mutations': [('test_unblock_delay_mutations', 'run')],
+    'call FW': [('test_call_fw', 'run')],
     'ids boot read': [('test_ids_boot_read','main')],
     'log time pending': [('test_log_time_pending','main')],
     'reset cause': [('test_resetcause','run')],
@@ -81,6 +82,7 @@ CASES = {
 CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','fw install wait','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
+CORE += ('call FW',)
 CORE += ('flash fixes',)
 CASES['fixes1 mutations'] = [('test_fixes1_mutations', 'run')]
 CORE += ('flash mutations', 'unblock delay mutations', 'fixes1 mutations')
