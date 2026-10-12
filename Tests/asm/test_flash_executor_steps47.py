@@ -50,6 +50,11 @@ def factory_reset():
             raise AssertionError('factory used startup synchronous format')
         m.stubs[m.addr('log_getRecordsCount')] = startup_format
         m.stubs[m.addr('log_addSystemEvent')] = lambda: m.ret(1)
+        zero_fields = {'FWinProgress': 1, 'updateTimeout': 2, 'FWblockCount': 2, 'FWblockIdx': 2,
+                       'numbersCount': 2, 'tempIDsCount': 2, 'logsCount': 2, 'countPhoto': 2}
+        for name, width in zero_fields.items(): m.write(m.device + m.d[name], 7, width)
+        m.u.mem_write(m.device + m.d['IMEIGSM'], b'867442070217472\0')
+        m.write(m.device + m.d['firmwareVersion'], 71, 2)
         ready = False; messages = []
         m.stubs[m.addr('comm_tx_busy')] = lambda: m.ret(not ready)
         number = 0x21000c00
@@ -84,6 +89,17 @@ def factory_reset():
             for address, size in blocks.values():
                 assert m.flash[address:address + size] == b'\xff' * size
             assert m.flash[0x1ca000:0x1ca800] == b'\x37' * 2048
+            # Сохранённый и рабочий device очищены одинаково; FW не возобновится после старта.
+            active = int.from_bytes(m.u.mem_read(m.addr('cfg_cached_active'), 4), 'little')
+            saved = m.flash[active + 512:active + 1024]
+            for name, width in zero_fields.items():
+                offset = m.d[name]
+                assert saved[offset:offset+width] == bytes(width), ('saved', name)
+                assert bytes(m.u.mem_read(m.device + offset, width)) == bytes(width), ('live', name)
+            for offset in (m.d['newAddressTempID'], m.d['newAddressLog']):
+                assert saved[offset:offset+4] == bytes(m.u.mem_read(m.device + offset, 4))
+            assert saved[m.d['IMEIGSM']:m.d['IMEIGSM']+15] == b'867442070217472'
+            assert saved[m.d['firmwareVersion']:m.d['firmwareVersion']+2] == struct.pack('<H', 71)
             m.checked('user_storage_poll')
             assert len(m.answers) + len(messages) == (0 if reset else 1)
         outcomes.append({'channel': channel, 'failure': fail, 'USB_reset': reset})

@@ -51,6 +51,11 @@ typedef struct {
   uint32_t io_address, scan, h[4], target, first, max_number, requested_number, reply_until;
 } photo_job_s;
 typedef struct {
+  uint32_t address, end;
+  uint8_t phase, block, pending;
+} factory_job_s;
+
+typedef struct {
   uint8_t kind, step, result;
   union {
     void *context;
@@ -60,7 +65,7 @@ typedef struct {
     fw_block_job_s fwblock;
     log_job_s log;
     store_io_s storeio;
-    struct { uint32_t address, end; uint8_t phase, block, pending; } factory;
+    factory_job_s factory;
   } data;
 } flash_exec_job_t;
 extern flash_exec_job_t flash_job;

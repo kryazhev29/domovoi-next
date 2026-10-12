@@ -195,7 +195,7 @@ static void user_restore_device(device_s *saved)
   store_restore(saved);
   sched16_restore(saved);
 }
-// Завершить заводскую очистку из удержанного снимка A/B, без стартовых сканов.
+// Подготовить чистый device из сохранённых метаданных, без стартовых сканов.
 void user_factory_variables(device_s *saved)
 {
   uint32_t memory = device.memID;
@@ -207,7 +207,8 @@ void user_factory_variables(device_s *saved)
   device.protocolVersion = PROTOCOL_VERSION;
   device.FWblockCount = 0;
   device.FWblockIdx = 0;
-  user_comm_boot();
+  device.FWinProgress = 0;
+  device.updateTimeout = 0;
   log_ring_cleared();
   device.newAddressTempID = mem[MB_TEMPID].start;
 }
