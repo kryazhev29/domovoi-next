@@ -395,7 +395,7 @@ static void slm_detach(void)
 /* Снять питание и отменить прежний сеанс UART. */
 void comm_modem_off(void)
 {
-  slm_detach();
+  (void)slm_detach; /* ПРОБА: без выхода из сети - для сравнения */
   comm_uart_abort(); comm_power_v5_off(); slm.attempt.status.state = SLM_IDLE;
   slm_side_cancel();
 }
