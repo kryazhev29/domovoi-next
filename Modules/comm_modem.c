@@ -611,6 +611,7 @@ static void slm_completed(void)
     slm_fail(reason); return;
   }
   if (action == MODEM_READY) slm_mark(2, slm.attempt.now - slm.attempt.attempt_started);
+  if (step == SLM_CLIP && slm.attempt.now - slm.attempt.step_started > 100u) slm_mark(6, slm.attempt.now - slm.attempt.step_started);
   switch (action) {
   case MODEM_APN_QUERY:
     slm.attempt.answer = slm.attempt.result == COMM_AT_OK && slm.apn.network[0];
