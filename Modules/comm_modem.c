@@ -9,6 +9,8 @@
 #include "comm_timeouts.h"
 #include "comm_recover.h"
 #include "comm_channel.h"
+#include "timers.h"
+#include "wdt_stm32f10x.h"
 #include <string.h>
 /* Настройки и история живут между попытками; текущая попытка обнуляется целиком. */
 static struct {
@@ -332,9 +334,29 @@ bool comm_modem_restart(bool power, uint32_t now_ms)
   if (data_lost) { slm.attempt.status.step = SLM_NETWORK; slm.attempt.status.phase = SLM_PHASE_NETWORK; }
   return true;
 }
+/* ПРОБА QPOWD, не для заказчика: модем выходит из сети до снятия питания,
+   ждём "POWERED DOWN" до 10 с. Проверка: пропадает ли регистрация 18-20 с. */
+static void slm_detach(void)
+{
+  static const uint8_t cmd[] = "AT+QPOWD\r";
+  static const char done[] = "POWERED DOWN";
+  uint8_t match = 0;
+  if (comm_power_v5_state() != COMM_PWR_READY) return;
+  comm_uart_abort();
+  if (!comm_uart_tx(cmd, sizeof(cmd) - 1u)) return;
+  for (uint32_t t0 = timers_getMillis(); timers_getMillis() - t0 < 10000u && match < sizeof(done) - 1u;) {
+    const uint8_t *p;
+    uint16_t n = comm_uart_peek(&p);
+    for (uint16_t i = 0; i < n && match < sizeof(done) - 1u; ++i)
+      match = p[i] == (uint8_t)done[match] ? (uint8_t)(match + 1u) : (uint8_t)(p[i] == (uint8_t)done[0]);
+    if (n) comm_uart_consume(n);
+    wdt_reload();
+  }
+}
 /* Снять питание и отменить прежний сеанс UART. */
 void comm_modem_off(void)
 {
+  slm_detach();
   comm_uart_abort(); comm_power_v5_off(); slm.attempt.status.state = SLM_IDLE;
   slm_side_cancel();
 }
