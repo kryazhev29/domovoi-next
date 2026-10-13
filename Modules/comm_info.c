@@ -48,15 +48,17 @@ static void info_lte_line(const uint8_t *p, uint16_t n)
     if (pos == n) return;
     ++pos;
   }
-  /* RSRP, RSRQ, RSSI, SINR, srxlev. Последнее поле нужно для отсечения обрыва. */
+  /* RSRP/RSRQ: индексы CESQ у SLM336, с минусом — уже дБм/дБ. RSSI со знаком.
+     SINR сырой; srxlev и конец строки нужны для отсечения обрыва. */
   for (uint8_t i = 0; i < 5u; ++i) {
     pos = comm_at_spaces(p, n, pos);
-    if (i < 3u) {
-      if (pos == n || p[pos++] != '-') return;
-    } else if (i == 4u && pos < n && p[pos] == '-') ++pos;
-    if (!comm_at_number(p, n, &pos, i == 3u ? 250u : i == 4u ? 32767u : 254u, &value)) return;
-    if (i == 0) rsrp = (uint8_t)value;
-    if (i == 1) rsrq = (uint8_t)value;
+    bool negative = pos < n && p[pos] == '-';
+    if (negative) ++pos;
+    if ((i == 2u && !negative) || (i == 3u && negative)) return;
+    if (!comm_at_number(p, n, &pos, i == 0u && !negative ? 97u : i == 1u && !negative ? 34u
+                        : i == 3u ? 250u : i == 4u ? 32767u : 254u, &value)) return;
+    if (i == 0) rsrp = (uint8_t)(negative ? value : 141u - value);
+    if (i == 1) rsrq = (uint8_t)(negative ? value : (40u - value) / 2u);
     if (i == 3) sinr = (uint8_t)value;
     pos = comm_at_spaces(p, n, pos);
     if (i < 4u && (pos == n || p[pos++] != ',')) return;

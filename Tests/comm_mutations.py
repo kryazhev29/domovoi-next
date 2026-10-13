@@ -112,6 +112,8 @@ def run():
     cases += tuple(('channel', 'usb-link-code-' + code.lower(), 'return LINK_' + code + ';', 'return 255;')
                    for code in ('CONNECTING', 'NO_SIM', 'NO_NETWORK', 'NO_INTERNET', 'IMEI_REJECTED', 'RESTART_WAIT', 'ONLINE'))
     cases += (
+        ('channel', 'lte-rsrp-index-not-converted', 'negative ? value : 141u - value', 'value'),
+        ('channel', 'lte-rsrq-index-not-converted', 'negative ? value : (40u - value) / 2u', 'value'),
         ('channel', 'usb-link-server', '? LINK_CONNECTING : LINK_NO_SERVER;', '? LINK_CONNECTING : LINK_ONLINE;'),
         ('channel', 'usb-link-ring-wrap', 'slot == 9u ? 0 : (uint8_t)(slot + 1u)', 'slot == 8u ? 0 : (uint8_t)(slot + 1u)'),
         ('channel', 'usb-link-ring-capacity', 'if (slm.diag.failure_count < 10u)', 'if (slm.diag.failure_count < 9u)'),

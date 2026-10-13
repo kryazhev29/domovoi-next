@@ -79,6 +79,22 @@ static void info_tests(void)
   CHECK(comm_info()->rsrp == 105 && comm_info()->rsrq == 10 && comm_info()->sinr == 175);
   CHECK(sim_qeng_queries >= 1 && sim_qeng_queries <= 2);
   const char *lte = sim_qeng, *nw_lte = sim_nwinfo;
+  /* Плата №1, 13.10: SLM336 выдаёт индексы CESQ, а не модули дБм/дБ. */
+  static const char *const slm_lte[] = {
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",250,02,36DE11F,178,200,1,3,3,899,48,21,-67,54,27\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",250,02,36DE105,88,3048,7,5,5,899,41,19,-70,61,20\r\nOK\r\n"
+  };
+  for (unsigned i = 0; i < 2u; ++i) {
+    sim_qeng = slm_lte[i]; rc_run(40000u);
+    CHECK(comm_info()->rsrp == (i ? 100 : 93) && comm_info()->rsrq == (i ? 10 : 9)
+          && comm_info()->sinr == (i ? 61 : 54));
+    /* Без последнего поля и с хвостом строка не публикуется. */
+    const char *end = strrchr(slm_lte[i], ',');
+    info_lte_line((const uint8_t *)slm_lte[i], (uint16_t)(end - slm_lte[i]));
+    CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
+    info_lte_line((const uint8_t *)slm_lte[i], (uint16_t)strlen(slm_lte[i]));
+    CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
+  }
   static const char *const invalid[] = {
     "+QENG: \"servingscell\",\"NOCONN\",\"GSM\",250,01,00AF,ABCD,17,62,0,40\r\nOK\r\n",
     "+QENG: \"servingcell\",\"SEARCH\"\r\nOK\r\n",
@@ -87,7 +103,10 @@ static void info_tests(void)
     "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,175\r\nOK\r\n",
     "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,251,25\r\nOK\r\n",
     "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,-5,25\r\nOK\r\n",
-    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,175,25\r\nERROR\r\n"
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,175,25\r\nERROR\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,98,21,-67,54,27\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,48,35,-67,54,27\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,48,21,67,54,27\r\nOK\r\n"
   };
   for (unsigned i = 0; i < sizeof(invalid)/sizeof(invalid[0]); ++i) {
     sim_nwinfo = i == 0 ? "+QNWINFO: \"GSM\",\"25001\",\"GSM 900\",62\r\nOK\r\n" : nw_lte;
@@ -109,6 +128,12 @@ static void info_tests(void)
     info_lte_line((const uint8_t *)edge, n);
     CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
   }
+  edge = "+QENG: \"servingcell\",\"CONNECT\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,0,0,-60,0,-3";
+  info_lte_line((const uint8_t *)edge, (uint16_t)strlen(edge));
+  CHECK(info.v.rsrp == 141 && info.v.rsrq == 20 && info.v.sinr == 0);
+  edge = "+QENG: \"servingcell\",\"CONNECT\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,97,34,-60,250,0";
+  info_lte_line((const uint8_t *)edge, (uint16_t)strlen(edge));
+  CHECK(info.v.rsrp == 44 && info.v.rsrq == 3 && info.v.sinr == 250);
   { unsigned before = opens; sim_nwinfo_error = 1; rc_run(70000u); CHECK(opens == before && comm_server_online()); }
   CHECK(comm_info()->csq == 22);
   comm_modem_off(); rc_run(100); CHECK(comm_info()->csq == 99 && !comm_info()->creg && !comm_info()->net);
