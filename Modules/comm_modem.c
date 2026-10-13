@@ -11,6 +11,7 @@
 #include "comm_channel.h"
 #include "timers.h"
 #include "wdt_stm32f10x.h"
+#include "stm32f10x.h"
 #include <string.h>
 /* Настройки и история живут между попытками; текущая попытка обнуляется целиком. */
 static struct {
@@ -142,6 +143,36 @@ static void slm_network_apn(const uint8_t *p, uint16_t n)
   if (!comm_at_field(slm.apn.network, sizeof(slm.apn.network), true)) slm.apn.network[0] = 0;
 }
 
+/* ПРОБА: метка хронологии в кольце 112 - этап 7, код, мс; не больше 10 за загрузку. */
+static uint8_t probe_marks, probe_reg[3];
+static void slm_mark(uint8_t code, uint32_t ms)
+{
+  if (probe_marks >= 10u) return;
+  ++probe_marks;
+  uint8_t slot = slm.diag.failure_next;
+  slm.diag.failures[slot] = 7u | (uint32_t)code << 3 | ms << 8;
+  slm.diag.failure_next = slot == 9u ? 0 : (uint8_t)(slot + 1u);
+  if (slm.diag.failure_count < 10u) ++slm.diag.failure_count;
+}
+/* ПРОБА: смена состояния CREG/CGREG/CEREG (ответ на запрос или URC) - код 8 + тип*6 + stat. */
+static void slm_probe_reg(const uint8_t *p, uint16_t n)
+{
+  static const char *const pat[9] = {
+    "+CREG:\005,\005|", "+CREG:\005", "+CREG:\005,\"*",
+    "+CGREG:\005,\005|", "+CGREG:\005", "+CGREG:\005,\"*",
+    "+CEREG:\005,\005|", "+CEREG:\005", "+CEREG:\005,\"*"};
+  uint32_t v[2];
+  for (uint8_t i = 0; i < 9u; ++i)
+    if (comm_at_parse(p, n, pat[i], v)) {
+      uint32_t stat = i % 3u == 0u ? v[1] : v[0];
+      uint8_t type = (uint8_t)(i / 3u);
+      if (stat <= 5u && probe_reg[type] != stat + 1u) {
+        probe_reg[type] = (uint8_t)(stat + 1u);
+        slm_mark((uint8_t)(8u + type * 6u + stat), slm.attempt.now - slm.attempt.attempt_started);
+      }
+      return;
+    }
+}
 /* Распределить AT между запуском, каналом и служебным владельцем. */
 static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
@@ -150,6 +181,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
   /* Во время одноимённого запроса движок выдаёт URC как LINE; формат одинарный. */
   if (kind == COMM_AT_URC || kind == COMM_AT_LINE) {
     uint32_t registered;
+    slm_probe_reg(p, n);
     /* Регистрация будит и отказавшую попытку; CREG не заменяет проверку пакетной сети. */
     if ((comm_at_parse(p,n,"+CGREG:\005",&registered) || comm_at_parse(p,n,"+CEREG:\005",&registered)
         || comm_at_parse(p,n,"+CGREG:\005,\"*",&registered) || comm_at_parse(p,n,"+CEREG:\005,\"*",&registered))
@@ -290,6 +322,7 @@ static void slm_begin(bool power, uint32_t now_ms)
   memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
   memset(&slm.attempt, 0, sizeof(slm.attempt));
   slm_side_cancel(); slm.call_active = 0;
+  memset(probe_reg, 0, sizeof(probe_reg));
   if (power || !slm.apn.locked) memset(&slm.apn, 0, sizeof(slm.apn));
   ++slm.session;
   slm.attempt.now = now_ms;
@@ -319,6 +352,7 @@ bool modem_slm336_start(const slm_settings_t *settings, const slm_handlers_t *ha
   slm.imei_found = handlers->imei_found;
   slm.gpio = handlers->gpio;
   slm_begin(true, now_ms);
+  if (BKP->DR9 >= 1u && BKP->DR9 <= 4u) { slm_mark((uint8_t)(27u + BKP->DR9), BKP->DR10); BKP->DR9 = 0; }
   return true;
 }
 /* Перезапуск по сохранённым настройкам (восстановление связи).
@@ -341,10 +375,13 @@ static void slm_detach(void)
   static const uint8_t cmd[] = "AT+QPOWD\r";
   static const char done[] = "POWERED DOWN";
   uint8_t match = 0;
+  uint32_t t0 = timers_getMillis();
+  BKP->DR9 = 4u; BKP->DR10 = 0;
   if (comm_power_v5_state() != COMM_PWR_READY) return;
   comm_uart_abort();
+  BKP->DR9 = 3u;
   if (!comm_uart_tx(cmd, sizeof(cmd) - 1u)) return;
-  for (uint32_t t0 = timers_getMillis(); timers_getMillis() - t0 < 10000u && match < sizeof(done) - 1u;) {
+  while (timers_getMillis() - t0 < 10000u && match < sizeof(done) - 1u) {
     const uint8_t *p;
     uint16_t n = comm_uart_peek(&p);
     for (uint16_t i = 0; i < n && match < sizeof(done) - 1u; ++i)
@@ -352,6 +389,8 @@ static void slm_detach(void)
     if (n) comm_uart_consume(n);
     wdt_reload();
   }
+  BKP->DR9 = match == sizeof(done) - 1u ? 1u : 2u;
+  BKP->DR10 = (uint16_t)(timers_getMillis() - t0);
 }
 /* Снять питание и отменить прежний сеанс UART. */
 void comm_modem_off(void)
@@ -563,6 +602,7 @@ static void slm_completed(void)
     }
     slm_fail(reason); return;
   }
+  if (action == MODEM_READY) slm_mark(2, slm.attempt.now - slm.attempt.attempt_started);
   switch (action) {
   case MODEM_APN_QUERY:
     slm.attempt.answer = slm.attempt.result == COMM_AT_OK && slm.apn.network[0];
@@ -586,6 +626,7 @@ static void slm_completed(void)
     if (slm.attempt.answer != 1) {
       slm_fail(slm.attempt.answer == 2 ? SLM_ERR_PIN : slm.attempt.answer == 3 ? SLM_ERR_PUK : SLM_ERR_RESPONSE); return;
     }
+    slm_mark(3, slm.attempt.now - slm.attempt.attempt_started);
     break;
   }
   uint8_t alternate = action == MODEM_READY ? slm.settings.number(SLM_CFG_TYPE) == MODEM_TYPE_SLM336
