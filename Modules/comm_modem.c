@@ -13,7 +13,7 @@
 /* Настройки и история живут между попытками; текущая попытка обнуляется целиком. */
 static struct {
   struct {
-    uint8_t done, result, answer, query, recording;
+    uint8_t done, result, answer, query, recording, retried;
     uint8_t net_registered;
     slm_status_t status;
     uint32_t step_started;
@@ -560,6 +560,11 @@ static void slm_completed(void)
     if (action == MODEM_PDP && slm.attempt.result != COMM_AT_TIMEOUT) reason = SLM_ERR_PDP;
     if (action == MODEM_READY && slm.attempt.result <= COMM_AT_TIMEOUT) {
       slm.attempt.next = slm.attempt.now + comm_timeouts[COMM_T_AT_RETRY]; return;
+    }
+    /* Команду сразу после IFC=2,2 модем изредка теряет (плата №1, 13.10: CLIP
+       без ответа в 3 из ~30 стартов): один повтор шага настройки за попытку. */
+    if (slm.attempt.result == COMM_AT_TIMEOUT && entry->action >> 4 == SLM_PHASE_SETUP && !slm.attempt.retried) {
+      slm.attempt.retried = 1; return;
     }
     slm_fail(reason); return;
   }

@@ -24,7 +24,7 @@ static char sim_pending[400], sim_sent[128];
 static int sim_silence_step, sim_error_step;
 static unsigned sim_no_sim, sim_pin, sim_open_delay, sim_open_error, sim_rat_change;
 static unsigned sim_port_change, sim_network_wait, sim_early_open, sim_trickle;
-static unsigned sim_empty_urc, sim_pause, sim_send_sim2, sim_nwinfo_error, sim_csq;
+static unsigned sim_empty_urc, sim_pause, sim_send_sim2, sim_nwinfo_error, sim_csq, sim_lose_clip;
 static const char *sim_imsi;
 static const char *sim_apn_response;
 static unsigned sim_apn_queries, sim_imsi_queries, sim_activations, sim_pdp_failures, sim_pdp_timeouts, sim_apn_count;
@@ -113,7 +113,7 @@ static void sim_reset(void)
   sim_body_count = sim_read_size = 0; sim_read_reason = 0; sim_pending[0] = sim_sent[0] = 0;
   sim_silence_step = sim_error_step = -1;
   sim_no_sim = sim_pin = sim_open_error = sim_rat_change = sim_port_change = 0;
-  sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = 0;
+  sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = sim_lose_clip = 0;
   sim_send_sim2 = 1; sim_nwinfo_error = 0; sim_csq = 22; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
   sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
   sim_apn_response = "OK\r\n";
@@ -169,6 +169,7 @@ static void sim_tx(void)
   }
   else if (!strcmp(sim_sent, "AT+QURCCFG=\"urcport\""))
     sim_reply(sim_port_change ? "+QURCCFG: \"urcport\",\"usbat\"\r\nOK\r\n" : "+QURCCFG: \"urcport\",\"uart1\"\r\nOK\r\n", 30);
+  else if (!strcmp(sim_sent, "AT+CLIP=1") && sim_lose_clip) --sim_lose_clip; /* модем потерял команду */
   else if (!strcmp(sim_sent, "AT+QCFG=\"nwscanmode\""))
     sim_reply(sim_rat_change == 8 ? "+QCFG: \"nwscanmode\",8\r\nOK\r\n" : sim_rat_change ? "+QCFG: \"nwscanmode\",1\r\nOK\r\n" : "+QCFG: \"nwscanmode\",0\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+QIACT=1")) {
@@ -334,6 +335,11 @@ static void edge_tests(void)
   sim_feed("\r\nOK\r\n\r\nPOWERE"); CHECK(!comm_modem_powered_down());
   sim_feed("D DOWN\r\n"); CHECK(comm_modem_powered_down());
   comm_modem_off(); CHECK(!slm.down);
+  /* Потерянная команда настройки: один повтор без отказа попытки, вторая потеря - отказ. */
+  sim_reset(); sim_lose_clip = 1; sim_start(); sim_until(15000);
+  CHECK(comm_modem_ready() && !slm.diag.failure_count);
+  sim_reset(); sim_lose_clip = 2; sim_start(); sim_until(15000);
+  CHECK(slm.attempt.status.state == SLM_FAILED && slm.attempt.status.reason == SLM_ERR_TIMEOUT);
 }
 // Проверить сроки фаз и кольцо сбоев диагностики.
 static void diagnostic_tests(void)
