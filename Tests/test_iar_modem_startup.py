@@ -95,7 +95,8 @@ def startup(cold, heavy, mutation=False, origin=0):
                 (100 if cold else 2100, 13, True),
                 (1000 if cold else 3000, 14, False),
                 (3000 if cold else 5000, 14, True)]
-    assert trace == expected and finished == power_ms == target, ('питание', cold, heavy, trace, finished, power_ms)
+    # GPIO - по таблице независимо от инициализации; USB 112 - до готовности главного цикла.
+    assert trace == expected and finished == target and power_ms == max(target, heavy), ('питание', cold, heavy, trace, finished, power_ms)
     return {'POR': cold, 'init_ms': heavy, 'power_ms': finished, 'GPIO': trace}
 
 

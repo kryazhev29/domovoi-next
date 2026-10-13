@@ -584,12 +584,9 @@ void comm_modem_poll(uint32_t now_ms)
   if (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step <= SLM_POWER_BOOT) {
     uint8_t p = comm_power_v5_state();
     if (p != slm.attempt.status.step + 1u) {
-      if (p == COMM_PWR_READY) {
-        comm_uart_init(115200);
-        /* USB 112: законченный срок питания, а не опоздание главного цикла. */
-        slm.diag.phases[SLM_PHASE_POWER] = comm_power_v5_ready_at() - slm.attempt.phase_started;
-        slm.attempt.status.completed_phases |= (uint8_t)(1u << SLM_PHASE_POWER);
-      }
+      /* USB 112: этап питания длится до готовности главного цикла - сумма этапов
+         равна настоящему времени до сервера, включая хвост user_init. */
+      if (p == COMM_PWR_READY) comm_uart_init(115200);
       comm_modem_record(p == COMM_PWR_READY ? SLM_AT_READY : (uint8_t)(p - 1u), 0, slm.attempt.status.modem_code);
     }
     return;

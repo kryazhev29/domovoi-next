@@ -28,8 +28,6 @@ void comm_power_v5_start(comm_power_gpio_t gpio, uint32_t now_ms)
 }
 /* Выдать текущую ступень питания. */
 uint8_t comm_power_v5_state(void) { return power_state; }
-/* При READY это физическое окончание загрузки, даже если главный цикл занят. */
-uint32_t comm_power_v5_ready_at(void) { return power_started; }
 /* Только SysTick: GPIO и отметка времени, без AT, SPI и вызовов приложения. */
 void comm_power_v5_poll(uint32_t now_ms)
 {
