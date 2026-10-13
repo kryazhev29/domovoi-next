@@ -44,7 +44,7 @@ def run():
         ('modem', 'busy-start-unbounded', 'if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);', 'if (0) slm_fail(SLM_ERR_TIMEOUT);'),
         ('channel', 'data-echo-left-enabled', '"QISDE=0"', '"QISDE=1"'),
         ('uart', 'idle-steals-rx-byte', 'status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)', 'status & (USART_SR_IDLE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)'),
-        ('modem', 'power-noise-not-cleared', 'if (p == COMM_PWR_READY) comm_uart_init(115200);', 'if (0) comm_uart_init(115200);'),
+        ('modem', 'power-noise-not-cleared', 'if (p == COMM_PWR_READY) {\n        comm_uart_init(115200);', 'if (p == COMM_PWR_READY) {\n        (void)0;'),
         ('modem', 'reject-valid-current-rat', 'values[0] <= 8)', 'values[0] <= 5)'),
         ('modem', 'deny-other-network-domain', 'if (values[1] == 1 || values[1] == 5)', 'if (values[1] == 3) slm_fail(SLM_ERR_NETWORK); if (values[1] == 1 || values[1] == 5)'),
         ('uart', 'rts-stop-boundary', 'used > sizeof(rx) - 1u - 128u', 'used >= sizeof(rx) - 1u - 128u'),

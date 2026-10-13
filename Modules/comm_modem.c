@@ -573,7 +573,7 @@ static void slm_completed(void)
   comm_modem_record(next, 0, slm.attempt.status.modem_code);
   if (next == SLM_STEP_COUNT) slm.attempt.status.state = SLM_READY;
 }
-/* Продвинуть питание, AT и единственную попытку запуска. */
+/* Принять состояние питания из SysTick, продвинуть AT и попытку запуска. */
 void comm_modem_poll(uint32_t now_ms)
 {
   if (slm.attempt.status.state == SLM_IDLE) return;
@@ -582,10 +582,14 @@ void comm_modem_poll(uint32_t now_ms)
   /* При снятом/нарастающем питании UART может ловить FE и шум загрузки.
      Это не ответ AT: начинаем чистый поток после выдержки POWER_BOOT. */
   if (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step <= SLM_POWER_BOOT) {
-    comm_power_v5_poll(now_ms);
     uint8_t p = comm_power_v5_state();
     if (p != slm.attempt.status.step + 1u) {
-      if (p == COMM_PWR_READY) comm_uart_init(115200);
+      if (p == COMM_PWR_READY) {
+        comm_uart_init(115200);
+        /* USB 112: законченный срок питания, а не опоздание главного цикла. */
+        slm.diag.phases[SLM_PHASE_POWER] = comm_power_v5_ready_at() - slm.attempt.phase_started;
+        slm.attempt.status.completed_phases |= (uint8_t)(1u << SLM_PHASE_POWER);
+      }
       comm_modem_record(p == COMM_PWR_READY ? SLM_AT_READY : (uint8_t)(p - 1u), 0, slm.attempt.status.modem_code);
     }
     return;

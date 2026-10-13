@@ -154,7 +154,8 @@ def main():
         run('uart arm',['Tests/build_comm_uart.py'])
         for script in ('test_fault_capture','test_iar_boot_tx','test_iar_boot_usb_wait','test_iar_ram_stage7',
                        'test_iar_comm_uart','test_iar_peripheral_waits','test_iar_pma_bounds','test_iar_store_async',
-                       'test_iar_timers_irq','test_iar_uart_clock','test_iar_wiegand_irq','test_iar_stack_mark','test_iar_pvd'):
+                       'test_iar_timers_irq','test_iar_uart_clock','test_iar_wiegand_irq','test_iar_stack_mark','test_iar_pvd',
+                       'test_iar_modem_startup'):
             run(script,['Tests/'+script+'.py'])
         run('log extractor',['-m','unittest','Tests.test_modem_sim'])
         run('CRC differential',['Tests/asm/test_asm_crc.py','--firmware',os.environ['DOMOVOI_ELF'],'--json',str(base/f'crc-{project}-{args.config}.json')])

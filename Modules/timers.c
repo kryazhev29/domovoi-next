@@ -4,6 +4,7 @@
 // Задержки обслуживают сторож, исходный PRIMASK сохраняется.
 
 #include "timers.h"
+#include "comm_power_v5.h"
 
 #define timer_cnt 6
 
@@ -48,6 +49,7 @@ inline void timers_handle(void){
   milliSeconds++;
   for (unsigned char i = 0; i < timer_cnt; i++)
     timer[i]++;
+  comm_power_v5_poll(milliSeconds);
   timers_user_handle();
 }
 

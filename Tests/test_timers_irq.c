@@ -21,6 +21,8 @@ void __disable_irq(void){irqmask=1;}
 void __set_PRIMASK(uint32_t mask){irqmask=mask;if(pending && !mask){pending=false;timers_handle();}}
 // Имитировать пользовательский обработчик миллисекунды.
 void timers_user_handle(void){}
+// Питание проверяется отдельно в ELF; здесь моделируется зависимость тика.
+void comm_power_v5_poll(uint32_t now){(void)now;}
 // Имитировать очередной тик во время задержки.
 void wdt_reload(void){timers_handle();}
 /* КОД */

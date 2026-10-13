@@ -34,7 +34,15 @@ def unit(root=ROOT):
         cases.append('{' + ','.join(json.dumps(s) for s in strings) + ',{' + commands + '},'
                      + ','.join(map(str, numbers)) + ',' + str(len(row['commands'])) + '}')
     tests = source('Tests/test_comm_slm.c').replace('/* СЦЕНАРИИ APN */', ',\n'.join(cases))
-    return diagnostic_header(root) + model + headers + sources + model_irq + '\n' + tests
+    # Стенды с шагом 10 мс подают тик питания перед обслуживанием главного цикла.
+    tick = '''
+static void sim_modem_poll(uint32_t now) {
+  comm_power_v5_poll(now);
+  comm_modem_poll(now);
+}
+#define comm_modem_poll sim_modem_poll
+'''
+    return diagnostic_header(root) + model + headers + sources + model_irq + tick + '\n' + tests
 
 
 def memory(obj):
