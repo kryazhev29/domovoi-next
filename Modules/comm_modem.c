@@ -144,7 +144,7 @@ static void slm_network_apn(const uint8_t *p, uint16_t n)
 }
 
 /* ПРОБА: метка хронологии в кольце 112 - этап 7, код, мс; не больше 10 за загрузку. */
-static uint8_t probe_marks, probe_reg[3];
+static uint8_t probe_marks, probe_reg[3], probe_last[3];
 static void slm_mark(uint8_t code, uint32_t ms)
 {
   if (probe_marks >= 10u) return;
@@ -155,6 +155,12 @@ static void slm_mark(uint8_t code, uint32_t ms)
   if (slm.diag.failure_count < 10u) ++slm.diag.failure_count;
 }
 /* ПРОБА: смена состояния CREG/CGREG/CEREG (ответ на запрос или URC) - код 8 + тип*6 + stat. */
+static void slm_probe_fail(uint8_t code, uint8_t result)
+{
+  uint32_t ms = slm.attempt.now - slm.attempt.attempt_started;
+  slm_mark(code, (uint32_t)slm.attempt.status.step << 19 | (uint32_t)result << 15 | (ms > 32767u ? 32767u : ms));
+  slm_mark(5, (uint32_t)probe_last[0] | (uint32_t)probe_last[1] << 8 | (uint32_t)probe_last[2] << 16);
+}
 static void slm_probe_reg(const uint8_t *p, uint16_t n)
 {
   static const char *const pat[9] = {
@@ -182,6 +188,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
   if (kind == COMM_AT_URC || kind == COMM_AT_LINE) {
     uint32_t registered;
     slm_probe_reg(p, n);
+    for (uint8_t i = 0; i < 3u; ++i) probe_last[i] = i < n ? p[i] : 0;
     /* Регистрация будит и отказавшую попытку; CREG не заменяет проверку пакетной сети. */
     if ((comm_at_parse(p,n,"+CGREG:\005",&registered) || comm_at_parse(p,n,"+CEREG:\005",&registered)
         || comm_at_parse(p,n,"+CGREG:\005,\"*",&registered) || comm_at_parse(p,n,"+CEREG:\005,\"*",&registered))
@@ -574,7 +581,7 @@ static void slm_send(void)
   uint8_t result = slm_issue(slm.attempt.status.step);
   /* После poll мог прийти хвост ответа/URC: BUSY означает повтор, не поломку. */
   if (result == COMM_AT_BUSY) {
-    if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);
+    if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) { slm_probe_fail(27, 0); slm_fail(SLM_ERR_TIMEOUT); }
   } else if (result != COMM_AT_ACCEPTED) slm_fail(SLM_ERR_RESPONSE);
 }
 /* Применить ответ и выбрать следующий шаг таблицы запуска. */
@@ -593,6 +600,7 @@ static void slm_completed(void)
         : slm.apn.source == SLM_APN_MNC ? SLM_IMSI : SLM_APN, 0, slm.attempt.status.modem_code);
       return;
     }
+    slm_probe_fail(26, slm.attempt.result);
     uint8_t reason = slm.attempt.result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT
                      : slm.attempt.result > COMM_AT_TIMEOUT ? SLM_ERR_STREAM : SLM_ERR_AT;
     if (action == MODEM_SIM && (slm.attempt.status.modem_code == 10 || slm.attempt.answer == 4)) reason = SLM_ERR_NO_SIM;
