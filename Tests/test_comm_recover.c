@@ -88,10 +88,12 @@ static void info_tests(void)
     sim_qeng = slm_lte[i]; rc_run(40000u);
     CHECK(comm_info()->rsrp == (i ? 100 : 93) && comm_info()->rsrq == (i ? 10 : 9)
           && comm_info()->sinr == (i ? 61 : 54));
+    CHECK(comm_info()->band == (i ? 7 : 1) && comm_info()->bandwidth == (i ? 5 : 3));
     /* Без последнего поля и с хвостом строка не публикуется. */
     const char *end = strrchr(slm_lte[i], ',');
     info_lte_line((const uint8_t *)slm_lte[i], (uint16_t)(end - slm_lte[i]));
     CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
+    CHECK(info.v.band == 255 && info.v.bandwidth == 255);
     info_lte_line((const uint8_t *)slm_lte[i], (uint16_t)strlen(slm_lte[i]));
     CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
   }

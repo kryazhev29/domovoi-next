@@ -6,7 +6,7 @@ static void link_expect(uint8_t code)
   if (actual!=code) printf("link expected=%u actual=%u modem=%u reason=%u server=%u probe=%u\n",code,actual,comm_modem_status()->state,comm_modem_status()->reason,sv.state,comm_channel_probe_result());
   CHECK(actual == code);
   user_send_commDiag(37);
-  CHECK(link_wire_size == 96 && link_wire[8] == 112 && link_wire[9] == 4 && link_wire[10] == code);
+  CHECK(link_wire_size == 98 && link_wire[8] == 112 && link_wire[9] == 5 && link_wire[10] == code);
 }
 static void link_diag_tests(void)
 {
@@ -109,6 +109,7 @@ static void link_diag_tests(void)
   user_send_commDiag(37);
   CHECK(link_wire[12]==22 && link_wire[13]==4 && !memcmp(link_wire+15,"001001",7));
   CHECK(link_wire[91]==105 && link_wire[92]==10 && link_wire[93]==175);
+  CHECK(link_wire[94]==3 && link_wire[95]==5);
   nw="+QNWINFO: \"FDD LTE\",\"123X\"";
   info_line((const uint8_t*)nw,(uint16_t)strlen(nw));
   const char empty[7]={0};
@@ -128,7 +129,7 @@ static void link_diag_tests(void)
   CHECK(!memcmp(saved,slm.diag.failures,sizeof(saved)) && slm.diag.failure_next==3);
   for (unsigned i=0;i<6;++i) slm.diag.phases[i]=123u+i*70000u;
   user_send_commDiag(37);
-  uint8_t expected[96]={83,76,68,78,88,0,0,37,112,4,LINK_CONNECTING,0,99,0,3};
+  uint8_t expected[98]={83,76,68,78,90,0,0,37,112,5,LINK_CONNECTING,0,99,0,3};
   for (unsigned i=0;i<6;++i)
     for (unsigned j=0;j<4;++j) expected[26+4*i+j]=(uint8_t)((123u+i*70000u)>>(8*j));
   expected[50]=10;
@@ -137,14 +138,34 @@ static void link_diag_tests(void)
     uint32_t value=(event%6u) | (event%13u+1u)<<3 | (event+1u)*10000u<<8;
     for (unsigned j=0;j<4;++j) expected[51+4*i+j]=(uint8_t)(value>>(8*j));
   }
-  expected[91]=expected[92]=expected[93]=255;
+  expected[91]=expected[92]=expected[93]=expected[94]=expected[95]=255;
   uint16_t crc=65535;
-  for (unsigned i=4;i<94;++i) {
+  for (unsigned i=4;i<96;++i) {
     crc^=expected[i];
     for (unsigned j=0;j<8;++j) crc=(crc>>1)^((crc&1u)?0xa001u:0u);
   }
-  expected[94]=(uint8_t)crc;
-  expected[95]=(uint8_t)(crc>>8);
+  expected[96]=(uint8_t)crc;
+  expected[97]=(uint8_t)(crc>>8);
   CHECK(!memcmp(expected,link_wire,sizeof(expected)));
+  /* USB 112 включает и продлевает QENG, полный опрос/передача серверу сохраняются. */
+  rc_online(); rc_run(1000u);
+  user_send_commDiag(37);
+  for (unsigned i=0;i<20u;++i) {
+    unsigned before=sim_qeng_queries;
+    rc_run(2000u);
+    CHECK(sim_qeng_queries>before && comm_server_online());
+  }
+  user_send_commDiag(37); /* продление после 40 с */
+  rc_run(59000u); CHECK(info.antenna);
+  rc_run(1000u); CHECK(!info.antenna);
+  unsigned before=sim_qeng_queries;
+  rc_run(60000u);
+  CHECK(sim_qeng_queries>=before+1u && sim_qeng_queries<=before+3u);
+  CHECK(comm_server_online() && statuses_sent>0);
+  /* Переполнение millis, включая срок ровно ноль. */
+  comm_info_antenna(UINT32_MAX-59999u);
+  CHECK(info.antenna_until==0);
+  comm_info_poll(UINT32_MAX); CHECK(info.antenna);
+  comm_info_poll(0); CHECK(!info.antenna);
   puts("USB link diag: all reason codes, frozen phases, probe, operator, ring and exact 112 frame PASS");
 }

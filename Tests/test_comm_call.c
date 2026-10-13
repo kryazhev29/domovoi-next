@@ -25,7 +25,7 @@ static bool user_access_ready(const char *id)
 // Смоделировать занятость приложения обновлением прошивки.
 static bool user_comm_busy_model(void) { return comm_call_active(); }
 // Сбросить наблюдения и модель вызова.
-static void call_reset(void) { call_writer_ready=true; call_access_attempts=0; server_reset(); comm_recover_init(&rc_hooks,sim_now); calls=call_actions=0; call_seen[0]=0; call_action_at=0; }
+static void call_reset(void) { call_writer_ready=true; call_access_attempts=0; server_reset(); comm_recover_init(&rc_hooks,sim_now); comm_info_antenna(sim_now); calls=call_actions=0; call_seen[0]=0; call_action_at=0; }
 // Подать номер и сигнал входящего вызова.
 static void ring(const char *clip) { if (call.state == CALL_IDLE) call_present=1; sim_feed("RING\r\n"); if (clip) sim_feed(clip); }
 // Продвинуть модель до физической отправки отбоя.

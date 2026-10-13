@@ -16,10 +16,13 @@ typedef struct {
   uint8_t csq, creg, cgreg, net;
   char operator_code[7];
   uint8_t rsrp, rsrq, sinr; /* Модули отрицательных RSRP/RSRQ, сырой SINR 0..250; 255 неизвестно. */
+  uint8_t band, bandwidth; /* Диапазон LTE и код DL-полосы 0..5; 255 неизвестно. */
 } comm_info_t;
 
 /* Поставить очередной фоновый запрос сведений. */
 void comm_info_poll(uint32_t now_ms);
+/* Запрос USB 112 продлевает частый QENG на 60 с; общий цикл остаётся раз в 30 с. */
+void comm_info_antenna(uint32_t now_ms);
 /* Выдать текущий снимок сигнала и регистрации. */
 const comm_info_t *comm_info(void);
 /* Событие 38 (сигнал ниже 15): handler(csq) после ближайшего полного опроса, дальше раз в сутки. */

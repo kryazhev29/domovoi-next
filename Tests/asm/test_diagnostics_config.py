@@ -40,12 +40,20 @@ def run():
     packets = []
     for authorized in (0, 1):
         answers, wires = command(m, 112, 0, authorized)
-        payload = bytes((4, 0, 0, 99)) + bytes(78) + bytes((255, 255, 255))
-        expected = struct.pack('<HBBB', 88, 0, 37, 112) + payload
+        payload = bytes((5, 0, 0, 99)) + bytes(78) + bytes((255, 255, 255, 255, 255))
+        expected = struct.pack('<HBBB', 90, 0, 37, 112) + payload
         expected = b'SLDN' + expected + struct.pack('<H', crc16(expected))
         assert not answers and wires == [expected], [p.hex() for p in wires]
+        # Серверный 112 не продлевает режим, USB продлевает и до авторизации.
+        info = m.addr('info')
+        assert bytes(m.u.mem_read(info+24, 4)) == struct.pack('<I', 60000)
+        assert bytes(m.u.mem_read(info+31, 1)) == b'\x01'
+        m.u.mem_write(info+24, bytes(4))
+        m.u.mem_write(info+31, bytes(1))
+        lease = bytes(m.u.mem_read(info, 36))
         _, wires = command(m, 112, 1, authorized)
         assert not wires
+        assert bytes(m.u.mem_read(info, 36)) == lease
     if enabled:
         for code, expected in ((111, [111, 113]), (112, [112])):
             answers, wires = command(m, code, 0, 0)

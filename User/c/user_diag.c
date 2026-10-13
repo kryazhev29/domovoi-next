@@ -61,19 +61,21 @@ void user_send_usbDiag(uint8_t uniqId)
 // Формат сервисного ответа: docs/protocol/usb_link_diag.md.
 void user_send_commDiag(uint8_t uniqId)
 {
-  uint8_t b[96] = {0};
+  uint8_t b[98] = {0};
+  comm_info_antenna(timers_getMillis());
   const slm_diag_t *d = comm_modem_diag();
   const comm_info_t *info = comm_info();
   uint32_t wait;
   b[7] = uniqId;
   b[8] = USB_COMM_DIAG_COMMAND;
-  b[9] = 4;
-  b[91] = b[92] = b[93] = 255;
+  b[9] = 5;
+  b[91] = b[92] = b[93] = b[94] = b[95] = 255;
   b[10] = comm_recover_link(timers_getMillis(), &wait);
   b[12] = comm_modem_ready() ? info->csq : 99u;
   if (comm_modem_ready()) {
     b[13] = info->net;
     b[91] = info->rsrp; b[92] = info->rsrq; b[93] = info->sinr;
+    b[94] = info->band; b[95] = info->bandwidth;
     memcpy(b + 15, info->operator_code, 7);
   }
   b[14] = comm_channel_probe_result();

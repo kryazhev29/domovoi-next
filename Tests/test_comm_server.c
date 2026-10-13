@@ -104,7 +104,7 @@ typedef unsigned dataChanel_e;
 #define _2B(x) ((uint8_t)((x)>>8))
 static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
-static uint8_t link_wire[96];
+static uint8_t link_wire[98];
 static uint16_t link_wire_size;
 // Перехватить настоящий кадр 112 на границе USB.
 static bool usb_send(uint8_t *p, uint16_t n)
@@ -415,7 +415,7 @@ static void server_no_internet(void) { comm_channel_reopen(0); }
 static void server_reset_start(bool cold)
 {
   comm_modem_transport(NULL); sim_reset();
-  info.next=0; info.step=0; /* время модели начинается заново */
+  info.next=0; info.step=0; info.antenna=0; /* время модели начинается заново */
   server_commands=server_sessions=event13=event_retry=registrations_sent=statuses_sent=opens=closes=pings=dns_requests=0;
   reject_register=tx_unacked=drop_register=drop_status=close_error=send_silence=prompt_silence=reserve_enabled=junk_mode=0;
   ping_success=dns_success=1; unique=last_status=uniqIDCnt=0;

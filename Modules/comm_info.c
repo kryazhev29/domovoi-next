@@ -16,12 +16,18 @@
 static const char *const info_cmd[] = {"AT+CSQ", "AT+CREG?", "AT+CGREG?", "AT+CEREG?", "AT+QNWINFO", "AT+QENG=\"servingcell\""};
 static struct {
   comm_info_t v;
-  uint32_t next, day; /* day - срок суточной проверки сигнала */
-  uint8_t step, ps, daily; /* ps: бит 0 - CGREG, бит 1 - CEREG; daily - срок day назначен */
-} info = {{99, 0, 0, 0, {0}, 255, 255, 255}, 0, 0, 0, 0, 0};
+  uint32_t next, day, antenna_until; /* day - срок суточной проверки сигнала */
+  uint8_t step, ps, daily, antenna, qeng_slot; /* qeng_slot - номер интервала 2 с; lease короче его оборота. */
+} info = {.v = {.csq = 99, .rsrp = 255, .rsrq = 255, .sinr = 255, .band = 255, .bandwidth = 255}};
 static void (*info_low)(uint8_t);
 /* Подключить запись события слабого сигнала. */
 void comm_info_low_signal(void (*handler)(uint8_t csq)) { info_low = handler; info.daily = 0; }
+
+void comm_info_antenna(uint32_t now_ms)
+{
+  if (!info.antenna) info.qeng_slot = (uint8_t)(now_ms / 2000u - 1u);
+  info.antenna = 1; info.antenna_until = now_ms + 60000u;
+}
 
 /* Есть ли в строке подстрока (короткие строки ответа, без кучи). */
 static bool info_has(const uint8_t *p, uint16_t n, const char *s)
@@ -38,12 +44,19 @@ static void info_lte_line(const uint8_t *p, uint16_t n)
 {
   uint16_t pos = 0;
   uint32_t value;
-  uint8_t rsrp = 255, rsrq = 255, sinr = 255;
-  info.v.rsrp = info.v.rsrq = info.v.sinr = 255;
+  uint8_t rsrp = 255, rsrq = 255, sinr = 255, band = 255, bandwidth = 255;
+  info.v.rsrp = info.v.rsrq = info.v.sinr = info.v.band = info.v.bandwidth = 255;
   while (pos + 6u <= n && memcmp(p + pos, "\"LTE\",", 6)) ++pos;
   if (pos + 6u > n) return;
   pos += 6u;
   for (uint8_t i = 0; i < 10u; ++i) {
+    if (i == 6u || i == 8u) {
+      pos = comm_at_spaces(p, n, pos);
+      if (!comm_at_number(p, n, &pos, i == 6u ? 255u : 5u, &value)) return;
+      if (i == 6u) band = (uint8_t)value; else bandwidth = (uint8_t)value;
+      pos = comm_at_spaces(p, n, pos);
+      if (pos == n || p[pos] != ',') return;
+    }
     while (pos < n && p[pos] != ',') ++pos;
     if (pos == n) return;
     ++pos;
@@ -65,6 +78,7 @@ static void info_lte_line(const uint8_t *p, uint16_t n)
   }
   if (pos != n) return;
   info.v.rsrp = rsrp; info.v.rsrq = rsrq; info.v.sinr = sinr;
+  info.v.band = band; info.v.bandwidth = bandwidth;
 }
 
 /* Строка ответа текущего запроса; регистрация - статус 1 (дом) или 5 (роуминг). */
@@ -101,17 +115,26 @@ static void info_line(const uint8_t *p, uint16_t n)
 /* Поставить очередной фоновый запрос сведений. */
 void comm_info_poll(uint32_t now_ms)
 {
+  if (info.antenna && (int32_t)(now_ms - info.antenna_until) >= 0) info.antenna = 0;
   /* Модем не на связи - цифры прошлого сеанса не показываем, опрос заново с начала. */
   if (!comm_modem_ready()) {
-    info.v.rsrp = info.v.rsrq = info.v.sinr = 255;
+    info.v.rsrp = info.v.rsrq = info.v.sinr = info.v.band = info.v.bandwidth = 255;
     info.v.csq = 99; info.v.creg = info.v.cgreg = info.v.net = info.ps = 0;
     memset(info.v.operator_code, 0, sizeof(info.v.operator_code));
     info.step = 0; info.next = now_ms; return;
   }
-  if ((int32_t)(now_ms - info.next) < 0) return;
+  uint8_t slot = (uint8_t)(now_ms / 2000u);
+  bool quick = info.antenna && info.qeng_slot != slot;
+  bool due = (int32_t)(now_ms - info.next) >= 0;
+  if (!quick && !due) return;
   /* QENG использует общий COMM_T_AT_SIMPLE: отдельного срока в §9.25 нет. */
-  if (!comm_channel_query(info_cmd[info.step], info.step == 5u ? info_lte_line : info_line)) return;
-  if (info.step == 5u) info.v.rsrp = info.v.rsrq = info.v.sinr = 255;
+  uint8_t step = quick ? 5u : info.step;
+  if (!comm_channel_query(info_cmd[step], step == 5u ? info_lte_line : info_line)) return;
+  if (step == 5u) {
+    info.qeng_slot = slot;
+    info.v.rsrp = info.v.rsrq = info.v.sinr = info.v.band = info.v.bandwidth = 255;
+  }
+  if (quick && (!due || info.step != 5u)) return;
   info.step = (uint8_t)((info.step + 1u) % (sizeof(info_cmd) / sizeof(info_cmd[0])));
   if (info.step) return;
   info.next = now_ms + INFO_PERIOD_MS;
