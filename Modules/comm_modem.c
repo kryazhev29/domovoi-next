@@ -352,6 +352,7 @@ static bool slm_side_allowed(void)
   return slm.attempt.status.state == SLM_READY
     || (slm.attempt.status.state >= SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
 }
+/* Проверено на плате №1 13.10.2026 (a83833c): 9 стартов подряд, QPOWD перед каждым, до TCP 14,8-15,9 с, сбоев настройки нет; повтор шага проверен на модели, на плате не срабатывал */
 /* Плановое выключение: модем, уже отвечавший на AT, выходит из сети (AT+QPOWD),
    иначе следующая регистрация бывает на 12 с дольше (плата №1, 13.10.2026).
    Первый вызов отправляет команду, следующие ищут "POWERED DOWN";
@@ -538,6 +539,7 @@ static void slm_send(void)
     if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);
   } else if (result != COMM_AT_ACCEPTED) slm_fail(SLM_ERR_RESPONSE);
 }
+/* Проверено на плате №1 13.10.2026 (a83833c): 9 стартов подряд, QPOWD перед каждым, до TCP 14,8-15,9 с, сбоев настройки нет; повтор шага проверен на модели, на плате не срабатывал */
 /* Применить ответ и выбрать следующий шаг таблицы запуска. */
 static void slm_completed(void)
 {
