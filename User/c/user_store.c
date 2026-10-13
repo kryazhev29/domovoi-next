@@ -229,6 +229,7 @@ dispatch:
 bool store_command_allowed(uint8_t cmd)
 {
   store_usb_session();
+  if (id_scan_cell && (cmd==3 || cmd==13 || cmd==17 || cmd==18 || cmd==101 || cmd==103)) return false;
   if (cmd == 24 || cmd == 27 || (cmd == 21 && photo_empty_cleanup())) return true;
   if (cmd == 8) return flash_exec_read_allowed();
   return !fw_event_waiting() && !store_phase() && !store_reset_requested && flash_exec_idle();

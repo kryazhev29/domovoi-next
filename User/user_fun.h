@@ -111,7 +111,7 @@ bool user_getShedule(uint16_t num, cellShedule_s *shedule);
 // проверить праздничный день
 uint8_t user_dayIsHoliday(void);
 // сколько номеров в памяти
-uint16_t user_getNumbersCount(void);
+void user_ids_boot(void);
 // получаем кол-во ID во временном буфере и тут же обновляем адрес записи
 uint16_t user_getTempIDRecordsCount(void);
 // проверить расписание: 0 — закрыто, 1 — открыто, 2 — отказ чтения

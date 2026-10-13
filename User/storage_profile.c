@@ -34,6 +34,7 @@ extern void idindex_impl_poll(uint32_t base);
 // Продвигает пересборку индекса только на подходящей W25.
 void idindex_poll(uint32_t base)
 {
+  if (id_scan_cell) { user_ids_scan(); return; }
   if(!storage_has_index()) { return; }
   idindex_impl_poll(base);
 }

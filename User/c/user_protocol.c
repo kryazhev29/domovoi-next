@@ -308,6 +308,7 @@ void user_send_identPackToConfigurator(dataChanel_e cch){
 
 // Передать состояние устройства конфигуратору.
 void user_send_statusPackToConfigurator(dataChanel_e cch){
+  if (id_scan_cell) return; // кадр 101 ждёт полный счёт, приёмник удерживает запрос
 
   uint16_t len = 34;
   uint8_t send_local[42 + sizeof(fault_record)];

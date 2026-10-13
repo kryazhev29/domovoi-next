@@ -236,7 +236,7 @@ def restart_and_commands():
     r = UnblockMachine(); r.flash[:] = m.flash; r.booting = True
     r.write(r.addr('cfg_boot_done'), 0, 1)
     assert r.checked('cfg_boot_select', budget=12000000)
-    for name in ('mem_recover', 'user_getNumbersCount', 'log_getRecordsCount',
+    for name in ('mem_recover', 'user_ids_boot', 'log_getRecordsCount',
                  'user_getTempIDRecordsCount', 'user_comm_boot', 'app_boot_metadata',
                  'WG_init', 'rs485_init', 'uart_setRecTimeout', 'fw_resume_after_boot'):
         r.stubs[r.addr(name)] = r.ret

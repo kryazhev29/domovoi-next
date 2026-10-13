@@ -175,13 +175,16 @@ def startup_counts():
         m.flash[base + 15 * 32 + 2] = 0  # Оборванная запись тоже занимает место.
         if fail_at:
             m.fault = ('read', fail_at)
-        count = m.checked('user_getNumbersCount')
-        assert count == (0 if fail_at else 3), (fail_at, count)
+        m.checked('user_ids_boot')
+        for _ in range(2):
+            if m.boot_scan_tick() == 3:
+                break
         if fail_at:
             # Отказ чтения: поиск идёт по всей базе, конец данных неизвестен.
             assert int.from_bytes(m.u.mem_read(m.addr('id_cells_end'), 2), 'little') == 512 // 32
             assert int.from_bytes(m.u.mem_read(m.addr('id_used_bytes'), 4), 'little') == 0xFFFFFFFF
         else:
+            assert int.from_bytes(m.u.mem_read(m.device+m.d['numbersCount'], 2), 'little') == 3
             assert int.from_bytes(m.u.mem_read(m.addr('id_cells_end'), 2), 'little') == 9
             assert int.from_bytes(m.u.mem_read(m.addr('id_used_bytes'), 4), 'little') == 512
         checks += 1

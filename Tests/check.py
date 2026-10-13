@@ -26,7 +26,7 @@ def main():
     env=os.environ.copy();env['DOMOVOI_COMPARE_BUILD']=str(base);env['PYTHONIOENCODING']='utf-8'
     # Пути общего TEMP фиксируются до TMPDIR групп: zig и unicorn лежат там.
     temp=Path(tempfile.gettempdir());env.setdefault('DOMOVOI_ZIG',str(temp/'codex-zig/zig.exe'))
-    env['PYTHONPATH']=os.pathsep.join((str(temp/'codex-deps'),env.get('PYTHONPATH','')))
+    env['PYTHONPATH']=env.get('PYTHONPATH') or str(temp/'codex-deps')
     env['PYTHONDONTWRITEBYTECODE']='1'
     results={}
     try:

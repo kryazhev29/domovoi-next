@@ -55,7 +55,7 @@ void user_initvariables (void)
 
   user_comm_boot();
 
-  device.numbersCount = user_getNumbersCount();
+  user_ids_boot();
   device.logsCount = log_getRecordsCount();
   if (device.logsCount) device.status.readyLogData = 1;
   device.tempIDsCount = user_getTempIDRecordsCount();

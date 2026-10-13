@@ -44,7 +44,7 @@ bool expiry_runtime_begin(void)
 {
   uint32_t now,start,size,end,used;
   expiry_s *p;
-  if(!flash_exec_idle() || !flash_exec_read_allowed()) return false;
+  if(id_scan_cell || !flash_exec_idle() || !flash_exec_read_allowed()) return false;
   now=device.datetime;
   if(now<1600000000u) return false;
   if(!id_endScan && (!id_nextEnd || now<id_nextEnd)) return false;

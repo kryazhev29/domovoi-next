@@ -19,7 +19,7 @@ def run():
         a=AccessMachine();a.flash[BASE:BASE+n]=cell(1)[:n]
         a.write(a.addr('id_cells_end'),1,2);a.u.mem_write(0x21000000,cell(1)[2:12])
         assert a.checked('user_findID',0x21000000,0x21000100)==0
-        assert a.checked('user_getNumbersCount',budget=2000000)==0
+        assert a.boot_ids()==0
         assert a.read16('id_cells_end')==0
         r=fixture(SyncMachine(a.flash),0,unknown=True,total=8192);r.record_changes=True
         r.command(13,cell(1),1);r.drain();r.verify(1,8192)
@@ -52,7 +52,7 @@ def run():
         a=AccessMachine();a.flash[:]=m.flash;a.write(a.addr('id_cells_end'),1,2)
         a.u.mem_write(0x21000000,cell(1)[2:12])
         assert a.checked('user_findID',0x21000000,0x21000100)==0
-        assert a.checked('user_getNumbersCount',budget=2000000)==0
+        assert a.boot_ids()==0
     return {'body_cuts_and_retries':count,'marker_cuts':10,'programs_per_30':60,
             'incoming_FF_marker_journal_recount_cases':2,
             'NOR_program_floor_ms':60*0.7,'target_20ms_feasible_in_existing_model':False}
