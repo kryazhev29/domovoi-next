@@ -17,7 +17,8 @@ static const char *const info_cmd[] = {"AT+CSQ", "AT+CREG?", "AT+CGREG?", "AT+CE
 static struct {
   comm_info_t v;
   uint32_t next, day, antenna_until; /* day - срок суточной проверки сигнала */
-  uint8_t step, ps, daily, antenna, qeng_slot; /* qeng_slot - номер интервала 2 с; lease короче его оборота. */
+  uint8_t step, ps, daily, antenna, qeng_slot, qeng_ok; /* qeng_slot - номер интервала 2 с; lease короче его оборота;
+                                                     qeng_ok - в текущем ответе QENG была годная строка. */
 } info = {.v = {.csq = 99, .rsrp = 255, .rsrq = 255, .sinr = 255, .band = 255, .bandwidth = 255}};
 static void (*info_low)(uint8_t);
 /* Подключить запись события слабого сигнала. */
@@ -39,9 +40,14 @@ static bool info_has(const uint8_t *p, uint16_t n, const char *s)
 }
 
 /* Common V2.24 §9.25: после поля "LTE" пропустить 10 полей, включая hex/кавычки.
-   Буфер AT не копируется; публикуем только полный набор, SINR оставляем сырым. */
+   Буфер AT не копируется; публикуем только полный набор, SINR оставляем сырым.
+   Прежние значения держатся до конца нового ответа: пустой ответ, ERROR или таймаут - 255. */
 static void info_lte_line(const uint8_t *p, uint16_t n)
 {
+  if (!p) {
+    if (n || !info.qeng_ok) info.v.rsrp = info.v.rsrq = info.v.sinr = info.v.band = info.v.bandwidth = 255;
+    return;
+  }
   uint16_t pos = 0;
   uint32_t value;
   uint8_t rsrp = 255, rsrq = 255, sinr = 255, band = 255, bandwidth = 255;
@@ -79,6 +85,7 @@ static void info_lte_line(const uint8_t *p, uint16_t n)
   if (pos != n) return;
   info.v.rsrp = rsrp; info.v.rsrq = rsrq; info.v.sinr = sinr;
   info.v.band = band; info.v.bandwidth = bandwidth;
+  info.qeng_ok = 1;
 }
 
 /* Строка ответа текущего запроса; регистрация - статус 1 (дом) или 5 (роуминг). */
@@ -132,7 +139,7 @@ void comm_info_poll(uint32_t now_ms)
   if (!comm_channel_query(info_cmd[step], step == 5u ? info_lte_line : info_line)) return;
   if (step == 5u) {
     info.qeng_slot = slot;
-    info.v.rsrp = info.v.rsrq = info.v.sinr = info.v.band = info.v.bandwidth = 255;
+    info.qeng_ok = 0; /* значения не сбрасываем: запрос ждёт свободного канала, 112 видит прежние */
   }
   if (quick && (!due || info.step != 5u)) return;
   info.step = (uint8_t)((info.step + 1u) % (sizeof(info_cmd) / sizeof(info_cmd[0])));

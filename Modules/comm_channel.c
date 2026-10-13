@@ -282,7 +282,7 @@ static void channel_completed(void)
     return;
   }
   if (op == OP_QUERY) {
-    if (result != COMM_AT_OK) query.line(NULL, 0);
+    query.line(NULL, result != COMM_AT_OK); /* конец ответа: 1 - ERROR/таймаут */
     query.cmd = NULL; return;
   } /* ответ разобран; ERROR - не повод рвать TCP */
   if (op == OP_PING || op == OP_DNS) {

@@ -26,7 +26,7 @@ bool comm_channel_ready(void);
 /* Модем перестал отвечать посреди работы канала: нужен перезапуск модема. */
 bool comm_channel_fault(void);
 /* Служебная команда при свободном канале; false - занят или нет соединения.
-   line(NULL, 0) отменяет данные ответа при ERROR/таймауте. */
+   line(NULL, n) - конец ответа: n = 1 при ERROR/таймауте. */
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t));
 /* Собрать состояние канала для стендовой команды 111. */
 #if DOMOVOI_DIAG

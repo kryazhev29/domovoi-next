@@ -15,6 +15,8 @@ CHANNEL = ROOT / 'Modules/comm_channel.c'
 CASES = (
     ('antenna-never-expires', b'if (info.antenna && (int32_t)(now_ms - info.antenna_until) >= 0) info.antenna = 0;', b'/* lease never expires */', INFO),
     ('antenna-not-renewed', b'info.antenna = 1; info.antenna_until = now_ms + 60000u;', b'if (!info.antenna) { info.antenna = 1; info.antenna_until = now_ms + 60000u; }', INFO),
+    ('lte-reset-on-enqueue', 'info.qeng_ok = 0; /* значения не сбрасываем'.encode('utf-8'), b'info.qeng_ok = 0; info.v.rsrp = 255; /* x', INFO),
+    ('lte-empty-ok-kept', b'if (n || !info.qeng_ok)', b'if (n)', INFO),
     ('lte-wrong-field', b'for (uint8_t i = 0; i < 10u; ++i) {', b'for (uint8_t i = 0; i < 9u; ++i) {', INFO),
     ('server-pair-order', b'if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();',
      b'if (!ch.call.expected) ch.address = comm_modem_reserve() && (ch.flags.registered_session || !ch.address);', CHANNEL),

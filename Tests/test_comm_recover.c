@@ -97,6 +97,15 @@ static void info_tests(void)
     info_lte_line((const uint8_t *)slm_lte[i], (uint16_t)strlen(slm_lte[i]));
     CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
   }
+  /* Плата №1, 13.10: NextConfig в режиме наведения видел 255 между постановкой QENG и ответом. */
+  sim_qeng = slm_lte[1]; rc_run(40000u);
+  CHECK(comm_info()->rsrp == 100 && comm_info()->band == 7);
+  comm_info_antenna(sim_now); comm_info_poll(sim_now);
+  CHECK(comm_info()->rsrp == 100 && comm_info()->rsrq == 10 && comm_info()->band == 7);
+  info_lte_line(NULL, 0); /* OK без строки QENG */
+  CHECK(comm_info()->rsrp == 255 && comm_info()->band == 255);
+  sim_qeng = slm_lte[1]; rc_run(40000u);
+  CHECK(comm_info()->rsrp == 100);
   static const char *const invalid[] = {
     "+QENG: \"servingscell\",\"NOCONN\",\"GSM\",250,01,00AF,ABCD,17,62,0,40\r\nOK\r\n",
     "+QENG: \"servingcell\",\"SEARCH\"\r\nOK\r\n",
