@@ -160,6 +160,8 @@ static void slm_probe_fail(uint8_t code, uint8_t result)
   uint32_t ms = slm.attempt.now - slm.attempt.attempt_started;
   slm_mark(code, (uint32_t)slm.attempt.status.step << 19 | (uint32_t)result << 15 | (ms > 32767u ? 32767u : ms));
   slm_mark(5, (uint32_t)probe_last[0] | (uint32_t)probe_last[1] << 8 | (uint32_t)probe_last[2] << 16);
+  /* 7: бит 0 - TX дошёл до TC, бит 1 - CTS (PB13) высокий = модем не готов принять, бит 2 - AT занят. */
+  slm_mark(7, (uint32_t)comm_uart_tx_done() | ((GPIOB->IDR >> 13) & 1u) << 1 | (uint32_t)comm_at_busy() << 2);
 }
 static void slm_probe_reg(const uint8_t *p, uint16_t n)
 {
