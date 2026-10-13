@@ -24,6 +24,8 @@ static char sim_pending[400], sim_sent[128];
 static int sim_silence_step, sim_error_step;
 static unsigned sim_no_sim, sim_pin, sim_open_delay, sim_open_error, sim_rat_change;
 static unsigned sim_port_change, sim_network_wait, sim_early_open, sim_trickle;
+static const char *sim_qeng, *sim_nwinfo;
+static unsigned sim_qeng_queries;
 static unsigned sim_empty_urc, sim_pause, sim_send_sim2, sim_nwinfo_error, sim_csq, sim_lose_clip;
 static const char *sim_imsi;
 static const char *sim_apn_response;
@@ -116,6 +118,9 @@ static void sim_reset(void)
   sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = sim_lose_clip = 0;
   sim_send_sim2 = 1; sim_nwinfo_error = 0; sim_csq = 22; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
   sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
+  sim_qeng = "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",\"250\",\"01\",\"ABC123\",17,1300,3,5,5,00AF,-105,-10,-73,175,25\r\nOK\r\n";
+  sim_nwinfo = "+QNWINFO: \"FDD LTE\",\"25001\",\"LTE BAND 3\",1300\r\nOK\r\n";
+  sim_qeng_queries = 0;
   sim_apn_response = "OK\r\n";
   sim_apn_queries = sim_imsi_queries = sim_activations = sim_pdp_failures = sim_pdp_timeouts = sim_apn_count = 0;
 }
@@ -149,7 +154,8 @@ static void sim_tx(void)
   if (!strcmp(sim_sent, "AT")) sim_reply("OK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+QISDE=0")) { sim_data_echo = 0; sim_reply("OK\r\n", 30); }
   else if (!strcmp(sim_sent, "AT+CSQ")) { char r[32]; snprintf(r, sizeof(r), "+CSQ: %u,99\r\nOK\r\n", sim_csq); sim_reply(r, 30); }
-  else if (!strcmp(sim_sent, "AT+QNWINFO")) sim_reply(sim_nwinfo_error ? "ERROR\r\n" : "+QNWINFO: \"FDD LTE\",\"25001\",\"LTE BAND 3\",1300\r\nOK\r\n", 30);
+  else if (!strcmp(sim_sent, "AT+QENG=\"servingcell\"")) { ++sim_qeng_queries; sim_reply(sim_qeng, 30); }
+  else if (!strcmp(sim_sent, "AT+QNWINFO")) sim_reply(sim_nwinfo_error ? "ERROR\r\n" : sim_nwinfo, 30);
   else if (!strcmp(sim_sent, "AT+GSN")) sim_reply("864180068438709\r\nOK\r\n", 30);
   else if (!strcmp(sim_sent, "AT+GMM")) { sim_gmm++; sim_reply("SLM336E\r\nOK\r\n", 30); }
   else if (!strcmp(sim_sent, "AT+CPIN?")) {

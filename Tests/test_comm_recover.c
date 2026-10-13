@@ -76,9 +76,43 @@ static void info_tests(void)
 {
   rc_online(); rc_run(40000u);
   CHECK(comm_info()->csq == 22 && comm_info()->creg == 1 && comm_info()->cgreg == 1 && comm_info()->net == 4);
+  CHECK(comm_info()->rsrp == 105 && comm_info()->rsrq == 10 && comm_info()->sinr == 175);
+  CHECK(sim_qeng_queries >= 1 && sim_qeng_queries <= 2);
+  const char *lte = sim_qeng, *nw_lte = sim_nwinfo;
+  static const char *const invalid[] = {
+    "+QENG: \"servingscell\",\"NOCONN\",\"GSM\",250,01,00AF,ABCD,17,62,0,40\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"SEARCH\"\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"LIMSRV\"\r\nOK\r\n",
+    "ERROR\r\n", "OK\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,175\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,251,25\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,-5,25\r\nOK\r\n",
+    "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-105,-10,-73,175,25\r\nERROR\r\n"
+  };
+  for (unsigned i = 0; i < sizeof(invalid)/sizeof(invalid[0]); ++i) {
+    sim_nwinfo = i == 0 ? "+QNWINFO: \"GSM\",\"25001\",\"GSM 900\",62\r\nOK\r\n" : nw_lte;
+    sim_qeng = invalid[i]; rc_run(40000u);
+    CHECK(comm_info()->rsrp == 255 && comm_info()->rsrq == 255 && comm_info()->sinr == 255);
+    CHECK(comm_info()->csq == 22 && comm_info()->creg && comm_info()->cgreg && comm_info()->net == (i == 0 ? 1 : 4));
+    CHECK(comm_server_online());
+    sim_nwinfo = nw_lte; sim_qeng = lte; rc_run(40000u);
+    CHECK(comm_info()->rsrp == 105 && comm_info()->rsrq == 10 && comm_info()->sinr == 175);
+  }
+  /* Границы сырого SINR и обрыв в любой позиции полного ответа. */
+  const char *edge = "+QENG: \"servingcell\",\"CONNECT\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-89,-7,-60,0,-3";
+  info_lte_line((const uint8_t *)edge, (uint16_t)strlen(edge));
+  CHECK(info.v.rsrp == 89 && info.v.rsrq == 7 && info.v.sinr == 0);
+  edge = "+QENG: \"servingcell\",\"CONNECT\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-89,-7,-60,250,0";
+  info_lte_line((const uint8_t *)edge, (uint16_t)strlen(edge));
+  CHECK(info.v.sinr == 250);
+  for (uint16_t n = 0; n < strlen(edge); ++n) {
+    info_lte_line((const uint8_t *)edge, n);
+    CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
+  }
   { unsigned before = opens; sim_nwinfo_error = 1; rc_run(70000u); CHECK(opens == before && comm_server_online()); }
   CHECK(comm_info()->csq == 22);
   comm_modem_off(); rc_run(100); CHECK(comm_info()->csq == 99 && !comm_info()->creg && !comm_info()->net);
+  CHECK(comm_info()->rsrp == 255 && comm_info()->rsrq == 255 && comm_info()->sinr == 255);
   /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
   /* Время модели после rc_online идёт с начала, срок опроса - из прошлого сценария: 2 мин на свежий цикл. */
   rc_online(); sim_csq = 12; rc_run(120000u); comm_info_low_signal(low_model); rc_run(40000u);

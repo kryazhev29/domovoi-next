@@ -40,8 +40,8 @@ def run():
     packets = []
     for authorized in (0, 1):
         answers, wires = command(m, 112, 0, authorized)
-        payload = bytes((3, 0, 0, 99)) + bytes(78)
-        expected = struct.pack('<HBBB', 85, 0, 37, 112) + payload
+        payload = bytes((4, 0, 0, 99)) + bytes(78) + bytes((255, 255, 255))
+        expected = struct.pack('<HBBB', 88, 0, 37, 112) + payload
         expected = b'SLDN' + expected + struct.pack('<H', crc16(expected))
         assert not answers and wires == [expected], [p.hex() for p in wires]
         _, wires = command(m, 112, 1, authorized)

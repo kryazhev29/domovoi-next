@@ -13,6 +13,7 @@ INFO = ROOT / 'Modules/comm_info.c'
 SERVER = ROOT / 'Modules/comm_server.c'
 CHANNEL = ROOT / 'Modules/comm_channel.c'
 CASES = (
+    ('lte-wrong-field', b'for (uint8_t i = 0; i < 10u; ++i) {', b'for (uint8_t i = 0; i < 9u; ++i) {', INFO),
     ('server-pair-order', b'if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();',
      b'if (!ch.call.expected) ch.address = comm_modem_reserve() && (ch.flags.registered_session || !ch.address);', CHANNEL),
     ('server-ping-between-addresses', b'sv.state != SV_ONLINE && !sv.address && comm_modem_reserve()', b'false', SERVER),
@@ -40,7 +41,7 @@ CASES = (
     ('night-twice', b'&& day != rc.night_day', b''),
     ('no-ladder-reset', b'rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;', b'rc.soft_fails = 0;'),
     ('deact-error-fails', b'action == MODEM_ANY || action == MODEM_APN_QUERY', b'action == MODEM_APN_QUERY', MODEM),
-    ('query-error-reopens', b'  if (op == OP_QUERY) { query.cmd = NULL; return; }', b'  if (op == OP_QUERY) query.cmd = NULL;', CHANNEL),
+    ('query-error-reopens', b'    query.cmd = NULL; return;', b'    query.cmd = NULL;', CHANNEL),
     ('csq-not-parsed', b'info.v.csq = v[0] <= 99u ? (uint8_t)v[0] : 99u;', b'(void)v;', INFO),
     ('stale-info-offline', b'    info.v.csq = 99; info.v.creg', b'    info.v.csq = info.v.csq; info.v.creg', INFO),
     ('no-session-reset', b'rc.hooks->reset_session();', b''),

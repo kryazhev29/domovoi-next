@@ -281,7 +281,10 @@ static void channel_completed(void)
     if (reason) comm_channel_reopen(0);
     return;
   }
-  if (op == OP_QUERY) { query.cmd = NULL; return; } /* ответ разобран; ERROR - не повод рвать TCP */
+  if (op == OP_QUERY) {
+    if (result != COMM_AT_OK) query.line(NULL, 0);
+    query.cmd = NULL; return;
+  } /* ответ разобран; ERROR - не повод рвать TCP */
   if (op == OP_PING || op == OP_DNS) {
     if (result != COMM_AT_OK && ch.probe_active == (op == OP_PING ? COMM_CH_PING : COMM_CH_DNS)) {
       probe_result = 3;

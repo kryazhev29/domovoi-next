@@ -104,7 +104,7 @@ typedef unsigned dataChanel_e;
 #define _2B(x) ((uint8_t)((x)>>8))
 static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
-static uint8_t link_wire[93];
+static uint8_t link_wire[96];
 static uint16_t link_wire_size;
 // Перехватить настоящий кадр 112 на границе USB.
 static bool usb_send(uint8_t *p, uint16_t n)
