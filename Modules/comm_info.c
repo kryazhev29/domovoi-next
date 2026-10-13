@@ -34,8 +34,13 @@ static bool info_has(const uint8_t *p, uint16_t n, const char *s)
 
 /* Common V2.24 §9.25: после поля "LTE" пропустить 10 полей, включая hex/кавычки.
    Буфер AT не копируется; публикуем только полный набор, SINR оставляем сырым. */
+/* ПРОБА qeng-raw: [0] итог (0xEE ждём, 0 строка пришла, иначе код comm_at), [1] длина, дальше сырая строка. */
+extern uint8_t probe_qres;
+uint8_t probe_qeng[2 + 100] = {0xEE};
 static void info_lte_line(const uint8_t *p, uint16_t n)
 {
+  if (!p) probe_qeng[0] = probe_qres;
+  else { probe_qeng[0] = 0; probe_qeng[1] = (uint8_t)(n < 100u ? n : 100u); memcpy(probe_qeng + 2, p, probe_qeng[1]); }
   uint16_t pos = 0;
   uint32_t value;
   uint8_t rsrp = 255, rsrq = 255, sinr = 255;

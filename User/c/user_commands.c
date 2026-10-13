@@ -510,7 +510,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     }
 
     case 108: // включить лог
-      user_send_anyData(108, NULL, 0, cch, uniqId);
+      { extern uint8_t probe_qeng[]; user_send_anyData(108, probe_qeng, (uint16_t)(2u + probe_qeng[1]), cch, uniqId); } /* ПРОБА qeng-raw */
       if (cch == CH_USB)
         device.logBits = ptr[5];
       break;

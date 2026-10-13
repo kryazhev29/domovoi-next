@@ -29,6 +29,7 @@ enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PIN
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
 /* Последний законченный тест переживает переподключение канала. */
 static uint8_t probe_result;
+uint8_t probe_qres; /* ПРОБА qeng-raw: итог последнего фонового запроса */
 uint8_t comm_channel_probe_result(void) { return probe_result; }
 /* Передать изменение канала владельцу сервера. */
 static void channel_emit(uint8_t kind, uint8_t value)
@@ -282,6 +283,7 @@ static void channel_completed(void)
     return;
   }
   if (op == OP_QUERY) {
+    probe_qres = result; /* ПРОБА qeng-raw */
     if (result != COMM_AT_OK) query.line(NULL, 0);
     query.cmd = NULL; return;
   } /* ответ разобран; ERROR - не повод рвать TCP */
