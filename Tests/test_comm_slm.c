@@ -326,6 +326,14 @@ static void edge_tests(void)
   comm_modem_off();
   sim_reset(); sim_start(); sim_until(15000);
   sim_feed("+QIURC: \"pdpdeact\",1\r\n"); sim_tick(); CHECK(comm_modem_ready());
+
+  /* Плановое выключение: QPOWD только модему, отвечавшему на AT; ждём POWERED DOWN. */
+  sim_reset(); CHECK(comm_modem_powered_down() && !slm.down);
+  sim_start(); sim_until(15000);
+  CHECK(!comm_modem_powered_down() && tx_count == 9u && !memcmp(tx_data, "AT+QPOWD\r", 9));
+  sim_feed("\r\nOK\r\n\r\nPOWERE"); CHECK(!comm_modem_powered_down());
+  sim_feed("D DOWN\r\n"); CHECK(comm_modem_powered_down());
+  comm_modem_off(); CHECK(!slm.down);
 }
 // Проверить сроки фаз и кольцо сбоев диагностики.
 static void diagnostic_tests(void)

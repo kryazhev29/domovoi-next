@@ -517,7 +517,7 @@ static void store_poll(uint32_t now, uint8_t result)
       store_reset_requested = 0;
       store_phase_set(0);
       USB_PULLUP_OFF;
-      comm_modem_off();
+      user_comm_off();
       NVIC_SystemReset();
     } else store_phase_set(0);
     return;

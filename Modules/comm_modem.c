@@ -29,6 +29,7 @@ static struct {
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
   void (*urc[COMM_URC_COUNT])(const uint8_t *, uint16_t);
   uint8_t call_active;
+  uint8_t down; /* 0 - QPOWD не отправлен, иначе 1 + найдено букв "POWERED DOWN" */
   uint8_t session; /* растёт с каждой попыткой запуска */
   /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
      данные уходят в том же poll; результат забирает только владелец req. */
@@ -335,7 +336,7 @@ bool comm_modem_restart(bool power, uint32_t now_ms)
 /* Снять питание и отменить прежний сеанс UART. */
 void comm_modem_off(void)
 {
-  comm_uart_abort(); comm_power_v5_off(); slm.attempt.status.state = SLM_IDLE;
+  comm_uart_abort(); comm_power_v5_off(); slm.attempt.status.state = SLM_IDLE; slm.down = 0;
   slm_side_cancel();
 }
 /* Подключить обязательный обработчик канала. */
@@ -350,6 +351,27 @@ static bool slm_side_allowed(void)
 {
   return slm.attempt.status.state == SLM_READY
     || (slm.attempt.status.state >= SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
+}
+/* Плановое выключение: модем, уже отвечавший на AT, выходит из сети (AT+QPOWD),
+   иначе следующая регистрация бывает на 12 с дольше (плата №1, 13.10.2026).
+   Первый вызов отправляет команду, следующие ищут "POWERED DOWN";
+   true - питание можно снимать (модем вышел из сети или AT нет). */
+bool comm_modem_powered_down(void)
+{
+  static const uint8_t cmd[] = "AT+QPOWD\r";
+  static const char done[] = "POWERED DOWN";
+  const uint8_t *p;
+  if (!slm.down) {
+    if (comm_power_v5_state() != COMM_PWR_READY || !slm_side_allowed()) return true;
+    comm_uart_abort();
+    if (!comm_uart_tx(cmd, sizeof(cmd) - 1u)) return true;
+    slm.down = 1;
+  }
+  uint16_t n = comm_uart_peek(&p);
+  for (uint16_t i = 0; i < n && slm.down < sizeof(done); ++i)
+    slm.down = p[i] == (uint8_t)done[slm.down - 1u] ? (uint8_t)(slm.down + 1u) : (uint8_t)(1u + (p[i] == 'P'));
+  if (n) comm_uart_consume(n);
+  return slm.down == sizeof(done);
 }
 /* Занять служебный слот для его владельца. */
 static bool slm_side_queue(const comm_side_t *req)

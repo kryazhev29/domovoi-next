@@ -67,4 +67,5 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   30000, /* Ответ на USSD */
   1800000, /* Повтор запроса баланса */
   5000, /* COMM_T_VOLTE: AT+SETVOLTE пишет настройку модема */
+  2000, /* COMM_T_POWER_DOWN: AT+QPOWD до "POWERED DOWN" (на плате 0,2-0,3 с) */
 };

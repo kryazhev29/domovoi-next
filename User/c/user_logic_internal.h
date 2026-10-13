@@ -167,6 +167,8 @@ uint8_t user_comm_server(uint8_t address);
 void comm_endpoints(void);
 // Подготовить адреса и запустить модем с обработчиками приложения.
 void user_comm_boot(void);
+// Перед перезагрузкой: модем выходит из сети, затем снимается питание.
+void user_comm_off(void);
 // Передать снимок config/device атомарному сохранению.
 bool store_snapshot(void);
 // Восстановить незавершённую долговечную очистку после старта.

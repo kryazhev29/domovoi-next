@@ -244,7 +244,7 @@ void user_savereset (void)
   USB_PULLUP_OFF; // выключаем подтягивающий резистор
 
   // выключаем gsm
-  comm_modem_off();
+  user_comm_off();
 
   // перезагружаем
   NVIC_SystemReset();

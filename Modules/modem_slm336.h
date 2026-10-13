@@ -87,6 +87,8 @@ const slm_diag_t *comm_modem_diag(void);
 const slm_status_t *comm_modem_status(void);
 /* Снять питание и отменить прежний сеанс UART. */
 void comm_modem_off(void);
+/* Плановое выключение: AT+QPOWD; true - модем вышел из сети или AT нет. */
+bool comm_modem_powered_down(void);
 /* URC (RING, +CLIP, +CMTI) - слушателям при любом состоянии AT; AT из них нельзя. */
 enum { COMM_URC_CALL, COMM_URC_SMS, COMM_URC_BALANCE, COMM_URC_COUNT };
 /* Подключить постоянного потребителя уведомлений. */

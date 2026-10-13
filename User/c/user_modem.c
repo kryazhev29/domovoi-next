@@ -8,6 +8,7 @@
 #include "../../Modules/comm_modem.h"
 #include "user_comm.h"
 #include "../../Modules/comm_at.h"
+#include "../comm_timeouts.h"
 static char comm_host[2][32];
 static uint16_t comm_port[2];
 static char comm_credential[sizeof(config.netOperator)];
@@ -138,4 +139,13 @@ void user_comm_boot(void)
   /* Неверные настройки не запускают модем: перезапуск с ними бессмыслен. */
   if (comm_modem_state() != SLM_IDLE) comm_modem_off();
   (void)user_comm_start(&comm_settings, &handlers, timers_getMillis());
+}
+
+// Перед перезагрузкой: модем выходит из сети, затем снимается питание.
+void user_comm_off(void)
+{
+  uint32_t start = timers_getMillis();
+  while (!comm_modem_powered_down() && timers_getMillis() - start < comm_timeouts[COMM_T_POWER_DOWN])
+    wdt_reload();
+  comm_modem_off();
 }
