@@ -1,17 +1,17 @@
 // Доработка: Кряжев А., 2026
-// Общая рабочая память 2224 Б и совместимость её владельцев.
+// Общая рабочая память и совместимость её владельцев.
 // Автоматы получают фиксированные участки без кучи и сохраняют их до завершения.
 // USB берёт буфер взаймы; память освобождается после окончания передачи.
 #include "work_memory.h"
 #include "includes.h"
+#include "photo_context.h"
 #include <string.h>
 typedef struct {
-  uint8_t photo[184];
+  uint8_t photo[(sizeof(photo_s) + 7u) & ~7u];
   uint8_t shared[2032];
   uint16_t owned;
   uint16_t usb_slot, usb_released;
 } work_memory_s;
-typedef char work_memory_size[(sizeof(work_memory_s)==2222)?1:-1];
 #pragma data_alignment=8
 static work_memory_s work_memory;
 static uint8_t usb_reply[523];
@@ -21,7 +21,7 @@ static uint8_t usb_reply[523];
 #define PACKET BIT(WORK_PHOTO_PACKET)
 #define FW (BIT(WORK_FW_CONTEXT)|BIT(WORK_FW_DATA)|BIT(WORK_CONFIG))
 #define UPLOAD (BIT(WORK_UPLOAD_CONTEXT)|BIT(WORK_UPLOAD_PACKET))
-static const uint16_t capacities[] = {0,180,534,132,128,1024,1024,40,248,32,1040,2032,2028,1024,2032};
+static const uint16_t capacities[] = {0,sizeof(photo_s),534,132,128,1024,1024,40,248,32,1040,2032,2028,1024,2032};
 // Выбирает фиксированный участок рабочей памяти по владельцу.
 static void *address(uint32_t slot)
 {

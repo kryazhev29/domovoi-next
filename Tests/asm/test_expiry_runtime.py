@@ -155,7 +155,7 @@ def full_scan_and_heap():
     live=[(slot,take(m,slot)) for slot in (PHOTO,PHOTO_PACKET)]
     assert all(live) and m.start_expiry()
     ctx=context(m)
-    assert ctx==m.addr('work_memory')+184
+    assert ctx==m.addr('work_memory')+fields('work_memory_s')['shared']
     peak=heap_stats(m);assert owned(m)==7
     m.expiry_drain(80000)
     assert not m.expiry_events and m.io is None
@@ -165,8 +165,8 @@ def full_scan_and_heap():
     assert owned(m)==0
     return {'id_bytes':1601536,'passes':len(m.runtime_costs),'max_instructions':max(m.runtime_costs),
             'total_instructions':sum(m.runtime_costs),'max_read_bytes':max(m.runtime_reads),
-            'stack':m.stack_peak,'context_request':132,'workspace_bytes':2224,
-            'live_workspace_payload':180+534+132,'free_at_overlap':peak}
+            'stack':m.stack_peak,'context_request':132,'workspace_bytes':fields('work_memory_s')['owned']+8,
+            'live_workspace_payload':SIZES[PHOTO]+534+132,'free_at_overlap':peak}
 
 if __name__=='__main__':
     import argparse

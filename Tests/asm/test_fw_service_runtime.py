@@ -109,7 +109,7 @@ def heap_reservation():
         before=bytes(m.flash);m.begin(2)
         assert not m.ptr() and bytes(m.flash)==before and not m.counts['start'] and not m.sent
         drop(m,slot,held);assert owned(m)==0
-    return {'context_config_handoff':True,'same_buffer':True,'conflict_cases':2,'storage_bytes':2224}
+    return {'context_config_handoff':True,'same_buffer':True,'conflict_cases':2,'storage_bytes':fields('work_memory_s')['owned']+8}
 
 # Проверяет границы заголовка прошивки и коды отказа.
 def boundaries_errors():

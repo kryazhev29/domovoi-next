@@ -6,7 +6,7 @@ from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE
 from unicorn.arm_const import *
 R=Path(__file__).resolve().parents[1]
 from iar_image import image_paths
-text=image_paths()[2].read_text()
+text=image_paths()[2].read_text(encoding='cp1251')
 @lru_cache(None)
 def sym(name):
     m=re.search(r'^'+re.escape(name)+r'\s+(0x[0-9a-f\x27]+)',text,re.M)

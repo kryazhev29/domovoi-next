@@ -288,7 +288,7 @@ def test_heap_ack():
     assert m.sent and m.cursor()==1
     assert m.pending_cursor()==2 and m.sent[-1]==wire(10,7,1,[log(2)],2)
     drop(m,PHOTO,photo);assert owned(m)==0
-    results.update(conflicts=3,preflight_slots=snapshots[0],storage_bytes=2224,
+    results.update(conflicts=3,preflight_slots=snapshots[0],storage_bytes=fields('work_memory_s')['owned']+8,
                    config_after_release=True,wire_and_cursor_verified=True)
     return results
 

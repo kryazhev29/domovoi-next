@@ -39,7 +39,7 @@ def run():
     drop(m,UP_PACKET,reserve)
     from iar_image import image_paths
     return {'elf_sha256':hashlib.sha256(image_paths()[0].read_bytes()).hexdigest(),
-            'phases':tested,'phase_zero_photo_tx':0,'workspace_bytes':2224,
+            'phases':tested,'phase_zero_photo_tx':0,'workspace_bytes':fields('work_memory_s')['owned']+8,
             'conclusion':'Photo TX is guarded from accepted command9/10/13 and config snapshots; idle photo context can coexist.'}
 
 if __name__ == '__main__':

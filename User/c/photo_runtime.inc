@@ -88,11 +88,11 @@ static bool pr_begin(uint8_t step)
   return flash_exec_begin(FX_PHOTO, &args);
 }
 
-// Копируем данные в буфер владельца и запускаем запись по страницам.
+// Заголовок копируем в sjr; кадр камеры удерживаем до verify последней порции.
 static void pr_write(uint32_t address, const uint8_t *p, uint16_t n, uint8_t after)
 {
   if (flash_job.kind != FX_PHOTO && !pr_begin(PR_IO)) return;
-  if (p != sjr.data) memcpy(sjr.data, p, n);
+  if (after != PR_DATA_DONE && p != sjr.data) memcpy(sjr.data, p, n);
   pj.io_address = address;
   pj.io_len = n;
   // Нулевая длина означает стирание сектора.
@@ -309,8 +309,11 @@ void photo_storage_poll(uint32_t now)
       uint16_t page_left = (uint16_t)(256u - ((pj.io_address + pj.io_done) & 255u));
       n = pj.io_len - pj.io_done;
       if (n > page_left) n = page_left;
+      if (n > sizeof(sjr.data)) n = sizeof(sjr.data);
       pj.io_step = n;
-      if (!w25_async_start(pj.io_address + pj.io_done, !pj.io_len ? 0 : sjr.data + pj.io_done, n, now)) {
+      // FX_PHOTO не допускает разбора следующего кадра до завершения записи.
+      const uint8_t *source = pj.after == PR_DATA_DONE ? photo->frame + 4 : sjr.data;
+      if (!w25_async_start(pj.io_address + pj.io_done, !pj.io_len ? 0 : source + pj.io_done, n, now)) {
         pr_fail();
         break;
       }
@@ -598,7 +601,7 @@ void photo_poll(void)
     else {
       if (photo->stage && uart_getstate() && !uart_isReceiving()) {
         uint16_t n = uart_received();
-        if (n > 64) {
+        if (n > sizeof(photo->rx)) {
           photo_stop();
           n = 0;
         }
@@ -607,11 +610,12 @@ void photo_poll(void)
           photo->frame[photo->used++] = photo->rx[i];
           if (photo->stage == P_DATA && photo->used == 4) {
             /* Размер внешнего кадра проверяем до заполнения буфера и сложения длины. */
-            if (photo->frame[3] || photo->frame[2] > PHOTO_DATA) {
+            uint16_t length = rt_get16(photo->frame + 2);
+            if (length > PHOTO_DATA) {
               photo_stop();
               break;
             }
-            photo->frame_size = (uint8_t)(6u + photo->frame[2]);
+            photo->frame_size = 6u + length;
           }
           if (photo->used == photo->frame_size) {
             photo_frame(photo->frame, photo->frame_size);

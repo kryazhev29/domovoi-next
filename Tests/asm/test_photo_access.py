@@ -59,8 +59,8 @@ def finish(m, data):
     for ack in (1, 6, 5):
         m.now += 50; m.port(); m.feed(bytes([0xaa, 0x0e, ack, 0, 0, 0]))
     m.now += 50; m.port(); m.feed(bytes([0xaa, 0x0a, 1, len(data), 0, 0])); m.drain()
-    for off in range(0, len(data), 58):
-        m.data(data[off:off + 58])
+    for off in range(0, len(data), m.packet_size-6):
+        m.data(data[off:off + m.packet_size-6])
     assert m.pget('stage') == 0
     assert m.flash[0x200000:0x200008] == struct.pack('<II', TODAY, len(data))
     assert m.flash[0x20000d:0x20000d + len(data)] == data

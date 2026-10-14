@@ -47,8 +47,8 @@ def capture(data, baud, turnaround):
     m = TimedCamera(baud, turnaround); m.boot_media()
     start = m.now; m.begin_camera(len(data)); startup = m.now-start
     wire = quiet = camera = 0
-    for off in range(0, len(data), 58):
-        payload = data[off:off+58]
+    for off in range(0, len(data), m.packet_size-6):
+        payload = data[off:off+m.packet_size-6]
         m.next_request()
         dt = math.ceil((len(payload)+6)*10000/baud)
         wire += dt; quiet += 2; camera += turnaround
@@ -57,7 +57,7 @@ def capture(data, baud, turnaround):
         m.data(payload)
     assert m.flash[0x200000+HEAD:0x200000+HEAD+len(data)] == data
     total = m.now-start
-    return dict(bytes=len(data), packets=math.ceil(len(data)/58), baud=baud,
+    return dict(bytes=len(data), packet_size=m.packet_size, packets=math.ceil(len(data)/(m.packet_size-6)), baud=baud,
                 assumptions=dict(camera_turnaround_ms=turnaround, erase_busy_ms=40,
                                  program_busy_ms=1, poll_ms=1, uart_quiet_ms=2),
                 total_ms=total, startup_including_first_erase_ms=startup,

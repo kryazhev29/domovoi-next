@@ -44,8 +44,9 @@ typedef struct {
 } log_job_s;
 typedef struct {
   uint8_t after, task, quiet, cancelled, committed, address, reply_wait;
-  // Источник камеры не больше 58 Б, заголовок/ACK ещё меньше.
-  uint8_t io_len, io_done, io_step;
+  // Кадр камеры до 506 Б; один шаг записи не больше 64 Б.
+  uint16_t io_len, io_done;
+  uint8_t io_step;
   uint16_t offset, count, requested_offset, first_offset, target_done;
   uint16_t send_size, send_offset, send_crc;
   uint32_t io_address, scan, h[4], target, first, max_number, requested_number, reply_until;

@@ -12,7 +12,7 @@ def free_blocks(m):
 
 # Читает состояние модельной кучи для контроля утечек.
 def heap_stats(m):
-    return {'storage_bytes':2224, 'owned_slots':owned(m)}
+    return {'storage_bytes':fields('work_memory_s')['owned']+8, 'owned_slots':owned(m)}
 
 # Проверяет выдачу участков и сохранность соседних владельцев.
 def allocator():

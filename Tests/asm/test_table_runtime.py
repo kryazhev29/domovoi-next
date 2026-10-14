@@ -120,7 +120,7 @@ def test_interaction_and_heap():
     assert m.timestamps[0][2]==crc16(m.flash[0x41000:0x1c8000])
     return {'full_id_passes':len(m.costs),'full_id_max_poll':max(m.costs[1:]),
             'full_id_total_instructions':sum(m.costs),'full_id_stack':m.stack_peak,
-            'simultaneous_workspace_payload':180+2016}
+            'simultaneous_workspace_payload':SIZES[PHOTO]+2016}
 
 # Проверяет устойчивые состояния каждого обрыва операции.
 def test_power():

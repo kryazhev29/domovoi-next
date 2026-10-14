@@ -156,7 +156,12 @@ def text_commands():
         def send():
             text, number, *_ = m.args()
             def string(address):
-                data = bytes(m.u.mem_read(address, 2048)); return data.split(b'\0', 1)[0]
+                data = bytearray()
+                for offset in range(2048):
+                    byte = m.u.mem_read(address + offset, 1)[0]
+                    if not byte:return bytes(data)
+                    data.append(byte)
+                raise AssertionError('unterminated SMS string')
             calls.append((string(text), string(number))); m.ret()
         m.stubs[m.addr('user_sendsms')] = send
         return m

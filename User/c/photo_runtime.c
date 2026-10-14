@@ -4,21 +4,9 @@
 // Заголовок публикуется после данных, частичная докачка живёт только в RAM.
 #include "photo.h"
 extern uint8_t port_buffer[PORTBUFSIZE];
-#define PHOTO_PACKET 64u
-#define PHOTO_DATA (PHOTO_PACKET - 6u)
+#include "photo_context.h"
 #define PHOTO_BLOCK 512u
 #define PHOTO_RESOLUTION 7u // Разрешение C328: 640 на 480 точек.
-// Контекст и буферы камеры занимают общий рабочий буфер только во время работы.
-typedef struct {
-  // Номер и адрес снимка; сроки общей съёмки, команды и паузы RS485.
-  uint32_t stamp, address, deadline, started, last;
-  // Курсор пакета 14 не подтверждает доставку: её фиксирует только команда 21.
-  uint32_t readAddress;
-  uint16_t size, written, offset, packet;
-  uint8_t stage, retry, syncAck, syncSeen, pending, requestId, used, frame_size;
-  dataChanel_e channel;
-  uint8_t rx[PHOTO_PACKET], frame[PHOTO_PACKET];
-} photo_s;
 photo_s *photo;
 // Граница уже стёртых секторов и срок ожидания следующей отправки.
 uint32_t photo_erased_to, photo_pending_since;
@@ -89,7 +77,7 @@ static void photo_issue(void)
 {
   static const uint8_t commands[5][5] = {
     {0x0D, 0, 0, 0, 0}, {1, 0, 7, 0, PHOTO_RESOLUTION},
-    {6, 8, PHOTO_PACKET, 0, 0}, {5, 0, 0, 0, 0}, {4, 1, 0, 0, 0}
+    {6, 8, (uint8_t)PHOTO_PACKET, (uint8_t)(PHOTO_PACKET >> 8), 0}, {5, 0, 0, 0, 0}, {4, 1, 0, 0, 0}
   };
   if (photo->stage == P_DATA)
     photo_command(0x0E, 0, 0, (uint8_t)photo->packet, (uint8_t)(photo->packet >> 8));

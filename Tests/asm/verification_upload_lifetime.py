@@ -98,7 +98,7 @@ def reachable_ack():
     assert m.sent==[wire(10,7,1,[log(2)],2)]
     assert m.cursor()==1 and m.pending_cursor()==2
     assert owned(m)==1<<(PHOTO-1) and largest_free(m)==2032
-    return dict(workspace_bytes=2224,retained_photo_bytes=180,ack_handoff='upload reservation released before config snapshot',wire_retry='exact pending log reply')
+    return dict(workspace_bytes=fields('work_memory_s')['owned']+8,retained_photo_bytes=m.checked('work_capacity',PHOTO),ack_handoff='upload reservation released before config snapshot',wire_retry='exact pending log reply')
 
 
 if __name__=='__main__':

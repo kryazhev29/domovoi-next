@@ -68,7 +68,7 @@ def stream():
     assert m.active();m.drain();assert m.pget('written',2)==58
     m.now+=60001;m.port();assert not m.events and not m.photo_ptr()
     assert m.flash[0x200000:0x200008]==b'\xff'*8
-    for length in (59,255,256,65529,65530,65531,65532,65533,65534,65535):
+    for length in (m.packet_size-5,65529,65530,65531,65532,65533,65534,65535):
         m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request()
         m.feed(struct.pack('<HH',0,length))
         assert not m.photo_ptr() and not m.events

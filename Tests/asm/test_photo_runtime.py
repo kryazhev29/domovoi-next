@@ -39,7 +39,7 @@ class PhotoMachine(StorageMachine):
     # Подготовить модель и перехватить аппаратные границы машинного кода.
     def __init__(self,flash=None):
         super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.job_fields=fields('photo_job_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
-        self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
+        self.expected_packet=0;self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
         config=fields('config_s');self.write(self.addr('config')+config['rs485Mode'],1,1)
         self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,3]))
         for name,fn in [('uart_init',self.ret),('uart_setRecTimeout',self.ret),
@@ -99,8 +99,10 @@ class PhotoMachine(StorageMachine):
         self.now+=1;self.checked('port_check_data');assert self.read_budget<=64
         self.port_costs.append(self.steps)
     # Передать порцию UART в реальный обработчик камеры.
+    @property
+    def packet_size(self):return pf()["frame"]-pf()["rx"]
     def feed(self,data):
-        assert len(data)<=64 and self.photo_ptr()
+        assert len(data)<=self.packet_size and self.photo_ptr()
         self.u.mem_write(self.photo_ptr()+pf()['rx'],bytes(data));self.rx_count=len(data);self.port()
     # Передать команду с CRC и затереть исходный буфер после разбора.
     def packet(self,cmd,body=b'',channel=0,uniq=9):
@@ -120,6 +122,9 @@ class PhotoMachine(StorageMachine):
         for ack in (1,6,5):
             self.now+=50;self.port();self.feed(bytes([0xaa,0x0e,ack,0,0,0]))
         self.now+=50;self.port();self.feed(bytes([0xaa,0x0a,1,size&255,(size>>8)&255,(size>>16)&255]))
+        self.expected_packet = 0
+        size_command = [c for c in self.commands if c[1] == 6][-1]
+        assert size_command == bytes([0xaa,6,8,self.packet_size & 255,self.packet_size >> 8,0])
         if drain:self.drain();assert self.pget('stage')==6
     # Дождаться запроса следующего пакета без пропуска номера.
     def next_request(self):
@@ -134,20 +139,21 @@ class PhotoMachine(StorageMachine):
     # Записать пакет камеры, проверить срок жизни буфера и обработку дубля.
     def data(self,payload,duplicate=False):
         self.next_request();packet=self.pget('packet',2);written=self.pget('written',2)
-        assert packet==written//58,'camera packet skipped or repeated'
+        assert packet == self.expected_packet, 'camera packet skipped or repeated'
         frame=struct.pack('<HH',packet,len(payload))+payload
         frame+=bytes([sum(frame)&255,0]);self.feed(frame)
         assert self.active() and self.pget('written',2)==written
-        self.u.mem_write(self.photo_ptr()+pf()['frame'],b'\xa6'*64)
+        self.u.mem_write(self.photo_ptr()+pf()['rx'],b'\xa6'*self.packet_size)
         before=len(self.commands);self.port();assert len(self.commands)==before
         self.drain();assert not self.rget('fault')
+        self.expected_packet += 1
         if duplicate and self.pget('stage'):
             before=self.pget('written',2);self.feed(frame)
             assert self.pget('written',2)==before and not self.active()
     # Записать весь снимок и проверить заголовок, данные и выравнивание.
     def capture(self,data):
         self.begin_camera(len(data));start=self.pget('address',4);stamp=self.pget('stamp',4)
-        for off in range(0,len(data),58):self.data(data[off:off+58])
+        for off in range(0,len(data),self.packet_size-6):self.data(data[off:off+self.packet_size-6])
         stamp=self.events[-1]
         assert self.pget('stage')==0 and stamp==self.pget('stamp',4)
         assert self.flash[start:start+8]==struct.pack('<II',stamp,len(data))

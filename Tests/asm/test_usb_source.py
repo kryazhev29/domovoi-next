@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from iar_layout import fields
 from iar_irq_support import Machine, UC_ARM_REG_PRIMASK, UC_ARM_REG_R0, UC_ARM_REG_R2, UC_HOOK_CODE
 
 
@@ -58,7 +59,7 @@ class SourceMachine(Machine):
     # Читает владение рабочим буфером после отложенного освобождения.
     def owned(self):
         self.call('work_acquire', 0, 11)  # Забрать завершённые отложенные освобождения.
-        return self.read(self.addr('work_memory') + 2216, 2)
+        return self.read(self.addr('work_memory') + fields('work_memory_s')['owned'], 2)
 
 
 # Проверяет приём, владение и завершение обычной передачи.

@@ -310,6 +310,17 @@ def main():
     config=os.environ.get('DOMOVOI_COMPARE_CONFIG','Release')
     expected=json.loads((ROOT/'Tests/fixtures'/f'protocol-{config}.json').read_text(encoding='utf-8'))
     actual={k:{field:serial(v.get(field)) for field in ('result','returned')} for k,v in raw.items()}
+    # Меняются только команды камеры; сервер, NOR, события и ответы имеют прежний эталон.
+    from test_photo_runtime import pf
+    packet_size = pf()['frame'] - pf()['rx']
+    commands = [bytes.fromhex(x) for x in (
+        'aa0d00000000','aa0e0d000000','aa0100070007')]
+    commands += [bytes([0xaa,6,8,packet_size & 255,packet_size >> 8,0]),
+                 bytes.fromhex('aa0500000000'),bytes.fromhex('aa0401000000')]
+    commands += [bytes([0xaa,14,0,0,i,0]) for i in range((129+packet_size-7)//(packet_size-6))]
+    commands.append(bytes.fromhex('aa0e0000f0f0'))
+    for name in ('photo-capture','photo-upload-ack'):
+        expected[name]['result']['commands'] = serial(commands)
     if actual != expected:
         differences = {k: {'actual': actual.get(k), 'expected': expected.get(k)}
                        for k in set(actual) | set(expected) if actual.get(k) != expected.get(k)}

@@ -1,6 +1,6 @@
 # Доработка: Кряжев А., 2026
 """Совместимость владельцев, границы участков и сохранность байтов в связанном коде."""
-from storage_machine import StorageMachine
+from storage_machine import StorageMachine, fields
 
 PHOTO, PHOTO_PACKET, EXPIRY, FW_CONTEXT, FW_DATA, CONFIG, CLEAR, SERVICE, UP_CONTEXT, UP_PACKET, REPLY, SMS, FW_BLOCK, TABLE = range(1,15)
 SIZES = {PHOTO:180, PHOTO_PACKET:534, EXPIRY:132, FW_CONTEXT:128, FW_DATA:1024,
@@ -10,6 +10,7 @@ SIZES = {PHOTO:180, PHOTO_PACKET:534, EXPIRY:132, FW_CONTEXT:128, FW_DATA:1024,
 
 # Занимает участок реальным владельцем рабочей памяти.
 def take(m, slot, size=None):
+    if slot == PHOTO:SIZES[PHOTO] = m.checked('work_capacity', PHOTO)
     return m.checked('work_acquire', SIZES[slot] if size is None else size, slot)
 
 
@@ -20,7 +21,7 @@ def drop(m, slot, pointer):
 
 # Читает маску занятых участков рабочей памяти.
 def owned(m):
-    return int.from_bytes(m.u.mem_read(m.addr('work_memory')+2216,2),'little')
+    return int.from_bytes(m.u.mem_read(m.addr('work_memory')+fields('work_memory_s')['owned'],2),'little')
 
 
 # Задаёт независимый эталон совместимости двух владельцев памяти.
@@ -34,6 +35,8 @@ def compatible(a,b):
 
 # Проверяет основные сценарии модуля и возвращает результаты.
 def run():
+    m=StorageMachine()
+    SIZES[PHOTO]=m.checked('work_capacity',PHOTO)
     pairs=allowed=0
     for a in SIZES:
         for b in SIZES:
@@ -66,7 +69,7 @@ def run():
     config=take(m,CONFIG);assert config==reserve
     assert bytes(m.u.mem_read(ctx,128))==b'X'*128
     drop(m,CONFIG,config);drop(m,FW_CONTEXT,ctx);drop(m,PHOTO,photo)
-    return {'ordered_pairs':pairs,'compatible_pairs':allowed,'storage_bytes':2224}
+    return {'ordered_pairs':pairs,'compatible_pairs':allowed,'storage_bytes':fields('work_memory_s')['owned']+8}
 
 
 if __name__=='__main__':
