@@ -1,7 +1,7 @@
 // Доработка: Кряжев А., 2026
-// Кооперативное сохранение device, конфигурации и намерений очистки.
+// Кооперативное сохранение device, конфигурации и подтверждений выгрузки.
 // Единственный владелец флеша завершает операцию до отправки её результата.
-// Маркеры публикуются до стирания и снимаются после сохранения новых курсоров.
+// Курсор публикуется после verify; запись колец сама освобождает место.
 #include "user_logic_internal.h"
 #include "user_comm.h"
 #include "user_fw_reason.h"
@@ -13,8 +13,8 @@
 #include "../sched16.h"
 #include "photo_runtime.h"
 #include "../../Modules/comm_modem.h"
-enum { US_SAVE=1, US_ACK, US_MARK, US_ERASE, US_CLEAN, US_CONFIG, US_RESET, US_REPLY,
-       US_COMMAND, US_RECOVER, US_RECOVER_CLEAN, US_FACTORY };
+enum { US_SAVE=1, US_ACK, US_CONFIG=6, US_RESET, US_REPLY,
+       US_COMMAND, US_FACTORY = 12 };
 static void store_usb_session(void);
 uint8_t store_runtime, store_save_requested, store_reset_requested;
 store_state_s store;
@@ -97,7 +97,7 @@ bool flash_exec_read_allowed(void)
   if (w25_async_active() || !w25_read_available() || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
   if (flash_job.result == FX_PENDING &&
       (flash_job.kind == FX_IDCLEAR || flash_job.kind == FX_EXPIRY || flash_job.kind == FX_TABLE ||
-       (flash_job.kind == FX_STORE && (store.clear || store_phase() == US_FACTORY || flash_job.step == FS_ID)))) return false;
+       (flash_job.kind == FX_STORE && (store_phase() == US_FACTORY || flash_job.step == FS_ID)))) return false;
   return true;
 }
 void flash_exec_cancel(void)
@@ -275,29 +275,26 @@ static inline void store_usb_session(void)
   if (store.usb_epoch == usb_bus_resets) return;
   store.usb_epoch = usb_bus_resets;
   flash_exec_quiet(CH_USB);
-  log_unacked[0] = temp_unacked[0] = 0;
+  temp_unacked[0] = 0;
   store.seen &= 10u;
   if (store_phase() && store.channel == CH_USB) store.quiet = 1;
 }
-// Записать намерение очистки и её конец в резерв device.
-static void store_marker(uint8_t cmd, uint32_t end)
-{
-  uint32_t mark = cmd ? STORE_CLEAR_MARK | cmd : 0;
-  memcpy(device.reserv + DEVICE_CLEAR_MARK_OFFSET, &mark, 4);
-  memcpy(device.reserv + DEVICE_CLEAR_END_OFFSET, &end, 4);
-}
 // Передать снимок config/device атомарному сохранению.
-bool store_snapshot(void)
+static bool store_save(bool cursor)
 {
   if (flash_job.kind == FX_NONE) {
     flash_exec_args_t args = { NULL, store.intent };
     if (!flash_exec_begin(FX_STORE, &args)) return false;
     store.intent = 0;
   }
+  if(cursor) upload_store();
   config.crc = crc16_calc((uint8_t*)&config, sizeof(config) - 2);
   device.crc = crc16_calc((uint8_t*)&device, sizeof(device) - 2);
-  return mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
+  return cursor ? mem_cursor_begin((uint8_t*)&config, (uint8_t*)&device) :
+                  mem_config_begin((uint8_t*)&config, (uint8_t*)&device);
 }
+bool store_snapshot(void) { return store_save(false); }
+bool store_cursor_snapshot(void) { return store_save(true); }
 // Восстановить незавершённую долговечную очистку после старта.
 void store_restore(const device_s *saved)
 {
@@ -309,13 +306,15 @@ void store_restore(const device_s *saved)
   start = mem[cmd == 10 ? MB_LOG : MB_TEMPID].start;
   limit = start + mem[cmd == 10 ? MB_LOG : MB_TEMPID].size;
   if (end < start || end > limit) return;
-  store_marker(cmd, end);
-  store.clear = store.cmd = cmd;
-  store.end = end;
-  store_phase_set(US_RECOVER);
-  store.waiting = 0;
-  store.quiet = 1;
-  store.erase = start;
+  if (cmd == 10) {
+    uint32_t cursor=log_cursor32[0]>log_cursor32[1]?log_cursor32[0]:log_cursor32[1];
+    log_cursor32[0]=log_cursor32[1]=cursor;
+  } else {
+    uint16_t cursor=device.readTempIDIndex>temp_usbReadIndex?device.readTempIDIndex:temp_usbReadIndex;
+    device.readTempIDIndex=temp_usbReadIndex=cursor;
+  }
+  memset(device.reserv+DEVICE_CLEAR_MARK_OFFSET,0,8);
+  upload_store();
 }
 // Принять новый запрос выгрузки без повторного подтверждения.
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
@@ -331,39 +330,41 @@ bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
   store.seen |= 1u << slot;
   return true;
 }
-// Начать долговечное сохранение подтверждённого курсора.
-bool store_ack(uint8_t cmd, dataChanel_e cch)
+// Отставший канал не держит поколение уже перезаписанного оборота.
+// Расстояние курсоров остаётся меньше половины uint16_t и после 32 оборотов.
+static bool temp_ack_cursor(dataChanel_e channel, uint16_t cursor)
 {
-  uint16_t *pending = cmd == 10 ? log_unacked : temp_unacked;
-  uint8_t channel = cch == CH_USB ? 0 : 1;
-  if (!pending[channel] || store.repeat) return true;
-  uint16_t old = upload_index(cmd, cch);
-  store.cursor = pending[channel];
-  upload_setIndex(cmd, cch, store.cursor);
-  upload_store();
-  bool accepted = store_snapshot();
-  upload_setIndex(cmd, cch, old);
-  upload_store();
-  if (accepted) store_phase_set(US_ACK);
-  else store.seen &= ~(1u << ((cmd == 10 ? 0 : 2) + channel));
+  uint16_t other=temp_index((dataChanel_e)(1u-channel));
+  temp_set_index(channel,cursor);
+  if(cursor==temp_next || (int16_t)(cursor-other)>2048) {
+    temp_set_index((dataChanel_e)(1u-channel),cursor==temp_next?cursor:(uint16_t)(cursor-2048));
+    return true;
+  }
   return false;
 }
-// Сохранить намерение очистки до её первого стирания.
-bool store_finish(uint8_t cmd)
+// Начать долговечное сохранение подтверждённого курсора.
+bool store_temp_ack(dataChanel_e cch)
 {
-  bool active = cmd == 10 ? device.status.readyLogData || device.logsCount : device.status.readyID || device.tempIDsCount;
-  if (!active && !upload_index(cmd, CH_SERVER) && !upload_index(cmd, CH_USB)) return true;
-  uint32_t start = mem[cmd == 10 ? MB_LOG : MB_TEMPID].start;
-  uint32_t end = start + mem[cmd == 10 ? MB_LOG : MB_TEMPID].size;
-  uint32_t used = cmd == 10 ? 0u : device.newAddressTempID;
-  if (used > start && used < end) end = used;
-  store.clear = cmd;
-  store.erase = start & ~4095u;
-  store.end = end;
-  store_marker(cmd, end);
-  store_phase_set(US_MARK);
-  if (!store_snapshot()) store.retry_at = timers_getMillis() + 1000u;
+  uint16_t *pending = temp_unacked;
+  uint8_t channel = cch == CH_USB ? 0 : 1;
+  if (!pending[channel] || store.repeat) return true;
+  uint16_t old = temp_index(cch), other = temp_index((dataChanel_e)(1u-channel));
+  if((int16_t)(pending[channel]-old)<=0) { pending[channel]=0; return true; }
+  store.cursor = pending[channel];
+  temp_ack_cursor(cch, store.cursor);
+  bool accepted = store_cursor_snapshot();
+  temp_set_index(cch, old);
+  temp_set_index((dataChanel_e)(1u-channel), other);
+  upload_store();
+  if (accepted) store_phase_set(US_ACK);
+  else store.seen &= ~(1u << (2u + channel));
   return false;
+}
+// Пустая выгрузка снимает готовность; физическое место освободит следующий оборот.
+void store_finish(uint8_t cmd)
+{
+  if (cmd == 10) device.status.readyLogData = 0;
+  else device.status.readyID=0;
 }
 // Зафиксировать поля отложенного ответа владельца хранения.
 void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
@@ -443,69 +444,13 @@ static void store_poll(uint32_t now, uint8_t result)
     }
     return;
   }
-  if (store_phase() == US_RECOVER) {
-    uint8_t b[64];
-    uint32_t start = mem[store.clear == 10 ? MB_LOG : MB_TEMPID].start;
-    if ((int32_t)(now - store.retry_at) < 0) return;
-    if (!w25_read_data(store.erase, b, sizeof(b))) { store.retry_at = now + 1000u;
-      return;
-    }
-    for (uint16_t i = 0; i < sizeof(b); ++i) if (b[i] != 255u) {
-      upload_reset(store.clear);
-      store_marker(0, 0);
-      store_phase_set(US_RECOVER_CLEAN);
-      if (!store_snapshot()) store.retry_at = now + 1000u;
-      return;
-    }
-    store.erase += sizeof(b);
-    if (!(store.erase & 4095u) || store.erase >= store.end) {
-      store.erase = start & ~4095u;
-      store_phase_set(US_ERASE);
-    }
-    return;
-  }
-  if (store_phase() == US_ERASE) {
-    if ((int32_t)(now - store.retry_at) < 0) return;
-    if (store.waiting) {
-      uint8_t r = w25_async_poll(now);
-      if (r == 1) return;
-      store.waiting = 0;
-      if (r != 2) { store.retry_at = now + 1000u;
-        return;
-      }
-      store.erase += 4096u;
-      return;
-    }
-    if (store.erase < store.end) {
-      store.waiting = w25_async_start(store.erase, NULL, 0, now);
-      if (!store.waiting) store.retry_at = now + 1000u;
-      return;
-    }
-    upload_reset(store.clear);
-    if (store.clear == 10) {
-      // STORE уже проверил все сектора: не запускать повторное форматирование кольца.
-      log_ring_cleared();
-    } else {
-      device.tempIDsCount = 0;
-      device.status.readyID = 0;
-      device.newAddressTempID = mem[MB_TEMPID].start;
-    }
-    store_marker(0, 0);
-    store_phase_set(US_CLEAN);
-    if (!store_snapshot()) store.retry_at = now + 1000u;
-    return;
-  }
   if (result == 3) {
     mem_config_reset();
-    if (store_phase() == US_MARK || store_phase() == US_CLEAN || store_phase() == US_RECOVER_CLEAN) {
-      store.retry_at = now + 1000u;
-      return;
-    }
     uint8_t job = store_phase();
     store_phase_set(0);
     if (job == US_SAVE) store_save_requested = 1;
     if (job == US_ACK) {
-      store.seen &= ~(1u << ((store.cmd == 10 ? 0 : 2) + (store.channel == CH_USB ? 0 : 1)));
+      store.seen &= ~(1u << (2u + store.channel));
       if (!store.quiet) upload_pending_retry(store.channel);
     }
     if ((job == US_CONFIG || job == US_COMMAND) && !store.quiet)
@@ -519,17 +464,12 @@ static void store_poll(uint32_t now, uint8_t result)
     }
     mem_config_reset();
     if (job == US_ACK) {
-      uint16_t *pending = store.cmd == 10 ? log_unacked : temp_unacked;
-      upload_setIndex(store.cmd, (dataChanel_e)store.channel, store.cursor);
+      uint16_t *pending = temp_unacked;
+      if (temp_ack_cursor((dataChanel_e)store.channel, store.cursor)) {
+        pending[1u-store.channel]=0;
+      }
       upload_store();
       pending[store.channel == CH_USB ? 0 : 1] = 0;
-      store_phase_set(US_REPLY);
-    } else if (job == US_MARK) {
-      upload_reset(store.clear);
-      store_phase_set(US_ERASE);
-      store.retry_at = now;
-    } else if (job == US_CLEAN || job == US_RECOVER_CLEAN) {
-      store.clear = 0;
       store_phase_set(US_REPLY);
     } else if (job == US_CONFIG || job == US_COMMAND) store_phase_set(US_REPLY);
     else if (job == US_RESET) {
@@ -546,16 +486,12 @@ static void store_poll(uint32_t now, uint8_t result)
     } else store_phase_set(0);
     return;
   }
-  if (store_phase() == US_MARK || store_phase() == US_CLEAN || store_phase() == US_RECOVER_CLEAN) {
-    if ((int32_t)(now - store.retry_at) >= 0 && !store_snapshot()) store.retry_at = now + 1000u;
-    return;
-  }
   if (store_phase() || !w25_read_available()) return;
   if (flash_job.kind == FX_STORE) {
     flash_exec_finish(FX_OK);
     flash_exec_take_result();
   }
-  if (log_pendingCount && store.clear != 10 &&
+  if (log_pendingCount &&
       (store_reset_requested || (!store_save_requested && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)))) {
     log_storage_poll(now);
     return;

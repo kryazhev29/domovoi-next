@@ -16,7 +16,8 @@ def init_transport(m, *, epoch=7, enabled=1, configured=5, connected=True):
     m.write(m.addr('bDeviceState'), configured)
     m.write(m.addr('usb_enabled'), enabled, 1)
     m.write(m.addr('usb_bus_resets'), epoch)
-    m.write(m.addr('store') + 12, epoch)
+    from iar_layout import fields
+    m.write(m.addr('store') + fields('store_state_s')['usb_epoch'], epoch)
     m.write(0x40010c08, 32768 if connected else 0)
 
 

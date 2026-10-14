@@ -123,6 +123,7 @@ def temp_read_error():
         m = AccessMachine(); ident = 0x21000400
         m.u.mem_write(ident, b'9999999999')
         m.write(m.device + m.d['newAddressTempID'], 0x1e8020, 4)
+        if 'temp_next' in m.symbols:m.write(m.addr('temp_next'),1,2)
         m.write(m.device + m.d['status'], open_any << 4, 2)
         m.fail_read()
         m.checked('user_checkIdAndControl', ident, 2)

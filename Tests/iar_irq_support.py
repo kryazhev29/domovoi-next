@@ -64,7 +64,7 @@ class Machine:
         self.heap_bytes=self.map_addr('HEAP$$Limit')-self.map_addr('HEAP$$Base') if 'HEAP$$Limit' in self.symbols else 0
         self.stop=0x08000000+flash_bytes-16;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={}
         self.u.reg_write(UC_ARM_REG_XPSR,0x01000000)
-        self.u.hook_add(UC_HOOK_CODE,self.hook)
+        self.code_hook=self.u.hook_add(UC_HOOK_CODE,self.hook)
         from stm32_crc_model import CRCModel
         self.crc_model = CRCModel(self.u)
     def addr(self,n):

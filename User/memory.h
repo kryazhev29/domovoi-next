@@ -12,7 +12,14 @@
 #define MEM_CONFIG_SLOT0      0x1F5000u
 #define MEM_CONFIG_SLOT1      0x1F7000u
 #define MEM_CONFIG_SLOT_SIZE 8192u
+#define DEVICE_UPLOAD_MARK 0x314C5055u
+#define LOG_CURSOR_MAGIC 0x354C5055u
+enum { DEVICE_UPLOAD_MARK_OFFSET = 0,
+       DEVICE_TEMP_USB_OFFSET = 6, DEVICE_CLEAR_MARK_OFFSET = 8, DEVICE_CLEAR_END_OFFSET = 12 };
 extern volatile uint32_t mem_config_errors;
+// Дописывает ACK; при заполнении переносит курсоры вместе со снимком A/B.
+bool mem_cursor_begin(const uint8_t *, const uint8_t *);
+bool mem_cursor_restore(device_s *);
 // Копирует снимки config/device; освобождать их можно только после завершения.
 bool mem_config_begin(const uint8_t *config512, const uint8_t *device512);
 // Продвигает публикацию снимка A/B одной командой за проход.

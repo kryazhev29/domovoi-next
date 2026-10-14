@@ -19,6 +19,11 @@ typedef struct {
   uint8_t mode, count, type, outputs, started, reply, channel, uniq;
   uint8_t data[32];
 } store_io_s;
+extern uint16_t temp_next;
+uint16_t temp_normalize(uint16_t),temp_sequence(const cellID_s *,uint32_t);
+uint32_t temp_address(uint16_t);
+bool user_temp_valid(const cellID_s *);
+bool log_blank(const cellLog_s *);
 bool store_id_begin(uint32_t address, const cellID_s *cell);
 void store_access_reply(uint8_t channel, uint8_t uniq);
 void user_access_complete(uint8_t outputs, codeType_e type, char *id, uint8_t count, bool started);
@@ -74,9 +79,9 @@ void flash_exec_finish(flash_result_t result);
 #include "../../Modules/comm_channel.h"
 // Состояние владельца настроек из user_store.c.
 typedef struct {
-  uint32_t erase, end, retry_at, usb_epoch;
+  uint32_t usb_epoch;
   uint16_t cursor;
-  uint8_t intent, clear, waiting, cmd, channel, uniq, quiet, repeat;
+  uint8_t intent, cmd, channel, uniq, quiet, repeat;
   uint8_t last_id[4], seen, code;
 } store_state_s;
 extern uint8_t store_runtime, store_reset_requested;

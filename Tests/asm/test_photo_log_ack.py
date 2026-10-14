@@ -39,7 +39,7 @@ def stream(baseline=False):
     assert cursor_published
     gap = max(b[0]-a[0] for a,b in zip(frames,frames[1:]))
     erases = [a for kind,a,_ in m.changes if kind == "erase" and 0x1d0000 <= a < 0x1e8000]
-    assert len(erases) == (48 if baseline else 24), len(erases)
+    assert len(erases) == (48 if baseline else 0), len(erases)
     if baseline: assert config_before_end and gap > 1000
     else: assert not config_before_end and gap < 200
     return dict(max_gap_model_ms=gap, frames=len(frames), log_pending=0,

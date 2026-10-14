@@ -20,15 +20,12 @@ enum {
 #define ID_TIME_VALID 1600000000u
 #define ID_TIME_DONE 0x38u
 // Размещение долговечных намерений в резерве device задано прежним образом флеша.
-enum { DEVICE_UPLOAD_MARK_OFFSET = 0, DEVICE_LOG_USB_OFFSET = 4,
-       DEVICE_TEMP_USB_OFFSET = 6, DEVICE_CLEAR_MARK_OFFSET = 8, DEVICE_CLEAR_END_OFFSET = 12 };
-#define DEVICE_UPLOAD_MARK 0x314C5055u
 #define STORE_CLEAR_MARK 0x31434C00u
 extern uint8_t port_buffer[PORTBUFSIZE], uniqIDCnt;
 extern char tempStrBuffer[128];
 extern uint8_t store_save_requested;
 extern store_state_s store;
-extern uint16_t log_usbReadIndex, temp_usbReadIndex, log_unacked[2], temp_unacked[2];
+extern uint16_t temp_usbReadIndex, temp_unacked[2];
 extern uint8_t sync_pending, sync_quiet, log_pendingCount, log_timeKnown;
 extern uint32_t id_nextEnd, log_lastIndex;
 extern bool id_endScan;
@@ -42,19 +39,15 @@ extern unsigned int loop_max_ms, loop_stalls;
 // Разрешить команду с учётом её владельца и состояния хранения.
 bool store_command_allowed(uint8_t cmd);
 // Вернуть подтверждённый курсор заданной выгрузки и канала.
-uint16_t upload_index(uint8_t cmd, dataChanel_e cch);
+uint16_t temp_index(dataChanel_e cch);
 // Установить рабочий курсор заданной выгрузки и канала.
-void upload_setIndex(uint8_t cmd, dataChanel_e cch, uint16_t value);
+void temp_set_index(dataChanel_e cch, uint16_t value);
 // Поместить подтверждённые курсоры USB в резерв device.
 void upload_store(void);
 // Восстановить подтверждённые курсоры из сохранённого device.
 void upload_restore(const device_s *saved);
 // Обнулить курсоры и неподтверждённые позиции выбранной таблицы.
 void upload_reset(uint8_t cmd);
-// Передать подтверждение выгрузки единственному владельцу сохранения.
-bool upload_ack(uint8_t cmd, dataChanel_e cch);
-// Передать завершение выгрузки владельцу долговечной очистки.
-bool upload_finish(uint8_t cmd);
 // Вызвать обработчики секундного тика драйверов.
 void timers_user_handle(void);
 // Передать целый проверенный USB-кадр разбору команд.
@@ -170,15 +163,15 @@ void user_comm_boot(void);
 // Перед перезагрузкой: модем выходит из сети, затем снимается питание.
 void user_comm_off(void);
 // Передать снимок config/device атомарному сохранению.
-bool store_snapshot(void);
+bool store_snapshot(void), store_cursor_snapshot(void);
 // Восстановить незавершённую долговечную очистку после старта.
 void store_restore(const device_s *saved);
 // Принять новый запрос выгрузки без повторного подтверждения.
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
 // Начать долговечное сохранение подтверждённого курсора.
-bool store_ack(uint8_t cmd, dataChanel_e cch);
+bool store_temp_ack(dataChanel_e cch);
 // Сохранить намерение очистки до её первого стирания.
-bool store_finish(uint8_t cmd);
+void store_finish(uint8_t cmd);
 // Зафиксировать поля отложенного ответа владельца хранения.
 void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
 // Начать сохранение временно подставленной новой конфигурации.

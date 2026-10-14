@@ -56,8 +56,10 @@ def startup(cold, heavy, mutation=False, origin=0):
     m.stubs[m.addr('user_readconfig')] = read_config
     m.stubs[m.addr('user_readsavedinformation')] = saved
     m.stubs[m.addr('user_getNumbersCount')] = numbers
-    m.stubs[m.addr('log_getRecordsCount')] = lambda: m.ret(127)
-    m.stubs[m.addr('user_getTempIDRecordsCount')] = lambda: m.ret(3)
+    def restored_count(count,flag):
+        m.write(device+d['status'],m.read(device+d['status'],2)|flag,2);m.ret(count)
+    m.stubs[m.addr('log_getRecordsCount')] = lambda: restored_count(127,0x1000)
+    m.stubs[m.addr('user_getTempIDRecordsCount')] = lambda: restored_count(3,0x4000)
     m.stubs[m.addr('packet_send')] = packet
     power = m.addr('comm_power_v5_poll')
     if mutation: m.stubs[power] = m.ret

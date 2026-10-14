@@ -117,67 +117,100 @@ uint8_t user_findID(char *id, cellID_s *cell){
   return false;
 }
 
-// Найти ID среди уже записанных временных записей.
-uint8_t user_findTempID(char *id){
-
-  uint32_t adr;
-  cellID_s cellId;
-  uint32_t startAddress = device.newAddressTempID;
-
-  if (startAddress < mem[MB_TEMPID].start) startAddress = mem[MB_TEMPID].start;
-
-  // проверим, что такого ID нет в буфере
-  for (adr = mem[MB_TEMPID].start; adr < startAddress; adr += sizeof(cellID_s)){
-    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return 2;
-    // такой ID есть
-    if (id_equal(cellId.ID, id)){
-      return true;
-    }
-  }
-  // не нашли
-  return false;
+// 5 бит поколения и 11 бит позиции: в области не более 2048 ячеек.
+// Живут соседние поколения, поэтому разность int16_t однозначна при переходе через ноль.
+uint16_t temp_next;
+uint16_t temp_normalize(uint16_t cursor)
+{
+  return (cursor&2047u)>=mem[MB_TEMPID].size/32u ? (uint16_t)((cursor&~2047u)+2048u) : cursor;
 }
-
-// Добавить отсутствующий ID в первое свободное место временной таблицы.
-bool user_addIdToTempBuffer(char *id, codeType_e tp){
-  if (!flash_exec_idle()) return false;
-
-  uint32_t adr;
-  uint32_t endAdr = mem[MB_TEMPID].start + mem[MB_TEMPID].size;
-  cellID_s cellId;
-  uint32_t startAddress = device.newAddressTempID;
-
-  if (startAddress < mem[MB_TEMPID].start) startAddress = mem[MB_TEMPID].start;
-
-  uint8_t found = user_findTempID(id);
-  if (found == 1) return true;
-  if (found > 1) return false;
-
-  // по странично
-  for (adr = startAddress; adr < endAdr; adr += sizeof(cellID_s)){
-    if (!mem_read(adr, (uint8_t*)&cellId, sizeof(cellID_s))) return false;
-    // ячейка пустая, она должна быть стерта
-    if (cellId.index == 0xffff){
-      memset(&cellId, 0, sizeof(cellId)); // новая запись без чужих флагов и резерва
-      memcpy(cellId.ID, id, 10);
-      switch (tp){
-        case CT_PHONE: cellId.isPhone = 1; break;
-        case CT_AUTO: cellId.isAuto = 1; break;
-        case CT_WIEGAND: cellId.isWiegand = 1; break;
-        default: break;
-      }
-      flash_exec_args_t args = { NULL, FS_SYNC };
-      if (!flash_exec_begin(FX_STORE, &args)) return false;
-      bool ok = mem_write(adr, (uint8_t*)&cellId, sizeof(cellID_s));
-      flash_exec_finish(ok ? FX_OK : FX_ERROR);
-      flash_exec_take_result();
-      if (!ok) return false;
-      device.newAddressTempID = adr + sizeof(cellID_s);
-      device.status.readyID = 1;
-      return true;
+uint32_t temp_address(uint16_t cursor)
+{ return mem[MB_TEMPID].start+32u*(cursor&2047u); }
+static uint16_t temp_read_max(void)
+{ return (int16_t)(device.readTempIDIndex-temp_usbReadIndex)>0 ? device.readTempIDIndex : temp_usbReadIndex; }
+// У старых временных ID index=0; новые фиксируют 0x8000 после тела и CRC.
+// Частичное стирание/программирование не превращает новую метку в старую (бит 15 всегда 1).
+bool user_temp_valid(const cellID_s *cell)
+{
+  const uint32_t *words=(const uint32_t *)cell;
+  if(cell->index==0xffff) return false;
+  if(!(cell->index&0x8000u)) return true;
+  uint16_t crc=(uint16_t)words[6];
+  return cell->index==0x8000u && words[7]==0x32444954u &&
+    crc==(uint16_t)~(words[6]>>16) && crc==crc16_calc((uint8_t *)cell+2,22);
+}
+// Старый линейный формат равен нулевому поколению; адреса и ID не меняются.
+uint16_t temp_sequence(const cellID_s *cell,uint32_t address)
+{
+  uint16_t epoch=0;
+  if(((const uint32_t *)cell)[7]==0x32444954u) memcpy(&epoch,cell->reserve,2);
+  return (epoch&~2047u)|(uint16_t)((address-mem[MB_TEMPID].start)/32u);
+}
+// Не удерживаем уже выгруженный ID; оборванное тело не становится записью.
+uint8_t user_findTempID(char *id)
+{
+  cellID_s cell;
+  uint16_t limit=temp_normalize(temp_next);
+  for(uint16_t cursor=temp_normalize(temp_read_max());cursor!=limit;cursor=temp_normalize(cursor+1)) {
+    uint32_t adr=temp_address(cursor);
+    if(!mem_read(adr,(uint8_t *)&cell,32)) return 2;
+    if(user_temp_valid(&cell) && temp_sequence(&cell,adr)==cursor && id_equal(cell.ID,id)) return 1;
+  }
+  return 0;
+}
+// Стираем только сектор впереди записи и только если в нём нет неподтверждённых ID.
+static bool temp_reclaim(uint32_t address)
+{
+  cellID_s cell;
+  uint16_t retired=0;
+  uint32_t start=address&~4095u, end=start+4096;
+  uint32_t limit=mem[MB_TEMPID].start+mem[MB_TEMPID].size;
+  if(end>limit) end=limit;
+  if(start<mem[MB_TEMPID].start) start=mem[MB_TEMPID].start;
+  for(uint32_t a=start;a<end;a+=32) {
+    if(!mem_read(a,(uint8_t *)&cell,32)) return false;
+    if(user_temp_valid(&cell)) {
+      if((int16_t)(temp_sequence(&cell,a)-temp_read_max())>=0) return false;
+      retired++;
     }
   }
-  return false;
+  if(!mem_erase_sector(address&~4095u)) return false;
+  device.tempIDsCount=device.tempIDsCount>retired?device.tempIDsCount-retired:0;
+  return true;
+}
+// Тело и CRC пишутся до index: после обрыва неполная ячейка пропускается.
+bool user_addIdToTempBuffer(char *id, codeType_e tp)
+{
+  if(!flash_exec_idle()) return false;
+  uint8_t found=user_findTempID(id);
+  if(found) return found==1;
+  cellID_s cell;
+  flash_exec_args_t args={NULL,FS_SYNC};
+  if(!flash_exec_begin(FX_STORE,&args)) return false;
+  bool ok=false;
+  for(uint16_t tried=0;tried<mem[MB_TEMPID].size/32u;tried++) {
+    uint16_t current=temp_normalize(temp_next);
+    uint32_t address=temp_address(current);
+    if((address==mem[MB_TEMPID].start || !(address&4095u)) && !temp_reclaim(address)) break;
+    if(!mem_read(address,(uint8_t *)&cell,32)) break;
+    temp_next=current+1;
+    device.newAddressTempID=temp_address(temp_next);
+    if(!log_blank((const cellLog_s *)&cell)) continue;
+    memset(&cell,0,sizeof(cell));cell.index=0x8000u;memcpy(cell.ID,id,10);
+    if(tp==CT_PHONE) cell.isPhone=1;
+    else if(tp==CT_AUTO) cell.isAuto=1;
+    else if(tp==CT_WIEGAND) cell.isWiegand=1;
+    uint16_t epoch=current&~2047u;
+    memcpy(cell.reserve,&epoch,2);
+    uint16_t crc=crc16_calc((uint8_t *)&cell+2,22);
+    uint32_t footer[2]={crc|((uint32_t)(uint16_t)~crc<<16),0x32444954u};
+    memcpy((uint8_t *)&cell+24,footer,8);
+    ok=mem_write(address+2,(uint8_t *)&cell+2,30) && mem_write(address,(uint8_t *)&cell,2);
+    if(ok) { device.tempIDsCount++;device.status.readyID=1; }
+    break;
+  }
+  flash_exec_finish(ok?FX_OK:FX_ERROR);flash_exec_take_result();
+  return ok;
 }
 
 // Сверить стартовую базу с меткой индекса и вернуть число живых ID.
@@ -227,33 +260,24 @@ void user_checkIdTimeEnd(void){
 expiry_runtime_begin();
 }
 
-// Найти конец временной таблицы и обновить указатель добавления.
-uint16_t user_getTempIDRecordsCount(void){
-
-  uint32_t adr;
-  uint32_t endAdr = mem[MB_TEMPID].start + mem[MB_TEMPID].size;
-  uint8_t tbuffer[256];
-  cellID_s *c;
-  uint16_t cnt = 0;
-
-  // по странично читаем
-  for (adr = mem[MB_TEMPID].start; adr < endAdr; adr += sizeof(tbuffer)){
-    if (!mem_read(adr, tbuffer, sizeof(tbuffer))) return 0xFFFFu;
-    // перебираем ячейки
-    for (uint16_t a = 0; a < sizeof(tbuffer); a += sizeof(cellID_s)){
-      c = (cellID_s*)&tbuffer[a];
-      // пустая ячейка
-      if (c->index == 0xffff){
-        device.newAddressTempID = adr + a;
-        return cnt;
-      }
-
-      cnt++;
-    }
+// Восстанавливаем голову из поколений и ACK; старые линейные ID остаются на месте.
+uint16_t user_getTempIDRecordsCount(void)
+{
+  cellID_s cell;
+  uint16_t count=0;
+  uint32_t end=mem[MB_TEMPID].start+mem[MB_TEMPID].size;
+  temp_next=temp_read_max();
+  device.status.readyID=0;
+  for(uint32_t adr=mem[MB_TEMPID].start; adr<end; adr+=32) {
+    if(!mem_read(adr,(uint8_t *)&cell,32)) return 0xffff;
+    if(!user_temp_valid(&cell)) continue;
+    uint16_t sequence=temp_sequence(&cell,adr);
+    if((int16_t)((uint16_t)(sequence+1)-temp_next)>0) temp_next=sequence+1;
+    if((int16_t)(sequence-device.readTempIDIndex)>=0) device.status.readyID=1;
+    count++;
   }
-
-  device.newAddressTempID = endAdr;
-  return cnt;
+  device.newAddressTempID=temp_address(temp_next);
+  return count;
 }
 
 // Записать изменённые параметры ID и обновить соответствие индекса.

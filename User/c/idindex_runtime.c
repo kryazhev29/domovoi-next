@@ -102,7 +102,7 @@ int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 bool idindex_runtime_begin(void)
 {
   if (!storage_has_index() || store.intent || store_reset_requested ||
-      mem_config_result() || fw_event_waiting() || store.clear == 9) return false;
+      mem_config_result() || fw_event_waiting()) return false;
   if (ix.state != IX_INVALIDATE && ix.state != IX_FILL &&
       (ix.state < IX_ERASE || ix.state > IX_PUBLISH)) return false;
   flash_exec_args_t args = { NULL, FX_INDEX_READ };

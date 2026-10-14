@@ -12,10 +12,10 @@ enum {
 extern uint16_t temp_unacked[2];
 extern uint32_t log_lastIndex;
 extern bool store_upload_request(uint8_t,dataChanel_e,uint8_t);
-extern bool upload_finish(uint8_t);
-extern uint16_t upload_index(uint8_t,dataChanel_e);
+extern void store_finish(uint8_t);
+extern uint16_t temp_index(dataChanel_e);
 extern bool log_valid(const cellLog_s *);
-extern bool upload_ack(uint8_t,dataChanel_e);
+extern bool store_temp_ack(dataChanel_e);
 typedef struct {
   uint8_t *packet;
   uint32_t pos,limit,epoch;
@@ -117,7 +117,7 @@ void upload_pending_poll(void)
       upload_pending[c].state = 3;
       continue;
     }
-    // ACK журнала сохраняет 4 КиБ A/B: не вклинивать его между пакетами фото.
+    // Редкий перенос журнала ACK всё ещё пишет A/B: сохраняем приоритет фото.
     // Начало ожидания восстанавливаем из прежнего срока TTL, без нового таймера.
     if (c == CH_SERVER && upload_pending[c].command == 10 && log_pending32[c] &&
         (photo_busy() || (device.status.readyPhoto &&
@@ -138,12 +138,12 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   if(!store_upload_request(command,channel,uniq)) { upload_release(p);
   return false;
   }
-  // ACK сохраняет настройки в том же участке: возвращаем резерв и затем берём его снова.
+  // ACK использует прежний резерв снимка для переноса: возвращаем его до начала записи.
   upload_release(p);
-  if(command==10 ? !log_ring_ack((uint8_t)channel,uniq) : !upload_ack(command,channel)) return mem_config_result() == 1;
+  if(command==10 ? !log_ring_ack((uint8_t)channel,uniq) : !store_temp_ack(channel)) return mem_config_result() == 1;
   p=upload_acquire();
   if(!p) return false;
-  p->first=command==10?0:upload_index(command,channel);
+  p->first=0;
   p->total = 0;
   p->wanted = 0;
   p->copied = 0;
@@ -156,6 +156,7 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   p->epoch=usb_bus_resets;
   p->pos=mem[part].start;
   p->limit=p->pos+mem[part].size;
+  if(command==9) { p->pos=temp_normalize(temp_index(channel)); p->limit=temp_normalize(temp_next); }
   flash_exec_args_t args = { p, p->reply_step };
   if (!flash_exec_begin(FX_UPLOAD, &args)) {
     upload_release(p);
@@ -170,7 +171,6 @@ void upload_runtime_poll(void)
   uint32_t record[8];
   uint8_t *b=(uint8_t *)record;
   uint16_t n;
-  bool done;
   uint8_t command,result;
   if(!p) return;
   command=p->command;
@@ -179,7 +179,7 @@ void upload_runtime_poll(void)
   case UP_INIT:
     result=log_ring_init_step();
     if(result==3) goto cancel;
-    if(result==2) { p->pos=log_ring_first();
+    if(result==2) { p->pos=log_ring_seek(log_cursor32[p->channel]);
     up_step(p, UP_COUNT);
     }
     return;
@@ -195,26 +195,21 @@ void upload_runtime_poll(void)
         p->pos=log_ring_next(p->pos);
         return;
       }
-      device.logsCount=p->seen;
+
     } else {
-      done=p->pos+32>p->limit;
-      if(!done) {
-        if(!w25_read_data(p->pos,b,32)) goto cancel;
-        done=(record[0]&65535u)==65535u;
-        if(!done) { p->total++;
-        p->pos+=32;
+      if(p->pos!=p->limit) {
+        uint32_t address=temp_address((uint16_t)p->pos);
+        if(!w25_read_data(address,b,32)) goto cancel;
+        if(user_temp_valid((const cellID_s *)b) && temp_sequence((const cellID_s *)b,address)==p->pos) p->total++;
+        p->pos=temp_normalize((uint16_t)(p->pos+1));
         return;
-        }
       }
-      device.tempIDsCount=p->total;
-      device.newAddressTempID=p->pos;
     }
     if(p->total<=p->first) {
       upload_reply = p;
       flash_exec_finish(FX_OK);
       flash_exec_take_result();
-      done = upload_finish(command);
-      if (!done) goto cancel;
+      store_finish(command);
       p->length=14;
       p->packet[6]=255;
       p->packet[7]=p->uniq;
@@ -237,12 +232,21 @@ void upload_runtime_poll(void)
     p->packet[8]=command;
     rt_put16(p->packet+9,p->total-p->first-p->wanted);
     p->packet[11]=(uint8_t)p->wanted;
-    p->pos=command==10?log_ring_first():mem[MB_TEMPID].start+32u*p->first;
+    p->pos=command==10?log_ring_seek(log_cursor32[p->channel]):temp_normalize(temp_index((dataChanel_e)p->channel));
+    p->seen=0;
     up_step(p, UP_COPY);
     return;
   case UP_COPY:
     if(command!=10) {
-      if(p->pos+32>p->limit || !w25_read_data(p->pos+2,p->packet+12+10*p->copied,10)) goto cancel;
+      if(p->pos==p->limit) goto cancel;
+      uint16_t current=(uint16_t)p->pos;
+      uint32_t address=temp_address(current);
+      if(!w25_read_data(address,b,32)) goto cancel;
+      p->pos=temp_normalize(current+1);
+      if(!user_temp_valid((const cellID_s *)b) || temp_sequence((const cellID_s *)b,address)!=current) return;
+      p->seen=current+1;
+      if(p->copied+1==p->total) p->seen=temp_next;
+      memcpy(p->packet+12+10*p->copied,b+2,10);
     } else {
       if(!p->pos || !w25_read_data(p->pos,b,32)) goto cancel;
       p->pos=log_ring_next(p->pos);
@@ -253,7 +257,6 @@ void upload_runtime_poll(void)
     }
     if(++p->copied>=p->wanted) { up_step(p, UP_FRAME);
     }
-    else if(command!=10) p->pos+=32;
     return;
   case UP_FRAME:
     packet_frame(p->packet,p->length-8);
@@ -267,7 +270,7 @@ void upload_runtime_poll(void)
     if(command==10) { log_ring_sent(p->channel,p->uniq,p->limit);
     if(p->channel) device.status.readyLogData=1;
     }
-    else { temp_unacked[p->channel]=p->first+p->wanted;
+    else { temp_unacked[p->channel]=p->seen;
     device.status.readyID=1;
     }
     break;

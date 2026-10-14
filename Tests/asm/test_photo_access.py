@@ -31,7 +31,7 @@ class PassageMachine(PhotoMachine):
 
     def logs(self):
         f = fields('cellLog_s'); n = self.u.mem_read(self.addr('log_pendingCount'), 1)[0]
-        data = bytearray(); address = self.checked('log_ring_first')
+        data = bytearray(); address = self.checked('log_ring_seek',0)
         while address:
             data.extend(self.flash[address:address + 32])
             address = self.checked('log_ring_next', address)

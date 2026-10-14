@@ -86,6 +86,9 @@ class UploadMachine(StorageMachine):
             install(self,slots);return
         for i, cell in enumerate(slots):
             self.flash[self.base+i*32:self.base+(i+1)*32] = cell
+        if "temp_next" in self.symbols:
+            self.checked("user_getTempIDRecordsCount",budget=2000000)
+            self.counts["read"]=0;self.costs.clear()
 
     # Передаёт запрос следующего кадра выгрузки.
     def request(self, channel=0, uniq=7):
@@ -114,12 +117,12 @@ class UploadMachine(StorageMachine):
     # Задаёт сохранённый логический курсор сценария.
     def set_cursor(self,channel,ordinal):
         if self.cmd==10 and "log_cursor32" in self.symbols:self.write(self.addr("log_cursor32")+4*channel,ordinal+1 if ordinal else 0)
-        else:self.checked("upload_setIndex",self.cmd,channel,ordinal)
+        else:self.checked("temp_set_index",channel,ordinal)
 
     # Читает сохранённый курсор подтверждения журнала.
     def cursor(self,channel=0):
         if self.cmd==10 and "log_cursor32" in self.symbols:return max(0,self.read_word(self.addr("log_cursor32")+4*channel)-1)
-        return self.checked("upload_index",self.cmd,channel)
+        return self.checked("temp_index",channel)
 
     # Готовит неподтверждённую границу предыдущего кадра.
     def seed_pending(self,ordinal):

@@ -9,6 +9,7 @@
 // Диагностические счётчики отделены от обязательных таймаутов восстановления.
 #ifndef BOOTLOADER
 #include "../../User/domovoi_diag.h"
+#include "../../User/c/runtime_internal.h"
 #endif
 // Доработка: Кряжев А., 2026
 
@@ -183,11 +184,11 @@ uint8_t USB_Tx_CommandReady(void)
 // Передать ответ только в исходную USB-сессию, сохраняя источник при занятости.
 uint8_t USB_Tx_Try(const uint8_t *source,uint16_t length)
 {
-  extern uint8_t usb_enabled; extern uint8_t store[];
+  extern uint8_t usb_enabled;
   extern volatile uint32_t usb_bus_resets;
   uint32_t mask,epoch; uint8_t result=0;
   if(length>=USART_RX_DATA_SIZE || (length && !source) || !usb_enabled || !(GPIOB->IDR&(1u<<15))) return 0;
-  mask=__get_PRIMASK(); __disable_irq(); memcpy(&epoch,store+12,4);
+  mask=__get_PRIMASK(); __disable_irq(); epoch=store.usb_epoch;
   if(epoch==usb_bus_resets) result=usb_tx_submit(source,length,usb_tx_epoch);
   __set_PRIMASK(mask); return result;
 }

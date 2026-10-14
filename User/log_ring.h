@@ -1,7 +1,7 @@
 // Доработка: Кряжев А., 2026
 // Интерфейс кольцевого журнала и долговечных логических курсоров.
 // Владелец записи сохраняет её тело до последней проверки W25.
-// Подтверждение курсора сначала публикует снимок настроек A/B.
+// ACK дописывается в сектор публикации; A/B переносится после 255 отметок.
 #ifndef DOMOVOI_LOG_RING_H
 #define DOMOVOI_LOG_RING_H
 #include "includes.h"
@@ -14,10 +14,10 @@ void log_async_begin(const cellLog_s *);
 uint8_t log_async_step(uint32_t);
 // Запоминает границу успешно переданного кадра.
 void log_ring_sent(uint8_t channel,uint8_t uniq,uint32_t next);
-// Восстанавливает заголовки либо форматирует старый журнал.
+// Восстанавливает заголовки без стирания области.
 uint8_t log_ring_init_step(void);
 // Возвращает первую запись самого старого сектора.
-uint32_t log_ring_first(void),log_ring_next(uint32_t);
+uint32_t log_ring_next(uint32_t),log_ring_seek(uint32_t);
 // Запрашивает повторное восстановление состояния кольца.
 void log_ring_invalidate(void);
 // Публикует в ОЗУ результат полной проверенной очистки STORE.

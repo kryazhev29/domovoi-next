@@ -82,6 +82,7 @@ static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
 // Сохранение меняет только неактивный слот; старое место больше не записывается.
 volatile uint32_t mem_config_errors = 0;
 static uint8_t cfg_boot_done;
+static uint16_t cfg_cursor_offset = 16;
 uint32_t cfg_cached_active = MEM_CONFIG_LEGACY, cfg_cached_generation;
 #define CFG_MAGIC 0x32474643u
 // Считает CRC образа вместе с поколением при выборе слота.
@@ -148,7 +149,7 @@ static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint
   }
   h[2] = crc; h[3] = ~h[2];
   if (!w25_write_data(target + MEMSECTORSIZE, (uint8_t*)h, sizeof(h))) return 0;
-  cfg_cached_active = target; cfg_cached_generation = h[1];
+  cfg_cached_active = target; cfg_cached_generation = h[1]; cfg_cursor_offset = 16;
   return 1;
 }
 
@@ -255,7 +256,7 @@ struct {
 } cfg_job;
 enum {
   CA_CHECK=1, CA_META, CA_DATA,
-  CA_COPY, CA_HEADER, CA_DONE
+  CA_COPY, CA_HEADER, CA_DONE, CA_CURSOR_BODY, CA_CURSOR_COMMIT, CA_CURSOR_DONE
 };
 // Возвращает состояние публикации: 0 — нет, 1 — работа, 2 — готово, 3 — ошибка.
 uint8_t mem_config_result(void) { return cfg_job.result; }
@@ -289,6 +290,45 @@ bool mem_config_begin(const uint8_t *first, const uint8_t *second)
   cfg_job.waiting = 0; cfg_job.state = CA_CHECK; cfg_job.result = 1;
   return true;
 }
+// Дочитывает дописанные ACK только выбранного целого A/B-слота.
+// Оборванное тело занимает место, но не меняет подтверждённые курсоры.
+bool mem_cursor_restore(device_s *saved)
+{
+  uint32_t row[4];
+  cfg_cursor_offset = 16;
+  if (cfg_cached_active == MEM_CONFIG_LEGACY) return true;
+  for (uint16_t off = 16; off < MEMSECTORSIZE; off += 16) {
+    if (!w25_read_data(cfg_cached_active + MEMSECTORSIZE + off, (uint8_t *)row, 16)) return false;
+    if ((row[0] & row[1] & row[2] & row[3]) == 0xffffffffu) continue;
+    cfg_cursor_offset = off + 16;
+    uint16_t crc = (uint16_t)row[3];
+    if (crc != (uint16_t)~(row[3] >> 16) || crc != crc16_calc((uint8_t *)row, 12)) continue;
+    uint32_t magic=LOG_CURSOR_MAGIC;
+    memcpy(saved->reserv+16,&magic,4);
+    magic=DEVICE_UPLOAD_MARK;memcpy(saved->reserv,&magic,4);
+    memcpy(saved->reserv + 20, row, 8);
+    memcpy(saved->reserv + DEVICE_TEMP_USB_OFFSET, (uint8_t *)row + 8, 2);
+    memcpy(&saved->readTempIDIndex, (uint8_t *)row + 10, 2);
+  }
+  return true;
+}
+// ACK занимает 16 Б в свободном хвосте сектора публикации, затем штатный A/B.
+// Снимок нужен только для редкого переноса; нового буфера нет.
+bool mem_cursor_begin(const uint8_t *first, const uint8_t *second)
+{
+  if (!mem_config_begin(first, second)) return false;
+  if (cfg_cached_active == MEM_CONFIG_LEGACY || cfg_cursor_offset >= MEMSECTORSIZE) return true;
+  const device_s *saved = (const device_s *)(cfg_job.snapshot + 512);
+  memcpy(cfg_job.header, saved->reserv + 20, 8);
+  memcpy((uint8_t *)cfg_job.header + 8, saved->reserv + DEVICE_TEMP_USB_OFFSET, 2);
+  memcpy((uint8_t *)cfg_job.header + 10, &saved->readTempIDIndex, 2);
+  uint16_t crc = crc16_calc((uint8_t *)cfg_job.header, 12);
+  cfg_job.header[3] = crc | ((uint32_t)(uint16_t)~crc << 16);
+  cfg_job.offset = cfg_cursor_offset;
+  cfg_cursor_offset += 16; // При отказе не дописывать поверх оборванной отметки.
+  cfg_job.state = CA_CURSOR_BODY;
+  return true;
+}
 // Берёт новый config/device из снимка, а неизменный хвост — из активного образа.
 static bool cfg_async_page(void)
 {
@@ -311,6 +351,18 @@ void mem_config_poll(uint32_t now)
     return;
   }
   switch (cfg_job.state) {
+  case CA_CURSOR_BODY:
+    if (!w25_async_start(cfg_job.source + MEMSECTORSIZE + cfg_job.offset,
+                         (uint8_t *)cfg_job.header, 12, now)) goto fail;
+    cfg_job.waiting = 1; cfg_job.state = CA_CURSOR_COMMIT; return;
+  case CA_CURSOR_COMMIT:
+    if (!w25_async_start(cfg_job.source + MEMSECTORSIZE + cfg_job.offset + 12,
+                         (uint8_t *)cfg_job.header + 12, 4, now)) goto fail;
+    cfg_job.waiting = 1; cfg_job.state = CA_CURSOR_DONE; return;
+  case CA_CURSOR_DONE:
+    cfg_job.result = 2;
+    if (flash_job.kind == FX_CONFIG) flash_exec_finish(FX_OK);
+    return;
   case CA_CHECK:
     if (!w25_read_data(cfg_job.source + cfg_job.offset, b, sizeof(b))) goto fail;
     if (memcmp(b, cfg_job.snapshot + cfg_job.offset, sizeof(b))) cfg_job.changed = 1;
@@ -337,7 +389,7 @@ void mem_config_poll(uint32_t now)
     if (!w25_async_start(cfg_job.target + MEMSECTORSIZE, (uint8_t*)cfg_job.header, sizeof(cfg_job.header), now)) goto fail;
     cfg_job.waiting = 1; cfg_job.state = CA_DONE; return;
   case CA_DONE:
-    if (cfg_job.changed || cfg_job.first) { cfg_cached_active = cfg_job.target; cfg_cached_generation = cfg_job.header[1]; }
+    if (cfg_job.changed || cfg_job.first) { cfg_cached_active = cfg_job.target; cfg_cached_generation = cfg_job.header[1]; cfg_cursor_offset = 16; }
     cfg_job.result = 2;
     if (flash_job.kind == FX_CONFIG) flash_exec_finish(FX_OK);
     return;

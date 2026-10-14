@@ -26,7 +26,7 @@ def append(m,index):
 
 # Возвращает действующие логические записи кольца.
 def records(m):
-    result=[];a=m.checked('log_ring_first')
+    result=[];a=m.checked('log_ring_seek',0)
     while a:
         cell=bytes(m.flash[a:a+32])
         if valid(cell):result.append(int.from_bytes(cell[:4],'little'))
@@ -71,7 +71,7 @@ def migration():
         m.flash[0x1cf400:0x1cf400+count*32]=b''.join(cells)
         n,_=boot(m)
         assert n==0 and records(m)==[],(count,n)
-        assert m.flash[BASE:BASE+98304]==b'\xff'*98304
+        assert not any(kind=='erase' for kind,_,_ in m.changes), 'boot must not bulk erase'
         append(m,count+1);assert records(m)==[count+1]
         r=StorageMachine(m.flash);assert boot(r)[0]==1 and records(r)==[count+1]
         totals.append(count)
@@ -141,18 +141,10 @@ def legacy_checkpoint():
 def migration_power():
     original=StorageMachine();original.flash[BASE:BASE+98304]=b'\x55'*98304
     before=bytes(original.flash);original.record_changes=True;assert boot(original)[0]==0
-    image=bytearray(before);cuts=0
-    for kind,a,b in original.changes:
-        assert kind=='erase' and BASE<=a<BASE+98304 and len(b)==4096
-        for n in (0,1,2048,4095,4096):
-            cut=bytearray(image);cut[a:a+n]=b[:n]
-            m=StorageMachine(cut);count,_=boot(m)
-            assert count==0 and records(m)==[],(hex(a),n,count)
-            append(m,129);assert records(m)==[129]
-            cuts+=1
-        for j,v in enumerate(b):image[a+j]=v if kind=='erase' else image[a+j]&v
-    assert cuts==120
-    return {'format_erase_cuts':cuts,'surviving_records':0,'append_after_each_cut':'verified'}
+    assert bytes(original.flash)==before and not original.changes
+    append(original,129)
+    assert sum(kind=='erase' for kind,_,_ in original.changes)==1
+    return {'boot_erases':0,'first_append_erases':1,'unsupported_pre_ring_format':'unchanged until reuse'}
 
 
 # Проверяет принятие только полностью зафиксированной записи журнала.

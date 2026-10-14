@@ -139,6 +139,6 @@ void user_comm_session(bool open)
   flash_exec_quiet(CH_SERVER);
   device.connectionhandle = 0; device.registredOnServer = 0;
   /* Поколение TCP отменяет неподтверждённый пакет; сохранённые курсоры и USB не трогаем. */
-  log_unacked[1] = temp_unacked[1] = 0; store.seen &= 5u;
+  temp_unacked[1] = 0; store.seen &= 5u;
   if (!open) photo_connection_lost(); /* «подключён» пишет user_comm_link после регистрации */
 }

@@ -15,7 +15,7 @@ static unsigned tx_unacked, drop_register, drop_status, ping_success, dns_succes
 static unsigned send_silence, prompt_silence, reserve_enabled, junk_mode, invalid_reserve;
 static uint8_t unique, last_status;
 static uint16_t incoming_count;
-static uint16_t log_unacked[2], temp_unacked[2];
+static uint16_t temp_unacked[2];
 static uint8_t incoming[2048], sent_frame[1040];
 static uint16_t sent_count;
 static uint32_t tcp_sent, tcp_acked;
@@ -518,9 +518,9 @@ static void server_tests(void)
   CHECK(event13==1 && !closes);
   server_reset(); drop_status=1; ping_success=0; advance(68000);
   CHECK(dns_requests==1 && event13==1 && !closes);
-  server_reset(); log_unacked[0]=3; temp_unacked[0]=4; log_unacked[1]=11; temp_unacked[1]=12;
+  server_reset(); temp_unacked[0]=4; temp_unacked[1]=12;
   sim_feed("+QIURC: \"closed\",0\r\n"); advance(1000);
-  CHECK(log_unacked[0]==3 && temp_unacked[0]==4 && !log_unacked[1] && !temp_unacked[1]);
+  CHECK(temp_unacked[0]==4 && !temp_unacked[1]); /* Логические ACK журнала проверяет ELF. */
   CHECK(closes==1 && opens==2 && comm_server_online());
   server_reset(); close_error=2;
   sim_feed("+QIURC: \"closed\",0\r\n"); advance(1000);

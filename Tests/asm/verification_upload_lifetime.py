@@ -25,27 +25,17 @@ def durable_empty():
             m.write(m.device+129,4096 if cmd==10 else 16384,2)
             m.write(m.device+(89 if cmd==10 else 83),1,2)
             m.write(m.device+(91 if cmd==10 else 85),m.base+32,4)
-            m.busy=True;m.request(channel);store=m.addr('store');seen=[]
+            before=bytes(m.flash)
+            m.busy=True;m.request(channel);seen=[]
             for i in range(4000):
                 m.tick_upload()
-                state=(m.phase(),m.read_word(store+18,1),m.checked('mem_config_result'))
-                if not seen or seen[-1][1]!=state:seen.append((i,state))
-                if m.flash[m.base:m.base+4096]==b'\xff'*4096 and m.read_word(store+18,1)==8:
-                    break
-            else:raise AssertionError(('cleanup stuck',cmd,channel,seen))
-            assert not m.sent and m.cursor(channel)==0
-
-
-
-            for _ in range(400):
-                m.tick_upload()
-                if channel==0 and m.phase()==5:break
-            assert not m.sent
-            if channel==0:
-                assert m.phase()==5
-                ctx=m.ptr();packet=m.read_word(ctx);before=bytes(m.u.mem_read(packet,1040))
-                for _ in range(8):m.tick_upload()
-                assert m.ptr()==ctx and bytes(m.u.mem_read(packet,1040))==before
+                if m.phase()==5:break
+            else:raise AssertionError(('empty reply stuck',cmd,channel))
+            assert not m.sent and m.cursor(channel)==1
+            assert bytes(m.flash)==before and not m.counts['start'], 'empty upload must not erase or save A/B'
+            ctx=m.ptr();packet=m.read_word(ctx);packet_before=bytes(m.u.mem_read(packet,1040))
+            for _ in range(8):m.tick_upload()
+            assert m.ptr()==ctx and bytes(m.u.mem_read(packet,1040))==packet_before
             m.busy=False
             for _ in range(400):
                 m.tick_upload()

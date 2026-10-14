@@ -215,16 +215,25 @@ def pin_config():
         assert current[:c['pinCode']] == saved[:c['pinCode']]
         assert current[c['pinCode']+4:-2] == saved[c['pinCode']+4:-2]
         active = m.select_config()
-        assert m.flash[active:active+512] == current
+        assert m.flash[active:active+512] == saved
         assert m.flash[active+512:active+1024] == saved_device
-        assert (active != 0x1cd400) == (old > 99999)
-        before = bytes(m.flash); writes = len(m.changes)
-        m.checked('user_readconfig', budget=3000000)
-        assert bytes(m.flash) == before and len(m.changes) == writes
+        assert int.from_bytes(m.u.mem_read(m.addr('store_save_requested'),1),'little') == (old > 99999)
         for name in ('user_comm_boot', 'store_restore', 'sched16_restore'):
             m.stubs[m.addr(name)] = m.ret
         m.checked('user_readsavedinformation')
         assert bytes(m.u.mem_read(m.device+d['IMEIGSM'], 16)) == b'867442070217472\0'
+        if old > 99999:
+            for _ in range(1500):
+                m.now+=1;m.checked('user_storage_poll')
+                if not int.from_bytes(m.u.mem_read(m.addr('store_save_requested'),1),'little') and m.checked('flash_exec_idle'):break
+            else:raise AssertionError('deferred PIN save stuck')
+        active=m.select_config()
+        assert m.flash[active:active+512] == current
+        assert (active != 0x1cd400) == (old > 99999)
+        assert m.flash[active+512+d['IMEIGSM']:active+512+d['IMEIGSM']+16] == b'867442070217472\0'
+        before = bytes(m.flash); writes = len(m.changes)
+        m.checked('user_readconfig', budget=3000000)
+        assert bytes(m.flash) == before and len(m.changes) == writes
         cases += 1
     # Неверная CRC не разрешает переход ASCII даже при правдоподобном ПИНе.
     m = machine(); saved = bytearray(512)

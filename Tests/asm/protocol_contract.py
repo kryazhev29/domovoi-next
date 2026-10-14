@@ -321,6 +321,12 @@ def main():
     commands.append(bytes.fromhex('aa0e0000f0f0'))
     for name in ('photo-capture','photo-upload-ack'):
         expected[name]['result']['commands'] = serial(commands)
+    # Протокольный эталон не меняется. Единственное внутреннее NOR-ожидание:
+    # старт больше не стирает всю область неизвестного старого формата.
+    from test_upload_runtime import log
+    old_image=bytearray(b'\xff'*0x400000)
+    old_image[0x1cf400:0x1cf400+128*32]=b''.join(log(i,True) for i in range(1,129))
+    expected['log-old-format-discard']['result']['nor']={'bytes':len(old_image),'sha256':hashlib.sha256(old_image).hexdigest()}
     if actual != expected:
         differences = {k: {'actual': actual.get(k), 'expected': expected.get(k)}
                        for k in set(actual) | set(expected) if actual.get(k) != expected.get(k)}

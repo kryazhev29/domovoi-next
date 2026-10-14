@@ -16,7 +16,6 @@ enum {
 };
 extern bool log_blank(const cellLog_s *);
 extern uint32_t log_lastIndex;
-extern uint8_t store_save_requested;
 // Проверяет CRC и метку записи на границе чтения из флеша.
 bool log_valid(const cellLog_s *cell)
 {
@@ -28,7 +27,7 @@ bool log_valid(const cellLog_s *cell)
 }
 #define log_job flash_job.data.log
 static struct {
-  uint32_t live,maximum,header[8],word;
+  uint32_t live,maximum,header[8],word,previous[24];
   uint8_t seq[24],count[24];
   uint8_t position,low,high,scan;
   uint8_t head,target,forced,part,init,ready,after;
@@ -55,7 +54,7 @@ static uint32_t pair(uint16_t v)
 {
   return v|((uint32_t)(uint16_t)~v<<16);
 }
-// Полная очистка уже проверена STORE: публикуем пустой журнал без повторного erase.
+// Заводская очистка уже проверена: публикуем пустое кольцо без повторного erase.
 void log_ring_cleared(void)
 {
   memset(&lr, 0, sizeof(lr));
@@ -72,7 +71,7 @@ void log_ring_invalidate(void)
   lr.init = 0;
   lr.ready = 0;
 }
-// Восстанавливает кольцо либо форматирует старую область по одной операции.
+// Восстанавливает кольцо; сектор без заголовка занимается только при записи.
 uint8_t log_ring_init_step(void)
 {
   uint32_t h[8];
@@ -89,6 +88,7 @@ uint8_t log_ring_init_step(void)
     if(header_valid(h)) {
       lr.live|=1u<<lr.part;
       lr.seq[lr.part]=(uint8_t)h[1];
+      lr.previous[lr.part]=h[3];
       if(pair_valid(h[5]) && (uint16_t)h[5]<=127) lr.count[lr.part]=(uint16_t)h[5];
       if(h[1]>lr.maximum) {
         lr.maximum=h[1];
@@ -97,12 +97,7 @@ uint8_t log_ring_init_step(void)
       }
     }
     if(++lr.part<24) return 1;
-    if(lr.head==NONE) {
-      lr.part=0;
-      lr.scan=0;
-      lr.init=4;
-      return 1;
-    }
+    if(lr.head==NONE) { lr.position=0; goto ready; }
     // Намерение удаляет старый хвост даже при целом заголовке после обрыва стирания.
     if(pair_valid(lr.header[6]) && (uint16_t)lr.header[6]<24 && (uint16_t)lr.header[6]!=lr.head) {
       lr.forced=(uint8_t)lr.header[6];
@@ -112,23 +107,6 @@ uint8_t log_ring_init_step(void)
     lr.low=0;
     lr.high=127;
     lr.init=2;
-    return 1;
-  }
-  // До окончания очистки заголовков нет: сброс повторяет всё форматирование.
-  if(lr.init==4) {
-    if(lr.scan) {
-      uint8_t r=w25_async_poll(timers_getMillis());
-      if(r==1) return 1;
-      lr.scan=0;
-      if(r!=2) return 3;
-      if(++lr.part<24) return 1;
-      log_ring_reset();
-      store_save_requested=1;
-      lr.position=0;
-      goto ready;
-    }
-    if(!w25_async_start(sector(lr.part),0,0,timers_getMillis())) return 3;
-    lr.scan=1;
     return 1;
   }
   if(lr.init==2) {
@@ -160,7 +138,7 @@ uint8_t log_ring_init_step(void)
   device.logsCount=0;
   for(uint8_t i=0;i<24;i++) device.logsCount+=lr.count[i];
   device.newAddressLog=sector(lr.head==NONE?0:lr.head)+32u+32u*lr.position;
-  device.status.readyLogData=device.logsCount!=0;
+  device.status.readyLogData=device.logsCount && log_lastIndex>=log_cursor32[CH_SERVER];
   lr.ready=1;
   return 2;
 }
@@ -176,11 +154,16 @@ static uint8_t next_sector(uint8_t current)
   }
   return found;
 }
-// Возвращает начало самого старого живого сектора.
-uint32_t log_ring_first(void)
+// Пропускает закрытые поколения, целиком предшествующие долговечному курсору.
+// После ACK сканируется не весь архив, а не более одного сектора до курсора.
+uint32_t log_ring_seek(uint32_t cursor)
 {
-  uint8_t n=next_sector(NONE);
-  return n==NONE?0:sector(n)+32;
+  uint8_t n=next_sector(NONE), chosen=n;
+  while(n!=NONE && lr.previous[n]<cursor) {
+    chosen=n;
+    n=next_sector(n);
+  }
+  return chosen==NONE?0:sector(chosen)+32u;
 }
 // Продвигает адрес, полученный из кольца, до следующей записи.
 uint32_t log_ring_next(uint32_t address)
@@ -275,7 +258,7 @@ uint8_t log_async_step(uint32_t now)
     flash_job.step=log_job.after;
     return 1;
   }
-  if(!w25_read_available() && !(flash_job.step==LOG_INIT && lr.init==4 && lr.scan)) return 1;
+  if(!w25_read_available()) return 1;
   switch(flash_job.step) {
   case LOG_INIT:
     result=log_ring_init_step();
@@ -353,6 +336,7 @@ uint8_t log_async_step(uint32_t now)
     lr.head=lr.target;
     lr.maximum=lr.header[1];
     lr.seq[lr.head]=(uint8_t)lr.maximum;
+    lr.previous[lr.head]=lr.header[3];
     lr.live|=1u<<lr.head;
     lr.position=0;
     lr.count[lr.head]=0;

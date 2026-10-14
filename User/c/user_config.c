@@ -57,9 +57,7 @@ void user_initvariables (void)
 
   device.numbersCount = user_getNumbersCount();
   device.logsCount = log_getRecordsCount();
-  if (device.logsCount) device.status.readyLogData = 1;
   device.tempIDsCount = user_getTempIDRecordsCount();
-  if (device.tempIDsCount) device.status.readyID = 1;
   // Очередь фото восстановит единственный асинхронный скан.
   device.countPhoto = 0;
   device.status.readyPhoto = 0;
@@ -107,9 +105,9 @@ void user_readconfig(void)
     config_terminate_strings();
     if (config.pinCode > 99999u) {
       if (!config_pin_number(&config.pinCode)) config.pinCode = 4321u;
-      // device ещё не восстановлен: записываем только настройки.
+      // Сначала восстановить device вместе с ACK, затем сохранить общий снимок.
       config.crc = crc16_calc((uint8_t *)&config, sizeof(config) - 2u);
-      mem_patch(mem[MB_CONFIG].start, (const uint8_t *)&config, sizeof(config));
+      store_save_requested = 1;
     }
   } else {
     user_setdefault();
@@ -211,6 +209,7 @@ void user_factory_variables(device_s *saved)
   device.updateTimeout = 0;
   log_ring_cleared();
   device.newAddressTempID = mem[MB_TEMPID].start;
+  temp_next = 0;
 }
 
 // Восстановить устойчивые поля device и незавершённые действия.
@@ -220,6 +219,7 @@ void user_readsavedinformation (void)
   wdt_reload();
   if (mem_read(mem[MB_CONFIG].start + sizeof(config), (uint8_t *)&DV, sizeof(DV)) &&
     DV.crc == crc16_calc((uint8_t *)&DV, sizeof(DV) - 2u)) {
+    if (!mem_cursor_restore(&DV)) { mem_storage_ready = false; return; }
     user_restore_device(&DV);
   }
   fw_resume_after_boot();
