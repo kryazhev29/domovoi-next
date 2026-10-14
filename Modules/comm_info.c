@@ -121,6 +121,7 @@ static void info_line(const uint8_t *p, uint16_t n)
 }
 
 /* Поставить очередной фоновый запрос сведений. */
+/* Проверено на плате №1 14.10.2026 (11584e0): снимок сети в USB-журнал раз в 30 с, статус 69/69. */
 void comm_info_poll(uint32_t now_ms)
 {
   if (info.antenna && (int32_t)(now_ms - info.antenna_until) >= 0) info.antenna = 0;
