@@ -232,7 +232,10 @@ static bool final(uint8_t *code)
   uint16_t pos; uint32_t value;
   uint8_t matched = comm_at_choice(line, line_count, state == RUN && mode == COMM_AT_SEND
     ? "SEND OK\0SEND FAIL\0ERROR\0" : "OK\0ERROR\0");
-  if (matched) { *code = matched == 1 ? COMM_AT_OK : COMM_AT_ERROR; return true; }
+  if (matched) {
+    *code = matched == 1 ? COMM_AT_OK : state == RUN && mode == COMM_AT_SEND && matched == 2
+      ? COMM_AT_SEND_FULL : COMM_AT_ERROR; return true;
+  }
   /* +CMS ERROR - отказ команд SMS (27.005 §3.2.5), тот же разбор кода. */
   if (!comm_at_prefix(line, line_count, "+CME ERROR:") && !comm_at_prefix(line, line_count, "+CMS ERROR:")) return false;
   pos = comm_at_spaces(line, line_count, sizeof("+CME ERROR:") - 1u);

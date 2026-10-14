@@ -182,7 +182,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     slm.attempt.done = 1; slm.attempt.result = (uint8_t)detail;
     slm.attempt.status.modem_code = n;
     /* Ошибка грамматики/UART оставляет AT в FAULT: обычный TCP close уже невозможен. */
-    if (detail > COMM_AT_TIMEOUT) kind = COMM_AT_STREAM_ERROR;
+    if (detail > COMM_AT_TIMEOUT && detail != COMM_AT_SEND_FULL) kind = COMM_AT_STREAM_ERROR;
   }
   if (slm.attempt.status.state == SLM_READY || kind == COMM_AT_URC
       || kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR)

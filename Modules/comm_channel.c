@@ -1,6 +1,6 @@
 /* Доработка: Кряжев А., 2026.
    Владеет TCP сервера и единственным буфером отправки.
-   Слот освобождается после TCP ACK; чтение выдаёт предварительное тело до финала AT.
+   Слот освобождается после SEND OK; окно ограничивает неподтверждённые байты; чтение выдаёт предварительное тело до финала AT.
    После звонка ожидаемый обрыв восстанавливается обычным путём без первой паузы.
 */
 #include "domovoi_diag.h"
@@ -10,11 +10,13 @@
 #include "comm_timeouts.h"
 #include <string.h>
 static uint8_t frame[1040];
+enum { TX_WINDOW = 4096 };
 static struct {
   void (*event)(uint8_t, uint8_t);
   uint16_t (*binary)(const uint8_t *, uint16_t);
   void (*read_done)(uint16_t, uint8_t);
   uint32_t now, tx_since, operation_since, ack_next, reopen_pause, dns_since, probe_since;
+  uint32_t sent, acked;
   uint16_t frame_count, capacity, bytes, open_code;
   uint8_t state, tx_state, operation, answer;
   uint8_t address, connections, retry_step, probe;
@@ -23,7 +25,7 @@ static struct {
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
 } ch;
 enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT, CH_PROBE };
-enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_ACK };
+enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_RETRY };
 enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY };
 /* Служебный запрос (сигнал, регистрация): одна команда, строки ответа - заказчику. */
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
@@ -77,7 +79,8 @@ static uint16_t channel_binary(const uint8_t *p, uint16_t n)
 }
 /* Разобрать ответы канала и уведомления о потере соединения. */
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
-   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
+   Изменено 2026-10-15 (task/tx-window): учёт окна и продвижения ACK — на плате не проверено. */
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
@@ -108,8 +111,11 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
       ch.flags.open_seen = 1; ch.open_code = (uint16_t)v[1];
     }
   } else if (ch.operation == OP_ACK) {
-    if (comm_at_parse(p,n,"+QISEND:\001,\001,\001",v) && v[1] <= v[0] && v[2] == v[0] - v[1])
-      ch.answer = v[2] == 0 ? 1 : 2;
+    if (comm_at_parse(p,n,"+QISEND:\001,\001,\001",v) && v[0] - ch.acked <= ch.sent - ch.acked
+        && v[2] == v[0] - v[1] && v[1] - ch.acked <= v[0] - ch.acked) {
+      if (v[1] != ch.acked) ch.tx_since = ch.now;
+      ch.acked = v[1]; ch.answer = 1;
+    }
   }
   {
     /* Повторное открытие гасит проверку, поэтому ответ старого сокета сюда не доходит. */
@@ -165,9 +171,10 @@ uint8_t *comm_tx_acquire(uint16_t *capacity)
   *capacity = sizeof(frame);
   if (!comm_channel_ready() || ch.tx_state != TX_FREE || ch.flags.urgent
       || ch.call.active) return NULL;
-  ch.tx_state = TX_BUILD; ch.tx_since = ch.now; return frame;
+  if (ch.sent == ch.acked) ch.tx_since = ch.now;
+  ch.tx_state = TX_BUILD; return frame;
 }
-/* Передать заполненный слот каналу до подтверждения TCP. */
+/* Передать заполненный слот каналу до SEND OK. */
 bool comm_tx_commit(uint16_t count)
 {
   if (ch.tx_state != TX_BUILD || !count || count > sizeof(frame)) return false;
@@ -248,7 +255,8 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
 }
 /* Применить завершение текущей операции канала.
    Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): два звонка в 4G без VoLTE
-   во время обмена, поздний ответ на опрос ACK — TCP не переоткрывался, фото дошли. */
+   во время обмена, поздний ответ на опрос ACK — TCP не переоткрывался, фото дошли.
+   Изменено 2026-10-15 (task/tx-window): SEND OK отпускает слот, SEND FAIL ждёт повтор — на плате не проверено. */
 static void channel_completed(void)
 {
   uint8_t op = ch.operation, result = comm_modem_result();
@@ -305,7 +313,7 @@ static void channel_completed(void)
       comm_modem_record(SLM_STEP_COUNT, SLM_ERR_TCP, comm_modem_status()->modem_code);
       ch.state = CH_FAULT; channel_emit(COMM_CH_FAULT, result); return;
     }
-    ch.flags.recv = 0; ch.tx_state = TX_FREE; ch.frame_count = 0;
+    ch.flags.recv = 0; ch.tx_state = TX_FREE; ch.sent = ch.acked = 0;
     ch.state = CH_PAUSE; ch.operation_since = ch.now; return;
   }
   if (op == OP_ACK) {
@@ -313,17 +321,22 @@ static void channel_completed(void)
     if (result == COMM_AT_TIMEOUT && ++ch.ack_timeouts < 3) return;
     ch.ack_timeouts = 0;
   }
+  if (op == OP_SEND && result == COMM_AT_SEND_FULL) {
+    ch.tx_state = TX_RETRY; ch.ack_next = ch.now + comm_timeouts[COMM_T_ACK_POLL]; return;
+  }
   if (result != (op == OP_PROMPT ? COMM_AT_GOT_PROMPT : COMM_AT_OK)) {
     if (!ch.call.expected) comm_modem_record(SLM_STEP_COUNT, result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT : SLM_ERR_AT,
                       comm_modem_status()->modem_code);
     comm_channel_reopen(0); return;
   }
   if (op == OP_PROMPT) ch.tx_state = TX_PAYLOAD;
-  else if (op == OP_SEND) { ch.tx_state = TX_ACK; ch.ack_next = ch.now; }
+  else if (op == OP_SEND) {
+    if (ch.sent == ch.acked) ch.ack_next = ch.now + comm_timeouts[COMM_T_ACK_POLL];
+    ch.sent += ch.frame_count; ch.tx_state = TX_FREE;
+  }
   else if (op == OP_ACK) {
     if (!ch.answer) { comm_channel_reopen(0); return; }
-    if (ch.answer == 1) { ch.tx_state = TX_FREE; channel_emit(COMM_CH_TX_DONE, 1); }
-    else ch.ack_next = ch.now + comm_timeouts[COMM_T_ACK_POLL];
+    ch.ack_next = ch.now + comm_timeouts[COMM_T_ACK_POLL];
   }
 }
 /* Продвинуть канал, передачу, чтение и фоновые запросы. */
@@ -338,7 +351,7 @@ void comm_channel_poll(uint32_t now_ms)
     ch.state = CH_PAUSE;
   }
   if (ch.state == CH_OPEN && !comm_modem_ready()) comm_channel_reopen(0);
-  if (!ch.call.active && ch.state == CH_OPEN && ch.tx_state != TX_FREE && now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED])
+  if (!ch.call.active && ch.state == CH_OPEN && (ch.sent != ch.acked || ch.tx_state != TX_FREE) && now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED])
     comm_channel_reopen(0);
   if (ch.probe_active) {
     uint8_t t = ch.probe_active == COMM_CH_PING ? COMM_T_PING : COMM_T_DNS;
@@ -384,11 +397,12 @@ void comm_channel_poll(uint32_t now_ms)
     return;
   }
   if ((ch.state != CH_OPEN && ch.state != CH_PROBE) || ch.operation) return;
-  if (ch.tx_state == TX_QUEUED && (!ch.probe || ch.probe_active)) {
+  if ((ch.tx_state == TX_QUEUED || (ch.tx_state == TX_RETRY && (int32_t)(now_ms - ch.ack_next) >= 0))
+      && ch.sent - ch.acked + ch.frame_count <= TX_WINDOW && (!ch.probe || ch.probe_active)) {
     char cmd[32]; uint16_t n = comm_at_copy(cmd, sizeof(cmd), 0, "AT+QISEND=0,");
     n = comm_at_decimal(cmd, sizeof(cmd), n, ch.frame_count);
     if (n < sizeof(cmd) && channel_command(cmd, COMM_AT_PROMPT, COMM_T_SEND_PROMPT, OP_PROMPT)) ch.tx_state = TX_PROMPT;
-  } else if (ch.tx_state == TX_ACK && (int32_t)(now_ms - ch.ack_next) >= 0)
+  } else if (ch.sent != ch.acked && (int32_t)(now_ms - ch.ack_next) >= 0)
     channel_command("AT+QISEND=0,0", COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_ACK);
   else if ((ch.tx_state == TX_FREE || ch.tx_state == TX_QUEUED) && ch.probe && !ch.probe_active) {
     bool dns = ch.probe == COMM_CH_DNS;

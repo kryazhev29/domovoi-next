@@ -18,6 +18,7 @@ static uint16_t incoming_count;
 static uint16_t log_unacked[2], temp_unacked[2];
 static uint8_t incoming[2048], sent_frame[1040];
 static uint16_t sent_count;
+static uint32_t tcp_sent, tcp_acked;
 static unsigned reject_register;
 static bool socket_model, read_pending;
 static bool primary_restored, reserve_works;
@@ -198,7 +199,7 @@ static void transport_tx(void)
     interrupt_byte(0,USART_SR_TC);
     /* SLM336 может возвращать бинарный пакет даже после ATE0. */
     if (sim_data_echo) for (unsigned i=0;i<sent_count;++i) interrupt_byte(sent_frame[i],USART_SR_RXNE);
-    if (!send_silence) sim_reply("SEND OK\r\n",20);
+    if (!send_silence) { tcp_sent += sent_count; sim_reply("SEND OK\r\n",20); }
     else if (send_silence == 2) sim_reply("SEND FAIL\r\n",20);
     else if (send_silence == 3) sim_reply("OK\r\n",20);
     uint8_t response[32], args[5]={0}; uint16_t n=0;
@@ -326,7 +327,11 @@ static void transport_tx(void)
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
     if (!socket_model && !strncmp(cmd,"AT+QISEND=",10)) sim_reply("ERROR\r\n",20);
-    else if (!strcmp(cmd,"AT+QISEND=0,0")) sim_reply(tx_unacked ? "+QISEND: 48,0,48\r\nOK\r\n" : "+QISEND: 48,48,0\r\nOK\r\n",20);
+    else if (!strcmp(cmd,"AT+QISEND=0,0")) {
+      char reply[80]; if (!tx_unacked) tcp_acked=tcp_sent;
+      snprintf(reply,sizeof(reply),"+QISEND: %u,%u,%u\r\nOK\r\n",tcp_sent,tcp_acked,tcp_sent-tcp_acked);
+      sim_reply(reply,20);
+    }
     else if (!strncmp(cmd,"AT+QISEND=",10)) { if (!prompt_silence) sim_reply("> ",20); }
     else if (!strcmp(cmd,"AT+QICLOSE=0")) {
       ++closes; if (close_error!=1) socket_model=false;
@@ -344,7 +349,7 @@ static void transport_tx(void)
       CHECK(call_pdp_model && !socket_model && opens<sizeof(open_addresses));
       open_times[opens]=sim_now; open_addresses[opens]=ch.address;
       unsigned error=(!ch.address && primary_restored) || (ch.address && reserve_works) ? 0u : sim_open_error;
-      socket_model=!error || error==4; ++opens;
+      socket_model=!error || error==4; ++opens; tcp_sent=tcp_acked=0;
       if (error==3 || error==4)
         open_closed_due=sim_now+(error==3 && ch.address ? comm_timeouts[COMM_T_QIOPEN]+10u : 40u);
       if (error==3 && !ch.address) primary_closed_due=sim_now+1000u;
@@ -423,6 +428,7 @@ static void server_reset_start(bool cold)
   device.protocolVersion=2; device.hardwareVersion=139;
   device.datetime=1790900000u; device.datetimeID=1; device.datetimeGroup=2;
   device.datetimeShedule=3; device.datetimeConfig=4; device.datetimeHoliday=5;
+  tcp_sent=tcp_acked=0;
   device.status=0x1234; device.answerID=0; incoming_count=sent_count=0;
   socket_model=false; read_pending=false; read_error=0; dns_late=ping_reply_due=open_closed_due=primary_closed_due=0; ping_reply_kind=0;
   primary_restored=reserve_works=false;
@@ -544,13 +550,15 @@ static void server_tests(void)
   server_rx_process(); CHECK(server_commands==before+1);
   advance(1000); CHECK(server_commands==before+2);
   server_reset(); advance(4000); p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
-  tx_unacked=1; advance(1500); CHECK(sv.flags.status_due && !comm_tx_acquire(&cap));
+  tx_unacked=1; advance(1500); CHECK(statuses_sent==1 && !closes);
   tx_unacked=0; advance(1500); CHECK(statuses_sent==1);
   server_reset(); prompt_silence=1; p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
   advance(4000); CHECK(closes>=1 && opens>=2);
   for (unsigned failure=1;failure<=3;++failure) {
     server_reset(); send_silence=failure; p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
-    advance(6000); CHECK(closes>=1 && opens>=2);
+    advance(6000);
+    if (failure==2) { CHECK(!closes && comm_tx_busy()); send_silence=0; advance(500); CHECK(!closes && !comm_tx_busy()); }
+    else CHECK(closes>=1 && opens>=2);
   }
   server_reset(); drop_status=1; ping_success=dns_success=0; advance(70000);
   CHECK(dns_requests==1 && statuses_sent==4 && ch.probe_active==COMM_CH_DNS && opens==1);

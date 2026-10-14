@@ -103,7 +103,7 @@ static void call_tests(void)
     call_reset(); unsigned kept_opens=opens, kept_closes=closes, kept_links=links;
     if (fw) device.status |= 1u << 11;
     tx_unacked=1; user_send_statusPack(CH_SERVER); advance(100);
-    CHECK(ch.tx_state==TX_ACK && !ch.operation); tx_unacked=0;
+    CHECK(!comm_tx_busy() && tcp_sent!=tcp_acked); tx_unacked=0;
     ch.tx_since=sim_now-9990u;
     ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700);
     CHECK(comm_server_online() && !comm_tx_busy());

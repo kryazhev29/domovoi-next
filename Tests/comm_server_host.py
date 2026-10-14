@@ -102,10 +102,10 @@ def mutations():
         ('ping-zero-replies','&& v[1] > 0 && v[1] <= v[0]','&& v[1] <= v[0]'),
         ('unacked-deadline','now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED]','now_ms - ch.tx_since > comm_timeouts[COMM_T_STABLE]'),
         ('close-before-open','ch.state = CH_CLOSE; ch.reopen_pause','ch.state = CH_PAUSE; ch.reopen_pause'),
-        ('second-command','|| comm_tx_busy()) return;','|| false) return;'),
-        ('tcp-ack','if (ch.answer == 1) { ch.tx_state = TX_FREE;','if (ch.answer != 0) { ch.tx_state = TX_FREE;'),
+        ('second-command','!server_rx_ready || comm_tx_busy() ||','!server_rx_ready || false ||'),
+        ('tcp-ack','ch.sent != ch.acked || ch.tx_state != TX_FREE','ch.tx_state != TX_FREE'),
         ('dns-header-only','v[0] == 0 && v[1] > 0 ? 2 : 3','v[0] == 0 && v[1] > 0 ? 1 : 3'),
-        ('event-repeat','!sv.flags.traffic_event && sv.handlers.no_traffic','sv.handlers.no_traffic'),
+        ('event-repeat','if (!sv.flags.traffic_event) sv.flags.traffic_event = sv.handlers.no_traffic();','sv.flags.traffic_event = sv.handlers.no_traffic();'),
     )
     with TemporaryDirectory(dir=out) as tmp:
         tmp=Path(tmp)

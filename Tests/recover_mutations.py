@@ -21,7 +21,7 @@ CASES = (
     ('server-pair-order', b'if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();',
      b'if (!ch.call.expected) ch.address = comm_modem_reserve() && (ch.flags.registered_session || !ch.address);', CHANNEL),
     ('server-ping-between-addresses', b'sv.state != SV_ONLINE && !sv.address && comm_modem_reserve()', b'false', SERVER),
-    ('server-probe-starved-by-queue', b'ch.tx_state == TX_QUEUED && (!ch.probe || ch.probe_active)', b'ch.tx_state == TX_QUEUED', CHANNEL),
+    ('server-probe-starved-by-queue', b'&& (!ch.probe || ch.probe_active)', b'', CHANNEL),
     ('server-closed-cancels-probe', '    if (ch.state == CH_PROBE || ch.state == CH_OPENING) return; /* До успешного QIOPEN поздний closed не меняет попытку/пробу. */'.encode('utf-8'), b'', CHANNEL),
     ('server-late-closed-cancels-reserve', b'ch.state == CH_PROBE || ch.state == CH_OPENING', b'ch.state == CH_PROBE', CHANNEL),
     ('server-dns-fence-as-failure', 'return; // Старое окно DNS ещё не означает отсутствие интернета.'.encode('utf-8'), b'ch.probe = 0; channel_emit(COMM_CH_PROBE_DONE, 0);', CHANNEL),

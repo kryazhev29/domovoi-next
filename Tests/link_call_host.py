@@ -23,9 +23,11 @@ def model():
     code = replace_once(code, '  snprintf(last_command,sizeof(last_command),"%s",cmd);',
                         '  snprintf(last_command,sizeof(last_command),"%s",cmd);\n  if (lc_command(cmd)) return;')
     code = replace_once(code, '    uint8_t response[32], args[5]={0}; uint16_t n=0;',
-                        '    lc_payload();\n    uint8_t response[32], args[5]={0}; uint16_t n=0;')
+                        '    if (lc_payload()) return;\n    uint8_t response[32], args[5]={0}; uint16_t n=0;')
     code = replace_once(code, 'static void transport_tick(unsigned increment)\n{',
                         'static void transport_tick(unsigned increment)\n{\n  lc_tick();')
+    code = replace_once(code, 'static void user_parse_comand(uint8_t *p, unsigned channel)\n{', 'static bool lc_request21(uint8_t *p);\nstatic void user_parse_comand(uint8_t *p, unsigned channel)\n{')
+    code = replace_once(code, '++server_commands;', '++server_commands;\n  if (lc_request21(p)) return;')
     # Существующие регрессии исполняются отдельно; ссылка сохраняет их проверку компилятором.
     code = replace_once(code, 'int main(void)', 'static int previous_main(void)')
     return code + '\n' + tests
@@ -46,31 +48,6 @@ def run(code, out, name, args=(), fail=False):
     return log
 
 
-def pipeline_estimate():
-    """Оптимистичная модель окна 1068 Б: без ошибок/вызова/Flash, ACK виден лишь через опрос.
-    Это оценка выгоды, не реализация автомата и не доказательство безопасности окна.
-    """
-    sizes = [min(512, 18570 - offset) + 22 for offset in range(0, 18570, 512)]
-    now = sent = known = actual = peak = polls = 0
-    pending = []
-    for size in sizes + [0]:
-        while (sent - known + size > 1068) or (size == 0 and sent != known):
-            now += 100
-            actual += sum(count for due, count in pending if due <= now)
-            pending = [(due, count) for due, count in pending if due > now]
-            known = actual
-            now += 20
-            polls += 1
-        if size:
-            wire = (size * 10000 + 115199) // 115200
-            pending.append((now + 20 + wire + 50, size))
-            now += 20 + wire + 6
-            sent += size
-            peak = max(peak, sent - known)
-    assert sent == known == 19384 and peak <= 1068
-    return {'ms': now, 'limit': 1068, 'peak': peak, 'polls': polls, 'acked': known}
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mutations', action='store_true')
@@ -80,30 +57,45 @@ def main():
     os.environ['ZIG_GLOBAL_CACHE_DIR'] = str(out / 'zig-global')
     os.environ['ZIG_LOCAL_CACHE_DIR'] = str(out / 'zig-local')
     code = model()
-    current = run(code, out, 'current')
-    # Та же модель, настоящие два исходника из указанной пользователем базы.
-    baseline = code
-    for name in ('Modules/comm_channel.c', 'User/comm_timeouts.c'):
-        old = project_source(name).replace('\r\n', '\n')
-        original = subprocess.check_output(['git', 'show', '2e42207:' + name], cwd=ROOT).decode('utf-8').replace('\r\n', '\n')
-        original = re.sub(r'^\s*#include [\"<][^\n]*domovoi_diag\.h[\">]\s*$', '', original, flags=re.M)
-        if name.endswith('comm_channel.c'):
-            old = '\n'.join(line for line in old.splitlines() if not line.startswith('#include'))
-            original = '\n'.join(line for line in original.splitlines() if not line.startswith('#include'))
-        else:
-            old = '\n'.join(line for line in old.splitlines() if not line.startswith('#include "'))
-            original = '\n'.join(line for line in original.splitlines() if not line.startswith('#include "'))
-        baseline = replace_once(baseline, old, original)
-    before = run(baseline, out, 'baseline', ('measure',))
-    run(baseline, out, 'baseline-call', ('call-baseline',))
+    current = run(code, out, 'current', ('test', str(out / 'after.stream')))
+    # Те же модель UART/ACK и кадры; автомат канала из пользовательской базы.
+    old = project_source('Modules/comm_channel.c').replace('\r\n', '\n')
+    old = '\n'.join(line for line in old.splitlines() if not line.startswith('#include'))
+    original = subprocess.check_output(['git', 'show', '5d0cf6e:Modules/comm_channel.c'], cwd=ROOT).decode('utf-8')
+    original = '\n'.join(line for line in original.splitlines() if not line.startswith('#include'))
+    baseline = replace_once(code, old, original)
+    baseline = baseline.replace('ch.sent=ch.acked=tcp_sent=tcp_acked=', 'tcp_sent=tcp_acked=').replace('ch.acked==ch.sent', 'tcp_acked==tcp_sent').replace('ch.sent==ch.acked', 'tcp_sent==tcp_acked')
+    baseline = baseline.replace('COMM_CH_CLOSED, COMM_CH_PROBE_DONE', 'COMM_CH_CLOSED, COMM_CH_TX_DONE, COMM_CH_PROBE_DONE')
+    before = run(baseline, out, 'baseline', ('measure', str(out / 'before.stream')))
+    assert (out / 'before.stream').read_bytes() == (out / 'after.stream').read_bytes()
+    run(baseline, out, 'baseline-mixed', ('mixed', str(out / 'before-mixed.stream')))
+    run(code, out, 'current-mixed', ('mixed', str(out / 'after-mixed.stream')))
+    assert (out / 'before-mixed.stream').read_bytes() == (out / 'after-mixed.stream').read_bytes()
     timing = {'before_ms': int(re.search(r' ms=(\d+)', before)[1]),
-              'after_ms': int(re.search(r' ms=(\d+)', current)[1]), 'pipeline_estimate': pipeline_estimate()}
+              'after_ms': int(re.search(r' ms=(\d+)', current)[1]), 'identical_stream_bytes': (out / 'after.stream').stat().st_size}
+    timing['resume_cursor'] = int(re.search(r'resume: cursor=(\d+)', current)[1])
+    if os.environ.get('DOMOVOI_ELF'):
+        subprocess.run([__import__('sys').executable, str(ROOT / 'Tests/asm/test_tx_window_photo.py'), str(timing['resume_cursor'])], check=True)
+    timing['windows'] = {}
+    for limit in (534, 1068, 2048, 3072, 8192):
+        log = run(replace_once(code, 'TX_WINDOW = 4096', f'TX_WINDOW = {limit}'), out, f'window-{limit}', ('measure',))
+        timing['windows'][limit] = int(re.search(r' ms=(\d+)', log)[1])
+    grouped = code.replace('#define LC_GROUP 1u', '#define LC_GROUP 2u').replace('frame[1040]', 'frame[1068]')
+    log = run(grouped, out, 'two-frames', ('measure', str(out / 'grouped.stream')))
+    assert (out / 'before.stream').read_bytes() == (out / 'grouped.stream').read_bytes()
+    timing['grouped_ms'] = int(re.search(r' ms=(\d+)', log)[1])
+    timing['faster_uart'] = {}
+    for baud in (230400, 460800):
+        log = run(replace_once(code, '#define LC_BAUD 115200u', f'#define LC_BAUD {baud}u'), out, f'baud-{baud}', ('measure',))
+        timing['faster_uart'][baud] = int(re.search(r' ms=(\d+)', log)[1])
     (out / 'timing.json').write_text(json.dumps(timing, indent=2), encoding='utf-8')
-    print('pipeline estimate: ' + json.dumps(timing['pipeline_estimate']), flush=True)
+
     if args.mutations:
         faults = [
             ('first-timeout-reopen', '++ch.ack_timeouts < 3', '++ch.ack_timeouts < 1'),
-            ('poll-1000ms', '100, /* Опрос подтверждённых байтов */', '1000, /* Опрос подтверждённых байтов */'),
+            ('stop-and-wait', 'ch.sent - ch.acked + ch.frame_count <= TX_WINDOW', 'ch.sent == ch.acked'),
+            ('acquire-renews-deadline', 'if (ch.sent == ch.acked) ch.tx_since = ch.now;', 'ch.tx_since = ch.now;'),
+            ('send-fail-reopens', 'op == OP_SEND && result == COMM_AT_SEND_FULL', 'op == OP_SEND && result == COMM_AT_SINK_ERROR'),
             ('no-timeout-limit', '++ch.ack_timeouts < 3', '++ch.ack_timeouts < 255'),
             ('counter-not-reset', '    ch.ack_timeouts = 0;', '    /* мутация: успех не очищает счётчик */'),
             ('no-new-session-reset', 'ch.state = CH_OPEN; ch.ack_timeouts = 0;', 'ch.state = CH_OPEN;'),

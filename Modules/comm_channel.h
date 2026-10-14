@@ -1,6 +1,6 @@
 /* Доработка: Кряжев А., 2026.
    Владеет TCP сервера и единственным буфером отправки.
-   Слот освобождается после TCP ACK; чтение выдаёт предварительное тело до финала AT.
+   Слот освобождается после SEND OK; окно ограничивает неподтверждённые байты; чтение выдаёт предварительное тело до финала AT.
    После звонка ожидаемый обрыв восстанавливается обычным путём без первой паузы.
 */
 #ifndef COMM_CHANNEL_H
@@ -9,7 +9,7 @@
 #include "domovoi_diag.h"
 #include <stdbool.h>
 /* OPENING, OPENED и OPEN_FAILED - с адресом (0 - основной, 1 - резервный). */
-enum { COMM_CH_OPENED, COMM_CH_CLOSED, COMM_CH_TX_DONE, COMM_CH_PROBE_DONE, COMM_CH_FAULT, COMM_CH_OPEN_FAILED, COMM_CH_OPENING };
+enum { COMM_CH_OPENED, COMM_CH_CLOSED, COMM_CH_PROBE_DONE, COMM_CH_FAULT, COMM_CH_OPEN_FAILED, COMM_CH_OPENING };
 enum { COMM_CH_PING = 1, COMM_CH_DNS = 2 };
 /* init только после отмены UART/начала изолированного сеанса драйвера.
    обработчик только отмечает событие; не запускает AT. */
@@ -35,9 +35,9 @@ uint32_t comm_channel_diag(void);
 #endif
 /* Производитель пишет прямо сюда; capacity по sizeof слота. Занято/приоритет — NULL. */
 uint8_t *comm_tx_acquire(uint16_t *capacity);
-/* Передать заполненный слот каналу до подтверждения TCP. */
+/* Передать заполненный слот каналу до SEND OK. */
 bool comm_tx_commit(uint16_t count);
-/* Отмена только до commit; после commit слот держится до TCP ACK/безопасной отмены. */
+/* Отмена только до commit; после commit слот держится до SEND OK/безопасной отмены. */
 void comm_tx_release(void);
 /* Сообщить, занят ли единственный слот отправки. */
 bool comm_tx_busy(void);
