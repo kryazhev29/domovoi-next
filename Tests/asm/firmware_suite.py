@@ -66,6 +66,7 @@ CASES = {
     'firmware': [('test_fw_service_runtime', n) for n in ('normal','heap_reservation','boundaries_errors','io_faults','busy_cancel','real_spi','exact_failure_logs')],
     'photo': [('test_photo_runtime', n) for n in ('normal','uploads','errors')],
     'photo busy': [('test_photo_busy','run'), ('test_photo_busy','mutations')],
+    'photo latency': [('test_photo_latency','run'), ('test_photo_latency','mutations')],
     'photo access': [('test_photo_access', n) for n in ('passage','skipped','same_camera_path')],
     'photo_edges': [('test_photo_edges', n) for n in ('cancellation','corrupt','failures','stream','transport_and_heap','ownership','full_cleanup','headers_and_space')],
     'table': [('test_table_runtime', n) for n in ('test_cancel_and_reconnect','test_faults','test_corrupt','test_interaction_and_heap')],
@@ -85,7 +86,7 @@ CORE = ('peripheral init','protocol lengths','protocol config','protocol text','
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
 CORE += ('photo access',)
-CORE += ('photo busy',)
+CORE += ('photo busy', 'photo latency')
 CORE += ('call FW',)
 CORE += ('flash fixes',)
 CASES['fixes1 mutations'] = [('test_fixes1_mutations', 'run')]

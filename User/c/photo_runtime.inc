@@ -16,7 +16,7 @@ enum {
   PR_IO = 1, PR_HEAD, PR_CAMERA, PR_LAZY_DONE,
     PR_DATA_DONE, PR_PHOTO_MARK, PR_PHOTO_DONE, PR_CLEAN_END,
     PR_ACK_HEAD, PR_ACK_ADVANCE, PR_REQUEST_DONE, PR_SEND_FILL,
-    PR_SEND_COMMIT, PR_IO_WAIT
+    PR_SEND_COMMIT, PR_IO_WAIT, PR_REQUEST_ERROR, PR_OFFSET_ERROR
 };
 static void photo_stop(void);
 static uint8_t photo_alloc(void);
@@ -141,9 +141,8 @@ static void pr_scan_finish(void)
     flash_job.step = PR_REQUEST_DONE;
     return;
   }
-  pr_queue_publish();
-  if (pj.task == PT_REQUEST && !pj.quiet)
-    user_send_answer_comand(21, CMD_PARAMERROR, photo->channel, photo->requestId);
+  if (pj.task == PT_REQUEST) flash_job.step = PR_REQUEST_ERROR;
+  else pr_queue_publish();
 }
 
 // Ограничиваем ожидание транспорта, не задерживая основной цикл.
@@ -351,8 +350,7 @@ void photo_storage_poll(uint32_t now)
       if (pj.task == PT_REQUEST && pj.requested_number != 0xffffffffu &&
         ((pj.requested_number && pj.requested_number == pj.h[0]) || (!pj.requested_number && confirmed < pj.h[1]))) {
         if (pj.requested_offset > pj.h[1]) {
-          if (!pj.quiet) user_send_answer_comand(21, CMD_PARAMERROR, photo->channel, photo->requestId);
-          pr_release(FX_OK);
+          flash_job.step = PR_OFFSET_ERROR;
           break;
         }
         pj.target = pj.scan;
@@ -484,20 +482,30 @@ void photo_storage_poll(uint32_t now)
       flash_job.step = PR_ACK_HEAD;
     }
     break;
-  case PR_REQUEST_DONE:
+  case PR_REQUEST_ERROR:
+  case PR_OFFSET_ERROR:
+  case PR_REQUEST_DONE: {
+    uint8_t step = flash_job.step;
     if (!pj.quiet && photo->channel == CH_SERVER && comm_tx_busy()) {
       if (!pr_reply_expired(now)) break;
       pj.quiet = 1;
     }
-    pr_queue_publish();
+    // Старый курсор и неверное смещение ждут TX так же, как успешный ответ.
+    // При неверном смещении скан ещё не закончен: очередь не публикуем.
+    if (step == PR_OFFSET_ERROR) pr_release(FX_OK);
+    else pr_queue_publish();
     if (!pj.quiet) {
-      user_send_answer_comand(21, CMD_SUCCESS, photo->channel, photo->requestId);
-      photo->readAddress = pj.first ? pj.first : device.newAddressPhoto;
-      photo->offset = pj.first ? pj.first_offset : 0;
-      photo->pending = 1;
-      photo_pending_since = now;
+      user_send_answer_comand(21, step == PR_REQUEST_DONE ? CMD_SUCCESS : CMD_PARAMERROR,
+                              photo->channel, photo->requestId);
+      if (step == PR_REQUEST_DONE) {
+        photo->readAddress = pj.first ? pj.first : device.newAddressPhoto;
+        photo->offset = pj.first ? pj.first_offset : 0;
+        photo->pending = 1;
+        photo_pending_since = now;
+      }
     }
     break;
+  }
   case PR_SEND_FILL:
     if (!pr.tx) {
       pr.tx = work_acquire(PHOTO_BLOCK + 22, WORK_PHOTO_PACKET);
