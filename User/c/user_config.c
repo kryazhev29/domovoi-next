@@ -49,11 +49,12 @@ void user_initvariables (void)
   device.connectionhandle = -1;
   device.memID = w25_read_devID();
 
+  // Конфигурация уже прочитана; восстановление рабочих курсоров перекрываем питанием.
+  user_comm_boot();
+
   // чтение сохранённой информации
   user_readsavedinformation();
   device.protocolVersion = PROTOCOL_VERSION;
-
-  user_comm_boot();
 
   device.numbersCount = user_getNumbersCount();
   device.logsCount = log_getRecordsCount();

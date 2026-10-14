@@ -63,6 +63,7 @@ typedef struct {
    recovery_ms — общий срок дочитывания тела и AT+CMEE? -> +CMEE: -> OK.
    Старые финалы до +CMEE: игнорируются, потерянный финал не задерживает запрос.
    Потеря границ блокирует движок; init не заменяет отмену UART/сеанса. */
+/* NULL сбрасывает разбор загрузочного шума, сохраняя владельца и двоичный приёмник. */
 void comm_at_init(const comm_at_handlers_t *handlers, uint32_t recovery_ms);
 /* Скопировать готовую команду и начать её неблокирующую передачу. */
 uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms);

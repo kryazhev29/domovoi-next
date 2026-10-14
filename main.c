@@ -90,15 +90,15 @@ void main()
   delay_ms(500);
   wdt_reload(); // обслужить сторож
 
-  // настраиваем USB при необходимости при подключенном кабеле
-  if (USB_DETECT)
-    usb_init();
-
   // Инициализация сторожевого таймера
   wdt_init();
 
   // Инициализация пользовательской программы
   user_init();
+
+  // Питание модема уже идёт из SysTick; USB больше не задерживает его запуск.
+  if (USB_DETECT)
+    usb_init();
 
   #if DOMOVOI_DIAG
   unsigned int loop_mark = timers_getMillis();

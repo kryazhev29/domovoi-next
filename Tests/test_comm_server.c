@@ -453,8 +453,12 @@ static void server_startup_tests(void)
 {
   server_reset(); uint32_t warm=sim_now-500u, from_rail=warm-power_trace[2].time;
   server_reset_start(true); uint32_t cold=sim_now-500u;
-  CHECK(warm-cold==2000u && power_trace[2].time==100u && cold-power_trace[2].time==from_rail);
-  DIAG_CHECK(slm.diag.phases[SLM_PHASE_POWER]==5000u);
+  CHECK(warm-cold==2010u && power_trace[2].time==0u && cold-power_trace[2].time==from_rail);
+  DIAG_CHECK(slm.diag.phases[SLM_PHASE_POWER]==2040u);
+  uint32_t total = 0;
+  for (unsigned i = 0; i < SLM_PHASE_COUNT; ++i) total += slm.diag.phases[i];
+  if (total != cold - 10u) fprintf(stderr,"USB112 total=%u online=%u phases=%u/%u/%u/%u/%u/%u\n", total,cold,slm.diag.phases[0],slm.diag.phases[1],slm.diag.phases[2],slm.diag.phases[3],slm.diag.phases[4],slm.diag.phases[5]);
+  CHECK(total == cold - 10u); /* Модель узнаёт online перед последним шагом 10 мс. */
   printf("server startup model: warm=%u ms, cold=%u ms, from PC13=%u ms both\n",warm,cold,from_rail);
 }
 // Проверить кадры, сроки статусов, регистрацию и отказы сервера.
