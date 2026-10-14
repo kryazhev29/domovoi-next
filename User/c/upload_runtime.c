@@ -86,6 +86,8 @@ void upload_pending_retry(uint8_t channel)
   if (upload_pending[channel].state == 2) upload_pending[channel].state = 1;
 }
 // Повтор не продлевает TTL и не создаёт вторую выгрузку с тем же uniq.
+/* Проверено на плате №1 14.10.2026 (2e42207, сборка 1791987129): запрос журнала 9 во время
+   работы с фото выполнен после освобождения, событие 129 пришло на сервер. */
 void upload_runtime_request(uint8_t command, dataChanel_e channel, uint8_t uniq, uint8_t ttl)
 {
   if (channel > 1) return;

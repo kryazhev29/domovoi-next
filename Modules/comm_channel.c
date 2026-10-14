@@ -247,8 +247,8 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
   return true;
 }
 /* Применить завершение текущей операции канала.
-   Изменено 2026-10-14 (29e91ad): два таймаута ACK переживаются, третий закрывает TCP;
-   успешный ACK и новый TCP очищают серию — на плате не проверено. */
+   Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): два звонка в 4G без VoLTE
+   во время обмена, поздний ответ на опрос ACK — TCP не переоткрывался, фото дошли. */
 static void channel_completed(void)
 {
   uint8_t op = ch.operation, result = comm_modem_result();

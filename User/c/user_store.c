@@ -234,6 +234,8 @@ bool store_command_allowed(uint8_t cmd)
   return !fw_event_waiting() && !store_phase() && !store_reset_requested && flash_exec_idle();
 }
 // Полный кадр команды 8 остаётся у источника, если доступ потребует записи ID.
+/* Проверено на плате №1 14.10.2026 (2e42207, сборка 1791987129): во время съёмки и передачи
+   фото USB отвечает без пропусков (457 ответов подряд). */
 bool user_command_ready(const uint8_t *ptr, bool usb_input)
 {
   // Ответы из RAM не зависят от владельца W25. 9/10 сохраняют только намерение.

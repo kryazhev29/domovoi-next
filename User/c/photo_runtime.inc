@@ -549,6 +549,8 @@ void photo_storage_poll(uint32_t now)
 }
 
 // Передача готового куска не занимает Flash; курсор меняется только после принятия TX.
+/* Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): фото 16 КБ по звонку
+   дошло на сервер и подтверждено. */
 static void pr_send_poll(uint32_t now)
 {
   if (!photo || !photo->pending || device.status.readyToUpdate ||
