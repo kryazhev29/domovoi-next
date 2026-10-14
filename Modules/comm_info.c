@@ -3,6 +3,7 @@
    Опрос имеет низкий приоритет и не мешает данным сервера.
    Без связи прошлые значения очищаются, слабый сигнал отмечается раз в сутки.
 */
+#include "usb_log.h"
 #include "comm_info.h"
 #include "comm_channel.h"
 #include "comm_at.h"
@@ -145,6 +146,8 @@ void comm_info_poll(uint32_t now_ms)
   info.step = (uint8_t)((info.step + 1u) % (sizeof(info_cmd) / sizeof(info_cmd[0])));
   if (info.step) return;
   info.next = now_ms + INFO_PERIOD_MS;
+  /* Снимок сети в USB-журнал; QENG этого цикла ещё в очереди - LTE-метрики прошлого замера. */
+  if (usb_log_on(2)) usb_log(19, (const uint8_t *)&info.v, sizeof(info.v));
   /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
   if (!info.daily || (int32_t)(now_ms - info.day) >= 0) {
     info.daily = 1; info.day = now_ms + comm_timeouts[COMM_T_DAY];

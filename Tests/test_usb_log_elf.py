@@ -259,6 +259,18 @@ def gsm_and_events():
     assert len(m.packets) == before + 1, 'ложная строка «попытка закончена» после чтения TCP'
     m.call('rc_schedule', 1, 60000)
     assert m.packets[-1] == wire(18, b'\x01' + struct.pack('<I', 60000))
+    # Конец полного цикла опроса сети отдаёт снимок comm_info_t как есть.
+    info = m.addr('info')
+    m.stubs[m.addr('comm_modem_ready')] = lambda: m.ret(1)
+    m.stubs[m.addr('comm_channel_query')] = lambda: m.ret(1)
+    m.write(info + offset('info', 'step'), 5, 1)
+    m.write(info + offset('info', 'daily'), 1, 1)
+    m.write(info + offset('info', 'day'), 0x7fffffff)
+    m.write(info + offset('info', 'next'), 0)
+    m.u.mem_write(info + offset('info', 'v'), bytes((22, 1, 1, 4)) + b'25002\0\0' + bytes((95, 9, 30, 7, 3)))
+    before = len(m.packets)
+    m.call('comm_info_poll', 100)
+    assert m.packets[before:] == [wire(19, bytes((22, 1, 1, 4)) + b'25002\0\0' + bytes((95, 9, 30, 7, 3)))]
     m.stubs[0x21000f00] = lambda: m.ret(1)
     m.write(m.addr('sv_link'), 0x21000f01)
     m.call('server_link', 0, 1)

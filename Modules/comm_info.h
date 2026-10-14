@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Байты структуры как есть - тело вида 19 USB-журнала (docs/protocol/usb_log.md): поля не переставлять. */
 typedef struct {
   uint8_t csq, creg, cgreg, net;
   char operator_code[7];
