@@ -75,6 +75,7 @@ bool log_ring_ack_poll(void)
   mem_config_reset();
   flash_exec_finish(result == 2 ? FX_OK : FX_ERROR);
   flash_exec_take_result();
+  if(result!=2 && !quiet) upload_pending_retry(channel);
   if(result==2 && !quiet) user_send_logRecords((dataChanel_e)channel,uniq);
   return true;
 }

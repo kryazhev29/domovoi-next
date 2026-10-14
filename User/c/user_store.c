@@ -497,7 +497,10 @@ static void store_poll(uint32_t now, uint8_t result)
     uint8_t job = store_phase();
     store_phase_set(0);
     if (job == US_SAVE) store_save_requested = 1;
-    if (job == US_ACK) store.seen &= ~(1u << ((store.cmd == 10 ? 0 : 2) + (store.channel == CH_USB ? 0 : 1)));
+    if (job == US_ACK) {
+      store.seen &= ~(1u << ((store.cmd == 10 ? 0 : 2) + (store.channel == CH_USB ? 0 : 1)));
+      if (!store.quiet) upload_pending_retry(store.channel);
+    }
     if ((job == US_CONFIG || job == US_COMMAND) && !store.quiet)
       user_send_answer_comand(store.cmd, CMD_RUNERROR, (dataChanel_e)store.channel, store.uniq);
     return;

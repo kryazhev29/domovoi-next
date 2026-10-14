@@ -80,6 +80,11 @@ void upload_runtime_quiet(uint8_t channel)
   log_ring_quiet(channel);
   if(upload_current() && upload_current()->channel==channel) upload_runtime_cancel();
 }
+// Отказ сохранения ACK возвращает принятое намерение в очередь с прежним сроком.
+void upload_pending_retry(uint8_t channel)
+{
+  if (upload_pending[channel].state == 2) upload_pending[channel].state = 1;
+}
 // Повтор не продлевает TTL и не создаёт вторую выгрузку с тем же uniq.
 void upload_runtime_request(uint8_t command, dataChanel_e channel, uint8_t uniq, uint8_t ttl)
 {
@@ -127,7 +132,7 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   }
   // ACK сохраняет настройки в том же участке: возвращаем резерв и затем берём его снова.
   upload_release(p);
-  if(command==10 ? !log_ring_ack((uint8_t)channel,uniq) : !upload_ack(command,channel)) return true;
+  if(command==10 ? !log_ring_ack((uint8_t)channel,uniq) : !upload_ack(command,channel)) return mem_config_result() == 1;
   p=upload_acquire();
   if(!p) return false;
   p->first=command==10?0:upload_index(command,channel);

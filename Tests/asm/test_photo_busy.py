@@ -167,7 +167,39 @@ def mutations():
         'upload-silent-busy-return': ('deferred', [('User/c/upload_runtime.c',
             'if(upload_current() || !flash_exec_idle() || !flash_exec_read_allowed()) return false;',
             'if(upload_current() || !flash_exec_idle() || !flash_exec_read_allowed()) return true;')]),
+        'upload-ack-no-retry': ('ack_failures', [('User/c/upload_runtime.c',
+            'if (upload_pending[channel].state == 2) upload_pending[channel].state = 1;',
+            '(void)channel;')]),
     }, 'test_photo_busy', 'photo-busy-mutations')
+
+
+def ack_failures():
+    from log_ring_fixture import install
+    count = 0
+    for cmd in (9, 10):
+      for failure in ('read', 'start', 'poll', 'begin'):
+        m = BusyMachine(); install(m, [log(i) for i in range(1, 40)])
+        m.write(m.addr('cfg_boot_done'), 1, 1)
+        m.write(m.addr('cfg_cached_active'), 0x1cd400)
+        for i in range(1, 140): m.flash[0x1e8000+(i-1)*32:0x1e8000+i*32] = temp(i)
+        m.server(cmd, uniq=43)
+        for _ in range(1000): m.step()
+        assert len(m.sent) == 1
+        if failure == 'begin': m.write(m.addr('cfg_boot_done'), 0, 1)
+        else: m.fault = (failure, m.counts[failure] + 1)
+        m.server(cmd, uniq=44)
+        for _ in range(100): m.step()
+        m.write(m.addr('cfg_boot_done'), 1, 1)
+        m.server(cmd, uniq=44)
+        for _ in range(1500): m.step()
+        out = [p for p in m.sent if p[7] == 44]
+        assert len(out) == 1 and out[0][8] == (10 if cmd == 9 else 9), (cmd, failure, out)
+        m.server(cmd, uniq=44)
+        for _ in range(100): m.step()
+        assert len([p for p in m.sent if p[7] == 44]) == 1
+        assert m.checked('flash_exec_idle')
+        count += 1
+    return count
 
 
 def deferred():
@@ -215,7 +247,7 @@ def deferred():
 
 
 def run():
-    result=dict(stream=slow_stream(),usb_cases=usb_owners(),deferred=deferred(),queue_edges=queue_edges())
+    result=dict(stream=slow_stream(),usb_cases=usb_owners(),deferred=deferred(),queue_edges=queue_edges(),ack_failures=ack_failures())
     result_path('photo-busy.json').write_text(json.dumps(result,indent=2)+'\n')
     return result
 
