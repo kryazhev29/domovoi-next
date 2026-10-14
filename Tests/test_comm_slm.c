@@ -159,7 +159,7 @@ static void sim_tx(void)
   if (!strcmp(sim_sent, "AT+CMEE?")) { sim_reply("OK\r\n+CMEE: 1\r\nOK\r\n", 30); return; }
   if ((int)step == sim_silence_step) return;
   if ((int)step == sim_error_step) { sim_reply("ERROR\r\n", 30); return; }
-  if (!strcmp(sim_sent, "AT")) { ++sim_at_count; if (!sim_first_at) sim_first_at = sim_now; sim_reply("OK\r\n", 30); }
+  if (!strcmp(sim_sent, "AT")) { ++sim_at_count; if (!sim_first_at) sim_first_at = sim_now; sim_reply("AT READY\r\nOK\r\n", 30); }
   else if (!strncmp(sim_sent, "AT+QCFG=\"nwscanmode\",", 21)) sim_reply("OK\r\n", sim_rat_delay ? sim_rat_delay : 30);
   else if (!strcmp(sim_sent, "AT+CGATT=1")) { ++sim_attach_count; sim_attach_at = sim_now; sim_reply("OK\r\n", 400); }
   else if (!strcmp(sim_sent, "AT+QIDEACT=1")) { ++sim_deact_count; sim_reply("OK\r\n", 30); }
@@ -371,7 +371,9 @@ static void diagnostic_tests(void)
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
   DIAG_CHECK(sizeof(slm.diag) <= 136);
   comm_modem_off(); sim_no_sim = 1; sim_start(); sim_until(15000);
-  CHECK(slm.attempt.status.reason == SLM_ERR_NO_SIM); DIAG_CHECK(slm.diag.steps[SLM_SIM] == 10);
+  CHECK(slm.attempt.status.reason == SLM_ERR_NO_SIM);
+  CHECK(slm.attempt.now - slm.attempt.ready_started == comm_timeouts[COMM_T_SIM]);
+  DIAG_CHECK(slm.diag.steps[SLM_SIM] > 10);
   CHECK((slm.diag.failures[0] & 7u) == SLM_PHASE_SIM);
   CHECK(slm.diag.failure_count == 1);
   DIAG_CHECK(slm.diag.steps[SLM_ACTIVATE] == 0 && slm.diag.phases[SLM_PHASE_TCP] == 0);

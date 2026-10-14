@@ -28,6 +28,7 @@ void comm_power_v5_start(comm_power_gpio_t gpio, uint32_t now_ms)
 }
 /* Выдать текущую ступень питания. */
 uint8_t comm_power_v5_state(void) { return power_state; }
+uint32_t comm_power_v5_key_released(void) { return power_started; }
 /* Только SysTick: GPIO и отметка времени, без AT, SPI и вызовов приложения. */
 void comm_power_v5_poll(uint32_t now_ms)
 {
@@ -36,6 +37,6 @@ void comm_power_v5_poll(uint32_t now_ms)
   if ((uint32_t)(now_ms - power_started) < comm_timeouts[state - 1u]) return;
   if (state >= COMM_PWR_LEAD && state <= COMM_PWR_KEY)
     power_gpio(state == COMM_PWR_LEAD ? 13 : 14, state != COMM_PWR_RAIL);
-  power_started = now_ms;
+  if (state != COMM_PWR_BOOT) power_started = now_ms;
   power_state = state + 1u;
 }

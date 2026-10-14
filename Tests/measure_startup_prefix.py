@@ -2,7 +2,7 @@
 
 Выполняет main и user_init с моделью пустой NOR. Периферийные init, USB и
 ожидание delay_ms заменены границами: известные 500 мс учитываются отдельно,
-время USB неизвестно. Число инструкций и NOR-чтений измеряется до power_start.
+USB отдельно исполняется без заглушек. Число инструкций и NOR-чтений до power_start.
 """
 import json
 import sys
@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / 'asm'))
 from storage_machine import StorageMachine
 from protocol_contract import Profile
 from iar_image import result_path
+from iar_irq_support import Machine
 
 
 class PrefixDone(Exception):
@@ -66,5 +67,18 @@ def measure(usb):
 
 
 rows = [measure(usb) for usb in (False, True)]
+assert rows[0]['USB_before_power'] == 0 and rows[1]['USB_before_power'] == 1
+# Полный синхронный usb_init: без заглушек, USB RESET/IRQ и хост не моделируются.
+usb = Machine(); usb.init(); usb.u.mem_map(0x42000000, 0x600000)
+usb.u.mem_map(0x1ffff000, 0x1000)  # Уникальный номер MCU, читаемый Get_SerialNum.
+for address in (0x1ffff7e8, 0x1ffff7ec, 0x1ffff7f0): usb.write(address, 0x1234abcd)
+usb.write(usb.addr('SystemCoreClock'), 72000000)
+profile = Profile(usb, {})
+profile.run(lambda: usb.call('usb_init', budget=100000))
+usb_cost = dict(profile.last)
+usb_cost['estimate_ms_72MHz'] = round(usb_cost['fetch_estimate'] / 72000, 6)
+assert usb_cost['estimate_ms_72MHz'] < 2, usb_cost
+result_path('usb-init-measure.json').write_text(json.dumps(usb_cost, indent=2) + '\n', encoding='utf-8')
 result_path('startup-prefix.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 print(json.dumps(rows, ensure_ascii=False))
+print('USB init:', usb_cost)

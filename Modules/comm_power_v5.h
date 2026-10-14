@@ -20,6 +20,8 @@ void comm_power_v5_start(comm_power_gpio_t gpio, uint32_t now_ms);
 void comm_power_v5_poll(uint32_t now_ms);
 /* Выдать текущую ступень питания. */
 uint8_t comm_power_v5_state(void);
+/* Действителен при READY: время отпускания PWRKEY, даже если main занят. */
+uint32_t comm_power_v5_key_released(void);
 /* Выключить питание модема и отпустить ключ включения. */
 void comm_power_v5_off(void);
 #endif

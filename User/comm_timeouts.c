@@ -70,4 +70,6 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   2000, /* COMM_T_POWER_DOWN: AT+QPOWD до "POWERED DOWN" (на плате 0,2-0,3 с) */
   5000, /* COMM_T_RAT_SET: запас для наблюдаемой задержки записи; EX §10.23 указывает 300 мс */
   150000, /* COMM_T_ATTACH: CGATT зависит от сети, Common V2.24 §12.1 */
+  3500, /* Потерян AT READY: запас от отпускания PWRKEY, плата №1 14.10 */
+  200, /* Повтор незрелого ответа настройки/SIM в той же попытке */
 };
