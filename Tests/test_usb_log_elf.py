@@ -83,19 +83,35 @@ def transport():
     send(m)
     assert m.packets == [wire(1, b'AT+CEREG?')]
     assert not m.owned() and not m.busy(), 'журнал занял источник/память ответа'
-    # Самый большой допустимый источник 1039 байт принимается во время журнала.
+    # Самый большой допустимый источник 1039 байт принимается во время журнала
+    # и уходит раньше кадра, ждущего в очереди.
     answer = bytes((i * 17) & 255 for i in range(1039))
     m.u.mem_write(0x21000100, answer)
     assert m.call('usb_send', 0x21000100, len(answer))
+    send(m, body=b'AT+QENG')
+    assert not m.read(m.addr('lost'), 2)
+    assert m.drain() == wire(1, b'AT+CEREG?') + answer + wire(1, b'AT+QENG')
+    # Хост не забирает пакет: очередь держит 4 кадра, пятый теряется и учитывается.
+    for _ in range(4):
+        send(m)
+    assert not m.read(m.addr('lost'), 2)
     send(m)
     assert m.read(m.addr('lost'), 2) == 1
-    assert m.drain() == wire(1, b'AT+CEREG?') + answer
+    before = len(m.packets)
+    for _ in range(5):
+        m.call('EP1_IN_Callback')
+    assert m.packets[before:] == [wire(1, b'AT+CEREG?')] * 4
     send(m)
     assert m.packets[-1] == wire(1, b'AT+CEREG?', lost=1)
     assert not m.read(m.addr('lost'), 2)
-    m.call('EP1_IN_Callback')
+    # Сброс шины очищает очередь прежней сессии.
+    send(m)
+    before = len(m.packets)
+    m.call('USB_Tx_Reset')
+    m.call('Handle_USBAsynchXfer')
+    assert len(m.packets) == before, 'кадр прежней USB-сессии ушёл после сброса'
     send(m, body=b'A' * 96)
-    assert m.packets[-1] == wire(129, b'A' * 46)
+    assert m.packets[-1] == wire(129, b'A' * 45) and len(m.packets[-1]) == 63
     assert m.top - m.minimum <= 128
     return {'log_stack': m.top - m.minimum, 'instructions': m.steps,
             'cpu_upper_us_72MHz_8cycles': round(m.steps * 8 / 72, 1)}
@@ -232,6 +248,15 @@ def gsm_and_events():
     m.write(m.addr('slm') + offset('slm', 'attempt', 'now'), 6300)
     m.call('comm_modem_record', 5, 0, 0)  # POWER -> SETUP
     assert m.packets[-1] == wire(16, struct.pack('<BBIB', 1, 0, 6300, 0))
+    # Конец попытки после TCP пишется один раз, повторное закрытие после чтения - нет.
+    steps = (Path(__file__).resolve().parents[1] / 'Modules/modem_slm336.h').read_text(encoding='utf-8')
+    step_count = [s.strip() for s in steps.split('enum {', 1)[1].split('}', 1)[0].split(',')].index('SLM_STEP_COUNT')
+    m.write(m.addr('slm') + offset('slm', 'attempt', 'status', 'phase'), 5, 1)  # TCP
+    before = len(m.packets)
+    m.call('comm_modem_record', step_count, 0, 0)
+    assert len(m.packets) == before + 1 and m.packets[-1][16] == 6
+    m.call('comm_modem_record', step_count, 0, 0)
+    assert len(m.packets) == before + 1, 'ложная строка «попытка закончена» после чтения TCP'
     m.call('rc_schedule', 1, 60000)
     assert m.packets[-1] == wire(18, b'\x01' + struct.pack('<I', 60000))
     m.stubs[0x21000f00] = lambda: m.ret(1)

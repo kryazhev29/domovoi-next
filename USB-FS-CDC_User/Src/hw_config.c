@@ -27,6 +27,13 @@
 
 static const uint8_t * volatile usb_tx_source;
 static volatile uint16_t usb_tx_length, usb_tx_offset;
+#ifndef BOOTLOADER
+/* Очередь журнала: кладёт главный цикл, забирает EP1 при отсутствии ответа.
+   [0] - длина кадра до 63 байт: короткий пакет хост выдаёт сразу. */
+static uint8_t usb_log_slots[4][64];
+static volatile uint8_t usb_log_head, usb_log_tail;
+static void usb_log_next(void);
+#endif
 
 volatile uint8_t  USB_Tx_State = 0;
 volatile uint32_t usb_in_armed = 0; /* пакеты IN, отданные EP1, команда 111 */
@@ -72,9 +79,21 @@ void USB_To_USART_Send_Data(uint8_t *data_buffer, uint8_t Nb_bytes)
 void Handle_USBAsynchXfer (void)
 {
   uint16_t count,offset; const uint8_t *source;
-  if (USB_Tx_State || bDeviceState != CONFIGURED || !usb_tx_source) return;
+  if (USB_Tx_State || bDeviceState != CONFIGURED) return;
+  if (!usb_tx_source) {
+#ifndef BOOTLOADER
+    usb_log_next();
+#endif
+    return;
+  }
   source=usb_tx_source; count=usb_tx_length; offset=usb_tx_offset; count-=offset;
-  if(!count) { usb_tx_source=NULL; return; } /* Хост подтвердил последний пакет IN. */
+  if(!count) { /* Хост подтвердил последний пакет IN. */
+    usb_tx_source=NULL;
+#ifndef BOOTLOADER
+    usb_log_next();
+#endif
+    return;
+  }
   if(count>VIRTUAL_COM_PORT_DATA_SIZE) count=VIRTUAL_COM_PORT_DATA_SIZE;
   UserToPMABufferCopy((uint8_t*)source+offset,ENDP1_TXADDR,count);
   usb_tx_offset+=count;
@@ -89,26 +108,42 @@ void USB_Tx_Reset(void)
 {
   USB_Tx_State=0; usb_tx_source=NULL;
   usb_tx_length=0; usb_tx_offset=0; usb_tx_epoch++;
+#ifndef BOOTLOADER
+  usb_log_tail=usb_log_head;
+#endif
 }
 // Проверить, продолжает ли USB владеть данным источником.
 uint8_t USB_Tx_SourceBusy(void) { return usb_tx_source!=NULL; }
 #ifndef BOOTLOADER
-// Ответ может занять свой источник, пока хост подтверждает этот пакет журнала.
-uint8_t USB_Log_Try(const uint8_t *source, uint16_t length, uint32_t epoch)
+// Отдать в EP1 следующий кадр журнала; только при свободной EP1 и без ответа.
+static void usb_log_next(void)
+{
+  const uint8_t *slot;
+  if (usb_log_tail == usb_log_head) return;
+  slot = usb_log_slots[usb_log_tail & 3u];
+  UserToPMABufferCopy((uint8_t *)slot + 1, ENDP1_TXADDR, slot[0]);
+  usb_log_tail++;
+  USB_Tx_State = 1;
+#if DOMOVOI_DIAG
+  usb_in_armed++;
+#endif
+  SetEPTxCount(ENDP1, slot[0]);
+  SetEPTxValid(ENDP1);
+}
+// Поставить кадр журнала в очередь; ответ, занявший источник, уйдёт раньше неё.
+uint8_t USB_Log_Try(const uint8_t *source, uint8_t length, uint32_t epoch)
 {
   extern volatile uint32_t usb_bus_resets;
   uint32_t mask = __get_PRIMASK();
   uint8_t accepted = 0;
   __disable_irq();
-  if (bDeviceState == CONFIGURED && epoch == usb_bus_resets && !USB_Tx_State && !usb_tx_source) {
-    UserToPMABufferCopy((uint8_t *)source, ENDP1_TXADDR, length);
-    USB_Tx_State = 1;
-#if DOMOVOI_DIAG
-    usb_in_armed++;
-#endif
-    SetEPTxCount(ENDP1, length);
-    SetEPTxValid(ENDP1);
+  if (bDeviceState == CONFIGURED && epoch == usb_bus_resets && (uint8_t)(usb_log_head - usb_log_tail) < 4u) {
+    uint8_t *slot = usb_log_slots[usb_log_head & 3u];
+    slot[0] = length;
+    memcpy(slot + 1, source, length);
+    usb_log_head++;
     accepted = 1;
+    if (!USB_Tx_State && !usb_tx_source) usb_log_next();
   }
   __set_PRIMASK(mask);
   return accepted;

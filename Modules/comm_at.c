@@ -24,7 +24,7 @@ enum { LINES, BODY, BODY_CR, BODY_LF };
 static void event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t detail)
 {
   if (usb_log_on(1)) {
-    if (kind == COMM_AT_LINE || kind == COMM_AT_URC) usb_log(kind == COMM_AT_LINE ? 2u : 3u, data, count > 46u ? 47u : (uint8_t)count);
+    if (kind == COMM_AT_LINE || kind == COMM_AT_URC) usb_log(kind == COMM_AT_LINE ? 2u : 3u, data, count);
     else if (kind == COMM_AT_DONE) usb_log_value(4, (uint8_t)detail, count);
     else if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) usb_log_value(4, kind == COMM_AT_NO_ANSWER ? COMM_AT_TIMEOUT : (uint8_t)detail, 0);
   }
@@ -166,7 +166,7 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
   read_limit = 0;
   if (mode == COMM_AT_SLM_QIRD) qird_request();
   if (!comm_uart_tx(command, command_count)) return COMM_AT_BUSY;
-  if (usb_log_on(1)) usb_log(1, request->command, request->count > 46u ? 47u : (uint8_t)request->count);
+  if (usb_log_on(1)) usb_log(1, request->command, request->count);
   run(mode, request->timeout_ms, now_ms);
   prompt_space = trailing_space;
   return COMM_AT_ACCEPTED;

@@ -1,4 +1,4 @@
-// Один кадр в PMA; память ответа никогда не занимается журналом.
+// Кадр в очередь журнала USB; память ответа никогда не занимается журналом.
 #include "usb_log.h"
 #include "packet.h"
 #include "hw_config.h"
@@ -23,16 +23,16 @@ void usb_log_enable(uint8_t bits)
   if (!device.logBits) lost = 0;
   device.logBits = bits & 7u;
 }
-// Не более одного USB-пакета: длинный текст явно помечен битом 7.
-void usb_log(uint8_t kind, const uint8_t *body, uint8_t count)
+// Кадр до 63 байт - короткий пакет USB; длинный текст явно помечен битом 7.
+void usb_log(uint8_t kind, const uint8_t *body, uint16_t count)
 {
   uint8_t bit = kind < 16u ? 1u : kind < 32u ? 2u : 4u;
   if (!usb_log_on(bit)) return;
   usb_log_session();
   if (!usb_log_on(bit)) return;
-  uint8_t frame[64];
-  if (count > 46u) {
-    count = 46u;
+  uint8_t frame[63];
+  if (count > 45u) {
+    count = 45u;
     kind |= 128u;
   }
   frame[6] = 255;

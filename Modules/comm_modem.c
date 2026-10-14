@@ -83,7 +83,9 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
   uint8_t phase = next == SLM_STEP_COUNT ? SLM_PHASE_COUNT
     : next < SLM_AT_READY ? SLM_PHASE_POWER : next >= SLM_TCP ? SLM_PHASE_TCP
     : (uint8_t)(slm_steps[next - SLM_AT_READY].action >> 4);
-  if ((phase != slm.attempt.status.phase || next == SLM_STEP_COUNT) && usb_log_on(2)) {
+  /* Уже завершённый этап закрывается снова после каждого чтения TCP - это не новость. */
+  if (phase != slm.attempt.status.phase && usb_log_on(2)
+      && (reason || !(slm.attempt.status.completed_phases & (1u << slm.attempt.status.phase)))) {
     uint8_t body[7] = { phase, reason };
     uint32_t duration = slm.attempt.now - slm.attempt.phase_started;
     memcpy(body + 2, &duration, 4);
