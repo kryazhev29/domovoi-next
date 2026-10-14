@@ -24,6 +24,8 @@ void usb_log_enable(uint8_t bits)
   device.logBits = bits & 7u;
 }
 // Кадр до 63 байт - короткий пакет USB; длинный текст явно помечен битом 7.
+/* Проверено на плате №1 14.10.2026 (0e107dc): запуск модема и работа по 60 с, AT/этапы/сервер/события,
+   опрос статуса раз в секунду - потерь 0; категории включаются и выключаются из NextConfig на ходу. */
 void usb_log(uint8_t kind, const uint8_t *body, uint16_t count)
 {
   uint8_t bit = kind < 16u ? 1u : kind < 32u ? 2u : 4u;
