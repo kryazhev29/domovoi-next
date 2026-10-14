@@ -92,6 +92,28 @@ void USB_Tx_Reset(void)
 }
 // Проверить, продолжает ли USB владеть данным источником.
 uint8_t USB_Tx_SourceBusy(void) { return usb_tx_source!=NULL; }
+#ifndef BOOTLOADER
+// Ответ может занять свой источник, пока хост подтверждает этот пакет журнала.
+uint8_t USB_Log_Try(const uint8_t *source, uint16_t length, uint32_t epoch)
+{
+  extern volatile uint32_t usb_bus_resets;
+  uint32_t mask = __get_PRIMASK();
+  uint8_t accepted = 0;
+  __disable_irq();
+  if (bDeviceState == CONFIGURED && epoch == usb_bus_resets && !USB_Tx_State && !usb_tx_source) {
+    UserToPMABufferCopy((uint8_t *)source, ENDP1_TXADDR, length);
+    USB_Tx_State = 1;
+#if DOMOVOI_DIAG
+    usb_in_armed++;
+#endif
+    SetEPTxCount(ENDP1, length);
+    SetEPTxValid(ENDP1);
+    accepted = 1;
+  }
+  __set_PRIMASK(mask);
+  return accepted;
+}
+#endif
 #include "work_memory.h"
 
 // Атомарно принять источник целиком, если прежняя передача закончена.

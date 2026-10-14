@@ -3,6 +3,7 @@
 // Сторож восстанавливает зависший USB из главного цикла после записи хоста.
 // Рабочие таймауты есть всегда; счётчики и снимки доступны только DOMOVOI_DIAG.
 
+#include "usb_log.h"
 #include "domovoi_diag.h"
 // Доработка: Кряжев А., 2026
 #include "usb_stm32f10x.h"
@@ -281,6 +282,7 @@ static void usb_rx_consume(uint16_t length)
 // Проверить один целый кадр, передать его приложению и освободить префикс.
 void usb_check_data (void)
 {
+  usb_log_session();
   uint8_t store_ready = USB_Tx_CommandReady();
   uint32_t mask = __get_PRIMASK();
   uint16_t count, skip = 0, body, total, crc;

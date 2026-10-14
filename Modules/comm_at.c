@@ -3,6 +3,7 @@
    Проверяет внешние ответы один раз; внутренние команды уже собраны владельцем.
    Обработчики принимают данные, следующий запрос запускает главный цикл.
 */
+#include "usb_log.h"
 #include "comm_at.h"
 #include "comm_uart.h"
 #include <string.h>
@@ -22,6 +23,11 @@ enum { LINES, BODY, BODY_CR, BODY_LF };
 /* Передать событие единственному обработчику AT. */
 static void event(uint8_t kind, const uint8_t *data, uint16_t count, uint16_t detail)
 {
+  if (usb_log_on(1)) {
+    if (kind == COMM_AT_LINE || kind == COMM_AT_URC) usb_log(kind == COMM_AT_LINE ? 2u : 3u, data, count > 46u ? 47u : (uint8_t)count);
+    else if (kind == COMM_AT_DONE) usb_log_value(4, (uint8_t)detail, count);
+    else if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) usb_log_value(4, kind == COMM_AT_NO_ANSWER ? COMM_AT_TIMEOUT : (uint8_t)detail, 0);
+  }
   handlers.event(kind, data, count, detail);
 }
 
@@ -160,6 +166,7 @@ uint8_t comm_at_start(const comm_at_request_t *request, uint32_t now_ms)
   read_limit = 0;
   if (mode == COMM_AT_SLM_QIRD) qird_request();
   if (!comm_uart_tx(command, command_count)) return COMM_AT_BUSY;
+  if (usb_log_on(1)) usb_log(1, request->command, request->count > 46u ? 47u : (uint8_t)request->count);
   run(mode, request->timeout_ms, now_ms);
   prompt_space = trailing_space;
   return COMM_AT_ACCEPTED;
@@ -205,6 +212,7 @@ static void binary_header(void)
   }
   header = 1;
   remaining = (uint16_t)n;
+  if (usb_log_on(1)) usb_log_value(5, 0, n);
   grammar = n ? BODY : LINES;
 }
 
@@ -213,6 +221,7 @@ uint8_t comm_at_payload(const uint8_t *data, uint16_t count, uint8_t finals, uin
 {
   if (!available()) return COMM_AT_BUSY;
   if (!comm_uart_tx(data, count)) return COMM_AT_BUSY;
+  if (usb_log_on(1)) usb_log_value(5, 1, count);
   run(finals, timeout_ms, now_ms); prompt_space = 1; command_count = 0;
   return COMM_AT_ACCEPTED;
 }
@@ -248,10 +257,10 @@ static void complete_line(void)
 {
   uint8_t code;
   /* Тело кончилось ровно на границе куска: пустой последний кусок. */
-  if (!line_count) { if (pdu_body == 2) { pdu_body = 0; event(COMM_AT_LINE, line, 0, 0); } return; }
+  if (!line_count) { if (pdu_body == 2) { pdu_body = 0; handlers.event(COMM_AT_LINE, line, 0, 0); } return; }
   if ((state == RUN || state == SYNC_WAIT) && line_count + 1u == command_count
       && !memcmp(line, command, line_count)) return; /* Эхо до ATE0. */
-  if (pdu_body) { pdu_body = 0; event(COMM_AT_LINE, line, line_count, 0); return; }
+  if (pdu_body) { pdu_body = 0; handlers.event(COMM_AT_LINE, line, line_count, 0); return; }
   if (comm_at_prefix(line, line_count, "+QIRD:")
       && ((state != RUN && state != DRAIN && state != SYNC_SEND && state != SYNC_WAIT)
           || mode != COMM_AT_SLM_QIRD)) {
@@ -316,7 +325,7 @@ static void byte(uint8_t value)
     /* USSD с рекламой и CGCONTRDP с IPv6: нужное в начале, хвост до CRLF отбрасывается. */
     if (comm_at_prefix(line, line_count, "+CUSD:") || comm_at_prefix(line, line_count, "+CGCONTRDP:")) return;
     if (!pdu_body || state != RUN) { fault(COMM_AT_LINE_OVERFLOW); return; }
-    event(COMM_AT_LINE, line, line_count, 1); line_count = 0; pdu_body = 2; /* кусок, дальше продолжение */
+    handlers.event(COMM_AT_LINE, line, line_count, 1); line_count = 0; pdu_body = 2; /* кусок, дальше продолжение */
   }
   line[line_count++] = value;
 }
@@ -328,6 +337,7 @@ bool comm_at_call_abort(uint32_t now_ms)
   static const uint8_t stop[] = "AT+CHUP\r";
   if (mode != COMM_AT_CALL || grammar != LINES || state > COMPLETE
       || !comm_uart_tx_done() || !comm_uart_tx(stop, sizeof(stop) - 1u)) return false;
+  if (usb_log_on(1)) usb_log(1, stop, sizeof(stop) - 2u);
   uint8_t running = state != IDLE;
   state = line_count || cr ? DRAIN : CALL_DRAIN;
   mode = COMM_AT_TEXT; sync_seen = 0; started = now_ms; timeout = 300u;
@@ -389,7 +399,11 @@ void comm_at_poll(uint32_t now_ms)
       /* Буфер меняется только после физического TC старой передачи. */
       memcpy(command, "AT+CMEE?\r", sizeof("AT+CMEE?\r") - 1u);
       command_count = sizeof("AT+CMEE?\r") - 1u;
-      if (comm_uart_tx(command, command_count)) { parser_reset(); state = SYNC_WAIT; }
+      if (comm_uart_tx(command, command_count)) {
+        if (usb_log_on(1)) usb_log(1, command, command_count - 1u);
+        parser_reset();
+        state = SYNC_WAIT;
+      }
     }
   }
 }

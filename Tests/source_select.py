@@ -30,7 +30,7 @@ def source_text(root, name):
 
 
 def diagnostic_header(root):
-    return '#define DOMOVOI_HOST_TEST 1\n#define DOMOVOI_DIAG ' + os.environ.get('DOMOVOI_TEST_DIAG','1') + '\n' + (root/'User/domovoi_diag.h').read_text(encoding='ascii') + '\n#if DOMOVOI_DIAG\n#define DIAG_CHECK(x) CHECK(x)\n#else\n#define DIAG_CHECK(x) ((void)0)\n#endif\n'
+    return '#define DOMOVOI_HOST_TEST 1\n#define DOMOVOI_DIAG ' + os.environ.get('DOMOVOI_TEST_DIAG','1') + '\n' + '#define usb_log_on(bit) 0\n#define usb_log(...) ((void)0)\n#define usb_log_value(...) ((void)0)\n#define usb_log_enable(...) ((void)0)\n#define usb_log_session() ((void)0)\n' + (root/'User/domovoi_diag.h').read_text(encoding='ascii') + '\n#if DOMOVOI_DIAG\n#define DIAG_CHECK(x) CHECK(x)\n#else\n#define DIAG_CHECK(x) ((void)0)\n#endif\n'
 
 
 def host_adapters(root):

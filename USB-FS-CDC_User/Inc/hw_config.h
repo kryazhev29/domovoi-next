@@ -30,6 +30,10 @@ void USB_To_USART_Send_Data(uint8_t* data_buffer, uint8_t Nb_bytes);
 uint8_t USART_To_USB_Send_Data(uint8_t* data_buffer, uint16_t Nb_bytes);
 // Проверить владение источником ответа.
 uint8_t USB_Tx_SourceBusy(void);
+#ifndef BOOTLOADER
+// Копирует один кадр журнала прямо в свободную PMA, не занимая источник ответа.
+uint8_t USB_Log_Try(const uint8_t *source, uint16_t length, uint32_t epoch);
+#endif
 // Разрешить новую команду после освобождения ответа и рабочего хранилища.
 uint8_t USB_Tx_CommandReady(void);
 // Передать ответ только в исходную USB-сессию команды.

@@ -145,6 +145,7 @@ def main():
     run('sources',['Tests/check_comm_sources.py'])
     run('project sources',['Tests/test_project_sources.py'])
     run('format oracle',['Tests/test_user_format.py'])
+    run('USB log ELF',['Tests/test_usb_log_elf.py'])
     for group in GROUPS:
         if group not in REPLACEMENTS and (not args.quick or group in ('commat','commserver','commslm','commuart','sms')):run(group,['Tests/run_host.py','work',group])
     for scenario in (() if args.quick else TX):run('tx '+scenario,['Tests/run_host.py','work','tx',scenario])

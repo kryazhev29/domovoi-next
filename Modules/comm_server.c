@@ -3,6 +3,7 @@
    Канал владеет передачей, обработчики приложения собирают прежние кадры.
    Отсутствие ответа запускает восстановление; журнал фиксирует смену связи.
 */
+#include "usb_log.h"
 #include "domovoi_diag.h"
 #include "comm_server.h"
 #include "comm_channel.h"
@@ -29,6 +30,7 @@ static void server_link(uint8_t kind, uint8_t address)
 {
   uint8_t bit = kind == COMM_LINK_FAIL ? (uint8_t)(1u << address) : kind >= COMM_LINK_NO_NET ? (uint8_t)(1u << (kind - 1u)) : 0u;
   if ((sv_noted & bit)) return;
+  if (usb_log_on(2)) usb_log_value(17, kind, address);
   if (sv_link(kind, address)) sv_noted |= bit;
 }
 /* Передать событие сети или интернета от восстановления. */
@@ -57,7 +59,9 @@ static void server_channel_event(uint8_t kind, uint8_t value)
   }
   if (kind == COMM_CH_OPENED) {
     sv.state = SV_REG; sv.registrations = sv.misses = 0; sv.address = value;
+    if (usb_log_on(2)) usb_log_value(17, 5, value);
   } else if (kind == COMM_CH_CLOSED || kind == COMM_CH_FAULT) {
+    if (usb_log_on(2)) usb_log_value(17, 6, sv.address);
     if (sv.state != SV_OFF) server_link((sv.state >= SV_ONLINE && !sv.registrations) ? COMM_LINK_LOST : COMM_LINK_FAIL, sv.address);
     sv.state = SV_OFF; sv.flags.stable = 0;
   } else {
@@ -106,6 +110,7 @@ void comm_server_registered(uint8_t success)
   if (sv.state != SV_REG_WAIT) return;
   if (!success) {
     sv.flags.rejected = 1;
+    if (usb_log_on(2)) usb_log_value(17, 7, sv.address);
     comm_modem_failure(SLM_ERR_IMEI, 0);
     server_link(COMM_LINK_FAIL, sv.address);
     server_check();
@@ -138,7 +143,8 @@ void comm_server_status_ack(uint8_t unique_id)
 }
 /* Продвинуть регистрацию, статусы и надзор ответов сервера. */
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
-   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
+   Изменено 14.10.2026: съём USB-журнала — на плате не проверено. */
 void comm_server_poll(uint32_t now_ms)
 {
   sv.now = now_ms;
@@ -157,6 +163,7 @@ void comm_server_poll(uint32_t now_ms)
   comm_channel_poll(now_ms);
   if (sv.state == SV_OFF) return;
   if (sv.state == SV_REG_WAIT && now_ms - sv.registration_since >= comm_timeouts[COMM_T_SERVER_REPLY]) {
+    if (usb_log_on(2)) usb_log_value(17, 8, sv.address);
     comm_modem_failure(SLM_ERR_SERVER, 0);
     if (sv.registrations < 2) sv.state = SV_REG;
     else { server_link(COMM_LINK_FAIL, sv.address); server_check(); }
@@ -177,6 +184,7 @@ void comm_server_poll(uint32_t now_ms)
   if (sv.flags.stable && now_ms - sv.stable_since >= comm_timeouts[COMM_T_STABLE]) { sv.silent_step = 0; sv.flags.stable = 0; comm_channel_stable(); }
   if (comm_channel_call_pending()) return;
   if (sv.state == SV_ONLINE && sv.misses >= 3) {
+    if (usb_log_on(2)) usb_log_value(17, 9, sv.address);
     comm_modem_failure(SLM_ERR_SERVER, 0);
     server_check();
   }

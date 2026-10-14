@@ -2,6 +2,7 @@
 // Граница команд сервера и USB: длина, аргументы, ПИН и запуск нужного владельца.
 // USB и сервер передают целый кадр с уже проверенной CRC.
 // Долговечность изменений и ответы после записи обеспечивают вызываемые автоматы.
+#include "usb_log.h"
 #include "user_logic_internal.h"
 #include "user_fw_reason.h"
 #include "../sched16.h"
@@ -512,7 +513,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     case 108: // включить лог
       user_send_anyData(108, NULL, 0, cch, uniqId);
       if (cch == CH_USB)
-        device.logBits = ptr[5];
+        usb_log_enable(ptr[5]);
       break;
 
     default: // команда не поддерживается

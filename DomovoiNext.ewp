@@ -2407,6 +2407,9 @@
             <name>$PROJ_DIR$\User\fw_crc.c</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\User\c\usb_log.c</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\User\packet.c</name>
         </file>
         <file>

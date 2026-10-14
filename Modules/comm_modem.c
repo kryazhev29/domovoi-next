@@ -3,6 +3,7 @@
    Шаги питания и настройки заданы постоянной таблицей.
    Один владелец AT; служебные команды ждут свободного слота.
 */
+#include "usb_log.h"
 #include "comm_modem.h"
 #include "comm_at.h"
 #include "comm_uart.h"
@@ -82,6 +83,13 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
   uint8_t phase = next == SLM_STEP_COUNT ? SLM_PHASE_COUNT
     : next < SLM_AT_READY ? SLM_PHASE_POWER : next >= SLM_TCP ? SLM_PHASE_TCP
     : (uint8_t)(slm_steps[next - SLM_AT_READY].action >> 4);
+  if ((phase != slm.attempt.status.phase || next == SLM_STEP_COUNT) && usb_log_on(2)) {
+    uint8_t body[7] = { phase, reason };
+    uint32_t duration = slm.attempt.now - slm.attempt.phase_started;
+    memcpy(body + 2, &duration, 4);
+    body[6] = slm.attempt.status.phase;
+    usb_log(16, body, sizeof(body));
+  }
   if (phase != slm.attempt.status.phase) {
     slm.attempt.status.completed_phases |= (uint8_t)(1u << slm.attempt.status.phase);
     if (phase < SLM_PHASE_COUNT) {

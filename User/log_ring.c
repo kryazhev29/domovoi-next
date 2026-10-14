@@ -2,6 +2,7 @@
 // Кольцевой журнал: 24 сектора по 127 записей и заголовок.
 // Заголовок хранит поколение, число записей и намерение удалить старый хвост.
 // W25 проверяет запись; после обрыва целостность определяется заголовком и CRC.
+#include "usb_log.h"
 #include "c/runtime_internal.h"
 #include "log_ring.h"
 #include "user_fun.h"
@@ -252,6 +253,7 @@ static uint8_t log_publish(void)
   device.logsCount++;
   device.newAddressLog=log_job.address+32;
   device.status.readyLogData=1;
+  if (usb_log_on(4)) usb_log(32, (const uint8_t *)&log_job.cell, sizeof(log_job.cell));
   return 2;
 }
 // Записывает событие или поворачивает кольцо одной командой за проход.

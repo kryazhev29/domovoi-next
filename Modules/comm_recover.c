@@ -3,6 +3,7 @@
    Ступени задают паузы перезапуска модема, процессор не перезагружается.
    Ожидаемая потеря PDP после звонка получает первую попытку без отката.
 */
+#include "usb_log.h"
 #include "domovoi_diag.h"
 #include "comm_recover.h"
 #include "comm_modem.h"
@@ -35,6 +36,7 @@ static void rc_schedule(bool power, uint32_t pause)
   rc.state = RC_WAIT;
   rc.wait_since = rc.now;
   rc.wait_ms = pause;
+  if (usb_log_on(2)) usb_log_value(18, (uint8_t)power, pause);
 }
 
 /* Питание сразу; если и после этого не помогло - по паузам 10/30/60 мин. */
