@@ -110,8 +110,22 @@ def transport():
     m.call('USB_Tx_Reset')
     m.call('Handle_USBAsynchXfer')
     assert len(m.packets) == before, 'кадр прежней USB-сессии ушёл после сброса'
+    # Длинная строка - куски по 45 байт, бит 7 у всех, кроме последнего.
     send(m, body=b'A' * 96)
-    assert m.packets[-1] == wire(129, b'A' * 45) and len(m.packets[-1]) == 63
+    m.call('EP1_IN_Callback')
+    m.call('EP1_IN_Callback')
+    assert m.packets[-3:] == [wire(129, b'A' * 45), wire(129, b'A' * 45), wire(1, b'A' * 6)]
+    assert len(m.packets[-3]) == 63
+    # Очередь занята: строка обрывается на первом непринятом куске, хвост не уходит.
+    for _ in range(3):
+        send(m)
+    send(m, body=b'B' * 96)
+    assert m.read(m.addr('lost'), 2) == 1
+    for _ in range(5):
+        m.call('EP1_IN_Callback')
+    assert m.packets[-4:] == [wire(1, b'AT+CEREG?')] * 3 + [wire(129, b'B' * 45)]
+    send(m)
+    assert m.packets[-1] == wire(1, b'AT+CEREG?', lost=1)
     assert m.top - m.minimum <= 128
     return {'log_stack': m.top - m.minimum, 'instructions': m.steps,
             'cpu_upper_us_72MHz_8cycles': round(m.steps * 8 / 72, 1)}

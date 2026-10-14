@@ -4,7 +4,7 @@
 #include "includes.h"
 extern device_s device;
 #define usb_log_on(bit) (device.logBits & (bit))
-// Поставить кадр 109 в очередь USB; тело длиннее 45 байт обрезается с пометкой.
+// Поставить кадр 109 в очередь USB; тело длиннее 45 байт - несколько кадров с битом 7.
 void usb_log(uint8_t kind, const uint8_t *body, uint16_t count);
 // Кадр с кодом и числом: данные, сервер, восстановление.
 void usb_log_value(uint8_t kind, uint8_t code, uint32_t value);
