@@ -20,6 +20,8 @@ volatile uint16_t usb_rx_silence = 0;
 /* Граница байта на момент истечения; поздний ввод не должен оживить этот префикс. */
 volatile uint16_t usb_rx_expired = 0;
 static void usb_rx_consume(uint16_t length);
+// Полный кадр, ожидающий Flash, не перекрывает USB дольше 500 мс.
+static uint32_t usb_command_wait;
 #if DOMOVOI_DIAG
 volatile uint32_t usb_rx_errors = 0;
 #endif
@@ -307,6 +309,7 @@ void usb_check_data (void)
   }
   if (!store_ready) { __set_PRIMASK(mask); return; }
   if (usb_rx_discard) {
+    usb_command_wait = 0;
     usb_buffer_count = 0;
     usb_rx_discard = 0;
     usb_rx_silence = 0;
@@ -351,8 +354,13 @@ void usb_check_data (void)
   __set_PRIMASK(mask);
   crc = (uint16_t)usb_buffer[total - 2] | ((uint16_t)usb_buffer[total - 1] << 8);
   if (crc == crc16_calc(usb_buffer + 4, body + 2)) {
-    if (!user_command_ready(usb_buffer + 4, true)) total = 0;
-    else if (!usb_rx_discard) usb_data_reading(usb_buffer, total);
+    if (!user_command_ready(usb_buffer + 4, true)) {
+      uint32_t now = timers_getMillis();
+      if (!usb_command_wait) usb_command_wait = now | 1u;
+      if ((int32_t)(now - usb_command_wait) < 500) total = 0;
+    }
+    // По истечении разборщик возвращает существующий CMD_RUNERROR и снимает кадр.
+    if (total && !usb_rx_discard) usb_data_reading(usb_buffer, total);
   } else {
 #if DOMOVOI_DIAG
     usb_rx_errors++;
@@ -362,6 +370,7 @@ void usb_check_data (void)
   mask = __get_PRIMASK();
   __disable_irq();
   if (usb_rx_discard) {
+    usb_command_wait = 0;
     usb_buffer_count = 0;
     usb_rx_discard = 0;
     usb_rx_silence = 0;
@@ -370,6 +379,7 @@ void usb_check_data (void)
     usb_rx_consume(total);
   }
   usb_rx_processing = 0;
+  if (total) usb_command_wait = 0;
   __set_PRIMASK(mask);
 }
 
@@ -382,6 +392,7 @@ uint8_t usb_get_state (void)
 // Сбросить приём сразу либо после возврата разборщика.
 void usb_clear_buffer (void)
 {
+  usb_command_wait = 0;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
   if (usb_rx_processing) usb_rx_discard = 1;

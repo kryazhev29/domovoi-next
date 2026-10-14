@@ -236,6 +236,19 @@ bool store_command_allowed(uint8_t cmd)
 // Полный кадр команды 8 остаётся у источника, если доступ потребует записи ID.
 bool user_command_ready(const uint8_t *ptr, bool usb_input)
 {
+  // Ответы из RAM не зависят от владельца W25. 9/10 сохраняют только намерение.
+  if (usb_input) store_usb_session();
+  if (ptr[4] == 9 || ptr[4] == 10) return true;
+  if (usb_input) {
+    if (!device.userAutorized) return true; // Проверку ПИН выполняет разборщик.
+    switch (ptr[4]) {
+    case 2: case 3: case 5: case 7: case 8:
+    case 12: case 13: case 14: case 15: case 16: case 17: case 18:
+    case 19: case 20: case 21: case 23: case 103: case 105: case 110:
+      break;
+    default: return true; // Включая CMD_UNDEFINE для неподдерживаемого номера.
+    }
+  }
   if (!store_command_allowed(ptr[4])) return false;
   if (usb_input && ptr[4] != 8 && !(ptr[4] == 21 && photo_empty_cleanup()) && !flash_exec_idle()) return false;
   if (ptr[4] != 8 || flash_exec_idle()) return true;
@@ -398,6 +411,7 @@ void user_storage_poll(void)
   bool replied = fw_service_reply_poll();
   if (upload_reply_poll()) replied = true;
   if (store_phase() == US_REPLY) store_reply();
+  upload_pending_poll();
   // Освободившийся TX завершает проход; следующая запись принимается отдельно.
   if (replied && flash_job.kind == FX_NONE) return;
   flash_exec_poll(timers_getMillis());

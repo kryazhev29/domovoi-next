@@ -85,6 +85,15 @@ class PhotoMachine(StorageMachine):
         self.poll_costs.append(self.steps)
         assert self.read_budget<=64,('photo read budget',self.read_budget)
         assert self.io_budget<=1
+        if 'tx_length' in self.runtime_fields and self.rget('tx_length',2):
+            self.checked('photo_poll')
+    # Готовый TX может жить без исполнителя; основной цикл продолжает его обслуживать.
+    def drain(self,limit=10000):
+        for _ in range(limit):
+            if not self.active() and not ('tx_length' in self.runtime_fields and self.rget('tx_length',2)):
+                self.settle_crc();return
+            self.tick()
+        raise AssertionError('photo operation did not terminate')
     # Выполнить обработку RS485 и проверить бюджет чтения.
     def port(self):
         self.now+=1;self.checked('port_check_data');assert self.read_budget<=64

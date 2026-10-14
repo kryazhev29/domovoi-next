@@ -12,6 +12,8 @@ typedef struct {
   uint8_t *tx;
   uint16_t resume_offset;
   uint8_t initialized, cleanup, fault;
+  uint16_t tx_length;
+  uint32_t tx_address, tx_until;
 } photo_runtime_s;
 // Выполнить один ограниченный шаг хранения или отправки.
 void photo_storage_poll(uint32_t now);

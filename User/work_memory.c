@@ -14,6 +14,7 @@ typedef struct {
 typedef char work_memory_size[(sizeof(work_memory_s)==2222)?1:-1];
 #pragma data_alignment=8
 static work_memory_s work_memory;
+static uint8_t usb_reply[523];
 
 #define BIT(slot) ((uint16_t)(1u << ((slot)-1u)))
 #define PHOTO BIT(WORK_PHOTO_CONTEXT)
@@ -40,6 +41,10 @@ bool work_live(const void *pointer, uint32_t slot)
 }
 // Прерывание USB владеет дескриптором; рабочей памятью управляет главный цикл.
 extern uint8_t USB_Tx_SourceBusy(void);
+uint8_t *work_usb_reply(uint16_t length)
+{
+  return length <= sizeof usb_reply && !USB_Tx_SourceBusy() ? usb_reply : NULL;
+}
 // Возвращает память после завершения заимствованной USB-передачи.
 static void work_usb_collect(void)
 {
@@ -103,6 +108,7 @@ const uint8_t *work_usb_source(const uint8_t *source, uint16_t length)
   uint8_t *copy; uint16_t valid=0; uint32_t copy_slot=WORK_REPLY;
   work_usb_collect();
   if(work_memory.usb_slot || end<start) return NULL;
+  if (source == usb_reply && length <= sizeof usb_reply) return source;
   for(slot=1;slot<=WORK_TABLE;slot++) {
     uint32_t base=(uint32_t)address(slot);
     if((work_memory.owned&BIT(slot)) && start>=base && end<=base+work_capacity(slot)) {
@@ -118,7 +124,12 @@ const uint8_t *work_usb_source(const uint8_t *source, uint16_t length)
   if(!copy && length<=work_capacity(WORK_PHOTO_PACKET)) {
     copy_slot=WORK_PHOTO_PACKET; copy=work_acquire(length,copy_slot);
   }
-  if(!copy) return NULL;
+  if(!copy) {
+    copy = work_usb_reply(length);
+    if (!copy) return NULL;
+    memcpy(copy, source, length);
+    return copy;
+  }
   memcpy(copy,source,length);
   work_memory.usb_slot=(uint16_t)copy_slot; work_memory.usb_released=1; return copy;
 }

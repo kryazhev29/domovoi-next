@@ -102,7 +102,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     return;
   }
 
-  if (!server_verified && !user_command_ready(ptr, false)) {
+  if (!server_verified && !user_command_ready(ptr, cch == CH_USB)) {
     user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId); return;
   }
   switch (ptr[4]) // команда
@@ -250,11 +250,11 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 9: // запрос журнала событий
-      user_send_logRecords(cch, uniqId);
+      upload_runtime_request(10, cch, uniqId, ptr[2]);
       break;
 
     case 10: // запрос ID добавленных через SMS или Авторегистрацию
-      user_send_tempIDs(cch, uniqId);
+      upload_runtime_request(9, cch, uniqId, ptr[2]);
       break;
 
     case 11: // отправить смс на заданный номер с заданным текстом

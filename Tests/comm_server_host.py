@@ -50,7 +50,8 @@ def unit():
     status += '\n'+'\n'.join(function(user,n) for n in ('user_send_readedIDtoServer','reader_reply_poll'))
     status += '\n'+'\n'.join(function(source('User/c/runtime_internal.h').replace('static inline ','static '),n) for n in ('rt_put16','rt_put32'))
     packet = function(source('User/packet.c'),'packet_frame')+'\n'+function(source('User/packet.c'),'packet_send')
-    producer_code = 'uint8_t *user_comm_acquire(uint16_t);\nbool packet_send(uint8_t*,uint16_t,uint8_t);\n' + status + helpers + packet + '\n' + packet.replace('packet_frame(', 'legacy_packet_frame(').replace('packet_send(', 'legacy_packet_send(').replace('comm_tx_commit(', 'legacy_commit(') + '\n' + legacy + '\n' + current
+    # USB-резерв проверяет ELF-стенд; модель модема не передаёт через USB.
+    producer_code = 'static uint8_t *work_usb_reply(uint16_t n) { (void)n; return NULL; }\nuint8_t *user_comm_acquire(uint16_t);\nbool packet_send(uint8_t*,uint16_t,uint8_t);\n' + status + helpers + packet + '\n' + packet.replace('packet_frame(', 'legacy_packet_frame(').replace('packet_send(', 'legacy_packet_send(').replace('comm_tx_commit(', 'legacy_commit(') + '\n' + legacy + '\n' + current
     producer_code += '\n' + '\n'.join(function(user,n) for n in ('user_send_statusUpdateFW','fw_status_poll','unreg_sms_note','unreg_sms_poll'))
     producer_code += '\n' + function(source('User/c/user_diag.c'), 'user_send_commDiag').replace('USB_COMM_DIAG_COMMAND', '112')
     if '/* >>> ход обновления */' in user:

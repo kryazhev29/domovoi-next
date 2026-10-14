@@ -23,6 +23,7 @@ static uint8_t photo_alloc(void);
 static void photo_command(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
 static void photo_issue(void);
 static void photo_frame(uint8_t *, uint16_t);
+static void pr_tx_release(void);
 
 // Переходим к следующему сектору: чужих данных в секторе записи нет.
 static uint32_t pr_next(uint32_t address, uint32_t size)
@@ -40,6 +41,7 @@ bool photo_empty_cleanup(void)
 // Отменяем запрос, но завершаем уже начатую публикацию или очистку.
 void photo_storage_cancel(void)
 {
+  if (pr.tx_length) pr_tx_release();
   if (flash_job.kind == FX_PHOTO && flash_job.result == FX_PENDING) {
     pj.cancelled = 1;
     pj.quiet = 1;
@@ -52,10 +54,15 @@ void photo_storage_cancel(void)
 }
 
 // Освобождаем буфер передачи и владение флеш после операции.
-static void pr_release(flash_result_t result)
+static void pr_tx_release(void)
 {
   work_release(pr.tx, WORK_PHOTO_PACKET);
   pr.tx = 0;
+  pr.tx_length = 0;
+}
+static void pr_release(flash_result_t result)
+{
+  pr_tx_release();
   flash_exec_finish(result);
 }
 
@@ -172,6 +179,7 @@ cmdCode_e photo_start(uint8_t address)
   if ((!device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start) ||
     device.newAddressPhoto >= photo_storage_end()) return CMD_RUNERROR;
   if (pr.last_number == 0xfffffffeu || device.datetime == 0xffffffffu) return CMD_RUNERROR;
+  pr_tx_release();
   if (!pr_begin(PR_CAMERA)) return CMD_RUNERROR;
   pj.address = address;
   return CMD_SUCCESS;
@@ -214,6 +222,7 @@ static cmdCode_e pr_request(dataChanel_e channel, uint8_t id, const uint8_t *arg
 {
   if (size && size != 6) return CMD_PARAMERROR;
   if (channel == CH_SMS || !pr_command_ready()) return CMD_RUNERROR;
+  pr_tx_release(); // Новый курсор заменяет ещё не принятый транспортом пакет.
   if (!pr_begin(PR_HEAD)) return CMD_RUNERROR;
   pj.requested_number = 0xffffffffu;
   if (size) {
@@ -234,6 +243,7 @@ void photo_request_answer(dataChanel_e channel, uint8_t id, const uint8_t *args,
   /* Повтор итогового ACK допустим и пока первый сектор стирается. */
   if (photo_empty_cleanup() && (size == 0 || size == 6) && channel != CH_SMS &&
     !device.status.readyToUpdate && photo_alloc()) {
+    if (pr.tx_length) pr_tx_release();
     photo->channel = channel;
     photo->requestId = id;
     photo->readAddress = mem[MB_PHOTO].start;
@@ -523,41 +533,50 @@ void photo_storage_poll(uint32_t now)
       flash_job.step = PR_SEND_COMMIT;
     }
     break;
-  case PR_SEND_COMMIT: {
-      if (pj.quiet || !photo->pending) {
-        pr_release(FX_OK);
-        break;
-      }
-      n = pj.send_size ? pj.send_size + 22 : 12;
-      uint8_t ok = reply_send(pr.tx, n, photo->channel);
-      if (!ok) {
-        if (!pr_reply_expired(now)) break;
-        pr_release(FX_OK);
-        break;
-      }
-      if (pj.send_size) {
-        photo->offset = pj.send_offset + pj.send_size;
-        photo->readAddress = pj.scan;
-        if (photo->offset == pj.h[1]) {
-          photo->readAddress = pr_next(photo->readAddress, pj.h[1]);
-          photo->offset = 0;
-        }
-        photo_pending_since = now;
-      }
-      else photo->pending = 0;
-      pr_release(FX_OK);
-      break;
+  case PR_SEND_COMMIT:
+    if (pj.quiet || !photo->pending) pr_release(FX_OK);
+    else {
+      pr.tx_length = pj.send_size ? pj.send_size + 22 : 12;
+      pr.tx_address = pj.scan;
+      pr.tx_until = now + 2000u;
+      // Готовый пакет владеет своей памятью; union исполнителя больше не нужен.
+      flash_exec_finish(FX_OK);
     }
+    break;
   default: pr_fail();
     break;
   }
 }
 
+// Передача готового куска не занимает Flash; курсор меняется только после принятия TX.
+static void pr_send_poll(uint32_t now)
+{
+  if (!photo || !photo->pending || device.status.readyToUpdate ||
+      (photo->channel == CH_USB && pr.usb_epoch != usb_bus_resets) ||
+      (photo->channel == CH_SERVER && !comm_channel_ready())) {
+    if (photo) photo->pending = 0;
+  } else if (reply_send(pr.tx, pr.tx_length, photo->channel)) {
+    if (pr.tx_length > 12) {
+      uint32_t size;
+      memcpy(&size, pr.tx + 14, 4);
+      photo->offset = rt_get16(pr.tx + 18) + pr.tx_length - 22;
+      photo->readAddress = pr.tx_address;
+      if (photo->offset == size) {
+        photo->readAddress = pr_next(photo->readAddress, size);
+        photo->offset = 0;
+      }
+      photo_pending_since = now;
+    } else photo->pending = 0;
+  } else if ((int32_t)(now - pr.tx_until) < 0) return;
+  pr_tx_release();
+}
+
 // Обслуживаем камеру, запуск скана, поток передачи и отложенную очистку.
 void photo_poll(void)
 {
-  if (!flash_exec_idle()) return;
   uint32_t now = timers_getMillis();
+  if (pr.tx_length) { pr_send_poll(now); return; }
+  if (!flash_exec_idle()) return;
   if (!pr.initialized && !pr.fault) {
     if (!pr_begin(PR_HEAD)) return;
     pr_scan_begin(PT_STORAGE);

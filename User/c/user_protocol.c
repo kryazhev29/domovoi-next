@@ -45,6 +45,7 @@ void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cc
   // весь кадр должен помещаться в 16-битную длину транспорта
   uint16_t len = size + 3;
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : work_acquire(len + 8, WORK_REPLY);
+  if (!send_buffer && cch == CH_USB) send_buffer = work_usb_reply(len + 8);
 
   if (send_buffer != NULL){
 
@@ -357,6 +358,7 @@ void user_send_configToConfigurator(dataChanel_e cch){
 
   uint16_t len = sizeof(config_s) + 3;
   uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(len + 8) : work_acquire(len + 8, WORK_REPLY);
+  if (!send_buffer && cch == CH_USB) send_buffer = work_usb_reply(len + 8);
 
   if (send_buffer != NULL){
 

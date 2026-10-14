@@ -13,6 +13,8 @@ void *work_acquire(uint32_t size, uint32_t slot);
 uint8_t work_release(void *pointer, uint32_t slot);
 // Заимствует живой кадр либо копирует временный ответ для USB.
 const uint8_t *work_usb_source(const uint8_t *source, uint16_t length);
+// Резерв короткого ответа USB, независимый от владельца Flash (до кадра 106).
+uint8_t *work_usb_reply(uint16_t length);
 // Возвращает маску владельцев после завершённых передач USB.
 
 // Возвращает допустимый размер участка владельца.

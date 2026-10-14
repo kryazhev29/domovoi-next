@@ -23,6 +23,11 @@ typedef struct {
 } upload_s;
 RT_ASSERT(upload_size,sizeof(upload_s)==32);
 static upload_s *upload_reply;
+// По одному намерению на канал; state: 1 ждёт, 2 принято, 3 завершено/истекло.
+static struct {
+  uint32_t until;
+  uint8_t command, uniq, state, ttl;
+} upload_pending[2];
 static upload_s *upload_current(void)
 {
   return flash_job.kind == FX_UPLOAD && flash_job.result == FX_PENDING ? flash_job.data.context : upload_reply;
@@ -62,6 +67,8 @@ void upload_runtime_cancel(void)
 {
   upload_s *p=upload_current();
   if(!p) return;
+  if (upload_pending[p->channel].command == p->command && upload_pending[p->channel].uniq == p->uniq)
+    upload_pending[p->channel].state = 3;
   if (upload_reply == p) upload_reply = NULL;
   if (flash_job.kind == FX_UPLOAD) flash_exec_finish(FX_CANCELLED);
   upload_release(p);
@@ -69,8 +76,42 @@ void upload_runtime_cancel(void)
 // Останавливает выгрузку при закрытии её канала.
 void upload_runtime_quiet(uint8_t channel)
 {
+  if (channel < 2) memset(&upload_pending[channel], 0, sizeof(upload_pending[0]));
   log_ring_quiet(channel);
   if(upload_current() && upload_current()->channel==channel) upload_runtime_cancel();
+}
+// Повтор не продлевает TTL и не создаёт вторую выгрузку с тем же uniq.
+void upload_runtime_request(uint8_t command, dataChanel_e channel, uint8_t uniq, uint8_t ttl)
+{
+  if (channel > 1) return;
+  if (upload_pending[channel].state && upload_pending[channel].command == command &&
+      upload_pending[channel].uniq == uniq) return;
+  upload_pending_poll();
+  if (upload_pending[channel].state == 1 || upload_pending[channel].state == 2) {
+    user_send_answer_comand(command == 10 ? 9 : 10, CMD_RUNERROR, channel, uniq);
+    return;
+  }
+  upload_pending[channel].command = command;
+  upload_pending[channel].uniq = uniq;
+  upload_pending[channel].ttl = ttl;
+  upload_pending[channel].until = timers_getMillis() + (uint32_t)ttl * 1000u;
+  upload_pending[channel].state = 1;
+  upload_pending_poll();
+}
+// Срок 1..250 секунд задан протоколом; 255 бессрочен, резерв 0 совместим со старым USB.
+void upload_pending_poll(void)
+{
+  uint32_t now = timers_getMillis();
+  for (uint8_t c = 0; c < 2; ++c) {
+    if (upload_pending[c].state != 1) continue;
+    if (upload_pending[c].ttl && upload_pending[c].ttl <= 250 &&
+        (int32_t)(now - upload_pending[c].until) >= 0) {
+      upload_pending[c].state = 3;
+      continue;
+    }
+    if (upload_runtime_begin(upload_pending[c].command, (dataChanel_e)c, upload_pending[c].uniq))
+      upload_pending[c].state = 2;
+  }
 }
 // Принимает запрос выгрузки после старта и сохраняет подтверждённый курсор.
 bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
@@ -78,17 +119,17 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   upload_s *p;
   unsigned part=command==10?MB_LOG:MB_TEMPID;
   if(channel>1) return false;
-  if(upload_current() || !flash_exec_idle() || !flash_exec_read_allowed()) return true;
+  if(upload_current() || !flash_exec_idle() || !flash_exec_read_allowed()) return false;
   p=upload_acquire();
-  if(!p) return true;
+  if(!p) return false;
   if(!store_upload_request(command,channel,uniq)) { upload_release(p);
-  return true;
+  return false;
   }
   // ACK сохраняет настройки в том же участке: возвращаем резерв и затем берём его снова.
   upload_release(p);
   if(command==10 ? !log_ring_ack((uint8_t)channel,uniq) : !upload_ack(command,channel)) return true;
   p=upload_acquire();
-  if(!p) return true;
+  if(!p) return false;
   p->first=command==10?0:upload_index(command,channel);
   p->total = 0;
   p->wanted = 0;
@@ -105,7 +146,7 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   flash_exec_args_t args = { p, p->reply_step };
   if (!flash_exec_begin(FX_UPLOAD, &args)) {
     upload_release(p);
-    return true;
+    return false;
   }
   return true;
 }

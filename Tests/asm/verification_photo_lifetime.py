@@ -26,11 +26,13 @@ def run():
         assert not m.checked('mem_config_begin',0x21000000,0x21000200)
         before = dict(m.counts); saved = bytes(m.u.mem_read(pointer,534))
         for cmd in (9,10,13):
+            answers = len(m.answers)
             m.packet(cmd)
-            assert m.answers[-1][0:2] == (cmd,2)
+            if cmd == 9: assert len(m.answers)==answers # Только намерение, без I/O и ответа.
+            else: assert m.answers[-1][0:2] == (cmd,2)
             assert m.rget('tx',4) == pointer and m.exec_state()[1] == phase
         assert m.counts == before and bytes(m.u.mem_read(pointer,534)) == saved
-        tested.append({'phase':phase,'live_photo_tx_bytes':534,'owned_slots':owned(m),'new_storage_commands':'rejected before allocation/I/O'})
+        tested.append({'phase':phase,'live_photo_tx_bytes':534,'owned_slots':owned(m),'new_storage_commands':'9 queued once; occupied slot/13 rejected; no I/O'})
     m.tick()
     assert not m.exec_active(8) and m.rget('tx',4) == 0
     assert owned(m)==(1<<(PHOTO-1))|(1<<(UP_PACKET-1))

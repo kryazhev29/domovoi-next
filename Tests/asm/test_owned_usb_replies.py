@@ -74,7 +74,7 @@ def setup(kind, busy):
         m = PhotoMachine(); m.boot_media(); data = bytes(range(256)) * 2
         m.capture(data); transport(m, busy); m.packet(21, b''); m.drain()
         m.port(); expected = None
-        active = m.active
+        active = lambda: m.active() or ('tx_length' in m.runtime_fields and m.rget('tx_length',2))
     return m, active, expected
 
 
@@ -86,6 +86,7 @@ def run(instruction_limit=12000):
         for _ in range(40000):
             if not active(): break
             control.now += 1; control.checked('user_storage_poll')
+            if kind == 'photo' and control.rget('tx_length',2): control.checked('photo_poll')
             costs.append(control.steps)
             if instruction_limit is not None:
                 assert control.steps < instruction_limit, (kind, control.steps)
@@ -101,6 +102,7 @@ def run(instruction_limit=12000):
         rejected = []
         for _ in range(len(costs) + 3):
             m.now += 1; m.checked('user_storage_poll'); rejected.append(m.steps)
+            if kind == 'photo' and m.rget('tx_length',2): m.checked('photo_poll')
             if instruction_limit is not None:
                 assert m.steps < instruction_limit, (kind, m.steps)
             assert tx_length(m) == 0
@@ -108,6 +110,7 @@ def run(instruction_limit=12000):
         m.checked('USB_Tx_Reset')
         for _ in range(3):
             m.now += 1; m.checked('user_storage_poll')
+            if kind == 'photo' and m.rget('tx_length',2): m.checked('photo_poll')
             if not active(): break
         assert not active(), ('retry did not complete', kind)
         assert tx_length(m) == length
