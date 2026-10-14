@@ -178,6 +178,7 @@ def main():
         run('recover mutations',['Tests/recover_mutations.py'])
         run('RX mutations',['Tests/rx_budget_mutations.py'])
         run('call mutations',['Tests/call_mutations.py'])
+        run('link call',['Tests/link_call_host.py','--mutations'])
         run('SMS mutations',['Tests/sms_mutations.py'])
         run('ELF mutations',['Tests/asm/elf_mutations.py','--output',str(base/f'mutations-{project}-{args.config}.json')])
     output=args.output or base/f'run-all-{project}-{args.config}.json'

@@ -18,7 +18,7 @@ static struct {
   uint16_t frame_count, capacity, bytes, open_code;
   uint8_t state, tx_state, operation, answer;
   uint8_t address, connections, retry_step, probe;
-  uint8_t probe_active, probe_answer;
+  uint8_t probe_active, probe_answer, ack_timeouts;
   struct { uint8_t active:1, expected:1, lost:1, pdp_lost:1; } call;
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
 } ch;
@@ -264,7 +264,7 @@ static void channel_completed(void)
     comm_modem_record(SLM_STEP_COUNT, reason, ch.flags.open_seen ? ch.open_code : comm_modem_status()->modem_code);
     if (ch.state == CH_OPENING) {
       if (reason) { ch.state = CH_PROBE; channel_emit(COMM_CH_OPEN_FAILED, ch.address); }
-      else { ch.state = CH_OPEN; channel_emit(COMM_CH_OPENED, ch.address); }
+      else { ch.state = CH_OPEN; ch.ack_timeouts = 0; channel_emit(COMM_CH_OPENED, ch.address); }
     }
     return;
   }
@@ -305,6 +305,11 @@ static void channel_completed(void)
     }
     ch.flags.recv = 0; ch.tx_state = TX_FREE; ch.frame_count = 0;
     ch.state = CH_PAUSE; ch.operation_since = ch.now; return;
+  }
+  if (op == OP_ACK) {
+    /* AT дочитает старый ответ и восстановит границы; третий таймаут закрывает TCP. */
+    if (result == COMM_AT_TIMEOUT && ++ch.ack_timeouts < 3) return;
+    ch.ack_timeouts = 0;
   }
   if (result != (op == OP_PROMPT ? COMM_AT_GOT_PROMPT : COMM_AT_OK)) {
     if (!ch.call.expected) comm_modem_record(SLM_STEP_COUNT, result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT : SLM_ERR_AT,
