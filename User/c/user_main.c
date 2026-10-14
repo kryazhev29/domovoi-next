@@ -168,7 +168,7 @@ void user_loop(void)
     // состояние выходов
     device.status.stateOut1 = out_getstate(OUT1);
     device.status.stateOut2 = out_getstate(OUT2);
-    /* Статус 1 вне очереди после изменения входа, выхода, триггера или бита 11. */
+    /* Статус 1 вне очереди после изменения входа, выхода, триггера, бита 11 или готовности фото. */
     if (device.registredOnServer){
       uint16_t st;
       memcpy((uint8_t*)&st, (uint8_t*)&device.status, 2);

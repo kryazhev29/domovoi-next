@@ -6,7 +6,7 @@
 #include "fast_kernels.h"
 #include "../table_runtime.h"
 #include "photo_runtime.h"
-enum { SERVER_RX_CAPACITY = 2048u, SERVER_RX_TIMEOUT_MS = 30000u };
+enum { SERVER_RX_CAPACITY = 2048u, SERVER_RX_TIMEOUT_MS = 30000u, SERVER_PHOTO_WAIT_MS = 1000u };
 static uint8_t server_rx_buffer[SERVER_RX_CAPACITY];
 static uint16_t server_rx_count, server_rx_ready;
 static uint32_t server_rx_last, server_rx_epoch;
@@ -54,6 +54,7 @@ static void server_rx_scan(void)
     crc = rt_get16(p + total - 2u);
     if (crc16_calc(p + 4, body + 2u) != crc) { ++skipped; continue; }
     server_rx_ready = total;
+    server_rx_last = timers_getMillis(); // Теперь срок ожидания полного кадра, не его сборки.
     break;
   }
   if (skipped) server_rx_consume(skipped);
@@ -82,13 +83,18 @@ void server_rx_process(void)
 {
   uint16_t total;
   uint32_t epoch;
+  bool ready;
   if (server_rx_busy || server_rx_pending) return;
   server_rx_scan();
-  if (!server_rx_ready || comm_tx_busy() || !user_command_ready(server_rx_buffer + 4, false)) return;
+  if (!server_rx_ready || comm_tx_busy()) return;
+  ready = user_command_ready(server_rx_buffer + 4, false);
+  if (!ready && (server_rx_buffer[8] != 21 ||
+      (uint32_t)(timers_getMillis() - server_rx_last) < SERVER_PHOTO_WAIT_MS)) return;
   total = server_rx_ready;
   epoch = server_rx_epoch;
   server_rx_busy = 1;
-  user_parse_comand(server_rx_buffer + 4, CH_SERVER);
+  if (ready) user_parse_comand(server_rx_buffer + 4, CH_SERVER);
+  else user_send_answer_comand(21, CMD_RUNERROR, CH_SERVER, server_rx_buffer[7]);
   server_rx_busy = 0;
   if (epoch != server_rx_epoch) return;
   server_rx_ready = 0;

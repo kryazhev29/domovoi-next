@@ -5,7 +5,7 @@
 #include "user_logic_internal.h"
 #include "../../Modules/comm_server.h"
 #include "prof.h"
-enum { STATUS_EVENT_MASK = 0x08FFu, STATUS_EVENT_GAP_MS = 1000u };
+enum { STATUS_EVENT_MASK = 0x28FFu, STATUS_EVENT_GAP_MS = 1000u };
 uint8_t sync_pending, sync_quiet;
 static struct { uint8_t due, percent, code, id; } fw_status_pending;
 static struct { uint8_t state; char id[10]; } reader_out;

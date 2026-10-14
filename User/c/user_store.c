@@ -43,6 +43,12 @@ bool flash_exec_idle(void)
   return flash_job.kind == FX_NONE && flash_job.result == FX_IDLE &&
     !w25_async_active() && w25_read_available();
 }
+// Приоритет записи одинаков для приёма фото и запуска фонового владельца W25.
+static bool store_priority_pending(void)
+{
+  return store.intent || store_reset_requested || store_save_requested || fw_event_waiting() ||
+    (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
+}
 bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
 {
   if (kind == FX_NONE || kind > FX_STORE || !flash_exec_idle()) return false;
@@ -51,8 +57,7 @@ bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
   void *context = args ? args->context : NULL;
   uint8_t step = args ? args->step : 0;
   if ((kind == FX_EXPIRY || kind == FX_PHOTO || (kind == FX_CRC && !context)) &&
-      (store.intent || store_reset_requested || store_save_requested || fw_event_waiting() ||
-       (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)))) return false;
+      store_priority_pending()) return false;
   uint8_t slot = slots[kind];
   if (kind == FX_CRC && !context) slot = 0;
   if (slot && !work_live(context, slot)) return false;
@@ -231,6 +236,7 @@ bool store_command_allowed(uint8_t cmd)
   store_usb_session();
   if (cmd == 24 || cmd == 27 || (cmd == 21 && photo_empty_cleanup())) return true;
   if (cmd == 8) return flash_exec_read_allowed();
+  if (cmd == 21) return !store_priority_pending() && flash_exec_idle();
   return !fw_event_waiting() && !store_phase() && !store_reset_requested && flash_exec_idle();
 }
 // Полный кадр команды 8 остаётся у источника, если доступ потребует записи ID.

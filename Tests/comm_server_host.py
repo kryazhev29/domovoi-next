@@ -61,7 +61,7 @@ def unit():
         producer_code += user[user.index('/* >>> уведомление об ID */'):user.index('/* <<< уведомление об ID */')]
     if '/* >>> ответ считывателя' in user:
         producer_code += '\n' + user[user.index('/* >>> ответ считывателя'):user.index('/* <<< ответ считывателя */')]
-    old += '\n#define table_runtime_quiet(ch) ((void)(ch))\n#define fw_async_quiet(ch) ((void)(ch))\n#define flash_exec_idle() 1\n#define user_command_ready(ptr,ch) 1\nstatic struct {unsigned intent,channel,quiet,seen;} store;\n'
+    old += '\n#define table_runtime_quiet(ch) ((void)(ch))\n#define fw_async_quiet(ch) ((void)(ch))\n#define flash_exec_idle() 1\n#define user_command_ready(ptr,ch) 1\n#define user_send_answer_comand(cmd,code,ch,id) CHECK(0)\nstatic struct {unsigned intent,channel,quiet,seen;} store;\n'
     # Автоматы хранения проверяются на связанном ELF; здесь модель модема
     # проверяет уведомление владельцев при смене сеанса.
     old += '\n#define flash_exec_quiet(ch) do { if(store.channel == (unsigned)(ch)) store.quiet = 1; } while(0)\n#define service_crc_quiet(ch) ((void)(ch))\n#define upload_runtime_quiet(ch) ((void)(ch))\n#define fw_service_quiet(ch) ((void)(ch))\n'
@@ -102,7 +102,7 @@ def mutations():
         ('ping-zero-replies','&& v[1] > 0 && v[1] <= v[0]','&& v[1] <= v[0]'),
         ('unacked-deadline','now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED]','now_ms - ch.tx_since > comm_timeouts[COMM_T_STABLE]'),
         ('close-before-open','ch.state = CH_CLOSE; ch.reopen_pause','ch.state = CH_PAUSE; ch.reopen_pause'),
-        ('second-command','!server_rx_ready || comm_tx_busy() ||','!server_rx_ready || false ||'),
+        ('second-command','!server_rx_ready || comm_tx_busy())','!server_rx_ready || false)'),
         ('tcp-ack','ch.sent != ch.acked || ch.tx_state != TX_FREE','ch.tx_state != TX_FREE'),
         ('dns-header-only','v[0] == 0 && v[1] > 0 ? 2 : 3','v[0] == 0 && v[1] > 0 ? 1 : 3'),
         ('event-repeat','if (!sv.flags.traffic_event) sv.flags.traffic_event = sv.handlers.no_traffic();','sv.flags.traffic_event = sv.handlers.no_traffic();'),
