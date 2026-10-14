@@ -80,7 +80,7 @@ static uint16_t channel_binary(const uint8_t *p, uint16_t n)
 /* Разобрать ответы канала и уведомления о потере соединения. */
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
    основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
-   Изменено 2026-10-15 (task/tx-window): учёт окна и продвижения ACK — на плате не проверено. */
+   Изменено 2026-10-15 (611d3e9): учёт окна и продвижения ACK — на плате не проверено. */
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
@@ -256,7 +256,7 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
 /* Применить завершение текущей операции канала.
    Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): два звонка в 4G без VoLTE
    во время обмена, поздний ответ на опрос ACK — TCP не переоткрывался, фото дошли.
-   Изменено 2026-10-15 (task/tx-window): SEND OK отпускает слот, SEND FAIL ждёт повтор — на плате не проверено. */
+   Изменено 2026-10-15 (611d3e9): SEND OK отпускает слот, SEND FAIL ждёт повтор — на плате не проверено. */
 static void channel_completed(void)
 {
   uint8_t op = ch.operation, result = comm_modem_result();
