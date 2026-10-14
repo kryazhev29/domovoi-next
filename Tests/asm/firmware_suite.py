@@ -67,6 +67,7 @@ CASES = {
     'photo': [('test_photo_runtime', n) for n in ('normal','uploads','errors')],
     'camera packet': [('test_camera_packet','run')],
     'photo busy': [('test_photo_busy','run'), ('test_photo_busy','mutations')],
+    'photo log ack': [('test_photo_log_ack', 'run')],
     'photo dispatch': [('test_photo_dispatch', 'run')],
     'photo latency': [('test_photo_latency','run'), ('test_photo_latency','mutations')],
     'photo access': [('test_photo_access', n) for n in ('passage','skipped','same_camera_path')],
@@ -88,7 +89,7 @@ CORE = ('peripheral init','protocol lengths','protocol config','protocol text','
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
 CORE += ('photo access',)
-CORE += ('photo busy', 'photo latency', 'camera packet', 'photo dispatch')
+CORE += ('photo busy', 'photo latency', 'camera packet', 'photo dispatch', 'photo log ack')
 CORE += ('call FW',)
 CORE += ('flash fixes',)
 CASES['fixes1 mutations'] = [('test_fixes1_mutations', 'run')]

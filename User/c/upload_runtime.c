@@ -4,6 +4,7 @@
 // Отмена освобождает память, не подтверждая неотправленные записи.
 #include "runtime_internal.h"
 #include "../log_ring.h"
+#include "../photo.h"
 enum {
   UP_INIT=0, UP_COUNT=1, UP_HEADER=2,
   UP_COPY=3, UP_FRAME=4, UP_SEND=5
@@ -116,6 +117,11 @@ void upload_pending_poll(void)
       upload_pending[c].state = 3;
       continue;
     }
+    // ACK журнала сохраняет 4 КиБ A/B: не вклинивать его между пакетами фото.
+    // Начало ожидания восстанавливаем из прежнего срока TTL, без нового таймера.
+    if (c == CH_SERVER && upload_pending[c].command == 10 && log_pending32[c] &&
+        (photo_busy() || (device.status.readyPhoto &&
+         (uint32_t)(now - upload_pending[c].until + (uint32_t)upload_pending[c].ttl * 1000u) < 1000u))) continue;
     if (upload_runtime_begin(upload_pending[c].command, (dataChanel_e)c, upload_pending[c].uniq))
       upload_pending[c].state = 2;
   }

@@ -483,9 +483,8 @@ static void store_poll(uint32_t now, uint8_t result)
     }
     upload_reset(store.clear);
     if (store.clear == 10) {
-      device.logsCount = 0;
-      device.status.readyLogData = 0;
-      device.newAddressLog = mem[MB_LOG].start;
+      // STORE уже проверил все сектора: не запускать повторное форматирование кольца.
+      log_ring_cleared();
     } else {
       device.tempIDsCount = 0;
       device.status.readyID = 0;

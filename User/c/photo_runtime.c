@@ -21,6 +21,9 @@ static uint8_t photo_alloc(void)
   return photo != NULL;
 }
 
+// Не включает просто сохранённые снимки: без запроса 21 журнал не ждёт бесконечно.
+bool photo_busy(void) { return photo && (photo->stage || photo->pending); }
+
 // Завершаем съёмку и возвращаем обычный приём RS485.
 static void photo_stop(void)
 {
