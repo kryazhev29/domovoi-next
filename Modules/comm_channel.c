@@ -246,7 +246,9 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
   }
   return true;
 }
-/* Применить завершение текущей операции канала. */
+/* Применить завершение текущей операции канала.
+   Изменено 2026-10-14 (29e91ad): два таймаута ACK переживаются, третий закрывает TCP;
+   успешный ACK и новый TCP очищают серию — на плате не проверено. */
 static void channel_completed(void)
 {
   uint8_t op = ch.operation, result = comm_modem_result();
