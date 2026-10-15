@@ -76,6 +76,8 @@ class Registers:
                                             (0x4000, 0x40013800, 0x1C)):
                 if value & mask:
                     u.mem_write(peripheral, bytes(length))
+                    if mask == 0x1000:
+                        m.write(peripheral + 8, 2, 2)  # SPI SR после сброса: TXE=1.
                     if peripheral == 0x40013000:
                         m.write(peripheral + 8, 2)
                     elif peripheral == 0x40013800:
