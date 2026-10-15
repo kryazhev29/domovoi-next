@@ -101,7 +101,9 @@ void idclear_runtime_poll(uint32_t now)
       idclear_release(FX_CANCELLED);
       return;
     }
-    if(!w25_async_start(p->cursor,NULL,0,now)) { idclear_error(p);
+    result=counter_prepare(p->cursor,now);
+    if(result==1) return;
+    if(result!=2 || !w25_async_start(p->cursor,NULL,0,now)) { idclear_error(p);
       return;
     }
     flash_job.step=IDC_WAIT;

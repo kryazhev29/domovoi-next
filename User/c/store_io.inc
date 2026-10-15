@@ -49,8 +49,21 @@ static void store_io_poll(uint32_t now)
   uint8_t result;
   if (flash_job.step == FS_ID) {
     if (!p->mode) {
-      idindex_runtime_suspend();
-      if (!sj_runtime_begin(p->address & ~4095u, store_id_chunk, p)) {
+      int accepted=counter_begin(p->address,(const cellID_s *)p->data);
+      if (accepted<0) { store_io_done(false); return; }
+      if (!accepted) idindex_runtime_suspend();
+      p->mode=accepted ? 2 : 3;
+      return;
+    }
+    if (p->mode==2) {
+      result=counter_poll(now);
+      if (result!=1) store_io_done(result==2);
+      return;
+    }
+    if (p->mode==3) {
+      result=counter_prepare(p->address & ~4095u,now);
+      if (result==1) return;
+      if (result!=2 || !sj_runtime_begin(p->address & ~4095u, store_id_chunk, p)) {
         store_io_done(false);
         return;
       }

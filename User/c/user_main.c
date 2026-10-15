@@ -72,7 +72,7 @@ void user_init(void)
   mem[MB_TEMPID].start = 1999872;
   mem[MB_TEMPID].size = 49152;
 
-  if (device.memID == 0x17C2){ // память 16 МиБ
+  if ((device.memID >> 8) == 0x17){ // 16 МиБ, независимо от производителя
     mem[MB_PHOTO].start = 2097152;
     mem[MB_PHOTO].size = 1048576;
   } else{
@@ -84,6 +84,7 @@ void user_init(void)
   // Ошибка recovery блокирует таблицы; конфигурация и связь используют отдельные области.
   (void)mem_recover();
   user_readconfig();
+  if (mem_storage_ready && !counter_boot()) mem_storage_ready=false;
 
   // инициализация переменных
   user_initvariables();

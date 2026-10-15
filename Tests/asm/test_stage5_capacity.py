@@ -8,10 +8,10 @@ def real_layout():
     """Выполняет настоящую инициализацию разделов вместо карты тестовой модели."""
     from storage_machine import StorageMachine
     layouts=[]
-    for chip in (0x14c2,0x17c2):
+    for chip in (0x14c2,0x14ef,0x14c8,0x17c2,0x17ef,0x17c8):
         m=StorageMachine();m.u.mem_write(m.addr('mem'),bytes(80))
         m.stubs[m.addr('w25_read_devID')]=lambda chip=chip:m.ret(chip)
-        for name in ('mem_recover','user_readconfig','user_initvariables','sched16_boot',
+        for name in ('mem_recover','counter_boot','user_readconfig','user_initvariables','sched16_boot',
                      'app_boot_metadata','WG_init','rs485_init','uart_setRecTimeout'):
             m.stubs[m.addr(name)]=lambda:m.ret(1)
         m.checked('user_init')
@@ -19,8 +19,8 @@ def real_layout():
         assert layout[7]==(0x1d0000,98304),('real user_init log partition',hex(chip),layout[7])
         assert layout[2]==(0x41000,1601536) and layout[8]==(0x1e8400,49152)
         assert all(start+size<=LIMIT for start,size in layout[:9])
-        assert layout[9]==((0,0) if chip==0x14c2 else (0x200000,0x100000))
-        assert bool(m.checked('storage_has_index'))==(chip==0x17c2)
+        assert layout[9]==((0,0) if chip>>8==0x14 else (0x200000,0x100000))
+        assert bool(m.checked('storage_has_index'))==(chip>>8==0x17)
         layouts.append({'device_ID':hex(chip),'log':layout[7],'photo':layout[9]})
     return layouts
 

@@ -268,7 +268,9 @@ void table_runtime_poll(uint32_t now)
       if (((table_job.start+(uint32_t)(index-1)*table_job.cell_size)&~4095u)!=table_job.sector) break;
       table_job.batch++;
     }
-    if (!sj_runtime_begin(table_job.sector,table_chunk,0)) {
+    uint8_t prepared=counter_prepare(table_job.sector,now);
+    if (prepared==1) return;
+    if (prepared!=2 || !sj_runtime_begin(table_job.sector,table_chunk,0)) {
       table_job.failed=1;
       table_scan_begin();
     } else flash_job.step=TABLE_JOURNAL;
@@ -306,7 +308,8 @@ void table_runtime_poll(uint32_t now)
         break;
       }
       if (table_job.crc_limit-table_job.offset<n) n=(uint16_t)(table_job.crc_limit-table_job.offset);
-      if (!w25_read_data(table_job.start+table_job.offset,b,n)) {
+      if (!w25_read_data(table_job.start+table_job.offset,b,n) ||
+          !counter_overlay(table_job.start+table_job.offset,b,n)) {
         table_fault = 1;
         table_job.failed = 1;
         flash_job.step=TABLE_REPLY;

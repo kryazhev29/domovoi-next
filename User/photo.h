@@ -6,6 +6,9 @@
 #define PHOTO_H
 #include "includes.h"
 #define PHOTO_FORMAT 0x32504850u /* Метка завершённой записи PHP2. */
+#define PHOTO_RING_START 0x400000u
+#define PHOTO_RING_END   0x800000u
+#define PHOTO_RING_FORMAT 0x33504850u
 #define PHOTO_RECORD_HEAD (sizeof(photoParam_s) + 4u + 1u)
 // Проверить команду 7 и запланировать съёмку выбранной камеры.
 cmdCode_e photo_start(uint8_t address);

@@ -34,6 +34,8 @@ def factory_reset():
                                   (1, False, False), (1, True, False),
                                   (2, False, False), (2, True, False)):
         m, _, _ = config_machine()
+        m.flash.extend(b"\xff"*(0x1000000-len(m.flash)))
+        m.flash[0x400000]=m.flash[0x7fffff]=0
         # Небольшие реальные диапазоны, включая частичный сектор таблицы.
         blocks = {2: (0x41000, 4096), 3: (0x1c9000, 4096),
                   4: (0x1ca800, 2048), 5: (0x1cc000, 1024),
@@ -71,7 +73,7 @@ def factory_reset():
         if reset: m.write(m.addr('usb_bus_resets'), 1, 4)
         if fail:
             m.fault = ('poll', 1)
-        for _ in range(5000):
+        for _ in range(12000):
             m.now += 1
             m.checked('user_storage_poll')
             if state(m)[0] != STORE:
@@ -86,6 +88,7 @@ def factory_reset():
         assert m.answers == ([] if reset or channel == 2 else [(3, 2 if fail else 0, channel, 73)]), m.answers
         assert messages == ([(b'89035551122', b'DEFAULT: Error' if fail else b'DEFAULT: Complete')] if channel == 2 else []), messages
         if not fail:
+            assert m.flash[0x400000:0x800000]==b'\xff'*0x400000
             for address, size in blocks.values():
                 assert m.flash[address:address + size] == b'\xff' * size
             assert m.flash[0x1ca000:0x1ca800] == b'\x37' * 2048

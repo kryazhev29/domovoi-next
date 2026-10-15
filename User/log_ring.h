@@ -20,6 +20,7 @@ uint8_t log_ring_init_step(void);
 uint32_t log_ring_next(uint32_t),log_ring_seek(uint32_t);
 // Запрашивает повторное восстановление состояния кольца.
 void log_ring_invalidate(void);
+uint32_t log_ring_turns(void);
 // Публикует в ОЗУ результат полной проверенной очистки STORE.
 void log_ring_cleared(void);
 // Упаковывает курсоры в резерв устройства перед сохранением A/B.

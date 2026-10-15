@@ -5,7 +5,7 @@
 #include "runtime_internal.h"
 enum {
   EXP_SCAN=1, EXP_DIRECT=2, EXP_SEARCH=3,
-  EXP_START=4, EXP_JOURNAL=5
+  EXP_START=4, EXP_JOURNAL=5, EXP_COUNTER=6, EXP_PREPARE=7
 };
 extern uint8_t id_endScan;
 extern uint32_t id_nextEnd;
@@ -89,9 +89,9 @@ void expiry_runtime_poll(uint32_t now)
   uint32_t address,n,end;
   uint8_t result;
   if(!p) return;
-  if(flash_job.step==EXP_JOURNAL) {
-    if(p->cancelled) sj_runtime_cancel();
-    result=sj_runtime_poll(now);
+  if(flash_job.step==EXP_JOURNAL || flash_job.step==EXP_COUNTER) {
+    if(p->cancelled && flash_job.step==EXP_JOURNAL) sj_runtime_cancel();
+    result=flash_job.step==EXP_COUNTER ? counter_poll(now) : sj_runtime_poll(now);
     if(result==1) return;
     sj_runtime_reset();
     if(result!=2) { if(sj_runtime_blocked()) mem_storage_ready=0;
@@ -113,7 +113,8 @@ void expiry_runtime_poll(uint32_t now)
       p->snapshot_base=p->scan;
       n=p->used_limit-p->scan;
       if(n>sizeof(p->snapshot)) n=sizeof(p->snapshot);
-      if(!w25_read_data(p->scan,p->snapshot,(uint16_t)n)) goto retry;
+      if(!w25_read_data(p->scan,p->snapshot,(uint16_t)n) ||
+         !counter_overlay(p->scan,p->snapshot,(uint16_t)n)) goto retry;
       n=0;
     }
     record=p->snapshot+n;
@@ -156,8 +157,16 @@ void expiry_runtime_poll(uint32_t now)
       } }
     p->find+=n;
     return;
-  case EXP_START:
-    if(!sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
+  case EXP_START: {
+    int accepted=counter_begin(p->target,(const cellID_s *)p->record);
+    if(accepted<0) goto retry;
+    flash_job.step=accepted ? EXP_COUNTER : EXP_PREPARE;
+    return;
+  }
+  case EXP_PREPARE:
+    result=counter_prepare(p->target&~4095u,now);
+    if(result==1) return;
+    if(result!=2 || !sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
     flash_job.step=EXP_JOURNAL;
     return;
   default: goto retry;

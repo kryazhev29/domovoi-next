@@ -40,6 +40,8 @@ class PhotoMachine(StorageMachine):
     def __init__(self,flash=None):
         super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.job_fields=fields('photo_job_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
         self.expected_packet=0;self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
+        # Старые сценарии проверяют совместимое окно пробы; новое кольцо — test_flash_wear2.
+        if 'trial' in self.symbols:self.write(self.addr('trial'),1,1)
         config=fields('config_s');self.write(self.addr('config')+config['rs485Mode'],1,1)
         self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,3]))
         for name,fn in [('uart_init',self.ret),('uart_setRecTimeout',self.ret),

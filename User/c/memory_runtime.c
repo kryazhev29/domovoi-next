@@ -47,7 +47,9 @@ static bool mem_reserved(uint32_t adr, uint16_t n)
 // Заменяет сектор из источника страниц без копии 4 КиБ в ОЗУ.
 bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context)
 {
-  mem_storage_ready = sj_replace_pages(adr, reader, context);
+  uint8_t prepared;
+  do { prepared=counter_prepare(adr,timers_getMillis()); wdt_reload(); } while (prepared==1);
+  mem_storage_ready = prepared==2 && sj_replace_pages(adr, reader, context);
   return mem_storage_ready;
 }
 
@@ -211,7 +213,7 @@ static bool cfg_read(uint32_t adr, uint8_t *buff, uint16_t size)
 bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 {
   if (cfg_range(adr, size)) return cfg_read(adr, buff, size);
-  return mem_guard(adr, size) && w25_read_data(adr, buff, size);
+  return mem_guard(adr, size) && w25_read_data(adr, buff, size) && counter_overlay(adr,buff,size);
 }
 
 // Запись данных в память

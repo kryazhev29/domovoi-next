@@ -139,7 +139,8 @@ read_more:
       }
       p->waiting=0;
       n=p->real>64?64:p->real;
-      if(!w25_read_data(p->address,scratch,(uint16_t)n)) goto bad;
+      if(!w25_read_data(p->address,scratch,(uint16_t)n) ||
+         !counter_overlay(p->address,scratch,(uint16_t)n)) goto bad;
       p->address+=n;
       p->real-=n;
       p->crc=crc16_calcInit(scratch,(uint16_t)n,p->crc);

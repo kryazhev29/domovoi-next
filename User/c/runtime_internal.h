@@ -6,6 +6,7 @@
 #define C_RUNTIME_INTERNAL_H
 #include "includes.h"
 #include "../work_memory.h"
+#include "../counter.h"
 #include "../packet.h"
 #include "idindex.h"
 #include "sector_runtime.h"
@@ -20,6 +21,7 @@ typedef struct {
   uint8_t data[32];
 } store_io_s;
 extern uint16_t temp_next;
+extern uint32_t temp_ring_turns;
 uint16_t temp_normalize(uint16_t),temp_sequence(const cellID_s *,uint32_t);
 uint32_t temp_address(uint16_t);
 bool user_temp_valid(const cellID_s *);
@@ -54,7 +56,8 @@ typedef struct {
   uint8_t io_step;
   uint16_t offset, count, requested_offset, first_offset, target_done;
   uint16_t send_size, send_offset, send_crc;
-  uint32_t io_address, scan, h[4], target, first, max_number, requested_number, reply_until;
+  uint32_t io_address, scan, h[8], target, first, max_number, requested_number, reply_until;
+  uint32_t queue_bytes, next_head, minimum;
 } photo_job_s;
 typedef struct {
   uint32_t address, end;

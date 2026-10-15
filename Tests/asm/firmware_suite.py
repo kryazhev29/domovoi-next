@@ -93,6 +93,11 @@ CORE += ('photo busy', 'photo latency', 'camera packet', 'photo dispatch', 'phot
 CORE += ('call FW',)
 CASES['flash wear']=[('test_flash_wear',n) for n in ('wear','migration','ack_power','temp_power','temp_ack_power','temp_ring','rotation_power','both_channels','trial_compatibility','mutations')]
 CORE += ('flash wear',)
+CASES['flash wear2 photo']=[('test_flash_wear2',n) for n in ('photo_smoke','photo_queue','photo_repeat_ack','photo_erase_intent','photo_power','photo_rotation_power')]
+CASES['flash wear2 counters']=[('test_counter_wear',n) for n in ('smoke','access_days','server_crc','append_power','gc_power','fold_power')]
+CASES['flash wear2 mutations']=[('test_flash_wear2_mutations','run')]
+CORE += ('flash wear2 photo','flash wear2 counters','flash wear2 mutations')
+
 CORE += ('flash fixes',)
 CASES['fixes1 mutations'] = [('test_fixes1_mutations', 'run')]
 CORE += ('flash mutations', 'unblock delay mutations', 'fixes1 mutations')

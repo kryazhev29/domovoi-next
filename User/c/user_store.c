@@ -513,4 +513,5 @@ static void store_poll(uint32_t now, uint8_t result)
   }
 }
 #include "factory_runtime.inc"
+#include "counter_runtime.inc"
 #include "store_io.inc"

@@ -1,3 +1,4 @@
+#include "counter.h"
 // Доработка: Кряжев А., 2026
 // Кэш CRC сырых байтов всей базы ID в ОЗУ.
 // После сброса CRC строится заново; запись сначала считывает прежние байты.
@@ -114,7 +115,7 @@ bool idcrc_erase(uint32_t address)
 bool idcrc_get(uint16_t *crc)
 {
   if(ic.state!=IC_READY) return false;
-  *crc=ic.crc; return true;
+  *crc=ic.crc ^ counter_crc_delta(); return true;
 }
 // Намерение сканирования остаётся в ic; исполнитель принимает только один квант.
 bool idcrc_background_begin(void)

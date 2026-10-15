@@ -108,6 +108,11 @@ static void factory_poll(uint32_t now)
     p->address += 4096;
     return;
   }
+  // Заводской сброс должен удалить и новую физическую очередь, иначе она вернётся при старте.
+  if (p->block==MB_PHOTO && mem[MB_PHOTO].size && p->address>=p->end &&
+      p->end==mem[MB_PHOTO].start+mem[MB_PHOTO].size) {
+    p->address=PHOTO_RING_START; p->end=PHOTO_RING_END;
+  }
   if (!p->address || p->address >= p->end) {
     if (p->address) ++p->block;
     if (p->block == MB_CONFIG) ++p->block;
@@ -131,6 +136,9 @@ static void factory_poll(uint32_t now)
       return;
     }
   }
+  result=counter_prepare(p->address,now);
+  if (result==1) return;
+  if (result!=2) { factory_done(false); return; }
   bool partial = p->address < mem[p->block].start || p->address + 4096 > p->end;
   bool accepted = partial ? sj_runtime_begin(p->address, factory_chunk, NULL) :
     w25_async_start(p->address, NULL, 0, now);

@@ -91,10 +91,10 @@ static void photo_issue(void)
   if (photo->stage == P_SYNC) photo->deadline = photo->last + 50u;
 }
 
-// Вся область доступна для фото: резервных секторов больше нет.
+// Физическая граница: совместимое окно пробы или подтверждённое кольцо 4 МиБ.
 uint32_t photo_storage_end(void)
 {
-  return mem[MB_PHOTO].start + mem[MB_PHOTO].size;
+  return pr.circular ? PHOTO_RING_END : mem[MB_PHOTO].start + mem[MB_PHOTO].size;
 }
 
 // Разбираем собранный кадр камеры; запись выполняет автомат хранения.

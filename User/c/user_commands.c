@@ -18,11 +18,7 @@
 // Определить команды USB, доступные до авторизации.
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
-#if DOMOVOI_DIAG
   return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_DIAG_COMMAND || cmd == USB_COMM_DIAG_COMMAND;
-#else
-  return cmd == 100 || cmd == 101 || cmd == 102 || cmd == USB_COMM_DIAG_COMMAND;
-#endif
 }
 
 // Выбрать событие журнала по источнику управления выходом.
@@ -472,12 +468,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       user_send_anyData(107, NULL, 0, cch, uniqId);
       break;
 
-    #if DOMOVOI_DIAG
     case USB_DIAG_COMMAND:
       if (cch == CH_USB)
         user_send_usbDiag(uniqId);
       break;
-    #endif
     case USB_COMM_DIAG_COMMAND:
       if (cch == CH_USB) { user_send_commDiag(uniqId); }
       break;

@@ -19,8 +19,8 @@ enum {
   PROF_N
 };
 
+#define USB_DIAG_VALUES 79u
 #if DOMOVOI_DIAG
-#define USB_DIAG_VALUES 74u
 #define PROF_NOW() (*(volatile uint32_t*)0xE0001004u)
 #define PROF_STEP(i, call) do { uint32_t prof_s_ = PROF_NOW(); call; prof_add((i), PROF_NOW() - prof_s_); } while (0)
 
