@@ -10,7 +10,7 @@
 enum {
   LOG_INIT=1, LOG_PREPARE=2, LOG_BODY=3,
     LOG_COMMIT=4, LOG_PUBLISH=5, LOG_REPAIR=6,
-    LOG_CLOSE=10, LOG_INTENT=11, LOG_ERASE=12,
+    LOG_REPLAY=7, LOG_CLOSE=10, LOG_INTENT=11, LOG_ERASE=12,
     LOG_HEADER=13, LOG_HEADER_COMMIT=14, LOG_ROTATED=15,
     LOG_WRITE_WAIT=16, LOG_RETRY_INIT=17, LOG_RETRY_REPAIR=18
 };
@@ -26,6 +26,9 @@ bool log_valid(const cellLog_s *cell)
     (uint16_t)value==(uint16_t)~(value>>16) && (uint16_t)value==crc16_calc((uint8_t *)cell,24);
 }
 #define log_job flash_job.data.log
+static uint32_t log_retry_at, log_retry_address;
+bool log_write_ready(void)
+{ return !log_retry_at || (int32_t)(timers_getMillis()-log_retry_at)>=0; }
 static struct {
   uint32_t live,maximum,header[8],word,previous[24];
   uint8_t seq[24],count[24];
@@ -57,6 +60,7 @@ static uint32_t pair(uint16_t v)
 // Заводская очистка уже проверена: публикуем пустое кольцо без повторного erase.
 void log_ring_cleared(void)
 {
+  log_retry_at=log_retry_address=0;
   memset(&lr, 0, sizeof(lr));
   lr.head = NONE;
   lr.forced = NONE;
@@ -195,13 +199,20 @@ uint16_t log_getRecordsCount(void)
 // Копирует событие и занимает флеш до окончания записи.
 void log_async_begin(const cellLog_s *cell)
 {
-  if(!mem_storage_ready) return;
+  if(!mem_storage_ready || !log_write_ready()) return;
   flash_exec_args_t args = { (void *)cell, LOG_INIT };
-  flash_exec_begin(FX_LOG, &args);
+  if (flash_exec_begin(FX_LOG, &args)) log_job.address=log_retry_address;
 }
 // Назначает повтор после ошибки, перечитывая кольцо при неясной ротации.
 static uint8_t fail(uint32_t now,bool rotation)
 {
+  if (++log_job.failures>=3) {
+    log_retry_at=(now+30000u)|1u;
+    log_retry_address=log_job.address;
+    log_ring_invalidate();
+    flash_exec_finish(FX_ERROR);
+    return 3;
+  }
   log_job.retry_at=now+1000u;
   if(rotation) {
     log_ring_invalidate();
@@ -230,6 +241,7 @@ static void target_select(void)
 // Публикует только полностью проверенную запись и освобождает владельца журнала.
 static uint8_t log_publish(void)
 {
+  log_retry_at=log_retry_address=0;
   flash_exec_finish(FX_OK);
   log_lastIndex=log_job.cell.index;
   lr.position++;
@@ -265,6 +277,17 @@ uint8_t log_async_step(uint32_t now)
     result=log_ring_init_step();
     if(result==3) return fail(now,true);
     if(result!=2) return 1;
+    flash_job.step=log_retry_address ? LOG_REPLAY : LOG_PREPARE;
+    return 1;
+  case LOG_REPLAY:
+    if (!w25_read_data(log_retry_address,(uint8_t *)&actual,32)) return fail(now,true);
+    // W25 мог записать commit до ошибки ответа. Восстановленное кольцо уже учло запись.
+    if (!memcmp(&actual,&log_job.cell,32) && log_valid(&actual)) {
+      log_retry_at=log_retry_address=0;
+      flash_exec_finish(FX_OK);
+      return 2;
+    }
+    log_retry_address=log_job.address=0;
     flash_job.step=LOG_PREPARE;
     return 1;
   case LOG_PREPARE:

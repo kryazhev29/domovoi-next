@@ -24,7 +24,10 @@ void log_storage_poll(uint32_t now)
       log_async_begin(&log_pending[0]);
     return;
   }
-  if (log_async_step(now) != 2) return;
+  if (log_async_step(now) != 2) {
+    if (flash_job.result==FX_ERROR) log_pending[0]=flash_job.data.log.cell;
+    return;
+  }
   --log_pendingCount;
   memmove(log_pending, log_pending + 1, log_pendingCount * sizeof(log_pending[0]));
 }
@@ -44,7 +47,10 @@ void log_setTime(uint32_t now){
   device.datetime = now;
   id_endScan = true;
   if (!log_timeKnown) {
-    for (uint8_t i = (flash_job.kind == FX_LOG && flash_job.result == FX_PENDING) ? 1u : 0u; i < log_pendingCount; i++){
+    // Запечатанное событие могло попасть во Flash перед отказом ответа W25.
+    // Его байты сохраняем до проверки, иначе смена времени породит дубль.
+    for (uint8_t i = ((flash_job.kind == FX_LOG && flash_job.result == FX_PENDING) ||
+         (log_pendingCount && log_valid(&log_pending[0]))) ? 1u : 0u; i < log_pendingCount; i++){
       log_pending[i].datetime = now - (device.worktime - log_pending[i].datetime);
       log_pending[i].index = log_pending[i].datetime;
     }

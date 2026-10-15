@@ -12,6 +12,8 @@
 void log_async_begin(const cellLog_s *);
 // Выполняет один шаг записи или ротации.
 uint8_t log_async_step(uint32_t);
+// После трёх отказов журнал уступает флеш на 30 с; событие остаётся в RAM.
+bool log_write_ready(void);
 // Запоминает границу успешно переданного кадра.
 void log_ring_sent(uint8_t channel,uint8_t uniq,uint32_t next);
 // Восстанавливает заголовки без стирания области.

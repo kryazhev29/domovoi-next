@@ -47,7 +47,7 @@ typedef struct {
 typedef struct {
   cellLog_s cell;
   uint32_t address, retry_at;
-  uint8_t after;
+  uint8_t after, failures;
 } log_job_s;
 typedef struct {
   uint8_t after, task, quiet, cancelled, committed, address, reply_wait;

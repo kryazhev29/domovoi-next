@@ -47,7 +47,7 @@ bool flash_exec_idle(void)
 static bool store_priority_pending(void)
 {
   return store.intent || store_reset_requested || store_save_requested || fw_event_waiting() ||
-    (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
+    (log_pendingCount && log_write_ready() && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
 }
 bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
 {
@@ -161,7 +161,7 @@ static void pick_next(bool below_crc)
     return;
   }
   if (!store.intent && !store_save_requested && !store_reset_requested &&
-      !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT))) return;
+      !(log_pendingCount && log_write_ready() && (log_timeKnown || device.worktime >= LOG_TIME_WAIT))) return;
   flash_exec_args_t args = { NULL, store.intent };
   if (flash_exec_begin(FX_STORE, &args)) store.intent = 0;
 }
@@ -484,7 +484,7 @@ static void store_poll(uint32_t now, uint8_t result)
     flash_exec_finish(FX_OK);
     flash_exec_take_result();
   }
-  if (log_pendingCount &&
+  if (log_pendingCount && log_write_ready() &&
       (store_reset_requested || (!store_save_requested && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)))) {
     log_storage_poll(now);
     return;
