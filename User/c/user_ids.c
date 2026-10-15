@@ -96,10 +96,10 @@ uint8_t user_findID(char *id, cellID_s *cell)
     // Другой источник не сбивает текущий поиск; отменённый запрос живёт ещё до 100 мс.
     if (lookup.state==1 && now-lookup.seen<100u) return 2;
     memcpy(lookup.id,id,10); lookup.next=lookup.hit=0; lookup.state=1;
-    int8_t r=idindex_find(mem[MB_ID].start,(const uint8_t*)id,(uint8_t*)cell);
+    int32_t r=idindex_find(mem[MB_ID].start,(const uint8_t*)id,(uint8_t*)cell);
     if (r>=0) {
-      lookup.state=2; lookup.hit=r ? cell->index : 0;
-      return r;
+      lookup.state=2; lookup.hit=(uint16_t)r;
+      return r!=0;
     }
   }
   lookup.seen=now;

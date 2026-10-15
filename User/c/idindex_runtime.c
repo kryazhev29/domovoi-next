@@ -86,7 +86,7 @@ void idindex_impl_table_commit(uint32_t delta, uint16_t end)
 }
 
 // Проверяет кандидатов корзины по действующим ячейкам основной базы.
-int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
+int32_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 {
   uint16_t e[IX_SLOTS];
   if (ix.state != IX_READY) return -1;
@@ -96,7 +96,7 @@ int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
     uint32_t address=base+(uint32_t)(e[i]-1u)*IDINDEX_CELL;
     if (!counter_base_read(address,cell,IDINDEX_CELL)) return -1;
     if (cell[31]!=255 && (cell[0] != 0xFF || cell[1] != 0xFF) && !memcmp(cell + 2, id, 10))
-      return counter_overlay(address,cell,IDINDEX_CELL) ? 1 : -1;
+      return counter_overlay(address,cell,IDINDEX_CELL) ? e[i] : -1;
   }
   return 0;
 }

@@ -3,6 +3,7 @@ import json, struct
 from test_access_reads import AccessMachine, IDS
 from storage_machine import fields
 from iar_image import result_path
+from test_idindex_runtime import bucket
 
 IDENT, OUT = 0x21000000, 0x21000300
 
@@ -34,6 +35,21 @@ def find(m, ident):
 
 def run():
     result = {}
+    # В старой базе логический номер может отличаться от физической позиции.
+    # Индекс и кеш обязаны вести к одной ячейке между ready и действием.
+    for position in (1000, 50048):
+        m = machine(position); m.put_group(1); ident = b'7777777777'
+        m.put_id(position, ident); address = IDS+(position-1)*32
+        m.flash[address:address+2] = struct.pack('<H', 1)
+        m.write(m.device+m.d['memID'], 0x17ef, 2)
+        m.flash[bucket(ident):bucket(ident)+2] = struct.pack('<H', position)
+        m.write(m.addr('ix')+10, 3, 1)
+        m.u.mem_write(IDENT, ident)
+        assert m.checked('user_access_ready', IDENT)
+        before = m.counts['read']
+        m.checked('user_checkIdAndControl', IDENT, 2)
+        assert len(m.loads) == 1 and m.counts['read']-before < 8, 'cache must use physical slot'
+    result['indexed_legacy'] = 'PASS'
     for counters in (0, 408):
         m = machine(counters=counters)
         r, polls, reads, steps = find(m, b'9999999999')

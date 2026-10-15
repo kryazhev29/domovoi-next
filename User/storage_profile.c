@@ -23,9 +23,9 @@ void idindex_table_commit(uint32_t delta, uint16_t end)
   if(!storage_has_index()) { return; }
   idindex_impl_table_commit(delta,end);
 }
-extern int8_t idindex_impl_find(uint32_t base,const uint8_t *id,uint8_t *cell);
+extern int32_t idindex_impl_find(uint32_t base,const uint8_t *id,uint8_t *cell);
 // Использует индекс либо разрешает вызывающему линейный поиск.
-int8_t idindex_find(uint32_t base,const uint8_t *id,uint8_t *cell)
+int32_t idindex_find(uint32_t base,const uint8_t *id,uint8_t *cell)
 {
   if(!storage_has_index()) { return -1; }
   return idindex_impl_find(base,id,cell);

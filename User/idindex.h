@@ -22,8 +22,8 @@ uint32_t idindex_hash(uint16_t index, const uint8_t *id);
 /* Итог полного прохода по базе: сумма хешей непустых ячеек.
    Первый вызов после старта сверяет её с отметкой индекса. */
 void idindex_scanned(uint32_t sum, uint16_t cells_end);
-/* 1 - найден (ячейка в cell), 0 - нет, -1 - индекс не готов, искать перебором. */
-int8_t idindex_find(uint32_t base, const uint8_t *id, uint8_t *cell);
+/* >0 — физическая позиция (ячейка в cell), 0 — нет, -1 — искать перебором. */
+int32_t idindex_find(uint32_t base, const uint8_t *id, uint8_t *cell);
 /* Фоновая пересборка, по одному короткому шагу за вызов. */
 void idindex_poll(uint32_t base);
 /* Текущая операция W25; suspend ждёт её проверки, сохраняя источник. */
