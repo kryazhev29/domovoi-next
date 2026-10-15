@@ -354,6 +354,9 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
   uint8_t found=(id!=NULL && id[0]!=0)?user_findID(id,&cellId):0;
   if(found>1) return false;
   if (found){
+    // Дата, срок гостя и суточный лимит требуют достоверного времени.
+    if (device.datetime < ID_TIME_VALID &&
+        (cellId.blockTime || cellId.useTime || cellId.cntPassOnDay != 255)) return false;
     bool save = false;
     // задано кол-во проходов
     if (cellId.cntPassOnDay != 255){
