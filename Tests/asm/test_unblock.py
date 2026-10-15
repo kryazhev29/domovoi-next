@@ -538,7 +538,9 @@ def registration_write():
             start, size = struct.unpack('<II', m.u.mem_read(m.addr('mem') + 8 * 8, 8))
             if fault == 'full':
                 m.write(m.device + m.d['newAddressTempID'], start + size)
-                m.flash[start:start+size] = bytes(size)
+                from test_upload_runtime import temp
+                m.flash[start:start+size] = b''.join(temp(i+1) for i in range(size//32))
+                m.write(m.addr('temp_next'), size//32, 2)
             elif fault == 'read':
                 m.stubs[m.addr('w25_read_data')] = lambda: m.ret(0)
             elif fault == 'write':

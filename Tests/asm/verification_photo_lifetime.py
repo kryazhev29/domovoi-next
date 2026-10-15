@@ -28,6 +28,9 @@ def run():
         for cmd in (9,10,13):
             answers = len(m.answers)
             m.packet(cmd)
+            if cmd == 13:
+                assert len(m.answers)==answers
+                m.now+=501;m.checked('usb_check_data')
             if cmd == 9: assert len(m.answers)==answers # Только намерение, без I/O и ответа.
             else: assert m.answers[-1][0:2] == (cmd,2)
             assert m.rget('tx',4) == pointer and m.exec_state()[1] == phase

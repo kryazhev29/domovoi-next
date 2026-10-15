@@ -51,30 +51,34 @@ def check_pma(m, packet):
 def setup(kind, busy):
     if kind.startswith('crc'):
         m = ServiceMachine(8192, 1601536)
-        transport(m, busy)
+        transport(m, False)
         command = 17 if kind == 'crc_pack' else 18
         expected = m.expected(command)
         m.packet(command)
         active = m.active
     elif kind == 'upload':
         m = UploadMachine(); cells = [log(i + 1) for i in range(32)]
-        m.fixture(10, cells); transport(m, busy); m.request()
+        m.fixture(10, cells); transport(m, False); m.request()
         expected = upload_wire(10, 7, 0, cells)
         active = lambda: bool(m.ptr())
     elif kind == 'fw_setup':
-        m = FirmwareMachine(); m.fixture(); transport(m, busy); m.begin(2, 0, True)
+        m = FirmwareMachine(); m.fixture(); transport(m, False); m.begin(2, 0, True)
         body = struct.pack('<HBBBBBIH', 11, 255, 7, 11, 19, 0,
                            m.read_word(m.device+47), 2048)
         expected = b'SLDN' + body + struct.pack('<H', crc16(body))
         active = lambda: bool(m.ptr())
     elif kind == 'clear':
-        m = ClearMachine(); transport(m, busy); m.parse()
+        m = ClearMachine(); transport(m, False); m.parse()
         expected = clear_wire(); active = m.clear_active
     else:
         m = PhotoMachine(); m.boot_media(); data = bytes(range(256)) * 2
-        m.capture(data); transport(m, busy); m.packet(21, b''); m.drain()
+        m.capture(data); transport(m, False); m.packet(21, b''); m.drain()
         m.port(); expected = None
         active = lambda: m.active() or ('tx_length' in m.runtime_fields and m.rget('tx_length',2))
+    if busy:
+        m.u.mem_write(0x21000f00,b'P')
+        m.write(m.addr('usb_tx_length'),1,2)
+        m.write(m.addr('usb_tx_source'),0x21000f00)
     return m, active, expected
 
 

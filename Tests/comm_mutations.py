@@ -81,7 +81,7 @@ def run():
         ('channel', 'sms-cms-error-not-final', '&& !comm_at_prefix(line, line_count, "+CMS ERROR:")', ''),
         ('channel', 'ussd-long-line-fault', 'comm_at_prefix(line, line_count, "+CUSD:") || ', ''),
         ('channel', 'ussd-ucs2-ignored', '  if (dcs == 72u) {', '  if (0) {'),
-        ('channel', 'ussd-first-number-only', 'if (f) { s = f; break; }', 'if (0) { s = f; break; }'),
+        ('channel', 'ussd-first-number-only', 'if (!words[w][i]) { s = f; break; }', 'if (0) { s = f; break; }'),
         ('channel', 'ussd-failure-waits-a-day', 'bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];', 'bal.next = bal.now + comm_timeouts[COMM_T_DAY];'),
         ('channel', 'ussd-menu-left-open', 'if (bal.menu && comm_modem_side(&bal_cancel))', 'if (0 && comm_modem_side(&bal_cancel))'),
         ('channel', 'volte-unsupported-retried', 'call.volte_modem = VOLTE_UNSUPPORTED;', 'call.volte_modem = VOLTE_UNKNOWN;'),

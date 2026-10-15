@@ -98,7 +98,10 @@ def ownership():
     m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request();m.feed(frame(b'x'*58));m.tick()
     assert m.io and not m.checked('flash_exec_idle') and not m.checked('flash_exec_read_allowed')
     for cmd in (12,13,19,20,21):
-        m.packet(cmd);assert m.answers[-1][1]==2 and m.io
+        before=len(m.answers);m.packet(cmd)
+        assert len(m.answers)==before and m.io
+        m.now+=501;m.checked('usb_check_data')
+        assert m.answers[-1][0:2]==(cmd,2) and m.io
     m.checked('user_savereset');m.drain()
     assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1' and not m.events
     for name in ('store_save_requested','log_pendingCount'):

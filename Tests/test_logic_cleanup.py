@@ -190,8 +190,9 @@ def startup_counts():
         base = 0x1e8000
         m.u.mem_write(m.addr('mem') + 8 * 8, struct.pack('<II', base, 512))
         m.flash[base:base + 512] = b'\xff' * 512
+        from test_upload_runtime import temp
         for cell in range(count):
-            m.flash[base + cell * 32:base + cell * 32 + 2] = struct.pack('<H', cell + 1)
+            m.flash[base + cell * 32:base + (cell + 1) * 32] = temp(cell + 1)
         assert m.checked('user_getTempIDRecordsCount') == count
         assert int.from_bytes(m.u.mem_read(m.device + m.d['newAddressTempID'], 4), 'little') == base + count * 32
         checks += 1

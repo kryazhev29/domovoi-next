@@ -133,7 +133,6 @@ def config_strings():
         m.u.mem_write(m.device+d['IMEIGSM'],b'old\0'+bytes(12))
         m.flash[0x1cd600:0x1cd800] = saved
         m.stubs[m.addr('user_comm_boot')] = m.ret
-        m.stubs[m.addr('store_restore')] = m.ret
         m.stubs[m.addr('sched16_restore')] = m.ret
         m.checked('user_readsavedinformation')
         imei = bytes(m.u.mem_read(m.device + d['IMEIGSM'], 16))
@@ -232,7 +231,7 @@ def pin_config():
         assert m.flash[active:active+512] == saved
         assert m.flash[active+512:active+1024] == saved_device
         assert int.from_bytes(m.u.mem_read(m.addr('store_save_requested'),1),'little') == (old > 99999)
-        for name in ('user_comm_boot', 'store_restore', 'sched16_restore'):
+        for name in ('user_comm_boot', 'sched16_restore'):
             m.stubs[m.addr(name)] = m.ret
         m.checked('user_readsavedinformation')
         assert bytes(m.u.mem_read(m.device+d['IMEIGSM'], 16)) == b'867442070217472\0'
