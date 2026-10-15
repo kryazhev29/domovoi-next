@@ -30,6 +30,8 @@ uint8_t reply_send(const uint8_t *packet, uint16_t size, uint8_t channel)
   comm_tx_release(); return 0;
 }
 // Заполняет единый ответ 11; время и свободный буфер фиксируются при создании.
+/* Проверено на плате №1 15.10.2026 (49b4d1d, сборка 1792067616): USB-коды 2/4,
+   payload 7 Б, время и буфер 2048. TCP побайтно на плате не проверялся. */
 void answer11(uint8_t *packet,uint8_t uniq,uint8_t command,uint8_t code)
 {
   packet[6]=(command==7 || command==21)?5:255; packet[7]=uniq; packet[8]=11; packet[9]=code;
