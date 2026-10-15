@@ -21,6 +21,7 @@ static uint8_t sms_command(const char *name)
 
 // Проверить ПИН и выполнить одну принятую SMS-команду.
 /* Проверено на плате №1 12.10.2026 (eed4de6): #add 4321,9990001234 -> ID добавлен, событие 67, ответ Ok.
+   Изменено 2026-10-15 (SMALL): удалён пустой аргумент format_status — на плате не проверено.
    Изменено 12.10.2026 (f822023): пробелы после запятой и в конце - на плате не проверено. */
 bool user_smsreceived(char *num, char *data, bool *first)
 {
@@ -79,7 +80,7 @@ bool user_smsreceived(char *num, char *data, bool *first)
     break;
   case SMS_STATUS: {
     static const char *const net[] = {"Not network", "gprs", "edge", "3G", "4G", "5G"};
-    format_status(reply, NULL, device.csq, net[device.netType < 6u ? device.netType : 0],
+    format_status(reply, device.csq, net[device.netType < 6u ? device.netType : 0],
       device.connected, user_comm_server(comm_server_address()) + 1, device.firmwareVersion,
       device.triggers.handUnBlock, device.triggers.sheduleUnBlock,
       device.triggers.autoregistration, device.triggers.openAll);

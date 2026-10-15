@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'Tests'), str(ROOT / 'Tests/asm')]
 from firmware_suite import select_image
 from iar_image import image_paths
-from storage_machine import StorageMachine
+from storage_machine import StorageMachine, crc16
 
 JOURNAL = 0x20000
 MAGIC = 0x4e465744

@@ -2,6 +2,8 @@
 #ifndef DOMOVOI_BOOT_MANUAL_H
 #define DOMOVOI_BOOT_MANUAL_H
 #include <stdint.h>
+// Общий CRC слова для двух путей проверки образа в приложении.
+uint32_t app_crc_word(uint32_t crc,uint32_t word);
 #define MANUAL_BOOT_SIZE 32768u
 #define MANUAL_BOOT_COMMAND 110u
 enum { MANUAL_OK=0, MANUAL_BAD=1, MANUAL_IO=2, MANUAL_BUSY=3,

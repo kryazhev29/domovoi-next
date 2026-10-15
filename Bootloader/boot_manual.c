@@ -7,7 +7,7 @@ static uint32_t received,expected_crc;
 static uint32_t get32(const uint8_t *p) {
  return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);
 }
-static uint32_t crc_word(uint32_t c,uint32_t w) {
+uint32_t app_crc_word(uint32_t c,uint32_t w) {
  unsigned i;c^=w;for(i=0;i<32;i++)c=(c<<1)^((c&0x80000000u)?0x04c11db7u:0u);return c;
 }
 static int validate(void) {
@@ -22,7 +22,7 @@ static int validate(void) {
   }
   if(pos+sizeof(b)==MANUAL_BOOT_SIZE &&
      (b[252]!=BOOT_VERSION||b[253]!=target_hw||b[254]!=0||b[255]!=0xff))return MANUAL_BAD;
-  for(i=0;i<sizeof(b);i+=4)c=crc_word(c,get32(b+i));
+  for(i=0;i<sizeof(b);i+=4)c=app_crc_word(c,get32(b+i));
   manual_service();
  }
  return c==expected_crc?MANUAL_OK:MANUAL_CRC;
@@ -36,7 +36,7 @@ void boot_manual_command(int usb,const uint8_t *p,uint16_t n,uint8_t reply[8]) {
  if(armed){status=MANUAL_BUSY;goto done;}
  if(op==3&&n==1){session=0;received=0;target_hw=0;status=MANUAL_OK;goto done;}
  if(op==0) {
-  if(n!=10||get32(p+1)!=MANUAL_BOOT_SIZE||(p[9]!=11&&p[9]!=139&&p[9]!=140)||!manual_board_hw(p[9]))goto done;
+  if(n!=10||get32(p+1)!=MANUAL_BOOT_SIZE||!manual_board_hw(p[9]))goto done;
   if(!manual_platform_supported()){status=MANUAL_DENIED;goto done;}
   session=0;received=0;target_hw=0;
   for(off=0;off<MANUAL_BOOT_SIZE;off+=4096) {

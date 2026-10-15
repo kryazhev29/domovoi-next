@@ -121,12 +121,12 @@ void usb_bus_error_seen(void)
 
 /* Прерывание USB: начало кадра. */
 // Отметить свежий кадр USB для диагностического возраста.
+#if DOMOVOI_DIAG
 void usb_sof_seen(void)
 {
-#if DOMOVOI_DIAG
   usb_sof_ago = 0;
-#endif
 }
+#endif
 
 /* Вызывается при неустранимом таймауте сброса USB. Переподключение делается из главного цикла,
  * внутри прерывания USB никогда не ждать хоста или SysTick. */

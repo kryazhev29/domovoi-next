@@ -91,7 +91,7 @@ bool log_addSystemEvent(logSystem_e num)
 bool log_addSystemValue(logSystem_e num, int32_t value)
 {
   char id[12] = {0};
-  format_i32(id, NULL, value);
+  format_i32(id, value);
   return log_addSystemEventID(num, id);
 }
 

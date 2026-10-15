@@ -1,4 +1,4 @@
-"""Побайтная проверка форматтеров ELF, включая семь аргументов через стек."""
+"""Побайтная проверка форматтеров ELF, включая шесть аргументов через стек."""
 import struct
 from iar_irq_support import Machine, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_PC
 
@@ -11,7 +11,7 @@ def run():
     for value in sorted(values):
         for name,expected in [('format_id',f'00{value:08X}'),('format_i32',str(value if value<0x80000000 else value-0x100000000))]:
             m.u.mem_write(dst,b'\xA7'*128)
-            length=m.call(name,dst,0,value)
+            length=m.call(name,dst,value)
             assert length==len(expected)
             assert bytes(m.u.mem_read(dst,length+2))==expected.encode()+b'\x00\xA7'
             cases+=1
@@ -26,9 +26,9 @@ def run():
                 connected=bits&1;server=(bits>>1)&1
                 triggers=[(bits>>i)&1 for i in range(4)]
                 m.u.mem_write(dst,b'\xA7'*128);m.u.mem_write(network,net.encode()+b'\x00')
-                sp=m.top-32;m.u.mem_write(sp,struct.pack('<7I',connected,server,firmware,*triggers))
+                sp=m.top-24;m.u.mem_write(sp,struct.pack('<6I',server,firmware,*triggers))
                 m.u.reg_write(UC_ARM_REG_SP,sp);m.u.reg_write(UC_ARM_REG_LR,m.stop|1)
-                for reg,value in zip((UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3),(dst,0,signal,network)):m.u.reg_write(reg,value)
+                for reg,value in zip((UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3),(dst,signal,network,connected)):m.u.reg_write(reg,value)
                 m.minimum=sp;m.u.emu_start(m.addr('format_status')|1,m.stop,count=20000)
                 assert m.u.reg_read(UC_ARM_REG_PC)==m.stop
                 assert m.u.reg_read(UC_ARM_REG_SP)==sp
@@ -50,4 +50,4 @@ def run():
                     assert (signed>0)-(signed<0)==(a>bytes(b))-(a<bytes(b))
                     comparisons+=1
         assert m.call('__iar_small_memcmp',0,0,0)==0
-    return {'cases':cases,'string_library_cases':comparisons,'wire':'exact bytes, NUL, end canary','abi':'AAPCS registers and seven stack arguments'}
+    return {'cases':cases,'string_library_cases':comparisons,'wire':'exact bytes, NUL, end canary','abi':'AAPCS registers and six stack arguments'}

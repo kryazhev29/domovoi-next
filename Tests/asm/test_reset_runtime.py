@@ -69,7 +69,7 @@ class ResetMachine(StorageMachine):
 
     def advance(self, milliseconds=10):
         self.now += milliseconds
-        for index in range(6):
+        for index in range(self.map_size("timer")//4):
             address = self.addr('timer') + 4 * index
             value = int.from_bytes(self.u.mem_read(address, 4), 'little')
             self.write(address, value + milliseconds)
@@ -137,7 +137,7 @@ def scheduled_reset():
         if reason == 'install': m.write(m.device + m.d['rebootToUpdate'], 1, 1)
         if reason == 'flash': hold_clear(m)
         def minute():
-            m.checked('timers_set', 5, 60000)
+            m.checked('timers_set', 4, 60000)
             m.checked('user_loop', budget=1000000)
         minute(); assert not requested, reason
         if reason == 'flash': release_clear(m)
@@ -191,7 +191,7 @@ def trial_clock():
         assert not m.checked('w25_async_active')
         assert not m.checked('app_trial_expired'), 'запись W25 преждевременно завершила пробу'
 
-        # В ReleaseCustomer за timer[5] расположен указатель передачи модема.
+        # Передача UART не должна влиять на срок пробы.
         assert m.checked('comm_uart_tx', source, 16)
         assert not m.checked('app_trial_expired'), 'передача UART преждевременно завершила пробу'
 

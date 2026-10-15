@@ -84,7 +84,7 @@ void WG_process(void){
   count = wg_frames[wg_head].count;
   if (count == 26 && (!WG_PARITY || wg_parity_valid(data))) {
     char id[11];
-    format_id(id, NULL, (data >> 1) & 0x03FFFFFFu);
+    format_id(id, (data >> 1) & 0x03FFFFFFu);
     if (!user_access_ready(id)) return;
   }
   wg_head = (wg_head + 1u) & 3u;

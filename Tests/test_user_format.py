@@ -19,13 +19,13 @@ static void number(uint32_t value) {
   char got[32],expected[32];
   memset(got,0x5a,sizeof got);
   sprintf(expected,"00%08" PRIX32,value);
-  if(format_id(got,0,value)!=10 || strcmp(got,expected) || got[11]!=0x5a) __builtin_trap();
+  if(format_id(got,value)!=10 || strcmp(got,expected) || got[11]!=0x5a) __builtin_trap();
   memset(got,0x5a,sizeof got);
   sprintf(expected,"%" PRIu32,value);
-  if(format_u32(got,0,value)!=strlen(expected) || strcmp(got,expected) || got[strlen(expected)+1]!=0x5a) __builtin_trap();
+  if(format_u32(got,value)!=strlen(expected) || strcmp(got,expected) || got[strlen(expected)+1]!=0x5a) __builtin_trap();
   memset(got,0x5a,sizeof got);
   sprintf(expected,"%" PRId32,(int32_t)value);
-  if(format_i32(got,0,(int32_t)value)!=strlen(expected) || strcmp(got,expected) || got[strlen(expected)+1]!=0x5a) __builtin_trap();
+  if(format_i32(got,(int32_t)value)!=strlen(expected) || strcmp(got,expected) || got[strlen(expected)+1]!=0x5a) __builtin_trap();
 }
 static const char *net[]={"Not network","gprs","edge","3G","4G","5G"};
 static void status(unsigned type,unsigned signal,unsigned fw,unsigned connected,unsigned server,unsigned mask) {
@@ -34,7 +34,7 @@ static void status(unsigned type,unsigned signal,unsigned fw,unsigned connected,
   memset(got,0x5a,sizeof got);
   sprintf(expected,"STATUS:\r\n-SIGNAL: %d\r\n-NET: %s\r\n-CLOUD: %d/%d\r\n-FW: %d\r\n-TRIG: %d/%d/%d/%d",
     signal,network,connected,server,fw,mask&1,(mask>>1)&1,(mask>>2)&1,(mask>>3)&1);
-  if(format_status(got,0,signal,network,connected,server,fw,mask&1,(mask>>1)&1,(mask>>2)&1,(mask>>3)&1)!=strlen(expected)
+  if(format_status(got,signal,network,connected,server,fw,mask&1,(mask>>1)&1,(mask>>2)&1,(mask>>3)&1)!=strlen(expected)
      || strcmp(got,expected) || got[strlen(expected)+1]!=0x5a) __builtin_trap();
 }
 int main(void) {

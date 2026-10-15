@@ -21,15 +21,6 @@
 static uint8_t trial;
 static uint32_t trial_started;
 
-// Обновить контрольную сумму образа в порядке слов аппаратного CRC STM32.
-static uint32_t crc_word(uint32_t crc, uint32_t word)
-{
-  crc ^= word;
-  for (unsigned i = 0; i < 32; ++i)
-    crc = (crc << 1) ^ ((crc & 0x80000000u) ? 0x04c11db7u : 0);
-  return crc;
-}
-
 // Проверить и опубликовать кандидата одним синхронным шагом владельца STORE.
 int app_boot_request(void)
 {
@@ -50,7 +41,7 @@ int app_boot_request(void)
     if (!pos && (words[0] < 0x20000008u || words[0] > 0x20005000u || (words[0] & 7u) ||
         !(words[1] & 1u) || (words[1] & ~1u) < BOOT_APP_VECTOR ||
         (words[1] & ~1u) >= BOOT_APP_VECTOR + header.size)) goto done;
-    for (uint32_t i = 0; i < count / 4; ++i) crc = crc_word(crc, words[i]);
+    for (uint32_t i = 0; i < count / 4; ++i) crc = app_crc_word(crc, words[i]);
     wdt_reload();
   }
   ok = crc == header.crc && mem_erase_sector(BOOT_JOURNAL) &&
@@ -254,7 +245,7 @@ int manual_program(uint32_t expected_crc) {
   c=0xffffffffu;
   for(i=0;i<1024;i+=sizeof(data)) {
    unsigned j;if(!manual_stage_read(page*1024+i,data,sizeof(data)))goto failed;
-   for(j=0;j<sizeof(data);j+=4){memcpy(&w,data+j,4);c=crc_word(c,w);whole=crc_word(whole,w);}
+   for(j=0;j<sizeof(data);j+=4){memcpy(&w,data+j,4);c=app_crc_word(c,w);whole=app_crc_word(whole,w);}
   }
   page_crc[page]=c;wdt_reload();
  }

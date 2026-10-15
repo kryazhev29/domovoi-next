@@ -30,9 +30,8 @@ void wdt_reload(void){timers_handle();}
 int main(void){
   timers_set(0,9);CHECK(timers_get(0)==9);timers_handle();CHECK(timers_get(0)==10 && timers_getMillis()==1);
   irqmask=1;timers_set(0,3);CHECK(irqmask==1 && timers_get(0)==3 && irqmask==1 && timers_getMillis()==1 && irqmask==1);irqmask=0;
-  pending=true;CHECK(timers_get(0)==3 && timer[0]==4 && !pending);
-  pending=true;unsigned now=timers_getMillis();CHECK(milliSeconds==now+1 && !pending);
+  pending=true;CHECK(timers_take(0,2)==1 && timer[0]==2 && !pending);
   milliSeconds=0xfffffffeu;timers_pause(5);CHECK(timers_getMillis()==3);
-  timers_set(5,2500);CHECK(timers_take(5,1000)==2 && timers_get(5)==500);
+  timers_set(4,2500);CHECK(timers_take(4,1000)==2 && timers_get(4)==500);
   puts("timersirq: snapshot, pending tick, saved PRIMASK and pause wrap PASS");return 0;
 }

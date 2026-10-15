@@ -18,7 +18,7 @@ static void put32(uint8_t *p,uint32_t n){p[0]=(uint8_t)n;p[1]=(uint8_t)(n>>8);p[
 static void powercycle(void){session=armed=target_hw=0;received=expected_crc=0;}
 static uint8_t call(int usb,const uint8_t *p,uint16_t n){uint8_t reply[8];boot_manual_command(usb,p,n,reply);return reply[1];}
 static void make_image(uint8_t hw){memset(image,0x5a,sizeof(image));put32(image,0x20005000);put32(image+4,0x08000101);image[32764]=BOOT_VERSION;image[32765]=hw;image[32766]=0;image[32767]=255;}
-static uint32_t checksum(void){uint32_t i,c=0xffffffffu;for(i=0;i<sizeof(image);i+=4)c=crc_word(c,get32(image+i));return c;}
+static uint32_t checksum(void){uint32_t i,c=0xffffffffu;for(i=0;i<sizeof(image);i+=4)c=app_crc_word(c,get32(image+i));return c;}
 static void begin(uint8_t hw){uint8_t p[10]={0};put32(p+1,32768);put32(p+5,checksum());p[9]=hw;assert(call(1,p,10)==0);}
 static void block(uint32_t off){uint8_t p[261];p[0]=1;put32(p+1,off);memcpy(p+5,image+off,256);assert(call(1,p,sizeof(p))==0);}
 static void send_all(void){uint32_t off;for(off=0;off<sizeof(image);off+=256)block(off);}

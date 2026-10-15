@@ -1,7 +1,6 @@
 // Доработка: Кряжев А., 2026
 // Форматирование ID, чисел и статуса SMS без зависимости от printf.
 // Размеры и текст ответов сохраняют прежний протокол; память выделяет вызывающий.
-// Второй аргумент совместим с прежними вызовами sprintf из быстрых ASM-ядер.
 #include "user_format.h"
 // Дописать постоянный текст в строку ответа.
 static char *text(char *dst, const char *src)
@@ -15,29 +14,29 @@ static char *decimal(char *dst, uint32_t value)
   return dst;
 }
 // Сформировать ID из десяти шестнадцатеричных символов.
-uint32_t format_id(char *dst, const char *ignored, uint32_t value)
+uint32_t format_id(char *dst, uint32_t value)
 {
   static const char hex[]="0123456789ABCDEF";
-  uint8_t i; (void)ignored; dst[0]=dst[1]='0';
+  uint8_t i; dst[0]=dst[1]='0';
   for(i=0;i<8;i++) dst[i+2]=hex[(value>>(28-4*i))&15];
   dst[10]=0; return 10;
 }
 // Сформировать десятичное беззнаковое число.
-uint32_t format_u32(char *dst, const char *ignored, uint32_t value)
-{ char *end; (void)ignored; end=decimal(dst,value); *end=0; return (uint32_t)(end-dst); }
+uint32_t format_u32(char *dst, uint32_t value)
+{ char *end; end=decimal(dst,value); *end=0; return (uint32_t)(end-dst); }
 // Сформировать десятичное число со знаком.
-uint32_t format_i32(char *dst, const char *ignored, int32_t value)
+uint32_t format_i32(char *dst, int32_t value)
 {
-  char *end=dst; uint32_t magnitude=(uint32_t)value; (void)ignored;
+  char *end=dst; uint32_t magnitude=(uint32_t)value;
   if(value<0) { *end++='-'; magnitude=0u-magnitude; }
   end=decimal(end,magnitude); *end=0; return (uint32_t)(end-dst);
 }
 // Сформировать полный текст статуса SMS с прежними полями.
-uint32_t format_status(char *dst, const char *ignored, uint32_t signal,
+uint32_t format_status(char *dst, uint32_t signal,
                       const char *network, uint32_t connected, uint32_t server,
                       uint32_t firmware, uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4)
 {
-  char *p; (void)ignored;
+  char *p;
   p=decimal(text(dst,"STATUS:\r\n-SIGNAL: "),signal);
   p=text(text(p,"\r\n-NET: "),network);
   p=decimal(text(p,"\r\n-CLOUD: "),connected); *p++='/';p=decimal(p,server);

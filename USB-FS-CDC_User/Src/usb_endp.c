@@ -4,6 +4,7 @@
 // Общие файлы также используются загрузчиком.
 
 #include "usb_lib.h"
+#include "../../User/domovoi_diag.h"
 #include "usb_desc.h"
 #include "usb_mem.h"
 #include "hw_config.h"
@@ -68,7 +69,7 @@ void EP3_OUT_Callback(void)
 void SOF_Callback(void)
 {
   static uint32_t FrameCount = 0;
-#ifndef BOOTLOADER
+#if !defined(BOOTLOADER) && DOMOVOI_DIAG
   usb_sof_seen();
 #endif
 

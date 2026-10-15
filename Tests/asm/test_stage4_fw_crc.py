@@ -20,7 +20,8 @@ def run():
     for length in (1, 2, 16, 256, len(words)):
         crc = m.call('fw_crc_begin'); assert crc == 0xffffffff
         for value in words[:length]:
-            crc = word(crc, value)
+            previous=crc;crc = word(crc, value)
+            assert m.call('app_crc_word',previous,value)==crc
             assert m.call('fw_crc_next', 0, value) == crc
             maximum = max(maximum, m.steps)
         # Новая задача CRC должна отбросить состояние регистра DR предыдущей задачи.

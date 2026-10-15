@@ -261,9 +261,9 @@ void user_loop(void)
   }
 
   // каждую 1 минуту
-  if (timers_get(5) >= 60000)
+  if (timers_get(4) >= 60000)
   {
-    timers_set(5,0);
+    timers_set(4,0);
 
     // использовать время NTP - синхронизировать
 

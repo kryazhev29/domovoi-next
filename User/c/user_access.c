@@ -146,7 +146,7 @@ void user_unblock_poll(void)
 void WG_readedID(uint32_t id){
   char tb[11];
 
-  format_id(tb, NULL, id);
+  format_id(tb, id);
   if (device.timeToGetID) {
     if (device.sourceGetID == 1) {
       device.timeToGetID = 0;
