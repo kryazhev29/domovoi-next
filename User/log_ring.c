@@ -33,7 +33,6 @@ static struct {
   uint8_t head,target,forced,part,init,ready,after;
 } lr;
 #define NONE 255u
-uint32_t log_ring_turns(void) { return lr.maximum ? (lr.maximum-1u)/24u : 0; }
 // Возвращает начало сектора кольца.
 static uint32_t sector(uint8_t n)
 {

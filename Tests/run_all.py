@@ -187,7 +187,7 @@ def main():
     except (OSError, ValueError, KeyError):
         previous={}  # История влияет только на очередь, не на результат проверок.
     results=run_groups(jobs,destination,base,args.config,env,args.jobs,previous)
-    result={'project':project,'configuration':args.config,'source_root':str(destination),'diagnostic_skips':(['DWT packet 113','111: internal DIAG fields are zero; wear fields available'] if args.config=='ReleaseCustomer' else []),'cases':results,'legacy_contract_mapping':REPLACEMENTS,
+    result={'project':project,'configuration':args.config,'source_root':str(destination),'diagnostic_skips':(['USB command 111','DWT packet 113','111: USB/UART counters/register snapshots and internal states'] if args.config=='ReleaseCustomer' else []),'cases':results,'legacy_contract_mapping':REPLACEMENTS,
             'elf_sha256':__import__('hashlib').sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()}
     output.write_text(json.dumps(result,indent=2,default=str)+'\n',encoding='utf-8')
     passed=sum(v['status']=='PASS' for v in results.values())

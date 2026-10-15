@@ -34,8 +34,6 @@ def factory_reset():
                                   (1, False, False), (1, True, False),
                                   (2, False, False), (2, True, False)):
         m, _, _ = config_machine()
-        m.flash.extend(b"\xff"*(0x1000000-len(m.flash)))
-        m.flash[0x400000]=m.flash[0x7fffff]=0
         # Небольшие реальные диапазоны, включая частичный сектор таблицы.
         blocks = {2: (0x41000, 4096), 3: (0x1c9000, 4096),
                   4: (0x1ca800, 2048), 5: (0x1cc000, 1024),
@@ -73,7 +71,7 @@ def factory_reset():
         if reset: m.write(m.addr('usb_bus_resets'), 1, 4)
         if fail:
             m.fault = ('poll', 1)
-        for _ in range(12000):
+        for _ in range(5000):
             m.now += 1
             m.checked('user_storage_poll')
             if state(m)[0] != STORE:
@@ -88,7 +86,6 @@ def factory_reset():
         assert m.answers == ([] if reset or channel == 2 else [(3, 2 if fail else 0, channel, 73)]), m.answers
         assert messages == ([(b'89035551122', b'DEFAULT: Error' if fail else b'DEFAULT: Complete')] if channel == 2 else []), messages
         if not fail:
-            assert m.flash[0x400000:0x800000]==b'\xff'*0x400000
             for address, size in blocks.values():
                 assert m.flash[address:address + size] == b'\xff' * size
             assert m.flash[0x1ca000:0x1ca800] == b'\x37' * 2048
@@ -132,6 +129,7 @@ def store_completion():
     peaks = []
     for fail, reset in ((False, False), (True, False), (False, True)):
         m = AccessMachine(); m.put_id(1, b'0123456789')
+        assert m.checked('counter_boot', budget=1000000)
         record = bytearray(m.flash[IDS:IDS+32])
         record[fields('cellID_s')['cntPass']] = 0
         m.u.mem_write(0x21000400, bytes(record))
@@ -140,7 +138,7 @@ def store_completion():
         offsets = fields('store_io_s')
         for name, value in (('outputs', 3), ('type', 6), ('count', 0), ('started', 1), ('event', 74)):
             m.write(m.job + offsets[name], value, 2 if name == 'event' else 1)
-        if fail: m.fault = ('poll', 1)
+        if fail: m.stubs[m.addr('w25_write_data')] = lambda: m.ret(0)
         if reset: m.write(m.addr('usb_bus_resets'), 1, 4)
         for _ in range(3000):
             m.checked('user_storage_poll')
@@ -149,6 +147,7 @@ def store_completion():
         else: raise AssertionError('ID completion stuck')
         m.checked('user_storage_poll')
         assert len(m.loads) == (0 if fail else 2), m.loads
+        if fail: assert not m.checked('flash_exec_read_allowed')
         assert m.events == ([] if fail else [(74, b'0123456789', 0), (131, b'0123456789', 0),
                                             (79, b'0123456789', 0), (139, b'0123456789', 255)]), m.events
         assert m.answers == ([] if reset else [(8, 2 if fail else 0, 0, 97)]), m.answers

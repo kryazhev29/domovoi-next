@@ -7,16 +7,14 @@
 #include "photo.h"
 // Постоянные курсоры очереди и потока; transient находится в union исполнителя.
 typedef struct {
-  uint32_t last_number, resume_address, usb_epoch;
-  uint32_t oldest, bytes, turns, latest, erase_intent, ack_number;
+  uint32_t last_number, resume_address, usb_epoch, oldest;
   // Частный пакет остаётся у владельца до принятия транспортом или отмены.
   uint8_t *tx;
   uint16_t resume_offset;
-  uint8_t initialized, cleanup, fault, circular;
+  uint8_t initialized, ahead, fault;
   uint16_t tx_length;
   uint32_t tx_address, tx_until;
 } photo_runtime_s;
-extern photo_runtime_s pr;
 // Выполнить один ограниченный шаг хранения или отправки.
 void photo_storage_poll(uint32_t now);
 // Отменить запрос после завершения уже принятой операции W25.

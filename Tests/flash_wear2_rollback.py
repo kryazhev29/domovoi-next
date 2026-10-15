@@ -16,14 +16,14 @@ def phase(name,path):
         from test_counter_wear import CounterMachine
         c=CounterMachine(m.flash);c.boot();c.write(c.addr('trial'),1,1)
         value=bytearray(cell(1));value[21:29]=struct.pack('<Q',1790000000)
-        c.update(1,bytes(value));assert c.flash[BASE:BASE+32]==value
-        assert all(c.flash[a:a+4096]==b'\xff'*4096 for a in (0x1c8000,0x1cb000,0x1cf000,0x1fb000,0x1fc000,0x1fd000,0x1fe000,0x1ff000))
+        c.update(1,bytes(value));assert c.flash[BASE:BASE+32]==cell(1)
+        assert c.logical(1)==value
         m.flash[:]=c.flash
         a,n=m.capture(b'B'*51200);assert 0x200000<a<0x300000
         assert m.flash[0x400000:0x800000]==b'\xff'*0x400000
     elif name in ('rollback','return'):
         count=int.from_bytes(m.u.mem_read(m.device+m.d['countPhoto'],2),'little');assert count==2,count
-        assert m.flash[BASE+21:BASE+29]==struct.pack('<Q',1790000000)
+        assert m.flash[BASE:BASE+32]==cell(1)
         assert m.flash[0x20000d:0x20000d+13266]==b'A'*13266
         second=0x204000
         assert m.flash[second+13:second+13+51200]==b'B'*51200
@@ -45,5 +45,5 @@ if __name__=='__main__':
         a.output.mkdir(parents=True,exist_ok=True);path=a.output/'photo-id.nor'
         for name in ('old','trial','rollback','return'):
             subprocess.run([sys.executable,__file__,'--before',a.before,'--after',a.after,'--output',str(path),'--phase',name],check=True)
-        result={'old_new_trial_old_new':'PASS','photos':[13266,51200],'limited_ID':'base/SJ during trial','new_areas_untouched':True}
+        result={'old_new_trial_old_new':'PASS','photos':[13266,51200],'limited_ID':'overlay; old sees last materialized base','wire_photo_unchanged':True}
         (a.output/'result.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8');print(result)

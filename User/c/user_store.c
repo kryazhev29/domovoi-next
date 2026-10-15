@@ -234,7 +234,7 @@ dispatch:
 bool store_command_allowed(uint8_t cmd)
 {
   store_usb_session();
-  if (cmd == 24 || cmd == 27 || (cmd == 21 && photo_empty_cleanup())) return true;
+  if (cmd == 24 || cmd == 27) return true;
   if (cmd == 8) return flash_exec_read_allowed();
   if (cmd == 21) return !store_priority_pending() && flash_exec_idle();
   return !fw_event_waiting() && !store_phase() && !store_reset_requested && flash_exec_idle();
@@ -258,7 +258,7 @@ bool user_command_ready(const uint8_t *ptr, bool usb_input)
     }
   }
   if (!store_command_allowed(ptr[4])) return false;
-  if (usb_input && ptr[4] != 8 && !(ptr[4] == 21 && photo_empty_cleanup()) && !flash_exec_idle()) return false;
+  if (usb_input && ptr[4] != 8 && !flash_exec_idle()) return false;
   if (ptr[4] != 8 || flash_exec_idle()) return true;
   uint16_t length = rt_get16(ptr);
   if (length < 16 || !ptr[5] || (ptr[6] != 1 && ptr[7] != 1)) return true;
@@ -513,5 +513,4 @@ static void store_poll(uint32_t now, uint8_t result)
   }
 }
 #include "factory_runtime.inc"
-#include "counter_runtime.inc"
 #include "store_io.inc"

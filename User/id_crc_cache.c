@@ -1,4 +1,3 @@
-#include "counter.h"
 // Доработка: Кряжев А., 2026
 // Кэш CRC сырых байтов всей базы ID в ОЗУ.
 // После сброса CRC строится заново; запись сначала считывает прежние байты.
@@ -25,6 +24,14 @@ void idcrc_unknown(void)
 {
   // Отмена не прерывает команду W25, но запрещает публиковать её разность CRC.
   ic.state=ic.state>IC_READY?ic.state|IC_CANCELLED:IC_UNKNOWN; ic.scan=0;
+}
+// Логические байты меняются в журнале, физическая база пока прежняя.
+void idcrc_counter(uint32_t address,const uint8_t *old,const uint8_t *value)
+{
+  if (ic.state!=IC_READY) { invalidate(); return; }
+  uint16_t d=crc16_calcInit((uint8_t *)old,8,0)^crc16_calcInit((uint8_t *)value,8,0);
+  uint32_t tail=mem[MB_ID].size-(address-mem[MB_ID].start)-29u;
+  ic.crc^=crc16_ffInit(tail,d)^crc16_ffInit(tail,0);
 }
 // Определяет, затрагивает ли операция только базу ID.
 static bool id_span(uint32_t a,uint32_t n)
@@ -115,7 +122,7 @@ bool idcrc_erase(uint32_t address)
 bool idcrc_get(uint16_t *crc)
 {
   if(ic.state!=IC_READY) return false;
-  *crc=ic.crc ^ counter_crc_delta(); return true;
+  *crc=ic.crc; return true;
 }
 // Намерение сканирования остаётся в ic; исполнитель принимает только один квант.
 bool idcrc_background_begin(void)
@@ -132,7 +139,7 @@ void idcrc_background_poll(void)
   if(!ic.scan) ic.partial=65535;
   if(ic.scan<end) {
     uint16_t n=end-ic.scan>64?64:(uint16_t)(end-ic.scan);
-    if(w25_read_data(mem[MB_ID].start+ic.scan,b,n)) {
+    if(mem_read(mem[MB_ID].start+ic.scan,b,n)) {
       ic.partial=crc16_calcInit(b,n,ic.partial); ic.scan+=n;
     } else {
       ic.scan = 0;

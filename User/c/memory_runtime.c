@@ -8,6 +8,7 @@
 #include "runtime_internal.h"
 #include "fast_kernels.h"
 #include "sector_journal.h"
+#include "counter_runtime.inc"
 
 bool mem_storage_ready = false;
 // Запрещает таблицы после ошибки даже при прямом вызове журнала, минуя mem_replace_pages.
@@ -47,9 +48,7 @@ static bool mem_reserved(uint32_t adr, uint16_t n)
 // Заменяет сектор из источника страниц без копии 4 КиБ в ОЗУ.
 bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context)
 {
-  uint8_t prepared;
-  do { prepared=counter_prepare(adr,timers_getMillis()); wdt_reload(); } while (prepared==1);
-  mem_storage_ready = prepared==2 && sj_replace_pages(adr, reader, context);
+  mem_storage_ready = counter_flush() && sj_replace_pages(adr, reader, context);
   return mem_storage_ready;
 }
 

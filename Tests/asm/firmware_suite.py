@@ -85,6 +85,9 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
+CASES['counter pages']=[('test_counter_wear',n) for n in ('smoke','append_power','gc_power','fold_power','access_days','server_crc','overflow')]
+CASES['photo ring']=[('test_flash_wear2',n) for n in ('photo_smoke','photo_queue','photo_repeat_ack','photo_power','photo_rotation_power')]
+CASES['wear2 mutations']=[('test_flash_wear2_mutations','run')]
 CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','fw install wait','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
@@ -92,12 +95,7 @@ CORE += ('photo access',)
 CORE += ('photo busy', 'photo latency', 'camera packet', 'photo dispatch', 'photo log ack')
 CORE += ('call FW',)
 CASES['flash wear']=[('test_flash_wear',n) for n in ('wear','migration','ack_power','temp_power','temp_ack_power','temp_ring','rotation_power','both_channels','trial_compatibility','mutations')]
-CORE += ('flash wear',)
-CASES['flash wear2 photo']=[('test_flash_wear2',n) for n in ('photo_smoke','photo_queue','photo_repeat_ack','photo_erase_intent','photo_power','photo_rotation_power')]
-CASES['flash wear2 counters']=[('test_counter_wear',n) for n in ('smoke','access_days','server_crc','append_power','gc_power','fold_power')]
-CASES['flash wear2 mutations']=[('test_flash_wear2_mutations','run')]
-CORE += ('flash wear2 photo','flash wear2 counters','flash wear2 mutations')
-
+CORE += ('flash wear','counter pages','photo ring','wear2 mutations')
 CORE += ('flash fixes',)
 CASES['fixes1 mutations'] = [('test_fixes1_mutations', 'run')]
 CORE += ('flash mutations', 'unblock delay mutations', 'fixes1 mutations')

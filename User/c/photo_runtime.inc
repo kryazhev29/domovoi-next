@@ -2,22 +2,22 @@
 /* Автомат фото: один шаг чтения или операции W25 за проход.
 * Каждый снимок владеет целыми секторами; стирание выполняется перед записью.
 * Метка формата публикует фото, один байт ACK сохраняет полное подтверждение.
-* Старое окно сохраняется на время пробы; подтверждённое новое кольцо не очищается по ACK. */
+* Кольцо 1 МиБ; один стёртый сектор впереди, ACK не стирает память. */
 #include "photo_runtime.h"
 #include "runtime_internal.h"
 #include "usb_istr.h"
-#include "../../Bootloader/app_update.h"
 photo_runtime_s pr;
 #define pj flash_job.data.photo
+#define PHOTO_RECEIVE (PHOTO_FORMAT | 1u)
 // Задача определяет ответ команды 21; фаза — следующий шаг флеш или транспорта.
 enum {
-  PT_STORAGE, PT_REQUEST, PT_ACK, PT_SEND, PT_RING_BOOT, PT_RING_FIND, PT_OLD_REQUEST
+  PT_STORAGE, PT_REQUEST, PT_ACK, PT_SEND, PT_BOOT, PT_OLD_REQUEST, PT_FIND
 };
 enum {
   PR_IO = 1, PR_HEAD, PR_CAMERA, PR_LAZY_DONE,
-    PR_DATA_DONE, PR_PHOTO_MARK, PR_PHOTO_DONE, PR_CLEAN_END,
+    PR_DATA_DONE, PR_PHOTO_MARK, PR_PHOTO_DONE, PR_RECEIVE_DONE,
     PR_ACK_HEAD, PR_ACK_ADVANCE, PR_REQUEST_DONE, PR_SEND_FILL,
-    PR_SEND_COMMIT, PR_IO_WAIT, PR_REQUEST_ERROR, PR_OFFSET_ERROR, PR_INTENT_DONE
+    PR_SEND_COMMIT, PR_IO_WAIT, PR_REQUEST_ERROR, PR_OFFSET_ERROR
 };
 static void photo_stop(void);
 static uint8_t photo_alloc(void);
@@ -26,35 +26,12 @@ static void photo_issue(void);
 static void photo_frame(uint8_t *, uint16_t);
 static void pr_tx_release(void);
 
-// Старое окно сохраняется до конца пробы и выгрузки прежней очереди.
-static uint16_t pr_head_size(void) { return pr.circular ? 32u : PHOTO_RECORD_HEAD; }
+// Переходим к следующему сектору: чужих данных в секторе записи нет.
 static uint32_t pr_next(uint32_t address, uint32_t size)
 {
-  uint32_t next=(address+pr_head_size()+size+4095u)&~4095u;
-  return pr.circular && next==PHOTO_RING_END ? PHOTO_RING_START : next;
+  uint32_t next=(address+PHOTO_RECORD_HEAD+size+4095u)&~4095u;
+  return next==photo_storage_end() ? mem[MB_PHOTO].start : next;
 }
-// CRC тела и её инверсия отделяют заголовок от данных и оборванной записи.
-static uint32_t pr_header_crc(void)
-{
-  uint16_t crc=crc16_calcInit((uint8_t *)pj.h,8,65535);
-  crc=crc16_calcInit((uint8_t *)&pj.h[4],4,crc);
-  return crc | ((uint32_t)(uint16_t)~crc<<16);
-}
-static bool pr_header_valid(uint32_t end)
-{
-  if (!pj.h[0] || pj.h[0]==0xffffffffu || !pj.h[1] || pj.h[1]>65535u ||
-      pj.h[1]>end-pj.scan-pr_head_size()) return false;
-  if (!pr.circular) return pj.h[2]==PHOTO_FORMAT;
-  return pj.h[2]==PHOTO_RING_FORMAT && pj.h[5]==pr_header_crc() &&
-    pj.h[6]==~pj.h[0];
-}
-
-// Разрешаем повтор команды 21 только при очистке уже восстановленной пустой очереди.
-bool photo_empty_cleanup(void)
-{
-  return pr.cleanup && pr.initialized;
-}
-
 
 // Отменяем запрос, но завершаем уже начатую публикацию или очистку.
 void photo_storage_cancel(void)
@@ -130,10 +107,8 @@ static void pr_scan_begin(uint8_t task)
 {
   flash_job.step = PR_HEAD;
   pj.task = task;
-  pj.scan = (task==PT_RING_BOOT || task==PT_RING_FIND) ? PHOTO_RING_START :
-    (pr.circular ? (pr.oldest ? pr.oldest : device.newAddressPhoto) : mem[MB_PHOTO].start);
-  pj.queue_bytes=0;
-  pj.minimum=0xffffffffu;
+  pj.scan = (task==PT_BOOT || task==PT_FIND) ? mem[MB_PHOTO].start : (pr.oldest ? pr.oldest : device.newAddressPhoto);
+  pj.target=0xffffffffu;
   pj.count = 0;
   pj.max_number = 0;
   pj.first = 0;
@@ -143,9 +118,7 @@ static void pr_scan_begin(uint8_t task)
 static void pr_queue_publish(void)
 {
   pr_release(FX_OK);
-  if (!pr.circular) device.newAddressPhoto = pj.scan;
   pr.oldest=pj.first;
-  pr.bytes=pj.queue_bytes;
   device.countPhoto = pj.count;
   device.status.readyPhoto = pj.count != 0;
   if (pj.max_number > pr.last_number) pr.last_number = pj.max_number;
@@ -155,19 +128,28 @@ static void pr_queue_publish(void)
 // Публикуем восстановленную очередь и результат поиска запроса.
 static void pr_scan_finish(void)
 {
-  if (pj.task==PT_OLD_REQUEST) { flash_job.step=PR_OFFSET_ERROR; return; }
-  if (pj.task==PT_RING_FIND) {
-    device.newAddressPhoto=pj.next_head ? pj.next_head : PHOTO_RING_START;
-    pr.last_number=pj.max_number>pr.last_number ? pj.max_number : pr.last_number;
-    pr_scan_begin(PT_RING_BOOT);
-    return;
+  if (pj.task==PT_FIND) {
+    device.newAddressPhoto=pj.io_address ? pj.io_address : mem[MB_PHOTO].start;
+    pr.resume_address=0;
+    if (pj.requested_number>pj.max_number && pj.first) {
+      device.newAddressPhoto=pr.resume_address=pj.first;
+      pr.resume_offset=pj.requested_offset;
+      pj.max_number=pj.requested_number;
+    }
+    pr.last_number=pj.max_number;
+    pr_scan_begin(PT_BOOT); return;
   }
+  if (pj.task==PT_BOOT) {
+    pr.resume_address=0; pr.resume_offset=0;
+    pr_queue_publish(); return;
+  }
+  if (pj.task==PT_OLD_REQUEST) { flash_job.step=PR_OFFSET_ERROR; return; }
   if (pj.task == PT_SEND) {
     flash_job.step = PR_SEND_FILL;
     return;
   }
   if (pj.task == PT_ACK || (pj.task == PT_REQUEST &&
-    (pj.requested_number == 0xffffffffu || !device.countPhoto || (!pr.circular && pj.scan == mem[MB_PHOTO].start)))) {
+    (pj.requested_number == 0xffffffffu || !device.countPhoto))) {
     flash_job.step = PR_REQUEST_DONE;
     return;
   }
@@ -205,8 +187,7 @@ cmdCode_e photo_start(uint8_t address)
   if (!found || config.rs485Mode != 1) return CMD_PARAMERROR;
   if (!pr_command_ready()) return CMD_RUNERROR;
   // Курсор уже проверен сканом и выровнен по сектору: остаток не меньше 4096 Б.
-  if ((!pr.circular && !device.countPhoto && device.newAddressPhoto != mem[MB_PHOTO].start) ||
-    device.newAddressPhoto >= photo_storage_end()) return CMD_RUNERROR;
+  if (device.countPhoto>=20) return CMD_RUNERROR;
   if (pr.last_number == 0xfffffffeu || device.datetime == 0xffffffffu) return CMD_RUNERROR;
   pr_tx_release();
   if (!pr_begin(PR_CAMERA)) return CMD_RUNERROR;
@@ -218,33 +199,32 @@ cmdCode_e photo_start(uint8_t address)
 static uint8_t pr_prepare(uint32_t size)
 {
   uint32_t end = photo_storage_end();
-  if (!size || size>65535u || device.countPhoto>=20u || pr.bytes+size>1048576u) return 0;
-  if (pr.circular) {
-    if (17u*4096u>end-photo->address) photo->address=PHOTO_RING_START;
-    uint32_t next=photo->address+17u*4096u;
-    if (device.countPhoto && photo->address<=pr.oldest && next>pr.oldest) return 0;
-    if (pr.latest && photo->address<=pr.latest) pr.turns++;
-  } else if (size>end-photo->address-PHOTO_RECORD_HEAD) return 0;
+  if (!size || size>65535) return 0;
+  uint32_t need=(size+PHOTO_RECORD_HEAD+4095u)&~4095u;
+  if (need>end-photo->address) photo->address=mem[MB_PHOTO].start;
+  if (pr.oldest && ((photo->address<=pr.oldest && photo->address+need>=pr.oldest) ||
+      (photo->address+need==end && pr.oldest==mem[MB_PHOTO].start))) return 0;
   photo->size = (uint16_t)size;
   photo->stage = P_DATA;
-  photo_erased_to = photo->address;
+  photo_erased_to = photo->address + ((pr.ahead==1 && photo->address==device.newAddressPhoto) ? 4096u : 0);
+  pr.ahead=0;
   return 1;
 }
 
 // Лениво стираем сектор перед запросом данных для записи в него.
 static uint8_t pr_data_ready(void)
 {
-  if (pr.circular && pr.latest && pr.erase_intent!=photo->address) {
-    uint16_t sector=(uint16_t)((photo->address-PHOTO_RING_START)/4096u);
-    uint32_t intent=sector | ((uint32_t)(uint16_t)~sector<<16);
-    pr_write(pr.latest+28,(uint8_t *)&intent,4,PR_INTENT_DONE);
+  // Сначала тело заголовка и состояние RECEIVE; затем можно стирать впереди.
+  if (photo_erased_to>photo->address && pr.ahead!=2) {
+    uint32_t h[2]={photo->stamp,photo->size};
+    pr_write(photo->address,(uint8_t *)h,8,PR_PHOTO_MARK);
     return 0;
   }
   uint32_t used = photo->written + PHOTO_DATA;
   if (used > photo->size) used = photo->size;
-  uint32_t end = photo->address + pr_head_size() + used;
+  uint32_t end = photo->address + PHOTO_RECORD_HEAD + used + 4096u;
   if (end <= photo_erased_to) return 1;
-  pr_erase(photo_erased_to, PR_LAZY_DONE);
+  pr_erase(photo_erased_to==photo_storage_end() ? mem[MB_PHOTO].start : photo_erased_to, PR_LAZY_DONE);
   return 0;
 }
 
@@ -255,7 +235,7 @@ static void pr_frame(uint8_t *p, uint16_t n)
   uint8_t sum = 0;
   for (uint16_t i = 0; i < n - 2;i++) sum += p[i];
   if (id != photo->packet || !len || p[n - 2] != sum || p[n - 1] || len > photo->size - photo->written) return;
-  pr_write(photo->address + pr_head_size() + photo->written, p + 4, len, PR_DATA_DONE);
+  pr_write(photo->address + PHOTO_RECORD_HEAD + photo->written, p + 4, len, PR_DATA_DONE);
 }
 
 // Принимаем серверный курсор команды 21 и начинаем поиск фото.
@@ -275,30 +255,12 @@ static cmdCode_e pr_request(dataChanel_e channel, uint8_t id, const uint8_t *arg
   photo->requestId = id;
   photo->pending = 0;
   pr_scan_begin(PT_REQUEST);
-  if (pr.circular && pj.requested_number && pj.requested_number==pr.ack_number) {
-    if (pj.requested_offset>pr.resume_offset) flash_job.step=PR_OFFSET_ERROR;
-    else pj.requested_number=0xffffffffu; // Повтор последнего полного ACK не сканирует историю.
-  }
   return (cmdCode_e)255;
 }
 
 // Отвечаем на команду 21, включая повтор ACK во время очистки.
 void photo_request_answer(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
-  /* Повтор итогового ACK допустим и пока первый сектор стирается. */
-  if (photo_empty_cleanup() && (size == 0 || size == 6) && channel != CH_SMS &&
-    !device.status.readyToUpdate && photo_alloc()) {
-    if (pr.tx_length) pr_tx_release();
-    photo->channel = channel;
-    photo->requestId = id;
-    photo->readAddress = mem[MB_PHOTO].start;
-    photo->offset = 0;
-    photo->pending = 1;
-    photo_pending_since = timers_getMillis();
-    pr.usb_epoch = usb_bus_resets;
-    user_send_answer_comand(21, CMD_SUCCESS, channel, id);
-    return;
-  }
   cmdCode_e r = pr_request(channel, id, args, size);
   if ((uint8_t)r != 255) user_send_answer_comand(21, r, channel, id);
 }
@@ -310,17 +272,6 @@ static void pr_send_begin(void)
   pj.task = PT_SEND;
   pr.usb_epoch = usb_bus_resets;
   pj.scan = photo->readAddress;
-}
-
-// Удаляем первый сектор пустой очереди, остальные займёт новая запись.
-static void pr_cleanup_begin(void)
-{
-  pj.task = PT_STORAGE;
-  pj.cancelled = 0;
-  pj.quiet = 0;
-  pj.committed = 1;
-  pr.cleanup = 1;
-  pr_erase(mem[MB_PHOTO].start, PR_CLEAN_END);
 }
 
 // Выполняем один ограниченный шаг хранения или формирования пакета.
@@ -368,64 +319,59 @@ void photo_storage_poll(uint32_t now)
     }
   case PR_HEAD: {
       uint16_t confirmed;
-      bool finding=pj.task==PT_RING_FIND;
-      bool boot=finding || pj.task==PT_RING_BOOT;
-      bool physical=boot || pj.task==PT_OLD_REQUEST;
-      if (pj.scan+pr_head_size()>end || (pr.circular && !physical && pj.scan==device.newAddressPhoto) ||
-          (!pr.circular && pj.task==PT_SEND && pj.scan>=device.newAddressPhoto)) {
+      bool physical=pj.task==PT_BOOT || pj.task==PT_FIND || pj.task==PT_OLD_REQUEST;
+      if (pj.scan+PHOTO_RECORD_HEAD>end || (!physical && pj.scan==device.newAddressPhoto)) {
         pr_scan_finish(); break;
       }
-      if ((pj.task==PT_RING_BOOT || pj.task==PT_OLD_REQUEST) && pr.erase_intent && pj.scan>=pr.erase_intent &&
-          pj.scan<pr.erase_intent+17u*4096u) {
-        pj.scan+=4096u; break;
+      if (pj.task==PT_BOOT) {
+        uint32_t start=pr.resume_address ? pr.resume_address : device.newAddressPhoto;
+        uint32_t limit=start+4096u;
+        if (pr.resume_address) limit=((start+PHOTO_RECORD_HEAD+pr.resume_offset+4095u)&~4095u)+4096u;
+        if ((pj.scan>=start && pj.scan<limit) || (limit>end && pj.scan<mem[MB_PHOTO].start+limit-end)) {
+          pj.scan+=4096u; break;
+        }
       }
-      if (!w25_read_data(pj.scan,(uint8_t *)pj.h,pr_head_size())) { pr_fail(); break; }
-      if (!pr_header_valid(end) || (!pr.circular && pj.h[0]<=pj.max_number)) {
-        if (pr.circular) {
-          pj.scan+=4096u;
-          if (!physical && pj.scan==end) pj.scan=PHOTO_RING_START;
-        } else if (pj.h[0]==0xffffffffu || pj.h[0]<=pj.max_number) pr_scan_finish();
-        else if (pj.scan==mem[MB_PHOTO].start) pr_cleanup_begin();
-        else pr_scan_finish();
+      if (!w25_read_data(pj.scan,(uint8_t *)pj.h,PHOTO_RECORD_HEAD)) { pr_fail(); break; }
+      if ((pj.h[2]!=PHOTO_FORMAT && !(pj.task==PT_FIND && pj.h[2]==PHOTO_RECEIVE)) || !pj.h[0] || pj.h[0]==0xffffffffu ||
+          !pj.h[1] || pj.h[1]>65535u || pj.h[1]>end-pj.scan-PHOTO_RECORD_HEAD) {
+        pj.scan+=4096u;
+        if (!physical && pj.scan==end) pj.scan=mem[MB_PHOTO].start;
         break;
       }
-      // Повтор старого ACK ищет прежний заголовок только при необходимости.
-      // Обычный ACK обходит максимум текущие 20 снимков.
+      if (pj.task==PT_FIND) {
+        if (pj.h[2]==PHOTO_RECEIVE) {
+          if (!pj.first || pj.h[0]>pj.requested_number) {
+            pj.first=pj.scan;pj.requested_number=pj.h[0];pj.requested_offset=(uint16_t)pj.h[1];
+          }
+        } else if (pj.h[0]>pj.max_number) {
+          pj.max_number=pj.h[0];pj.io_address=pr_next(pj.scan,pj.h[1]);
+        }
+        pj.scan=(pj.scan+PHOTO_RECORD_HEAD+pj.h[1]+4095u)&~4095u;
+        break;
+      }
+      if (pj.task==PT_BOOT) {
+        if (((uint8_t *)pj.h)[12]) {
+          pj.count++;
+          if (pj.h[0]<pj.target) { pj.target=pj.h[0]; pj.first=pj.scan; }
+        }
+        pj.scan=(pj.scan+PHOTO_RECORD_HEAD+pj.h[1]+4095u)&~4095u;
+        break;
+      }
       if (pj.task==PT_OLD_REQUEST) {
         if (pj.h[0]==pj.requested_number && !((uint8_t *)pj.h)[12]) {
           if (pj.requested_offset>pj.h[1]) flash_job.step=PR_OFFSET_ERROR;
           else { pj.requested_number=0xffffffffu; pr_scan_begin(PT_REQUEST); }
-        } else pj.scan=(pj.scan+32u+pj.h[1]+4095u)&~4095u;
+        } else pj.scan=(pj.scan+PHOTO_RECORD_HEAD+pj.h[1]+4095u)&~4095u;
         break;
       }
-      if (pr.circular && pj.task==PT_REQUEST && pj.scan==pr.oldest &&
-          pj.requested_number && pj.requested_number<pj.h[0]) {
-        pj.task=PT_OLD_REQUEST; pj.scan=PHOTO_RING_START; break;
-      }
-      if (boot) {
-        if (finding && pj.h[0]>pj.max_number) {
-          uint16_t intent=(uint16_t)pj.h[7];
-          pr.erase_intent=(intent<1024 && intent==(uint16_t)~(pj.h[7]>>16)) ?
-            PHOTO_RING_START+(uint32_t)intent*4096u : 0;
-          pj.max_number=pj.h[0]; pj.next_head=pr_next(pj.scan,pj.h[1]);
-          pr.turns=pj.h[4]; pr.latest=pj.scan;
-        }
-        if (!finding && !((uint8_t *)pj.h)[12] && pj.h[0]>pr.ack_number) {
-          pr.ack_number=pj.h[0]; pr.resume_address=pj.scan; pr.resume_offset=(uint16_t)pj.h[1];
-        }
-        if (!finding && ((uint8_t *)pj.h)[12]) {
-          pj.count++; pj.queue_bytes+=pj.h[1];
-          if (pj.h[0]<pj.minimum) { pj.minimum=pj.h[0]; pj.first=pj.scan; }
-        }
-        pj.scan=(pj.scan+32u+pj.h[1]+4095u)&~4095u;
-        break;
+      if (pj.task==PT_REQUEST && pj.requested_number && pj.requested_number<pj.h[0]) {
+        pj.task=PT_OLD_REQUEST; pj.scan=mem[MB_PHOTO].start; break;
       }
       pj.max_number = pj.h[0];
       confirmed = ((uint8_t*)pj.h)[PHOTO_RECORD_HEAD - 1] ? 0 : (uint16_t)pj.h[1];
       if (!confirmed && pj.scan == pr.resume_address) confirmed = pr.resume_offset;
       if (confirmed < pj.h[1]) {
         pj.count++;
-        pj.queue_bytes+=pj.h[1];
         if (!pj.first) {
           pj.first = pj.scan;
           pj.first_offset = confirmed;
@@ -439,7 +385,7 @@ void photo_storage_poll(uint32_t now)
         }
         pj.target = pj.scan;
         pj.target_done = confirmed;
-        pj.scan = pr.circular ? pr.oldest : mem[MB_PHOTO].start;
+        pj.scan = pr.oldest;
         pj.task = PT_ACK;
         flash_job.step = PR_ACK_HEAD;
         break;
@@ -480,10 +426,6 @@ void photo_storage_poll(uint32_t now)
     device.getPhoto = pj.address;
     pr_release(FX_OK);
     break;
-  case PR_INTENT_DONE:
-    pr.erase_intent=photo->address;
-    pr_release(FX_OK);
-    break;
   case PR_LAZY_DONE: photo_erased_to += MEMSECTORSIZE;
     pr_release(FX_OK);
     break;
@@ -496,43 +438,23 @@ void photo_storage_poll(uint32_t now)
         pr_release(FX_OK);
         break;
       }
-      /* После очистки хвост старой очереди остаётся. Новый номер перекрывает
-      * первый старый заголовок за снимком, даже если RTC перевели назад. */
-      uint32_t next = pr_next(photo->address, photo->size);
-      if (!pr.circular && next + PHOTO_RECORD_HEAD <= end) {
-        if (!w25_read_data(next, (uint8_t*)pj.h, 12)) {
-          pr_fail();
-          break;
-        }
-        if (pj.h[2] == PHOTO_FORMAT && pj.h[0] != 0xffffffffu && pj.h[0] >= photo->stamp) {
-          if (pj.h[0] == 0xfffffffeu) {
-            pr_fail();
-            break;
-          }
-          photo->stamp = pj.h[0] + 1;
-        }
-      }
-      pj.h[0] = photo->stamp;
-      pj.h[1] = photo->size;
-      pj.h[2]=0xffffffffu;
-      pj.h[3]=0xffffffffu;
-      pj.h[4]=pr.turns;
-      pj.h[5]=pr_header_crc();
-      pj.h[6]=~pj.h[0]; pj.h[7]=0xffffffffu;
-      pr_write(photo->address,(uint8_t *)pj.h,pr.circular ? 32 : 8,PR_PHOTO_MARK);
-      pj.h[2]=pr.circular ? PHOTO_RING_FORMAT : PHOTO_FORMAT;
+      pj.h[2] = PHOTO_FORMAT;
+      pj.committed = 1;
+      pr_write(photo->address+8,(uint8_t *)pj.h+8,4,PR_PHOTO_DONE);
       break;
     }
   case PR_PHOTO_MARK:
-    pj.committed = 1;
-    pr_write(photo->address + 8, (uint8_t*)pj.h + 8, 4, PR_PHOTO_DONE);
+    pj.h[2]=PHOTO_RECEIVE;
+    pr_write(photo->address+8,(uint8_t *)pj.h+8,4,PR_RECEIVE_DONE);
+    break;
+  case PR_RECEIVE_DONE:
+    pr.ahead=2;
+    pr_release(FX_OK);
     break;
   case PR_PHOTO_DONE:
     pr_release(FX_OK);
     if (!device.countPhoto) pr.oldest=photo->address;
-    pr.bytes+=photo->size;
-    pr.latest=photo->address;
-    pr.erase_intent=0;
+    pr.ahead=1;
     device.countPhoto++;
     device.status.readyPhoto = 1;
     device.newAddressPhoto = pr_next(photo->address, photo->size);
@@ -541,26 +463,15 @@ void photo_storage_poll(uint32_t now)
     photo_command(0x0e, 0, 0, 0xf0, 0xf0);
     photo_stop();
     break;
-  case PR_CLEAN_END:
-    pr_release(FX_OK);
-    pr.cleanup = 0;
-    pr.initialized = 1;
-    pr.resume_address = 0;
-    pr.resume_offset = 0;
-    device.newAddressPhoto = mem[MB_PHOTO].start;
-    device.countPhoto = 0;
-    device.status.readyPhoto = 0;
-    device.readPhotoIndex = 0;
-    if (photo) {
-      photo->readAddress = mem[MB_PHOTO].start;
-      photo->offset = 0;
-    }
-    break;
   case PR_ACK_HEAD:
-    if (!w25_read_data(pj.scan,(uint8_t *)pj.h,pr_head_size())) { pr_fail(); break; }
-    if (pr.circular && !pr_header_valid(end)) {
+    /* Заголовки до цели уже проверены при поиске запроса. */
+    if (!w25_read_data(pj.scan, (uint8_t*)pj.h, PHOTO_RECORD_HEAD)) {
+      pr_fail();
+      break;
+    }
+    if (pj.h[2]!=PHOTO_FORMAT) {
       pj.scan+=4096u;
-      if (pj.scan==end) pj.scan=PHOTO_RING_START;
+      if (pj.scan==end) pj.scan=mem[MB_PHOTO].start;
       break;
     }
     if (pj.scan != pj.target || pj.requested_offset == pj.h[1]) {
@@ -571,7 +482,6 @@ void photo_storage_poll(uint32_t now)
     break;
   case PR_ACK_ADVANCE:
     if (pj.scan == pj.target) {
-      pr.ack_number=pr.circular && pj.requested_offset==pj.h[1] ? pj.h[0] : 0;
       pr.resume_address = pj.target;
       pr.resume_offset = pj.requested_offset > pj.target_done ? pj.requested_offset : pj.target_done;
       pj.committed = 0;
@@ -629,7 +539,7 @@ void photo_storage_poll(uint32_t now)
     }
     n = pj.send_size - pj.offset;
     if (n > 64) n = 64;
-    if (n && !w25_read_data(pj.scan + pr_head_size() + pj.send_offset + pj.offset, pr.tx + 20 + pj.offset, n)) {
+    if (n && !w25_read_data(pj.scan + PHOTO_RECORD_HEAD + pj.send_offset + pj.offset, pr.tx + 20 + pj.offset, n)) {
       pr_fail();
       break;
     }
@@ -657,8 +567,7 @@ void photo_storage_poll(uint32_t now)
 
 // Передача готового куска не занимает Flash; курсор меняется только после принятия TX.
 /* Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): фото 16 КБ по звонку
-   дошло на сервер и подтверждено.
-   Изменено 2026-10-15 (task/flash-wear-2): обход физического кольца — на плате не проверено. */
+   дошло на сервер и подтверждено. */
 static void pr_send_poll(uint32_t now)
 {
   if (!photo || !photo->pending || device.status.readyToUpdate ||
@@ -689,7 +598,7 @@ void photo_poll(void)
   if (!flash_exec_idle()) return;
   if (!pr.initialized && !pr.fault) {
     if (!pr_begin(PR_HEAD)) return;
-    pr_scan_begin(PT_STORAGE);
+    pr_scan_begin(PT_FIND);
     return;
   }
   if (photo) {
@@ -752,12 +661,7 @@ void photo_poll(void)
       photo = 0;
     }
   }
-  if (!pr.fault && !device.countPhoto && (!photo || !photo->stage) && !pr.circular &&
-      mem[MB_PHOTO].size && !app_trial_active()) {
-    if (pr_begin(PR_HEAD)) { pr.circular=1; pr_scan_begin(PT_RING_FIND); }
-  } else if (!pr.circular && !pr.fault && !device.countPhoto &&
-      device.newAddressPhoto>mem[MB_PHOTO].start && (!photo || !photo->stage) &&
-      pr_begin(PR_IO)) pr_cleanup_begin();
+
 }
 
 void photo_storage_reset(void)

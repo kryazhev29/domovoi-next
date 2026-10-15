@@ -91,7 +91,7 @@ def passage():
 
 
 def skipped():
-    for reason in ('no_camera', 'type2', 'passive', 'time', 'FW', 'memory', 'upload', 'cleanup'):
+    for reason in ('no_camera', 'type2', 'passive', 'time', 'FW', 'memory', 'upload', 'scan'):
         m = ready(prefix_flash(dirty=False) if reason == 'upload' else None)
         if reason in ('no_camera', 'type2'):
             m.u.mem_write(m.cfg + m.c['rs485Periphery'], bytes([2, 2] * 8) if reason == 'type2' else bytes(16))
@@ -100,10 +100,10 @@ def skipped():
         elif reason == 'FW': m.write(m.device + m.d['status'], 1 << 11, 2)
         elif reason == 'memory': assert take(m, PHOTO)
         elif reason == 'upload': m.packet(21); assert m.active()
-        elif reason == 'cleanup':
+        elif reason == 'scan':
             m.flash[0x200000:0x200010] = struct.pack('<I', 1) + bytes(12)
             m.checked('photo_storage_reset'); m.port(); m.tick()
-            assert m.rget('cleanup') and m.active()
+            assert not m.rget('initialized') and m.active()
         before = m.exec_state(), len(m.answers), len(m.commands)
         m.checked('WG_readedID', 0x42)
         assert len(m.loads) == 2 and m.exec_state() == before[0], reason

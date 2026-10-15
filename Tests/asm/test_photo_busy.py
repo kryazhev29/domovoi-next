@@ -126,7 +126,7 @@ def usb_owners():
 def queue_edges():
     from log_ring_fixture import install
     # Два канала независимы; переполнение серверного слота не заменяет первый uniq.
-    m=BusyMachine(); install(m,[log(1)])
+    m=BusyMachine(); m.boot_media(); install(m,[log(1)])
     m.flash[0x1e8000:0x1e8020]=temp(1)
     m.u.mem_write(m.addr('flash_job'),bytes([8,1,1]))
     assert not m.usb(9,uniq=51)
@@ -205,7 +205,7 @@ def ack_failures():
 def deferred():
     from log_ring_fixture import install
     count=0
-    for phase in ('capture','stream','erase'):
+    for phase in ('capture','stream','scan'):
       for cmd in (9,10):
         m=BusyMachine(saved_photo()); m.boot_media()
         install(m,[log(1),log(2)])
@@ -215,11 +215,8 @@ def deferred():
         elif phase=='stream':
             m.packet(21,channel=1); m.drain(); m.checked('photo_poll'); assert m.active()
         else:
-            m.packet(21,struct.pack('<IH',12345,15689),channel=1)
-            for _ in range(300):
-                m.step()
-                if m.rget('cleanup') and m.active(): break
-            else: raise AssertionError('cleanup not reached')
+            m.checked('photo_storage_reset');m.port()
+            assert m.active() and not m.rget('initialized')
         m.sent.clear()
         m.usb_drain()
         m.server(cmd,uniq=44); m.server(cmd,uniq=44)

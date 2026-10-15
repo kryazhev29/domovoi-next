@@ -40,7 +40,7 @@ def run(cursor):
     assert delivered == data and offset == size
     m.packet(21, struct.pack('<IH', 12345, size), channel=1); m.drain()
     for _ in range(100): m.port(); m.drain()
-    assert m.flash[0x200000:0x201000] == b'\xff'*4096 and not m.rget('cleanup')
+    assert m.flash[0x200000+HEAD-1] == 0
     result = dict(cursor=cursor, bytes=len(delivered), identical=True, final_ack=size, erased=True)
     result_path('tx-window-photo-elf.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
     print('photo ELF: real command 21, session cancellation, resume and final ACK PASS')

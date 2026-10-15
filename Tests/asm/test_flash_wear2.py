@@ -13,14 +13,14 @@ class RingPhoto(PhotoMachine):
     def boot_ring(self):
         self.boot_media()
         self.port(); self.drain()
-        assert self.rget('circular')==1 and not self.rget('fault')
+        assert not self.rget('fault')
 
     def capture(self,data):
         self.begin_camera(len(data)); start=self.pget('address',4)
         for off in range(0,len(data),self.packet_size-6):
             self.data(data[off:off+self.packet_size-6])
-        assert self.flash[start+32:start+32+len(data)]==data
-        assert self.flash[start+8:start+12]==struct.pack('<I',0x33504850)
+        assert self.flash[start+13:start+13+len(data)]==data
+        assert self.flash[start+8:start+12]==struct.pack('<I',0x32504850)
         return start,self.events[-1]
 
     def capture_policy(self,size):
@@ -69,11 +69,10 @@ def photo_queue():
     from test_flash_wear import fast
     m=fast(RingPhoto());m.boot_ring()
     # Последовательная запись у конца кольца и переход через физическую границу.
-    m.write(m.device+m.d['newAddressPhoto'],0x7ef000)
+    m.write(m.device+m.d['newAddressPhoto'],0x2fc000)
     a,n=m.capture(b'A'*13266)
     b,n2=m.capture(b'B'*51200)
-    assert a==0x7ef000 and b==0x400000
-    assert m.rget('turns',4)==1
+    assert a==0x2fc000 and b==0x200000
     q=fast(RingPhoto(m.flash));q.boot_ring()
     assert q.getd('countPhoto',2)==2 and q.rget('oldest',4)==a
     q.packet(21,b'');q.drain();q.port();q.drain()
@@ -82,34 +81,15 @@ def photo_queue():
     q.ack(n2,51200)
     assert q.getd('countPhoto',2)==0
     r=fast(RingPhoto(q.flash));r.boot_ring()
-    assert r.getd('countPhoto',2)==0 and r.rget('turns',4)==1
+    assert r.getd('countPhoto',2)==0
     # Очередь ограничена протоколом, хотя физический запас больше.
     m=fast(RingPhoto());m.boot_ring()
-    for i in range(20):m.capture(bytes([i])*51200)
+    for i in range(20):m.capture(bytes([i])*13266)
     before=bytes(m.flash)
-    m.begin_camera(51200,drain=False)
+    m.packet(7,b"\5");assert m.answers[-1][1]==2
     assert (not m.photo_ptr() or m.pget('stage')==0) and bytes(m.flash)==before
     assert m.getd('countPhoto',2)==20
     return {'wrap':True,'queue_limit':20,'unacknowledged_preserved':True}
-
-def photo_erase_intent():
-    from test_flash_wear import fast
-    from storage_machine import crc16
-    f=bytearray([255])*0x1000000
-    def record(address,number,ack,intent=0xffffffff):
-        body=struct.pack('<II',number,100)
-        crc=crc16(body+struct.pack('<I',0))
-        h=struct.pack('<IIIIIIII',number,100,0x33504850,
-                      0xffffff00|ack,0,crc|((crc^65535)<<16),number^0xffffffff,intent)
-        f[address:address+32]=h
-        f[address+32:address+132]=b'x'*100
-    record(0x400000,10,255) # Был ACK=0; прерванное стирание восстановило только байт ACK.
-    record(0x7fc000,20,255,0xffff0000) # Долговечное намерение освободить 17 секторов от нуля.
-    m=fast(RingPhoto(f));m.boot_ring()
-    assert m.getd('countPhoto',2)==1 and m.rget('oldest',4)==0x7fc000
-    assert m.rget('erase_intent',4)==0x400000
-    return {'torn_erase_ack_bit_only':'not resurrected'}
-
 
 def photo_repeat_ack():
     from test_flash_wear import fast
@@ -140,10 +120,10 @@ def photo_power():
         points=range(len(data)+1) if len(data)<=64 else (0,1,len(data)//2,len(data)-1,len(data))
         for nbytes in points:
             r=reboot.boot(cut_image(image,kind,address,data,nbytes))
-            committed=r.flash[c+8:c+12]==struct.pack('<I',0x33504850)
+            committed=r.flash[c+8:c+12]==struct.pack('<I',0x32504850)
             assert r.getd('countPhoto',2)==1+int(committed),(kind,hex(address),nbytes)
             assert r.rget('oldest',4)==b
-            assert r.flash[b+32:b+32+129]==b'b'*129
+            assert r.flash[b+13:b+13+129]==b'b'*129
             cuts+=1
         image=cut_image(image,kind,address,data,len(data))
     # Полный ACK публикуется только точным нулём; обрыв не возвращает прежний ACK a.
@@ -157,18 +137,18 @@ def photo_rotation_power():
     from test_flash_wear import fast
     from test_photo_power import cut_image
     m=fast(RingPhoto());m.boot_ring();a,n=m.capture(b'a'*13266);m.ack(n,13266)
-    m.write(m.device+m.d['newAddressPhoto'],0x7ef000)
+    m.write(m.device+m.d['newAddressPhoto'],0x2fc000)
     b,n2=m.capture(b'b'*13266)
     before=bytes(m.flash);m.record_changes=True;c,n3=m.capture(b'c'*71)
-    assert c==a and any(k=='erase' and x==a for k,x,_ in m.changes)
+    assert c==a # Этот сектор уже стёрт впереди предыдущего снимка.
     image=bytearray(before);reboot=RingRebooter();cuts=0
     for kind,address,data in m.changes:
         points=range(len(data)+1) if len(data)<=32 else (0,1,len(data)//2,len(data)-1,len(data))
         for nbytes in points:
             r=reboot.boot(cut_image(image,kind,address,data,nbytes))
-            committed=r.flash[c+8:c+12]==struct.pack('<I',0x33504850) and r.flash[c:c+4]==struct.pack('<I',n3)
+            committed=r.flash[c+8:c+12]==struct.pack('<I',0x32504850) and r.flash[c:c+4]==struct.pack('<I',n3)
             assert r.getd('countPhoto',2)==1+int(committed),(kind,hex(address),nbytes,r.getd('countPhoto',2))
-            assert r.rget('oldest',4)==b and r.flash[b+32:b+32+13266]==b'b'*13266
+            assert r.rget('oldest',4)==b and r.flash[b+13:b+13+13266]==b'b'*13266
             cuts+=1
         image=cut_image(image,kind,address,data,len(data))
     return {'wrap_write_erase_cuts':cuts,'old_ACK_not_resurrected':True,'unacked_preserved':True}
@@ -176,4 +156,3 @@ def photo_rotation_power():
 if __name__=='__main__':
     print(photo_smoke())
     print(photo_queue())
-    print(photo_erase_intent())

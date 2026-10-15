@@ -44,6 +44,7 @@ uint8_t idclear_runtime_begin(uint8_t channel,uint8_t uniq)
   uint32_t start=mem[MB_ID].start,size=mem[MB_ID].size,end=start+size;
   idclear_s *p;
   if(channel || !flash_exec_idle() || !flash_exec_read_allowed()) return 0;
+  if (!counter_flush()) return 0;
   p=work_acquire(sizeof *p, WORK_IDCLEAR);
   if(!p) return 0;
   p->cursor=start;
@@ -101,9 +102,7 @@ void idclear_runtime_poll(uint32_t now)
       idclear_release(FX_CANCELLED);
       return;
     }
-    result=counter_prepare(p->cursor,now);
-    if(result==1) return;
-    if(result!=2 || !w25_async_start(p->cursor,NULL,0,now)) { idclear_error(p);
+    if(!w25_async_start(p->cursor,NULL,0,now)) { idclear_error(p);
       return;
     }
     flash_job.step=IDC_WAIT;

@@ -9,7 +9,7 @@ from storage_machine import *
 
 HEAD=13
 FORMAT=0x32504850
-PHASE={name:i+1 for i,name in enumerate(("IO","HEAD","CAMERA","LAZY_DONE","DATA_DONE","PHOTO_MARK","PHOTO_DONE","CLEAN_END","ACK_HEAD","ACK_ADVANCE","REQUEST_DONE","SEND_FILL","SEND_COMMIT"))}
+PHASE={name:i+1 for i,name in enumerate(("IO","HEAD","CAMERA","LAZY_DONE","DATA_DONE","PHOTO_MARK","PHOTO_DONE","RECEIVE_DONE","ACK_HEAD","ACK_ADVANCE","REQUEST_DONE","SEND_FILL","SEND_COMMIT"))}
 # Вычислить начало следующего снимка с выравниванием по сектору.
 def next_record(a,size):return (a+HEAD+size+4095)&~4095
 
@@ -40,8 +40,6 @@ class PhotoMachine(StorageMachine):
     def __init__(self,flash=None):
         super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.job_fields=fields('photo_job_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
         self.expected_packet=0;self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
-        # Старые сценарии проверяют совместимое окно пробы; новое кольцо — test_flash_wear2.
-        if 'trial' in self.symbols:self.write(self.addr('trial'),1,1)
         config=fields('config_s');self.write(self.addr('config')+config['rs485Mode'],1,1)
         self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,3]))
         for name,fn in [('uart_init',self.ret),('uart_setRecTimeout',self.ret),
@@ -115,7 +113,7 @@ class PhotoMachine(StorageMachine):
     def boot_media(self):
         self.port();self.drain()
         # Стартовый скан либо восстановил очередь, либо запустил её очистку.
-        assert (self.rget('initialized') or self.rget('cleanup')) and not self.rget('fault')
+        assert self.rget('initialized') and not self.rget('fault')
     # Пройти согласование камеры до готовности принимать снимок.
     def begin_camera(self,size,drain=True):
         self.packet(7,b'\5');assert self.answers[-1][1]==0 and self.active()
@@ -209,7 +207,7 @@ def uploads():
     assert m.flash[address+8:address+HEAD]==struct.pack('<IB',FORMAT,255),'partial ACK wrote flash'
     m.packet(21,struct.pack('<IH',stamp,len(data)));m.drain();assert m.flash[address+HEAD-1]==0
     for _ in range(60):m.port();m.drain()
-    assert m.flash[0x200000:0x201000]==b'\xff'*4096 and not m.rget('cleanup')
+    assert m.flash[address+HEAD-1]==0 and int.from_bytes(m.u.mem_read(m.device+m.d['countPhoto'],2),'little')==0
     assert not m.rget('fault') and m.rget('initialized')
     # Повтор итогового ACK после очистки и перезагрузки — ответ 11/0 и пустой 14.
     for machine in (m, PhotoMachine(m.flash)):
@@ -228,7 +226,7 @@ def uploads():
     # Во время первого стирания повтор ACK не отменяет очистку.
     r.packet(21,struct.pack('<IH',s2,60));r.drain();r.sent=[]
     r.port();r.drain();r.port()
-    assert r.rget('cleanup')
+    assert int.from_bytes(r.u.mem_read(r.device+r.d['countPhoto'],2),'little')==0
     r.packet(21,struct.pack('<IH',s2,60));assert r.answers[-1][1]==0
     r.drain();r.port();r.drain();assert r.sent[-1][9]==0
     print('upload 512, CRC, RAM cursor/full ACK/retry, cleanup PASS',flush=True)
@@ -243,7 +241,7 @@ def errors():
     m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request()
     frame=struct.pack('<HH',0,58)+b'x'*58;frame+=bytes([sum(frame)&255,0]);m.feed(frame)
     m.tick();assert m.io is not None
-    m.checked('photo_storage_cancel');m.drain();assert m.io is None and not m.events and m.flash[0x200000:0x200008]==b'\xff'*8
+    m.checked('photo_storage_cancel');m.drain();assert m.io is None and not m.events and m.flash[0x200008:0x20000c]!=struct.pack('<I',FORMAT)
     m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request();m.fault=('poll',m.counts['poll']+1);m.feed(frame);m.drain()
     assert m.rget('fault') and not m.events and m.io is None
     m=PhotoMachine();m.boot_media();m.capture(b'a'*100)

@@ -1,7 +1,7 @@
 // Доработка: Кряжев А., 2026
 // Диагностические ответы USB 111 и 112; состав полей задаёт протокол.
 // Снимок снимается на запрос; CRC и заголовок формирует общий модуль packet.
-// В ReleaseCustomer 111 содержит нули вместо внутренних DIAG-полей и счётчики износа.
+// Команда 112 доступна в рабочих сборках, внутренние счётчики — только в 111 под DIAG.
 #include "user_logic_internal.h"
 #include "prof.h"
 #include "runtime_internal.h"
@@ -11,25 +11,20 @@
 #include "../../Modules/comm_uart.h"
 #include "../../Modules/comm_modem.h"
 #include "../../Modules/comm_sms.h"
-#include "../log_ring.h"
-#include "../photo_runtime.h"
 #if DOMOVOI_DIAG
 // Прочитать окрашенный свободный стек; реализация принадлежит main.c.
 uint32_t stack_free_bytes(void);
-#endif
 
 // Снять диагностические поля USB для ответа 111.
 void user_send_usbDiag(uint8_t uniqId)
 {
-  uint32_t words[USB_DIAG_VALUES+4]={0};
-  uint32_t *v=words+3;
-  uint8_t *send_buffer=(uint8_t *)words+3; // v выровнен, пакет начинается за 9 байт до него.
-  uint16_t len=3+4*USB_DIAG_VALUES;
+  uint32_t v[USB_DIAG_VALUES];
+  uint8_t send_buffer[8 + 3 + sizeof(v)];
+  uint16_t len = 3 + sizeof(v);
 
-  v[0] = 8;
+  v[0] = 7;
   v[1] = device.worktime;
   v[2] = timers_getMillis();
-#if DOMOVOI_DIAG
   usb_diag_fill(&v[3]);
   v[26] = loop_max_ms;
   v[27] = loop_stalls;
@@ -53,24 +48,16 @@ void user_send_usbDiag(uint8_t uniqId)
   v[64] = comm_server_diag();
   v[65] = comm_recover_diag(timers_getMillis(), &v[66]);
   comm_sms_diag(&v[67]);
-#endif
-  v[74]=log_ring_turns();
-  v[75]=temp_ring_turns;
-  v[76]=pr.turns;
-  v[77]=counter_turns();
-  v[78]=counter_fallbacks();
 
   send_buffer[6] = 0;
   send_buffer[7] = uniqId;
   send_buffer[8] = USB_DIAG_COMMAND;
+  memcpy(&send_buffer[9], (uint8_t*)v, sizeof(v));
   packet_frame(send_buffer, len);
-#if DOMOVOI_DIAG
   prof_send_comm(send_buffer, len + 8);
-#else
-  usb_send(send_buffer,len+8);
-#endif
 }
 
+#endif
 // Формат сервисного ответа: docs/protocol/usb_link_diag.md.
 void user_send_commDiag(uint8_t uniqId)
 {

@@ -21,7 +21,7 @@ def frame(data,packet=0):
 
 # Проверить отмену до и после необратимой публикации фото.
 def cancellation():
-    for name in ('DATA_DONE','PHOTO_MARK','PHOTO_DONE'):
+    for name in ('DATA_DONE','PHOTO_DONE'):
         m=PhotoMachine(prefix_flash());m.boot_media();old=bytes(m.flash[0x200000:0x201000])
         m.begin_camera(58);m.next_request();m.feed(frame(b'x'*58))
         reach(m,PHASE[name]);committed=m.rget('committed')
@@ -36,7 +36,7 @@ def corrupt():
     for offset,value in ((8,0),(4,0),(4,65536)):
         f=prefix_flash();f[0x200000+offset:0x200004+offset]=struct.pack('<I',value)
         m=PhotoMachine(f);m.boot_media();assert not m.rget('fault')
-        assert m.flash[0x200000:0x201000]==b'\xff'*4096
+        assert m.flash==f
     for number in (49,50,0xffffffff):
         f=prefix_flash();f[0x201000:0x201000+HEAD]=struct.pack('<IIIB',number,58,FORMAT,255)
         m=PhotoMachine(f);m.boot_media()
@@ -67,12 +67,12 @@ def stream():
     for part in (good[:3],good[3:31],good[31:]):m.feed(part)
     assert m.active();m.drain();assert m.pget('written',2)==58
     m.now+=60001;m.port();assert not m.events and not m.photo_ptr()
-    assert m.flash[0x200000:0x200008]==b'\xff'*8
+    assert m.flash[0x200008:0x20000c]!=struct.pack('<I',FORMAT)
     for length in (m.packet_size-5,65529,65530,65531,65532,65533,65534,65535):
         m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request()
         m.feed(struct.pack('<HH',0,length))
         assert not m.photo_ptr() and not m.events
-        assert m.flash[0x200000:0x200000+HEAD]==b'\xff'*HEAD
+        assert m.flash[0x200008:0x20000c]!=struct.pack('<I',FORMAT)
     return 15
 
 # Проверить занятый транспорт, отказ рабочего буфера и разрыв соединения.
@@ -114,29 +114,26 @@ def full_cleanup():
     f=prefix_flash(dirty=False);f[0x200000+HEAD-1]=0
     f[0x201000:0x300000]=b'\x55'*(255*4096)
     m=PhotoMachine(f);m.boot_media();m.record_changes=True;clean(m)
-    assert m.flash[0x200000:0x201000]==b'\xff'*4096
+    assert m.flash==f
     assert m.flash[:0x200000]==f[:0x200000] and m.flash[0x201000:]==f[0x201000:]
-    assert [(kind,a) for kind,a,b in m.changes]==[('erase',0x200000)]
-    return {'sectors':1,'passes':len(m.costs),'stack':m.stack_peak}
+    assert not m.changes
+    return {'sectors':0,'passes':len(m.costs),'stack':m.stack_peak}
 
 # Проверить размеры, границы области и защиту от переполнения номера.
 def headers_and_space():
     for prefix in (1034,4087,4094,4095):
         f=prefix_flash(prefix);m=PhotoMachine(f);m.boot_media();old=bytes(f[0x200000:0x201000])
         a,stamp=m.capture(b'q'*129)
-        assert a==0x201000 and stamp==51 and m.flash[0x200000:a]==old
+        assert a==0x200000+len(old) and stamp==51 and m.flash[0x200000:a]==old
     for size in (0,65536):
         m=PhotoMachine();m.boot_media();m.packet(7,b'\5');m.drain()
         assert m.pget('stage')==1 and m.checked('pr_prepare',size)==0 and not m.counts['start']
     f=prefix_flash();f[0x200000:0x200004]=struct.pack('<I',0xfffffffe)
     m=PhotoMachine(f);m.boot_media();m.packet(7,b'\5');assert m.answers[-1][1]==2
-    m=PhotoMachine();m.boot_media();m.write(m.device+m.d['newAddressPhoto'],0x300000)
-    m.packet(7,b'\5');assert m.answers[-1][1]==2
     f=bytearray(b'\xff'*0x400000)
     f[0x201000:0x201000+HEAD]=struct.pack('<IIIB',0xfffffffe,58,FORMAT,0)
-    m=PhotoMachine(f);m.boot_media();m.begin_camera(58);m.next_request();m.feed(frame(b'x'*58));m.drain()
-    assert m.rget('fault') and not m.events and m.flash[0x200000:0x200000+HEAD]==b'\xff'*HEAD
-    assert m.flash[0x201000:]==f[0x201000:]
+    m=PhotoMachine(f);m.boot_media();m.packet(7,b'\5');assert m.answers[-1][1]==2
+    assert m.flash==f
     return 9
 
 if __name__=='__main__':

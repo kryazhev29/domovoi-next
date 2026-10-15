@@ -40,7 +40,12 @@ def lifecycle():
     for disconnect in (False, True):
         m = BusyMachine(saved_photo()); m.boot_media()
         request(m, struct.pack('<IH', 987, 0)); m.transport_busy = True
-        for _ in range(20): m.step()
+        # Повтор старого номера ищется по физическому кольцу до ожидания TX.
+        for _ in range(600):
+            m.step()
+            if m.exec_state()[1] in (15,16):break
+        else:raise AssertionError('cursor search did not finish')
+        m.step() # Начало прежнего двухсекундного ожидания транспорта.
         if disconnect: m.checked('user_comm_session', 0)
         else: m.now += 2001
         for _ in range(20): m.step()
@@ -48,7 +53,9 @@ def lifecycle():
         for _ in range(20): m.step()
         assert not m.sent and not m.active()
         request(m, struct.pack('<IH', 987, 0), uniq=8)
-        for _ in range(20): m.step()
+        for _ in range(600):
+            m.step()
+            if m.sent:break
         assert len(m.sent) == 1 and m.sent[0][7:11] == bytes((8, 11, 21, 1))
         results += 1
     return results

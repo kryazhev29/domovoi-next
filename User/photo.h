@@ -6,14 +6,10 @@
 #define PHOTO_H
 #include "includes.h"
 #define PHOTO_FORMAT 0x32504850u /* Метка завершённой записи PHP2. */
-#define PHOTO_RING_START 0x400000u
-#define PHOTO_RING_END   0x800000u
-#define PHOTO_RING_FORMAT 0x33504850u
 #define PHOTO_RECORD_HEAD (sizeof(photoParam_s) + 4u + 1u)
 // Проверить команду 7 и запланировать съёмку выбранной камеры.
 cmdCode_e photo_start(uint8_t address);
 // Разрешить повтор команды 21 во время стирания пустой очереди.
-bool photo_empty_cleanup(void);
 // Съёмка или принятый поток имеют приоритет перед серверным ACK журнала.
 bool photo_busy(void);
 // Обслужить камеру, восстановление очереди и поток пакетов 14.

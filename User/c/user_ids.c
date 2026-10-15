@@ -121,7 +121,6 @@ uint8_t user_findID(char *id, cellID_s *cell){
 // 5 бит поколения и 11 бит позиции: в области не более 2048 ячеек.
 // Живут соседние поколения, поэтому разность int16_t однозначна при переходе через ноль.
 uint16_t temp_next;
-uint32_t temp_ring_turns;
 uint16_t temp_normalize(uint16_t cursor)
 {
   return (cursor&2047u)>=mem[MB_TEMPID].size/32u ? (uint16_t)((cursor&~2047u)+2048u) : cursor;
@@ -207,15 +206,13 @@ bool user_addIdToTempBuffer(char *id, codeType_e tp)
     if(tp==CT_PHONE) cell.isPhone=1;
     else if(tp==CT_AUTO) cell.isAuto=1;
     else if(tp==CT_WIEGAND) cell.isWiegand=1;
-    uint32_t turn=temp_ring_turns+(((current>>11)-(temp_ring_turns&31u))&31u);
-    cell.blockTime=turn; // Только MB_TEMPID: blockTime не используется, команда 9 передаёт ID[10].
     uint16_t epoch=current&~2047u;
     memcpy(cell.reserve,&epoch,2);
     uint16_t crc=crc16_calc((uint8_t *)&cell+2,22);
     uint32_t footer[2]={crc|((uint32_t)(uint16_t)~crc<<16),0x32444954u};
     memcpy((uint8_t *)&cell+24,footer,8);
     ok=mem_write(address+2,(uint8_t *)&cell+2,30) && mem_write(address,(uint8_t *)&cell,2);
-    if(ok) { temp_ring_turns=turn;temp_next=current+1;device.tempIDsCount++;device.status.readyID=1; }
+    if(ok) { temp_next=current+1;device.tempIDsCount++;device.status.readyID=1; }
     break;
   }
   device.newAddressTempID=temp_address(temp_next);
@@ -277,15 +274,11 @@ uint16_t user_getTempIDRecordsCount(void)
   uint16_t count=0;
   uint32_t end=mem[MB_TEMPID].start+mem[MB_TEMPID].size;
   temp_next=temp_read_max();
-  temp_ring_turns=0;
   device.status.readyID=0;
   for(uint32_t adr=mem[MB_TEMPID].start; adr<end; adr+=32) {
     if(!mem_read(adr,(uint8_t *)&cell,32)) return 0xffff;
     if(!user_temp_valid(&cell)) continue;
     uint16_t sequence=temp_sequence(&cell,adr);
-    uint32_t turn=cell.blockTime;
-    if (((const uint32_t *)&cell)[7]!=0x32444954u || (turn&31u)!=(sequence>>11)) turn=sequence>>11;
-    if (turn>temp_ring_turns) temp_ring_turns=turn;
     if((int16_t)((uint16_t)(sequence+1)-temp_next)>0) temp_next=sequence+1;
     if((int16_t)(sequence-device.readTempIDIndex)>=0) device.status.readyID=1;
     count++;

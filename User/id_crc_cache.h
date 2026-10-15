@@ -14,6 +14,7 @@ uint8_t idcrc_io_poll(uint32_t);
 bool idcrc_io_active(void);
 // Сбрасывает готовность CRC после отмены или неопределённой записи.
 void idcrc_unknown(void);
+void idcrc_counter(uint32_t address,const uint8_t *old,const uint8_t *value);
 // Учитывает синхронную запись ID в готовой CRC.
 bool idcrc_write(uint32_t,uint8_t *,uint16_t);
 // Учитывает стирание сектора ID в готовой CRC.

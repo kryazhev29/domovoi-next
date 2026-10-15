@@ -21,10 +21,10 @@ def photo_erases():
 
 def run():
     counter=(ROOT/'User/c/counter_runtime.inc').read_text(encoding='utf-8')
-    counter=counter.replace('if (!ct.initialized || app_trial_active()) return 0;','if (1) return 0;')
+    counter=counter.replace('  uint8_t old[32];ct_row row;','  return 0;\n  uint8_t old[32];ct_row row;')
     photo=(ROOT/'User/c/photo_runtime.inc').read_text(encoding='utf-8')
-    photo=photo.replace('pr.bytes=pj.queue_bytes;','pr.bytes=pj.queue_bytes;\n  if (pr.circular && !pj.count) device.newAddressPhoto=PHOTO_RING_START;')
+    photo=photo.replace('  pr.oldest=pj.first;','  pr.oldest=pj.first;\n  if (!pj.count) { device.newAddressPhoto=mem[MB_PHOTO].start; pr.ahead=0; }')
     return mutate({
-      'counter-per-pass-SJ':('counter_erases',[('User/c/user_store.c','#include "counter_runtime.inc"',counter)]),
+      'counter-per-pass-SJ':('counter_erases',[('User/c/memory_runtime.c','#include "counter_runtime.inc"',counter)]),
       'photo-reset-head':('photo_erases',[('User/c/photo_runtime.c','#include "photo_runtime.inc"',photo)])
     },module='test_flash_wear2_mutations',suite='flash-wear2-mutations')

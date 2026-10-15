@@ -19,7 +19,7 @@ def run(size,new):
         for off in range(0,size,m.packet_size-6):
             payload=data[off:off+m.packet_size-6];m.next_request()
             m.now+=math.ceil((len(payload)+6)*10000/115200)+2+60;m.data(payload)
-        assert m.flash[address+(32 if new else 13):address+(32 if new else 13)+size]==data
+        assert m.flash[address+13:address+13+size]==data
         return m.events[-1],m.now-start
     number,capture_ms=capture();start=m.now;m.packet(21,b'');m.drain()
     for _ in range(1000):
@@ -32,7 +32,7 @@ def run(size,new):
     m.checked('photo_storage_cancel');m.drain()
     for _ in range(100):
         m.port();m.drain()
-        if not m.rget('cleanup') and m.rget('initialized') and not m.active():break
+        if (new or not m.rget('cleanup')) and m.rget('initialized') and not m.active():break
     ack_ready=m.now-start;ack_erases=m.operations['erase']-ops['erase']
     number,next_ms=capture()
     return dict(bytes=size,new_ring=new,capture_ms=capture_ms,upload_ms=upload_ms,

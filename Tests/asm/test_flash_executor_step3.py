@@ -1,5 +1,5 @@
 """Источники шага 3 до verify, публикация после OK и постоянные курсоры PHOTO."""
-from storage_machine import StorageMachine,fields
+from storage_machine import StorageMachine
 from test_flash_executor import TABLE, PHOTO, FWBLOCK, LOG, PENDING, OK, state
 from test_work_memory import owned
 
@@ -141,12 +141,11 @@ def photo_persistent():
     else:
         raise AssertionError('PHOTO did not finish')
     assert len(m.events) == 1 and not m.rget('fault')
-    persistent_size=fields('photo_runtime_s')['tx_until']+4
-    saved = bytes(m.u.mem_read(m.addr('pr'), persistent_size))
+    saved = bytes(m.u.mem_read(m.addr('pr'), 24))
     m.u.mem_write(0x21000400, bytes(32))
     m.checked('log_async_begin', 0x21000400)
     assert state(m)[0] == LOG
-    assert bytes(m.u.mem_read(m.addr('pr'), persistent_size)) == saved, 'PHOTO persistent overwritten by LOG'
+    assert bytes(m.u.mem_read(m.addr('pr'), 24)) == saved, 'PHOTO persistent overwritten by LOG'
     m.checked('flash_exec_finish', OK)
     assert m.checked('flash_exec_take_result') == OK
     assert m.rget('last_number', 4) == m.events[0] and m.rget('initialized')

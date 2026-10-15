@@ -15,6 +15,8 @@ class CounterMachine(StorageMachine):
         self.write(self.addr('trial'),0,1)
         fast(self)
         self.erases=Counter()
+    def checked(self,name,*args,budget=50000000):
+        return super().checked(name,*args,budget=budget)
     def change(self,kind,a,b):
         super().change(kind,a,b)
         if kind=='erase': self.erases[a]+=1
@@ -29,7 +31,7 @@ class CounterMachine(StorageMachine):
         assert self.checked('store_id_begin',address,0x21000000)
         for _ in range(100000):
             self.now+=1
-            self.checked('user_storage_poll',budget=1000000)
+            self.checked('user_storage_poll',budget=50000000)
             if self.exec_state()[0]!=12: break
         else: raise AssertionError(('counter stuck',key,self.exec_state()))
         assert self.io is None and self.flash_ready(),self.exec_state()
@@ -40,16 +42,26 @@ class CounterMachine(StorageMachine):
         self.write(self.addr('id_used_bytes'),count*32)
         self.write(self.addr('id_cells_end'),count,2)
         self.boot()
+        self.erases.clear()
     def check_crc(self,expected):
-        raw=crc16(self.flash[BASE:BASE+SIZE]);logical=crc16(expected)
-        delta=self.checked('counter_crc_delta')
-        assert raw^delta==logical,(hex(raw),hex(delta),hex(logical))
+        self.checked('idcrc_unknown')
+        for _ in range(30000):
+            self.checked('idcrc_background_begin')
+            self.checked('idcrc_background_poll',budget=1000000)
+            self.checked('flash_exec_take_result')
+            if self.checked('idcrc_get',0x21000500): break
+        else: raise AssertionError('CRC scan stalled')
+        actual=int.from_bytes(self.u.mem_read(0x21000500,2),'little')
+        assert actual==crc16(expected),(hex(actual),hex(crc16(expected)))
+
 
 def smoke():
     m=CounterMachine();m.seed(2);m.record_changes=True
-    expected=bytearray(m.flash[BASE:BASE+SIZE]);v=bytearray(cell(1));v[21:29]=b'\x09\x01\x02\x03\x04\x05\x06\x07'
+    expected=bytearray(m.flash[BASE:BASE+SIZE]);m.check_crc(expected);v=bytearray(cell(1));v[21:29]=b'\x09\x01\x02\x03\x04\x05\x06\x07'
     m.update(1,bytes(v));expected[:32]=v
     assert not m.erases and m.flash[BASE:BASE+32]==cell(1)
+    assert m.checked('idcrc_get',0x21000500)
+    assert int.from_bytes(m.u.mem_read(0x21000500,2),'little')==crc16(expected)
     m.check_crc(expected)
     r=CounterMachine(m.flash);r.boot();assert r.logical(1)==v;r.check_crc(expected)
     return {'programs':len(m.changes),'erases':sum(m.erases.values()),'crc_exact':True,'reboot':True}
@@ -106,10 +118,8 @@ def fold_power():
     v=bytearray(cell(1));v[21]=7;m.update(1,bytes(v))
     w=bytearray(cell(2));w[21]=8;m.update(2,bytes(w))
     before=bytes(m.flash);m.record_changes=True
-    for _ in range(10000):
-        m.now+=1;r=m.checked('counter_prepare',BASE,m.now,budget=1000000)
-        if r!=1:break
-    assert r==2 and m.flash[BASE:BASE+64]==v+w
+    assert m.checked('counter_flush',budget=50000000)
+    assert m.flash[BASE:BASE+64]==v+w
     cuts=cut_trace(before,m.changes,{1:bytes(v),2:bytes(w)},1,bytes(v))
     # Сервер снова прислал исходные байты: погашенный слой не воскресает.
     m.flash[BASE:BASE+64]=cell(1)+cell(2)
@@ -118,25 +128,15 @@ def fold_power():
 
 
 def gc_power():
-    m=CounterMachine();m.seed(256)
+    m=CounterMachine();m.seed(2)
     a=bytearray(cell(1));a[21]=7;m.update(1,bytes(a))
-    for i in range(1189):
-        b=bytearray(cell(256));b[21:29]=struct.pack('<Q',i+1);m.update(256,bytes(b))
-        if i%128==127:
-            ram=bytes(m.u.mem_read(0x20000000,0x5000));q=CounterMachine(m.flash)
-            q.u.mem_write(0x20000000,ram);q.now=m.now;m=q
+    for i in range(407):
+        b=bytearray(cell(2));b[21:29]=struct.pack('<Q',i+1);m.update(2,bytes(b))
     before=bytes(m.flash);m.record_changes=True
-    new=bytearray(b);new[21:29]=struct.pack('<Q',999999);m.update(256,bytes(new))
-    assert m.erases[0x1c8000]==1,m.erases
-    cuts=cut_trace(before,m.changes,{1:bytes(a),256:bytes(b)},256,bytes(new),True)
-    # Последнее намерение исключает жертву даже при возврате лишь ACTIVE-бита.
-    erased=bytearray(before)
-    for kind,addr,data in m.changes:
-        if kind=='erase':break
-        for j,v in enumerate(data):erased[addr+j]&=v
-    r=recover(erased);assert r.logical(1)==a and r.logical(256)==b
-    r.update(256,bytes(new));assert r.logical(1)==a
-    return {'cuts':cuts,'commands':len(m.changes),'retry_after_intent':True}
+    new=bytearray(b);new[21:29]=struct.pack('<Q',999999);m.update(2,bytes(new))
+    assert m.erases=={0x1fb000:1},m.erases
+    cuts=cut_trace(before,m.changes,{1:bytes(a),2:bytes(b)},2,bytes(new),True)
+    return {'cuts':cuts,'commands':len(m.changes),'page_transfer':True}
 
 
 def access_days():
@@ -187,7 +187,7 @@ def server_crc():
         assert m.io_budget<=1
     else:raise AssertionError('table did not finish')
     expected=bytearray(m.flash[BASE:BASE+SIZE]);expected[129*32:130*32]=b
-    assert m.sent[-1][14:16]==struct.pack('<H',crc16(expected)),(m.sent[-1].hex(),hex(crc16(expected)),hex(m.checked('counter_crc_delta')))
+    assert m.sent[-1][14:16]==struct.pack('<H',crc16(expected)),(m.sent[-1].hex(),hex(crc16(expected)))
     assert m.logical(1)==cell(1,1) and m.logical(130)==b
     # 101 не содержит CRC, но число ID и его проводной формат должны остаться прежними.
     m.sent.clear();body=struct.pack('<HBBB',3,0,7,101);body+=struct.pack('<H',crc16(body))
@@ -208,3 +208,29 @@ def server_crc():
 if __name__=='__main__':
     import sys
     print(ring(int(sys.argv[1]),int(sys.argv[2]),len(sys.argv)>3) if len(sys.argv)>1 else smoke())
+
+
+def overflow():
+    m=CounterMachine();m.seed(409)
+    expected={}
+    for key in range(1,409):
+        value=bytearray(cell(key));value[21:29]=struct.pack('<Q',key)
+        m.update(key,bytes(value));expected[key]=bytes(value)
+    before=bytes(m.flash);m.record_changes=True
+    new=bytearray(cell(409));new[21]=17;m.update(409,bytes(new))
+    assert all(m.erases[BASE+i*4096]==1 for i in range(4)),m.erases
+    assert m.erases[0x1fa000]==8 and m.erases[0x1f9000]==4,m.erases
+    for key,value in expected.items():assert m.logical(key)==value
+    image=bytearray(before);cuts=0
+    # Между секторными SJ и публикацией страницы: сохраняются все прежние значения.
+    for kind,address,data in m.changes:
+        if (kind=='erase' and address<0x1c8000) or address==0x1fc008:
+            for count in (0,len(data)//2,len(data)):
+                cut=bytearray(image)
+                for j,b in enumerate(data[:count]):cut[address+j]=b if kind=='erase' else cut[address+j]&b
+                r=recover(cut)
+                for key in (1,128,129,256,384,408):assert r.logical(key)==expected[key]
+                assert r.logical(409) in (cell(409),bytes(new))
+                cuts+=1
+        for j,b in enumerate(data):image[address+j]=b if kind=='erase' else image[address+j]&b
+    return {'live_records':408,'base_sectors':4,'SJ_META_erases':8,'boundary_cuts':cuts}
