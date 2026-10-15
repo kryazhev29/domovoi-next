@@ -954,7 +954,7 @@
                 </option>
                 <option>
                     <name>IlinkStackControlFile</name>
-                    <state>$PROJ_DIR$\Tests\iar_stack.suc</state>
+                    <state>$PROJ_DIR$\IAR\iar_stack.suc</state>
                 </option>
                 <option>
                     <name>IlinkStackCallGraphFile</name>
@@ -2047,7 +2047,7 @@
                 </option>
                 <option>
                     <name>IlinkStackControlFile</name>
-                    <state>$PROJ_DIR$\Tests\iar_stack.suc</state>
+                    <state>$PROJ_DIR$\IAR\iar_stack.suc</state>
                 </option>
                 <option>
                     <name>IlinkStackCallGraphFile</name>
