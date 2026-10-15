@@ -23,7 +23,7 @@ static inline bool id_equal(const char *left, const char *right)
 }
 
 // Прочитать долговечную дату первого прохода ID.
-uint32_t id_first_pass(cellID_s *c){
+uint32_t id_first_pass(const cellID_s *c){
   uint32_t t;
   memcpy(&t, c->reserve, 4);
   return (t == 0xffffffff || t < ID_TIME_VALID) ? 0 : t;
@@ -42,7 +42,7 @@ bool id_expired(cellID_s *c){
 }
 
 // Вычислить окончание срока действия ID по первой дате прохода.
-uint32_t id_time_end(cellID_s *c){
+uint32_t id_time_end(const cellID_s *c){
   uint32_t first = id_first_pass(c), end;
   if (c->useTime == 0 || first == 0 || c->reserve[6] == ID_TIME_DONE) return 0;
   // за пределами представимого Unix-времени нет раннего окончания

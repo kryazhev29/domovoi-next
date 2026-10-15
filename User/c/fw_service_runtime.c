@@ -17,8 +17,6 @@ extern uint8_t fw_same_download(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t,dat
 extern uint32_t fw_rollback_end;
 extern uint8_t fw_write_errors,store_save_requested;
 extern bool store_snapshot(void);
-// Состояние сохранения принадлежит user_store.c; сервис передаёт ему команду 19.
-extern store_state_s store;
 typedef struct {
   uint8_t data[64],header[32];
   void *reserve;

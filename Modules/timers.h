@@ -20,6 +20,8 @@ unsigned int timers_get(unsigned char t);
 unsigned int timers_take(unsigned char t, unsigned int period);
 // Обслужить очередной миллисекундный тик.
 void timers_handle(void);
+// Пользовательский обработчик миллисекундного тика.
+void timers_user_handle(void);
 // Выдержать задержку с обслуживанием сторожа.
 void timers_pause(const unsigned int msec);
 // Снять миллисекундное время с сохранением PRIMASK.

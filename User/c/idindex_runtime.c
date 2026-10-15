@@ -4,6 +4,7 @@
 // Запись корзины проверяет W25; недоступный индекс допускает поиск по основной базе.
 #include "idindex.h"
 #include "runtime_internal.h"
+#include "user_fw_reason.h"
 #include "fast_kernels.h"
 #include <string.h>
 #ifndef IDINDEX_HOST_TEST

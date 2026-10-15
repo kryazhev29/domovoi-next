@@ -2,15 +2,11 @@
 // Фоновая проверка сроков ID, чтение базы по 64 Б.
 // Запись завершённого прохода выполняется через журнал секторов.
 // Рабочая память и флеш освобождаются при отмене, ошибке или завершении.
-#include "runtime_internal.h"
+#include "user_logic_internal.h"
 enum {
   EXP_SCAN=1, EXP_DIRECT=2, EXP_SEARCH=3,
   EXP_START=4, EXP_JOURNAL=5
 };
-extern uint8_t id_endScan;
-extern uint32_t id_nextEnd;
-extern uint32_t id_time_end(const cellID_s *);
-extern void id_watch_end(uint32_t);
 typedef struct {
   uint32_t scan,used_limit,start,target,find,partition_limit;
   uint8_t cancelled;

@@ -3,6 +3,7 @@
 // До конца user_init допускается только необходимый синхронный путь восстановления.
 // Атомарной записью и выбором долговечного образа владеет memory_runtime.
 #include "user_logic_internal.h"
+#include "../log_ring.h"
 #include "../table_runtime.h"
 #include "../sched16.h"
 #include "photo_runtime.h"

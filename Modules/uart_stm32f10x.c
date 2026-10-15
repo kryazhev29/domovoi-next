@@ -4,6 +4,7 @@
 // Граница приёма проверяет ёмкость; ожидание освобождения TX ограничено.
 
 #include "uart_stm32f10x.h"
+#include "board.h"
 #include <string.h>
 
 typedef struct {

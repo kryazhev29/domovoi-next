@@ -9,10 +9,6 @@
 #include "c/user_logic_internal.h"
 #include "sched16.h"
 #include "sector_journal.h"
-extern uint8_t sync_pending,sync_quiet;
-extern uint32_t id_nextEnd;
-extern uint32_t id_time_end(cellID_s *);
-extern void id_watch_end(uint32_t);
 // Получает день UTC для отметки прохода.
 static uint16_t id_today(void) { return device.datetime>=1600000000u ? (uint16_t)(device.datetime/86400u) : 0; }
 // Записывает день прохода в резерв записи ID.
