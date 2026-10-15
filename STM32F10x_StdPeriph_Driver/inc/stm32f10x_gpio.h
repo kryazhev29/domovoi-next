@@ -263,7 +263,6 @@ typedef enum
 void GPIO_Init(GPIO_TypeDef* GPIOx, GPIO_InitTypeDef* GPIO_InitStruct);
 void GPIO_StructInit(GPIO_InitTypeDef* GPIO_InitStruct);
 
-void GPIO_WriteBit(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, BitAction BitVal);
 
 void GPIO_PinRemapConfig(uint32_t GPIO_Remap, FunctionalState NewState);
 

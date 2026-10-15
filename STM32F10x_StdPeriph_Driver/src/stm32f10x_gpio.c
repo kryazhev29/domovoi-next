@@ -131,23 +131,6 @@ void GPIO_StructInit(GPIO_InitTypeDef* GPIO_InitStruct)
   GPIO_InitStruct->GPIO_Mode = GPIO_Mode_IN_FLOATING;
 }
 
-void GPIO_WriteBit(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, BitAction BitVal)
-{
-
-  assert_param(IS_GPIO_ALL_PERIPH(GPIOx));
-  assert_param(IS_GET_GPIO_PIN(GPIO_Pin));
-  assert_param(IS_GPIO_BIT_ACTION(BitVal));
-
-  if (BitVal != Bit_RESET)
-  {
-    GPIOx->BSRR = GPIO_Pin;
-  }
-  else
-  {
-    GPIOx->BRR = GPIO_Pin;
-  }
-}
-
 void GPIO_PinRemapConfig(uint32_t GPIO_Remap, FunctionalState NewState)
 {
   uint32_t tmp = 0x00, tmp1 = 0x00, tmpreg = 0x00, tmpmask = 0x00;

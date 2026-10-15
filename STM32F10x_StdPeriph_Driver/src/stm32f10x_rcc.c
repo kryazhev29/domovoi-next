@@ -185,21 +185,6 @@ void RCC_APB1PeriphClockCmd(uint32_t RCC_APB1Periph, FunctionalState NewState)
 
 #endif
 
-void RCC_APB2PeriphResetCmd(uint32_t RCC_APB2Periph, FunctionalState NewState)
-{
-
-  assert_param(IS_RCC_APB2_PERIPH(RCC_APB2Periph));
-  assert_param(IS_FUNCTIONAL_STATE(NewState));
-  if (NewState != DISABLE)
-  {
-    RCC->APB2RSTR |= RCC_APB2Periph;
-  }
-  else
-  {
-    RCC->APB2RSTR &= ~RCC_APB2Periph;
-  }
-}
-
 void RCC_APB1PeriphResetCmd(uint32_t RCC_APB1Periph, FunctionalState NewState)
 {
 
