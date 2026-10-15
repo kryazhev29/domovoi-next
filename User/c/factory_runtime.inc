@@ -33,7 +33,7 @@ bool store_factory_request(uint8_t channel, uint8_t uniq, uint8_t delay, const c
 bool store_factory_begin(void)
 {
   factory_job_s *p = &flash_job.data.factory;
-  if (!counter_flush() || !flash_exec_begin(FX_STORE, NULL)) return false;
+  if (!flash_exec_begin(FX_STORE, NULL)) return false;
   photo_storage_cancel();
   upload_reset(10);
   upload_reset(9);
@@ -101,7 +101,7 @@ static void factory_poll(uint32_t now)
     if (result == 1) return;
     if (p->pending == 2) sj_runtime_reset();
     p->pending = 0;
-    if (result != 2) {
+    if (result != 2 || !counter_replaced(p->address)) {
       factory_done(false);
       return;
     }

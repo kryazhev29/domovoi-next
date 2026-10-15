@@ -28,7 +28,7 @@ void table_runtime_cancel(void)
 static uint8_t table_chunk(const void *context, uint16_t off, uint8_t *page)
 {
   (void)context;
-  if (!w25_read_data(table_job.sector+off,page,64)) return 0;
+  if (!w25_read_data(table_job.sector+off,page,64) || !counter_overlay(table_job.sector+off,page,64)) return 0;
   if (table_job.cmd==16) {
     for (uint16_t i=0;i<64 && off+i<mem[MB_HOLIDAY].size;i++)
       page[i]=off+i<table_job.bytes ? table_job.records[off+i] : 255;
@@ -86,7 +86,7 @@ bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
   if (!snapshot) return false;
   memcpy(snapshot,ptr+10,bytes);
   flash_exec_args_t args = { snapshot, TABLE_SECTOR };
-  if ((cmd==13 && !counter_flush()) || !flash_exec_begin(FX_TABLE, &args)) {
+  if (!flash_exec_begin(FX_TABLE, &args)) {
     work_release(snapshot, WORK_TABLE);
     return false;
   }
@@ -200,7 +200,7 @@ void table_runtime_poll(uint32_t now)
       table_scan_begin();
       return;
     }
-    if (!fast_all_ff(old,32)) {
+    if (!fast_all_ff(old,32) || counter_contains(table_job.start+32u*(index-1))) {
       table_job.position=0;
       flash_job.step=TABLE_SECTOR;
       return;
@@ -306,7 +306,7 @@ void table_runtime_poll(uint32_t now)
         break;
       }
       if (table_job.crc_limit-table_job.offset<n) n=(uint16_t)(table_job.crc_limit-table_job.offset);
-      if (!w25_read_data(table_job.start+table_job.offset,b,n)) {
+      if (!w25_read_data(table_job.start+table_job.offset,b,n) || !counter_overlay(table_job.start+table_job.offset,b,n)) {
         table_fault = 1;
         table_job.failed = 1;
         flash_job.step=TABLE_REPLY;

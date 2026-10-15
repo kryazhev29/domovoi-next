@@ -8,11 +8,12 @@
 #include <string.h>
 #include "memory.h"
 #include "../id_crc_io.h"
+#include "../counter.h"
 
 sj_runtime_state_s sjr;
 
 // Сообщает о незавершённом журнале или ошибке после фиксации.
-uint8_t sj_runtime_blocked(void) { return sjr.fault || (sjr.phase && sjr.phase < SJ_PHASE_DONE); }
+uint8_t sj_runtime_blocked(void) { return sjr.fault || (!counter_busy() && sjr.phase && sjr.phase < SJ_PHASE_DONE); }
 // Запрашивает отмену до фиксации образа.
 void sj_runtime_cancel(void) { sjr.cancelled = 1; }
 // Сбрасывает завершённый автомат, сохраняя запрет при неясном результате.
@@ -74,7 +75,9 @@ uint8_t sj_runtime_poll(uint32_t now)
     sjr.header[0]=SJ_MAGIC; sjr.header[1]=SJ_VERSION; sjr.header[2]=sjr.address;
     sjr.header[3]=SJ_SECTOR; sjr.header[4]=~sjr.expected; sjr.header[5]=sjr.expected;
     sjr.header[6]=~crc32_update(0xffffffffu,(uint8_t*)sjr.header,24);
-    sjr.header[7]=SJ_COMMIT; sjr.phase=SJ_PHASE_HEADER_WRITE;
+    sjr.header[7]=SJ_COMMIT;
+    if (counter_busy()) sjr_start(SJ_META+32,(uint8_t *)&sjr.header[7],4,now,SJ_PHASE_HEADER_WRITE);
+    else sjr.phase=SJ_PHASE_HEADER_WRITE;
     break;
   case SJ_PHASE_HEADER_WRITE: sjr_start(SJ_META,(uint8_t*)sjr.header,28,now,SJ_PHASE_COMMIT); break;
   case SJ_PHASE_COMMIT:
@@ -90,7 +93,9 @@ uint8_t sj_runtime_poll(uint32_t now)
     if (sjr.offset==SJ_SECTOR) { sjr.offset=0; sjr.phase=SJ_PHASE_CLEAN; }
     else sjr.phase=SJ_PHASE_COPY;
     break;
-  case SJ_PHASE_CLEAN: sjr_start(SJ_META,0,0,now,SJ_PHASE_DONE); break;
+  case SJ_PHASE_CLEAN:
+    if (!counter_replaced(sjr.address)) { sjr_fail(); break; }
+    sjr_start(SJ_META,0,0,now,SJ_PHASE_DONE); break;
   case SJ_PHASE_DONE: return 2;
   case SJ_PHASE_ERROR: return 3;
   default: sjr_fail(); break;

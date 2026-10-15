@@ -6,7 +6,15 @@
 #define CT_HEAD 12u
 #define CT_ROWS ((4096u-CT_HEAD)/10u)
 typedef struct { uint8_t value[8]; uint16_t key; } ct_row;
-static struct { uint32_t page,generation; uint16_t used; } ct;
+static struct { uint32_t page,generation,sector; uint16_t used,live; } ct;
+bool counter_busy(void) { return ct.sector!=0; }
+// Во время замены читается уже подтверждённый образ SJ, а не стираемый сектор.
+bool counter_base_read(uint32_t address,uint8_t *data,uint16_t size)
+{
+  if (ct.sector && sjr.committed && sjr.phase>=SJ_PHASE_TARGET_ERASE &&
+      (address&~4095u)==ct.sector) address=SJ_DATA+(address&4095u);
+  return w25_read_data(address,data,size);
+}
 static uint32_t ct_address(uint16_t pos) { return ct.page+CT_HEAD+10u*pos; }
 static bool ct_read(uint16_t pos,ct_row *row)
 {
@@ -21,6 +29,34 @@ static int ct_find(uint16_t key,ct_row *row)
     if (row->key==key) return n+1;
   }
   return 0;
+}
+// Изменён ли логический остаток относительно базы; удалённая ячейка слоя не имеет.
+static int ct_changed(const ct_row *row)
+{
+  uint8_t value[8],valid;
+  uint32_t a=mem[MB_ID].start+32u*row->key;
+  if (!counter_base_read(a+31,&valid,1) || !counter_base_read(a+21,value,8)) return -1;
+  return valid!=255 && memcmp(value,row->value,8)!=0;
+}
+static bool ct_count(bool all)
+{
+  ct_row row,last;ct.live=0;
+  for (uint16_t n=0;n<ct.used;n++) {
+    if (!ct_read(n,&row)) return false;
+    if (!ct_valid(&row)) continue;
+    int found=ct_find(row.key,&last);
+    if (found<0) return false;
+    if (found!=n+1) continue;
+    int changed=all ? 1 : ct_changed(&row);
+    if (changed<0) return false;
+    ct.live+=changed;
+  }
+  return true;
+}
+int counter_contains(uint32_t address)
+{
+  ct_row row;
+  return ct_find((uint16_t)((address-mem[MB_ID].start)/32u),&row);
 }
 // Номер записывается последним: оборванное тело не подставляется в ячейку.
 static bool ct_append(uint32_t address,const ct_row *row)
@@ -37,7 +73,9 @@ bool counter_overlay(uint32_t address,uint8_t *data,uint16_t size)
     if (n>size) n=size;
     int found=ct_find((uint16_t)((address-mem[MB_ID].start)/32u),&row);
     if (found<0) return false;
-    if (found) for (uint16_t i=0;i<n;i++)
+    uint8_t valid=255;
+    if (found && !counter_base_read(address-off+31,&valid,1)) return false;
+    if (found && valid!=255) for (uint16_t i=0;i<n;i++)
       if (off+i>=21 && off+i<29) data[i]=row.value[off+i-21];
     address+=n;data+=n;size-=n;
   }
@@ -46,57 +84,41 @@ bool counter_overlay(uint32_t address,uint8_t *data,uint16_t size)
 static uint8_t ct_chunk(const void *context,uint16_t offset,uint8_t *data)
 {
   uint32_t address=*(const uint32_t *)context+offset;
-  return w25_read_data(address,data,SJ_PAGE) && counter_overlay(address,data,SJ_PAGE);
-}
-// Каждый затронутый сектор базы переносится ровно одной транзакцией SJ.
-static bool ct_materialize(void)
-{
-  idcrc_unknown();
-  uint32_t after=0;
-  for (;;) {
-    uint32_t next=0xffffffffu;
-    ct_row row;
-    for (uint16_t n=0;n<ct.used;n++) {
-      if (!ct_read(n,&row)) return false;
-      uint32_t sector=(mem[MB_ID].start+32u*row.key)&~4095u;
-      if (ct_valid(&row) && sector>after && sector<next) next=sector;
-    }
-    if (next==0xffffffffu) return true;
-    if (!sj_replace_pages(next,ct_chunk,&next)) return false;
-    after=next;
-  }
+  return w25_read_data(address,data,64) && counter_overlay(address,data,64);
 }
 // Поколение с инверсией проверяется один раз при старте: прерванное стирание
 // прежнего заголовка не может превратить его в более новое поколение.
-static bool ct_transfer(bool flush)
+static bool ct_transfer(uint32_t replaced)
 {
   uint32_t target=(2u*CT_PAGE0+4096u)-ct.page,h[3]={ct.generation+1u,~(ct.generation+1u),0xffffffffu};
-  uint16_t count=0;
+  uint16_t count=0,bytes=0;
   ct_row row,last;
   if (!w25_write_data(target,(uint8_t *)h,8)) return false;
-  if (!flush) for (uint16_t n=0;n<ct.used;n++) {
+  for (uint16_t n=0;n<ct.used;n++) {
     if (!ct_read(n,&row)) return false;
     if (!ct_valid(&row)) continue;
     int found=ct_find(row.key,&last);
     if (found<0) return false;
-    if (found==n+1) {
-      if (!ct_append(target+CT_HEAD+10u*count,&row)) return false;
-      count++;
+    if (found!=n+1 || ((mem[MB_ID].start+32u*row.key)&~4095u)==replaced) continue;
+    int changed=ct.sector ? 1 : ct_changed(&row);
+    if (changed<0) return false;
+    if (changed) {
+      // Пока заголовок RECEIVE, отдельные строки ещё не видны: пишем пачкой.
+      memcpy(sjr.data+bytes,&row,10);bytes+=10;count++;
+      if (bytes==60) {
+        if (!w25_write_data(target+CT_HEAD+10u*count-bytes,sjr.data,bytes)) return false;
+        bytes=0;
+      }
     }
   }
-  if (flush || count==CT_ROWS) {
-    if (!ct_materialize()) return false;
-    // Полная страница живых адресов: база опубликована, новая страница пуста.
-    if (count && (!w25_erase_sector(target) || !w25_write_data(target,(uint8_t *)h,8))) return false;
-    count=0;
-  }
+  if (bytes && !w25_write_data(target+CT_HEAD+10u*count-bytes,sjr.data,bytes)) return false;
   h[2]=0;
   if (!w25_write_data(target+8,(uint8_t *)&h[2],4)) return false;
   uint32_t old=ct.page;
-  ct.page=target;ct.generation=h[0];ct.used=count;
+  ct.page=target;ct.generation=h[0];ct.used=ct.live=count;
   return w25_erase_sector(old);
 }
-bool counter_boot(void)
+static bool ct_load(void)
 {
   uint32_t h[3];
   memset(&ct,0,sizeof(ct));
@@ -106,11 +128,7 @@ bool counter_boot(void)
       ct.page=page;ct.generation=h[0];
     }
   }
-  if (!ct.page) {
-    ct.page=CT_PAGE0;ct.generation=0;
-    h[0]=0;h[1]=0xffffffffu;h[2]=0;
-    return w25_erase_sector(CT_PAGE0+4096u) && w25_erase_sector(ct.page) && w25_write_data(ct.page,(uint8_t *)h,sizeof(h));
-  }
+  if (!ct.page) return true;
   // Только невыбранная страница: незавершённый RECEIVE или остаток старой VALID.
   uint32_t other=(2u*CT_PAGE0+4096u)-ct.page;
   for (uint16_t off=0;off<4096u;off+=64) {
@@ -126,24 +144,95 @@ bool counter_boot(void)
     if (!ct_read(n,&row)) return false;
     if (!fast_all_ff((uint8_t *)&row,sizeof(row))) ct.used=n+1;
   }
-  return true;
+  return ct_count(false);
 }
-bool counter_flush(void)
+bool counter_boot(void)
 {
-  if (!ct.used || ct_transfer(true)) return true;
-  mem_storage_ready=false;
+  if (!ct_load()) return false;
+  if (ct.page) return true;
+  ct.page=CT_PAGE0;
+  uint32_t h[3]={0,0xffffffffu,0};
+  return w25_erase_sector(CT_PAGE0+4096u) && w25_erase_sector(ct.page) && w25_write_data(ct.page,(uint8_t *)h,sizeof(h));
+}
+// SJ уже опубликовал базу, но ещё хранит восстановимый образ. Перед очисткой
+// его метки обновляем только затронутые адреса; повтор после сброса безопасен.
+bool counter_replaced(uint32_t address)
+{
+  if (address<mem[MB_ID].start || address>=mem[MB_ID].start+mem[MB_ID].size) return true;
+  uint32_t marker;
+  if (!w25_read_data(SJ_META+32,(uint8_t *)&marker,4)) return false;
+  // Фоновый снимок мог отстать от новых проходов: их записи сохраняются.
+  if (marker==SJ_COMMIT) return true;
+  if (!ct.page && !ct_load()) return false;
+  if (!ct.used) return true;
+  idcrc_unknown();
+  uint16_t end=ct.used;
+  ct_row row,last;
+  for (uint16_t n=0;n<end;n++) {
+    if (!ct_read(n,&row)) return false;
+    if (!ct_valid(&row) || ((mem[MB_ID].start+32u*row.key)&~4095u)!=address) continue;
+    int found=ct_find(row.key,&last);
+    if (found<0) return false;
+    if (found!=n+1) continue;
+    if (!w25_read_data(mem[MB_ID].start+32u*row.key+21,last.value,8)) return false;
+    if (!memcmp(row.value,last.value,8)) continue;
+    if (ct.used==CT_ROWS) return ct_transfer(address);
+    memcpy(row.value,last.value,8);
+    if (!ct_append(ct_address(ct.used++),&row)) return false;
+  }
+  return ct_count(false);
+}
+bool counter_pending(void) { return ct.live>CT_ROWS*3u/4u; }
+// Один сектор на фоновую транзакцию; более новые состояния остаются в слое.
+bool counter_drain_begin(void)
+{
+  ct_row row,last;
+  for (uint16_t n=ct.used;n;) {
+    if (!ct_read(--n,&row)) return false;
+    if (!ct_valid(&row)) continue;
+    int found=ct_find(row.key,&last);
+    if (found<0) return false;
+    if (found!=n+1) continue;
+    int changed=ct_changed(&row);
+    if (changed<0) return false;
+    if (!changed) continue;
+    ct.sector=(mem[MB_ID].start+32u*row.key)&~4095u;
+    idcrc_unknown();
+    if (!ct_count(true)) return false;
+    return sj_runtime_begin(ct.sector,ct_chunk,&ct.sector);
+  }
   return false;
 }
-// 0 — меняется сама ячейка; 1 — записаны лишь поля состояния; -1 — ошибка NOR.
+// Исполнитель вызывает фон только при свободном NOR; занятая команда завершается
+// здесь, а между командами STORE может дописать счётчик в отдельные страницы.
+void counter_poll(uint32_t now)
+{
+  uint8_t result=sj_runtime_poll(now);
+  if (result==1) return;
+  sj_runtime_reset();ct.sector=0;
+  if (result!=2 || !ct_count(false)) mem_storage_ready=false;
+}
+// 0 — замена ID; 1 — записано; 2 — нужна одна фоновая SJ; -1 — ошибка NOR.
 int counter_write(uint32_t address,const cellID_s *cell)
 {
   uint8_t old[32];ct_row row;
   if (!ct.page && !counter_boot()) return -1;
-  if (!w25_read_data(address,old,32)) return -1;
+  if (!counter_base_read(address,old,32)) return -1;
   if (memcmp(old,cell,21) || memcmp(old+29,(const uint8_t *)cell+29,3)) return 0;
-  if (!counter_overlay(address,old,32)) return -1;
+  int found=ct_find((uint16_t)((address-mem[MB_ID].start)/32u),&row);
+  if (found<0) return -1;
+  if (found) memcpy(old+21,row.value,8);
   if (!memcmp(old+21,(const uint8_t *)cell+21,8)) return 1;
-  if (ct.used==CT_ROWS && !ct_transfer(false)) return -1;
+  if (ct.used==CT_ROWS) {
+    if (ct.live==CT_ROWS) return 2;
+    if (!ct_transfer(0)) return -1;
+  }
+  // После переноса база не меняется; сравниваем прежнее и новое состояния с ней.
+  if (ct.sector) ct.live+=!found;
+  else {
+    if (!w25_read_data(address+21,row.value,8)) return -1;
+    ct.live+=(memcmp(row.value,(const uint8_t *)cell+21,8)!=0)-(memcmp(row.value,old+21,8)!=0);
+  }
   memcpy(row.value,(const uint8_t *)cell+21,8);
   row.key=(uint16_t)((address-mem[MB_ID].start)/32u);
   uint32_t next=ct_address(ct.used++);

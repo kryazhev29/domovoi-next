@@ -76,7 +76,7 @@ static uint8_t expiry_chunk(const void *context,uint16_t offset,uint8_t *data)
 {
   const expiry_s *p=context;
   uint32_t address=(p->target&~4095u)+offset,diff=p->target-address;
-  if(!w25_read_data(address,data,64)) return 0;
+  if(!w25_read_data(address,data,64) || !counter_overlay(address,data,64)) return 0;
   if(diff<=32) memcpy(data+diff,p->record,32);
   return 1;
 }
@@ -157,7 +157,7 @@ void expiry_runtime_poll(uint32_t now)
     p->find+=n;
     return;
   case EXP_START:
-    if(!counter_flush() || !sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
+    if(!sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
     flash_job.step=EXP_JOURNAL;
     return;
   default: goto retry;

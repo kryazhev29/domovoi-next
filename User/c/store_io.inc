@@ -19,7 +19,7 @@ static uint8_t store_id_chunk(const void *context, uint16_t offset, uint8_t *dat
 {
   const store_io_s *p = context;
   uint32_t address = (p->address & ~4095u) + offset;
-  if (!w25_read_data(address, data, 64)) return 0;
+  if (!w25_read_data(address, data, 64) || !counter_overlay(address,data,64)) return 0;
   if (p->address >= address && p->address < address + 64)
     memcpy(data + p->address - address, p->data, 32);
   return 1;
@@ -48,13 +48,21 @@ static void store_io_poll(uint32_t now)
   store_io_s *p = &flash_job.data.storeio;
   uint8_t result;
   if (flash_job.step == FS_ID) {
+    if (p->mode==2) {
+      if (!mem_storage_ready) { store_io_done(false); return; }
+      p->mode=0;
+    }
     if (!p->mode) {
       int changed = counter_write(p->address,(const cellID_s *)p->data);
+      if (changed==2) {
+        if (!counter_busy() && !counter_drain_begin()) { store_io_done(false); return; }
+        p->mode=2; return;
+      }
       if (changed) {
         if (changed<0) mem_storage_ready=false;
         store_io_done(changed>0); return;
       }
-      if (!counter_flush()) { store_io_done(false); return; }
+      if (counter_busy()) { p->mode=2; return; }
       idindex_runtime_suspend();
       if (!sj_runtime_begin(p->address & ~4095u, store_id_chunk, p)) {
         store_io_done(false);

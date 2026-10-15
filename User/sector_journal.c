@@ -94,6 +94,9 @@ static uint8_t sj_header(const uint32_t *h)
          h[6] == ~crc32_update(0xFFFFFFFFu, (const uint8_t*)h, 24) && h[7] == SJ_COMMIT;
 }
 // Переносит проверенный резервный образ и очищает метку только после последней записи.
+#ifndef SJ_AFTER_TARGET
+#define SJ_AFTER_TARGET(address) 1
+#endif
 static uint8_t sj_copy_data(uint32_t address)
 {
   uint8_t page[SJ_PAGE];
@@ -103,7 +106,7 @@ static uint8_t sj_copy_data(uint32_t address)
     if (!sj_io_read(SJ_DATA + off, page, sizeof(page)) ||
         !sj_io_write(address + off, page, sizeof(page))) return 0;
   }
-  return sj_io_erase(SJ_META);
+  return SJ_AFTER_TARGET(address) && sj_io_erase(SJ_META);
 }
 // Завершает зафиксированный перенос после обрыва и очищает метку.
 uint8_t sj_recover(void)
@@ -116,7 +119,7 @@ uint8_t sj_recover(void)
   if (!sj_flash_crc(SJ_DATA, &crc) || crc != h[4]) return 0;
   // Сравнение всех байтов с уже проверенным образом заменяет второй CRC назначения.
   if (!sj_flash_equal(h[2], SJ_DATA, &equal)) return 0;
-  return equal ? sj_io_erase(SJ_META) : sj_copy_data(h[2]);
+  return equal ? (SJ_AFTER_TARGET(h[2]) && sj_io_erase(SJ_META)) : sj_copy_data(h[2]);
 }
 // Заменяет сектор после стартового восстановления; W25 проверяет каждую запись.
 // Метка журнала ставится последней, а стирается после переноса проверенных данных.

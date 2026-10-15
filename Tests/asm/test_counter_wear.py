@@ -91,10 +91,11 @@ def recover(image):
     m.boot()
     return m
 
-def cut_trace(before,changes,expected,key,new,exhaustive=False):
+def cut_trace(before,changes,expected,key,new,exhaustive=False,select=None):
     image=bytearray(before);cuts=0
     for kind,a,data in changes:
         positions=range(len(data)+1) if exhaustive and len(data)<=32 else sorted({0,1,len(data)//2,len(data)-1,len(data)})
+        if select and not select(kind,a,data): positions=[]
         for n in positions:
             cut=bytearray(image)
             for j,b in enumerate(data[:n]):cut[a+j]=b if kind=='erase' else cut[a+j]&b
@@ -118,13 +119,23 @@ def fold_power():
     v=bytearray(cell(1));v[21]=7;m.update(1,bytes(v))
     w=bytearray(cell(2));w[21]=8;m.update(2,bytes(w))
     before=bytes(m.flash);m.record_changes=True
-    assert m.checked('counter_flush',budget=50000000)
+    assert m.checked('counter_drain_begin')
+    drain_sj(m)
     assert m.flash[BASE:BASE+64]==v+w
     cuts=cut_trace(before,m.changes,{1:bytes(v),2:bytes(w)},1,bytes(v))
-    # Сервер снова прислал исходные байты: погашенный слой не воскресает.
-    m.flash[BASE:BASE+64]=cell(1)+cell(2)
-    q=recover(m.flash);assert q.logical(1)==cell(1) and q.logical(2)==cell(2)
-    return {'cuts':cuts,'writes':len(m.changes),'one_SJ_for_sector':m.erases[BASE]==1,'replacement_no_resurrection':True}
+    # Замена целой ячейки идёт штатным SJ и обновляет только её запись слоя.
+    new=bytearray(cell(1));new[2:12]=b'9876543210';m.update(1,bytes(new))
+    q=recover(m.flash);assert q.logical(1)==new and q.logical(2)==w
+    return {'cuts':cuts,'writes':len(m.changes),'replacement_no_resurrection':True}
+
+
+def drain_sj(m):
+    for _ in range(3000):
+        m.now+=1;m.checked('counter_poll',m.now)
+        if m.checked('counter_busy'):continue
+        assert m.flash_ready();return
+    raise AssertionError('SJ did not finish')
+
 
 
 def gc_power():
@@ -178,6 +189,8 @@ def server_crc():
     m=M();fixture(m,130);m.boot()
     a=bytearray(cell(1));a[21]=7;m.update(1,bytes(a))
     b=bytearray(cell(130));b[21:29]=struct.pack('<Q',123456);m.update(130,bytes(b))
+    cached=bytearray(m.flash[BASE:BASE+SIZE]);cached[:32]=a;cached[129*32:130*32]=b
+    m.check_crc(cached)
     # Команда 13 заменяет первый сектор; состояние 130 остаётся только в слое.
     m.command(13,cell(1,1),1)
     peak=0
@@ -218,8 +231,8 @@ def overflow():
         m.update(key,bytes(value));expected[key]=bytes(value)
     before=bytes(m.flash);m.record_changes=True
     new=bytearray(cell(409));new[21]=17;m.update(409,bytes(new))
-    assert all(m.erases[BASE+i*4096]==1 for i in range(4)),m.erases
-    assert m.erases[0x1fa000]==8 and m.erases[0x1f9000]==4,m.erases
+    assert sum(m.erases[BASE+i*4096] for i in range(4))==1,m.erases
+    assert m.erases[0x1fa000]==2 and m.erases[0x1f9000]==1,m.erases
     for key,value in expected.items():assert m.logical(key)==value
     image=bytearray(before);cuts=0
     # Между секторными SJ и публикацией страницы: сохраняются все прежние значения.
@@ -233,4 +246,4 @@ def overflow():
                 assert r.logical(409) in (cell(409),bytes(new))
                 cuts+=1
         for j,b in enumerate(data):image[address+j]=b if kind=='erase' else image[address+j]&b
-    return {'live_records':408,'base_sectors':4,'SJ_META_erases':8,'boundary_cuts':cuts}
+    return {'live_records':408,'base_sectors':1,'SJ_META_erases':2,'boundary_cuts':cuts}

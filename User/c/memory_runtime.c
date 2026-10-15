@@ -48,7 +48,7 @@ static bool mem_reserved(uint32_t adr, uint16_t n)
 // Заменяет сектор из источника страниц без копии 4 КиБ в ОЗУ.
 bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context)
 {
-  mem_storage_ready = counter_flush() && sj_replace_pages(adr, reader, context);
+  mem_storage_ready = sj_replace_pages(adr, reader, context);
   return mem_storage_ready;
 }
 
@@ -72,7 +72,7 @@ static void mem_overlay(uint8_t *page, uint16_t off, uint32_t start, const uint8
 static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
 {
   const mem_image_s *image = context;
-  if (!w25_read_data(image->source + off, page, SJ_PAGE)) return 0;
+  if (!w25_read_data(image->source + off, page, SJ_PAGE) || !counter_overlay(image->source + off,page,SJ_PAGE)) return 0;
   mem_overlay(page, off, image->offset, image->first, image->nfirst);
   mem_overlay(page, off, image->offset + image->nfirst, image->second, image->nsecond);
   return 1;
@@ -212,7 +212,7 @@ static bool cfg_read(uint32_t adr, uint8_t *buff, uint16_t size)
 bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 {
   if (cfg_range(adr, size)) return cfg_read(adr, buff, size);
-  return mem_guard(adr, size) && w25_read_data(adr, buff, size) && counter_overlay(adr,buff,size);
+  return mem_guard(adr, size) && counter_base_read(adr, buff, size) && counter_overlay(adr,buff,size);
 }
 
 // Запись данных в память

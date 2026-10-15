@@ -56,6 +56,7 @@ bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
     WORK_SERVICE, WORK_TABLE, 0, WORK_FW_BLOCK, 0, 0, 0 };
   void *context = args ? args->context : NULL;
   uint8_t step = args ? args->step : 0;
+  if (counter_busy() && !(kind==FX_STORE && step==FS_ID)) return false;
   if ((kind == FX_EXPIRY || kind == FX_PHOTO || (kind == FX_CRC && !context)) &&
       store_priority_pending()) return false;
   uint8_t slot = slots[kind];
@@ -151,10 +152,14 @@ void flash_exec_quiet(uint8_t channel)
 // Принятый kind не вытесняется; фон заканчивает квант в этом же проходе.
 static void pick_next(bool below_crc)
 {
-  if (flash_job.kind != FX_NONE) return;
+  if (flash_job.kind != FX_NONE || counter_busy()) return;
   if (!below_crc && idcrc_background_begin()) return;
   if (idindex_runtime_begin()) return;
   if (store.intent == US_REPLY) return;
+  if (!store_priority_pending() && counter_pending()) {
+    if (!counter_drain_begin()) mem_storage_ready=false;
+    return;
+  }
   if (!store.intent && !store_save_requested && !store_reset_requested &&
       !(log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT))) return;
   flash_exec_args_t args = { NULL, store.intent };
@@ -162,6 +167,11 @@ static void pick_next(bool below_crc)
 }
 void flash_exec_poll(uint32_t now)
 {
+  if (counter_busy() && (sjr.waiting || flash_job.kind==FX_NONE ||
+      (flash_job.kind==FX_STORE && flash_job.data.storeio.mode==2))) {
+    counter_poll(now);
+    return;
+  }
   bool picked_idle = flash_job.kind == FX_NONE;
   pick_next(false);
 dispatch:
