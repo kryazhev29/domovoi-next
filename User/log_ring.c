@@ -195,6 +195,7 @@ uint16_t log_getRecordsCount(void)
 // Копирует событие и занимает флеш до окончания записи.
 void log_async_begin(const cellLog_s *cell)
 {
+  if(!mem_storage_ready) return;
   flash_exec_args_t args = { (void *)cell, LOG_INIT };
   flash_exec_begin(FX_LOG, &args);
 }

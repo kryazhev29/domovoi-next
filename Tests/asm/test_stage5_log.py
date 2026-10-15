@@ -75,7 +75,17 @@ def migration():
         append(m,count+1);assert records(m)==[count+1]
         r=StorageMachine(m.flash);assert boot(r)[0]==1 and records(r)==[count+1]
         totals.append(count)
-    return {'legacy_counts':totals}
+    # Во всех ещё не занятых секторах лежат целые записи LOG2 с CRC, но нет
+    # заголовков кольца. Ни один такой сектор не становится live до своего erase.
+    from test_flash_wear import fast
+    m=fast(StorageMachine());m.flash[BASE:BASE+98304]=log(900000)*3072
+    assert boot(m)[0]==0
+    for i in range(1,CAPACITY+2):
+        append(m,i)
+        if i%127==0 or i==CAPACITY+1:
+            r=fast(StorageMachine(m.flash));assert boot(r)[0]==min(i,CAPACITY if i<=CAPACITY else CAPACITY-126)
+            assert records(r)==list(range(1 if i<=CAPACITY else 128,i+1))
+    return {'legacy_counts':totals,'unformatted_sectors_before_first_wrap':24}
 
 
 # Проверяет повтор выгрузки по логическому номеру после потери курсора.

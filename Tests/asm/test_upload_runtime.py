@@ -87,7 +87,7 @@ class UploadMachine(StorageMachine):
         for i, cell in enumerate(slots):
             self.flash[self.base+i*32:self.base+(i+1)*32] = cell
         if "temp_next" in self.symbols:
-            self.checked("user_getTempIDRecordsCount",budget=2000000)
+            self.write(self.device+self.d['tempIDsCount'],self.checked("user_getTempIDRecordsCount",budget=2000000),2)
             self.counts["read"]=0;self.costs.clear()
 
     # Передаёт запрос следующего кадра выгрузки.
@@ -126,14 +126,14 @@ class UploadMachine(StorageMachine):
 
     # Готовит неподтверждённую границу предыдущего кадра.
     def seed_pending(self,ordinal):
-        if self.cmd==10 and "log_pending32" in self.symbols:self.write(self.addr("log_pending32"),ordinal+1)
-        else:self.write(self.addr("log_unacked" if self.cmd==10 else "temp_unacked"),ordinal,2)
+        if self.cmd==10:self.write(self.addr("log_pending32"),ordinal+1)
+        else:self.write(self.addr("temp_unacked"),ordinal,2)
 
     # Читает границу переданного, но ещё не подтверждённого кадра.
     def pending_cursor(self, channel=0):
         # Проводные сценарии используют последовательные номера записей с единицы.
-        if self.cmd==10 and "log_pending32" in self.symbols:return max(0,self.read_word(self.addr("log_pending32")+4*channel)-1)
-        return self.read_word(self.addr('log_unacked' if self.cmd == 10 else 'temp_unacked')+channel*2, 2)
+        if self.cmd==10:return max(0,self.read_word(self.addr("log_pending32")+4*channel)-1)
+        return self.read_word(self.addr('temp_unacked')+channel*2, 2)
 
 
 # Собирает ожидаемые байты кадра независимо от кода продукта.

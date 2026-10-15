@@ -50,14 +50,17 @@ def verify(path):
     assert m.sent==[wire(10,31,0,[log(i) for i in range(33,61)])]
     assert bytes(m.flash)==image,'migration changed old media before an ACK'
     return {'status':'PASS','log_unacked':28,'temporary_unacked':1,
+            'flash_bytes':len(image),
             'old_log_cursor':33,'old_temp_cursor':100,'migration_erases':0,
             'old_nor_sha256':hashlib.sha256(image).hexdigest()}
 
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--before');p.add_argument('--after')
+    p.add_argument('--flash-mib',type=int,choices=(2,4,16))
     p.add_argument('--output',type=Path,required=True);p.add_argument('--capture',action='store_true')
     a=p.parse_args()
+    if a.flash_mib:os.environ['DOMOVOI_FLASH_BYTES']=str(a.flash_mib*1024*1024)
     if a.capture:
         select(a.before);capture(a.output);return
     a.output.mkdir(parents=True,exist_ok=True);image=a.output/'a5b776c-partial-acks.nor'

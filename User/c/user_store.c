@@ -315,6 +315,8 @@ void store_restore(const device_s *saved)
   }
   memset(device.reserv+DEVICE_CLEAR_MARK_OFFSET,0,8);
   upload_store();
+  // При откате старый ELF не должен продолжить очистку поверх новых событий.
+  if(!user_writeConfigAndDevice()) mem_storage_ready=false;
 }
 // Принять новый запрос выгрузки без повторного подтверждения.
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)

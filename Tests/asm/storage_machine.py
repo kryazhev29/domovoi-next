@@ -1,6 +1,6 @@
 # Доработка: Кряжев А., 2026
 """Связанный код IAR с моделью NOR, реальной рабочей памятью и соглашением ARM."""
-import sys,struct
+import os,sys,struct
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'Tests'))
 from iar_irq_support import *
@@ -22,7 +22,8 @@ class StorageMachine(Machine):
     # Готовит связанный образ, модель NOR и состояние сценария.
     def __init__(self,flash=None):
         super().__init__();self.init()
-        self.flash=bytearray(b'\xff'*0x400000) if flash is None else bytearray(flash)
+        capacity=int(os.environ.get('DOMOVOI_FLASH_BYTES','4194304'))
+        self.flash=bytearray(b'\xff'*capacity) if flash is None else bytearray(flash)
         self.now=0;self.io=None;self.changes=[];self.calls=[];self.answers=[];self.timestamps=[]
         self.counts={'read':0,'start':0,'poll':0};self.fault=None;self.io_budget=0;self.read_budget=0
         self.costs=[];self.stack_peak=0;self.limit_reads=128;self.record_changes=False
@@ -43,6 +44,9 @@ class StorageMachine(Machine):
         for mb,base,size in [(2,0x41000,8192),(3,0x1c9000,2048),(4,0x1ca800,2048),(5,0x1cc000,1024),
                              (7,0x1d0000,98304),(8,0x1e8000,53248),(9,0x200000,0x100000)]:
             self.u.mem_write(self.addr('mem')+mb*8,struct.pack('<II',base,size))
+        if capacity==0x200000:
+            self.write(self.device+self.d['memID'],0x14c2,2)
+            self.u.mem_write(self.addr('mem')+9*8,bytes(8))
     # Читает четыре аргумента вызова из регистров ARM.
     # Выбирает целый слот и возвращает его адрес из единственного кэша приложения.
     def select_config(self):
@@ -61,6 +65,7 @@ class StorageMachine(Machine):
         self.u.mem_write(p,bytes(self.flash[a:a+n]));self.ret(1)
     # Моделирует стирание либо сброс битов NOR и сохраняет точку обрыва.
     def change(self,kind,a,b):
+        assert 0<=a and a+len(b)<=len(self.flash),(kind,hex(a),len(b),len(self.flash))
         if self.record_changes:self.changes.append((kind,a,bytes(b)))
         if kind=='erase':self.flash[a:a+4096]=b'\xff'*4096
         else:

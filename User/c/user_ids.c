@@ -3,6 +3,7 @@
 // Индекс ускоряет поиск; во время пересборки остаётся перебор блоками 256 Б.
 // Стартовый скан сверяет метку индекса с базой; ошибка чтения отличается от отсутствия ID.
 #include "user_logic_internal.h"
+#include "../../Bootloader/app_update.h"
 uint32_t id_used_bytes = UINT32_MAX;
 uint16_t id_cells_end;
 uint32_t id_nextEnd;
@@ -130,13 +131,14 @@ static uint16_t temp_read_max(void)
 { return (int16_t)(device.readTempIDIndex-temp_usbReadIndex)>0 ? device.readTempIDIndex : temp_usbReadIndex; }
 // У старых временных ID index=0; новые фиксируют 0x8000 после тела и CRC.
 // Частичное стирание/программирование не превращает новую метку в старую (бит 15 всегда 1).
+// Любой сброшенный бит commit достаточен: тело уже проверено, старый ELF тоже видит этот ID.
 bool user_temp_valid(const cellID_s *cell)
 {
   const uint32_t *words=(const uint32_t *)cell;
   if(cell->index==0xffff) return false;
   if(!(cell->index&0x8000u)) return true;
   uint16_t crc=(uint16_t)words[6];
-  return cell->index==0x8000u && words[7]==0x32444954u &&
+  return words[7]==0x32444954u &&
     crc==(uint16_t)~(words[6]>>16) && crc==crc16_calc((uint8_t *)cell+2,22);
 }
 // Старый линейный формат равен нулевому поколению; адреса и ID не меняются.
@@ -188,14 +190,18 @@ bool user_addIdToTempBuffer(char *id, codeType_e tp)
   flash_exec_args_t args={NULL,FS_SYNC};
   if(!flash_exec_begin(FX_STORE,&args)) return false;
   bool ok=false;
+  bool trial=app_trial_active();
   for(uint16_t tried=0;tried<mem[MB_TEMPID].size/32u;tried++) {
+    // До подтверждения старый ELF должен видеть непрерывный линейный префикс.
+    if(trial && (temp_next>=mem[MB_TEMPID].size/32u || temp_next!=device.tempIDsCount)) break;
     uint16_t current=temp_normalize(temp_next);
     uint32_t address=temp_address(current);
-    if((address==mem[MB_TEMPID].start || !(address&4095u)) && !temp_reclaim(address)) break;
+    if(!trial && (address==mem[MB_TEMPID].start || !(address&4095u)) && !temp_reclaim(address)) break;
     if(!mem_read(address,(uint8_t *)&cell,32)) break;
-    temp_next=current+1;
-    device.newAddressTempID=temp_address(temp_next);
-    if(!log_blank((const cellLog_s *)&cell)) continue;
+    bool blank=log_blank((const cellLog_s *)&cell);
+    if(trial && !blank) break;
+    if(!trial) temp_next=current+1;
+    if(!blank) continue;
     memset(&cell,0,sizeof(cell));cell.index=0x8000u;memcpy(cell.ID,id,10);
     if(tp==CT_PHONE) cell.isPhone=1;
     else if(tp==CT_AUTO) cell.isAuto=1;
@@ -206,9 +212,10 @@ bool user_addIdToTempBuffer(char *id, codeType_e tp)
     uint32_t footer[2]={crc|((uint32_t)(uint16_t)~crc<<16),0x32444954u};
     memcpy((uint8_t *)&cell+24,footer,8);
     ok=mem_write(address+2,(uint8_t *)&cell+2,30) && mem_write(address,(uint8_t *)&cell,2);
-    if(ok) { device.tempIDsCount++;device.status.readyID=1; }
+    if(ok) { temp_next=current+1;device.tempIDsCount++;device.status.readyID=1; }
     break;
   }
+  device.newAddressTempID=temp_address(temp_next);
   flash_exec_finish(ok?FX_OK:FX_ERROR);flash_exec_take_result();
   return ok;
 }

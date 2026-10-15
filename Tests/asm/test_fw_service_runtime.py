@@ -73,7 +73,7 @@ class FirmwareMachine(UploadMachine):
         for i in range(limit):
             if test():return i
             self.tick_fw()
-        raise AssertionError(('stuck',self.phase(),self.read_word(self.addr('store')+18,1),self.read_word(self.ptr()+127,1) if self.ptr() else 0))
+        raise AssertionError(('stuck',self.phase(),self.read_word(self.addr('store')+fields('store_state_s')['intent'],1),self.read_word(self.ptr()+127,1) if self.ptr() else 0))
     # Доводит автомат до конца с ограничением числа проходов.
     def drain(self):return self.until(lambda:not self.ptr())
 
@@ -169,7 +169,7 @@ def busy_cancel():
         m.checked('fw_cancel',0)
         m.until(lambda:not m.ptr());assert m.io is None and not m.read_word(m.addr('fw_rollback_end'))
         # Сохранение настроек имеет свой снимок и после отмены завершается отдельно.
-        m.until(lambda:m.read_word(m.addr('store')+18,1)==0)
+        m.until(lambda:m.read_word(m.addr('store')+fields('store_state_s')['intent'],1)==0)
         assert largest_free(m)==2032;count+=1
     return count
 

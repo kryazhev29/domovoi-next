@@ -22,7 +22,7 @@ def ack_order():
             for i in range(1500):
                 phase=m.phase();phases.add(phase)
                 assert_no_early_fetch(m)
-                if phase==8 and m.read_word(m.addr('store')+18,1):
+                if phase==8 and m.read_word(m.addr('store')+fields('store_state_s')['intent'],1):
                     from test_flash_executor import state, CONFIG, FWSERVICE, PENDING, OK
                     kind, step, result = state(m)
                     config_result = m.checked('mem_config_result')
@@ -30,7 +30,7 @@ def ack_order():
                         assert (kind, result) == (CONFIG, PENDING if config_result == 1 else OK)
                     else:
                         assert (kind, result) == (FWSERVICE, PENDING)
-                        assert m.read_word(m.addr('store')+18,1) == 8
+                        assert m.read_word(m.addr('store')+fields('store_state_s')['intent'],1) == 8
                     assert m.checked('fw_service_busy')
                 if phase==16:break
                 m.tick_fw()

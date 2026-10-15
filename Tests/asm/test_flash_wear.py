@@ -84,8 +84,10 @@ def migration():
     mark=int(re.search(r'#define STORE_CLEAR_MARK\s+(0x[0-9A-Fa-f]+)',header)[1],16)
     struct.pack_into('<II',saved,off+8,mark|10,0x1e8000)
     r.u.mem_write(0x21000000,bytes(saved));r.checked('store_restore',0x21000000)
-    assert bytes(r.flash)==image and records(r)==[1,2,3]
-    return {'current_AB_and_ring':'preserved','legacy_clear_intent':'no erase','unacked':[2,3]}
+    assert records(r)==[1,2,3]
+    active=r.select_config()
+    assert r.flash[active+512+off+8:active+512+off+16]==bytes(8)
+    return {'current_AB_and_ring':'preserved','legacy_clear_intent':'durably cancelled','unacked':[2,3]}
 
 
 def wear():
@@ -130,7 +132,7 @@ def temp_power():
             for i,value in enumerate(data[:n]):torn[a+i]&=value
             r=fast(UploadMachine());r.fixture(9,[]);r.flash[:]=torn
             count=r.checked('user_getTempIDRecordsCount',budget=2000000)
-            assert count==(1 if len(data)==2 and n==2 else 0),(len(data),n,count)
+            assert count==(1 if len(data)==2 and n>0 else 0),(len(data),n,count)
             r.u.mem_write(0x21000000,b'abcdefghij\0')
             assert r.checked('user_addIdToTempBuffer',0x21000000,0)
             r.request(1,7);r.drain_upload()
@@ -139,6 +141,48 @@ def temp_power():
             cuts+=1
         for i,value in enumerate(data):image[a+i]&=value
     return {'cuts':cuts,'legacy_IDs':'same wire','torn_slots':'skipped'}
+
+
+def trial_compatibility():
+    # Старый сканер требует непрерывный префикс: до confirm дыр и оборота нет.
+    m=fast(UploadMachine());m.fixture(9,[temp(i+1) for i in range(1536)])
+    m.write(m.addr('trial'),1,1);m.checked('temp_set_index',1,1536)
+    m.u.mem_write(0x21000000,b'abcdefghij\0');before=bytes(m.flash)
+    assert not m.checked('user_addIdToTempBuffer',0x21000000,0)
+    assert bytes(m.flash)==before
+    m.checked('app_trial_confirm');assert not m.checked('app_trial_active')
+    assert m.checked('user_addIdToTempBuffer',0x21000000,0)
+    # Старый ACK и оборванная очистка оставили пустой префикс: запись за ним
+    # невидима старому ELF, поэтому проба сохраняет отказ до подтверждения.
+    m=fast(UploadMachine());m.fixture(9,[temp(i+1) for i in range(101)])
+    m.checked('temp_set_index',1,101);m.flash[0x1e8000:0x1e9000]=b'\xff'*4096
+    m.write(m.device+m.d['tempIDsCount'],m.checked('user_getTempIDRecordsCount',budget=2000000),2)
+    m.write(m.addr('trial'),1,1);m.u.mem_write(0x21000000,b'abcdefghij\0')
+    before=bytes(m.flash);assert not m.checked('user_addIdToTempBuffer',0x21000000,0)
+    assert bytes(m.flash)==before
+    m.checked('app_trial_confirm');assert m.checked('user_addIdToTempBuffer',0x21000000,0)
+    # После оборванной записи проба не продолжает за незавершённой ячейкой.
+    m=fast(UploadMachine());m.fixture(9,[]);m.write(m.addr('trial'),1,1)
+    m.u.mem_write(0x21000000,b'1234567890\0');before=bytes(m.flash);m.record_changes=True
+    assert m.checked('user_addIdToTempBuffer',0x21000000,0)
+    assert not any(k=='erase' for k,_,_ in m.changes)
+    image=bytearray(before);cuts=0
+    for kind,a,data in m.changes:
+        for n in range(len(data)+1):
+            torn=bytearray(image)
+            for i,value in enumerate(data[:n]):torn[a+i]&=value
+            r=fast(UploadMachine());r.fixture(9,[]);r.flash[:]=torn
+            r.write(r.device+r.d['tempIDsCount'],r.checked('user_getTempIDRecordsCount',budget=2000000),2)
+            r.write(r.addr('trial'),1,1)
+            r.u.mem_write(0x21000000,b'abcdefghij\0')
+            complete=torn[r.base:r.base+2]!=b'\xff\xff'
+            blank=torn[r.base:r.base+32]==b'\xff'*32
+            ok=r.checked('user_addIdToTempBuffer',0x21000000,0)
+            assert bool(ok)==(complete or blank),(len(data),n,complete,blank)
+            if not ok:assert bytes(r.flash)==torn
+            cuts+=1
+        for i,value in enumerate(data):image[a+i]&=value
+    return {'trial_full':'refused','confirmed_reclaim':'PASS','trial_byte_cuts':cuts}
 
 
 def both_channels():

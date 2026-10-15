@@ -52,7 +52,7 @@ def endurance(events, temporary=False):
             m=instrumentation(UploadMachine());m.cmd=9 if temporary else 10;m.base=0x1e8400 if temporary else 0x1d0000
             m.u.mem_write(0x20000000,ram);m.flash=media;m.now=now;m.record_changes=True
         if i % 1000 == 0: print('events', i, 'seconds', round(time.monotonic()-started,1), flush=True)
-    return dict(events=events, erases={hex(a):n for a,n in sorted(erase.items())},
+    return dict(events=events, flash_bytes=len(m.flash), erases={hex(a):n for a,n in sorted(erase.items())},
                 page_programs={hex(a):n for a,n in sorted(writes.items())},
                 model_polls={'min':min(passes),'max':max(passes),'mean':sum(passes)/len(passes)},
                 ack_model_polls={'min':min(ack_passes),'max':max(ack_passes),'mean':sum(ack_passes)/len(ack_passes)},
@@ -61,7 +61,9 @@ def endurance(events, temporary=False):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--build-root',required=True);p.add_argument('--events',type=int,default=10000);p.add_argument('--output',required=True);p.add_argument('--temporary',action='store_true')
+    p.add_argument('--flash-mib',type=int,choices=(2,4,16),default=4)
     a=p.parse_args();base=Path(a.build_root)/'ReleaseCustomer'
+    os.environ['DOMOVOI_FLASH_BYTES']=str(a.flash_mib*1024*1024)
     for k,sub,ext in [('ELF','ExePath','out'),('BIN','ExePath','bin'),('MAP','ListPath','map')]:
         os.environ['DOMOVOI_'+k]=str(base/sub/('DomovoiNext.'+ext))
     result=endurance(a.events,a.temporary)

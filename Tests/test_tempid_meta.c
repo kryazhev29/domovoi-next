@@ -20,6 +20,7 @@ static unsigned writes,fail_read,fail_write;
 static bool mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a>=4096&&a+n<=4192);memcpy(p,flash+a-4096,n);return !fail_read;}
 enum { FS_SYNC = 33, FX_STORE = 12, FX_OK = 2, FX_ERROR = 3 };
 typedef struct { void *context; uint8_t step; } flash_exec_args_t;
+static int app_trial_active(void) { return 0; }
 static bool occupied;
 static bool flash_exec_idle(void) { return !occupied; }
 static bool flash_exec_begin(unsigned kind, const flash_exec_args_t *args)
@@ -31,7 +32,7 @@ static bool mem_erase_sector(uint32_t a){CHECK(a==4096);memset(flash,255,sizeof(
 /* КОД МОДУЛЯ */
 int main(void){
  for(unsigned type=0;type<=CT_OTHER;type++){
-  memset(flash,255,sizeof(flash));device.newAddressTempID=0;device.status.readyID=0;device.readTempIDIndex=temp_usbReadIndex=temp_next=0;writes=0;
+  memset(flash,255,sizeof(flash));device.newAddressTempID=mem[MB_TEMPID].start;device.status.readyID=0;device.readTempIDIndex=temp_usbReadIndex=temp_next=0;writes=0;
   CHECK(user_addIdToTempBuffer("1234567890",(codeType_e)type));
   cellID_s expected={0};memcpy(expected.ID,"1234567890",10);
   switch(type){case CT_PHONE:expected.isPhone=1;break;case CT_AUTO:expected.isAuto=1;break;case CT_WIEGAND:expected.isWiegand=1;break;default:break;}
@@ -40,9 +41,9 @@ int main(void){
   CHECK(writes==2&&device.status.readyID&&device.newAddressTempID==4096+sizeof(expected));
   CHECK(user_addIdToTempBuffer("1234567890",(codeType_e)type));CHECK(writes==2);
  }
- memset(flash,255,sizeof(flash));device.newAddressTempID=0;device.status.readyID=0;device.readTempIDIndex=temp_usbReadIndex=temp_next=0;writes=0;
+ memset(flash,255,sizeof(flash));device.newAddressTempID=mem[MB_TEMPID].start;device.status.readyID=0;device.readTempIDIndex=temp_usbReadIndex=temp_next=0;writes=0;
  fail_read=1;CHECK(!user_addIdToTempBuffer("1234567890",CT_RFID));
- CHECK(!writes&&!device.status.readyID&&!device.newAddressTempID);
+ CHECK(!writes&&!device.status.readyID&&device.newAddressTempID==mem[MB_TEMPID].start);
  fail_read=0;fail_write=1;CHECK(!user_addIdToTempBuffer("1234567890",CT_RFID));
  CHECK(!writes&&!device.status.readyID&&device.newAddressTempID==4128);
  fail_write=0;CHECK(user_addIdToTempBuffer("1234567890",CT_RFID));
