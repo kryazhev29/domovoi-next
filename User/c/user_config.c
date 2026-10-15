@@ -191,7 +191,6 @@ static void user_restore_device(device_s *saved)
   device.moduleType = saved->moduleType;
   upload_restore(saved);
   sched16_restore(saved);
-  store_restore(saved);
 }
 // Подготовить чистый device из сохранённых метаданных, без стартовых сканов.
 void user_factory_variables(device_s *saved)

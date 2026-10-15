@@ -306,29 +306,6 @@ static bool store_save(bool cursor)
 }
 bool store_snapshot(void) { return store_save(false); }
 bool store_cursor_snapshot(void) { return store_save(true); }
-// Восстановить незавершённую долговечную очистку после старта.
-void store_restore(const device_s *saved)
-{
-  uint32_t mark, end, start, limit;
-  memcpy(&mark, saved->reserv + DEVICE_CLEAR_MARK_OFFSET, 4);
-  memcpy(&end, saved->reserv + DEVICE_CLEAR_END_OFFSET, 4);
-  if (mark != (STORE_CLEAR_MARK | 10u) && mark != (STORE_CLEAR_MARK | 9u)) return;
-  uint8_t cmd = (uint8_t)mark;
-  start = mem[cmd == 10 ? MB_LOG : MB_TEMPID].start;
-  limit = start + mem[cmd == 10 ? MB_LOG : MB_TEMPID].size;
-  if (end < start || end > limit) return;
-  if (cmd == 10) {
-    uint32_t cursor=log_cursor32[0]>log_cursor32[1]?log_cursor32[0]:log_cursor32[1];
-    log_cursor32[0]=log_cursor32[1]=cursor;
-  } else {
-    uint16_t cursor=device.readTempIDIndex>temp_usbReadIndex?device.readTempIDIndex:temp_usbReadIndex;
-    device.readTempIDIndex=temp_usbReadIndex=cursor;
-  }
-  memset(device.reserv+DEVICE_CLEAR_MARK_OFFSET,0,8);
-  upload_store();
-  // При откате старый ELF не должен продолжить очистку поверх новых событий.
-  if(!user_writeConfigAndDevice()) mem_storage_ready=false;
-}
 // Принять новый запрос выгрузки без повторного подтверждения.
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 {

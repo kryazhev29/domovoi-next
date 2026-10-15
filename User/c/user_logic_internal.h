@@ -165,7 +165,6 @@ void user_comm_off(void);
 // Передать снимок config/device атомарному сохранению.
 bool store_snapshot(void), store_cursor_snapshot(void);
 // Восстановить незавершённую долговечную очистку после старта.
-void store_restore(const device_s *saved);
 // Принять новый запрос выгрузки без повторного подтверждения.
 bool store_upload_request(uint8_t cmd, dataChanel_e cch, uint8_t uniq);
 // Начать долговечное сохранение подтверждённого курсора.

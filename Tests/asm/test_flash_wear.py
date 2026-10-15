@@ -75,19 +75,7 @@ def migration():
     image=bytes(m.flash);r=restored(image)
     assert bytes(r.flash)==image and cursor(r)==2 and records(r)==[1,2,3]
     r.request(1,7);r.drain_upload();assert r.sent==[wire(10,7,0,[log(2),log(3)])]
-    # Старое намерение полной очистки журнала не стирает остатки после обновления.
-    active=r.select_config();saved=bytearray(r.flash[active+512:active+1024]);off=r.d['reserv']
-    # Значение маркера из публичного формата STORE.
-    from pathlib import Path
-    import re
-    header=(Path(__file__).resolve().parents[2]/'User/c/user_logic_internal.h').read_text(encoding='utf-8')
-    mark=int(re.search(r'#define STORE_CLEAR_MARK\s+(0x[0-9A-Fa-f]+)',header)[1],16)
-    struct.pack_into('<II',saved,off+8,mark|10,0x1e8000)
-    r.u.mem_write(0x21000000,bytes(saved));r.checked('store_restore',0x21000000)
-    assert records(r)==[1,2,3]
-    active=r.select_config()
-    assert r.flash[active+512+off+8:active+512+off+16]==bytes(8)
-    return {'current_AB_and_ring':'preserved','legacy_clear_intent':'durably cancelled','unacked':[2,3]}
+    return {'current_AB_and_ring':'preserved','unacked':[2,3]}
 
 
 def wear():
