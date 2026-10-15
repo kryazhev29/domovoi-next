@@ -1,4 +1,4 @@
-"""Точный слой ID: настоящий ELF и NOR с commit, GC и переносом в SJ."""
+"""Точный слой ID: настоящий ELF и NOR с подтверждением адресом, переносом страницы и SJ."""
 import struct
 from collections import Counter
 from storage_machine import StorageMachine, crc16

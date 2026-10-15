@@ -65,4 +65,4 @@ if __name__=='__main__':
     result=run(a.build_root,a.events,a.size,a.active,a.baseline)
     a.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     print({k:v for k,v in result.items() if k!='erases'},flush=True)
-    assert a.baseline or result['max_sector_erases']<=math.ceil(a.events//1/(256//math.ceil((a.size+13)/4096)))+2,'wear threshold exceeded'
+    assert a.baseline or result['max_sector_erases']<=math.ceil(a.events/(256//math.ceil((a.size+13)/4096)))+2,'wear threshold exceeded'

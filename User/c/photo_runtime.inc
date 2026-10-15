@@ -11,7 +11,7 @@ photo_runtime_s pr;
 #define PHOTO_RECEIVE (PHOTO_FORMAT | 1u)
 // Задача определяет ответ команды 21; фаза — следующий шаг флеш или транспорта.
 enum {
-  PT_STORAGE, PT_REQUEST, PT_ACK, PT_SEND, PT_BOOT, PT_OLD_REQUEST, PT_FIND
+  PT_REQUEST=1, PT_ACK, PT_SEND, PT_BOOT, PT_OLD_REQUEST, PT_FIND
 };
 enum {
   PR_IO = 1, PR_HEAD, PR_CAMERA, PR_LAZY_DONE,
@@ -33,7 +33,7 @@ static uint32_t pr_next(uint32_t address, uint32_t size)
   return next==photo_storage_end() ? mem[MB_PHOTO].start : next;
 }
 
-// Отменяем запрос, но завершаем уже начатую публикацию или очистку.
+// Отменяем запрос, но завершаем уже начатую публикацию.
 void photo_storage_cancel(void)
 {
   if (pr.tx_length) pr_tx_release();
@@ -258,7 +258,7 @@ static cmdCode_e pr_request(dataChanel_e channel, uint8_t id, const uint8_t *arg
   return (cmdCode_e)255;
 }
 
-// Отвечаем на команду 21, включая повтор ACK во время очистки.
+// Отвечаем на команду 21 через общий поиск курсора.
 void photo_request_answer(dataChanel_e channel, uint8_t id, const uint8_t *args, uint8_t size)
 {
   cmdCode_e r = pr_request(channel, id, args, size);
@@ -567,7 +567,8 @@ void photo_storage_poll(uint32_t now)
 
 // Передача готового куска не занимает Flash; курсор меняется только после принятия TX.
 /* Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): фото 16 КБ по звонку
-   дошло на сервер и подтверждено. */
+   дошло на сервер и подтверждено.
+   Изменено 2026-10-15 (23e9519): контекст содержит курсор кольца; путь отправки прежний — на плате не проверено. */
 static void pr_send_poll(uint32_t now)
 {
   if (!photo || !photo->pending || device.status.readyToUpdate ||
@@ -590,7 +591,7 @@ static void pr_send_poll(uint32_t now)
   pr_tx_release();
 }
 
-// Обслуживаем камеру, запуск скана, поток передачи и отложенную очистку.
+// Обслуживаем камеру, восстановление кольца и поток передачи.
 void photo_poll(void)
 {
   uint32_t now = timers_getMillis();

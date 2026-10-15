@@ -82,7 +82,7 @@ def photo_queue():
     assert q.getd('countPhoto',2)==0
     r=fast(RingPhoto(q.flash));r.boot_ring()
     assert r.getd('countPhoto',2)==0
-    # Очередь ограничена протоколом, хотя физический запас больше.
+    # Лимит очереди 20 снимков проверяется до команды камере.
     m=fast(RingPhoto());m.boot_ring()
     for i in range(20):m.capture(bytes([i])*13266)
     before=bytes(m.flash)
