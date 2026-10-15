@@ -28,13 +28,19 @@ def run():
     def gpio(u,access,a,n,value,_):
         if value==8:relay.append({'instructions':p.n,'fetch_estimate':p.n+p.wait,'register':hex(a),'value':value})
     m.u.hook_add(UC_HOOK_MEM_WRITE,gpio,begin=0x40010c10,end=0x40010c10)
-    p.run(lambda:m.checked('WG_process',budget=15000000))
+    def access():
+        for _ in range(400):
+            m.checked('WG_process')
+            if relay: return
+            m.now+=1
+        raise AssertionError('Wiegand lookup did not finish')
+    p.run(access)
     assert len(relay)==1 and m.u.mem_read(m.addr('out_st'),1)[0]&1
     assert m.events[-1][0]==71
     out['wiegand-full-last-to-gpio']={'cost':{k:relay[0][k] for k in ('instructions','fetch_estimate')},
         'result':{'relay':{k:relay[0][k] for k in ('register','value')},'event':serial(m.events),
                   'nor_sha256':hashlib.sha256(m.flash).hexdigest()},
-        'scope':'WG_process with one completed decoded Wiegand frame; 50048 IDs, last match; until GPIOB BSRR bit3 write. Bit reception and 25 ms framing wait excluded.'}
+        'scope':'Repeated WG_process with one queued decoded frame; 50048 IDs, last match; until GPIOB BSRR bit3 write. Bit reception and 25 ms framing wait excluded.'}
     m=ServiceMachine(8192,1601536);p=Profile(m,totals)
     body=struct.pack('<HBBB',3,0,73,17);frame=b'SLDN'+body+struct.pack('<H',crc16(body))
     m.u.mem_write(0x21000000,frame)

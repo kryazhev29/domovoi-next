@@ -206,8 +206,13 @@ def scenarios(totals):
         m=AccessMachine();m.put_group(1)
         for cell in range(1,50049):m.put_id(cell,b'%010d'%cell)
         ident=0x21000000;m.u.mem_write(ident,b'0000050048' if match else b'9999999999')
-        execute('card-full-'+('last' if match else 'miss'),m,
-                lambda:m.checked('user_checkIdAndControl',ident,2,budget=12000000))
+        def access():
+            for _ in range(400):
+                if m.checked('user_access_ready',ident):
+                    return m.checked('user_checkIdAndControl',ident,2)
+                m.now+=1
+            raise AssertionError('access lookup did not finish')
+        execute('card-full-'+('last' if match else 'miss'),m,access)
 
     for cmd in (17,18):
         m=ServiceMachine(8192,1601536)

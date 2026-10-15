@@ -111,6 +111,11 @@ CASES['executor step3'] = [('test_flash_executor_step3', 'run')]
 CASES['executor step3 mutations'] = [('test_flash_executor_step3', 'mutations')]
 CORE += ('flash executor', 'executor mutations')
 CORE += ('executor step3', 'executor step3 mutations')
+CASES['review local']=[('test_review_local',n) for n in ('caller','sms','rollback')]
+CASES['review time']=[('test_review_time','run')]
+CASES['review search']=[('test_review_search','run')]
+CASES['review log']=[('test_review_log','run')]
+CORE += ('review local','review time','review search','review log')
 
 
 def select_image(build_root=None):

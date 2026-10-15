@@ -265,7 +265,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_strcpy(number + strlen(number), (char*)&ptr[5], 0, 10);
         memcpy(text, &ptr[15], text_size);
         text[text_size] = 0;
-        uint8_t result = user_sendsms(text, number) ? CMD_SUCCESS : CMD_RUNERROR;
+        cmdCode_e result = user_sendsms(text, number) ? CMD_SUCCESS : CMD_RUNERROR;
         work_release(text, WORK_SMS);
         user_send_answer_comand(ptr[4], result, cch, uniqId);
       }
