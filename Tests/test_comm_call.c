@@ -27,7 +27,7 @@ static bool user_comm_busy_model(void) { return comm_call_active(); }
 // Сбросить наблюдения и модель вызова.
 static void call_reset(void) { call_writer_ready=true; call_access_attempts=0; server_reset(); comm_recover_init(&rc_hooks,sim_now); comm_info_antenna(sim_now); calls=call_actions=0; call_seen[0]=0; call_action_at=0; }
 // Подать номер и сигнал входящего вызова.
-static void ring(const char *clip) { if (call.state == CALL_IDLE) call_present=1; sim_feed("RING\r\n"); if (clip) sim_feed(clip); }
+static void ring(const char *clip) { if (call.state == CALL_IDLE || call.state == CALL_DONE) call_present=1; sim_feed("RING\r\n"); if (clip) sim_feed(clip); }
 // Продвинуть модель до физической отправки отбоя.
 static void call_until_hangup(void)
 {
@@ -43,6 +43,30 @@ static uint32_t call_until_registered(void)
 // Проверить доступ, сроки ATA/CHUP и восстановление данных после вызова.
 static void call_tests(void)
 {
+  /* Новый RING после пустого CLCC начинает новый вызов того же номера. */
+  const unsigned redial[] = {500, 2000, 7000, 9000};
+  for (unsigned i=0; i<sizeof(redial)/sizeof(redial[0]); ++i) {
+    call_reset(); ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700);
+    CHECK(calls==1 && !comm_channel_call_pending());
+    advance(redial[i]); ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700);
+    CHECK(calls==2 && answers==2 && chups==2);
+  }
+  /* Отбой до доступа отменяет номер; освобождение Flash не оживляет звонок. */
+  for (unsigned ended=0; ended<2; ++ended) {
+    call_reset(); call_writer_ready=false;
+    ring("+CLIP: \"+79161234567\",145\r\n"); advance(100);
+    if (ended) { call_present=0; sim_feed("NO CARRIER\r\n"); advance(100); }
+    else {
+      for (unsigned i=0; i<7; ++i) {
+        advance(1000); ring("+CLIP: \"+79161234567\",145\r\n");
+      }
+      advance(1200);
+    }
+    CHECK(!call.pending && !calls); advance(2000);
+    CHECK(!call.pending && !calls && !comm_channel_call_pending());
+    call_writer_ready=true; advance(60000);
+    CHECK(!calls && !answers && !comm_channel_call_pending());
+  }
   /* Нет мобильного интернета: в длинной паузе номер открывает, затем ATA и CHUP. */
   rc_online(); call_writer_ready=true; calls=call_actions=0; sim_error_step=SLM_ACTIVATE; rc_fresh(); rc_wait_power();
   unsigned powers=rc_power_starts, resets=rc_session_resets; uint32_t pause=rc.wait_since;
@@ -121,10 +145,10 @@ static void call_tests(void)
       CHECK(!call.pending && !call_access_attempts && clccs==1);
       CHECK(comm_server_online() && opens==fw_opens && closes==fw_closes);
       ring(clip ? "+CLIP: \"+79161234567\",145\r\n" : NULL); advance(200);
-      CHECK(!calls && !answers && chups==1);
+      CHECK(!calls && !answers && chups==2);
       device.status &= ~(1u << 11); call_access_ready=true;
       advance(8100); ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700);
-      CHECK(calls==1 && call_actions==1 && answers==1 && chups==2);
+      CHECK(calls==1 && call_actions==1 && answers==1 && chups==3);
       CHECK(hangup_at-answer_at>=1000 && hangup_at-answer_at<=2500);
     }
   }
@@ -159,7 +183,7 @@ static void call_tests(void)
   CHECK(answers==1 && chups==1 && hangup_at-answer_at>=1040 && hangup_at-answer_at<=1070);
   CHECK(comm_call_active() && comm_server_online() && opens==opened && !closes);
   CHECK(!call_net_queries && !call_pdp_queries && !call_tcp_queries);
-  advance(3300); ring("+CLIP: \"+79161234567\",145\r\n"); advance(200);
+  advance(3300); sim_feed("+CLIP: \"+79161234567\",145\r\n"); advance(200);
   CHECK(calls==1 && answers==1 && chups==1);
   advance(8100); CHECK(!comm_call_active());
   ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700); CHECK(calls==2 && answers==2 && chups==2);
@@ -219,6 +243,15 @@ static void call_tests(void)
   ring("+CLIP: \"+79161112233\",145\r\n"); advance(50); CHECK(!answers);
   prompt_silence=0; socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n> "); advance(2000);
   CHECK(calls==1 && answers==1 && chups==1 && opens==2 && comm_server_online());
+  /* NO CARRIER отменяет ATA в очереди за TCP prompt: после '>' идёт только CHUP. */
+  call_reset(); prompt_silence=1;
+  p=comm_tx_acquire(&cap); CHECK(p); memset(p,0x5A,12); CHECK(comm_tx_commit(12));
+  for (unsigned i=0;ch.tx_state!=TX_PROMPT && i<100;++i) transport_tick(10);
+  ring("+CLIP: \"+79161112233\",145\r\n"); advance(50);
+  CHECK(calls==1 && !answers && slm.side.queued);
+  call_present=0; sim_feed("NO CARRIER\r\n"); advance(50);
+  sim_feed("> "); advance(2000);
+  CHECK(calls==1 && !answers && chups==1 && !comm_channel_call_pending());
   /* Прогресс загрузки не меняет запрет телефонного доступа/ответа. */
   call_reset(); device.status|=1u<<11; device.firmwarePercent=37;
   ring("+CLIP: \"+79161234567\",145\r\n"); advance(1700); CHECK(!calls && !answers && chups==1);

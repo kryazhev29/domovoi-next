@@ -8,7 +8,7 @@
 #include "comm_channel.h"
 #include "comm_timeouts.h"
 #include <string.h>
-/* Действие и ответ независимы от очереди TCP; DONE ограждает повторы 8 с. */
+/* Действие и ответ независимы от TCP; DONE ограждает поздний CLIP до нового RING. */
 enum { CALL_IDLE, CALL_WAIT_NUMBER, CALL_NUMBER, CALL_ANSWER, CALL_QUEUED,
        CALL_ANSWERING, CALL_HOLD, CALL_HANGUP, CALL_HANGING, CALL_CHECK, CALL_CHECKING, CALL_ABORT, CALL_DONE };
 /* VoLTE модема: неизвестно до запроса, не поддержан - больше не спрашивать в этом запуске. */
@@ -17,7 +17,7 @@ static struct {
   bool (*caller)(const char *);
   uint8_t (*volte)(void);
   const comm_side_t *volte_op;
-  uint32_t now, since, last, answered;
+  uint32_t now, since, last, answered, born;
   char number[21];
   uint8_t state, session, volte_modem, volte_read, pending, seen, stopped;
 } call;
@@ -59,21 +59,34 @@ static bool call_number(const uint8_t *p, uint16_t n, char *out)
 static void call_begin(void)
 {
   call.state = CALL_WAIT_NUMBER; call.since = call.now; call.pending = call.stopped = 0;
+  call.born = call.now;
   call.number[0] = 0; comm_channel_call(true); comm_modem_call(true);
+}
+/* До физического ATA нужен обычный CHUP; аварийный отбой требует режима CALL. */
+static void call_stop(void)
+{
+  call.pending = 0;
+  if (call.stopped || call.state < CALL_WAIT_NUMBER || call.state > CALL_CHECKING) return;
+  if (call.state <= CALL_QUEUED &&
+      (call.state != CALL_QUEUED || !comm_modem_side_started(&call_answer, &call.since))) {
+    comm_modem_side_result(&call_answer);
+    call.since = call.now; call.answered = call.now - comm_timeouts[COMM_T_AT_SIMPLE];
+    call.state = CALL_HANGUP;
+  } else call.state = CALL_ABORT;
 }
 /* Принять звонок, номер или потерю голосового соединения. */
 static void call_urc(const uint8_t *p, uint16_t n)
 {
   char number[sizeof(call.number)];
   if (comm_at_equal(p,n,"NO CARRIER")) {
-    if (!call.stopped && call.state >= CALL_QUEUED && call.state <= CALL_CHECKING) call.state = CALL_ABORT;
+    call_stop();
     return;
   }
   if (call.state == CALL_DONE && call.now - call.last >= comm_timeouts[COMM_T_CALL_QUIET]) {
     call.state = CALL_IDLE; call.number[0] = 0;
   }
   if (comm_at_equal(p, n, "RING")) {
-    if (call.state == CALL_IDLE) call_begin();
+    if (call.state == CALL_IDLE || call.state == CALL_DONE) call_begin();
     call.last = call.now; return;
   }
   if (!comm_at_prefix(p, n, "+CLIP:") || !call_number(p, n, number)) return;
@@ -117,6 +130,8 @@ static void call_volte(void)
 /* Новый номер во время ответа обслуживается сразу; следующий ATA ждёт отбоя. */
 static void call_finished(void)
 {
+  // Пустой CLCC не разрешает выполнять ещё не проверенный номер.
+  if (call.pending == 1u) call.pending = 0;
   if (call.pending) {
     call.state = CALL_NUMBER; call.stopped = 0;
     comm_channel_call(true); comm_modem_call(true); return;
@@ -140,12 +155,17 @@ void comm_call_poll(uint32_t now_ms, bool access_ready)
     call.pending = 0; call_finished();
   }
   call_volte();
+  // 8 с от первого RING/CLIP: повторы URC не продлевают ожидающий доступ.
+  // Срок физического отбоя после ATA по-прежнему отсчитывается от since.
+  if (!call.stopped && call.state >= CALL_WAIT_NUMBER && call.state <= CALL_CHECKING &&
+      (call.state <= CALL_QUEUED || call.pending == 1u) &&
+      now_ms - call.born >= comm_timeouts[COMM_T_CALL_QUIET]) {
+    call_stop();
+  }
   /* Запрет приложения действует уже на RING, без номера и ожидания флеш. */
   if (call.state != CALL_IDLE && call.state != CALL_DONE && !call.caller(NULL)) {
     call.pending = 0;
-    if (call.state <= CALL_ANSWER) {
-      call.since = now_ms; call.answered = now_ms - comm_timeouts[COMM_T_AT_SIMPLE]; call.state = CALL_HANGUP;
-    }
+    if (call.state <= CALL_QUEUED) call_stop();
   }
   /* Флеш может отложить проверку номера, но уже снятая трубка ждёт только таймер. */
   if (call.pending == 1u && access_ready) {

@@ -443,6 +443,8 @@ static void slm_side_issue(void);
 /* Поставить голосовую команду с приоритетом над запуском данных. */
 bool comm_modem_call_side(const comm_side_t *req)
 {
+  /* Отбой может заменить ещё не отправленный ATA, не прерывая данные TCP. */
+  if (slm.side.queued && slm.side.req->mode == COMM_AT_CALL) slm.side.queued = 0;
   if (!slm_side_queue(req)) return false;
   slm_side_issue(); return true;
 }
