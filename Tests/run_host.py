@@ -114,7 +114,7 @@ with TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/c/user_*.c')
         unit=(ROOT/'Tests/test_id_expiry.c').read_bytes().decode('utf-8').replace('/* ТИПЫ */',typedefs(source('structures.h'),'cellID_s')).replace('/* ИСХОДНИК */','\n'.join(function(user,n) for n in ('id_first_pass','id_expired','id_time_end')))
     elif kind=='tempidmeta':
-        ids=source('User/c/user_ids.c');begin=ids.index('// 5 бит поколения');end=ids.index('// Сверить стартовую базу',begin)
+        ids=source('User/c/user_ids.c');begin=ids.index('// 5 бит поколения');end=ids.index('void user_ids_boot(',begin)
         unit=source('Tests/test_tempid_meta.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* КОД МОДУЛЯ */',function(source('User/c/user_*.c').replace('static inline bool id_equal','static bool id_equal'),'id_equal')+'\n'+ids[begin:end])
     elif kind=='commuart':
         header=source('Modules/comm_uart.h')

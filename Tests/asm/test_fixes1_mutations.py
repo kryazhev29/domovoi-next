@@ -55,7 +55,7 @@ def run():
         'D33-status-constant': ('rx_capacity', [('User/c/user_protocol.c',
             'tmp32 = user_comm_rx_capacity();', 'tmp32 = 2048;')]),
         'D33-answer-constant': ('rx_capacity', [('User/packet.c',
-            'rt_put16(packet+15,user_comm_rx_capacity());', 'rt_put16(packet+15,2048);')]),
+            'rt_put16(packet+14,user_comm_rx_capacity());', 'rt_put16(packet+14,2048);')]),
         'D02-TTL255': ('fw_request_ttl', [('User/c/user_protocol.c',
             'send_buffer[6] = 20;', 'send_buffer[6] = 255;')]),
     }

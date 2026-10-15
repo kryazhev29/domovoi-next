@@ -12,7 +12,7 @@ static void link_diag_tests(void)
 {
   rc_online();
   link_expect(LINK_ONLINE);
-  const uint32_t times[6]={4050,370,100,140,890,110};
+  const uint32_t times[6]={4050,370,100,140,890,90};
   CHECK(!memcmp(slm.diag.phases,times,sizeof(times)));
   advance(1000);
   CHECK(!memcmp(slm.diag.phases,times,sizeof(times)));

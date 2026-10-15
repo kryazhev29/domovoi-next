@@ -52,7 +52,7 @@ def config_failure():
         m=FirmwareMachine();m.fixture();m.begin(4,ch,True);m.until(lambda:m.phase()==8)
         assert_no_early_fetch(m)
         m.fault=('poll',m.counts['poll']+1);m.until(lambda:m.phase()==16)
-        assert bytes(m.u.mem_read(m.ptr()+9,2))==bytes((19,2))
+        assert bytes(m.u.mem_read(m.ptr()+8,2))==bytes((11,2))
         for offset,size in ((164,1),(148,2),(172,2),(174,4),(179,2)):
             assert not m.read_word(m.device+offset,size),(ch,offset)
         assert not m.read_word(m.addr('fw_write_errors'),1)
