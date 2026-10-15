@@ -35,10 +35,10 @@ def ack_order():
                 if phase==16:break
                 m.tick_fw()
             else:raise AssertionError(('ACK never ready',number,ch))
-            pointer=m.ptr();wire=bytes(m.u.mem_read(pointer,19));assert wire[9:11]==bytes((19,0))
+            pointer=m.ptr();wire=bytes(m.u.mem_read(pointer,18));assert wire[8:10]==bytes((11,0))
             for _ in range(4):
                 m.tick_fw();assert_no_early_fetch(m)
-                assert m.ptr()==pointer and bytes(m.u.mem_read(pointer,19))==wire and not m.sent
+                assert m.ptr()==pointer and bytes(m.u.mem_read(pointer,18))==wire and not m.sent
                 if number==1:assert m.flash[0x1000:0x1020]==b'\x5a'*32
             m.busy=m.commit_fail=False;m.drain()
             assert m.sent==[wire] and not m.ptr() and owned(m)==0
@@ -58,7 +58,7 @@ def config_failure():
         assert not m.read_word(m.addr('fw_write_errors'),1)
         assert not m.read_word(m.addr('fw_rollback_end'))
         assert_no_early_fetch(m);m.drain()
-        assert len(m.sent)==1 and m.sent[0][9:11]==bytes((19,2))
+        assert len(m.sent)==1 and m.sent[0][8:10]==bytes((11,2))
         assert owned(m)==0
         out.append(dict(channel=ch,FWinProgress=0,blocks=0,index=0,timeout=0,answer='RUNERROR'))
     return out

@@ -24,7 +24,7 @@ def nested_config():
         raise AssertionError('FW-service did not finish A/B')
     assert seen
     m.drain()
-    assert len(m.sent) == 1 and m.sent[0][9:11] == bytes((19, 0))
+    assert len(m.sent) == 1 and m.sent[0][8:10]==bytes((11,0))
     return {'nested_kind': 'FWSERVICE', 'reply_after_verify': True}
 
 

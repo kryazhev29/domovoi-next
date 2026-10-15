@@ -61,8 +61,8 @@ class ClearMachine(StorageMachine):
 
 # Собирает ожидаемые байты кадра независимо от кода продукта.
 def wire(error=False,uniq=7):
-    b=struct.pack('<HBBB',11 if error else 3,255,uniq,11 if error else 103)
-    if error:b+=struct.pack('<BBIH',103,2,1700000400,987)
+    b=struct.pack('<HBBB',10 if error else 3,255,uniq,11 if error else 103)
+    if error:b+=struct.pack('<BIH',2,1700000400,987)
     return b'SLDN'+b+struct.pack('<H',crc16(b))
 
 # Проверяет успешную очистку, неизменный ответ и возврат памяти.

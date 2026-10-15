@@ -9,7 +9,7 @@ enum {
 typedef struct {
   uint32_t cursor,end,epoch;
   uint8_t cancel,quiet,touched,uniq;
-  uint8_t response[19];
+  uint8_t response[18];
 } idclear_s;
 RT_ASSERT(idclear_size, sizeof(idclear_s)==36);
 static idclear_s *idclear_current(void)
@@ -108,6 +108,6 @@ void idclear_runtime_poll(uint32_t now)
     p->touched=1;
     return;
   }
-  if(!p->quiet && !reply_send(p->response,flash_job.step==IDC_DONE?11:19,0)) return;
+  if(!p->quiet && !reply_send(p->response,flash_job.step==IDC_DONE?11:18,0)) return;
   idclear_release(flash_job.step==IDC_DONE ? FX_OK : FX_ERROR);
 }

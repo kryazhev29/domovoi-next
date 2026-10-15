@@ -63,7 +63,7 @@ def rejected(m, candidate):
     before = (bytes(m.u.mem_read(m.addr('config'), 512)),
               bytes(m.u.mem_read(m.device, 512)), bytes(m.flash), m.counts['start'])
     command(m, candidate)
-    payload = struct.pack('<HBBBBBIH', 11, 255, 73, 11, 12, 1, 0x78563412, 2048)
+    payload = struct.pack('<HBBBBIH', 10, 255, 73, 11, 1, 0x78563412, 2048)
     assert m.sent, 'неверная команда 12 должна получить немедленный отказ'
     assert m.sent[-1] == b'SLDN' + payload + struct.pack('<H', crc16(payload)), m.sent[-1].hex()
     after = (bytes(m.u.mem_read(m.addr('config'), 512)),

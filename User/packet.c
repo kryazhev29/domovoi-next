@@ -32,8 +32,8 @@ uint8_t reply_send(const uint8_t *packet, uint16_t size, uint8_t channel)
 // Заполняет единый ответ 11; время и свободный буфер фиксируются при создании.
 void answer11(uint8_t *packet,uint8_t uniq,uint8_t command,uint8_t code)
 {
-  packet[6]=(command==7 || command==21)?5:255; packet[7]=uniq; packet[8]=11; packet[9]=command; packet[10]=code;
-  rt_put32(packet+11,device.datetime);
-  rt_put16(packet+15,user_comm_rx_capacity());
-  packet_frame(packet,11);
+  packet[6]=(command==7 || command==21)?5:255; packet[7]=uniq; packet[8]=11; packet[9]=code;
+  rt_put32(packet+10,device.datetime);
+  rt_put16(packet+14,user_comm_rx_capacity());
+  packet_frame(packet,10);
 }

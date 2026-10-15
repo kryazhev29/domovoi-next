@@ -362,9 +362,12 @@ def rx_capacity():
             m.checked('user_send_statusPack', channel)
             body = struct.pack('<HBBBIHH', 18, 15, 42, 2, 0x78563412, 0, 2048 - used) + bytes(7)
             assert m.sent[-1] == b'SLDN' + body + struct.pack('<H', crc16(body)), (channel, used, m.sent[-1].hex())
-            m.checked('answer11', 0x21000300, 42, 8, 0)
-            body = struct.pack('<HBBBBBIH', 11, 255, 42, 11, 8, 0, 0x78563412, 2048 - used)
-            assert bytes(m.u.mem_read(0x21000300, 19)) == b'SLDN' + body + struct.pack('<H', crc16(body))
+            m.stubs.pop(m.addr('user_send_answer_comand'), None)
+            for command in (8, 21):
+                for code in (0, 1, 2, 254, 255):
+                    m.checked('user_send_answer_comand', command, code, channel, 42)
+                    body = struct.pack('<HBBBBIH', 10, 5 if command == 21 else 255, 42, 11, code, 0x78563412, 2048 - used)
+                    assert m.sent[-1] == b'SLDN' + body + struct.pack('<H', crc16(body)), (channel, command, code, used)
     return {'status1_answer11_dynamic_free_and_full_frames': 'PASS'}
 
 

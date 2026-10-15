@@ -25,7 +25,7 @@ def stale_reply(baseline=False):
         assert not m.sent
         m.transport_busy = False
         for _ in range(20): m.step()
-        replies = [p for p in m.sent if p[8:11] == bytes((11, 21, 1))]
+        replies = [p for p in m.sent if p[8:10] == bytes((11,1))]
         results.append(dict(cursor=[number, offset], reply_count=len(replies), release_ms=400))
         if baseline:
             assert not replies, 'исходная потеря не воспроизведена'
@@ -56,7 +56,7 @@ def lifecycle():
         for _ in range(600):
             m.step()
             if m.sent:break
-        assert len(m.sent) == 1 and m.sent[0][7:11] == bytes((8, 11, 21, 1))
+        assert len(m.sent) == 1 and m.sent[0][7:10] == bytes((8, 11, 1))
         results += 1
     return results
 
@@ -78,7 +78,7 @@ def concurrent():
         if i % 100 == 0: m.transport_busy = False
         m.checked('server_rx_process'); m.step()
     assert len([p for p in m.sent if p[7:9] == bytes((5, 10))]) == 1
-    assert len([p for p in m.sent if p[7:11] == bytes((6, 11, 21, 1))]) == 1
+    assert len([p for p in m.sent if p[7:10] == bytes((6, 11, 1))]) == 1
     # Запрос во время съёмки не перезаписывает контекст камеры.
     m = BusyMachine(); m.boot_media()
     m.stubs[m.addr('user_send_answer_comand')] = m.answer
@@ -86,7 +86,7 @@ def concurrent():
     m.stubs.pop(m.addr('user_send_answer_comand'))
     request(m, struct.pack('<IH', 0, 0))
     for _ in range(20): m.checked('server_rx_process'); m.step()
-    assert any(p[7:11] == bytes((6, 11, 21, 2)) for p in m.sent)
+    assert any(p[7:10] == bytes((6, 11, 2)) for p in m.sent)
     m.data(b'a'*58); m.data(b'b'*58)
     assert m.events and m.flash[0x20000d:0x20000d+116] == b'a'*58+b'b'*58
     return 2
@@ -106,8 +106,19 @@ def mutations():
     return run(mutations, 'test_photo_latency', 'photo-latency-mutations')
 
 
+def success_wire():
+    m = BusyMachine(saved_photo(1)); m.boot_media()
+    m.write(m.device + m.d['datetime'], 0x78563412)
+    request(m, struct.pack('<IH', 12345, 1))
+    for _ in range(2000):
+        m.step()
+        if m.sent: break
+    assert m.sent == [wire(11, struct.pack('<BIH', 0, 0x78563412, 2048), 6, 5)]
+    return '21 -> 11: code/time/buffer, complete CRC frame'
+
+
 def run():
-    return dict(stale_reply=stale_reply(), lifecycle=lifecycle(), concurrent=concurrent())
+    return dict(success_wire=success_wire(), stale_reply=stale_reply(), lifecycle=lifecycle(), concurrent=concurrent())
 
 
 if __name__ == '__main__':

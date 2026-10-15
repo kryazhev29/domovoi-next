@@ -315,6 +315,12 @@ def main():
     raw=kernel_scenarios(totals);raw.update(scenarios(totals));raw['main-idle']=main_iteration(totals)
     from protocol_paths import run as complete_paths
     raw.update(complete_paths()['scenarios'])
+    from test_service_runtime import ServiceMachine
+    for channel in (0, 1):
+        m = ServiceMachine(); m.stubs.pop(m.addr('user_send_answer_comand'), None)
+        for code in (0, 1, 2, 254, 255):
+            m.checked('user_send_answer_comand', 21, code, channel, 42)
+            raw[f'answer11-photo-{channel}-{code}'] = {'result': m.sent[-1]}
     config=os.environ.get('DOMOVOI_COMPARE_CONFIG','Release')
     expected=json.loads((ROOT/'Tests/fixtures'/f'protocol-{config}.json').read_text(encoding='utf-8'))
     actual={k:{field:serial(v.get(field)) for field in ('result','returned')} for k,v in raw.items()}

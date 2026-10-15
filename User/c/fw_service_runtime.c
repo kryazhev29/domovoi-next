@@ -249,7 +249,7 @@ handoff:
   goto answer;
   case FWS_REPLY:
     if(!p->quiet && !reply_send(p->data,p->len,p->channel)) return;
-    if(p->data[8]==11 && !p->data[10] && p->mode==1) {
+    if(p->data[8]==11 && !p->data[9] && p->mode==1) {
       fw_step(p, FWS_COPY_ERASE);
       p->pos = 0;
       return;
@@ -297,7 +297,7 @@ cleanup:
   code=2;
 answer:
   answer11(p->data,p->uniq,19,code);
-  p->len = 19;
+  p->len = 18;
   fw_step(p, FWS_REPLY);
   flash_exec_finish(code ? FX_ERROR : FX_OK);
   return;

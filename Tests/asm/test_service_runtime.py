@@ -126,7 +126,7 @@ class ServiceMachine(StorageMachine):
     def expected_error(self, cmd, uniq=73):
         timestamp = int.from_bytes(self.u.mem_read(self.device+self.d['datetime'], 4), 'little')
         free = 2048 - int.from_bytes(self.u.mem_read(self.addr('server_rx_count'), 2), 'little')
-        body = struct.pack('<HBBBBBIH', 11, 255, uniq, 11, cmd, 2, timestamp, free)
+        body = struct.pack('<HBBBBIH', 10, 255, uniq, 11, 2, timestamp, free)
         return b'SLDN' + body + struct.pack('<H', crc16(body))
 
 

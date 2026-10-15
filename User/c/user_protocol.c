@@ -259,7 +259,7 @@ void reader_reply_poll(void)
 // Передать единый ответ 11 без повторного формирования CRC.
 void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId)
 {
-  uint8_t local[19];
+  uint8_t local[18];
   uint8_t *buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(local)) : local;
   if (!buffer) return;
   answer11(buffer, uniqId, cmd, (uint8_t)cc);

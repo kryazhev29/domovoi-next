@@ -85,7 +85,7 @@ def rx_contracts():
             expected = 3 if stream == good * 3 else 1
             assert len(machine.sent) == expected, (stream[:12], chunk, machine.sent)
             assert not used(machine)
-            assert all(p[:4] == b'SLDN' and p[8:11] == bytes([11, 27, 0])
+            assert all(p[:4] == b'SLDN' and p[8:10] == bytes([11,0])
                        and crc16(p[4:-2]) == int.from_bytes(p[-2:], 'little') for p in machine.sent)
             checks += 1
     machine = rx_machine()
@@ -123,7 +123,7 @@ def reader_contracts():
                                   (3, 0, 1), (3, 1, 0), (4, 1, 1), (255, 1, 1)):
         machine = rx_machine()
         receive(machine, frame(6, bytes([5, source, address])), 2)
-        assert len(machine.sent) == 1 and machine.sent[0][10] == code, (source, machine.sent)
+        assert len(machine.sent) == 1 and machine.sent[0][9] == code, (source, machine.sent)
     return 7
 
 

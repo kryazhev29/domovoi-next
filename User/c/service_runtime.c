@@ -176,7 +176,7 @@ read_more:
   return;
 bad:
   p->failed = 1;
-  p->length=19;
+  p->length=18;
   answer11(p->packet,p->packet[7],p->kind==SC_TABLES?17:p->kind==SC_CONFIG?12:18,2);
   flash_job.step=SC_SEND;
 }

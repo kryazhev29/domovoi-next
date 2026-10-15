@@ -69,7 +69,7 @@ def run():
     from iar_image import image_paths
     payload_size=(image_paths()[1].stat().st_size-512+3)&~3
     f=profile(FirmwareMachine());f.fixture(payload_size);f.begin();f.drain()
-    assert f.sent[0][9:11]==bytes((19,0)) and f.flash[0x1200:0x1200+payload_size]==f.image and not f.outside
+    assert f.sent[0][8:10]==bytes((11,0)) and f.flash[0x1200:0x1200+payload_size]==f.image and not f.outside
     p=profile(PhotoMachine());p.packet(7,b'\5');p.drain()
     assert p.answers and p.answers[-1][1]!=0 and not p.active() and not p.outside
     # Модель действительно ограничена ёмкостью чипа, без скрытой памяти 4 МиБ.

@@ -83,7 +83,7 @@ def normal():
     for number,size,ch,parser in [(2,4,0,True),(4,1028,1,True),(1,4,0,True),(1,132,1,False),(1,4096,0,False),(1,97792,0,False)]:
         m=FirmwareMachine();m.fixture(size);m.begin(number,ch,parser);assert m.ptr(),(number,size,m.answers)
         n=m.drain();assert len(m.sent)==1,(number,size,m.sent,m.logs)
-        assert m.sent[0][9:11]==bytes((19,0));assert crc16(m.sent[0][4:-2])==int.from_bytes(m.sent[0][-2:],'little')
+        assert m.sent[0][8:10]==bytes((11,0));assert crc16(m.sent[0][4:-2])==int.from_bytes(m.sent[0][-2:],'little')
         assert m.flash[0x1000:0x1020]==m.head if number==1 else m.flash[0x1000+8:0x1000+24]==m.head[8:24]
         if number==1:
             assert m.flash[0x1200:0x1200+size]==m.image
@@ -122,19 +122,19 @@ def boundaries_errors():
                 h=bytearray(m.head);struct.pack_into('<I',h,8,size);m.flash[0x1a000:0x1a020]=h
             req=struct.pack('<HIIIH',number,1,size,1,(size+1023)//1024)
             m.u.mem_write(0x21000000,req);m.checked('fw_service_begin',0x21000000,0,7)
-            if m.ptr():m.drain();assert m.sent[-1][10]==(2 if number==1 else 1)
+            if m.ptr():m.drain();assert m.sent[-1][9]==(2 if number==1 else 1)
             else:assert m.answers and m.answers[-1][1]==1
             assert not m.counts['start'];count+=1
     # Неверная полная CRC или стёртый заголовок резерва не разрешают стирание приложения.
     for erased in (False,True):
         m=FirmwareMachine();m.fixture();m.flash[0x1a200]^=1
         if erased:m.flash[0x1a000:0x1a020]=b'\xff'*32
-        m.begin();m.drain();assert m.sent[-1][10]==2 and not m.counts['start'];count+=1
+        m.begin();m.drain();assert m.sent[-1][9]==2 and not m.counts['start'];count+=1
     # Повтор загрузки сохраняет промежуточную область и публикует один проверенный ACK.
     m=FirmwareMachine();m.fixture();m.flash[0x1000:0x1020]=m.head
     m.write(m.device+164,1,1);m.write(m.device+178,1,1);m.write(m.device+148,1,2)
     before=bytes(m.flash[0x1000:0x1a000]);m.begin(4,1);m.drain()
-    assert m.sent[-1][10]==0 and bytes(m.flash[0x1000:0x1a000])==before;count+=1
+    assert m.sent[-1][9]==0 and bytes(m.flash[0x1000:0x1a000])==before;count+=1
     return count
 
 # Проверяет каждый вид отказа обмена прошивки.
@@ -201,7 +201,7 @@ def power_cuts():
             assert flash[0x1000:0x1004]==b'\xff'*4,'incomplete image got install marker'
             assert not boot.read_word(boot.device+171,1),'reset resumed unverified install'
             # Область приложения стирается только после долговечного успешного ответа команды 19.
-            if 0x1000<=a<0x1a000:assert m.sent and m.sent[0][10]==0
+            if 0x1000<=a<0x1a000:assert m.sent and m.sent[0][9]==0
             count+=1
     else:raise AssertionError('power fixture stuck')
     assert m.read_word(m.device+171,1)==1
@@ -256,7 +256,7 @@ def real_spi():
         if active:fwread=max(fwread,wire['read']);assert wire['read']<=64
         assert wire['status']<=4, (n, m.phase(), wire, m.exec_state())
     else:raise AssertionError('real SPI stuck')
-    assert m.flash[0x1200:0x1200+len(m.image)]==m.image and m.sent[0][10]==0
+    assert m.flash[0x1200:0x1200+len(m.image)]==m.image and m.sent[0][9]==0
     assert m.read_word(m.device+171,1)==1
     return dict(polls=n,max_poll_instructions=max(m.poll_costs),total_poll_instructions=sum(m.poll_costs),max_instructions=max(m.costs),total_instructions=sum(m.costs),stack=m.stack_peak,spi_read_max=mxread,fw_spi_read_max=fwread,spi_status_max=mxstatus,phase_maximum=m.phase_costs)
 

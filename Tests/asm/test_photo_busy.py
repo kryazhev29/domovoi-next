@@ -119,7 +119,7 @@ def usb_owners():
         assert not m.usb(12)
         m.now+=499; m.checked('usb_check_data'); assert not m.usb_drain()
         m.now+=2; m.checked('usb_check_data'); out=m.usb_drain()
-        assert len(out)==1 and out[0][8:11]==bytes([11,12,2]),out
+        assert len(out)==1 and out[0][8:10]==bytes([11,2]),out
     return count
 
 
@@ -131,7 +131,7 @@ def queue_edges():
     m.u.mem_write(m.addr('flash_job'),bytes([8,1,1]))
     assert not m.usb(9,uniq=51)
     m.server(10,uniq=52); m.server(9,uniq=53)
-    assert any(p[8:11]==bytes([11,9,2]) and p[7]==53 for p in m.sent)
+    assert any(p[8:10]==bytes([11,2]) and p[7]==53 for p in m.sent)
     m.u.mem_write(m.addr('flash_job'),bytes(4))
     for _ in range(100): m.step()
     assert len([p for p in m.usb_history if p[8]==10 and p[7]==51])==1

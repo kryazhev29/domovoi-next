@@ -62,7 +62,7 @@ def grace():
         m.checked('server_rx_process'); m.step()
         if any(p[8:10] == bytes((14, 1)) for p in m.sent): break
     else: raise AssertionError('21 не стартовала внутри окна')
-    assert not any(p[7:11] == bytes((41, 11, 21, 2)) for p in m.sent)
+    assert not any(p[7:10] == bytes((41, 11, 2)) for p in m.sent)
     # Разрыв TCP отменяет намерение, не публикуя неподтверждённый курсор.
     m.checked('user_comm_session', 0)
     for _ in range(100): m.step()

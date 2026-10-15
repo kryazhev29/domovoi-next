@@ -18,7 +18,7 @@ def run():
                 assert not m.sent and not m.active(), (flag, elapsed)
             m.now = (start + 1000) & 0xffffffff
             m.checked('server_rx_process')
-            assert [p[7:11] for p in m.sent] == [bytes((6, 11, 21, 2))]
+            assert [p[7:10] for p in m.sent] == [bytes((6, 11, 2))]
             assert m.checked('user_comm_rx_capacity') == 2048
             count += 1
     # Короткое сохранение заканчивается до предела: фото начинается без отказа.
@@ -36,20 +36,20 @@ def run():
     m.checked('user_dataconnection', 0, 0x21000000, len(packet))
     m.now += 999; m.checked('server_rx_process'); assert not m.sent
     m.now += 1; m.checked('server_rx_process')
-    assert m.sent[0][7:11] == bytes((6, 11, 21, 2))
+    assert m.sent[0][7:10] == bytes((6, 11, 2))
     m.checked('server_rx_process')
     assert m.checked('user_comm_rx_capacity') == 2048 - len(wire(8, bytes((1, 1, 1)), 7, 30))
     m.u.mem_write(m.addr('flash_job'), bytes(4))
     m.checked('server_rx_process')
     assert m.checked('user_comm_rx_capacity') == 2048
-    assert any(p[7:10] == bytes((7, 11, 8)) for p in m.sent)
+    assert any(p[7:9] == bytes((7, 11)) for p in m.sent)
     # TX не позволяет потерять отказ; срок не продлевается при повторных проверках.
     m = BusyMachine(saved_photo()); m.boot_media()
     m.write(m.addr('store_save_requested'), 1, 1)
     request(m, bytes(6)); m.transport_busy = True
     m.now += 1200; m.checked('server_rx_process'); assert not m.sent
     m.transport_busy = False; m.checked('server_rx_process')
-    assert m.sent[0][7:11] == bytes((6, 11, 21, 2))
+    assert m.sent[0][7:10] == bytes((6, 11, 2))
     # Новая TCP-сессия не наследует срок старого кадра.
     m.checked('user_comm_session', 0); request(m, bytes(6), 8)
     m.now += 999; m.checked('server_rx_process'); assert len(m.sent) == 1
