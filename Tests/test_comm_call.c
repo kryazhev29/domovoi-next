@@ -5,20 +5,20 @@ static unsigned calls, chups_at_call, answers_at_call, call_actions; static char
 static uint32_t call_action_at;
 // Запомнить номер и результат проверки доступа до ответа.
 #define CT_PHONE 1
-static bool user_incomingcall(char *number, uint8_t typ)
+#define codeType_e uint8_t
+static void user_checkIdAndControl(char *id, uint8_t typ)
 {
+  const char *number = device.callingnumber;
+  CHECK(strlen(id) == 10);
   CHECK(typ == CT_PHONE);
   ++calls; chups_at_call=chups; answers_at_call=answers; call_action_at=sim_now;
   CHECK(strlen(number)<sizeof(call_seen)); memcpy(call_seen,number,strlen(number)+1u);
   /* Модель допуска: скрытый и чужой номер не открывают. Производственный доступ прежний. */
   if (number[0] && strcmp(number,"+79990000000")) ++call_actions;
-  return true;
 }
 /* Чтение доступно между шагами, но доступ с записью ждёт свободного исполнителя. */
 static bool call_writer_ready;
 static unsigned call_access_attempts;
-static char *user_last10digitsnumber(char *number)
-{ size_t n = strlen(number); return n > 10u ? number + n - 10u : number; }
 static bool user_access_ready(const char *id)
 { CHECK(strlen(id) <= 10u); ++call_access_attempts; return call_writer_ready; }
 /* ОБРАБОТЧИК ЗВОНКА ПРИЛОЖЕНИЯ */
@@ -168,7 +168,7 @@ static void call_tests(void)
   call_reset(); ring(NULL); advance(500); CHECK(!calls && !answers);
   advance(2300); CHECK(!calls && !call_actions && answers==1 && chups==1);
   call_reset(); ring("+CLIP: \"\",128\r\n"); advance(1700);
-  CHECK(calls==1 && !call_actions && !call_seen[0] && answers==1 && chups==1);
+  CHECK(!calls && !call_actions && !call_seen[0] && answers==1 && chups==1);
   call_reset(); ring("+CLIP: \"+79990000000\",145\r\n"); advance(1700);
   CHECK(calls==1 && !call_actions && answers==1 && chups==1);
   call_reset(); ring("+CLIP: \"+7916x\",145\r\n"); advance(2800); CHECK(!calls && answers==1 && chups==1);

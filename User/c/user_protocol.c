@@ -225,7 +225,7 @@ bool user_send_smsToServer(char *sms)
 {
   uint16_t capacity, size = 0;
   uint8_t *b;
-  if (!comm_server_online()) return false;
+  if (!sms || !comm_server_online()) return false;
   b = comm_tx_acquire(&capacity);
   if (!b) return false;
   while (size + 11u <= capacity && sms[size]) ++size;

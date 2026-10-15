@@ -161,7 +161,7 @@ def text_commands():
                     if not byte:return bytes(data)
                     data.append(byte)
                 raise AssertionError('unterminated SMS string')
-            calls.append((string(text), string(number))); m.ret()
+            calls.append((string(text), string(number))); m.ret(1)
         m.stubs[m.addr('user_sendsms')] = send
         return m
     for length in range(3, 14):
@@ -180,9 +180,10 @@ def text_commands():
     for number in (b'9\0' + b'X'*8, b'9'*10):
         m = machine(); calls.clear()
         execute(m, 11, number + b'hello')
-        assert calls == [(b'hello', b'+7' + number.split(b'\0')[0])]
+        assert calls == ([(b'hello', b'+7'+number)] if b'\0' not in number else [])
+        assert m.answers[-1][1] == (0 if b'\0' not in number else 1)
     # Номер звонящего ограничен полем; хвост после раннего NUL очищен.
-    for number in (b'', b'9', b'9'*40):
+    for number in (b'', b'9', b'9'*40, b'9991234567', b'+79991234567'):
         m = machine()
         m.stubs[m.addr('user_checkIdAndControl')] = lambda: m.ret(0)
         address = m.device + m.d['callingnumber']
@@ -190,7 +191,9 @@ def text_commands():
         m.u.mem_write(address, b'X'*(capacity+1))
         m.u.mem_write(0x21000400, number + b'\0')
         m.checked('user_incomingcall', 0x21000400, 1)
-        assert bytes(m.u.mem_read(address,capacity+1)) == number[:capacity-1].ljust(capacity,b'\0') + b'X'
+        valid = len(number) in (10, 12)
+        expected = number[:capacity-1].ljust(capacity,b'\0') + b'X' if valid else b'X'*(capacity+1)
+        assert bytes(m.u.mem_read(address,capacity+1)) == expected
     return {'sms_cases': 19, 'caller_bounds': 3}
 
 

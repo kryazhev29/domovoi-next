@@ -5,7 +5,7 @@ static struct {
   int8_t connectionhandle; uint8_t registredOnServer, answerTimeout, answerID;
   char IMEIGSM[16]; uint8_t protocolVersion, hardwareVersion;
   uint32_t datetime, datetimeID, datetimeGroup, datetimeShedule, datetimeConfig, datetimeHoliday;
-  uint16_t status; uint8_t firmwarePercent;
+  uint16_t status; uint8_t firmwarePercent; char callingnumber[21];
 } device;
 #define CH_SERVER 1
 static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)];

@@ -22,9 +22,9 @@ bool user_smsreceived (char* num, char* data, bool *first);
 // Проверить числовой ПИН настроек либо универсальный ПИН действительного IMEI.
 bool user_pin_valid(uint32_t pin);
 // Поставить исходящую SMS в очередь модема.
-void user_sendsms(char *mes, char *num);
+bool user_sendsms(char *mes, char *num);
 // Проверить номер звонящего по правилам доступа.
-bool user_incomingcall (char* num, uint8_t typ);
+bool user_incomingcall (const char* num, uint8_t typ);
 
 // инициализация
 void user_init (void);

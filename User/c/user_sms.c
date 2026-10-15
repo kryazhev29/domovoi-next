@@ -112,9 +112,10 @@ format_error:
 }
 
 // Поставить SMS в очередь модема и записать событие принятия.
-void user_sendsms(char *mes, char *num){
-  if (user_comm_sms(num, mes))
-    log_addSystemEventID(LOG_SYS_SENDSMS, user_last10digitsnumber(num));
+bool user_sendsms(char *mes, char *num){
+  if (!user_comm_sms(num, mes)) return false;
+  log_addSystemEventID(LOG_SYS_SENDSMS, user_last10digitsnumber(num));
+  return true;
 }
 
 // Запомнить последнее неизвестное ID для уведомления администратора.

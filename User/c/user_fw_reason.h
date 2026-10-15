@@ -33,6 +33,7 @@ void fw_event_poll(void);
 void fw_boot_event_poll(void);
 // Закончить загрузку, сохранив подтверждённые позиции.
 void fw_cancel(fw_reason_e reason);
+void fw_transfer_cancel(fw_reason_e reason);
 // Закончить загрузку и ответить по её каналу.
 void fw_stop(fw_reason_e reason, uint8_t uniqId);
 // Вернуть причину отказа запуска, не меняя состояние.

@@ -79,6 +79,12 @@ void fw_boot_event_poll(void)
 void fw_cancel(fw_reason_e reason)
 {
   fw_service_cancel();
+  fw_transfer_cancel(reason);
+}
+
+// Остановить передачу, сохранив владельца ответа команды 19 до доставки ошибки.
+void fw_transfer_cancel(fw_reason_e reason)
+{
   fw_async_cancel();
   fw_rollback_end = 0;
   device.FWinProgress = 0;

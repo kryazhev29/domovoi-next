@@ -246,10 +246,13 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       upload_runtime_request(9, cch, uniqId, ptr[2]);
       break;
 
-    case 11: // отправить смс на заданный номер с заданным текстом
+    case 11: { // отправить смс на заданный номер с заданным текстом
       /* Номер занимает 10 байт. Текст ограничен длиной кадра, NUL на проводе необязателен.
        * Собственная копия не позволяет захватить CRC или соседний пакет в текст SMS. */
-      if (len >= 14 && ptr[5] != 0 && ptr[15] != 0 &&
+      uint8_t digits = 0;
+      if (len >= 14)
+        while (digits < 10 && ptr[5 + digits] >= '0' && ptr[5 + digits] <= '9') ++digits;
+      if (digits == 10 && ptr[15] != 0 &&
           memchr(config.countryCode, 0, sizeof(config.countryCode)) != NULL){
         uint16_t text_size = len - 13;
         char number[sizeof(config.countryCode) + 11];
@@ -262,14 +265,15 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         user_strcpy(number + strlen(number), (char*)&ptr[5], 0, 10);
         memcpy(text, &ptr[15], text_size);
         text[text_size] = 0;
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
-        user_sendsms(text, number);
+        uint8_t result = user_sendsms(text, number) ? CMD_SUCCESS : CMD_RUNERROR;
         work_release(text, WORK_SMS);
+        user_send_answer_comand(ptr[4], result, cch, uniqId);
       }
       else{
         user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
       }
       break;
+    }
 
     case 12: // установка настроек контроллера
       if ((len - 3) == sizeof(config)){

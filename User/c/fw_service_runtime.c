@@ -272,7 +272,7 @@ io_error:
   reason=FW_REASON_WRITE;
 error_log:
   if(fw_phase(p)>=FWS_COPY_ERASE && fw_phase(p)<FWS_REPLY) {
-    fw_cancel(reason);
+    fw_transfer_cancel(reason);
     if(p->channel && !device.registredOnServer) goto cancel;
     p->data[6]=255;
     p->data[7]=0;

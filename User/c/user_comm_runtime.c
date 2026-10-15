@@ -43,10 +43,7 @@ static bool user_comm_call(const char *number)
 {
   if (device.status.readyToUpdate) return false;
   if (!number) return true;
-  char num[21]; /* CLIP уже проверен; проверка доступа может изменить свою копию. */
-  strcpy(num, number);
-  if (!user_access_ready(user_last10digitsnumber(num))) return false;
-  return user_incomingcall(num, CT_PHONE);
+  return user_incomingcall(number, CT_PHONE);
 }
 /* Запустить связь и назначить её обязательных владельцев. */
 bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handlers, uint32_t now_ms)

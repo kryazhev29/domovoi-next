@@ -160,18 +160,24 @@ void WG_readedID(uint32_t id){
 }
 
 // Нормализовать номер звонящего и проверить доступ.
-bool user_incomingcall (char* num, uint8_t typ)
+bool user_incomingcall (const char* num, uint8_t typ)
 {
+  if (!num) return true;
+  const char *digits = num + (*num == '+'), *end = digits;
+  for (; *end; ++end)
+    if (*end < '0' || *end > '9' || end - num >= 20) return true;
+  if (end - digits < 10) return true;
+  char *ldn = (char *)(end - 10);
+  if (!user_access_ready(ldn)) return false;
 
   if (typ == CT_PHONE){
 
     // номер звонящего: длиннее поля не пишем
+    uint8_t size = end - num;
+    if (size >= sizeof(device.callingnumber)) size = sizeof(device.callingnumber) - 1u;
     memset(device.callingnumber, 0, sizeof(device.callingnumber));
-    user_strcpy(device.callingnumber, num, 0, sizeof(device.callingnumber) - 1u);
+    memcpy(device.callingnumber, num, size);
   }
-
-  // 10 цифр номера
-  char *ldn = user_last10digitsnumber(num);
 
   // проверить номер
   user_checkIdAndControl(ldn, (codeType_e)typ);
