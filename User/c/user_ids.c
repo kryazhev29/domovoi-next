@@ -129,23 +129,21 @@ uint32_t temp_address(uint16_t cursor)
 { return mem[MB_TEMPID].start+32u*(cursor&2047u); }
 static uint16_t temp_read_max(void)
 { return (int16_t)(device.readTempIDIndex-temp_usbReadIndex)>0 ? device.readTempIDIndex : temp_usbReadIndex; }
-// У старых временных ID index=0; новые фиксируют 0x8000 после тела и CRC.
-// Частичное стирание/программирование не превращает новую метку в старую (бит 15 всегда 1).
+// Временный ID содержит поколение и CRC; index фиксируется после тела.
 // Любой сброшенный бит commit достаточен: тело уже проверено, старый ELF тоже видит этот ID.
 bool user_temp_valid(const cellID_s *cell)
 {
   const uint32_t *words=(const uint32_t *)cell;
   if(cell->index==0xffff) return false;
-  if(!(cell->index&0x8000u)) return true;
   uint16_t crc=(uint16_t)words[6];
   return words[7]==0x32444954u &&
     crc==(uint16_t)~(words[6]>>16) && crc==crc16_calc((uint8_t *)cell+2,22);
 }
-// Старый линейный формат равен нулевому поколению; адреса и ID не меняются.
+// Поколение проверенной записи и позиция образуют курсор кольца.
 uint16_t temp_sequence(const cellID_s *cell,uint32_t address)
 {
-  uint16_t epoch=0;
-  if(((const uint32_t *)cell)[7]==0x32444954u) memcpy(&epoch,cell->reserve,2);
+  uint16_t epoch;
+  memcpy(&epoch,cell->reserve,2);
   return (epoch&~2047u)|(uint16_t)((address-mem[MB_TEMPID].start)/32u);
 }
 // Не удерживаем уже выгруженный ID; оборванное тело не становится записью.
@@ -190,17 +188,13 @@ bool user_addIdToTempBuffer(char *id, codeType_e tp)
   flash_exec_args_t args={NULL,FS_SYNC};
   if(!flash_exec_begin(FX_STORE,&args)) return false;
   bool ok=false;
-  bool trial=app_trial_active();
   for(uint16_t tried=0;tried<mem[MB_TEMPID].size/32u;tried++) {
-    // До подтверждения старый ELF должен видеть непрерывный линейный префикс.
-    if(trial && (temp_next>=mem[MB_TEMPID].size/32u || temp_next!=device.tempIDsCount)) break;
     uint16_t current=temp_normalize(temp_next);
     uint32_t address=temp_address(current);
-    if(!trial && (address==mem[MB_TEMPID].start || !(address&4095u)) && !temp_reclaim(address)) break;
+    if((address==mem[MB_TEMPID].start || !(address&4095u)) && !temp_reclaim(address)) break;
     if(!mem_read(address,(uint8_t *)&cell,32)) break;
     bool blank=log_blank((const cellLog_s *)&cell);
-    if(trial && !blank) break;
-    if(!trial) temp_next=current+1;
+    temp_next=current+1;
     if(!blank) continue;
     memset(&cell,0,sizeof(cell));cell.index=0x8000u;memcpy(cell.ID,id,10);
     if(tp==CT_PHONE) cell.isPhone=1;
@@ -267,7 +261,7 @@ void user_checkIdTimeEnd(void){
 expiry_runtime_begin();
 }
 
-// Восстанавливаем голову из поколений и ACK; старые линейные ID остаются на месте.
+// Восстанавливаем голову из поколений целых записей и ACK.
 uint16_t user_getTempIDRecordsCount(void)
 {
   cellID_s cell;

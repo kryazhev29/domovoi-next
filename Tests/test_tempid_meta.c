@@ -20,7 +20,6 @@ static unsigned writes,fail_read,fail_write;
 static bool mem_read(uint32_t a,uint8_t *p,uint16_t n){CHECK(a>=4096&&a+n<=4192);memcpy(p,flash+a-4096,n);return !fail_read;}
 enum { FS_SYNC = 33, FX_STORE = 12, FX_OK = 2, FX_ERROR = 3 };
 typedef struct { void *context; uint8_t step; } flash_exec_args_t;
-static int app_trial_active(void) { return 0; }
 static bool occupied;
 static bool flash_exec_idle(void) { return !occupied; }
 static bool flash_exec_begin(unsigned kind, const flash_exec_args_t *args)
@@ -52,9 +51,11 @@ int main(void){
  CHECK(!user_addIdToTempBuffer("0987654321",CT_RFID));
  CHECK(writes==2&&device.newAddressTempID==4096+2*sizeof(cellID_s));
  fail_read=0;
- temp_next=3;device.newAddressTempID=4096+sizeof(flash);
- memset(flash,0,sizeof(flash));
- CHECK(!user_addIdToTempBuffer("0987654321",CT_RFID));
- CHECK(writes==2);
+ memset(flash,255,sizeof(flash));temp_next=temp_usbReadIndex=device.readTempIDIndex=0;device.tempIDsCount=0;writes=0;
+ CHECK(user_addIdToTempBuffer("1111111111",CT_RFID));
+ CHECK(user_addIdToTempBuffer("2222222222",CT_RFID));
+ CHECK(user_addIdToTempBuffer("3333333333",CT_RFID));
+ CHECK(!user_addIdToTempBuffer("4444444444",CT_RFID));
+ CHECK(writes==6);
  puts("B39 tempID: each type sets one flag; defaults zero; versioned CRC/commit; duplicate unchanged PASS");
 }

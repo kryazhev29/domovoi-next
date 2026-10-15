@@ -128,49 +128,23 @@ def temp_power():
             assert payload==(b'1234567890' if count else b'')+b'abcdefghij'
             cuts+=1
         for i,value in enumerate(data):image[a+i]&=value
-    return {'cuts':cuts,'legacy_IDs':'same wire','torn_slots':'skipped'}
+    return {'cuts':cuts,'current_IDs':'same wire','torn_slots':'skipped'}
 
 
-def trial_compatibility():
-    # Старый сканер требует непрерывный префикс: до confirm дыр и оборота нет.
-    m=fast(UploadMachine());m.fixture(9,[temp(i+1) for i in range(1536)])
-    m.write(m.addr('trial'),1,1);m.checked('temp_set_index',1,1536)
-    m.u.mem_write(0x21000000,b'abcdefghij\0');before=bytes(m.flash)
-    assert not m.checked('user_addIdToTempBuffer',0x21000000,0)
-    assert bytes(m.flash)==before
-    m.checked('app_trial_confirm');assert not m.checked('app_trial_active')
-    assert m.checked('user_addIdToTempBuffer',0x21000000,0)
-    # Старый ACK и оборванная очистка оставили пустой префикс: запись за ним
-    # невидима старому ELF, поэтому проба сохраняет отказ до подтверждения.
-    m=fast(UploadMachine());m.fixture(9,[temp(i+1) for i in range(101)])
-    m.checked('temp_set_index',1,101);m.flash[0x1e8000:0x1e9000]=b'\xff'*4096
-    m.write(m.device+m.d['tempIDsCount'],m.checked('user_getTempIDRecordsCount',budget=2000000),2)
-    m.write(m.addr('trial'),1,1);m.u.mem_write(0x21000000,b'abcdefghij\0')
-    before=bytes(m.flash);assert not m.checked('user_addIdToTempBuffer',0x21000000,0)
-    assert bytes(m.flash)==before
-    m.checked('app_trial_confirm');assert m.checked('user_addIdToTempBuffer',0x21000000,0)
-    # После оборванной записи проба не продолжает за незавершённой ячейкой.
-    m=fast(UploadMachine());m.fixture(9,[]);m.write(m.addr('trial'),1,1)
-    m.u.mem_write(0x21000000,b'1234567890\0');before=bytes(m.flash);m.record_changes=True
-    assert m.checked('user_addIdToTempBuffer',0x21000000,0)
-    assert not any(k=='erase' for k,_,_ in m.changes)
-    image=bytearray(before);cuts=0
-    for kind,a,data in m.changes:
-        for n in range(len(data)+1):
-            torn=bytearray(image)
-            for i,value in enumerate(data[:n]):torn[a+i]&=value
-            r=fast(UploadMachine());r.fixture(9,[]);r.flash[:]=torn
-            r.write(r.device+r.d['tempIDsCount'],r.checked('user_getTempIDRecordsCount',budget=2000000),2)
-            r.write(r.addr('trial'),1,1)
-            r.u.mem_write(0x21000000,b'abcdefghij\0')
-            complete=torn[r.base:r.base+2]!=b'\xff\xff'
-            blank=torn[r.base:r.base+32]==b'\xff'*32
-            ok=r.checked('user_addIdToTempBuffer',0x21000000,0)
-            assert bool(ok)==(complete or blank),(len(data),n,complete,blank)
-            if not ok:assert bytes(r.flash)==torn
-            cuts+=1
-        for i,value in enumerate(data):image[a+i]&=value
-    return {'trial_full':'refused','confirmed_reclaim':'PASS','trial_byte_cuts':cuts}
+def trial_ring():
+    # Проба будущего релиза использует тот же оборот и reclaim, что обычная работа.
+    result=[]
+    for trial in (0,1):
+        m=fast(UploadMachine());m.fixture(9,[temp(i+1) for i in range(1536)])
+        m.write(m.addr('trial'),trial,1);m.checked('temp_set_index',1,1536)
+        m.u.mem_write(0x21000000,b'abcdefghij\0');m.record_changes=True
+        assert m.checked('user_addIdToTempBuffer',0x21000000,0)
+        assert sum(k=='erase' for k,_,_ in m.changes)==1
+        m.request(1,7);m.drain_upload()
+        assert m.sent[0][12:-2]==b'abcdefghij'
+        result.append(bytes(m.flash))
+    assert result[0]==result[1]
+    return {'trial_and_confirmed_ring':'identical'}
 
 
 def both_channels():
@@ -202,7 +176,7 @@ def temp_ring():
     r.checked('temp_set_index',0,0xfe00);r.checked('temp_set_index',1,0xfe00)
     r.u.mem_write(0x21000000,b'0123456789\0');assert r.checked('user_addIdToTempBuffer',0x21000000,0)
     r.request(1,8);r.drain_upload();assert r.sent[0][12:-2]==b'0123456789' and r.pending_cursor(1)==1
-    return {'legacy_full':1536,'unacked_full':'refused unchanged','first_reclaim_erases':1,'epoch_31_to_0':'PASS'}
+    return {'current_full':1536,'unacked_full':'refused unchanged','first_reclaim_erases':1,'epoch_31_to_0':'PASS'}
 
 
 def rotation_power():
@@ -231,7 +205,7 @@ def rotation_power():
                 if temporary:
                     r.request(1,80);r.drain_upload()
                     assert r.cursor(1)==96
-                    assert r.sent[0][12:-2]==b''.join(temp(i)[2:12] for i in range(97,197)), 'unacked legacy ID lost or confirmed ID returned'
+                    assert r.sent[0][12:-2]==b''.join(temp(i)[2:12] for i in range(97,197)), 'unacked ID lost or confirmed ID returned'
                     assert torn[0x1e9000:0x1f4400]==before[0x1e9000:0x1f4400], 'unacked sectors changed'
                 else:
                     assert cursor(r)==128

@@ -7,7 +7,9 @@ from storage_machine import *
 
 # Создаёт запись временного ID для проверки выгрузки.
 def temp(i):
-    return struct.pack('<HIIH', i, i * 17, i * 19, i) + bytes(20)
+    body = struct.pack('<HIIH', 0x8000, i * 17, i * 19, i) + bytes(12)
+    crc = crc16(body[2:])
+    return body + struct.pack('<HHI', crc, crc ^ 65535, 0x32444954)
 
 
 # Создаёт запись события с независимой CRC.
