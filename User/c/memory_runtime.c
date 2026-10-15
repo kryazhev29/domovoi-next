@@ -154,31 +154,10 @@ static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint
   return 1;
 }
 
-// Выбирает слот один раз при старте и переносит целые настройки старого формата.
+// Выбирает слот один раз при старте.
 static uint8_t cfg_boot_select(void)
 {
-  uint8_t block[64];
-  if (cfg_boot_done) return 1;
-  cfg_select();
-  if (cfg_cached_active == MEM_CONFIG_LEGACY) {
-    // CRC config и device проверяются на границе: старое место не имеет заголовка A/B.
-    for (uint16_t part = 0; part < 1024; part += 512) {
-      uint16_t crc = 0xFFFFu, expected;
-      for (uint16_t off = 0; off < 510;) {
-        uint16_t n = 510 - off;
-        if (n > sizeof(block)) n = sizeof(block);
-        if (!w25_read_data(MEM_CONFIG_LEGACY + part + off, block, n)) return 0;
-        crc = crc16_calcInit(block, n, crc); off += n;
-      }
-      if (!w25_read_data(MEM_CONFIG_LEGACY + part + 510, (uint8_t*)&expected, 2)) return 0;
-      if (crc != expected) { cfg_boot_done = 1; return 1; }
-    }
-    mem_image_s image = {MEM_CONFIG_LEGACY, 0, NULL, NULL, 0, 0};
-    if (!cfg_publish_pages(&image, cfg_cached_active, cfg_cached_generation)) {
-      DOMOVOI_DIAG_INC(mem_config_errors); return 0;
-    }
-  }
-  cfg_boot_done = 1;
+  if (!cfg_boot_done) { cfg_select(); cfg_boot_done = 1; }
   return 1;
 }
 // Сохраняет смежные части настроек, сохраняя остальные байты активного образа.

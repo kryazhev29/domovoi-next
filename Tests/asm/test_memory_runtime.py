@@ -139,7 +139,7 @@ if __name__=='__main__':
     print('shared scratch/ownership/real heap/I/O/OOM PASS',flush=True)
     if args.power:out['config_power_cuts']=power_cuts();print('config cuts',out['config_power_cuts'],'PASS',flush=True)
     out['elf_sha256']=hashlib.sha256((__import__('iar_image').image_paths()[0]).read_bytes()).hexdigest()
-    m=StorageMachine();out['static_gap']=m.addr('fault_record')-m.addr('HEAP$$Limit')
+    m=StorageMachine()
     out['heap_bytes']=m.heap_bytes;out['stack_bytes']=m.top-m.bottom
     assert m.map_size('sjr')==128 and m.map_size('cfg_job')==36
     (__import__('iar_image').result_path('memory_runtime_results.json')).write_text(json.dumps(out,indent=2)+'\n')
