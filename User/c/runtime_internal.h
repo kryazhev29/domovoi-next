@@ -14,6 +14,7 @@
 struct flash_exec_args { void *context; uint8_t step; };
 enum { FX_INDEX_READ = 7 };
 enum { FS_ID = 30, FS_SYNC };
+void user_id_lookup_reset(void);
 typedef struct {
   uint32_t address, epoch;
   uint16_t event;

@@ -11,7 +11,11 @@ def ram(m, name, n=2):
 
 def find(m, ident):
     m.u.mem_write(0x21000400, ident)
-    return m.checked('user_findID', 0x21000400, 0x21000500, budget=30000000)
+    for _ in range(400):
+        r=m.checked('user_findID', 0x21000400, 0x21000500)
+        if r!=2: return r
+        m.now+=1
+    raise AssertionError('lookup did not finish')
 
 def oracle(m):
     size = int.from_bytes(m.u.mem_read(m.addr('mem') + 20, 4), 'little')
@@ -108,8 +112,15 @@ def cached_access():
     m.u.mem_write(m.addr('mem')+16, struct.pack('<II', BASE, size))
     m.put_id(last, b'0000050048'); m.checked('user_ids_boot')
     m.u.mem_write(0x21000400, b'0000050048')
-    assert m.checked('user_access_ready', 0x21000400, budget=30000000)
-    assert m.read_budget == size
+    total=0
+    for _ in range(400):
+        ready=m.checked('user_access_ready', 0x21000400)
+        assert m.read_budget<=4096
+        total+=m.read_budget
+        if ready: break
+        m.now+=1
+    else: raise AssertionError('access lookup stalled')
+    assert total == size
     m.checked('user_checkIdAndControl', 0x21000400, 2)
     assert m.read_budget <= 128 and m.loads and m.events[-1][0] == 71
     # Квант хранения не мешает повтору этой карты; другой ID проверяет всю базу.
@@ -125,6 +136,7 @@ def cached_access():
         before = ram(m, 'id_scan_cell'); m.boot_scan_tick()
         assert ram(m, 'id_scan_cell') == before + 8
     m.u.mem_write(0x21000400, b'0000050047')
+    assert find(m,b'0000050047')==0
     m.checked('user_checkIdAndControl', 0x21000400, 2, budget=30000000)
     assert m.events[-1][0] == 65
 

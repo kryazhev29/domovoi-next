@@ -452,11 +452,12 @@ char* user_last10digitsnumber (char* num)
 bool user_access_ready(const char *id)
 {
   if (!flash_exec_read_allowed()) return false;
-  if ((flash_exec_idle() && !id_scan_cell) || unblock_active) return true;
-  if (device.status.autoRegistration) return false;
+  if (unblock_active) return true;
   cellID_s cell;
   uint8_t found = user_findID((char *)id, &cell);
   if (found > 1) return false;
+  if (flash_exec_idle() && !id_scan_cell) return true;
+  if (device.status.autoRegistration) return false;
   if (found && (cell.cntPassOnDay != 255 ||
       (cell.useTime && !id_first_pass(&cell) && device.datetime >= ID_TIME_VALID))) return false;
   return true;

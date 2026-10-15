@@ -8,7 +8,10 @@ uint32_t id_used_bytes = UINT32_MAX;
 uint16_t id_cells_end;
 uint16_t id_scan_cell;
 static struct { uint32_t sum; uint16_t end, used; } id_scan;
-static uint16_t id_boot_hint; // номер, не копия ID: повтор доступа перечитывает одну ячейку
+// Один продолжаемый поиск; результат хранит адрес, а не копию счётчиков.
+static struct { uint32_t seen; char id[10]; uint16_t next, hit; uint8_t state; } lookup;
+RT_ASSERT(id_lookup_ram, sizeof(lookup)==20);
+void user_id_lookup_reset(void) { lookup.state=0; }
 uint32_t id_nextEnd;
 bool id_endScan = true;
 
@@ -82,50 +85,51 @@ bool id_new_day(cellID_s *c){
   return true;
 }
 
-// Найти ID через индекс или ограниченный буфер резервного перебора.
-uint8_t user_findID(char *id, cellID_s *cell){
-
-  uint32_t adr;
-  uint16_t idsum = 0;
-  for (uint8_t i = 0; i < 10; i++) idsum += (uint8_t)id[i];
-  if (idsum == 2550 || idsum == 0) return false; // пустой ID в базе не ищется
-  // База неизменна до конца стартового прохода; сам ID всегда сверяем с флеш.
-  if (id_scan_cell && id_boot_hint) {
-    if (!mem_read(mem[MB_ID].start + (uint32_t)(id_boot_hint - 1u) * sizeof(cellID_s),
-                  (uint8_t*)cell, sizeof(*cell))) return 2;
-    if (cell->reserve[9] != 255 && cell->index != 0xffff && id_equal(cell->ID, id)) return true;
-  }
-  {
-    cellID_s found;
-    int8_t r = idindex_find(mem[MB_ID].start, (const uint8_t*)id, (uint8_t*)&found);
-    if (r >= 0) {
-      if (r) memcpy(cell, &found, sizeof(found));
-      return r == 1;
+// 0 — нет, 1 — найден, 2 — ожидание или ошибка чтения. Не более 128 ID за вызов.
+uint8_t user_findID(char *id, cellID_s *cell)
+{
+  uint16_t sum=0;
+  for (uint8_t i=0;i<10;i++) sum+=(uint8_t)id[i];
+  if (!sum || sum==2550) return 0;
+  uint32_t now=timers_getMillis();
+  if (!lookup.state || !id_equal(lookup.id,id)) {
+    // Другой источник не сбивает текущий поиск; отменённый запрос живёт ещё до 100 мс.
+    if (lookup.state==1 && now-lookup.seen<100u) return 2;
+    memcpy(lookup.id,id,10); lookup.next=lookup.hit=0; lookup.state=1;
+    int8_t r=idindex_find(mem[MB_ID].start,(const uint8_t*)id,(uint8_t*)cell);
+    if (r>=0) {
+      lookup.state=2; lookup.hit=r ? cell->index : 0;
+      return r;
     }
   }
-  /* Индекс не готов (пересборка) - перебор по базе. */
-  uint32_t endAdr = mem[MB_ID].start + (uint32_t)id_cells_end * sizeof(cellID_s);
-  uint8_t tbuffer[256];
-  cellID_s *c;
-
-  // по странично читаем
-  for (adr = mem[MB_ID].start; adr < endAdr; adr += sizeof(tbuffer)){
-    if (!mem_read(adr, tbuffer, sizeof(tbuffer))) return 2;
-    // перебираем ячейки
-    for (uint16_t a = 0; a < sizeof(tbuffer) && adr + a < endAdr; a += sizeof(cellID_s)){
-      c = (cellID_s*)&tbuffer[a];
-      // пустая ячейка
-      if (c->reserve[9] == 255) continue;
-
-      if (id_equal(c->ID, id) && c->index != 0xffff){
-        if (id_scan_cell) id_boot_hint = (uint16_t)((adr + a - mem[MB_ID].start) / sizeof(cellID_s) + 1u);
-        memcpy(cell, c, sizeof(cellID_s));
-        return true;
-      }
-    }
+  lookup.seen=now;
+  if (lookup.state==2) {
+    if (!lookup.hit) return 0;
+    if (!mem_read(mem[MB_ID].start+(uint32_t)(lookup.hit-1u)*sizeof(*cell),
+                  (uint8_t*)cell,sizeof(*cell))) return 2;
+    if (cell->index!=0xffff && cell->reserve[9]!=255 && id_equal(cell->ID,id)) return 1;
+    lookup.next=lookup.hit=0; lookup.state=1;
   }
-  // не нашли
-  return false;
+  uint8_t page[256];
+  for (uint8_t step=0;step<16 && lookup.next<id_cells_end;step++) {
+    uint16_t count=id_cells_end-lookup.next;
+    if (count>8) count=8;
+    uint32_t address=mem[MB_ID].start+(uint32_t)lookup.next*sizeof(*cell);
+    // Поиск не читает счётчики каждого чужого ID: они не меняют номер и признак удаления.
+    // counter_base_read сохраняет чтение подтверждённого SJ при фоновом переносе.
+    if (!counter_base_read(address,page,count*sizeof(*cell))) return 2;
+    for (uint8_t i=0;i<count;i++) {
+      cellID_s *c=(cellID_s*)(page+i*sizeof(*cell));
+      if (c->index==0xffff || c->reserve[9]==255 || !id_equal(c->ID,id)) continue;
+      lookup.hit=lookup.next+i+1u; lookup.state=2;
+      memcpy(cell,c,sizeof(*cell));
+      return counter_overlay(address+i*sizeof(*cell),(uint8_t*)cell,sizeof(*cell)) ? 1 : 2;
+    }
+    lookup.next+=count;
+  }
+  if (lookup.next<id_cells_end) return 2;
+  lookup.state=2;
+  return 0;
 }
 
 // 5 бит поколения и 11 бит позиции: в области не более 2048 ячеек.
@@ -231,7 +235,7 @@ void user_ids_boot(void){
   memset(&id_scan, 0, sizeof(id_scan));
   device.numbersCount = 0;
   id_scan_cell = 1;
-  id_boot_hint = 0;
+  user_id_lookup_reset();
 }
 
 // Один шаг исполнителя: восемь ячеек; при ошибке повторяем ту же страницу.
@@ -298,6 +302,12 @@ bool user_updateID(cellID_s *c){
   uint8_t stored[32];
   uint16_t index;
   uint32_t adr;
+  if (lookup.state==2 && lookup.hit && id_equal(lookup.id,c->ID)) {
+    adr=mem[MB_ID].start+(uint32_t)(lookup.hit-1u)*sizeof(*c);
+    if (!mem_read(adr,stored,sizeof(stored))) return false;
+    memcpy(&index,stored,2);
+    if (index==c->index && stored[31]!=255 && id_equal((char *)stored+2,c->ID)) goto update;
+  }
   /* Команда 13 кладёт ячейку на место её номера: сначала проверяем это место,
      перебор - только если там другая ячейка. */
   if (c->index != 0 && c->index != 0xffff){
@@ -308,14 +318,10 @@ bool user_updateID(cellID_s *c){
       if (index == c->index && stored[31] != 255) goto update;
     }
   }
-  for (adr = mem[MB_ID].start; adr + sizeof(cellID_s) <= endAdr; adr += sizeof(cellID_s)){
-    if (!mem_read(adr, stored, 32)) { idcrc_unknown(); return false; }
-      memcpy(&index,stored,2);
-    if (index == c->index && stored[31] != 255){
-      goto update;
-    }
-  }
-  idcrc_unknown(); return false;
+  // Старое размещение ищется тем же продолжаемым проходом, без второго полного цикла.
+  if (user_findID(c->ID,(cellID_s *)stored)!=1 || !lookup.hit ||
+      ((cellID_s *)stored)->index!=c->index) { idcrc_unknown(); return false; }
+  adr=mem[MB_ID].start+(uint32_t)(lookup.hit-1u)*sizeof(*c);
 update: {
   bool result = store_id_begin(adr, c);
   if(!result) idcrc_unknown();

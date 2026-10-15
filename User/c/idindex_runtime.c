@@ -71,6 +71,7 @@ static bool ix_last(uint32_t *sum)
 // Принимает итог сканирования основной базы и запускает индекс.
 void idindex_impl_scanned(uint32_t sum, uint16_t cells_end)
 {
+  user_id_lookup_reset();
   uint32_t marked = 0;
   ix.sum = sum;
   ix.end = cells_end;
@@ -92,8 +93,10 @@ int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
   if (!mem_read(ix_bucket(id), (uint8_t*)e, IX_BYTES)) return -1;
   for (uint8_t i = 0; i < IX_SLOTS && e[i] != 0xFFFFu; i++) {
     if (!e[i]) continue;
-    if (!mem_read(base + (uint32_t)(e[i] - 1u) * IDINDEX_CELL, cell, IDINDEX_CELL)) return -1;
-    if (cell[31]!=255 && (cell[0] != 0xFF || cell[1] != 0xFF) && !memcmp(cell + 2, id, 10)) return 1;
+    uint32_t address=base+(uint32_t)(e[i]-1u)*IDINDEX_CELL;
+    if (!counter_base_read(address,cell,IDINDEX_CELL)) return -1;
+    if (cell[31]!=255 && (cell[0] != 0xFF || cell[1] != 0xFF) && !memcmp(cell + 2, id, 10))
+      return counter_overlay(address,cell,IDINDEX_CELL) ? 1 : -1;
   }
   return 0;
 }
@@ -217,4 +220,4 @@ cancelled:
 }
 
 // Приостанавливает индекс на время изменения основной базы.
-void idindex_runtime_suspend(void) { ix.state=IX_OFF; }
+void idindex_runtime_suspend(void) { ix.state=IX_OFF; user_id_lookup_reset(); }

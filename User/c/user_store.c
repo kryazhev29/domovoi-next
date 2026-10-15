@@ -273,7 +273,7 @@ bool user_command_ready(const uint8_t *ptr, bool usb_input)
   }
   if (!store_command_allowed(ptr[4])) return false;
   if (usb_input && ptr[4] != 8 && !flash_exec_idle()) return false;
-  if (ptr[4] != 8 || flash_exec_idle()) return true;
+  if (ptr[4] != 8) return true;
   uint16_t length = rt_get16(ptr);
   if (length < 16 || !ptr[5] || (ptr[6] != 1 && ptr[7] != 1)) return true;
   char id[11];
