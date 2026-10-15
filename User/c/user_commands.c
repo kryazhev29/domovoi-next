@@ -213,7 +213,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         /* ID абонента есть только в полном пакете (13 байт); в коротком ID пустой,
            за концом пакета ничего не читается. */
         memset(tempStrBuffer, 0, 11);
-        if ((len - 3) >= 13) strncpy(tempStrBuffer, (char*)&ptr[8], 10);
+        if ((len - 3) >= 13) user_strcpy(tempStrBuffer, (char*)&ptr[8], 0, 10);
         if (ptr[6] > 1 || ptr[7] > 1){
           res8 = CMD_PARAMERROR;
         } else{
@@ -259,7 +259,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           break;
         }
         strcpy(number, config.countryCode);
-        strncat(number, (char*)&ptr[5], 10);
+        user_strcpy(number + strlen(number), (char*)&ptr[5], 0, 10);
         memcpy(text, &ptr[15], text_size);
         text[text_size] = 0;
         user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);

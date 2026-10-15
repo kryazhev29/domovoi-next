@@ -44,5 +44,11 @@ static void balance_tests(void)
   int32_t v;
   CHECK(comm_balance_parse("\xC2\xE0\xF8 \xE1\xE0\xEB\xE0\xED\xF1 1234.56 \xF0.",&v) && v==1234);
   CHECK(!comm_balance_parse("\xCE\xF8\xE8\xE1\xEA\xE0",&v));
+  /* Короткий хвост, перекрывающиеся начала и приоритет русского слова. */
+  CHECK(!comm_balance_parse("",&v));
+  CHECK(!comm_balance_parse("alanc",&v));
+  CHECK(comm_balance_parse("7 balalance -12.30",&v) && v==-12);
+  CHECK(comm_balance_parse("\xE0\xEB\xE0\xED\xF1 5 balance 8",&v) && v==5);
+  CHECK(comm_balance_parse("balance 8 \xE0\xEB\xE0\xED\xF1 5",&v) && v==5);
   puts("comm_balance: UCS2/GSM, before/after OK, date first, minus, long ad cut, menu close, failures retry, daily PASS");
 }

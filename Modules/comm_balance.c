@@ -52,8 +52,15 @@ static void bal_line(const uint8_t *p, uint16_t n, uint16_t detail) { (void)deta
 bool comm_balance_parse(const char *t, int32_t *rubles)
 {
   static const char *const words[] = {"\xE0\xEB\xE0\xED\xF1", "alance"}; /* [Бб]аланс, [Bb]alance */
-  const char *s = t;
-  for (uint8_t w = 0; w < 2u; ++w) { const char *f = strstr(t, words[w]); if (f) { s = f; break; } }
+  const char *s = NULL;
+  for (uint8_t w = 0; w < 2u && !s; ++w) {
+    for (const char *f = t; *f; ++f) {
+      uint8_t i = 0;
+      while (words[w][i] && f[i] == words[w][i]) ++i;
+      if (!words[w][i]) { s = f; break; }
+    }
+  }
+  if (!s) s = t;
   while (*s && (*s < '0' || *s > '9')) ++s;
   if (!*s) return false;
   bool minus = s > t && s[-1] == '-';

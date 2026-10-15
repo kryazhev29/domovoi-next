@@ -178,7 +178,21 @@ def text_commands():
     execute(m, 11, b'9001234567hello'); assert not calls and m.answers[-1][1] == 1
     m = machine(); m.stubs[m.addr('work_acquire')] = lambda: m.ret(0)
     execute(m, 11, b'9001234567hello'); assert not calls and m.answers[-1][1] == 2
-    return {'sms_cases': 17}
+    for number in (b'9\0' + b'X'*8, b'9'*10):
+        m = machine(); calls.clear()
+        execute(m, 11, number + b'hello')
+        assert calls == [(b'hello', b'+7' + number.split(b'\0')[0])]
+    # Номер звонящего ограничен полем; хвост после раннего NUL очищен.
+    for number in (b'', b'9', b'9'*40):
+        m = machine()
+        m.stubs[m.addr('user_checkIdAndControl')] = lambda: m.ret(0)
+        address = m.device + m.d['callingnumber']
+        capacity = m.d['csq'] - m.d['callingnumber']
+        m.u.mem_write(address, b'X'*(capacity+1))
+        m.u.mem_write(0x21000400, number + b'\0')
+        m.checked('user_incomingcall', 0x21000400, 1)
+        assert bytes(m.u.mem_read(address,capacity+1)) == number[:capacity-1].ljust(capacity,b'\0') + b'X'
+    return {'sms_cases': 19, 'caller_bounds': 3}
 
 
 def pin_config():

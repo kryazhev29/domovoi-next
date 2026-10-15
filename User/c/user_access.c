@@ -166,8 +166,8 @@ bool user_incomingcall (char* num, uint8_t typ)
   if (typ == CT_PHONE){
 
     // номер звонящего: длиннее поля не пишем
-    strncpy(device.callingnumber, num, sizeof(device.callingnumber) - 1u);
-    device.callingnumber[sizeof(device.callingnumber) - 1u] = 0;
+    memset(device.callingnumber, 0, sizeof(device.callingnumber));
+    user_strcpy(device.callingnumber, num, 0, sizeof(device.callingnumber) - 1u);
   }
 
   // 10 цифр номера
