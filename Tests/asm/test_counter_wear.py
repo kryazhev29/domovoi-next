@@ -204,7 +204,7 @@ def server_crc():
     assert m.logical(1)==cell(1,1) and m.logical(130)==b
     # 101 не содержит CRC, но число ID и его проводной формат должны остаться прежними.
     m.sent.clear();body=struct.pack('<HBBB',3,0,7,101);body+=struct.pack('<H',crc16(body))
-    m.u.mem_write(0x21000000,body);m.checked('user_parse_comand',0x21000000,0)
+    m.u.mem_write(0x21000000,body);m.receive_command(0x21000000,0)
     for _ in range(20000):
         if m.sent:break
         m.now+=1;m.checked('user_storage_poll',budget=1000000);peak=max(peak,m.read_budget)

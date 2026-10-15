@@ -78,16 +78,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
   len = ptr[1]; // длина
   len = (len<<8) | ptr[0];
-  if (len < 3) return; // В неполном заголовке нет команды и uniqId.
-  bool server_verified = cch == CH_SERVER && server_rx_verified(ptr);
   uniqId = ptr[3];
   wdt_reload();
-
-  if (cch != CH_USB && !server_verified && crc16_calc(ptr, len + 2) != rt_get16(ptr + len + 2))
-  {
-    user_send_answer_comand(ptr[4], CMD_CRCERROR, cch, uniqId);
-    return;
-  }
 
   if (!command_args_valid(ptr, len)){
     user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
@@ -102,9 +94,6 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     return;
   }
 
-  if (!server_verified && !user_command_ready(ptr, cch == CH_USB)) {
-    user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId); return;
-  }
   switch (ptr[4]) // команда
   {
     case 1: // Ответ контроллеру на регистрацию

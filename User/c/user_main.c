@@ -26,17 +26,6 @@ void timers_user_handle(void)
   uart_timer1ms();
 }
 
-// Передать целый проверенный USB-кадр разбору команд.
-void usb_data_reading(uint8_t* ptr, uint16_t len)
-{
-  uint16_t body;
-  if (len < 11 || memcmp(ptr, "SLDN", 4)) return;
-  body = (uint16_t)ptr[4] | ((uint16_t)ptr[5] << 8);
-  if (body < 3 || body != len - 8) return;
-  /* Сборщик USB передаёт ровно один целый кадр с проверенной CRC. */
-  user_parse_comand(ptr + 4, CH_USB);
-}
-
 // Восстановить память и настройки, затем разрешить рабочие команды.
 void user_init(void)
 {

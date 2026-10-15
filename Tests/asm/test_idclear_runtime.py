@@ -56,7 +56,7 @@ class ClearMachine(StorageMachine):
     # Запускает настоящий разбор входной команды.
     def parse(self,channel=0,uniq=7):
         b=struct.pack('<HBBB',3,0,uniq,103);b+=struct.pack('<H',crc16(b))
-        self.u.mem_write(0x21000000,b);self.checked('user_parse_comand',0x21000000,channel)
+        self.u.mem_write(0x21000000,b);self.receive_command(0x21000000,channel)
         self.u.mem_write(0x21000000,b'\xa5'*len(b))
 
 # Собирает ожидаемые байты кадра независимо от кода продукта.

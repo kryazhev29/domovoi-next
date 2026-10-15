@@ -19,6 +19,23 @@ def _write_stack_audit():
 atexit.register(_write_stack_audit)
 
 class Machine:
+    def receive_command(self, address, channel, budget=8000000):
+        """Ввод кадра в USB OUT/TCP RX; длину, CRC и готовность проверяет ELF."""
+        from iar_layout import fields
+        size = int.from_bytes(self.u.mem_read(address, 2), 'little') + 4
+        frame = b'SLDN' + bytes(self.u.mem_read(address, size))
+        if not getattr(self, '_rx_input_mapped', False):
+            self.u.mem_map(0x22000000, 0x10000)
+            self._rx_input_mapped = True
+        self.u.mem_write(0x22000000, frame)
+        call = getattr(self, 'checked', self.call)
+        if channel == 0:
+            call('usb_datareceived', 0x22000000, len(frame), budget=budget)
+            call('usb_check_data', budget=budget)
+        else:
+            handle = self.u.mem_read(self.addr('device') + fields('device_s')['connectionhandle'], 1)[0]
+            call('user_dataconnection', handle, 0x22000000, len(frame), budget=budget)
+
     def __init__(self, boot=False):
         self.symbols={}
         self.symboltypes={}

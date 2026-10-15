@@ -79,7 +79,7 @@ class ServiceMachine(StorageMachine):
         p = struct.pack('<HBBB', len(body)+3, 0, uniq, cmd) + body
         p += struct.pack('<H', crc16(p))
         self.u.mem_write(0x21000000, p)
-        self.checked('user_parse_comand', 0x21000000, channel)
+        self.receive_command(0x21000000, channel)
         assert self.read_budget <= 64 and not self.io_budget
         self.u.mem_write(0x21000000, b'\xa5' * len(p))
 

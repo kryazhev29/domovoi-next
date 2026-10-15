@@ -24,7 +24,7 @@ from test_service_runtime import ServiceMachine
 def command(machine, config):
     body = struct.pack('<HBBB', len(config) + 3, 0, 73, 12) + config
     machine.u.mem_write(0x21000000, body + struct.pack('<H', crc16(body)))
-    machine.checked('user_parse_comand', 0x21000000, 0)
+    machine.receive_command(0x21000000, 0)
 
 
 # Подготовить внешний набор настроек, сохраняя реальные размеры полей из DWARF.

@@ -61,7 +61,7 @@ def run(baseline=False):
             m.u.reg_write(UC_ARM_REG_R0, 0x21000000)
             m.u.reg_write(UC_ARM_REG_R1, len(response))
             m.u.reg_write(UC_ARM_REG_PC, m.addr('usb_send') | 1)
-        m.stubs[m.addr('usb_data_reading')] = answer
+        m.stubs[m.addr('user_parse_comand')] = answer
         m.u.mem_write(m.addr('usb_buffer'), packet(101))
         m.write(m.addr('usb_buffer_count'), 11, 2)
         m.call('usb_check_data')

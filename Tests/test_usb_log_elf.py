@@ -63,8 +63,9 @@ def enabled_at_stream():
     m.stubs[m.addr('user_command_ready')] = lambda: m.ret(1)
     m.stubs[m.addr('timers_getMillis')] = lambda: m.ret(15903)
     m.write(m.addr('device') + fields('device_s')['userAutorized'], 1, 1)
-    m.u.mem_write(0x21000000, struct.pack('<HBBBB', 4, 255, 9, 108, 1))
-    m.call('user_parse_comand', 0x21000000, 0)
+    packet = struct.pack('<HBBBB', 4, 255, 9, 108, 1)
+    m.u.mem_write(0x21000000, packet + struct.pack('<H', crc16(packet)))
+    m.receive_command(0x21000000, 0)
     assert m.drain()[8] == 108
     m.packets.clear()
     m.stubs[0x21000f00] = m.ret
@@ -167,8 +168,8 @@ def masks_and_loss():
     m.write(m.addr('lost'), 31, 2)
     m.stubs[m.addr('user_command_ready')] = lambda: m.ret(1)
     packet = struct.pack('<HBBBB', 4, 255, 9, 108, 255)
-    m.u.mem_write(0x21000000, packet)
-    m.call('user_parse_comand', 0x21000000, 0)
+    m.u.mem_write(0x21000000, packet + struct.pack('<H', crc16(packet)))
+    m.receive_command(0x21000000, 0)
     assert m.drain() == b'SLDN' + struct.pack('<HBBB', 3, 255, 9, 108) + struct.pack('<H', crc16(struct.pack('<HBBB', 3, 255, 9, 108)))
     assert m.read(m.addr('device') + fields('device_s')['logBits'], 1) == 7
     assert m.read(m.addr('lost'), 2) == 0

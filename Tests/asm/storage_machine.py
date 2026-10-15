@@ -117,7 +117,7 @@ class StorageMachine(Machine):
     def command(self,cmd,rows,count,channel=0,uniq=7,stamp=123456):
         p=struct.pack('<HBBBIB',8+len(rows),0,uniq,cmd,stamp,count)+rows
         p+=struct.pack('<H',crc16(p));self.u.mem_write(0x21000000,p)
-        self.checked('user_parse_comand',0x21000000,channel)
+        self.receive_command(0x21000000,channel)
         self.u.mem_write(0x21000000,b'\xA5'*len(p)) # Приёмник сразу повторно использует буфер кадра.
     # Читает признак незавершённой операции связанного кода.
     def exec_state(self):

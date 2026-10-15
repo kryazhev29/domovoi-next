@@ -191,7 +191,7 @@ def test_parser():
     for reply in (9,10):
         m=UploadMachine();cell=temp(1) if reply==9 else log(1);m.fixture(reply,[cell])
         body=struct.pack('<HBBB',3,0,7,19-reply);body+=struct.pack('<H',crc16(body))
-        m.u.mem_write(0x21000000,body);m.checked('user_parse_comand',0x21000000,0)
+        m.u.mem_write(0x21000000,body);m.receive_command(0x21000000,0)
         m.u.mem_write(0x21000000,b'\xA5'*len(body));assert m.ptr()
         m.drain_upload();assert m.sent==[wire(reply,7,0,[cell])]
     return 2
@@ -209,7 +209,7 @@ def test_media_gate():
             before=bytes(m.flash);m.request()
             assert not m.ptr() and not any(m.counts.values()) and not m.sent
             body=struct.pack('<HBBB',3,0,7,19-reply);body+=struct.pack('<H',crc16(body))
-            m.u.mem_write(0x21000000,body);m.checked('user_parse_comand',0x21000000,0)
+            m.u.mem_write(0x21000000,body);m.receive_command(0x21000000,0)
             m.tick_upload()
             assert not m.ptr() and not any(m.counts.values()) and not m.sent and bytes(m.flash)==before
             assert largest_free(m)==2032

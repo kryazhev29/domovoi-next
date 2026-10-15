@@ -51,7 +51,6 @@ void upload_reset(uint8_t cmd);
 // Вызвать обработчики секундного тика драйверов.
 void timers_user_handle(void);
 // Передать целый проверенный USB-кадр разбору команд.
-void usb_data_reading(uint8_t* ptr, uint16_t len);
 // Превратить код Wiegand в десятибайтовый ID и проверить доступ.
 void WG_readedID(uint32_t id);
 // Удалить незавершённый кадр по пределу ожидания 30 секунд.
@@ -59,7 +58,6 @@ void server_rx_begin_pass(void);
 // Выполнить один готовый кадр и сохранить хвост потока.
 void server_rx_process(void);
 // Распознать кадр, CRC которого уже проверена сборщиком.
-bool server_rx_verified(const uint8_t *p);
 // Вернуть свободное место для QIRD-backpressure.
 uint16_t user_comm_rx_capacity(void);
 // Принять очередную часть ещё не завершённого QIRD.

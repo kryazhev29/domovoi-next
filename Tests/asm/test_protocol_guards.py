@@ -14,7 +14,7 @@ def packet(command, payload=b'', length=None):
 def execute(m, command, payload=b'', channel=1, length=None):
     data = packet(command, payload, length)
     m.u.mem_write(0x21000000, data)
-    m.checked('user_parse_comand', 0x21000000, channel)
+    m.receive_command(0x21000000, channel)
     return data
 
 
@@ -81,8 +81,8 @@ def lengths():
     assert m.sent[-1][8:10] == bytes([102,0])
     # CRC, авторизация и минимальная длина проверяются отдельными отказами.
     m = ServiceMachine(); data = bytearray(packet(2, b'\x02')); data[-1] ^= 1
-    m.u.mem_write(0x21000000, bytes(data)); m.checked('user_parse_comand', 0x21000000, 1)
-    assert m.answers == [(2, 254, 1, 42)]
+    m.u.mem_write(0x21000000, bytes(data)); m.receive_command(0x21000000, 1)
+    assert not m.answers and not m.u.mem_read(m.device+m.d["timeToReset"],1)[0]
     m = ServiceMachine(); m.write(m.device + m.d['userAutorized'], 0, 1)
     execute(m, 2, b'\x02', 0); assert m.answers == [(2, 4, 0, 42)]
     for length in range(3):

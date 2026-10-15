@@ -92,8 +92,8 @@ def manual_sync():
     m.stubs[m.addr('w25_erase_sector')] = boundary(m.sync_erase)
     def command(payload):
         packet = struct.pack('<HBBB', 3 + len(payload), 0, 77, 110) + payload
-        m.u.mem_write(0x21000800, packet)
-        m.checked('user_parse_comand', 0x21000800, 0, budget=8000000)
+        m.u.mem_write(0x21000800, packet + struct.pack('<H', crc16(packet)))
+        m.receive_command(0x21000800, 0, budget=8000000)
         assert m.exec_state() == (0, 0, 0)
     begin = b'\0' + struct.pack('<IIB', 32768, 0, 139)
     hold_clear(m)

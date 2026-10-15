@@ -166,8 +166,16 @@ def scenarios(totals):
 
     for cmd in (10,20):
         for count in (0,1,32):
-            m=UploadMachine();m.fixture(cmd,[log(i+1) for i in range(count)])
+            cells=[log(i+1) for i in range(count)]
+            if cmd==20:
+                # Тот же полезный ID в действующем TID2, без совместимости с LOG2 в TEMPID.
+                from storage_machine import crc16
+                for i,cell in enumerate(cells):
+                    body=struct.pack('<H',0x8000)+cell[2:12]+bytes(12)
+                    crc=crc16(body[2:]);cells[i]=body+struct.pack('<HHI',crc,crc^65535,0x32444954)
+            m=UploadMachine();m.fixture(cmd,cells);before=bytes(m.flash)
             execute(f'upload-{cmd}-{count}',m,lambda:(m.request(),m.drain_upload()))
+            assert bytes(m.flash)==before, 'upload modified NOR before ACK'
 
     m=PhotoMachine(prefix_flash());m.boot_media()
     address,stamp=execute('photo-capture',m,lambda:m.capture(bytes(range(129))))
@@ -327,6 +335,11 @@ def main():
     old_image=bytearray(b'\xff'*0x400000)
     old_image[0x1cf400:0x1cf400+128*32]=b''.join(log(i,True) for i in range(1,129))
     expected['log-old-format-discard']['result']['nor']={'bytes':len(old_image),'sha256':hashlib.sha256(old_image).hexdigest()}
+    # Не сравниваем хеши разных входных форматов стенда. Неизменность NOR выше
+    # проверена побайтно; все байты выдаваемого пакета сверяются с прежним эталоном.
+    for count in (0,1,32):
+        key=f'upload-20-{count}'
+        del actual[key]['result']['nor'];del expected[key]['result']['nor']
     if actual != expected:
         differences = {k: {'actual': actual.get(k), 'expected': expected.get(k)}
                        for k in set(actual) | set(expected) if actual.get(k) != expected.get(k)}

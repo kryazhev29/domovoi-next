@@ -11,7 +11,7 @@ def command(m, code, channel, authorized):
     packet = struct.pack('<HBBB', 3, 0, 37, code)
     packet += struct.pack('<H', crc16(packet))
     m.u.mem_write(0x21000000, packet)
-    m.checked('user_parse_comand', 0x21000000, channel)
+    m.receive_command(0x21000000, channel)
     return list(m.answers), list(m.wires)
 
 

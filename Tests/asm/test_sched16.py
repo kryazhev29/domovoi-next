@@ -26,7 +26,7 @@ def parse(m, command, payload, channel=0, uniq=37):
     body = struct.pack('<HBBB', len(payload)+3, 0, uniq, command) + payload
     packet = body + struct.pack('<H', crc16(body))
     m.u.mem_write(0x21000000, packet)
-    m.checked('user_parse_comand', 0x21000000, channel)
+    m.receive_command(0x21000000, channel)
 
 
 # Проверяет длину, номера и точные байты кадров протокола.

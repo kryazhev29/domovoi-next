@@ -107,7 +107,7 @@ class PhotoMachine(StorageMachine):
     # Передать команду с CRC и затереть исходный буфер после разбора.
     def packet(self,cmd,body=b'',channel=0,uniq=9):
         p=struct.pack('<HBBB',len(body)+3,0,uniq,cmd)+body;p+=struct.pack('<H',crc16(p))
-        self.u.mem_write(0x21000000,p);self.checked('user_parse_comand',0x21000000,channel)
+        self.u.mem_write(0x21000000,p);self.receive_command(0x21000000,channel)
         self.u.mem_write(0x21000000,b'\xa5'*len(p))
     # Восстановить очередь и проверить завершение стартового скана.
     def boot_media(self):

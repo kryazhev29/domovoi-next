@@ -102,10 +102,6 @@ void server_rx_process(void)
   server_rx_scan();
 }
 
-// Распознать кадр, CRC которого уже проверена сборщиком.
-bool server_rx_verified(const uint8_t *p)
-{ return server_rx_busy && p == server_rx_buffer + 4; }
-
 // Вернуть свободное место для QIRD-backpressure.
 uint16_t user_comm_rx_capacity(void)
 {

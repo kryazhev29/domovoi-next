@@ -110,7 +110,9 @@ def test_interaction_and_heap():
     m.command(13,rows(range(1,64)),63);assert m.active()
     assert m.checked('flash_exec_idle')==0 and m.checked('flash_exec_read_allowed')==0
     assert m.checked('flash_exec_read_allowed')==0
-    m.command(19,b'',0);assert m.answers[-1][1]==2 and m.active()
+    m.command(19,b'',0);assert not m.answers and m.active()
+    m.now+=501;m.checked('usb_check_data')
+    assert m.answers[-1][1]==2 and m.active()
     m.checked('user_savereset');m.drain();assert not m.timestamps
     assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1'
     for slot,p in live:drop(m,slot,p)

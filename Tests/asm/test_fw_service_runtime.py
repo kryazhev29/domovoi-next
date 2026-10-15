@@ -53,7 +53,7 @@ class FirmwareMachine(UploadMachine):
         req=struct.pack('<HIIIH',number,123456,len(self.image),fwcrc(self.image),(len(self.image)+1023)//1024)
         if parser:
             p=struct.pack('<HBBB',len(req)+3,0,7,19)+req;p+=struct.pack('<H',crc16(p));self.u.mem_write(0x21000000,p)
-            self.checked('user_parse_comand',0x21000000,ch)
+            self.receive_command(0x21000000,ch)
         else:
             self.u.mem_write(0x21000000,req);assert self.checked('fw_service_begin',0x21000000,ch,7)==1
         self.u.mem_write(0x21000000,b'\xa5'*32)

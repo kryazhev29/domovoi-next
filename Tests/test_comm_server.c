@@ -76,7 +76,7 @@ static uint16_t server_frame(uint8_t *p, uint8_t cmd, uint8_t id, const uint8_t 
 // Принять моделируемые подтверждения регистрации и статуса.
 static void user_parse_comand(uint8_t *p, unsigned channel)
 {
-  CHECK(channel == CH_SERVER && !comm_tx_busy() && server_rx_verified(p)); ++server_commands;
+  CHECK(channel == CH_SERVER && !comm_tx_busy()); ++server_commands;
   /* Модель разрешает только законные ответы. Любая мусорная команда — ошибка теста. */
   if (p[4] == 1) { comm_server_registered(p[5] == 0); }
   else if (p[4] == 24) comm_server_status_ack(p[5]);

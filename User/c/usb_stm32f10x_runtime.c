@@ -358,9 +358,9 @@ void usb_check_data (void)
       uint32_t now = timers_getMillis();
       if (!usb_command_wait) usb_command_wait = now | 1u;
       if ((int32_t)(now - usb_command_wait) < 500) total = 0;
-    }
-    // По истечении разборщик возвращает существующий CMD_RUNERROR и снимает кадр.
-    if (total && !usb_rx_discard) usb_data_reading(usb_buffer, total);
+      else if (!usb_rx_discard)
+        user_send_answer_comand(usb_buffer[8], CMD_RUNERROR, CH_USB, usb_buffer[7]);
+    } else if (!usb_rx_discard) user_parse_comand(usb_buffer + 4, CH_USB);
   } else {
 #if DOMOVOI_DIAG
     usb_rx_errors++;

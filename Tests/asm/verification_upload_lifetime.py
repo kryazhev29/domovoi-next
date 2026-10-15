@@ -61,7 +61,7 @@ def recovery_gate():
             if through_parser:
                 packet=struct.pack('<HBBB',3,0,7,10)
                 packet+=struct.pack('<H',crc16(packet));m.u.mem_write(0x21000000,packet)
-                m.checked('user_parse_comand',0x21000000,0)
+                m.receive_command(0x21000000,0)
             else:m.request()
             assert not m.ptr() and not m.sent and not any(m.counts.values()),bad_state
             assert m.pending_cursor()==1 and m.cursor()==0

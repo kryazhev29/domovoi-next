@@ -53,6 +53,5 @@ uint8_t usb_get_state (void);
 // Освободить приём с учётом владения разборщика.
 void usb_clear_buffer (void);
 // Передать приложению целый кадр с проверенной CRC.
-void usb_data_reading(uint8_t* ptr, uint16_t len);
 
 #endif
