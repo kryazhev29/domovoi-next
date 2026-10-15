@@ -6,6 +6,9 @@
 #include "../../Bootloader/app_update.h"
 uint32_t id_used_bytes = UINT32_MAX;
 uint16_t id_cells_end;
+uint16_t id_scan_cell;
+static struct { uint32_t sum; uint16_t end, used; } id_scan;
+static uint16_t id_boot_hint; // номер, не копия ID: повтор доступа перечитывает одну ячейку
 uint32_t id_nextEnd;
 bool id_endScan = true;
 
@@ -86,6 +89,12 @@ uint8_t user_findID(char *id, cellID_s *cell){
   uint16_t idsum = 0;
   for (uint8_t i = 0; i < 10; i++) idsum += (uint8_t)id[i];
   if (idsum == 2550 || idsum == 0) return false; // пустой ID в базе не ищется
+  // База неизменна до конца стартового прохода; сам ID всегда сверяем с флеш.
+  if (id_scan_cell && id_boot_hint) {
+    if (!mem_read(mem[MB_ID].start + (uint32_t)(id_boot_hint - 1u) * sizeof(cellID_s),
+                  (uint8_t*)cell, sizeof(*cell))) return 2;
+    if (cell->reserve[9] != 255 && cell->index != 0xffff && id_equal(cell->ID, id)) return true;
+  }
   {
     cellID_s found;
     int8_t r = idindex_find(mem[MB_ID].start, (const uint8_t*)id, (uint8_t*)&found);
@@ -109,6 +118,7 @@ uint8_t user_findID(char *id, cellID_s *cell){
       if (c->reserve[9] == 255) continue;
 
       if (id_equal(c->ID, id) && c->index != 0xffff){
+        if (id_scan_cell) id_boot_hint = (uint16_t)((adr + a - mem[MB_ID].start) / sizeof(cellID_s) + 1u);
         memcpy(cell, c, sizeof(cellID_s));
         return true;
       }
@@ -214,46 +224,46 @@ bool user_addIdToTempBuffer(char *id, codeType_e tp)
   return ok;
 }
 
-// Сверить стартовую базу с меткой индекса и вернуть число живых ID.
-uint16_t user_getNumbersCount(void){
+// До полного прохода граница поиска охватывает всю базу, записи ждут.
+void user_ids_boot(void){
+  id_cells_end = (uint16_t)(mem[MB_ID].size / sizeof(cellID_s));
+  id_used_bytes = UINT32_MAX;
+  memset(&id_scan, 0, sizeof(id_scan));
+  device.numbersCount = 0;
+  id_scan_cell = 1;
+  id_boot_hint = 0;
+}
 
-  uint32_t adr;
-  uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
+// Один шаг исполнителя: восемь ячеек; при ошибке повторяем ту же страницу.
+void user_ids_scan(void){
+  uint32_t offset = (uint32_t)(id_scan_cell - 1u) * sizeof(cellID_s);
   uint8_t tbuffer[256];
   cellID_s *c;
-  uint16_t cnt = 0, cell = 0, used = 0;
-  uint32_t sum = 0;
-
-  id_cells_end = 0;
-  // по странично читаем
-  for (adr = mem[MB_ID].start; adr < endAdr; adr += sizeof(tbuffer)){
-    if (!mem_read(adr, tbuffer, sizeof(tbuffer))) {
-      /* Флеш не прочиталась: индекс не публикуем, поиск идёт по всей базе,
-         чтобы ни один записанный ID не пропал из проверки доступа. */
-      id_cells_end = (uint16_t)(mem[MB_ID].size / sizeof(cellID_s));
-      id_used_bytes = UINT32_MAX;
-      return 0;
-    }
-    // перебираем ячейки
-    for (uint16_t a = 0; a < sizeof(tbuffer); a += sizeof(cellID_s)){
-      c = (cellID_s*)&tbuffer[a];
-      cell++;
-      /* Последняя ячейка, где есть хоть один записанный байт: за ней флеш стёрта. */
-      for (uint8_t b = 0; b < sizeof(cellID_s); b++)
-        if (tbuffer[a + b] != 0xff) { used = cell; break; }
-      // пустая ячейка
-      if (c->index == 0xffff || c->reserve[9] == 255) continue;
-
-      cnt++;
-      id_cells_end = cell;
-      sum ^= idindex_hash(cell, (const uint8_t*)c->ID);
-    }
-    wdt_reload();
+  uint16_t n = (uint16_t)(mem[MB_ID].size - offset > sizeof(tbuffer) ?
+                         sizeof(tbuffer) : mem[MB_ID].size - offset);
+  if (!mem_read(mem[MB_ID].start + offset, tbuffer, n)) {
+    flash_exec_finish(FX_ERROR);
+    return;
   }
-  id_used_bytes = (uint32_t)used * sizeof(cellID_s);
-  idindex_scanned(sum, id_cells_end);
-
-  return cnt;
+  for (uint16_t a = 0; a < n; a += sizeof(cellID_s)){
+    c = (cellID_s*)&tbuffer[a];
+    /* Последняя ячейка, где есть хоть один записанный байт: за ней флеш стёрта. */
+    for (uint8_t b = 0; b < sizeof(cellID_s); b++)
+      if (tbuffer[a + b] != 0xff) { id_scan.used = id_scan_cell; break; }
+    uint16_t cell = id_scan_cell++;
+    // пустая ячейка
+    if (c->index == 0xffff || c->reserve[9] == 255) continue;
+    device.numbersCount++;
+    id_scan.end = cell;
+    id_scan.sum ^= idindex_hash(cell, (const uint8_t*)c->ID);
+  }
+  if (offset + n == mem[MB_ID].size) {
+    id_cells_end = id_scan.end;
+    id_used_bytes = (uint32_t)id_scan.used * sizeof(cellID_s);
+    id_scan_cell = 0;
+    idindex_scanned(id_scan.sum, id_cells_end);
+  }
+  flash_exec_finish(FX_OK);
 }
 
 // Записать событие окончания срока ID ровно один раз.

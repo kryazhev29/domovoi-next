@@ -443,7 +443,7 @@ char* user_last10digitsnumber (char* num)
 bool user_access_ready(const char *id)
 {
   if (!flash_exec_read_allowed()) return false;
-  if (flash_exec_idle() || unblock_active) return true;
+  if ((flash_exec_idle() && !id_scan_cell) || unblock_active) return true;
   if (device.status.autoRegistration) return false;
   cellID_s cell;
   uint8_t found = user_findID((char *)id, &cell);

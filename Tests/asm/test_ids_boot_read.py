@@ -24,19 +24,21 @@ def main():
     m = StorageMachine()
     m.flash[BASE:BASE + CELL] = cell(1, b'1111111111')
     m.flash[BASE + 5 * CELL:BASE + 6 * CELL] = cell(6, b'2222222222')
-    assert m.checked('user_getNumbersCount', budget=20_000_000) == 2
+    assert m.boot_ids() == 2
     assert m.u.mem_read(m.addr('id_cells_end'), 2) == struct.pack('<H', 6)
 
     # Отказ первого же чтения: счёт 0, поиск по всей базе, конец данных неизвестен.
     m = StorageMachine()
     m.flash[BASE:BASE + CELL] = cell(1, b'1111111111')
     m.fault = ('read', 1)
-    assert m.checked('user_getNumbersCount', budget=20_000_000) == 0
+    m.checked('user_ids_boot')
+    assert m.boot_scan_tick() == 3
     size = struct.unpack('<I', m.u.mem_read(m.addr('mem') + 2 * 8 + 4, 4))[0]
     end = struct.unpack('<H', m.u.mem_read(m.addr('id_cells_end'), 2))[0]
     assert end == size // CELL, ('граница поиска не на всю базу', end, size // CELL)
     assert m.u.mem_read(m.addr('id_used_bytes'), 4) == b'\xff\xff\xff\xff'
-    print('PASS стартовый подсчёт ID: отказ чтения не сужает поиск и не публикует частичный счёт')
+    assert m.boot_ids() == 1
+    print('PASS стартовый подсчёт ID: отказ чтения не сужает поиск, повтор завершает счёт')
 
 
 if __name__ == '__main__':

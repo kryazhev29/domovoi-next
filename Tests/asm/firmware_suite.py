@@ -78,6 +78,7 @@ CASES = {
     'storage_boundary': [('test_storage_boundaries',None)],
     'config_power': [('test_memory_runtime','power_cuts')],
     'index_power': [('test_idindex_runtime','test_power')],
+    'ids_boot_power': [('test_ids_startup','power')],
     'upload_power': [('test_upload_runtime','test_ack_power')],
     'clear_power': [('test_idclear_runtime','bulk_power')],
     'expiry_power': [('test_expiry_runtime','power')],
@@ -91,6 +92,8 @@ CASES['wear2 mutations']=[('test_flash_wear2_mutations','run')]
 CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','fw install wait','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
 POWER = tuple(n for n in CASES if n.endswith('_power'))
 CORE += ('unblock',)
+CASES['ids startup'] = [('test_ids_startup', 'main')]
+CORE += ('ids startup',)
 CORE += ('photo access',)
 CORE += ('photo busy', 'photo latency', 'camera packet', 'photo dispatch', 'photo log ack')
 CORE += ('call FW',)

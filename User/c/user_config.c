@@ -56,7 +56,7 @@ void user_initvariables (void)
   user_readsavedinformation();
   device.protocolVersion = PROTOCOL_VERSION;
 
-  device.numbersCount = user_getNumbersCount();
+  user_ids_boot();
   device.logsCount = log_getRecordsCount();
   device.tempIDsCount = user_getTempIDRecordsCount();
   // Очередь фото восстановит единственный асинхронный скан.

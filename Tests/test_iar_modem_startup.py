@@ -8,7 +8,7 @@ from iar_layout import fields
 from iar_image import result_path
 
 
-def startup(cold, heavy, mutation=False, origin=0):
+def startup(cold, heavy, mutation=False, origin=0, actual_ids=False):
     m = Machine(); m.init()
     m.u.mem_map(0x42000000, 0x600000)
     d, c = fields('device_s'), fields('config_s')
@@ -39,7 +39,8 @@ def startup(cold, heavy, mutation=False, origin=0):
 
     def numbers():
         for _ in range(heavy): tick()
-        m.ret(3151)
+        m.write(device + d['numbersCount'], 3151, 2)
+        m.ret()
 
     def packet():
         p, n = (m.u.reg_read(r) for r in (UC_ARM_REG_R0, UC_ARM_REG_R1))
@@ -55,7 +56,7 @@ def startup(cold, heavy, mutation=False, origin=0):
     m.u.hook_add(UC_HOOK_CODE, gpio)
     m.stubs[m.addr('user_readconfig')] = read_config
     m.stubs[m.addr('user_readsavedinformation')] = saved
-    m.stubs[m.addr('user_getNumbersCount')] = numbers
+    if not actual_ids: m.stubs[m.addr('user_ids_boot')] = numbers
     def restored_count(count,flag):
         m.write(device+d['status'],m.read(device+d['status'],2)|flag,2);m.ret(count)
     m.stubs[m.addr('log_getRecordsCount')] = lambda: restored_count(127,0x1000)
@@ -65,14 +66,14 @@ def startup(cold, heavy, mutation=False, origin=0):
     if mutation: m.stubs[power] = m.ret
     m.call('user_init')
     assert not sent, 'регистрация/статус ушли из user_init до готовности счётчиков'
-    assert [m.read(device + d[n], 2) for n in ('numbersCount', 'logsCount', 'tempIDsCount')] == [3151, 127, 3]
+    assert [m.read(device + d[n], 2) for n in ('numbersCount', 'logsCount', 'tempIDsCount')] == [0 if actual_ids else 3151, 127, 3]
     assert m.read(device + d['status'], 2) & 0x5000 == 0x5000, 'readyLogData/readyID не готовы'
     m.call('user_send_registrationData', 0)
     m.call('user_send_statusPack', 0)
     m.call('user_send_statusPackToConfigurator', 0)
-    assert [p[8] for p in sent] == [1, 2, 101]
+    assert [p[8] for p in sent] == ([1, 2] if actual_ids else [1, 2, 101])
     assert sent[1][13:15] == m.u.mem_read(device + d['status'], 2)
-    assert sent[2][37:39] == struct.pack('<H', 3151)
+    if not actual_ids: assert sent[2][37:39] == struct.pack('<H', 3151)
 
     def main_poll():
         if mutation:
@@ -91,6 +92,18 @@ def startup(cold, heavy, mutation=False, origin=0):
         tick()
         main_poll()
     finished = ready_at[0]
+    first_at = []
+    def at_start():
+        request, now = (m.u.reg_read(r) for r in (UC_ARM_REG_R0, UC_ARM_REG_R1))
+        p = m.read(request); n = m.read(request + 4, 2)
+        first_at.append((now, bytes(m.u.mem_read(p, n))))
+        m.ret(0)
+    m.stubs[m.addr('comm_at_start')] = at_start
+    m.stubs[m.addr('comm_at_poll')] = m.ret
+    m.stubs[m.addr('comm_at_busy')] = lambda: m.ret(0)
+    main_poll()
+    if not mutation:
+        assert first_at and first_at[0] == ((origin + max(target, heavy)) & 0xffffffff, b'AT'), first_at
     diag = m.call('comm_modem_diag')
     power_ms = m.read(diag + fields('slm_diag_t')['phases'])
     expected = [(0, 13, False), (0, 14, True),
@@ -99,7 +112,8 @@ def startup(cold, heavy, mutation=False, origin=0):
                 (2031 if cold else 4031, 14, True)]
     # GPIO - по таблице независимо от инициализации; USB 112 - до готовности главного цикла.
     assert trace == expected and finished == target and power_ms == max(target, heavy), ('питание', cold, heavy, trace, finished, power_ms)
-    return {'POR': cold, 'init_ms': heavy, 'power_ms': finished, 'GPIO': trace}
+    return {'POR': cold, 'init_ms': heavy, 'power_ms': finished, 'GPIO': trace,
+            'actual_ids_boot': actual_ids, 'first_AT_ms': (first_at[0][0]-origin)&0xffffffff}
 
 
 def races():
@@ -127,6 +141,7 @@ def races():
 rows = [startup(cold, n) for cold in (False, True) for n in (0, 2000, 5000)]
 rows += [startup(cold, 5000, origin=0xfffff000) for cold in (False, True)]
 rows += [startup(cold, 8000) for cold in (False, True)]
+rows += [startup(cold, 0, actual_ids=True) for cold in (False, True)]
 for cold in (False, True):
     try: startup(cold, 5000, mutation=True)
     except AssertionError as error:

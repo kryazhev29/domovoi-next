@@ -1,6 +1,7 @@
 // Подшаг STORE для ID; источник удержан до verify.
 bool store_id_begin(uint32_t address, const cellID_s *cell)
 {
+  if (id_scan_cell) return false;
   flash_exec_args_t args = { NULL, FS_ID };
   if (!flash_exec_begin(FX_STORE, &args)) return false;
   flash_job.data.storeio.address = address;

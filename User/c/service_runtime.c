@@ -51,7 +51,7 @@ void service_crc_quiet(uint8_t channel)
 static uint8_t sc_begin(uint8_t kind,uint8_t channel,uint8_t uniq,uint8_t index)
 {
   service_crc_s *p;
-  if(channel>1 || !flash_exec_idle() || mem_config_result()==1) return 0;
+  if((kind!=SC_CONFIG && id_scan_cell) || channel>1 || !flash_exec_idle() || mem_config_result()==1) return 0;
   if(!flash_exec_read_allowed() || index>100 || !(p=work_acquire(sizeof *p, WORK_SERVICE))) {
     if(kind!=SC_CONFIG) user_send_answer_comand(kind==SC_TABLES?17:18,(cmdCode_e)2,(dataChanel_e)channel,uniq);
     return 0;

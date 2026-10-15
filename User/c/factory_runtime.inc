@@ -32,6 +32,7 @@ bool store_factory_request(uint8_t channel, uint8_t uniq, uint8_t delay, const c
 }
 bool store_factory_begin(void)
 {
+  if (id_scan_cell) return false;
   factory_job_s *p = &flash_job.data.factory;
   if (!flash_exec_begin(FX_STORE, NULL)) return false;
   photo_storage_cancel();

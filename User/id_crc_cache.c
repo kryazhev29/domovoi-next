@@ -45,6 +45,7 @@ bool idcrc_io_start(uint32_t address,const uint8_t *source,uint16_t length,uint3
   uint32_t n=source?length:4096u;
   if(ic.state>IC_READY || w25_async_active()) return false;
   if(id_span(address,n)) {
+    if(id_scan_cell) return false;
     ic.scan=0;
     if(ic.state) {
       w25_job.address=address; w25_job.data=source; w25_job.length=(uint16_t)n;
@@ -127,7 +128,7 @@ bool idcrc_get(uint16_t *crc)
 // Намерение сканирования остаётся в ic; исполнитель принимает только один квант.
 bool idcrc_background_begin(void)
 {
-  if (ic.state || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
+  if (id_scan_cell || ic.state || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
   return flash_exec_begin(FX_CRC, NULL);
 }
 // Читает до 64 Б за проход; чужая работа не сбрасывает готовый префикс.

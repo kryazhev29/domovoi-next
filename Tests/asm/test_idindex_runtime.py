@@ -4,7 +4,7 @@ from test_work_memory import take, drop, owned, PHOTO, PHOTO_PACKET, REPLY, CONF
 import argparse, hashlib, json, struct
 from storage_machine import *
 
-BASE, IX_BASE, IX_LOG, MAGIC = 0x41000, 0x300000, 0x340000, 0x58444931
+BASE, IX_BASE, IX_LOG, MAGIC = 0x41000, 0x300000, 0x340000, 0x58444932
 
 
 # Считает независимый эталон хеша FNV.
@@ -249,7 +249,7 @@ def test_power():
                 # образ ОЗУ при каждом старте, включая ix, кучу и владельца W25.
                 boot.u.mem_write(0x20000000, boot_ram)
                 boot.flash = bytearray(image)
-                boot.checked('idindex_scanned', total, end)
+                assert boot.boot_ids() == 2
                 if boot.state() == 3:
                     assert boot.flash[IX_BASE:IX_LOG] == expected, ('accepted partial index', full, count)
                 else:

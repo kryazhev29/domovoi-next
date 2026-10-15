@@ -17,7 +17,7 @@
 #define IX_AREA    (IX_BUCKETS * IX_BYTES)   /* 256 КБ = 64 сектора */
 #define IX_LOG     (IX_BASE + IX_AREA)       /* сектор отметок верности */
 #define IX_MARKS   (4096u / 8u)              /* отметка 8 байт: сумма и её проверка */
-#define IX_MAGIC   0x58444931u
+#define IX_MAGIC   0x58444932u               /* старые отметки требуют одной пересборки */
 
 enum {
   IX_BOOT, IX_INVALIDATE, IX_FILL,
@@ -101,9 +101,9 @@ int8_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 // Принимает квант индекса после CRC-фона, без I/O и без второго polling.
 bool idindex_runtime_begin(void)
 {
-  if (!storage_has_index() || store.intent || store_reset_requested ||
+  if ((!id_scan_cell && !storage_has_index()) || store.intent || store_reset_requested ||
       mem_config_result() || fw_event_waiting()) return false;
-  if (ix.state != IX_INVALIDATE && ix.state != IX_FILL &&
+  if (!id_scan_cell && ix.state != IX_INVALIDATE && ix.state != IX_FILL &&
       (ix.state < IX_ERASE || ix.state > IX_PUBLISH)) return false;
   flash_exec_args_t args = { NULL, FX_INDEX_READ };
   return flash_exec_begin(FX_INDEX, &args);

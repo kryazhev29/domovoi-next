@@ -165,7 +165,7 @@ def bulk_power():
             reboot=ClearMachine(image);reboot.legacy=True
             reboot.checked('idindex_runtime_suspend')
             expected=sum(cut[i:i+2]!=b'\xff\xff' for i in range(0,8192,32))
-            assert reboot.checked('user_getNumbersCount',budget=1000000)==expected
+            assert reboot.boot_ids()==expected
             assert not reboot.clear_active() and not reboot.wires
             count+=1
         state[offset:offset+4096]=b'\xff'*4096

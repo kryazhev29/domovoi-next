@@ -244,6 +244,7 @@ dispatch:
 bool store_command_allowed(uint8_t cmd)
 {
   store_usb_session();
+  if (id_scan_cell && (cmd==3 || cmd==13 || cmd==17 || cmd==18 || cmd==103)) return false;
   if (cmd == 24 || cmd == 27) return true;
   if (cmd == 8) return flash_exec_read_allowed();
   if (cmd == 21) return !store_priority_pending() && flash_exec_idle();
@@ -258,6 +259,7 @@ bool user_command_ready(const uint8_t *ptr, bool usb_input)
 {
   // Ответы из RAM не зависят от владельца W25. 9/10 сохраняют только намерение.
   if (usb_input) store_usb_session();
+  if (ptr[4] == 101) return !id_scan_cell; // удержать запрос до полного счёта ID
   if (ptr[4] == 9 || ptr[4] == 10) return true;
   if (usb_input) {
     if (!device.userAutorized) return true; // Проверку ПИН выполняет разборщик.

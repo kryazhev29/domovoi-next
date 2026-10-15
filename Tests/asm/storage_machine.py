@@ -125,6 +125,24 @@ class StorageMachine(Machine):
     def exec_active(self, kind):
         state=self.exec_state()
         return state[0]==kind and state[2]==1
+    # Настоящий ограниченный стартовый проход через владельца INDEX.
+    def boot_scan_tick(self):
+        assert self.checked('idindex_runtime_begin')
+        self.checked('flash_exec_poll', self.now)
+        # Последний шаг дополнительно сверяет сектор отметок (не более 4 КиБ).
+        complete = not int.from_bytes(self.u.mem_read(self.addr('id_scan_cell'), 2), 'little')
+        assert self.read_budget <= (4352 if complete else 256) and not self.io_budget
+        result = self.exec_state()[2]
+        assert result in (2, 3)
+        assert self.checked('flash_exec_take_result') == result
+        return result
+
+    def boot_ids(self):
+        self.checked('user_ids_boot')
+        while int.from_bytes(self.u.mem_read(self.addr('id_scan_cell'), 2), 'little'):
+            self.boot_scan_tick()
+        return int.from_bytes(self.u.mem_read(self.device + self.d['numbersCount'], 2), 'little')
+
     def active(self):return self.exec_active(7)
     # Выполняет один проход хранения и проверяет его бюджет.
     def tick(self):
