@@ -32,6 +32,8 @@ def run():
     sources = dict(uart=uart_unit(), at=at_unit(), modem=modem_unit(), channel=channel_unit())
     sources = {name: text.replace('\r\n', '\n') for name, text in sources.items()}
     cases = (
+        ('modem', 'restore-boot-2s', '0, /* Загрузка модема:', '2000, /* Загрузка модема:'),
+        ('modem', 'wait-CGREG-in-GSM', 'network == 1 ? NET_CS | NET_PS', 'network == 1 ? NET_PS'),
         ('modem', 'apn-no-fallback', '&& !slm.apn.locked && slm.apn.source < SLM_APN_EMPTY', '&& 0'),
         ('modem', 'apn-retry-keeps-failed-source', 'power || !slm.apn.locked', 'power'),
         ('modem', 'apn-cached-source-fallback', '&& !slm.apn.locked && slm.apn.source', '&& slm.apn.source'),
@@ -44,9 +46,9 @@ def run():
         ('modem', 'busy-start-unbounded', 'if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);', 'if (0) slm_fail(SLM_ERR_TIMEOUT);'),
         ('channel', 'data-echo-left-enabled', '"QISDE=0"', '"QISDE=1"'),
         ('uart', 'idle-steals-rx-byte', 'status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)', 'status & (USART_SR_IDLE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)'),
-        ('modem', 'power-noise-not-cleared', 'if (p == COMM_PWR_READY) comm_uart_init(115200);', 'if (0) comm_uart_init(115200);'),
+        ('modem', 'power-noise-not-cleared', 'if (p == COMM_PWR_READY) {\n        comm_uart_init(115200);', 'if (p == COMM_PWR_READY) {'),
         ('modem', 'reject-valid-current-rat', 'values[0] <= 8)', 'values[0] <= 5)'),
-        ('modem', 'deny-other-network-domain', 'if (values[1] == 1 || values[1] == 5)', 'if (values[1] == 3) slm_fail(SLM_ERR_NETWORK); if (values[1] == 1 || values[1] == 5)'),
+        ('modem', 'deny-other-network-domain', 'if (registered == 1 || registered == 5)', 'if (registered == 3) slm_fail(SLM_ERR_NETWORK); if (registered == 1 || registered == 5)'),
         ('uart', 'rts-stop-boundary', 'used > sizeof(rx) - 1u - 128u', 'used >= sizeof(rx) - 1u - 128u'),
         ('uart', 'rts-resume-boundary', 'else if (used < 128u)', 'else if (used <= 128u)'),
         ('uart', 'rts-not-updated-in-irq', 'void DMA1_Channel3_IRQHandler(void)\n{\n  comm_uart_tick();\n}', 'void DMA1_Channel3_IRQHandler(void)\n{\n}'),

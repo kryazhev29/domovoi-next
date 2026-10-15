@@ -15,7 +15,8 @@ enum {
   SLM_AT_READY, SLM_MODEL, SLM_IMEI, SLM_ECHO, SLM_CMEE, SLM_IFC, SLM_CLIP,
   SLM_CMER, SLM_CREG_URC, SLM_CGREG_URC, SLM_CEREG_URC, SLM_URC_PORT,
   SLM_URC_SET, SLM_SIM, SLM_RAT_QUERY, SLM_RAT_SET, SLM_NETWORK,
-  SLM_NET_APN, SLM_IMSI, SLM_APN, SLM_DEACT, SLM_ACTIVATE, SLM_DATA_ECHO, SLM_TCP, SLM_READ, SLM_STEP_COUNT
+  SLM_NET_APN, SLM_IMSI, SLM_APN, SLM_DEACT, SLM_ACTIVATE, SLM_DATA_ECHO,
+  SLM_ATTACH, SLM_TCP, SLM_READ, SLM_STEP_COUNT
 };
 enum { SLM_PHASE_POWER, SLM_PHASE_SETUP, SLM_PHASE_SIM, SLM_PHASE_NETWORK,
        SLM_PHASE_PDP, SLM_PHASE_TCP, SLM_PHASE_COUNT };
@@ -81,6 +82,8 @@ uint8_t comm_modem_result(void);
 void comm_modem_failure(uint8_t reason, uint16_t code);
 /* STEP_COUNT завершает текущий шаг, STEP_COUNT+1 обновляет снимок. */
 void comm_modem_record(uint8_t step, uint8_t reason, uint16_t code);
+/* Закрыть время до принятой регистрации сервера, включая передачу и ответ. */
+void comm_modem_online(void);
 /* Выдать времена этапов и историю отказов без опроса модема. */
 const slm_diag_t *comm_modem_diag(void);
 /* Выдать текущее состояние и причину отказа модема. */

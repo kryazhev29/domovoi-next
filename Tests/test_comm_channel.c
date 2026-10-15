@@ -33,15 +33,15 @@ static void channel_path_tests(void)
 {
   channel_model_reset();  channel_until(15000);
   CHECK(comm_channel_ready() && slm.attempt.status.reason == SLM_ERR_NONE && !sim_gmm);
-  CHECK(sim_now >= 8000 && sim_now <= 11000 && sim_ticks > 800);
+  CHECK(sim_now >= 5000 && sim_now <= 6500 && sim_ticks > 500);
   DIAG_CHECK(slm.attempt.status.completed_phases == 63); DIAG_CHECK(!slm.diag.failure_count);
   DIAG_CHECK((slm.diag.steps[SLM_ACTIVATE] * 10u) == 700);
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == 500);
   CHECK(power_events == 5 && power_trace[0].pin == 13 && !power_trace[0].high);
   CHECK(power_trace[1].pin == 14 && power_trace[1].high);
-  CHECK(power_trace[2].pin == 13 && power_trace[2].time == 2100 && power_trace[2].high);
-  CHECK(power_trace[3].pin == 14 && power_trace[3].time == 3000 && !power_trace[3].high);
-  CHECK(power_trace[4].time == 5000 && power_trace[4].high);
+  CHECK(power_trace[2].pin == 13 && power_trace[2].time == 2010 && power_trace[2].high);
+  CHECK(power_trace[3].pin == 14 && power_trace[3].time == 2040 && !power_trace[3].high);
+  CHECK(power_trace[4].time == 4040 && power_trace[4].high);
   printf("SLM normal model: %u ms incl discharge, %u ms from PC13 on, %u polls\n",sim_now,sim_now-power_trace[2].time,sim_ticks);
   CHECK(!strcmp(slm_apn(), "internet.mts.ru"));
   CHECK(sim_commands < 25); /* Нет команд регистрации на сервере. */

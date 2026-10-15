@@ -187,6 +187,7 @@ void comm_channel_stable(void) { ch.retry_step = ch.connections = 0; }
 /* Зафиксировать принятый сервером новый сеанс. */
 void comm_channel_registered(void)
 {
+  comm_modem_online();
   ch.connections = 0; ch.flags.registered_session = 1; ch.call.expected = ch.call.lost = 0;
 }
 /* Закрыть прежний TCP и назначить обычную повторную попытку. */

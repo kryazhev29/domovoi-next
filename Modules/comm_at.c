@@ -109,7 +109,7 @@ static void qird_request(void)
 /* Начать чистый AT после отмены прежнего UART. */
 void comm_at_init(const comm_at_handlers_t *callbacks, uint32_t recovery_ms)
 {
-  handlers = *callbacks;
+  if (callbacks) handlers = *callbacks;
   state = IDLE;
   command_count = read_limit = modem_code = result = 0;
   recovery = recovery_ms;

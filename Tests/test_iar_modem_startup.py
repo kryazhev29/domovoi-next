@@ -85,7 +85,7 @@ def startup(cold, heavy, mutation=False, origin=0):
 
     main_poll()
     # После user_init главный цикл снова работает. До конца загрузки AT запрещены.
-    target = 5000 if cold else 7000
+    target = 2032 if cold else 4032
     for _ in range(max(target, heavy) + 7000 - heavy):
         if m.read(m.addr('power_state'), 1) == 6: break
         tick()
@@ -94,9 +94,9 @@ def startup(cold, heavy, mutation=False, origin=0):
     diag = m.call('comm_modem_diag')
     power_ms = m.read(diag + fields('slm_diag_t')['phases'])
     expected = [(0, 13, False), (0, 14, True),
-                (100 if cold else 2100, 13, True),
-                (1000 if cold else 3000, 14, False),
-                (3000 if cold else 5000, 14, True)]
+                (1 if cold else 2001, 13, True),
+                (31 if cold else 2031, 14, False),
+                (2031 if cold else 4031, 14, True)]
     # GPIO - по таблице независимо от инициализации; USB 112 - до готовности главного цикла.
     assert trace == expected and finished == target and power_ms == max(target, heavy), ('питание', cold, heavy, trace, finished, power_ms)
     return {'POR': cold, 'init_ms': heavy, 'power_ms': finished, 'GPIO': trace}
@@ -134,4 +134,4 @@ for cold in (False, True):
     else: raise AssertionError('мутация питания только в главном цикле выжила')
 races()
 result_path('modem-startup.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-print('PASS IAR modem startup: init 0/2000/5000 ms, POR 5000/reset 7000, GPIO, counters/packets, wrap, IRQ races; 2 main-loop mutations killed')
+print('PASS IAR modem startup: init 0/2000/5000 ms, POR 2032/reset 4032, GPIO, counters/packets, wrap, IRQ races; 2 main-loop mutations killed')

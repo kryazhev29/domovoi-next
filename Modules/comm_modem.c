@@ -16,10 +16,13 @@ static struct {
   struct {
     uint8_t done, result, answer, query, recording, retried;
     uint8_t net_registered;
+    uint8_t configured : 1, pdp_dirty : 1, server_timed : 1;
+    uint8_t at_ready : 1, at_ok : 1, sim_ready : 1, sim_wait : 1;
     slm_status_t status;
     uint32_t step_started;
     uint32_t phase_started, attempt_started;
     uint32_t now, next;
+    uint32_t key_released, ready_started;
   } attempt;
   /* Удачный источник и APN живут до выключения модема, включая потерю PDP. */
   struct { char network[101]; uint8_t source, locked, mnc; } apn;
@@ -37,6 +40,8 @@ static struct {
   struct { const comm_side_t *req; uint32_t started; uint8_t queued, running, prompted, done, result; uint16_t code; } side;
   slm_diag_t diag;
 } slm;
+/* Домены регистрации и завершённый attach; сохраняются и во время настройки. */
+enum { NET_CS = 1, NET_PS = 2, NET_EPS = 4, NET_ATTACHED = 8 };
 #if DOMOVOI_DIAG
 typedef char slm_diag_budget[(sizeof(slm_diag_t) <= 136u) ? 1 : -1];
 #endif
@@ -71,7 +76,8 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
 #if DOMOVOI_DIAG
     slm.diag.steps[slm.attempt.status.step] = slm_elapsed(slm.attempt.step_started);
 #endif
-    if (!(slm.attempt.status.completed_phases & (1u << slm.attempt.status.phase)))
+    if (!(slm.attempt.status.completed_phases & (1u << slm.attempt.status.phase))
+        && !(slm.attempt.server_timed && slm.attempt.status.phase == SLM_PHASE_TCP))
       slm.diag.phases[slm.attempt.status.phase] = slm.attempt.now - slm.attempt.phase_started;
   }
   if (next > SLM_STEP_COUNT) return;
@@ -83,6 +89,8 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
   uint8_t phase = next == SLM_STEP_COUNT ? SLM_PHASE_COUNT
     : next < SLM_AT_READY ? SLM_PHASE_POWER : next >= SLM_TCP ? SLM_PHASE_TCP
     : (uint8_t)(slm_steps[next - SLM_AT_READY].action >> 4);
+  /* QICSGP до attach перекрывает поиск сети; после attach относится к PDP. */
+  if (next == SLM_APN && (slm.attempt.net_registered & NET_ATTACHED)) phase = SLM_PHASE_PDP;
   /* Уже завершённый этап закрывается снова после каждого чтения TCP - это не новость. */
   if (phase != slm.attempt.status.phase && usb_log_on(2)
       && (reason || !(slm.attempt.status.completed_phases & (1u << slm.attempt.status.phase)))) {
@@ -108,7 +116,7 @@ void comm_modem_record(uint8_t next, uint8_t reason, uint16_t code)
     slm.attempt.status.step = SLM_TCP;
   slm.attempt.recording = next < SLM_STEP_COUNT;
   if (slm.attempt.recording) {
-    if (next == SLM_TCP) {
+    if (next == SLM_TCP && !slm.attempt.server_timed) {
       slm.attempt.status.completed_phases &= (uint8_t)~(1u << SLM_PHASE_TCP);
       slm.attempt.phase_started = slm.attempt.now;
       slm.diag.phases[SLM_PHASE_TCP] = 0;
@@ -126,6 +134,15 @@ static void slm_fail(uint8_t reason)
   if (slm.attempt.status.state == SLM_FAILED) return;
   comm_modem_record(SLM_STEP_COUNT, reason, slm.attempt.status.modem_code);
   slm.attempt.status.state = SLM_FAILED;
+}
+/* USB 112: TCP включает весь остаток попытки до ответа сервера, а не только QIOPEN. */
+void comm_modem_online(void)
+{
+  if (slm.attempt.server_timed) return;
+  uint32_t elapsed = slm.attempt.now - slm.attempt.attempt_started;
+  for (uint8_t i = 0; i < SLM_PHASE_TCP; ++i) elapsed -= slm.diag.phases[i];
+  slm.diag.phases[SLM_PHASE_TCP] = elapsed;
+  slm.attempt.server_timed = 1;
 }
 
 /* Третье поле CGCONTRDP — APN активного CID 1, с кавычками или без них. */
@@ -158,15 +175,34 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     for (uint8_t i = 0; i < COMM_URC_COUNT; ++i) slm.urc[i](p, n);
   /* Во время одноимённого запроса движок выдаёт URC как LINE; формат одинарный. */
   if (kind == COMM_AT_URC || kind == COMM_AT_LINE) {
+    if (comm_at_equal(p,n,"AT READY") && !slm.attempt.at_ready) {
+      slm.attempt.at_ready = 1; slm.attempt.ready_started = slm.attempt.now;
+      if (slm.attempt.status.step == SLM_AT_READY) slm.attempt.next = slm.attempt.now;
+    }
+    if (comm_at_equal(p,n,"+SIM1 Ready") || comm_at_equal(p,n,"+CPIN: READY")) {
+      slm.attempt.sim_ready = 1;
+      if (slm.attempt.status.step == SLM_SIM) slm.attempt.next = slm.attempt.now;
+    }
     uint32_t registered;
-    /* Регистрация будит и отказавшую попытку; CREG не заменяет проверку пакетной сети. */
-    if ((comm_at_parse(p,n,"+CGREG:\005",&registered) || comm_at_parse(p,n,"+CEREG:\005",&registered)
-        || comm_at_parse(p,n,"+CGREG:\005,\"*",&registered) || comm_at_parse(p,n,"+CEREG:\005,\"*",&registered))
-        && (registered == 1 || registered == 5)) {
-      slm.attempt.net_registered = 1; slm.attempt.next = slm.attempt.now;
-      comm_recover_registered();
-    } else if ((comm_at_parse(p,n,"+CREG:\005",&registered) || comm_at_parse(p,n,"+CREG:\005,\"*",&registered))
-        && (registered == 1 || registered == 5)) comm_recover_registered();
+    static const char *const domains[] = {"+CREG:", "+CGREG:", "+CEREG:"};
+    for (uint8_t i = 0; i < 3; ++i) {
+      uint16_t pos = i ? 7u : 6u;
+      if (!comm_at_prefix(p,n,domains[i]) || !comm_at_scan(p,n,&pos,5,&registered)) continue;
+      /* Ответ запроса: <n>,<stat>; URC: <stat>[,"LAC",...]. */
+      if (pos < n && p[pos] == ',') {
+        ++pos; pos = comm_at_spaces(p,n,pos);
+        if (pos < n && p[pos] != '"') {
+          if (registered > 2 || !comm_at_scan(p,n,&pos,5,&registered)) continue;
+          if (kind == COMM_AT_LINE && slm.attempt.status.step == SLM_NETWORK) slm.attempt.answer = 1;
+        }
+      }
+      uint8_t bit = (uint8_t)(1u << i);
+      if (registered == 1 || registered == 5) {
+        slm.attempt.net_registered |= bit;
+        if (slm.attempt.status.step == SLM_NETWORK) slm.attempt.next = slm.attempt.now;
+        comm_recover_registered();
+      } else slm.attempt.net_registered &= (uint8_t)~bit;
+    }
   }
   if (slm.side.running) {
     if (kind == COMM_AT_LINE) { if (slm.side.req->line) slm.side.req->line(p, n, detail); return; }
@@ -183,6 +219,11 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     slm.attempt.status.modem_code = n;
     /* Ошибка грамматики/UART оставляет AT в FAULT: обычный TCP close уже невозможен. */
     if (detail > COMM_AT_TIMEOUT && detail != COMM_AT_SEND_FULL) kind = COMM_AT_STREAM_ERROR;
+  }
+  /* До первого OK UART ещё загружается: шум не является отказом сеанса. */
+  if (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step == SLM_AT_READY
+      && (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR)) {
+    slm.attempt.done = 1; slm.attempt.result = COMM_AT_TIMEOUT; return;
   }
   if (slm.attempt.status.state == SLM_READY || kind == COMM_AT_URC
       || kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR)
@@ -212,12 +253,6 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     switch (action) {
     case MODEM_APN_QUERY:
       slm_network_apn(p, n);
-      break;
-    case MODEM_NETWORK:
-      if (comm_at_parse(p,n,(slm.attempt.query ? "+CEREG:\005,\005|" : "+CGREG:\005,\005|"),values) && values[0] <= 2 && values[1] <= 5) {
-        slm.attempt.answer = 1; /* Один домен может быть запрещён при регистрации в другом. */
-        if (values[1] == 1 || values[1] == 5) slm.attempt.net_registered = 1;
-      }
       break;
     case MODEM_RAT:
       if (comm_at_parse(p,n,"+QCFG: \"nwscanmode\",\005",values) && values[0] <= 8)
@@ -299,6 +334,8 @@ static void slm_begin(bool power, uint32_t now_ms)
   memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
   memset(&slm.attempt, 0, sizeof(slm.attempt));
   slm_side_cancel(); slm.call_active = 0;
+  slm.attempt.pdp_dirty = !power;
+  slm.attempt.query = slm.settings.number(SLM_CFG_NETWORK) == 1 ? 2 : 1;
   if (power || !slm.apn.locked) memset(&slm.apn, 0, sizeof(slm.apn));
   ++slm.session;
   slm.attempt.now = now_ms;
@@ -315,6 +352,9 @@ static void slm_begin(bool power, uint32_t now_ms)
   } else {
     slm.attempt.status.phase = SLM_PHASE_SETUP;
     slm.attempt.status.step = SLM_AT_READY;
+    /* При мягком повторе модем уже включён, нового AT READY не будет. */
+    slm.attempt.at_ready = 1;
+    slm.attempt.ready_started = slm.attempt.key_released = now_ms;
   }
   slm.attempt.step_started = slm.attempt.next = now_ms;
 }
@@ -360,7 +400,7 @@ uint8_t comm_modem_session(void) { return slm.session; }
 static bool slm_side_allowed(void)
 {
   return slm.attempt.status.state == SLM_READY
-    || (slm.attempt.status.state >= SLM_STARTING && slm.attempt.status.step >= SLM_SIM);
+    || (slm.attempt.status.state >= SLM_STARTING && slm.attempt.status.phase >= SLM_PHASE_SIM);
 }
 /* Проверено на плате №1 13.10.2026 (a83833c): 9 стартов подряд, QPOWD перед каждым, до TCP 14,8-15,9 с, сбоев настройки нет; повтор шага проверен на модели, на плате не срабатывал */
 /* Плановое выключение: модем, уже отвечавший на AT, выходит из сети (AT+QPOWD),
@@ -494,7 +534,7 @@ uint16_t comm_modem_build(char *cmd, uint16_t size, const char *p, const char *h
     case 5: text = host; break;
     case 6: case 7: number = value; break;
     case 8: number = slm.apn.source == SLM_APN_MANUAL && (slm_text(SLM_CFG_LOGIN)[0] || slm_text(SLM_CFG_PASSWORD)[0]); break;
-    case 9: text = (slm.attempt.query ? "CEREG?" : "CGREG?"); break;
+    case 9: text = slm.attempt.query == 2 ? "CREG?" : slm.attempt.query ? "CEREG?" : "CGREG?"; break;
     default: cmd[n++] = (char)token; continue;
     }
     n = text ? comm_at_copy(cmd, size, n, text) : comm_at_decimal(cmd, size, n, number);
@@ -511,7 +551,9 @@ static uint8_t slm_issue(uint8_t step)
   if (n >= sizeof(cmd)) return COMM_AT_INVALID;
   comm_at_request_t req = {(const uint8_t *)cmd, n, COMM_AT_TEXT,
     comm_timeouts[slm_steps[step - SLM_AT_READY].timeout]};
-  return comm_at_start(&req, slm.attempt.now);
+  uint8_t result = comm_at_start(&req, slm.attempt.now);
+  if (result == COMM_AT_ACCEPTED && step == SLM_RAT_SET) slm.attempt.net_registered = 0;
+  return result;
 }
 
 /* Сообщить, готовы ли SIM, сеть и мобильный интернет. */
@@ -540,6 +582,23 @@ static const char *slm_apn(void)
     if (slm.apn.mnc == apn_map[i].mnc) return apns + apn_map[i].offset;
   return "";
 }
+/* IMSI уже прочитан: в GSM сетевого APN до PDP нет (Common §12.21). */
+static uint8_t slm_apn_step(void)
+{
+  if (!slm.apn.locked && slm.apn.source == SLM_APN_NETWORK) {
+    if (slm.attempt.net_registered & NET_EPS) return SLM_NET_APN;
+    slm.apn.source = SLM_APN_MNC;
+  }
+  if (slm.apn.source == SLM_APN_MNC && !slm_apn()[0]) slm.apn.source = SLM_APN_EMPTY;
+  return SLM_APN;
+}
+/* GSM ждёт CS/PS, LTE только EPS; auto принимает первый доступный домен. */
+static bool slm_registered(void)
+{
+  uint16_t network = slm.settings.number(SLM_CFG_NETWORK);
+  return (slm.attempt.net_registered & (network == 1 ? NET_CS | NET_PS
+    : network == 3 ? NET_EPS : NET_CS | NET_PS | NET_EPS)) != 0;
+}
 /* Запустить шаг или дождаться освобождения входного потока. */
 static void slm_send(void)
 {
@@ -549,7 +608,8 @@ static void slm_send(void)
     if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);
   } else if (result != COMM_AT_ACCEPTED) slm_fail(SLM_ERR_RESPONSE);
 }
-/* Проверено на плате №1 13.10.2026 (a83833c): 9 стартов подряд, QPOWD перед каждым, до TCP 14,8-15,9 с, сбоев настройки нет; повтор шага проверен на модели, на плате не срабатывал */
+/* Проверено на плате №1 13.10.2026 (a83833c): 9 стартов подряд, QPOWD перед каждым, до TCP 14,8-15,9 с, сбоев настройки нет; повтор шага проверен на модели, на плате не срабатывал
+   Изменено 14.10.2026 (task/fast-start): CREG/CGATT, ранний APN, готовность AT/SIM и повторы настройки. Изменено, не проверено на плате. */
 /* Применить ответ и выбрать следующий шаг таблицы запуска. */
 static void slm_completed(void)
 {
@@ -557,13 +617,48 @@ static void slm_completed(void)
   const comm_modem_step_t *entry = &slm_steps[step - SLM_AT_READY];
   uint8_t action = entry->action & 15u;
   slm.attempt.done = 0; slm.attempt.next = slm.attempt.now;
+  if (action == MODEM_READY) {
+    if (slm.attempt.result == COMM_AT_OK) slm.attempt.at_ok = 1;
+    if (!slm.attempt.at_ready && slm.attempt.at_ok
+        && slm.attempt.now - slm.attempt.key_released >= comm_timeouts[COMM_T_READY_GUARD]) {
+      slm.attempt.at_ready = 1; slm.attempt.ready_started = slm.attempt.now;
+    }
+    if (!slm.attempt.at_ready && slm.attempt.result == COMM_AT_OK) {
+      slm.attempt.next += comm_timeouts[COMM_T_AT_RETRY]; return;
+    }
+  }
+  if (action == MODEM_SIM) {
+    uint16_t code = slm.attempt.status.modem_code;
+    if (slm.attempt.answer == 2 || (slm.attempt.result == COMM_AT_CME && code == 11)) {
+      slm_fail(SLM_ERR_PIN); return;
+    }
+    if (slm.attempt.answer == 3 || (slm.attempt.result == COMM_AT_CME && code == 12)) {
+      slm_fail(SLM_ERR_PUK); return;
+    }
+    if (slm.attempt.result == COMM_AT_OK && slm.attempt.answer == 1) slm.attempt.sim_ready = 1;
+    if (slm.attempt.sim_ready) {
+      slm.attempt.answer = 1; slm.attempt.result = COMM_AT_OK;
+    } else if (slm.attempt.result == COMM_AT_OK || slm.attempt.result == COMM_AT_ERROR
+        || (slm.attempt.result == COMM_AT_CME && (code == 10 || code == 13 || code == 14 || slm.attempt.answer == 4))) {
+      slm.attempt.sim_wait = 1;
+      slm.attempt.next += comm_timeouts[COMM_T_BOOT_RETRY]; return;
+    }
+  }
+  /* Ранний OK без строки не доказывает готовность сервисов модема. */
+  if (action != MODEM_READY && entry->action >> 4 == SLM_PHASE_SETUP
+      && (slm.attempt.result == COMM_AT_ERROR || slm.attempt.result == COMM_AT_CME
+          || (slm.attempt.result == COMM_AT_OK && !slm.attempt.answer
+              && (action == MODEM_MODEL || action == MODEM_IMEI || action == MODEM_RAT || action == MODEM_PORT)))) {
+    slm.attempt.next += comm_timeouts[COMM_T_BOOT_RETRY]; return;
+  }
   /* MODEM_ANY: ответ модема есть (OK, ERROR, CME) - шаг пройден; срок или сбой потока - нет. */
   if (slm.attempt.result != COMM_AT_OK && !((action == MODEM_ANY || action == MODEM_APN_QUERY) && slm.attempt.result < COMM_AT_GOT_PROMPT)) {
     if (action == MODEM_PDP && slm.attempt.result <= COMM_AT_TIMEOUT
         && !slm.apn.locked && slm.apn.source < SLM_APN_EMPTY) {
       ++slm.apn.source;
-      comm_modem_record(slm.apn.source == SLM_APN_NETWORK ? SLM_NET_APN
-        : slm.apn.source == SLM_APN_MNC ? SLM_IMSI : SLM_APN, 0, slm.attempt.status.modem_code);
+      slm.attempt.pdp_dirty = 1;
+      slm.attempt.configured = 0;
+      comm_modem_record(slm_apn_step(), 0, slm.attempt.status.modem_code);
       return;
     }
     uint8_t reason = slm.attempt.result == COMM_AT_TIMEOUT ? SLM_ERR_TIMEOUT
@@ -571,6 +666,8 @@ static void slm_completed(void)
     if (action == MODEM_SIM && (slm.attempt.status.modem_code == 10 || slm.attempt.answer == 4)) reason = SLM_ERR_NO_SIM;
     if (action == MODEM_PDP && slm.attempt.result != COMM_AT_TIMEOUT) reason = SLM_ERR_PDP;
     if (action == MODEM_READY && slm.attempt.result <= COMM_AT_TIMEOUT) {
+      comm_uart_init(115200);
+      comm_at_init(NULL, comm_timeouts[COMM_T_AT_RESYNC]);
       slm.attempt.next = slm.attempt.now + comm_timeouts[COMM_T_AT_RETRY]; return;
     }
     /* Команду сразу после IFC=2,2 модем изредка теряет (плата №1, 13.10: CLIP
@@ -588,16 +685,15 @@ static void slm_completed(void)
   case MODEM_PDP: slm.apn.locked = 1; break;
   case MODEM_NETWORK:
     if (!slm.attempt.answer) { slm_fail(SLM_ERR_RESPONSE); return; }
-    if (slm.attempt.query == 0) { slm.attempt.query = 1; return; }
-    if (!slm.attempt.net_registered) {
-      slm.attempt.query = 0; slm.attempt.next = slm.attempt.now + comm_timeouts[COMM_T_NETWORK_POLL]; return;
+    if (!slm_registered()) {
+      if (!slm.settings.number(SLM_CFG_NETWORK)) slm.attempt.query = (uint8_t)((slm.attempt.query + 1u) % 3u);
+      if (slm.settings.number(SLM_CFG_NETWORK) || slm.attempt.query == 1)
+        slm.attempt.next = slm.attempt.now + comm_timeouts[COMM_T_NETWORK_POLL];
+      return;
     }
-    if (!slm.apn.locked && slm.apn.source <= SLM_APN_NETWORK)
-      slm.apn.source = slm_text(SLM_CFG_APN)[0] ? SLM_APN_MANUAL : SLM_APN_NETWORK;
     break;
   case MODEM_MODEL: case MODEM_IMEI: case MODEM_IMSI: case MODEM_RAT: case MODEM_PORT:
     if (!slm.attempt.answer) { slm_fail(action == MODEM_MODEL ? SLM_ERR_TYPE : SLM_ERR_RESPONSE); return; }
-    if (action == MODEM_IMSI && !slm_apn()[0]) slm.apn.source = SLM_APN_EMPTY;
     break;
   case MODEM_SIM:
     if (slm.attempt.answer != 1) {
@@ -605,10 +701,29 @@ static void slm_completed(void)
     }
     break;
   }
-  uint8_t alternate = action == MODEM_READY ? slm.settings.number(SLM_CFG_TYPE) == MODEM_TYPE_SLM336
-    : action == MODEM_NETWORK ? slm.apn.locked || slm.apn.source != SLM_APN_NETWORK : slm.attempt.answer == 1;
+  uint8_t alternate = action == MODEM_READY ? slm.settings.number(SLM_CFG_TYPE) == MODEM_TYPE_SLM336 : slm.attempt.answer == 1;
   if (action == MODEM_MODEL) slm.type_found(MODEM_TYPE_SLM336);
   uint8_t next = alternate ? entry->alternate : entry->next;
+  if (action == MODEM_APN_QUERY && !slm.attempt.answer) next = slm_apn_step();
+  if (action == MODEM_SIM && slm.apn.locked) next = SLM_APN;
+  if (action == MODEM_IMSI) {
+    if (!slm.apn.locked) slm.apn.source = slm_text(SLM_CFG_APN)[0] ? SLM_APN_MANUAL
+      : slm.settings.number(SLM_CFG_NETWORK) == 1 ? SLM_APN_MNC : SLM_APN_NETWORK;
+    if (slm.apn.source != SLM_APN_NETWORK || slm.apn.locked) next = slm_apn_step();
+  }
+  if (action == MODEM_NETWORK || step == SLM_ATTACH) {
+    if (step != SLM_ATTACH && !(slm.attempt.net_registered & (NET_PS | NET_EPS))) next = SLM_ATTACH;
+    else {
+      slm.attempt.net_registered |= NET_ATTACHED;
+      next = slm_apn_step();
+    }
+  }
+  if (step == SLM_APN) {
+    slm.attempt.configured = 1;
+    if (slm.attempt.net_registered & NET_ATTACHED) next = SLM_DEACT;
+  }
+  if (next == SLM_APN && slm.attempt.configured) next = SLM_DEACT;
+  if (next == SLM_DEACT && !slm.attempt.pdp_dirty) next = SLM_ACTIVATE;
   comm_modem_record(next, 0, slm.attempt.status.modem_code);
   if (next == SLM_STEP_COUNT) slm.attempt.status.state = SLM_READY;
 }
@@ -619,13 +734,16 @@ void comm_modem_poll(uint32_t now_ms)
   slm.attempt.now = now_ms;
   comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
   /* При снятом/нарастающем питании UART может ловить FE и шум загрузки.
-     Это не ответ AT: начинаем чистый поток после выдержки POWER_BOOT. */
+     Это не ответ AT: начинаем чистый поток после отпускания PWRKEY. */
   if (slm.attempt.status.state == SLM_STARTING && slm.attempt.status.step <= SLM_POWER_BOOT) {
     uint8_t p = comm_power_v5_state();
     if (p != slm.attempt.status.step + 1u) {
       /* USB 112: этап питания длится до готовности главного цикла - сумма этапов
          равна настоящему времени до сервера, включая хвост user_init. */
-      if (p == COMM_PWR_READY) comm_uart_init(115200);
+      if (p == COMM_PWR_READY) {
+        comm_uart_init(115200);
+        slm.attempt.key_released = comm_power_v5_key_released();
+      }
       comm_modem_record(p == COMM_PWR_READY ? SLM_AT_READY : (uint8_t)(p - 1u), 0, slm.attempt.status.modem_code);
     }
     return;
@@ -633,16 +751,31 @@ void comm_modem_poll(uint32_t now_ms)
   comm_at_poll(now_ms); /* После ошибки шага завершаем ресинхронизацию. */
   slm_side_issue();
   if (slm.attempt.status.state != SLM_STARTING) return;
-  if (slm.attempt.done) slm_completed();
-  if (slm.attempt.status.state != SLM_STARTING) return;
-  if (slm.call_active && slm_side_allowed()) return;
-  if (slm.attempt.status.step == SLM_AT_READY && now_ms - slm.attempt.step_started >= comm_timeouts[COMM_T_AT_READY]) {
+  if (slm.attempt.status.phase == SLM_PHASE_SETUP
+      && now_ms - slm.attempt.key_released >= comm_timeouts[COMM_T_AT_READY]) {
     slm_fail(SLM_ERR_TIMEOUT); return;
   }
-  if (slm.attempt.status.step == SLM_NETWORK && now_ms - slm.attempt.step_started >= comm_timeouts[COMM_T_NETWORK]) {
+  if (slm.attempt.done) slm_completed();
+  if (slm.attempt.status.state != SLM_STARTING) return;
+  if (slm.attempt.status.step == SLM_SIM && !slm.attempt.sim_ready
+      && now_ms - slm.attempt.ready_started >= comm_timeouts[COMM_T_SIM]) {
+    slm_fail(slm.attempt.sim_wait ? SLM_ERR_NO_SIM : SLM_ERR_TIMEOUT); return;
+  }
+  if (slm.call_active && slm_side_allowed()) return;
+  if (slm.attempt.status.step == SLM_NETWORK && !comm_at_busy()
+      && now_ms - slm.attempt.step_started >= comm_timeouts[COMM_T_NETWORK]) {
     slm_fail(SLM_ERR_TIMEOUT); return;
   }
   if (!comm_at_busy() && (int32_t)(now_ms - slm.attempt.next) >= 0) {
+    if ((slm.attempt.status.step == SLM_AT_READY && slm.attempt.at_ready && slm.attempt.at_ok)
+        || (slm.attempt.status.step == SLM_SIM && slm.attempt.sim_ready)) {
+      slm.attempt.answer = 1; slm.attempt.result = COMM_AT_OK;
+      slm_completed();
+    }
+    if (slm.attempt.status.step == SLM_NETWORK && slm_registered()) {
+      slm.attempt.answer = 1; slm.attempt.result = COMM_AT_OK;
+      slm_completed();
+    }
     slm.attempt.answer = 0;
     slm_send();
   }

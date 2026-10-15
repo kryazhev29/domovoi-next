@@ -152,6 +152,8 @@ def main():
     if not args.quick:
         run('WG parity off',['Tests/run_host.py','work','wiegandirq','0'])
         run('comm_review',['Tests/comm_review_host.py'])
+        run('fast start',['Tests/test_fast_start.py'])
+        run('startup prefix',['Tests/measure_startup_prefix.py'])
         run('uart arm',['Tests/build_comm_uart.py'])
         for script in ('test_fault_capture','test_iar_boot_tx','test_iar_boot_usb_wait','test_iar_ram_stage7',
                        'test_iar_comm_uart','test_iar_peripheral_waits','test_iar_pma_bounds','test_iar_store_async',
