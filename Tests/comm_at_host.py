@@ -4,13 +4,13 @@ import argparse
 import os
 import struct
 import subprocess
-import tempfile
 from temp_cleanup import TemporaryDirectory
 from modem_sim import c_header
 from source_select import diagnostic_header
 
 ROOT = Path(__file__).resolve().parents[1]
-ZIG = __import__('os').environ.get('DOMOVOI_ZIG', str(Path(tempfile.gettempdir())/'codex-zig/zig.exe'))
+import tools_path
+ZIG = tools_path.zig()
 
 
 def unit(root=ROOT):

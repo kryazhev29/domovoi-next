@@ -1,10 +1,11 @@
 # Доработка: Кряжев А., 2026
-import os, pathlib, subprocess, sys, tempfile, re
+import os, pathlib, subprocess, sys, re
 from temp_cleanup import TemporaryDirectory
 from source_select import source_text, host_adapters
 # DOMOVOI_ROOT направляет проверки в копию, например с намеренно внесённой ошибкой.
 ROOT=pathlib.Path(os.environ.get('DOMOVOI_ROOT') or pathlib.Path(__file__).resolve().parents[1])
-ZIG=__import__('os').environ.get('DOMOVOI_ZIG', str(pathlib.Path(tempfile.gettempdir())/'codex-zig/zig.exe'))
+import tools_path
+ZIG=tools_path.zig()
 if len(sys.argv) > 1 and sys.argv[1] != 'work':
     sys.exit('Проверяется рабочий код: используйте run_host.py work <группа>.')
 kind=sys.argv[2] if len(sys.argv)>2 else 'storage'

@@ -4,7 +4,7 @@ from iar_image import image_paths
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser
-from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_HOOK_MEM_WRITE,UC_HOOK_MEM_READ
+from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB,UC_MODE_MCLASS,UC_HOOK_CODE,UC_HOOK_MEM_WRITE,UC_HOOK_MEM_READ,UC_MEM_WRITE
 from unicorn.arm_const import *
 
 _IMAGE_METADATA = {}
@@ -79,7 +79,7 @@ class Machine:
         self.maptext=map_path.read_text(errors='replace')
         self.top=self.map_addr('CSTACK$$Limit');self.bottom=self.map_addr('CSTACK$$Base')
         self.heap_bytes=self.map_addr('HEAP$$Limit')-self.map_addr('HEAP$$Base') if 'HEAP$$Limit' in self.symbols else 0
-        self.stop=0x08000000+flash_bytes-16;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={}
+        self.stop=0x08000000+flash_bytes-16;self.steps=0;self.minimum=self.top;self.in_irq=False;self.inject_at=None;self.pending=False;self.paused=False;self.irq=None;self.stubs={};self.mmio_pages={}
         self.u.reg_write(UC_ARM_REG_XPSR,0x01000000)
         self.code_hook=self.u.hook_add(UC_HOOK_CODE,self.hook)
         from stm32_crc_model import CRCModel
@@ -108,6 +108,20 @@ class Machine:
                 if size:return int(size[1])
         assert found,n
         return int(found[1],16)
+    # Unicorn 2.1.4 портит ITSTATE после UC_HOOK_MEM_WRITE на записи внутри IT-блока и пропускает
+    # следующие команды; MMIO-страница с теми же обработчиками этого не делает.
+    def watch_writes(self,begin,end,callback):
+        page=begin&~0xfff;assert end<page+0x1000,(hex(begin),hex(end))
+        if page not in self.mmio_pages:
+            store=bytearray(self.u.mem_read(page,0x1000));watchers=[]
+            def read(uc,offset,size,data):return int.from_bytes(store[offset:offset+size],'little')
+            def write(uc,offset,size,value,data):
+                for first,last,watch in list(watchers):
+                    if first<=page+offset<=last:watch(uc,UC_MEM_WRITE,page+offset,size,value,None)
+                store[offset:offset+size]=(value&((1<<8*size)-1)).to_bytes(size,'little')
+            self.u.mem_unmap(page,0x1000);self.u.mmio_map(page,0x1000,read,None,write,None)
+            self.mmio_pages[page]=watchers
+        self.mmio_pages[page].append((begin,end,callback))
     def ret(self,value=0):
         self.u.reg_write(UC_ARM_REG_R0,value);self.u.reg_write(UC_ARM_REG_PC,self.u.reg_read(UC_ARM_REG_LR))
     def hook(self,u,a,n,_):

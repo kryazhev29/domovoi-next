@@ -4,7 +4,7 @@ import struct
 from storage_machine import fields, UC_ARM_REG_SP
 from test_access_reads import AccessMachine, SHEDULE, HOLIDAY
 from test_sched16 import record, tail, parse
-from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
+from unicorn import UC_HOOK_CODE
 
 
 class UnblockMachine(AccessMachine):
@@ -21,7 +21,7 @@ class UnblockMachine(AccessMachine):
         self.gpio_changes = []
         self.u.hook_add(UC_HOOK_CODE, self.output_call,
                         begin=self.addr('out_load'), end=self.addr('out_load'))
-        self.u.hook_add(UC_HOOK_MEM_WRITE, self.gpio, begin=0x40010810, end=0x40010c14)
+        self.watch_writes(0x40010810, 0x40010c14, self.gpio)
         self.cfg = fields('config_s'); self.rele = fields('releMode_s')
         self.trigger = fields('triggers_s')
         self.write(self.addr('mem')+6*8, 0x1cd400)

@@ -5,7 +5,6 @@
 import os
 from pathlib import Path
 import subprocess
-import tempfile
 from temp_cleanup import TemporaryDirectory
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -61,7 +60,7 @@ def main():
     with TemporaryDirectory(prefix='domovoi-format-') as tmp:
         folder=Path(tmp);source=folder/'format_test.c';exe=folder/'format_test.exe'
         source.write_text(C,encoding='utf-8')
-        zig=os.environ.get('DOMOVOI_ZIG',str(Path(tempfile.gettempdir())/'codex-zig/zig.exe'))
+        zig=__import__('tools_path').zig()
         command=[zig,'cc'] if Path(zig).name.lower()=='zig.exe' else [zig]
         subprocess.run([*command,'-std=c99','-O2','-Wall','-Wextra','-Werror',
                         '-I'+str(ROOT/'User'),str(source),str(ROOT/'User/user_format.c'),'-o',str(exe)],check=True)

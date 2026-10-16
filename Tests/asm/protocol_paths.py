@@ -7,7 +7,6 @@ from test_access_reads import AccessMachine
 from test_service_runtime import ServiceMachine
 from storage_machine import fields,crc16
 from iar_image import image_paths
-from unicorn import UC_HOOK_MEM_WRITE
 
 def run():
     totals={};out={}
@@ -27,7 +26,7 @@ def run():
     p=Profile(m,totals);relay=[]
     def gpio(u,access,a,n,value,_):
         if value==8:relay.append({'instructions':p.n,'fetch_estimate':p.n+p.wait,'register':hex(a),'value':value})
-    m.u.hook_add(UC_HOOK_MEM_WRITE,gpio,begin=0x40010c10,end=0x40010c10)
+    m.watch_writes(0x40010c10,0x40010c10,gpio)
     def access():
         for _ in range(400):
             m.checked('WG_process')

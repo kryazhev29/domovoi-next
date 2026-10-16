@@ -15,7 +15,7 @@ import struct
 import tempfile
 
 from firmware_suite import select_image
-from storage_machine import StorageMachine, Machine, fields, crc16, UC_HOOK_MEM_WRITE
+from storage_machine import StorageMachine, Machine, fields, crc16
 from iar_image import image_paths
 
 BASE, SIZE, CAPACITY = 0x41000, 1601536, 50048
@@ -210,12 +210,15 @@ def mutations():
                 assert len(calls) == 2, calls
                 if mode == 'chunk-cap':
                     candidates = [ins for ins in code[max(0, calls[0]-3):calls[0]+4]
-                                  if ins.mnemonic == 'movs' and ins.op_str.endswith(', #4')]
-                    assert len(candidates) == 1
+                                  if ins.mnemonic in ('movs', 'mov.w') and ins.op_str.endswith(', #4')]
+                    assert len(candidates) == 1, [(c.mnemonic, c.op_str) for c in candidates]
                     ins = candidates[0]
-                    assert ins.size == 2
                     address = ins.address
-                    replacement = bytes([32, ins.bytes[1]])
+                    # MOVS: imm8 в первом байте; MOV.W (T2): imm8 в третьем байте при imm3=0.
+                    if ins.size == 2: replacement = bytes([32, ins.bytes[1]])
+                    else:
+                        assert ins.bytes[3] >> 4 == 0, ins.bytes.hex()
+                        replacement = bytes(ins.bytes[:2]) + bytes([32, ins.bytes[3]])
                 else:
                     ins = code[calls[-1]+1]
                     assert ins.mnemonic in ('subs', 'subs.w', 'cmp'), (ins.mnemonic, ins.op_str)
@@ -354,7 +357,7 @@ class TimedMachine(SyncMachine):
             wire['data'] += self.u.mem_read(p, n)
             self.ret()
 
-        self.u.hook_add(UC_HOOK_MEM_WRITE, cs, begin=0x40010c10, end=0x40010c14)
+        self.watch_writes(0x40010c10, 0x40010c14, cs)
         for name, fn in (('spi_send_byte', send_byte), ('spi_read_byte', read_byte),
                          ('spi_read', read), ('spi_send', send)):
             self.stubs[self.addr(name)] = fn

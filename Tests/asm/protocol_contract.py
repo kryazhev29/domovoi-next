@@ -9,7 +9,6 @@ import random
 import re
 import struct
 import sys
-import tempfile
 from collections import defaultdict
 from functools import lru_cache
 
@@ -20,7 +19,6 @@ from unicorn import UC_HOOK_CODE
 from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_PC
 from elftools.elf.elffile import ELFFile
 
-sys.path.insert(0, str(Path(tempfile.gettempdir())/'codex-deps'))
 from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS
 
 

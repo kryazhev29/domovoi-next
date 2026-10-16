@@ -210,7 +210,6 @@ def power_cuts():
 
 # Проверяет прошивку через настоящие пути W25 и модель SPI.
 def real_spi():
-    from unicorn import UC_HOOK_MEM_WRITE
     m=FirmwareMachine();m.fixture();m.write(0x40013000,0x40,2)
     wire=dict(cmd=0,address=0,address_bytes=0,wel=0,busy=0,read=0,status=0)
     for name in ('w25_read_data','w25_async_start','w25_async_poll','w25_async_active','w25_read_available'):
@@ -246,7 +245,7 @@ def real_spi():
     def read():
         p,n,_,_=m.args();assert wire['cmd']==3 and n<=256
         a=wire['address'];m.u.mem_write(p,bytes(m.flash[a:a+n]));wire['address']+=n;wire['read']+=n;m.ret()
-    m.u.hook_add(UC_HOOK_MEM_WRITE,cs,begin=0x40010c10,end=0x40010c14)
+    m.watch_writes(0x40010c10,0x40010c14,cs)
     for name,fn in [('spi_send_byte',send_byte),('spi_read_byte',read_byte),('spi_send',send),('spi_read',read)]:m.stubs[m.addr(name)]=fn
     m.begin();m.costs=[];mxread=mxstatus=fwread=0
     for n in range(10000):

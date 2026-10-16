@@ -262,7 +262,6 @@ def test_power():
 # Проверяет индекс с реальными командами драйвера W25.
 def test_real_w25():
     """Индекс с реальным фоновым W25; модель подменяет только границу SPI."""
-    from unicorn import UC_HOOK_MEM_WRITE
     m = IndexMachine(); expected, total, _ = m.setup((1, 2))
     m.write(0x40013000, 0x40, 2)
     wire = dict(cmd=0, address=0, address_bytes=0, wel=0, busy=0, read=0, status=0)
@@ -317,7 +316,7 @@ def test_real_w25():
         a = wire['address']; m.u.mem_write(p, bytes(m.flash[a:a+n]))
         wire['address'] += n; wire['read'] += n; m.ret()
 
-    m.u.hook_add(UC_HOOK_MEM_WRITE, cs, begin=0x40010c10, end=0x40010c14)
+    m.watch_writes(0x40010c10, 0x40010c14, cs)
     for name, fn in [('spi_send_byte', send_byte), ('spi_read_byte', read_byte), ('spi_send', send), ('spi_read', read)]:
         m.stubs[m.addr(name)] = fn
     m.costs = []; max_read = max_status = 0

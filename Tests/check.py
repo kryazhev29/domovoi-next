@@ -12,6 +12,7 @@ import io
 import concurrent.futures
 import shutil
 from build_iar import build
+import tools_path
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -24,9 +25,9 @@ def main():
     base=Path(os.environ.get('DOMOVOI_COMPARE_BUILD',Path(tempfile.gettempdir())/'domovoi-agent-build'))
     base.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy();env['DOMOVOI_COMPARE_BUILD']=str(base);env['PYTHONIOENCODING']='utf-8'
-    # Пути общего TEMP фиксируются до TMPDIR групп: zig и unicorn лежат там.
-    temp=Path(tempfile.gettempdir());env.setdefault('DOMOVOI_ZIG',str(temp/'codex-zig/zig.exe'))
-    env['PYTHONPATH']=env.get('PYTHONPATH') or str(temp/'codex-deps')
+    # Пути инструментов фиксируются до TMPDIR групп: zig и unicorn лежат в мк\Инструменты.
+    env['DOMOVOI_ZIG']=tools_path.zig()
+    env['PYTHONPATH']=env.get('PYTHONPATH') or tools_path.python_deps()
     env['PYTHONDONTWRITEBYTECODE']='1'
     results={}
     try:

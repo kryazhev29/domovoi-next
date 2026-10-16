@@ -11,12 +11,10 @@ import json
 from pathlib import Path
 import runpy
 import sys
-import tempfile
 from firmware_suite import ROOT, select_image
 from iar_irq_support import Machine
 from iar_image import image_paths
 from unicorn import UcError
-sys.path.insert(0,str(Path(tempfile.gettempdir())/'codex-deps'))
 from capstone import Cs,CS_ARCH_ARM,CS_MODE_THUMB,CS_MODE_MCLASS
 
 

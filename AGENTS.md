@@ -23,17 +23,17 @@
 
 ## Команды PowerShell из корня
 
-IAR EWARM 9: C:\Program Files\IAR Systems\Embedded Workbench 9.2; инструменты в TEMP.
+IAR EWARM 9: C:\Program Files\IAR Systems\Embedded Workbench 9.2; Python 3.11 — установленный в системе (py -3.11).
+zig 0.13.0 и библиотеки Python (unicorn, capstone, pyelftools) — в мк\Инструменты; Tests/tools_path.py находит их сам.
+В TEMP только результаты сборок и проверок: их можно удалять.
 
 ```powershell
-$env:PYTHONPATH = "$env:TEMP\codex-deps"
-$env:DOMOVOI_ZIG = "$env:TEMP\codex-zig\zig.exe"
 $env:DOMOVOI_COMPARE_BUILD = "$env:TEMP\domovoi-agent-build"
-& "$env:TEMP\codex-py311\python.exe" Tests/build_iar.py --config Release
-& "$env:TEMP\codex-py311\python.exe" Tests/build_iar.py --config ReleaseCustomer
-& "$env:TEMP\codex-py311\python.exe" Tests/build_iar.py --boot
-& "$env:TEMP\codex-py311\python.exe" Tests/check.py --quick
-& "$env:TEMP\codex-py311\python.exe" Tests/check.py --full
+py -3.11 Tests/build_iar.py --config Release
+py -3.11 Tests/build_iar.py --config ReleaseCustomer
+py -3.11 Tests/build_iar.py --boot
+py -3.11 Tests/check.py --quick
+py -3.11 Tests/check.py --full
 ```
 
 --quick: Release, связь, команды 12/17, запись ID, выборочные обрывы питания, ≤5 минут.
