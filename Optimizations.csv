@@ -1,0 +1,192 @@
+﻿Configuration;Module;Tool;Optimization;Flag;Disabled transformations;MFC;merge_duplicate_sections
+ReleaseCustomer;User/c/user_access.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_commands.c;iccarm;High / Balanced;-Oh;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_config.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_diag.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_fw.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_ids.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_log.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_main.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_modem.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_protocol.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_rx.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_schedule.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_sms.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_store.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_upload.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;CMSIS/STM32F10x/system_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/user_format.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/work_memory.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/adc_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_at.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_balance.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_call.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_channel.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_info.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_modem.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_power_v5.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_recover.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_server.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_sms.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/comm_uart.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/modem_slm336.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/spi_stm32f10x_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/timers.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/uart_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/usb_stm32f10x_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Modules/wdt_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;STM32_USB-FS-Device_Driver/src/usb_core.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;STM32_USB-FS-Device_Driver/src/usb_init.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;STM32_USB-FS-Device_Driver/src/usb_int.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;STM32_USB-FS-Device_Driver/src/usb_mem.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;STM32_USB-FS-Device_Driver/src/usb_regs.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;STM32_USB-FS-Device_Driver/src/usb_sil.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;USB-FS-CDC_User/Src/hw_config.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;USB-FS-CDC_User/Src/usb_desc.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;USB-FS-CDC_User/Src/usb_endp.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;USB-FS-CDC_User/Src/usb_istr.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;USB-FS-CDC_User/Src/usb_prop.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;USB-FS-CDC_User/Src/usb_pwr.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/comm_timeouts.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/crc_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/expiry_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/fast_kernels.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/flash_w25_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/fw_crc.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/fw_service_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/id_crc_cache.c;iccarm;High / Size;-Ohz;;off;on
+ReleaseCustomer;User/c/id_hash.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/idclear_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/idindex_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/indication.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/log_cursor.c;iccarm;High / Size;-Ohz;;off;on
+ReleaseCustomer;User/log_ring.c;iccarm;High / Size;-Ohz;;off;on
+ReleaseCustomer;User/c/memory_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/outs.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/packet.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/photo_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/prof.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/sector_journal_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/sector_runtime_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/service_runtime.c;iccarm;High / Size;-Ohz;;off;on
+ReleaseCustomer;User/storage_profile.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/table_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/upload_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/usb_log.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/c/user_comm_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/user_str_fun.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;User/wiegand.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Bootloader/app_update.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;board.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;Bootloader/boot_manual.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;main.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;stm32_it.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+ReleaseCustomer;CMSIS/STM32F10x/Source/startup_stm32f10x_md.s;iasmarm;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\ReleaseCustomer\ObjPath\CMSIS_13545061835669826545.dir;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\ReleaseCustomer\ObjPath\CMSIS_13545061835669826545.dir;;off;on
+ReleaseCustomer;User/asm/crc_asm.s;iasmarm;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\ReleaseCustomer\ObjPath\User_4889033380472473340.dir;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\ReleaseCustomer\ObjPath\User_4889033380472473340.dir;;off;on
+Release;User/c/user_access.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_commands.c;iccarm;High / Balanced;-Oh;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_config.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_diag.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_fw.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_ids.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_log.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_main.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_modem.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_protocol.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_rx.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_schedule.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_sms.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_store.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_upload.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;CMSIS/STM32F10x/system_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/user_format.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/work_memory.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/adc_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_at.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_balance.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_call.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_channel.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_info.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_modem.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_power_v5.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_recover.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_server.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_sms.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/comm_uart.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/modem_slm336.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/spi_stm32f10x_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/timers.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/uart_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/usb_stm32f10x_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Modules/wdt_stm32f10x.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;STM32_USB-FS-Device_Driver/src/usb_core.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;STM32_USB-FS-Device_Driver/src/usb_init.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;STM32_USB-FS-Device_Driver/src/usb_int.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;STM32_USB-FS-Device_Driver/src/usb_mem.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;STM32_USB-FS-Device_Driver/src/usb_regs.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;STM32_USB-FS-Device_Driver/src/usb_sil.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;USB-FS-CDC_User/Src/hw_config.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;USB-FS-CDC_User/Src/usb_desc.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;USB-FS-CDC_User/Src/usb_endp.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;USB-FS-CDC_User/Src/usb_istr.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;USB-FS-CDC_User/Src/usb_prop.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;USB-FS-CDC_User/Src/usb_pwr.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/comm_timeouts.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/crc_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/expiry_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/fast_kernels.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/flash_w25_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/fw_crc.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/fw_service_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/id_crc_cache.c;iccarm;High / Size;-Ohz;;off;on
+Release;User/c/id_hash.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/idclear_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/idindex_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/indication.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/log_cursor.c;iccarm;High / Size;-Ohz;;off;on
+Release;User/log_ring.c;iccarm;High / Size;-Ohz;;off;on
+Release;User/c/memory_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/outs.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/packet.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/photo_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/prof.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/sector_journal_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/sector_runtime_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/service_runtime.c;iccarm;High / Size;-Ohz;;off;on
+Release;User/storage_profile.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/table_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/upload_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/usb_log.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/c/user_comm_runtime.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/user_str_fun.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;User/wiegand.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Bootloader/app_update.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;board.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;Bootloader/boot_manual.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;main.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;stm32_it.c;iccarm;High / Size;-Ohz;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;on
+Release;CMSIS/STM32F10x/Source/startup_stm32f10x_md.s;iasmarm;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\Release\ObjPath\CMSIS_13545061835669826545.dir;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\Release\ObjPath\CMSIS_13545061835669826545.dir;;off;on
+Release;User/asm/crc_asm.s;iasmarm;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\Release\ObjPath\User_4889033380472473340.dir;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\Release\ObjPath\User_4889033380472473340.dir;;off;on
+BOOT-Release;Bootloader/boot_core.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;Bootloader/boot_main.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;Bootloader/boot_platform.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;Bootloader/hw_config.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32F10x_StdPeriph_Driver/src/misc.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;User/sector_journal.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32F10x_StdPeriph_Driver/src/stm32f10x_exti.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32F10x_StdPeriph_Driver/src/stm32f10x_flash.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32F10x_StdPeriph_Driver/src/stm32f10x_gpio.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32F10x_StdPeriph_Driver/src/stm32f10x_rcc.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;CMSIS/STM32F10x/system_stm32f10x.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32_USB-FS-Device_Driver/src/usb_core.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;USB-FS-CDC_User/Src/usb_desc.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;USB-FS-CDC_User/Src/usb_endp.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32_USB-FS-Device_Driver/src/usb_init.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32_USB-FS-Device_Driver/src/usb_int.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;USB-FS-CDC_User/Src/usb_istr.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32_USB-FS-Device_Driver/src/usb_mem.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;USB-FS-CDC_User/Src/usb_prop.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;USB-FS-CDC_User/Src/usb_pwr.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32_USB-FS-Device_Driver/src/usb_regs.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;STM32_USB-FS-Device_Driver/src/usb_sil.c;iccarm;None;-On;--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling;off;off
+BOOT-Release;CMSIS/STM32F10x/Source/startup_stm32f10x_md.s;iasmarm;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\BOOT-Release\ObjPath\;-OC:\Users\kryaz\Desktop\мк\Промты_Codex\board1-cleanup-evidence\full-2\BOOT-Release\ObjPath\;;off;off
