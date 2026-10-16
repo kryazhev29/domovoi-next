@@ -101,6 +101,7 @@ uint8_t user_findID(char *id, cellID_s *cell)
       lookup.state=2; lookup.hit=(uint16_t)r;
       return r!=0;
     }
+    if (r==-2) { lookup.state=0; return 2; }
   }
   lookup.seen=now;
   if (lookup.state==2) {

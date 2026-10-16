@@ -3,7 +3,7 @@
 // Заголовок хранит поколение, число записей и намерение удалить старый хвост.
 // W25 проверяет запись; после обрыва целостность определяется заголовком и CRC.
 #include "usb_log.h"
-#include "c/runtime_internal.h"
+#include "c/user_logic_internal.h"
 #include "log_ring.h"
 #include "user_fun.h"
 #include "fast_kernels.h"
@@ -285,9 +285,15 @@ uint8_t log_async_step(uint32_t now)
     if (!memcmp(&actual,&log_job.cell,32) && log_valid(&actual)) {
       log_retry_at=log_retry_address=0;
       flash_exec_finish(FX_OK);
+      if (usb_log_on(4)) usb_log(32, (const uint8_t *)&actual, sizeof(actual));
       return 2;
     }
     log_retry_address=log_job.address=0;
+    // Событие не попало во Flash: время от включения переводится во время сервера, как в log_setTime.
+    if (log_timeKnown && log_job.cell.datetime < ID_TIME_VALID) {
+      log_job.cell.datetime = device.datetime - (device.worktime - log_job.cell.datetime);
+      log_job.cell.index = log_job.cell.datetime;
+    }
     flash_job.step=LOG_PREPARE;
     return 1;
   case LOG_PREPARE:

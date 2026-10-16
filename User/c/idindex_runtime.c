@@ -90,13 +90,14 @@ int32_t idindex_impl_find(uint32_t base, const uint8_t *id, uint8_t *cell)
 {
   uint16_t e[IX_SLOTS];
   if (ix.state != IX_READY) return -1;
-  if (!mem_read(ix_bucket(id), (uint8_t*)e, IX_BYTES)) return -1;
+  // Отказ чтения повторяется через индекс: полный перебор базы занял бы сотни проходов.
+  if (!mem_read(ix_bucket(id), (uint8_t*)e, IX_BYTES)) return -2;
   for (uint8_t i = 0; i < IX_SLOTS && e[i] != 0xFFFFu; i++) {
     if (!e[i]) continue;
     uint32_t address=base+(uint32_t)(e[i]-1u)*IDINDEX_CELL;
-    if (!counter_base_read(address,cell,IDINDEX_CELL)) return -1;
+    if (!counter_base_read(address,cell,IDINDEX_CELL)) return -2;
     if (cell[31]!=255 && (cell[0] != 0xFF || cell[1] != 0xFF) && !memcmp(cell + 2, id, 10))
-      return counter_overlay(address,cell,IDINDEX_CELL) ? e[i] : -1;
+      return counter_overlay(address,cell,IDINDEX_CELL) ? e[i] : -2;
   }
   return 0;
 }

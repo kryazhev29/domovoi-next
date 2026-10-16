@@ -48,7 +48,7 @@ void log_setTime(uint32_t now){
   id_endScan = true;
   if (!log_timeKnown) {
     // Запечатанное событие могло попасть во Flash перед отказом ответа W25.
-    // Его байты сохраняем до проверки, иначе смена времени породит дубль.
+    // Его байты сохраняем до проверки, иначе смена времени породит дубль; время переведёт повтор записи.
     for (uint8_t i = ((flash_job.kind == FX_LOG && flash_job.result == FX_PENDING) ||
          (log_pendingCount && log_valid(&log_pending[0]))) ? 1u : 0u; i < log_pendingCount; i++){
       log_pending[i].datetime = now - (device.worktime - log_pending[i].datetime);

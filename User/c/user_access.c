@@ -353,10 +353,14 @@ bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id){
      команда молча не выполнялась или списывала проходы чужому абоненту (18.09.2026). */
   uint8_t found=(id!=NULL && id[0]!=0)?user_findID(id,&cellId):0;
   if(found>1) return false;
+  // Дата, срок гостя и суточный лимит требуют достоверного времени.
+  // «Открывать всем» пропускает такой ID как неизвестный, не трогая его счётчики.
+  if (found && device.datetime < ID_TIME_VALID &&
+      (cellId.blockTime || cellId.useTime || cellId.cntPassOnDay != 255)) {
+    if (!device.status.openAnyUser) return false;
+    found = 0;
+  }
   if (found){
-    // Дата, срок гостя и суточный лимит требуют достоверного времени.
-    if (device.datetime < ID_TIME_VALID &&
-        (cellId.blockTime || cellId.useTime || cellId.cntPassOnDay != 255)) return false;
     bool save = false;
     // задано кол-во проходов
     if (cellId.cntPassOnDay != 255){
