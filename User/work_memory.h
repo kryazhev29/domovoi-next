@@ -15,8 +15,6 @@ uint8_t work_release(void *pointer, uint32_t slot);
 const uint8_t *work_usb_source(const uint8_t *source, uint16_t length);
 // Резерв короткого ответа USB, независимый от владельца Flash (до кадра 106).
 uint8_t *work_usb_reply(uint16_t length);
-// Возвращает маску владельцев после завершённых передач USB.
-
 // Возвращает допустимый размер участка владельца.
 uint32_t work_capacity(uint32_t slot);
 // Проверяет удержанный контекст перед публикацией kind исполнителя.

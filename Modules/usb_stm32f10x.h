@@ -40,10 +40,6 @@ void usb_init(void);
 void usb_datareceived (uint8_t* ptr, uint16_t len);
 // Принять двоичный ответ в очередь USB.
 uint8_t usb_send (uint8_t* ptr, uint16_t len);
-#if DOMOVOI_DIAG
-// Передать стендовый текст, считая отброшенные байты.
-
-#endif
 // Обслужить тишину кадра и таймауты USB.
 void usb_timer1ms (void);
 // Проверить один целый кадр и передать приложению.
@@ -52,6 +48,5 @@ void usb_check_data (void);
 uint8_t usb_get_state (void);
 // Освободить приём с учётом владения разборщика.
 void usb_clear_buffer (void);
-// Передать приложению целый кадр с проверенной CRC.
 
 #endif

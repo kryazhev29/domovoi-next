@@ -74,10 +74,5 @@ void board_exti_config(uint32_t lines, uint8_t falling);
 void board_irq_enable(uint8_t irq, uint8_t priority);
 // Настроить входы, безопасные уровни выходов и детектор питания.
 void board_init(void);
-// Сбросить GPIO и AFIO перед переходом к загрузчику.
-
-// Запросить системный сброс.
-
-// Ограниченно ждать восстановление питания, обслуживая сторож.
 
 #endif

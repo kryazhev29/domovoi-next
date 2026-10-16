@@ -41,10 +41,6 @@ uint8_t USB_Tx_Try(const uint8_t *source, uint16_t length);
 
 // Освободить источник передачи и пометить смену поколения очереди.
 void USB_Tx_Reset(void);
-#if DOMOVOI_DIAG
-// Принять диагностический текст в ту же очередь USB.
-
-#endif
 // Проверить наличие незавершённой передачи USB.
 uint8_t USB_Tx_Pending(void);
 // Вернуть оставшееся число байтов источника.

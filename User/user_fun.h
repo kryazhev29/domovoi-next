@@ -28,8 +28,6 @@ bool user_incomingcall (const char* num, uint8_t typ);
 
 // инициализация
 void user_init (void);
-// очистить блок памяти
-
 // циклический обработчик
 void user_loop(void);
 // инициализация переменных
@@ -148,8 +146,6 @@ bool user_checkFirmware (uint32_t adr, uint32_t size, uint32_t crc);
 void user_storage_poll(void);
 // Разрешить новую команду записи при свободном хранилище.
 bool user_command_ready(const uint8_t *ptr, bool usb_input);
-// Разрешить фоновую операцию без конфликта с командой.
-
 // Проверить, доступен ли флеш обработчикам вызова и SMS.
 #include "flash_exec.h"
 bool user_access_ready(const char *id);

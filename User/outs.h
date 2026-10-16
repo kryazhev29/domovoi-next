@@ -26,6 +26,4 @@ void out_load (Int8U out, Int8U mode, Int16U activ, Int16U pause, Int8U period);
 // узнаем выполняется алгоритм выхода или нет
 uint8_t out_getmodestate (uint8_t out);
 
-// состояние всех выходов
-
 #endif
