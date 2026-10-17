@@ -184,10 +184,8 @@ void upload_runtime_poll(void)
     }
     return;
   case UP_COUNT:
-    /* До восьми записей за проход: журнал в 3000 записей считается за секунды, а не за минуты. */
-    for(uint8_t k=0;k<8u;k++) {
-      if(command==10) {
-        if(!p->pos) break;
+    if(command==10) {
+      if(p->pos) {
         if(!w25_read_data(p->pos,b,32)) goto cancel;
         if(log_valid((const cellLog_s *)b)) {
           p->seen++;
@@ -195,15 +193,18 @@ void upload_runtime_poll(void)
           if(log_lastIndex<record[0]) log_lastIndex=record[0];
         }
         p->pos=log_ring_next(p->pos);
-      } else {
-        if(p->pos==p->limit) break;
+        return;
+      }
+
+    } else {
+      if(p->pos!=p->limit) {
         uint32_t address=temp_address((uint16_t)p->pos);
         if(!w25_read_data(address,b,32)) goto cancel;
         if(user_temp_valid((const cellID_s *)b) && temp_sequence((const cellID_s *)b,address)==p->pos) p->total++;
         p->pos=temp_normalize((uint16_t)(p->pos+1));
+        return;
       }
     }
-    if(command==10 ? p->pos!=0 : p->pos!=p->limit) return;
     if(p->total<=p->first) {
       upload_reply = p;
       flash_exec_finish(FX_OK);

@@ -81,7 +81,8 @@ static bool user_activateOut(bool out1, bool out2, codeType_e type, char *id)
     return true;
 }
 static bool sms_slot_busy, server_online = true;
-static bool comm_server_online(void) { return server_online; }
+/* Мутация, убирающая проверку сервера, оставляет заглушку без вызовов: это не ошибка сборки. */
+static bool __attribute__((unused)) comm_server_online(void) { return server_online; }
 static bool user_send_smsToServer(char *data)
 { if(sms_slot_busy)return false; CHECK(strlen(data) < sizeof(forwarded_text)); strcpy(forwarded_text, data); forwarded++; return true; }
 
