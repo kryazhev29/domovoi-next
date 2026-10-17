@@ -22,7 +22,8 @@ static uint8_t sms_command(const char *name)
 // Проверить ПИН и выполнить одну принятую SMS-команду.
 /* Проверено на плате №1 12.10.2026 (eed4de6): #add 4321,9990001234 -> ID добавлен, событие 67, ответ Ok.
    Изменено 2026-10-15 (b46ed55): удалён пустой аргумент format_status — на плате не проверено.
-   Изменено 12.10.2026 (f822023): пробелы после запятой и в конце - на плате не проверено. */
+   Изменено 12.10.2026 (f822023): пробелы после запятой и в конце - на плате не проверено.
+   Изменено 2026-10-17: пересылка на сервер только при связи с ним — на плате не проверено. */
 bool user_smsreceived(char *num, char *data, bool *first)
 {
   char *lineEnd, *pin, *arg, *reply = tempStrBuffer;
@@ -37,7 +38,8 @@ bool user_smsreceived(char *num, char *data, bool *first)
     *first = false;
   }
   if (!*data) return true; /* битая PDU: событие есть, команды нет */
-  if (device.triggers.smsToAdmin && *data != '#' && !user_send_smsToServer(data)) return false;
+  /* Без сервера пересылку пропускаем: иначе одна чужая SMS останавливала бы всю очередь SMS. */
+  if (device.triggers.smsToAdmin && *data != '#' && comm_server_online() && !user_send_smsToServer(data)) return false;
   lineEnd = skipchar('\n', data, 1);
   if (lineEnd != data) *(lineEnd - 1) = 0;
   /* Клавиатура телефона дописывает пробел в конце (плата №1, 12.10). */

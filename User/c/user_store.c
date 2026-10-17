@@ -93,11 +93,12 @@ flash_result_t flash_exec_take_result(void)
   return result;
 }
 // Единый допуск чтения: физическая команда и непубликованные таблицы закрывают NOR.
+// Проверка сроков закрывает чтение только на своей записи: её проход по базе дверь не держит.
 bool flash_exec_read_allowed(void)
 {
   if (w25_async_active() || !w25_read_available() || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
   if (flash_job.result == FX_PENDING &&
-      (flash_job.kind == FX_IDCLEAR || flash_job.kind == FX_EXPIRY || flash_job.kind == FX_TABLE ||
+      (flash_job.kind == FX_IDCLEAR || (flash_job.kind == FX_EXPIRY && expiry_runtime_writing()) || flash_job.kind == FX_TABLE ||
        (flash_job.kind == FX_STORE && (store_phase() == US_FACTORY || flash_job.step == FS_ID)))) return false;
   return true;
 }
@@ -150,18 +151,22 @@ void flash_exec_quiet(uint8_t channel)
   service_crc_quiet(channel);
 }
 // Принятый kind не вытесняется; фон заканчивает квант в этом же проходе.
+// Полуполная очередь журнала идёт раньше CRC и индекса: пересборка индекса
+// по ячейке за проход иначе держала бы журнал, и события после 16-го терялись.
 static void pick_next(bool below_crc)
 {
   if (flash_job.kind != FX_NONE || counter_busy()) return;
-  if (!below_crc && idcrc_background_begin()) return;
-  if (idindex_runtime_begin()) return;
+  bool log_due = log_pendingCount && log_write_ready() && (log_timeKnown || device.worktime >= LOG_TIME_WAIT);
+  if (!log_due || log_pendingCount < LOG_PENDING_MAX / 2u) {
+    if (!below_crc && idcrc_background_begin()) return;
+    if (idindex_runtime_begin()) return;
+  }
   if (store.intent == US_REPLY) return;
   if (!store_priority_pending() && counter_pending()) {
     if (!counter_drain_begin()) mem_storage_ready=false;
     return;
   }
-  if (!store.intent && !store_save_requested && !store_reset_requested &&
-      !(log_pendingCount && log_write_ready() && (log_timeKnown || device.worktime >= LOG_TIME_WAIT))) return;
+  if (!store.intent && !store_save_requested && !store_reset_requested && !log_due) return;
   flash_exec_args_t args = { NULL, store.intent };
   if (flash_exec_begin(FX_STORE, &args)) store.intent = 0;
 }

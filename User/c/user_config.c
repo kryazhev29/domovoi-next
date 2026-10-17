@@ -180,6 +180,8 @@ static void user_restore_device(device_s *saved)
   device.datetimeHoliday = saved->datetimeHoliday;
 
   device.triggers = saved->triggers;
+  // Бит 15 статуса: после заводского сброса сервер видит запрос полной синхронизации.
+  device.status.defaultConfig = saved->status.defaultConfig;
 
   device.firmwareSize = saved->firmwareSize;
   device.firmwareCRC = saved->firmwareCRC;

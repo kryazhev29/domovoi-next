@@ -1,5 +1,7 @@
 // EEPROM по схеме AN2594: данные, затем адрес; перенос последних значений.
 // Адреса резервных страниц не пересекаются с базовыми областями 2 МиБ.
+// Номера ячеек всех строк слоя продублированы в ОЗУ (ct_keys): поиск строки
+// по номеру идёт без чтения флеш, читается только найденная строка.
 #include "../counter.h"
 #include "../id_crc_cache.h"
 #define CT_PAGE0 0x1FB000u
@@ -7,6 +9,8 @@
 #define CT_ROWS ((4096u-CT_HEAD)/10u)
 typedef struct { uint8_t value[8]; uint16_t key; } ct_row;
 static struct { uint32_t page,generation,sector; uint16_t used,live; } ct;
+/* Номер ячейки каждой строки страницы; 0xFFFF — оборванная или пустая строка. */
+static uint16_t ct_keys[CT_ROWS];
 bool counter_busy(void) { return ct.sector!=0; }
 // Во время замены читается уже подтверждённый образ SJ, а не стираемый сектор.
 bool counter_base_read(uint32_t address,uint8_t *data,uint16_t size)
@@ -21,14 +25,23 @@ static bool ct_read(uint16_t pos,ct_row *row)
   return w25_read_data(ct_address(pos),(uint8_t *)row,sizeof(*row));
 }
 // Проверка номера относится только к данным, прочитанным с NOR.
-static bool ct_valid(const ct_row *row) { return row->key<mem[MB_ID].size/32u; }
+static bool ct_key_valid(uint16_t key) { return key<mem[MB_ID].size/32u; }
+// Последняя строка с этим номером: поиск в ОЗУ, чтение одной строки.
+// -1 — ошибка NOR, 0 — нет, иначе позиция + 1.
 static int ct_find(uint16_t key,ct_row *row)
 {
   for (uint16_t n=ct.used;n;) {
-    if (!ct_read(--n,row)) return -1;
-    if (row->key==key) return n+1;
+    if (ct_keys[--n]!=key) continue;
+    return ct_read(n,row) ? n+1 : -1;
   }
   return 0;
+}
+// Нет ли позже строки с тем же номером: действует только последняя.
+static bool ct_last(uint16_t n)
+{
+  uint16_t key=ct_keys[n];
+  for (uint16_t m=n+1;m<ct.used;m++) if (ct_keys[m]==key) return false;
+  return true;
 }
 // Изменён ли логический остаток относительно базы; удалённая ячейка слоя не имеет.
 static int ct_changed(const ct_row *row)
@@ -40,14 +53,12 @@ static int ct_changed(const ct_row *row)
 }
 static bool ct_count(bool all)
 {
-  ct_row row,last;ct.live=0;
+  ct_row row;ct.live=0;
   for (uint16_t n=0;n<ct.used;n++) {
+    if (!ct_key_valid(ct_keys[n]) || !ct_last(n)) continue;
+    if (all) { ct.live++; continue; }
     if (!ct_read(n,&row)) return false;
-    if (!ct_valid(&row)) continue;
-    int found=ct_find(row.key,&last);
-    if (found<0) return false;
-    if (found!=n+1) continue;
-    int changed=all ? 1 : ct_changed(&row);
+    int changed=ct_changed(&row);
     if (changed<0) return false;
     ct.live+=changed;
   }
@@ -55,14 +66,19 @@ static bool ct_count(bool all)
 }
 int counter_contains(uint32_t address)
 {
-  ct_row row;
-  return ct_find((uint16_t)((address-mem[MB_ID].start)/32u),&row);
+  uint16_t key=(uint16_t)((address-mem[MB_ID].start)/32u);
+  for (uint16_t n=ct.used;n;) if (ct_keys[--n]==key) return n+1;
+  return 0;
 }
 // Номер записывается последним: оборванное тело не подставляется в ячейку.
-static bool ct_append(uint32_t address,const ct_row *row)
+static bool ct_append(uint16_t pos,const ct_row *row)
 {
-  return w25_write_data(address,(uint8_t *)row->value,8) &&
-    w25_write_data(address+8,(uint8_t *)&row->key,2);
+  uint32_t address=ct_address(pos);
+  ct_keys[pos]=0xffffu;
+  if (!w25_write_data(address,(uint8_t *)row->value,8) ||
+      !w25_write_data(address+8,(uint8_t *)&row->key,2)) return false;
+  ct_keys[pos]=row->key;
+  return true;
 }
 bool counter_overlay(uint32_t address,uint8_t *data,uint16_t size)
 {
@@ -88,23 +104,22 @@ static uint8_t ct_chunk(const void *context,uint16_t offset,uint8_t *data)
 }
 // Поколение с инверсией проверяется один раз при старте: прерванное стирание
 // прежнего заголовка не может превратить его в более новое поколение.
+// Таблица номеров уплотняется на месте: count не обгоняет n.
 static bool ct_transfer(uint32_t replaced)
 {
   uint32_t target=(2u*CT_PAGE0+4096u)-ct.page,h[3]={ct.generation+1u,~(ct.generation+1u),0xffffffffu};
   uint16_t count=0,bytes=0;
-  ct_row row,last;
+  ct_row row;
   if (!w25_write_data(target,(uint8_t *)h,8)) return false;
   for (uint16_t n=0;n<ct.used;n++) {
+    uint16_t key=ct_keys[n];
+    if (!ct_key_valid(key) || !ct_last(n) || ((mem[MB_ID].start+32u*key)&~4095u)==replaced) continue;
     if (!ct_read(n,&row)) return false;
-    if (!ct_valid(&row)) continue;
-    int found=ct_find(row.key,&last);
-    if (found<0) return false;
-    if (found!=n+1 || ((mem[MB_ID].start+32u*row.key)&~4095u)==replaced) continue;
     int changed=ct.sector ? 1 : ct_changed(&row);
     if (changed<0) return false;
     if (changed) {
       // Пока заголовок RECEIVE, отдельные строки ещё не видны: пишем пачкой.
-      memcpy(sjr.data+bytes,&row,10);bytes+=10;count++;
+      memcpy(sjr.data+bytes,&row,10);bytes+=10;ct_keys[count++]=key;
       if (bytes==60) {
         if (!w25_write_data(target+CT_HEAD+10u*count-bytes,sjr.data,bytes)) return false;
         bytes=0;
@@ -142,6 +157,7 @@ static bool ct_load(void)
   for (uint16_t n=0;n<CT_ROWS;n++) {
     ct_row row;
     if (!ct_read(n,&row)) return false;
+    ct_keys[n]=row.key;
     if (!fast_all_ff((uint8_t *)&row,sizeof(row))) ct.used=n+1;
   }
   return ct_count(false);
@@ -169,16 +185,14 @@ bool counter_replaced(uint32_t address)
   uint16_t end=ct.used;
   ct_row row,last;
   for (uint16_t n=0;n<end;n++) {
+    uint16_t key=ct_keys[n];
+    if (!ct_key_valid(key) || ((mem[MB_ID].start+32u*key)&~4095u)!=address || !ct_last(n)) continue;
     if (!ct_read(n,&row)) return false;
-    if (!ct_valid(&row) || ((mem[MB_ID].start+32u*row.key)&~4095u)!=address) continue;
-    int found=ct_find(row.key,&last);
-    if (found<0) return false;
-    if (found!=n+1) continue;
-    if (!w25_read_data(mem[MB_ID].start+32u*row.key+21,last.value,8)) return false;
+    if (!w25_read_data(mem[MB_ID].start+32u*key+21,last.value,8)) return false;
     if (!memcmp(row.value,last.value,8)) continue;
     if (ct.used==CT_ROWS) return ct_transfer(address);
     memcpy(row.value,last.value,8);
-    if (!ct_append(ct_address(ct.used++),&row)) return false;
+    if (!ct_append(ct.used++,&row)) return false;
   }
   return ct_count(false);
 }
@@ -186,13 +200,11 @@ bool counter_pending(void) { return ct.live>CT_ROWS*3u/4u; }
 // Один сектор на фоновую транзакцию; более новые состояния остаются в слое.
 bool counter_drain_begin(void)
 {
-  ct_row row,last;
+  ct_row row;
   for (uint16_t n=ct.used;n;) {
-    if (!ct_read(--n,&row)) return false;
-    if (!ct_valid(&row)) continue;
-    int found=ct_find(row.key,&last);
-    if (found<0) return false;
-    if (found!=n+1) continue;
+    --n;
+    if (!ct_key_valid(ct_keys[n]) || !ct_last(n)) continue;
+    if (!ct_read(n,&row)) return false;
     int changed=ct_changed(&row);
     if (changed<0) return false;
     if (!changed) continue;
@@ -235,8 +247,7 @@ int counter_write(uint32_t address,const cellID_s *cell)
   }
   memcpy(row.value,(const uint8_t *)cell+21,8);
   row.key=(uint16_t)((address-mem[MB_ID].start)/32u);
-  uint32_t next=ct_address(ct.used++);
-  if (!ct_append(next,&row)) return -1;
+  if (!ct_append(ct.used++,&row)) return -1;
   idcrc_counter(address,old+21,row.value);
   return 1;
 }
