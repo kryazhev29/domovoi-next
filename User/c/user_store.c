@@ -17,6 +17,8 @@ enum { US_SAVE=1, US_ACK, US_CONFIG=6, US_RESET, US_REPLY,
        US_COMMAND, US_FACTORY = 12 };
 static void store_usb_session(void);
 uint8_t store_runtime, store_save_requested, store_reset_requested;
+// Последний проход с готовым хранилищем без запроса перезагрузки; 0 — такого ещё не было.
+static uint32_t store_ready_at;
 store_state_s store;
 flash_exec_job_t flash_job;
 static void store_poll(uint32_t now, uint8_t result);
@@ -380,7 +382,11 @@ void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 // Применить сохранённую конфигурацию к RS485 и адресам модема.
 static void store_config_complete(void)
 {
+  uint8_t wiegand = config.wiegandType;
   rs485_set_config(mem_config_snapshot());
+  // Считыватель включается и выключается новой настройкой, а не только при старте.
+  if (!config.wiegandType) WG_stop();
+  else if (!wiegand) WG_init();
   comm_endpoints();
   device.datetimeConfig = config.datetime;
   device.status.defaultConfig = 0;
@@ -414,7 +420,13 @@ uint8_t cmd=store.cmd,id=store.uniq,quiet=store.quiet;
 // Продвинуть одного владельца хранения в порядке приоритетов.
 void user_storage_poll(void)
 {
+  uint32_t now = timers_getMillis();
   store_usb_session();
+  // Хранилище, отказавшее в работе, через 30 с перезагружает контроллер: старт его восстанавливает.
+  if (!store_reset_requested) {
+    if (mem_storage_ready) store_ready_at = now | 1u;
+    else if (store_ready_at && now - store_ready_at >= 30000u) user_savereset();
+  }
   factory_reply();
   bool replied = fw_service_reply_poll();
   if (upload_reply_poll()) replied = true;
@@ -422,13 +434,18 @@ void user_storage_poll(void)
   upload_pending_poll();
   // Освободившийся TX завершает проход; следующая запись принимается отдельно.
   if (replied && flash_job.kind == FX_NONE) return;
-  flash_exec_poll(timers_getMillis());
+  flash_exec_poll(now);
   uint8_t cmd = flash_job.kind == FX_TABLE ? flash_job.data.table.cmd : 0;
   if (flash_job.kind <= FX_LOG) {
     flash_result_t result = flash_exec_take_result();
     // Сцены читаются после публикации TABLE и снятия результата.
     if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(false);
   }
+}
+// Перезагрузка ждёт журнал не дольше 10 с от запроса и только при готовом хранилище.
+static bool store_reset_waits_log(uint32_t now)
+{
+  return log_pendingCount && mem_storage_ready && now - store_ready_at < 10000u;
 }
 static void store_poll(uint32_t now, uint8_t result)
 {
@@ -472,7 +489,7 @@ static void store_poll(uint32_t now, uint8_t result)
       store_phase_set(US_REPLY);
     } else if (job == US_CONFIG || job == US_COMMAND) store_phase_set(US_REPLY);
     else if (job == US_RESET) {
-      if (log_pendingCount || store_save_requested) {
+      if (store_reset_waits_log(now) || store_save_requested) {
         store_phase_set(0);
         store_save_requested = 0;
         return;
@@ -490,23 +507,25 @@ static void store_poll(uint32_t now, uint8_t result)
     flash_exec_finish(FX_OK);
     flash_exec_take_result();
   }
-  if (log_pendingCount && log_write_ready() &&
-      (store_reset_requested || (!store_save_requested && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)))) {
-    log_storage_poll(now);
-    return;
-  }
   if (store_reset_requested) {
-    log_flushPending();
-    if (log_pendingCount) return;
+    if (store_reset_waits_log(now)) {
+      if (log_write_ready()) log_storage_poll(now);
+      return;
+    }
     if (store_snapshot()) {
       store_save_requested = 0;
       store_phase_set(US_RESET);
     }
-  } else if (store_save_requested) {
-    if (store_snapshot()) {
-      store_save_requested = 0;
-      store_phase_set(US_SAVE);
-    }
+    return;
+  }
+  if (log_pendingCount && log_write_ready() && !store_save_requested &&
+      (log_timeKnown || device.worktime >= LOG_TIME_WAIT)) {
+    log_storage_poll(now);
+    return;
+  }
+  if (store_save_requested && store_snapshot()) {
+    store_save_requested = 0;
+    store_phase_set(US_SAVE);
   }
 }
 #include "factory_runtime.inc"
