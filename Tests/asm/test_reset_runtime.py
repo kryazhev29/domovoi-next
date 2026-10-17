@@ -154,8 +154,8 @@ def mutations():
     from test_flash_mutations import run
     return run({
         'reset-never-finishes': ('reset_paths', [('User/c/user_store.c',
-            'if (log_pendingCount || store_save_requested) {',
-            'if (log_pendingCount || store_save_requested || store_reset_requested) {')]),
+            'if (store_reset_waits_log(now) || store_save_requested) {',
+            'if (store_reset_waits_log(now) || store_save_requested || store_reset_requested) {')]),
         'watchdog-not-serviced': ('reset_paths', [('Modules/wdt_stm32f10x.c',
             'IWDG->KR = 0xAAAAu;', '(void)0;')]),
         'trial-out-of-bounds': ('trial_clock', [('Bootloader/app_update.c',

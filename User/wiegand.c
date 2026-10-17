@@ -45,6 +45,13 @@ void WG_init(void)
   wg_head = wg_count = 0;
 }
 
+// Запретить фронты D0/D1 при отключении настройкой; принятые кадры выключенному считывателю не принадлежат.
+void WG_stop(void)
+{
+  EXTI->IMR &= ~(EXTI_IMR_MR2 | EXTI_IMR_MR3);
+  wg_head = wg_count = 0;
+}
+
 // Проверить две группы чётности W26 без цикла и таблицы.
 static bool wg_parity_valid(uint32_t data)
 {
