@@ -19,6 +19,8 @@ def machine(count=50048, counters=0):
         for i in range(counters):
             key = count-1 if not i else i-1
             m.flash[page+12+10*i:page+22+10*i] = b'\x07\x01\x02\x03\x04\x05\x06\x07'+struct.pack('<H', key)
+            # Номера строк слоя живут и в ОЗУ (ct_keys): стенд заполняет их как ct_load.
+            m.u.mem_write(m.addr('ct_keys')+2*i, struct.pack('<H', key))
     return m
 
 

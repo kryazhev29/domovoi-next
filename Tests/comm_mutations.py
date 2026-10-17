@@ -142,7 +142,8 @@ def run():
 def user_mutations(out):
     """Пользовательская часть (SMS-команды, журнал): поломка user_fun.c в копии исходников, своя группа run_host."""
     cases = (
-        ('sms-backpressure-ignored', "*data != '#' && !user_send_smsToServer(data)", "*data != '#' && !user_send_smsToServer(data) && 0"),
+        ('sms-backpressure-ignored', "comm_server_online() && !user_send_smsToServer(data)", "comm_server_online() && !user_send_smsToServer(data) && 0"),
+        ('sms-offline-blocks-queue', "comm_server_online() && !user_send_smsToServer(data)", "!user_send_smsToServer(data)"),
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
         ('sms-command-wrong', 'return i + 1u;', 'return i + 2u;'),
         ('balance-event-threshold', 'if (rubles < 100) log_addSystemValue', 'if (rubles < 1) log_addSystemValue'),

@@ -193,8 +193,8 @@ def mutations():
     path = 'User/c/user_store.c'
     cases = {
         'executor-order': ('background_order', [(path,
-            '  if (!below_crc && idcrc_background_begin()) return;\n  if (idindex_runtime_begin()) return;',
-            '  if (idindex_runtime_begin()) return;\n  if (!below_crc && idcrc_background_begin()) return;')]),
+            '    if (!below_crc && idcrc_background_begin()) return;\n    if (idindex_runtime_begin()) return;',
+            '    if (idindex_runtime_begin()) return;\n    if (!below_crc && idcrc_background_begin()) return;')]),
         'executor-second-begin': ('second_begin', [(path,
             'kind > FX_STORE || !flash_exec_idle()', 'kind > FX_STORE')]),
     }

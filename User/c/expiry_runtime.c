@@ -7,7 +7,7 @@ enum {
   EXP_SCAN=1, EXP_DIRECT=2, EXP_SEARCH=3,
   EXP_START=4, EXP_JOURNAL=5
 };
-extern uint8_t id_endScan;
+extern bool id_endScan;
 extern uint32_t id_nextEnd;
 extern uint32_t id_time_end(const cellID_s *);
 extern void id_watch_end(uint32_t);
@@ -23,6 +23,11 @@ RT_ASSERT(expiry_size,sizeof(expiry_s)==132);
 static expiry_s *expiry_current(void)
 {
   return flash_job.kind == FX_EXPIRY && flash_job.result == FX_PENDING ? flash_job.data.context : NULL;
+}
+// Сообщает, что проверка сроков дошла до записи сектора: чтение базы закрыто.
+bool expiry_runtime_writing(void)
+{
+  return flash_job.step >= EXP_START;
 }
 // Запрашивает отмену проверки сроков: CRC базы больше не известна.
 void expiry_runtime_cancel(void)

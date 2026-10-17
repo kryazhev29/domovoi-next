@@ -80,7 +80,9 @@ static bool user_activateOut(bool out1, bool out2, codeType_e type, char *id)
     outputs++;
     return true;
 }
-static bool sms_slot_busy;
+static bool sms_slot_busy, server_online = true;
+/* Мутация, убирающая проверку сервера, оставляет заглушку без вызовов: это не ошибка сборки. */
+static bool __attribute__((unused)) comm_server_online(void) { return server_online; }
 static bool user_send_smsToServer(char *data)
 { if(sms_slot_busy)return false; CHECK(strlen(data) < sizeof(forwarded_text)); strcpy(forwarded_text, data); forwarded++; return true; }
 
@@ -312,6 +314,12 @@ int main(int argc, char **argv)
      device.triggers.smsToAdmin=1;
      sms_slot_busy=true;CHECK(!sms_received_call(number,message,true)&&forwarded==before&&received_events==events+1);
      sms_slot_busy=false;CHECK(sms_received_call(number,message,false)&&forwarded==before+1&&received_events==events+1);}
+    /* Без сервера пересылка пропускается, очередь SMS не стоит: команды продолжают работать. */
+    {char number[]="+79031234567",message[]="text",command[]="#imei 1234";unsigned before=forwarded,were=sent;
+     device.triggers.smsToAdmin=1;server_online=false;sms_slot_busy=true;
+     CHECK(sms_received_call(number,message,true)&&forwarded==before);
+     CHECK(sms_received_call(number,command,true)&&sent==were+1&&forwarded==before);
+     server_online=true;sms_slot_busy=false;}
     test_status();
     puts("sms: all reply sites preserve recipient, reply text and journal number passed");
     test_journal();

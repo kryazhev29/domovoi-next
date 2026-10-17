@@ -111,7 +111,7 @@ uint8_t service_crc_begin_pack(uint8_t,uint8_t);
 uint8_t service_crc_begin_id(uint8_t,uint8_t,uint8_t);
 uint8_t service_crc_begin_config(uint8_t,uint8_t);
 void service_crc_poll(void),service_crc_cancel(void),service_crc_quiet(uint8_t);
-bool expiry_runtime_begin(void);
+bool expiry_runtime_begin(void),expiry_runtime_writing(void);
 void expiry_runtime_poll(uint32_t),expiry_runtime_cancel(void);
 uint8_t idclear_runtime_begin(uint8_t,uint8_t);
 void idclear_runtime_poll(uint32_t),idclear_runtime_cancel(void),idclear_runtime_quiet(uint8_t);

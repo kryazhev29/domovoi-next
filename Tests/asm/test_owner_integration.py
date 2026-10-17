@@ -15,10 +15,11 @@ def expiry_scheduler():
         assert m.expiry_active()
         costs = []
         for i in range(2500):
+            # Проход по базе не закрывает чтение; закрывает только запись сектора.
             assert not m.checked('flash_exec_idle')
-            assert not m.checked('flash_exec_read_allowed')
+            assert bool(m.checked('flash_exec_read_allowed')) == (not m.checked('expiry_runtime_writing'))
             assert not m.checked('flash_exec_idle')
-            assert not m.checked('flash_exec_read_allowed')
+            assert bool(m.checked('flash_exec_read_allowed')) == (not m.checked('expiry_runtime_writing'))
             previous = dict(m.counts)
             assert not m.checked('mem_config_begin', m.addr('config'), m.addr('device'))
             assert m.counts == previous, 'competing config touched NOR'
