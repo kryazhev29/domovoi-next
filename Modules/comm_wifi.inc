@@ -90,6 +90,9 @@ static uint8_t wifi_result(void)
   uint32_t limit = wf.op == W_PING ? WF_PING_MS : wf.op == W_DATA ? WF_SEND_MS : wf.op == W_HOLD ? WF_HOLD_MS : WF_CMD_MS;
   bool late = ch.now - wf.since >= limit;
   if (wf.op == W_RESTART || wf.op == W_HOLD) return (uint8_t)late; /* ответа не ждём: перезапуск, пауза после '>' */
+  /* Линия полудуплексная: разбирать только после тишины 10 мс, иначе следующая команда
+     столкнётся с хвостом ответа моста (на плате: нет '>' после слишком раннего AT+SEND). */
+  if (!uart_getstate() && !late) return 0;
   uint16_t n = uart_received();
   const uint8_t *p = wf.op == W_RECV ? frame : wf_line;
   if (wifi_find(p, n, "+EVENT=") >= 0) wf.f.noisy = 1; /* уведомления включены: выключить и перезапустить мост */
@@ -100,9 +103,8 @@ static uint8_t wifi_result(void)
     if (pos > n || p[pos - 1u] != '=' || !comm_at_number(p, n, &pos, WF_READ, &len) || pos >= n) return late ? 2 : 0;
     wf.count = (uint16_t)len; wf.head = (uint16_t)(pos + 1u);
     if (!len) return 1;
-    return n >= wf.head + len ? 1 : late ? 2 : 0;
+    return n >= wf.head + len ? 1 : late ? 2 : 0; /* пауза внутри данных: ждать дальше */
   }
-  if (!uart_getstate() && !late) return 0; /* байты ещё идут */
   if (at >= 0) return 1;
   if (wifi_find(p, n, "+ERR") >= 0) return 2;
   return late ? 2 : 0;
