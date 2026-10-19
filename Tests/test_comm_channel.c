@@ -282,6 +282,11 @@ static void channel_wifi_tests(void)
     CHECK(ch.wifi && channel_closed == 1 && w_commands > commands);
     for (unsigned i = 0; i < 3000 && (ch.wifi || !comm_channel_ready()); ++i) sim_tick();
     CHECK(!ch.wifi && comm_channel_ready() && channel_opened == 2); }
+  /* На GSM после отказа моста записана точка доступа: мост перезапущен, через 8 с канал пробует его и открывается через мост. */
+  w_dead = 0; w_tcp = 1; w_cmd_mode = 1;
+  CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass\0", 10) == 0);
+  for (unsigned i = 0; i < 3000 && (!ch.wifi || !comm_channel_ready()); ++i) sim_tick();
+  CHECK(ch.wifi && comm_channel_ready() && w_restarts == 1 && !strcmp(w_ssid, "Home") && channel_opened == 3);
   /* Мост отвечает, но TCP не поднимается: серия длится минуту, затем GSM. */
   wifi_model_reset(1, 0);
   for (unsigned i = 0; i < 8000 && ch.wifi; ++i) sim_tick();

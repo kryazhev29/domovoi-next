@@ -25,8 +25,8 @@ static struct {
   struct { uint8_t series:1, answered:1, fell:1, resume:1; } f;
 } wf;
 static uint8_t wf_line[48];
-/* Слот frame занят чтением или настройкой: кадр производителю не выдавать. */
-static bool wifi_locked(void) { return wf.setup || wf.op == W_RECV; }
+/* Слот frame занят чтением или настройкой (на GSM любая операция моста - её часть): кадр не выдавать, мост опрашивать. */
+static bool wifi_locked(void) { return wf.setup || wf.op == W_RECV || (!ch.wifi && wf.op); }
 /* Новый сеанс канала: прежняя операция моста и серия включений забыты. */
 static void wifi_reset(void) { wf.op = W_NONE; wf.prefix = 0; wf.f.series = wf.f.answered = wf.f.fell = wf.f.resume = 0; }
 /* Канал идёт через мост или мост настраивается: порт RS-485 принадлежит каналу. */
@@ -125,6 +125,7 @@ static void wifi_fallback(void)
 static void wifi_fail(void)
 {
   wf.setup = 0; wf.prefix = 0;
+  if (!ch.wifi) return; /* настройка моста на GSM: состояние GSM-канала не трогать */
   if (ch.now - wf.series_at >= (wf.f.answered ? (uint32_t)WF_GIVEUP_MS : (uint32_t)WF_DEAD_MS)) { wifi_fallback(); return; }
   if (ch.state != CH_OPEN) wifi_pause(2000);
 }
@@ -208,7 +209,11 @@ static void wifi_done(uint8_t op, uint8_t ok)
     wf.setup = 0;
     if (ok == 1) { wifi_begin(W_RESTART, "AT+Z", 0, NULL); return; }
     wifi_fail(); break;
-  case W_RESTART: wf.prefix = 0; wf.link = 0; wifi_pause(WF_RESTART_MS); break;
+  case W_RESTART:
+    wf.prefix = 0; wf.link = 0;
+    if (ch.wifi) wifi_pause(WF_RESTART_MS);
+    else { wf.f.fell = 1; wf.fell_at = ch.now - WF_RETRY_MS + WF_RESTART_MS; } /* на GSM: мост перезапущен, попробовать его через 8 с */
+    break;
   case W_NETP:
     if (ok == 1) { wf.opening = ch.now; wf.linked = ch.now - 1000u; } else wifi_fail();
     break;
