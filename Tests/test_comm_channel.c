@@ -142,142 +142,145 @@ static void channel_diagnostic_tests(void)
   for (unsigned i = 0; i < 20; ++i) sim_tick();
   DIAG_CHECK((slm.diag.steps[SLM_TCP] * 10u) == tcp_ms);
 }
-/* Стенд моста DR164 на USART1: ответы мгновенные, тишина сразу; данные сервера лежат в w_inbox. */
+/* Стенд моста DR164 на USART1 в прозрачном режиме: ответы мгновенные, тишина сразу; кадры платы без префикса USR
+   уходят в сокет (w_outbox), данные сервера кладёт в линию w_push - в конец принятого, как ISR. */
 static uint8_t *w_rx; static uint16_t w_cap, w_count;
 static char w_cmd[96], w_netp[96], w_ssid[40], w_key[72];
-static uint8_t w_inbox[64], w_outbox[1100], w_body[64];
-static uint16_t w_inbox_count, w_outbox_count, w_expect, w_body_count;
-static unsigned w_sends, w_recvs, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands;
-static uint8_t w_cmd_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_noise, w_events_off;
-// Положить ответ моста в текущий приёмный буфер канала.
-static void w_reply(const void *s, uint16_t n)
+static uint8_t w_outbox[1100], w_body[64];
+static uint16_t w_outbox_count, w_body_count, w_take;
+static unsigned w_frames, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands, w_plain, w_stray;
+static uint8_t w_cmd_mode, w_next_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_tcpto, w_mix;
+// Положить байты моста в текущий приёмный буфер канала.
+static void w_push(const void *s, uint16_t n)
 {
   if (!w_rx || w_dead) return;
-  if (n > w_cap) n = w_cap;
-  memcpy(w_rx, s, n); w_count = n;
+  if (n > w_cap - w_count) n = (uint16_t)(w_cap - w_count);
+  memcpy(w_rx + w_count, s, n); w_count = (uint16_t)(w_count + n);
 }
-static void w_text(const char *s)
-{
-  char buf[128];
-  snprintf(buf, sizeof(buf), "%s%s", w_noise ? "+EVENT=SOCKA_OFF\r\n+EVENT=SOCKA_ON\r\n" : "", s);
-  w_reply(buf, (uint16_t)strlen(buf));
-}
+static void w_text(const char *s) { w_push(s, (uint16_t)strlen(s)); }
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize) { w_rx = rxbuffer; w_cap = bfsize; w_count = 0; }
 uint16_t uart_received(void) { return w_count; }
 uint8_t uart_getstate(void) { return w_count != 0; }
-// Разобрать команду моста или принять данные после AT+SEND.
+bool uart_isReceiving(void) { return false; }
+// Разобрать команду мосту или принять кадр платы в сокет.
 void uart_send(uint8_t *buf, uint16_t size)
 {
-  if (w_expect) {
-    CHECK(size == w_expect && w_outbox_count + size <= sizeof(w_outbox));
-    memcpy(w_outbox + w_outbox_count, buf, size); w_outbox_count = (uint16_t)(w_outbox_count + size); w_expect = 0;
-    char done[24]; snprintf(done, sizeof(done), "+ok=%u\r\n\r\n", size); w_text(done); return; /* мост подтверждает данные */
+  CHECK(size >= 1 && size <= sizeof(w_outbox));
+  bool usr = size >= 3 && !memcmp(buf, "USR", 3);
+  if (!w_cmd_mode && !usr) { /* прозрачный режим: байты уходят серверу */
+    ++w_frames;
+    if (w_tcp) { CHECK(w_outbox_count + size <= sizeof(w_outbox)); memcpy(w_outbox + w_outbox_count, buf, size); w_outbox_count = (uint16_t)(w_outbox_count + size); }
+    return;
   }
+  if (w_cmd_mode && usr) { ++w_stray; return; } /* командный режим: префикс мосту неизвестен, ответа нет */
   CHECK(size >= 2 && size < sizeof(w_cmd) && buf[size - 1u] == '\r');
-  ++w_commands; memcpy(w_cmd, buf, size - 1u); w_cmd[size - 1u] = 0;
-  const char *c = w_cmd; bool usr = !strncmp(c, "USR", 3); if (usr) c += 3;
-  if (!w_cmd_mode && !usr) return; /* прозрачный режим: байты ушли бы в сокет */
-  if (!strcmp(c, "AT+EVENT=off")) { w_events_off = 1; w_text("+ok\r\n\r\n"); return; } /* вступит после перезапуска */
-  if (!strcmp(c, "AT+E=off") || !strncmp(c, "AT+TCPDIS=", 10) || !strcmp(c, "AT+WMODE=STA") || !strcmp(c, "AT+TMODE=cmd")) {
-    if (!strncmp(c, "AT+TCPDIS=", 10)) ++w_dis;
-    if (!strcmp(c, "AT+TMODE=cmd")) w_cmd_mode = 2; /* вступит после перезапуска */
-    w_text("+ok\r\n\r\n"); return;
-  }
-  if (!strcmp(c, "AT+Z")) { ++w_restarts; if (w_cmd_mode == 2) w_cmd_mode = 1; if (w_events_off) w_noise = 0; return; }
+  ++w_commands; if (!usr) ++w_plain;
+  memcpy(w_cmd, buf, size - 1u); w_cmd[size - 1u] = 0;
+  const char *c = w_cmd + (usr ? 3 : 0);
+  if (!strcmp(c, "AT+E=off") || !strcmp(c, "AT+EVENT=off") || !strcmp(c, "AT+WMODE=STA")) { w_text("+ok\r\n\r\n"); return; }
+  if (!strcmp(c, "AT+TCPTO=0")) { w_tcpto = 0; w_text("+ok\r\n\r\n"); return; }
+  if (!strcmp(c, "AT+TMODE=throughput")) { w_next_mode = 0; w_text("+ok\r\n\r\n"); return; } /* вступит после перезапуска */
+  if (!strncmp(c, "AT+TCPDIS=", 10)) { ++w_dis; w_text("+ok\r\n\r\n"); return; }
+  if (!strcmp(c, "AT+Z")) { ++w_restarts; w_cmd_mode = w_next_mode; return; }
   if (!strncmp(c, "AT+NETP=", 8)) { strcpy(w_netp, c); w_text("+ok\r\n\r\n"); return; }
   if (!strncmp(c, "AT+WSSSID=", 10)) { strcpy(w_ssid, c + 10); w_text("+ok\r\n\r\n"); return; }
   if (!strncmp(c, "AT+WSKEY=", 9)) { strcpy(w_key, c + 9); w_text("+ok\r\n\r\n"); return; }
-  if (!strcmp(c, "AT+TCPLK")) { ++w_links; w_text(w_tcp ? "+ok=on\r\n\r\n" : "+ok=off\r\n\r\n"); return; }
+  if (!strcmp(c, "AT+TCPLK")) {
+    ++w_links; if (w_mix) w_text("AB"); /* данные сервера вокруг ответа */
+    w_text(w_tcp ? "+ok=on\r\n\r\n" : "+ok=off\r\n\r\n");
+    if (w_mix) w_text("CD"); return;
+  }
   if (!strcmp(c, "AT+WSLK")) { w_text(w_ap ? "+ok=Home(AA:BB)\r\n\r\n" : "+ok=Disconnected\r\n\r\n"); return; }
   if (!strcmp(c, "AT+PING=ya.ru")) { ++w_pings; w_text(w_ping_ok ? "+ok=Success:32 bytes\r\n\r\n" : "+ok=Timeout\r\n\r\n"); return; }
-  if (!strncmp(c, "AT+SEND=", 8)) {
-    ++w_sends; w_expect = (uint16_t)atoi(c + 8); CHECK(w_expect && w_expect <= 1000);
-    if (w_tcp) w_text(">"); else { w_expect = 0; w_text("+ERR=-3\r\n\r\n"); } /* на плате мост отвечает приглашением */
-    return;
-  }
-  if (!strncmp(c, "AT+RECV=", 8)) {
-    ++w_recvs; unsigned want = (unsigned)atoi(c + 8); CHECK(want && want <= 512);
-    uint16_t n = w_inbox_count < want ? w_inbox_count : (uint16_t)want;
-    char head[16]; int h = snprintf(head, sizeof(head), "+ok=%u%s", n, n ? "," : "");
-    uint8_t r[96]; memcpy(r, head, (size_t)h); memcpy(r + h, w_inbox, n); memcpy(r + h + n, "\r\n\r\n", 4);
-    w_reply(r, (uint16_t)(h + n + 4)); memmove(w_inbox, w_inbox + n, w_inbox_count - n); w_inbox_count = (uint16_t)(w_inbox_count - n);
-    return;
-  }
   CHECK(0); /* неизвестная мосту команда */
 }
-// Приёмник данных сервера через мост: собирает тело без проверки источника.
+// Приёмник данных сервера через мост: собирает тело без проверки источника, не больше w_take за раз.
 static uint16_t w_binary(const uint8_t *p, uint16_t n)
 {
+  if (w_take && n > w_take) n = w_take;
   CHECK(w_body_count + n <= sizeof(w_body));
   memcpy(w_body + w_body_count, p, n); w_body_count = (uint16_t)(w_body_count + n); return n;
 }
 static void w_read_done(uint16_t n, uint8_t reason) { (void)n; CHECK(!reason); ++w_reads; }
 static void w_event(uint8_t kind, uint8_t value) { if (kind == COMM_CH_OPEN_FAILED) ++w_failed; channel_model_event(kind, value); }
-// Начать независимый сценарий канала через мост.
+// Начать независимый сценарий канала через мост: 0 - мост в прозрачном режиме, 1 - в командном.
 static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
 {
   sim_reset(); test_config.wifi = 1;
   channel_opened = channel_closed = channel_faults = 0;
-  w_rx = NULL; w_cap = w_count = w_inbox_count = w_outbox_count = w_expect = w_body_count = 0;
-  w_sends = w_recvs = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = 0;
-  w_cmd_mode = cmd_mode; w_tcp = tcp; w_dead = 0; w_ping_ok = 1; w_ap = 1; w_noise = w_events_off = 0; w_netp[0] = w_ssid[0] = w_key[0] = 0;
-  sim_start(); comm_channel_init(w_event);
+  w_rx = NULL; w_cap = w_count = w_outbox_count = w_body_count = w_take = 0;
+  w_frames = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_plain = w_stray = 0;
+  w_cmd_mode = w_next_mode = cmd_mode; w_tcp = tcp; w_dead = w_mix = 0; w_ping_ok = w_ap = w_tcpto = 1;
+  w_netp[0] = w_ssid[0] = w_key[0] = 0;
+  sim_start(); comm_channel_init(w_event); wf.f.ready = 0; /* новый стенд - ненастроенный мост */
   comm_channel_receive(w_binary, w_read_done);
   sim_poll = comm_channel_poll;
 }
-// Проверить сервер через мост: открытие, передачу, приём, потерю TCP, съёмку, ping, настройку и уход на GSM.
+// Проверить сервер через мост: настройку, передачу, приём, ответ среди данных, потерю TCP, съёмку, ping, командный режим, точку доступа и уход на GSM.
 static void channel_wifi_tests(void)
 {
   uint16_t capacity = 0; uint8_t *slot; char expect[96]; uint8_t big[101];
-  /* Мост в командном режиме, TCP открыт: канал открывается без ожидания модема. */
-  wifi_model_reset(1, 1);
-  for (unsigned i = 0; i < 20 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready() && channel_opened == 1 && sim_now <= 300);
+  /* Мост из коробки (прозрачный режим, TCP есть): настройка с префиксом USR, перезапуск, через 8 с TCPLK - канал открыт. */
+  wifi_model_reset(0, 1);
+  for (unsigned i = 0; i < 1500 && !comm_channel_ready(); ++i) sim_tick();
+  CHECK(comm_channel_ready() && channel_opened == 1 && w_restarts == 1 && !w_tcpto && !w_plain && !w_stray && sim_now <= 12000);
   snprintf(expect, sizeof(expect), "AT+NETP=TCP,CLIENT,%u,%s", test_config.port, test_config.host);
   CHECK(!strcmp(w_netp, expect) && comm_channel_wifi() && comm_channel_wifi_link() == 2);
-  /* Кадр уходит через AT+SEND, слот освобождается. */
+  /* Кадр уходит в линию как есть, слот свободен сразу. */
   slot = comm_tx_acquire(&capacity);
   CHECK(slot && capacity == 1040); memcpy(slot, "HELLO", 5); CHECK(comm_tx_commit(5));
-  for (unsigned i = 0; i < 10; ++i) sim_tick();
-  CHECK(w_sends == 1 && w_outbox_count == 5 && !memcmp(w_outbox, "HELLO", 5) && !comm_tx_busy());
-  /* Данные сервера приходят опросом AT+RECV. */
-  memcpy(w_inbox, "OK\r\nXYZ", 7); w_inbox_count = 7; comm_channel_rx_capacity(64);
-  for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK(w_body_count == 7 && !memcmp(w_body, "OK\r\nXYZ", 7) && w_reads == 1 && w_recvs >= 1 && !w_inbox_count);
+  for (unsigned i = 0; i < 5; ++i) sim_tick();
+  CHECK(w_frames == 1 && w_outbox_count == 5 && !memcmp(w_outbox, "HELLO", 5) && !comm_tx_busy());
+  /* Данные сервера приходят с линии сами. */
+  w_push("OK\r\nXYZ", 7); sim_tick();
+  CHECK(w_body_count == 7 && !memcmp(w_body, "OK\r\nXYZ", 7) && w_reads == 1 && !w_count);
+  /* Приёмник берёт по 4 байта: остаток ждёт в слоте, слот производителю не выдаётся. */
+  w_body_count = 0; w_take = 4; w_push("0123456789", 10); sim_tick();
+  CHECK(w_body_count == 4 && comm_tx_acquire(&capacity) == NULL);
+  for (unsigned i = 0; i < 3; ++i) sim_tick();
+  w_take = 0; CHECK(w_body_count == 10 && !memcmp(w_body, "0123456789", 10) && !w_count);
+  /* Данные, пришедшие пока слот занят кадром, не теряются. */
+  w_body_count = 0; slot = comm_tx_acquire(&capacity); CHECK(slot); w_push("QRS", 3);
+  memcpy(slot, "HI", 2); CHECK(comm_tx_commit(2)); sim_tick();
+  CHECK(w_frames == 2 && w_body_count == 3 && !memcmp(w_body, "QRS", 3));
+  /* Ответ моста на TCPLK среди данных сервера: данные до и после отдаются приёмнику. */
+  w_body_count = 0; w_mix = 1;
+  for (unsigned i = 0; i < 600 && !w_body_count; ++i) sim_tick();
+  w_mix = 0; CHECK(w_body_count == 4 && !memcmp(w_body, "ABCD", 4) && comm_channel_ready());
   /* Звонок не трогает канал моста. */
   comm_channel_call(true); CHECK(comm_tx_acquire(&capacity) != NULL); comm_tx_release(); comm_channel_call(false);
   CHECK(comm_channel_ready() && !comm_channel_expected());
-  /* Потеря TCP замечена проверкой TCPLK: закрытие, новое открытие после возврата. */
+  /* Потеря TCP замечена проверкой TCPLK не позже 5 с: закрытие, новое открытие после возврата без перезапуска. */
   w_tcp = 0;
-  for (unsigned i = 0; i < 400 && !channel_closed; ++i) sim_tick();
+  for (unsigned i = 0; i < 600 && !channel_closed; ++i) sim_tick();
   for (unsigned i = 0; i < 5; ++i) sim_tick();
   CHECK(channel_closed == 1 && !comm_channel_ready() && w_dis == 2);
   w_tcp = 1;
   for (unsigned i = 0; i < 600 && channel_opened < 2; ++i) sim_tick();
-  CHECK(channel_opened == 2 && comm_channel_ready());
+  CHECK(channel_opened == 2 && comm_channel_ready() && w_restarts == 1);
   /* Съёмка: команд мосту нет, после съёмки TCP проверяется сразу. */
-  { unsigned links = w_links, recvs = w_recvs; comm_channel_wifi_pause(true);
-    for (unsigned i = 0; i < 50; ++i) sim_tick();
-    CHECK(w_links == links && w_recvs == recvs); comm_channel_wifi_pause(false);
+  { unsigned links = w_links; comm_channel_wifi_pause(true);
+    for (unsigned i = 0; i < 600; ++i) sim_tick();
+    CHECK(w_links == links); comm_channel_wifi_pause(false);
     for (unsigned i = 0; i < 5; ++i) sim_tick();
     CHECK(w_links == links + 1 && comm_channel_ready()); }
   /* Проверка интернета идёт через AT+PING моста. */
   CHECK(comm_channel_probe(COMM_CH_PING));
   for (unsigned i = 0; i < 10; ++i) sim_tick();
   CHECK(w_pings == 1 && comm_channel_probe_result() == COMM_CH_PING);
-  /* Мост из коробки (прозрачный режим): перевод префиксом USR, перезапуск, затем открытие. */
-  wifi_model_reset(0, 1);
-  for (unsigned i = 0; i < 1200 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready() && w_restarts == 1 && w_cmd_mode == 1 && channel_opened == 1);
-  /* Точка доступа по USB: SSID и ключ записаны, мост перезапущен, канал открыт заново. */
+  /* Мост в командном режиме (после прежней прошивки): префикс без ответа, настройка без него, прозрачный режим после перезапуска. */
+  wifi_model_reset(1, 1);
+  for (unsigned i = 0; i < 3000 && !comm_channel_ready(); ++i) sim_tick();
+  CHECK(comm_channel_ready() && w_restarts == 1 && !w_cmd_mode && w_plain == 6 && w_stray == 1 && channel_opened == 1 && sim_now <= 25000);
+  /* Точка доступа по USB: SSID и ключ записаны, настройка моста повторена, перезапуск, канал открыт заново. */
   CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass123\0", 13) == 0);
   CHECK(comm_channel_wifi_setup((const uint8_t *)"X\0y\0", 4) == 1);
-  for (unsigned i = 0; i < 1200 && channel_opened < 2; ++i) sim_tick();
+  for (unsigned i = 0; i < 1500 && channel_opened < 2; ++i) sim_tick();
   CHECK(!strcmp(w_ssid, "Home") && !strcmp(w_key, "pass123") && w_restarts == 2 && channel_opened == 2 && !wf.setup);
   memset(big, 'a', sizeof(big)); big[50] = 0; big[sizeof(big) - 1u] = 0;
   CHECK(comm_channel_wifi_setup((const uint8_t *)"\0a\0", 3) == 2 && comm_channel_wifi_setup(big, sizeof(big)) == 2);
   /* Мост молчит: через 5 с серии сервер идёт через GSM без отказов открытия для надзора. */
-  wifi_model_reset(1, 1); w_dead = 1;
+  wifi_model_reset(0, 1); w_dead = 1;
   for (unsigned i = 0; i < 3000 && ch.wifi; ++i) sim_tick();
   CHECK(!ch.wifi && sim_now <= 12000 && !w_failed && !comm_channel_wifi());
   for (unsigned i = 0; i < 2000 && !comm_channel_ready(); ++i) sim_tick();
@@ -289,26 +292,19 @@ static void channel_wifi_tests(void)
     CHECK(ch.wifi && channel_closed == 1 && w_commands > commands);
     for (unsigned i = 0; i < 3000 && (ch.wifi || !comm_channel_ready()); ++i) sim_tick();
     CHECK(!ch.wifi && comm_channel_ready() && channel_opened == 2); }
-  /* На GSM после отказа моста записана точка доступа: мост перезапущен, через 8 с канал пробует его и открывается через мост. */
-  w_dead = 0; w_tcp = 1; w_cmd_mode = 1;
+  /* На GSM после отказа моста записана точка доступа: мост настроен и перезапущен, через 8 с канал открывается через мост. */
+  w_dead = 0; w_tcp = 1;
   CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass\0", 10) == 0);
   for (unsigned i = 0; i < 3000 && (!ch.wifi || !comm_channel_ready()); ++i) sim_tick();
   CHECK(ch.wifi && comm_channel_ready() && w_restarts == 1 && !strcmp(w_ssid, "Home") && channel_opened == 3);
-  /* Уведомления моста включены: AT+EVENT=off, один перезапуск, затем открытие и доставка кадра. */
-  wifi_model_reset(1, 1); w_noise = 1;
-  for (unsigned i = 0; i < 2000 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready() && w_restarts == 1 && !w_noise && w_events_off && sim_now <= 14000);
-  slot = comm_tx_acquire(&capacity); CHECK(slot); memcpy(slot, "HELLO", 5); CHECK(comm_tx_commit(5));
-  for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK(w_sends == 1 && w_outbox_count == 5 && !comm_tx_busy() && comm_channel_ready());
-  /* Мост отвечает, но TCP не поднимается: серия длится минуту, затем GSM. */
-  wifi_model_reset(1, 0);
+  /* Мост отвечает, но TCP не поднимается: один перезапуск, серия длится минуту, затем GSM. */
+  wifi_model_reset(0, 0);
   for (unsigned i = 0; i < 8000 && ch.wifi; ++i) sim_tick();
-  CHECK(!ch.wifi && sim_now >= 60000 && sim_now <= 70000 && w_links >= 40 && !w_failed);
+  CHECK(!ch.wifi && sim_now >= 60000 && sim_now <= 70000 && w_links >= 20 && w_restarts == 1 && !w_failed);
   for (unsigned i = 0; i < 2000 && !comm_channel_ready(); ++i) sim_tick();
   CHECK(comm_channel_ready());
   test_config.wifi = 0; w_dead = 0;
-  puts("comm_wifi: DR164 open/send/recv/link loss/pause/ping/transparent/setup/fallback PASS");
+  puts("comm_wifi: DR164 transparent setup/send/recv/mix/link loss/pause/ping/cmd-mode/AP/fallback PASS");
 }
 // Запустить проверки путей и отказов канала.
 static void channel_regressions(void)
