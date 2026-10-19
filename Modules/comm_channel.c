@@ -8,6 +8,8 @@
 #include "comm_modem.h"
 #include "comm_uart.h"
 #include "comm_timeouts.h"
+#include "uart_stm32f10x.h"
+#include "usb_log.h"
 #include <string.h>
 static uint8_t frame[1040];
 enum { TX_WINDOW = 4096 };
@@ -20,7 +22,7 @@ static struct {
   uint16_t frame_count, capacity, bytes, open_code;
   uint8_t state, tx_state, operation, answer;
   uint8_t address, connections, retry_step, probe;
-  uint8_t probe_active, probe_answer, ack_timeouts;
+  uint8_t probe_active, probe_answer, ack_timeouts, wifi;
   struct { uint8_t active:1, expected:1, lost:1, pdp_lost:1; } call;
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
 } ch;
@@ -31,6 +33,10 @@ enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PIN
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
 /* Последний законченный тест переживает переподключение канала. */
 static uint8_t probe_result;
+/* Мост Wi-Fi (comm_wifi.inc): автомат, блокировка слота и сброс сеанса. */
+static void wifi_poll(void);
+static bool wifi_locked(void);
+static void wifi_reset(void);
 uint8_t comm_channel_probe_result(void) { return probe_result; }
 /* Передать изменение канала владельцу сервера. */
 static void channel_emit(uint8_t kind, uint8_t value)
@@ -47,6 +53,7 @@ void comm_channel_call(bool active)
   /* Во время голоса ACK не опрашивался: дать данным полный срок после отбоя. */
   if (!active && ch.call.active) ch.tx_since = ch.now;
   ch.call.active = (uint8_t)active;
+  if (ch.wifi) { if (!active) comm_modem_call(false); return; } /* TCP через мост звонок не рвёт */
   if (active) ch.call.expected = 1;
   else {
     comm_modem_call(false);
@@ -144,6 +151,8 @@ void comm_channel_init(void (*event)(uint8_t, uint8_t))
   memset(&ch, 0, sizeof(ch));
   ch.event = event; comm_modem_transport(channel_at_event);
   comm_at_sink(channel_binary);
+  ch.wifi = comm_modem_settings()->number(SLM_CFG_WIFI) != 0;
+  wifi_reset();
 }
 /* Назначить владельца тела и результата чтения. */
 void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),
@@ -151,7 +160,7 @@ void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),
 { ch.binary = binary; ch.read_done = read_done; }
 /* Ограничить следующий QIRD свободным местом потребителя. */
 void comm_channel_rx_capacity(uint16_t count)
-{ ch.capacity = count > 256u ? 256u : count; }
+{ uint16_t limit = ch.wifi ? 512u : 256u; ch.capacity = count > limit ? limit : count; }
 /* Сообщить, открыт ли серверный TCP. */
 bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
 /* Сообщить о потере границ AT, требующей перезапуска модема. */
@@ -170,7 +179,7 @@ uint8_t *comm_tx_acquire(uint16_t *capacity)
 {
   *capacity = sizeof(frame);
   if (!comm_channel_ready() || ch.tx_state != TX_FREE || ch.flags.urgent
-      || ch.call.active) return NULL;
+      || (ch.call.active && !ch.wifi) || wifi_locked()) return NULL;
   if (ch.sent == ch.acked) ch.tx_since = ch.now;
   ch.tx_state = TX_BUILD; return frame;
 }
@@ -202,6 +211,7 @@ void comm_channel_reopen(uint32_t pause_ms)
   ch.state = CH_CLOSE; ch.reopen_pause = pause_ms; ch.probe = ch.probe_active = ch.probe_answer = 0;
   /* Основной -> резервный -> новая цепочка; после звонка один раз прежний адрес. */
   if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();
+  if (ch.wifi) ch.address = 0; /* у моста один адрес сервера */
   ch.flags.registered_session = 0;
   if (ch.call.expected) ch.reopen_pause = 0;
   else if (had_socket && ch.connections >= 3) {
@@ -346,6 +356,7 @@ void comm_channel_poll(uint32_t now_ms)
   ch.now = now_ms;
   comm_modem_poll(now_ms);
   if (ch.state == CH_FAULT) return;
+  if (ch.wifi || wifi_locked()) { wifi_poll(); if (ch.wifi) return; } /* настройка моста идёт рядом с GSM */
   if (ch.operation) channel_completed();
   if (ch.state == CH_INITIAL) {
     if (!comm_modem_ready()) return;
@@ -422,3 +433,4 @@ void comm_channel_poll(uint32_t now_ms)
   else if (ch.tx_state == TX_FREE && !ch.flags.urgent && query.cmd)
     channel_command(query.cmd, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_QUERY);
 }
+#include "comm_wifi.inc"

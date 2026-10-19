@@ -112,6 +112,12 @@ static uint16_t comm_number(uint8_t field)
   /* Пустой резерв разрешён протоколом; непустой проверяется даже при порте 0.
      Когда выбран только сервер 2, второго адреса для повтора нет. */
   case SLM_CFG_RESERVE: return config.useServer1 && config.useServer2 && comm_host[1][0];
+  /* Wi-Fi-мост DR164 задан в таблице 485 типом 1 при активном режиме линии. */
+  case SLM_CFG_WIFI: {
+    if (config.rs485Mode != 1) return 0;
+    for (uint8_t i = 0; i < 8u; ++i) if (config.rs485Periphery[i].type == 1) return 1;
+    return 0;
+  }
   /* Ручной тип (команда 105) имеет приоритет; 0/255 - определить по AT+GMM. */
   case SLM_CFG_TYPE: return device.moduleType;
   default: return 0;

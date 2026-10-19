@@ -11,6 +11,7 @@
 #include "photo_runtime.h"
 #include "../../Modules/comm_server.h"
 #include "../../Modules/comm_modem.h"
+#include "../../Modules/comm_channel.h"
 #include "../../Bootloader/app_update.h"
 #include "../../Bootloader/boot_manual.h"
 #include "prof.h"
@@ -508,6 +509,15 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if (cch == CH_USB)
         usb_log_enable(ptr[5]);
       break;
+
+    case 113: { // Wi-Fi-мост: точка доступа "SSID\0ключ\0" или состояние при пустом теле
+      uint8_t reply[2] = {0, 0};
+      if (cch != CH_USB) break;
+      if (len > 3u) reply[0] = comm_channel_wifi_setup(&ptr[5], (uint16_t)(len - 3u));
+      else { reply[0] = comm_channel_wifi(); reply[1] = comm_channel_wifi_link(); }
+      user_send_anyData(113, reply, sizeof(reply), cch, uniqId);
+      break;
+    }
 
     default: // команда не поддерживается
       user_send_answer_comand(ptr[4], CMD_UNDEFINE, cch, uniqId);

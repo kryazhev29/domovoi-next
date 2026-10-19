@@ -11,6 +11,8 @@
 void USART1_IRQHandler(void);
 // Настроить единственный USART1 и буфер приёма.
 bool uart_init(uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t bfsize);
+// Сменить приёмный буфер без перезапуска порта: Wi-Fi-мост делит линию с камерой.
+void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize);
 // Передать буфер с ограниченным аппаратным ожиданием.
 void uart_send(uint8_t *buf, uint16_t size);
 // Атомарно освободить принятый кадр.

@@ -45,7 +45,7 @@ typedef struct {
 enum { MODEM_TYPE_AUTO = 0, MODEM_TYPE_SLM336 = 2,
        MODEM_TYPE_UNDEF = 255 };
 enum { SLM_CFG_HOST, SLM_CFG_APN, SLM_CFG_LOGIN, SLM_CFG_PASSWORD,
-       SLM_CFG_PORT, SLM_CFG_TYPE, SLM_CFG_NETWORK, SLM_CFG_HOST2, SLM_CFG_PORT2, SLM_CFG_RESERVE };
+       SLM_CFG_PORT, SLM_CFG_TYPE, SLM_CFG_NETWORK, SLM_CFG_HOST2, SLM_CFG_PORT2, SLM_CFG_RESERVE, SLM_CFG_WIFI };
 typedef struct {
   /* Вместимость возвращает владелец через sizeof своего поля.
      Указатель действует только в текущем вызове, драйвер его не сохраняет. */
