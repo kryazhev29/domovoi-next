@@ -13,8 +13,8 @@ uint8_t uart_getstate(void);
 /* Сроки моста: опрос данных, проверка TCP, ожидание TCP после включения, ответ, ping, пауза после данных и перезапуска;
    серия включений: молчащий мост отдаёт сервер GSM через WF_DEAD_MS, отвечающий без TCP — через WF_GIVEUP_MS,
    с GSM мост пробуется снова раз в WF_RETRY_MS. */
-enum { WF_POLL_MS = 100, WF_LINK_MS = 3000, WF_OPEN_MS = 40000, WF_CMD_MS = 800, WF_PING_MS = 6000,
-       WF_SEND_MS = 3000, WF_HOLD_MS = 30, WF_RESTART_MS = 8000, WF_CHUNK = 1000, WF_READ = 512,
+enum { WF_POLL_MS = 50, WF_LINK_MS = 3000, WF_OPEN_MS = 40000, WF_CMD_MS = 800, WF_PING_MS = 6000,
+       WF_SEND_MS = 3000, WF_HOLD_MS = 30, WF_RECV_MS = 2500, WF_RESTART_MS = 8000, WF_CHUNK = 1000, WF_READ = 512,
        WF_DEAD_MS = 5000, WF_GIVEUP_MS = 60000, WF_RETRY_MS = 600000 };
 enum { W_NONE, W_ECHO, W_EVENT, W_MODE, W_RESTART, W_NETP, W_LINK, W_WSLK, W_SEND, W_HOLD, W_DATA, W_RECV, W_PING,
        W_DIS_OFF, W_DIS_ON, W_SET_MODE, W_SET_SSID, W_SET_KEY };
@@ -87,7 +87,8 @@ static int16_t wifi_find(const uint8_t *p, uint16_t n, const char *text)
    Для RECV длина данных в wf.count, их начало - wf.head; после данных SEND мост отвечает +ok=<байт>. */
 static uint8_t wifi_result(void)
 {
-  uint32_t limit = wf.op == W_PING ? WF_PING_MS : wf.op == W_DATA ? WF_SEND_MS : wf.op == W_HOLD ? WF_HOLD_MS : WF_CMD_MS;
+  uint32_t limit = wf.op == W_PING ? WF_PING_MS : wf.op == W_DATA ? WF_SEND_MS : wf.op == W_HOLD ? WF_HOLD_MS
+    : wf.op == W_RECV ? WF_RECV_MS : WF_CMD_MS;
   bool late = ch.now - wf.since >= limit;
   if (wf.op == W_RESTART || wf.op == W_HOLD) return (uint8_t)late; /* ответа не ждём: перезапуск, пауза после '>' */
   /* Линия полудуплексная: разбирать только после тишины 10 мс, иначе следующая команда
@@ -265,7 +266,9 @@ static void wifi_next(void)
   if (ch.state != CH_OPEN) return;
   if (ch.now - wf.linked >= WF_LINK_MS) { wifi_begin(W_LINK, "AT+TCPLK", 0, NULL); return; }
   if (ch.tx_state == TX_FREE && !ch.flags.urgent && ch.capacity && ch.now - wf.polled >= WF_POLL_MS) {
-    wf.polled = ch.now; wifi_begin(W_RECV, "AT+RECV=", ch.capacity, "0"); return;
+    /* Ожидание данных внутри моста до 1 с: пакет отдаётся сразу по приходу, опрос с нулём
+       на плате терял и портил пакеты, пришедшие во время самого AT+RECV. */
+    wf.polled = ch.now; wifi_begin(W_RECV, "AT+RECV=", ch.capacity, "1"); return;
   }
   if (!ch.operation && query.cmd && comm_modem_ready() && !comm_modem_busy())
     channel_command(query.cmd, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_QUERY);
