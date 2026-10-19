@@ -3,6 +3,7 @@
 // Флеш обслуживает асинхронный автомат; каждое фото начинается с сектора.
 // Заголовок публикуется после данных, частичная докачка живёт только в RAM.
 #include "photo.h"
+#include "../../Modules/comm_channel.h"
 extern uint8_t port_buffer[PORTBUFSIZE];
 #include "photo_context.h"
 #define PHOTO_BLOCK 512u
@@ -30,6 +31,7 @@ static void photo_stop(void)
   uart_init(rs485_baud(), 0, port_buffer, PORTBUFSIZE);
   photo->stage = P_IDLE;
   device.getPhoto = 0;
+  comm_channel_wifi_pause(false);
 }
 
 // Выбираем общую скорость RS485 по сохранённой настройке.

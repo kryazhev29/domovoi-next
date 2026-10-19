@@ -78,6 +78,18 @@ bool uart_init(uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t 
   return true;
 }
 
+// Сменить приёмный буфер атомарно относительно ISR; порт и скорость не трогаются.
+void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize)
+{
+  uint32_t mask = __get_PRIMASK();
+  __disable_irq();
+  uart.rxbuffer = rxbuffer;
+  uart.bfsize = bfsize;
+  uart.received = uart.twait = 0;
+  uart.state = uart.receiving = 0;
+  __set_PRIMASK(mask);
+}
+
 // Передать байт с ограниченным ожиданием освобождения регистра.
 static bool uart_sendbyte(uint8_t ch)
 {

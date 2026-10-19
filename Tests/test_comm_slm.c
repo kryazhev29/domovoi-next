@@ -44,6 +44,7 @@ static struct {
   char host[64], apn[31], login[31], password[31];
   uint16_t port;
   uint8_t modem_type, network_type;
+  uint8_t wifi;
 } test_config;
 static const char *sim_text(uint8_t field, uint16_t *capacity)
 {
@@ -64,7 +65,8 @@ static uint16_t sim_number(uint8_t field)
     if (race == 1) interrupt_byte('\n', USART_SR_RXNE);
   }
   return field == SLM_CFG_PORT ? test_config.port : field == SLM_CFG_TYPE
-    ? test_config.modem_type : field == SLM_CFG_NETWORK ? test_config.network_type : 0;
+    ? test_config.modem_type : field == SLM_CFG_NETWORK ? test_config.network_type
+    : field == SLM_CFG_WIFI ? test_config.wifi : 0;
 }
 static const slm_settings_t sim_settings = {sim_text, sim_number};
 

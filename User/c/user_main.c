@@ -12,6 +12,7 @@
 #include "../../Modules/comm_info.h"
 #include "../../Modules/comm_modem.h"
 #include "../../Modules/comm_call.h"
+#include "../../Modules/comm_channel.h"
 #include "../../Bootloader/app_update.h"
 #pragma data_alignment=4
 uint8_t port_buffer[PORTBUFSIZE];
@@ -285,7 +286,7 @@ void port_check_data(void)
 {
   if (!flash_exec_read_allowed()) return;
   photo_poll();
-  if (!device.getPhoto && uart_getstate() && !uart_isReceiving())
+  if (!device.getPhoto && !comm_channel_wifi() && uart_getstate() && !uart_isReceiving())
     uart_clear();
 }
 

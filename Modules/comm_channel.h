@@ -61,4 +61,12 @@ bool comm_channel_call_pending(void);
 bool comm_channel_probe(uint8_t kind);
 /* Последний законченный ya.ru: 0 нет, 1 ping, 2 DNS, 3 отказ. */
 uint8_t comm_channel_probe_result(void);
+/* Сервер идёт через Wi-Fi-мост DR164 на RS-485 или мост настраивается: порт принадлежит каналу. */
+bool comm_channel_wifi(void);
+/* Состояние моста для USB 113: 0 нет точки доступа, 1 есть, 2 TCP сервера открыт. */
+uint8_t comm_channel_wifi_link(void);
+/* Съёмка по RS-485 занимает линию: мост ждёт её конца. */
+void comm_channel_wifi_pause(bool on);
+/* Точка доступа "SSID\0ключ\0" для моста: 0 принято, 1 занято, 2 неверные данные. */
+uint8_t comm_channel_wifi_setup(const uint8_t *data, uint16_t count);
 #endif
