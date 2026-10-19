@@ -148,7 +148,7 @@ static char w_cmd[96], w_netp[96], w_ssid[40], w_key[72];
 static uint8_t w_inbox[64], w_outbox[1100], w_body[64];
 static uint16_t w_inbox_count, w_outbox_count, w_expect, w_body_count;
 static unsigned w_sends, w_recvs, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands;
-static uint8_t w_cmd_mode, w_tcp, w_dead, w_ping_ok, w_ap;
+static uint8_t w_cmd_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_noise, w_events_off;
 // Положить ответ моста в текущий приёмный буфер канала.
 static void w_reply(const void *s, uint16_t n)
 {
@@ -156,7 +156,12 @@ static void w_reply(const void *s, uint16_t n)
   if (n > w_cap) n = w_cap;
   memcpy(w_rx, s, n); w_count = n;
 }
-static void w_text(const char *s) { w_reply(s, (uint16_t)strlen(s)); }
+static void w_text(const char *s)
+{
+  char buf[128];
+  snprintf(buf, sizeof(buf), "%s%s", w_noise ? "+EVENT=SOCKA_OFF\r\n+EVENT=SOCKA_ON\r\n" : "", s);
+  w_reply(buf, (uint16_t)strlen(buf));
+}
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize) { w_rx = rxbuffer; w_cap = bfsize; w_count = 0; }
 uint16_t uart_received(void) { return w_count; }
 uint8_t uart_getstate(void) { return w_count != 0; }
@@ -172,12 +177,13 @@ void uart_send(uint8_t *buf, uint16_t size)
   ++w_commands; memcpy(w_cmd, buf, size - 1u); w_cmd[size - 1u] = 0;
   const char *c = w_cmd; bool usr = !strncmp(c, "USR", 3); if (usr) c += 3;
   if (!w_cmd_mode && !usr) return; /* прозрачный режим: байты ушли бы в сокет */
+  if (!strcmp(c, "AT+EVENT=off")) { w_events_off = 1; w_text("+ok\r\n\r\n"); return; } /* вступит после перезапуска */
   if (!strcmp(c, "AT+E=off") || !strncmp(c, "AT+TCPDIS=", 10) || !strcmp(c, "AT+WMODE=STA") || !strcmp(c, "AT+TMODE=cmd")) {
     if (!strncmp(c, "AT+TCPDIS=", 10)) ++w_dis;
     if (!strcmp(c, "AT+TMODE=cmd")) w_cmd_mode = 2; /* вступит после перезапуска */
     w_text("+ok\r\n\r\n"); return;
   }
-  if (!strcmp(c, "AT+Z")) { ++w_restarts; if (w_cmd_mode == 2) w_cmd_mode = 1; return; }
+  if (!strcmp(c, "AT+Z")) { ++w_restarts; if (w_cmd_mode == 2) w_cmd_mode = 1; if (w_events_off) w_noise = 0; return; }
   if (!strncmp(c, "AT+NETP=", 8)) { strcpy(w_netp, c); w_text("+ok\r\n\r\n"); return; }
   if (!strncmp(c, "AT+WSSSID=", 10)) { strcpy(w_ssid, c + 10); w_text("+ok\r\n\r\n"); return; }
   if (!strncmp(c, "AT+WSKEY=", 9)) { strcpy(w_key, c + 9); w_text("+ok\r\n\r\n"); return; }
@@ -214,7 +220,7 @@ static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
   channel_opened = channel_closed = channel_faults = 0;
   w_rx = NULL; w_cap = w_count = w_inbox_count = w_outbox_count = w_expect = w_body_count = 0;
   w_sends = w_recvs = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = 0;
-  w_cmd_mode = cmd_mode; w_tcp = tcp; w_dead = 0; w_ping_ok = 1; w_ap = 1; w_netp[0] = w_ssid[0] = w_key[0] = 0;
+  w_cmd_mode = cmd_mode; w_tcp = tcp; w_dead = 0; w_ping_ok = 1; w_ap = 1; w_noise = w_events_off = 0; w_netp[0] = w_ssid[0] = w_key[0] = 0;
   sim_start(); comm_channel_init(w_event);
   comm_channel_receive(w_binary, w_read_done);
   sim_poll = comm_channel_poll;
@@ -288,6 +294,13 @@ static void channel_wifi_tests(void)
   CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass\0", 10) == 0);
   for (unsigned i = 0; i < 3000 && (!ch.wifi || !comm_channel_ready()); ++i) sim_tick();
   CHECK(ch.wifi && comm_channel_ready() && w_restarts == 1 && !strcmp(w_ssid, "Home") && channel_opened == 3);
+  /* Уведомления моста включены: AT+EVENT=off, один перезапуск, затем открытие и доставка кадра. */
+  wifi_model_reset(1, 1); w_noise = 1;
+  for (unsigned i = 0; i < 2000 && !comm_channel_ready(); ++i) sim_tick();
+  CHECK(comm_channel_ready() && w_restarts == 1 && !w_noise && w_events_off && sim_now <= 14000);
+  slot = comm_tx_acquire(&capacity); CHECK(slot); memcpy(slot, "HELLO", 5); CHECK(comm_tx_commit(5));
+  for (unsigned i = 0; i < 20; ++i) sim_tick();
+  CHECK(w_sends == 1 && w_outbox_count == 5 && !comm_tx_busy() && comm_channel_ready());
   /* Мост отвечает, но TCP не поднимается: серия длится минуту, затем GSM. */
   wifi_model_reset(1, 0);
   for (unsigned i = 0; i < 8000 && ch.wifi; ++i) sim_tick();
