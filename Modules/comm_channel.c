@@ -37,6 +37,7 @@ static uint8_t probe_result;
 static void wifi_poll(void);
 static bool wifi_locked(void);
 static void wifi_reset(void);
+static bool wifi_retry(void);
 uint8_t comm_channel_probe_result(void) { return probe_result; }
 /* Передать изменение канала владельцу сервера. */
 static void channel_emit(uint8_t kind, uint8_t value)
@@ -358,6 +359,7 @@ void comm_channel_poll(uint32_t now_ms)
   if (ch.state == CH_FAULT) return;
   if (ch.wifi || wifi_locked()) { wifi_poll(); if (ch.wifi) return; } /* настройка моста идёт рядом с GSM */
   if (ch.operation) channel_completed();
+  if (wifi_retry()) return; /* на GSM после отказа моста: раз в 10 мин попробовать мост снова */
   if (ch.state == CH_INITIAL) {
     if (!comm_modem_ready()) return;
     ch.state = CH_PAUSE;

@@ -10,21 +10,25 @@ void uart_send(uint8_t *buf, uint16_t size);
 uint16_t uart_received(void);
 uint8_t uart_getstate(void);
 #endif
-/* Сроки моста: опрос данных, проверка TCP, ожидание TCP после включения, ответ, ping, пауза после данных и перезапуска. */
+/* Сроки моста: опрос данных, проверка TCP, ожидание TCP после включения, ответ, ping, пауза после данных и перезапуска;
+   серия включений: молчащий мост отдаёт сервер GSM через WF_DEAD_MS, отвечающий без TCP — через WF_GIVEUP_MS,
+   с GSM мост пробуется снова раз в WF_RETRY_MS. */
 enum { WF_POLL_MS = 100, WF_LINK_MS = 3000, WF_OPEN_MS = 40000, WF_CMD_MS = 800, WF_PING_MS = 6000,
-       WF_DATA_MS = 30, WF_RESTART_MS = 8000, WF_CHUNK = 1000, WF_READ = 512, WF_FAILS = 4 };
+       WF_DATA_MS = 30, WF_RESTART_MS = 8000, WF_CHUNK = 1000, WF_READ = 512,
+       WF_DEAD_MS = 5000, WF_GIVEUP_MS = 60000, WF_RETRY_MS = 600000 };
 enum { W_NONE, W_ECHO, W_MODE, W_RESTART, W_NETP, W_LINK, W_WSLK, W_SEND, W_DATA, W_RECV, W_PING,
        W_DIS_OFF, W_DIS_ON, W_SET_MODE, W_SET_SSID, W_SET_KEY };
 static struct {
-  uint32_t since, polled, linked, opening;
+  uint32_t since, polled, linked, opening, series_at, fell_at;
   uint16_t count, offset, head;
-  uint8_t op, fails, link, prefix, setup, paused;
+  uint8_t op, link, prefix, setup, paused;
+  struct { uint8_t series:1, answered:1, fell:1, resume:1; } f;
 } wf;
 static uint8_t wf_line[48];
 /* Слот frame занят чтением или настройкой: кадр производителю не выдавать. */
 static bool wifi_locked(void) { return wf.setup || wf.op == W_RECV; }
-/* Новый сеанс канала: прежняя операция моста забыта, отказы обнулены. */
-static void wifi_reset(void) { wf.op = W_NONE; wf.fails = 0; wf.prefix = 0; }
+/* Новый сеанс канала: прежняя операция моста и серия включений забыты. */
+static void wifi_reset(void) { wf.op = W_NONE; wf.prefix = 0; wf.f.series = wf.f.answered = wf.f.fell = wf.f.resume = 0; }
 /* Канал идёт через мост или мост настраивается: порт RS-485 принадлежит каналу. */
 bool comm_channel_wifi(void) { return ch.wifi || wf.setup; }
 /* 0 - точки доступа нет, 1 - точка доступа есть, 2 - TCP сервера открыт. */
@@ -59,8 +63,18 @@ static void wifi_begin(uint8_t op, const char *text, uint16_t number, const char
   cmd[n++] = '\r';
   if (op == W_RECV) uart_rebuffer(frame, (uint16_t)sizeof(frame));
   else uart_rebuffer(wf_line, (uint16_t)sizeof(wf_line));
+  if (usb_log_on(1)) usb_log(1, (const uint8_t *)cmd, (uint16_t)(n - 1u)); /* команда мосту в AT-журнале */
   uart_send((uint8_t *)cmd, n);
   wf.op = op; wf.since = ch.now;
+}
+/* Ответ моста в USB-журнале: первые байты строкой и итог как у AT. */
+static void wifi_log(uint8_t op, uint8_t result)
+{
+  uint16_t n = uart_received();
+  (void)result; (void)n; /* стенд собирает журнал пустыми макросами */
+  if (!usb_log_on(1) || op == W_DATA || op == W_RESTART) return;
+  if (n) usb_log(2, op == W_RECV ? frame : wf_line, n > 40u ? 40u : n);
+  usb_log_value(4, result == 1 ? COMM_AT_OK : n ? COMM_AT_ERROR : COMM_AT_TIMEOUT, 0);
 }
 /* Найти короткий ответ в начале принятого; -1 - нет. */
 static int16_t wifi_find(const uint8_t *p, uint16_t n, const char *text)
@@ -96,23 +110,37 @@ static void wifi_pause(uint32_t pause_ms)
   ch.flags.recv = 0; ch.tx_state = TX_FREE; ch.frame_count = 0; ch.sent = ch.acked = 0;
   ch.state = CH_PAUSE; ch.reopen_pause = pause_ms; ch.operation_since = ch.now;
 }
-/* Мост не отвечает: после WF_FAILS отказов подряд сервер идёт через GSM до нового сеанса. */
+/* Серия включений моста не удалась: сервер идёт через GSM, мост пробуется снова через WF_RETRY_MS. */
 static void wifi_fallback(void)
 {
   if (ch.state == CH_OPEN) channel_emit(COMM_CH_CLOSED, 0);
   wifi_pause(0);
   ch.wifi = 0; wf.op = W_NONE; wf.link = 0; ch.state = CH_INITIAL;
   ch.connections = ch.retry_step = 0; ch.probe = ch.probe_active = 0;
+  wf.f.series = wf.f.resume = 0; wf.f.fell = 1; wf.fell_at = ch.now;
   uart_rebuffer(wf_line, (uint16_t)sizeof(wf_line));
   if (usb_log_on(2)) usb_log_value(17, 10, 1);
 }
-/* Отказ настройки или включения: включение считается неудачным, серия отказов отдаёт сервер GSM. */
+/* Отказ настройки или включения: повтор через 2 с, пока не вышел срок серии; сервер об этом не узнаёт. */
 static void wifi_fail(void)
 {
   wf.setup = 0; wf.prefix = 0;
-  if (++wf.fails >= WF_FAILS) { wifi_fallback(); return; }
-  if (ch.state == CH_OPENING) { ch.state = CH_PROBE; channel_emit(COMM_CH_OPEN_FAILED, 0); }
-  else if (ch.state != CH_OPEN) wifi_pause(2000);
+  if (ch.now - wf.series_at >= (wf.f.answered ? (uint32_t)WF_GIVEUP_MS : (uint32_t)WF_DEAD_MS)) { wifi_fallback(); return; }
+  if (ch.state != CH_OPEN) wifi_pause(2000);
+}
+/* На GSM после отказа моста: раз в WF_RETRY_MS закрыть TCP и, дойдя до паузы, снова включить мост.
+   true - мост только что включён: путь GSM в этом проходе не продолжать. */
+static bool wifi_retry(void)
+{
+  if (ch.wifi || !wf.f.fell) return false;
+  if (wf.f.resume) {
+    if (ch.state != CH_PAUSE) return false;
+    ch.wifi = 1; wifi_reset(); return true;
+  }
+  if (ch.state == CH_OPEN && ch.tx_state == TX_FREE && !ch.call.active && ch.now - wf.fell_at >= WF_RETRY_MS) {
+    wf.f.resume = 1; comm_channel_reopen(0);
+  }
+  return false;
 }
 /* Передать мосту очередной кусок кадра не длиннее WF_CHUNK. */
 static void wifi_send_chunk(void)
@@ -144,7 +172,7 @@ static void wifi_done(uint8_t op, uint8_t ok)
     wf.linked = ch.now;
     if (on) {
       wf.link = 2;
-      if (ch.state == CH_OPENING) { ch.state = CH_OPEN; wf.fails = 0; channel_emit(COMM_CH_OPENED, 0); }
+      if (ch.state == CH_OPENING) { ch.state = CH_OPEN; wf.f.series = 0; channel_emit(COMM_CH_OPENED, 0); }
     } else {
       if (wf.link == 2) wf.link = 1;
       if (ch.state == CH_OPEN || ch.state == CH_PROBE) comm_channel_reopen(0);
@@ -205,11 +233,12 @@ static void wifi_next(void)
     if (ch.now - ch.operation_since < ch.reopen_pause) return;
     ch.state = CH_OPENING; ch.flags.peer_closed = 0; channel_emit(COMM_CH_OPENING, 0);
     ++ch.connections; wf.opening = ch.now; wf.prefix = 0;
+    if (!wf.f.series) { wf.f.series = 1; wf.f.answered = 0; wf.series_at = ch.now; }
     wifi_begin(W_ECHO, "AT+E=off", 0, NULL); return;
   }
   if (ch.state == CH_CLOSE) { wifi_begin(W_DIS_OFF, "AT+TCPDIS=off", 0, NULL); return; }
   if (ch.state == CH_OPENING) {
-    if (ch.now - wf.opening >= WF_OPEN_MS) { wifi_fail(); return; }
+    if (ch.now - wf.opening >= WF_OPEN_MS || ch.now - wf.series_at >= WF_GIVEUP_MS) { wifi_fail(); return; }
     if (ch.now - wf.linked >= 1000u) wifi_begin(W_LINK, "AT+TCPLK", 0, NULL);
     return;
   }
@@ -233,6 +262,8 @@ static void wifi_poll(void)
     uint8_t r = wifi_result();
     if (!r) return;
     uint8_t op = wf.op; wf.op = W_NONE;
+    if (r == 1 && op != W_DATA && op != W_RESTART) wf.f.answered = 1; /* мост жив: серия длиннее */
+    wifi_log(op, r);
     wifi_done(op, r);
     if (wf.op) return;
   }

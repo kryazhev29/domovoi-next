@@ -710,5 +710,22 @@ static void reader_tests(void)
 }
 /* ВОССТАНОВЛЕНИЕ */
 /* ВЫЗОВ */
+/* Мост молчит при живом надзоре сервера: новый сеанс с мостом даёт регистрацию через GSM за секунды. */
+static void wifi_server_tests(void)
+{
+  for (unsigned reserve = 0; reserve < 2; ++reserve) {
+    server_reset(); reserve_enabled = reserve;
+    comm_modem_off(); socket_model=false; tcp_sent=tcp_acked=0; /* перезапуск модема: прежнего TCP нет */
+    CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
+    test_config.wifi = 1; w_dead = 1; w_rx = NULL; w_count = 0;
+    uint32_t t0 = sim_now; unsigned links0 = links;
+    comm_server_init(&test_server_handlers); comm_channel_receive(user_comm_rx, user_comm_rx_done);
+    for (unsigned i = 0; !comm_server_online() && i < 6000; ++i) transport_tick(10);
+    printf("wifi bridge silent, reserve=%u: GSM online after %u ms\n", reserve, sim_now - t0);
+    for (unsigned k = links0; k < links; ++k) CHECK(link_kinds[k] != COMM_LINK_FAIL); /* отказов открытия надзор не видел */
+    CHECK(comm_server_online() && sim_now - t0 < 15000 && link_kinds[links - 1] == COMM_LINK_UP);
+    test_config.wifi = 0; w_dead = 0; reserve_enabled = 0;
+  }
+}
 int main(void)
-{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); return 0; }
+{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); wifi_server_tests(); return 0; }
