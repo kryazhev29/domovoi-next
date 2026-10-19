@@ -165,7 +165,8 @@ void uart_send(uint8_t *buf, uint16_t size)
 {
   if (w_expect) {
     CHECK(size == w_expect && w_outbox_count + size <= sizeof(w_outbox));
-    memcpy(w_outbox + w_outbox_count, buf, size); w_outbox_count = (uint16_t)(w_outbox_count + size); w_expect = 0; return;
+    memcpy(w_outbox + w_outbox_count, buf, size); w_outbox_count = (uint16_t)(w_outbox_count + size); w_expect = 0;
+    char done[24]; snprintf(done, sizeof(done), "+ok=%u\r\n\r\n", size); w_text(done); return; /* мост подтверждает данные */
   }
   CHECK(size >= 2 && size < sizeof(w_cmd) && buf[size - 1u] == '\r');
   ++w_commands; memcpy(w_cmd, buf, size - 1u); w_cmd[size - 1u] = 0;
@@ -185,7 +186,7 @@ void uart_send(uint8_t *buf, uint16_t size)
   if (!strcmp(c, "AT+PING=ya.ru")) { ++w_pings; w_text(w_ping_ok ? "+ok=Success:32 bytes\r\n\r\n" : "+ok=Timeout\r\n\r\n"); return; }
   if (!strncmp(c, "AT+SEND=", 8)) {
     ++w_sends; w_expect = (uint16_t)atoi(c + 8); CHECK(w_expect && w_expect <= 1000);
-    if (w_tcp) w_text("+ok\r\n\r\n"); else { w_expect = 0; w_text("+ERR=-3\r\n\r\n"); }
+    if (w_tcp) w_text(">"); else { w_expect = 0; w_text("+ERR=-3\r\n\r\n"); } /* на плате мост отвечает приглашением */
     return;
   }
   if (!strncmp(c, "AT+RECV=", 8)) {
