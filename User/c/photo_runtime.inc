@@ -614,14 +614,19 @@ void photo_poll(void)
           n = 0;
         }
         for (uint16_t i = 0; i < n && photo->stage && flash_job.kind != FX_PHOTO; i++) {
+          /* Мост Wi-Fi на той же линии изредка отвечает в паузе (на своей скорости - для камеры это пара
+             байтов мусора): команда камеры начинается только с 0xAA, пакет данных - с ожидаемого номера. */
+          if (!photo->used && photo->stage != P_DATA && photo->rx[i] != 0xAAu) continue;
           if (!photo->used) photo->frame_size = 6;
           photo->frame[photo->used++] = photo->rx[i];
           if (photo->stage == P_DATA && photo->used == 4) {
-            /* Размер внешнего кадра проверяем до заполнения буфера и сложения длины. */
+            /* Размер внешнего кадра проверяем до заполнения буфера и сложения длины;
+               не тот номер или длина - заголовок ищется дальше со сдвигом на байт. */
             uint16_t length = rt_get16(photo->frame + 2);
-            if (length > PHOTO_DATA) {
-              photo_stop();
-              break;
+            if (length > PHOTO_DATA || rt_get16(photo->frame) != photo->packet) {
+              memmove(photo->frame, photo->frame + 1, 3);
+              photo->used = 3;
+              continue;
             }
             photo->frame_size = 6u + length;
           }

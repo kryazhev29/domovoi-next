@@ -58,7 +58,7 @@ def failures():
         assert m.rget('fault') and not m.events and m.io is None
     return 5
 
-# Проверить контрольную сумму, номер, фрагментацию и неверные длины кадров.
+# Проверить контрольную сумму, номер, фрагментацию, неверные длины и мусор перед кадром.
 def stream():
     m=PhotoMachine();m.boot_media();m.begin_camera(116);m.next_request();good=frame(b'x'*58)
     bad=bytearray(good);bad[-2]^=1
@@ -68,12 +68,14 @@ def stream():
     assert m.active();m.drain();assert m.pget('written',2)==58
     m.now+=60001;m.port();assert not m.events and not m.photo_ptr()
     assert m.flash[0x200008:0x20000c]!=struct.pack('<I',FORMAT)
-    for length in (m.packet_size-5,65529,65530,65531,65532,65533,65534,65535):
-        m=PhotoMachine();m.boot_media();m.begin_camera(58);m.next_request()
-        m.feed(struct.pack('<HH',0,length))
-        assert not m.photo_ptr() and not m.events
+    # Неверная длина или мусор перед заголовком (ответ моста Wi-Fi в паузе): съёмка идёт, заголовок ищется дальше.
+    for junk in [struct.pack('<HH',0,n) for n in (m.packet_size-5,65529,65530,65531,65532,65533,65534,65535)]+[b'\xfeT',b'\xeecV',b'\0']:
+        m=PhotoMachine();m.boot_media();m.begin_camera(116);m.next_request()
+        m.feed(junk)
+        assert m.photo_ptr() and not m.events and m.pget('written',2)==0
         assert m.flash[0x200008:0x20000c]!=struct.pack('<I',FORMAT)
-    return 15
+        m.feed(frame(b'x'*58));m.drain();assert m.pget('written',2)==58
+    return 26
 
 # Проверить занятый транспорт, отказ рабочего буфера и разрыв соединения.
 def transport_and_heap():

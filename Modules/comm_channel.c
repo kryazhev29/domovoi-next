@@ -33,13 +33,11 @@ enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PIN
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
 /* Последний законченный тест переживает переподключение канала. */
 static uint8_t probe_result;
-/* Мост Wi-Fi (comm_wifi.inc): автомат, блокировка слота, приём линии при выдаче слота и сброс сеанса. */
+/* Мост Wi-Fi (comm_wifi.inc): автомат, блокировка слота и сброс сеанса. */
 static void wifi_poll(void);
 static bool wifi_locked(void);
 static void wifi_reset(void);
 static bool wifi_retry(void);
-static void wifi_hold(void);
-static void wifi_unhold(void);
 uint8_t comm_channel_probe_result(void) { return probe_result; }
 /* Передать изменение канала владельцу сервера. */
 static void channel_emit(uint8_t kind, uint8_t value)
@@ -163,7 +161,7 @@ void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),
 { ch.binary = binary; ch.read_done = read_done; }
 /* Ограничить следующий QIRD свободным местом потребителя. */
 void comm_channel_rx_capacity(uint16_t count)
-{ ch.capacity = count > 256u ? 256u : count; }
+{ uint16_t limit = ch.wifi ? 512u : 256u; ch.capacity = count > limit ? limit : count; }
 /* Сообщить, открыт ли серверный TCP. */
 bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
 /* Сообщить о потере границ AT, требующей перезапуска модема. */
@@ -184,7 +182,7 @@ uint8_t *comm_tx_acquire(uint16_t *capacity)
   if (!comm_channel_ready() || ch.tx_state != TX_FREE || ch.flags.urgent
       || (ch.call.active && !ch.wifi) || wifi_locked()) return NULL;
   if (ch.sent == ch.acked) ch.tx_since = ch.now;
-  ch.tx_state = TX_BUILD; if (ch.wifi) wifi_hold(); return frame; /* через мост приём линии уходит из слота */
+  ch.tx_state = TX_BUILD; return frame;
 }
 /* Передать заполненный слот каналу до SEND OK. */
 bool comm_tx_commit(uint16_t count)
@@ -193,7 +191,7 @@ bool comm_tx_commit(uint16_t count)
   ch.frame_count = count; ch.tx_state = TX_QUEUED; return true;
 }
 /* Отменить ещё не переданный каналу кадр. */
-void comm_tx_release(void) { if (ch.tx_state != TX_BUILD) return; ch.tx_state = TX_FREE; if (ch.wifi) wifi_unhold(); }
+void comm_tx_release(void) { if (ch.tx_state == TX_BUILD) ch.tx_state = TX_FREE; }
 /* Снять ступени отката после устойчивой связи. */
 void comm_channel_stable(void) { ch.retry_step = ch.connections = 0; }
 /* Зафиксировать принятый сервером новый сеанс. */
