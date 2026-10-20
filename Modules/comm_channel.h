@@ -69,8 +69,9 @@ uint8_t comm_channel_probe_result(void);
 bool comm_channel_wifi(void);
 /* Состояние моста для USB 113: 0 нет точки доступа, 1 есть, 2 TCP сервера открыт. */
 uint8_t comm_channel_wifi_link(void);
-/* Съёмка по RS-485 занимает линию: мост ждёт её конца. */
-void comm_channel_wifi_pause(bool on);
+/* true: запросить линию для камеры, вернуть готовность после отключения TCP.
+   false: вернуть линию мосту; повторное TCP-соединение выполняется асинхронно. */
+bool comm_channel_wifi_pause(bool on);
 /* Точка доступа "SSID\0ключ\0" для моста: 0 принято, 1 занято, 2 неверные данные. */
 uint8_t comm_channel_wifi_setup(const uint8_t *data, uint16_t count);
 #endif

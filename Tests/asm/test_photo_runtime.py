@@ -47,6 +47,7 @@ class PhotoMachine(StorageMachine):
           ('uart_isReceiving',lambda:self.ret(0)),('uart_received',lambda:self.ret(self.rx_count)),
           ('uart_clear',self.uart_clear),('log_addPhotoEvent',self.event),
           ('usb_send',self.usb_send),('comm_channel_ready',lambda:self.ret(1)),
+          ('comm_channel_wifi_pause',lambda:self.ret(1)), # модель камеры без моста; ожидание проверяется отдельно
           ('comm_tx_acquire',self.acquire),('comm_tx_release',self.ret),
           ('comm_tx_commit',self.commit),('comm_tx_busy',lambda:self.ret(self.transport_busy))]:
             self.stubs[self.addr(name)]=fn
@@ -248,7 +249,35 @@ def errors():
     m.packet(21,b'',1);m.checked('user_comm_session',0);m.drain();assert not m.sent and m.pget('pending')==0
     m.packet(21,b'');m.write(m.addr('usb_bus_resets'),1);m.drain();assert m.pget('pending')==0
     print('duplicates/heap/cancel/write-failure/reconnect/USB PASS',flush=True)
-    return 6
+    camera_bridge_wait()
+    return 9
+
+def camera_bridge_wait():
+    """Камера ждёт отключения моста; отказ и отмена освобождают исполнитель."""
+    for mode in ('ready', 'timeout', 'cancel'):
+        m=PhotoMachine();m.boot_media();ready=False;released=[]
+        def hold():
+            on=m.args()[0]
+            if not on:released.append(m.now)
+            m.ret(int(ready) if on else 1)
+        m.stubs[m.addr('comm_channel_wifi_pause')]=hold
+        m.packet(7,b'\5');m.tick()
+        assert m.active() and not m.commands and m.pget('stage')==0
+        m.now+=1000;m.tick()
+        assert m.active() and not m.commands and not m.counts['start']
+        if mode=='ready':
+            ready=True;m.drain();m.port()
+            assert m.commands and m.pget('stage')==1
+            m.checked('photo_storage_cancel')
+        elif mode=='timeout':
+            m.now+=1001;m.tick()
+        else:m.checked('photo_storage_cancel')
+        m.drain()
+        assert not m.active() and not m.pget('stage') and len(released)==1
+        assert not m.rget('fault') and not m.counts['start']
+        ready=True;m.packet(7,b'\5');m.drain()
+        assert m.answers[-1][1]==0 and m.pget('stage')==1
+    print('camera waits for bridge: ready/2s-timeout/cancel/retry PASS',flush=True)
 
 if __name__=='__main__':
     out={'units':'Unicorn instructions with NOR/UART models; NOT cycles/time','normal':normal(),'upload':uploads(),'errors':errors()}

@@ -5,6 +5,7 @@
    Отказ моста переводит канал на GSM до нового сеанса; точка доступа задаётся тем же автоматом по USB 113.
    Включается в конец comm_channel.c. Прозрачный режим написан вечером 19.10.2026; проверен на плате №1 (aa0c162, сборка 1792419754): мост из командного
    режима настроен и перезапущен прошивкой, регистрация и статусы через мост со стендовым сервером, 4 мин без переоткрытий.
+   Изменено 2026-10-21 (task/modem-stall): отключение TCP перед камерой и новый сеанс после неё — на плате не проверено.
 */
 #ifndef __UART_H /* стенд без драйвера USART1: прототипы совпадают с uart_stm32f10x.h */
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize);
@@ -20,7 +21,8 @@ bool uart_isReceiving(void);
 enum { WF_LINK_MS = 5000, WF_OPEN_MS = 40000, WF_CMD_MS = 800, WF_PING_MS = 6000, WF_RESTART_MS = 8000,
        WF_GAP_MS = 50, WF_DEAD_MS = 5000, WF_GIVEUP_MS = 60000, WF_RETRY_MS = 600000, WF_MISSES = 3, WF_LOG = 40 };
 enum { W_NONE, W_ECHO, W_SET_MODE, W_SET_SSID, W_SET_KEY, W_EVENT, W_TCPTO, W_NETP, W_TMODE, W_RESTART,
-       W_LINK, W_WSLK, W_PING, W_DIS_OFF, W_DIS_ON };
+       W_LINK, W_WSLK, W_PING, W_DIS_OFF, W_DIS_ON, W_CAMERA_OFF, W_CAMERA_ON };
+enum { WF_CAMERA_WAIT = 1, WF_CAMERA_HELD, WF_CAMERA_RELEASE };
 static struct {
   uint32_t since, linked, opening, series_at, fell_at, sent_at;
   uint16_t head, at;
@@ -40,19 +42,35 @@ static void wifi_rebuffer(void)
 { uint16_t size; uint8_t *p = wifi_rxbuf(&size); uart_rebuffer(p, size); wf.head = 0; }
 /* Слот frame занят настройкой, ожиданием ответа моста или ещё не розданными данными сервера. */
 static bool wifi_locked(void)
-{ return wf.setup || wf.op || (ch.wifi && ch.tx_state == TX_FREE && uart_received()); }
+{ return wf.setup || wf.op || (ch.wifi && (wf.paused || (ch.tx_state == TX_FREE && uart_received()))); }
 /* Новый сеанс канала: операция моста и серия включений забыты; что мост уже настроен (ready) - помнится. */
 static void wifi_reset(void) { wf.op = W_NONE; wf.prefix = 1; wf.f.series = wf.f.answered = wf.f.fell = wf.f.resume = 0; ch.connections = 0; }
 /* Канал идёт через мост или мост настраивается: порт RS-485 принадлежит каналу. */
-bool comm_channel_wifi(void) { return ch.wifi || wf.setup; }
+bool comm_channel_wifi(void) { return ch.wifi || wf.setup || wf.paused; }
 /* 0 - точки доступа нет, 1 - точка доступа есть, 2 - TCP сервера открыт. */
 uint8_t comm_channel_wifi_link(void) { return wf.link; }
-/* Съёмка занимает линию: операция моста отменяется; после съёмки приём возвращается в слот, TCP проверяется заново. */
-void comm_channel_wifi_pause(bool on)
+/* Мост остаётся прозрачным, но его TCP закрывается до байтов камеры.
+   Без подтверждения и тишины линии камера не получает порт; срок ожидания — у владельца фото. */
+bool comm_channel_wifi_pause(bool on)
 {
-  wf.paused = (uint8_t)on;
-  if (on) { wf.op = W_NONE; wf.linked = ch.now - WF_LINK_MS; }
-  else if (ch.wifi) wifi_rebuffer();
+  if (on) {
+    if (!comm_modem_settings()->number(SLM_CFG_WIFI)) return true;
+    if (!wf.paused) {
+      if (wf.setup || !wf.f.ready || (ch.wifi && ch.tx_state != TX_FREE)) return false; /* сначала ответ на команду 7 */
+      wf.paused = WF_CAMERA_WAIT; wf.sent_at = ch.now;
+      if (ch.wifi) {
+        /* Съёмка не штрафует новый сеанс и не стирает прежние отказы регистрации. */
+        uint8_t attempts = ch.connections;
+        ch.connections = 0; comm_channel_reopen(0); ch.connections = attempts;
+      }
+    }
+    return wf.paused == WF_CAMERA_HELD && !uart_isReceiving() && ch.now - wf.sent_at >= WF_GAP_MS;
+  }
+  if (wf.paused && wf.paused != WF_CAMERA_RELEASE) {
+    wf.paused = WF_CAMERA_RELEASE; wf.sent_at = ch.now;
+    wifi_rebuffer();
+  }
+  return true;
 }
 /* Точка доступа по USB: "SSID\0ключ\0" копируется в свободный слот, автомат пишет её в мост и перезапускает его.
    0 - принято, 1 - занято (слот, съёмка, ответ моста или прежняя настройка), 2 - неверные данные. */
@@ -195,7 +213,7 @@ static void wifi_fail(void)
    true - мост только что включён: путь GSM в этом проходе не продолжать. */
 static bool wifi_retry(void)
 {
-  if (ch.wifi || !wf.f.fell) return false;
+  if (ch.wifi || wf.paused || !wf.f.fell) return false;
   if (wf.f.resume) {
     if (ch.state != CH_PAUSE) return false;
     ch.wifi = 1; wifi_reset(); return true;
@@ -268,6 +286,18 @@ static void wifi_done(uint8_t op, uint8_t ok)
     ch.probe = ch.probe_active = 0; channel_emit(COMM_CH_PROBE_DONE, good); break; }
   case W_DIS_OFF: wifi_begin(W_DIS_ON, "AT+TCPDIS=on", 0, NULL); return;
   case W_DIS_ON: wifi_pause(ch.reopen_pause); break;
+  case W_CAMERA_OFF:
+    if (ok == 1 && wf.paused == WF_CAMERA_WAIT) {
+      wf.paused = WF_CAMERA_HELD;
+      if (wf.link == 2) wf.link = 1;
+    }
+    wf.sent_at = ch.now;
+    break;
+  case W_CAMERA_ON:
+    wf.paused = 0;
+    if (ok != 1) wf.f.ready = 0;
+    if (ch.wifi) wifi_pause(0);
+    break;
   default: break;
   }
   wifi_rebuffer();
@@ -275,6 +305,13 @@ static void wifi_done(uint8_t op, uint8_t ok)
 /* Начать следующую операцию по состоянию канала; служебный запрос модему идёт в свободное время. */
 static void wifi_next(void)
 {
+  if (wf.paused) {
+    if (uart_isReceiving()) { wf.sent_at = ch.now; return; }
+    if (ch.now - wf.sent_at < WF_GAP_MS) return;
+    if (wf.paused == WF_CAMERA_WAIT) wifi_begin(W_CAMERA_OFF, "AT+TCPDIS=off", 0, NULL);
+    else if (wf.paused == WF_CAMERA_RELEASE) wifi_begin(W_CAMERA_ON, "AT+TCPDIS=on", 0, NULL);
+    return;
+  }
   if (wf.setup == 1) {
     if (ch.state == CH_OPEN) channel_emit(COMM_CH_CLOSED, 0);
     if (ch.wifi) wifi_pause(WF_RESTART_MS);
@@ -312,7 +349,10 @@ static void wifi_next(void)
 static void wifi_poll(void)
 {
   if (ch.operation == OP_QUERY) channel_completed();
-  if (wf.paused) return;
+  if (wf.paused == WF_CAMERA_HELD) {
+    if (uart_isReceiving()) wf.sent_at = ch.now;
+    return;
+  }
   if (wf.op) {
     uint8_t r = wifi_result();
     if (!r) return;

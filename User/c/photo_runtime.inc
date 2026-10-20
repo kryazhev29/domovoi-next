@@ -38,6 +38,7 @@ void photo_storage_cancel(void)
 {
   if (pr.tx_length) pr_tx_release();
   if (flash_job.kind == FX_PHOTO && flash_job.result == FX_PENDING) {
+    if (flash_job.step == PR_CAMERA) comm_channel_wifi_pause(false);
     pj.cancelled = 1;
     pj.quiet = 1;
     if (pj.task == PT_ACK) pr.initialized = 0;
@@ -409,6 +410,10 @@ void photo_storage_poll(uint32_t now)
       break;
     }
   case PR_CAMERA:
+    if (!comm_channel_wifi_pause(true)) {
+      if (pr_reply_expired(now)) { comm_channel_wifi_pause(false); pr_release(FX_CANCELLED); }
+      break;
+    }
     photo->address = device.newAddressPhoto;
     photo->stamp = device.datetime ? device.datetime : 1;
     if (pr.last_number >= photo->stamp) photo->stamp = pr.last_number + 1;
@@ -422,7 +427,6 @@ void photo_storage_poll(uint32_t now)
     photo->started = now;
     photo->last = now - 50;
     photo->deadline = now;
-    comm_channel_wifi_pause(true);
     uart_init(rs485_baud(), 0, photo->rx, sizeof(photo->rx));
     device.getPhoto = pj.address;
     pr_release(FX_OK);

@@ -385,7 +385,7 @@ void comm_channel_poll(uint32_t now_ms)
   ch.now = now_ms;
   comm_modem_poll(now_ms);
   if (ch.state == CH_FAULT) return;
-  if (ch.wifi || wifi_locked()) { wifi_poll(); if (ch.wifi) return; } /* настройка моста идёт рядом с GSM */
+  if (comm_channel_wifi() || wifi_locked()) { wifi_poll(); if (ch.wifi) return; } /* мост обслуживается и при GSM */
   if (ch.operation) channel_completed();
   if (wifi_retry()) return; /* на GSM после отказа моста: раз в 10 мин попробовать мост снова */
   if (ch.state == CH_INITIAL) {
