@@ -55,7 +55,25 @@ def main():
         second()
         if calls: break
     assert calls == ['confirm', 136], calls
-    print('PASS установка FW и подтверждение пробы ждут свободную флеш')
+
+    # Обновление по USB без сервера: вход по USB с ПИН подтверждает пробу; без входа - нет.
+    for authorized, expected in ((0, []), (1, ['confirm', 136])):
+        m = AccessMachine(); calls = []; state = {'trial': 1}
+        m.stubs[m.addr('expiry_runtime_begin')] = lambda: m.ret(0)
+        m.stubs[m.addr('app_trial_active')] = lambda: m.ret(state['trial'])
+        m.stubs[m.addr('app_trial_expired')] = lambda: m.ret(0)
+        m.stubs[m.addr('app_trial_confirm')] = lambda: (calls.append('confirm'), state.update(trial=0), m.ret())
+        m.stubs[m.addr('fw_event')] = lambda: (calls.append(m.args()[0]), m.ret())
+        m.write(m.device + fields('device_s')['registredOnServer'], 0, 1)
+        m.write(m.device + fields('device_s')['userAutorized'], authorized, 1)
+        # Кабель USB вставлен (PB15): без него главный цикл снимает вход по ПИН.
+        m.write(0x40010c08, 0x8000)
+        m.stubs[m.addr('usb_init')] = lambda: m.ret()
+        for _ in range(5):
+            second()
+            if calls: break
+        assert calls == expected, (authorized, calls)
+    print('PASS установка FW и подтверждение пробы ждут свободную флеш; вход по USB подтверждает пробу')
 
 
 if __name__ == '__main__':

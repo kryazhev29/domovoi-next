@@ -247,14 +247,15 @@ void user_loop(void)
       }
     }
 
-    /* Прошивка дошла до сервера - проба подтверждается записью во флеш. Занятая флеш -
+    /* Прошивка дошла до сервера или оператор вошёл по USB с ПИН (обновление без сервера,
+       Алексей 20.10) - проба подтверждается записью во флеш. Занятая флеш -
        повтор через секунду: иначе через 30 мин загрузчик откатил бы годную прошивку (07.10). */
-    if (app_trial_active() && device.registredOnServer && flash_exec_idle()){
+    if (app_trial_active() && (device.registredOnServer || device.userAutorized) && flash_exec_idle()){
       app_trial_confirm();
       if (!app_trial_active()) fw_event_request(LOG_FW_DONE, FW_REASON_NONE);
     }
 
-    // пробная прошивка после обновления так и не зарегистрировалась на сервере - откат
+    // пробную прошивку за 30 мин не подтвердили ни сервер, ни вход по USB - откат
     if (app_trial_expired() && flash_exec_idle()){
       if (app_trial_rollback()) user_savereset();
     }
