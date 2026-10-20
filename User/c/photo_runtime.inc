@@ -423,7 +423,9 @@ void photo_storage_poll(uint32_t now)
     photo->last = now - 50;
     photo->deadline = now;
     comm_channel_wifi_pause(true);
-    uart_init(rs485_baud(), 0, photo->rx, sizeof(photo->rx));
+    /* Мост в таблице: камера вдвое медленнее, в том числе при уходе канала на GSM.
+       C328 выбирает скорость по SYNC после включения питания; см. wifi_dr164.md. */
+    uart_init(rs485_wifi_enabled() ? 57600u : rs485_baud(), 0, photo->rx, sizeof(photo->rx));
     device.getPhoto = pj.address;
     pr_release(FX_OK);
     break;

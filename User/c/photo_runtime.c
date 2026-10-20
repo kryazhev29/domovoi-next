@@ -46,6 +46,15 @@ uint32_t rs485_baud(void)
   }
 }
 
+// Мост задан активной записью типа 1; адрес 0 зарезервирован протоколом.
+bool rs485_wifi_enabled(void)
+{
+  if (config.rs485Mode != 1) return false;
+  for (uint8_t i = 0; i < 8u; ++i)
+    if (config.rs485Periphery[i].type == 1 && config.rs485Periphery[i].address) return true;
+  return false;
+}
+
 // Настраиваем RS485 и устраняем недопустимые значения конфигурации.
 void rs485_init(void)
 {

@@ -39,10 +39,10 @@ class PhotoMachine(StorageMachine):
     # Подготовить модель и перехватить аппаратные границы машинного кода.
     def __init__(self,flash=None):
         super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.job_fields=fields('photo_job_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
-        self.expected_packet=0;self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
+        self.expected_packet=0;self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[];self.uart_calls=[]
         config=fields('config_s');self.write(self.addr('config')+config['rs485Mode'],1,1)
         self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,3]))
-        for name,fn in [('uart_init',self.ret),('uart_setRecTimeout',self.ret),
+        for name,fn in [('uart_init',self.uart_init),('uart_setRecTimeout',self.ret),
           ('uart_send',self.uart_send),('uart_getstate',lambda:self.ret(self.rx_count!=0)),
           ('uart_isReceiving',lambda:self.ret(0)),('uart_received',lambda:self.ret(self.rx_count)),
           ('uart_clear',self.uart_clear),('log_addPhotoEvent',self.event),
@@ -52,6 +52,8 @@ class PhotoMachine(StorageMachine):
             self.stubs[self.addr(name)]=fn
         if 'usb_try_send' in self.symbols:
             self.stubs[self.addr('usb_try_send')]=self.usb_send
+    # Запомнить скорость и буфер при передаче порта камере и обратно.
+    def uart_init(self):self.uart_calls.append(self.args());self.ret(1)
     # Записать команду камеры и проверить её максимальный размер.
     def uart_send(self):
         p,n,_,_=self.args();assert n<=6;self.commands.append(bytes(self.u.mem_read(p,n)));self.ret()
@@ -250,8 +252,34 @@ def errors():
     print('duplicates/heap/cancel/write-failure/reconnect/USB PASS',flush=True)
     return 6
 
+# Проверить выбор по таблице, а не по текущему TCP; возврат сохраняет общую скорость.
+def camera_baud():
+    count=0
+    for setting,normal_baud in enumerate((115200,57600,38400,19200,9600)):
+        for slot,address in ((1,0),(1,1),(7,255)):
+            m=PhotoMachine();m.boot_media();c=m.addr('config');f=fields('config_s')
+            m.write(c+f['reserv'],setting,1)
+            m.u.mem_write(c+f['rs485Periphery']+2*slot,bytes((address,1)))
+            assert m.checked('comm_channel_wifi')==0
+            assert m.checked('rs485_wifi_enabled')==bool(address)
+            m.begin_camera(58)
+            expected=57600 if address else normal_baud
+            assert m.uart_calls[-1][0]==expected,(setting,slot,address,m.uart_calls)
+            assert m.uart_calls[-1][2]==m.photo_ptr()+pf()['rx']
+            assert m.commands[0]==bytes.fromhex('aa0d00000000')
+            m.data(b'x'*58)
+            assert len(m.events)==1 and not m.active()
+            assert m.uart_calls[-1][0]==normal_baud
+            assert m.uart_calls[-1][2]==m.addr('port_buffer')
+            count+=1
+    # Выключенная линия не активирует мост даже при записи типа 1.
+    m.write(c+f['rs485Mode'],0,1)
+    assert not m.checked('rs485_wifi_enabled')
+    print('camera baud/table/GSM/return',count,'PASS',flush=True)
+    return count
+
 if __name__=='__main__':
-    out={'units':'Unicorn instructions with NOR/UART models; NOT cycles/time','normal':normal(),'upload':uploads(),'errors':errors()}
+    out={'units':'Unicorn instructions with NOR/UART models; NOT cycles/time','normal':normal(),'upload':uploads(),'errors':errors(),'camera_baud':camera_baud()}
     out['elf_sha256']=hashlib.sha256(__import__('iar_image').image_paths()[0].read_bytes()).hexdigest()
     (__import__('iar_image').result_path('photo_runtime_results.json')).write_text(json.dumps(out,indent=2)+'\n')
     print('PASS actual photo ASM/camera/main-loop: verified I/O, ownership, ABI, bounded work')

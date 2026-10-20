@@ -151,7 +151,7 @@ static char w_cmd[96], w_netp[96], w_sockb[96], w_ssid[40], w_key[72];
 static uint8_t w_outbox[2100], w_inbox[1100], w_body[1100];
 static uint16_t w_outbox_count, w_inbox_count, w_body_count, w_expect;
 static unsigned w_sends, w_recvs, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands, w_wrong, w_clears;
-static uint32_t w_baud, w_next_baud, w_plate_baud;
+static uint32_t w_baud, w_plate_baud;
 static uint8_t w_cmd_mode, w_next_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_garbage;
 // Положить байты моста в текущий приёмный буфер канала.
 static void w_push(const void *s, uint16_t n)
@@ -162,7 +162,7 @@ static void w_push(const void *s, uint16_t n)
 }
 static void w_text(const char *s) { w_push(s, (uint16_t)strlen(s)); }
 bool uart_init(uint32_t baud, uint8_t stop, uint8_t *rxbuffer, uint16_t bfsize)
-{ (void)stop; w_plate_baud = baud; w_rx = rxbuffer; w_cap = bfsize; w_count = 0; return true; }
+{ CHECK(baud == 115200u); (void)stop; w_plate_baud = baud; w_rx = rxbuffer; w_cap = bfsize; w_count = 0; return true; }
 void uart_setRecTimeout(unsigned int t) { (void)t; }
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize) { w_rx = rxbuffer; w_cap = bfsize; w_count = 0; }
 uint16_t uart_received(void) { return w_count; }
@@ -188,8 +188,8 @@ void uart_send(uint8_t *buf, uint16_t size)
   const char *c = w_cmd + (usr ? 3 : 0);
   if (!strcmp(c, "AT+E=off") || !strcmp(c, "AT+EVENT=off") || !strcmp(c, "AT+WMODE=STA") || !strcmp(c, "AT+TCPTO=0")) { w_text("+ok\r\n\r\n"); return; }
   if (!strcmp(c, "AT+TMODE=cmd")) { w_next_mode = 1; w_text("+ok\r\n\r\n"); return; } /* вступит после перезапуска */
-  if (!strcmp(c, "AT+UART=460800,8,1,NONE,NFC")) { w_next_baud = 460800u; w_text("+ok\r\n\r\n"); return; }
-  if (!strcmp(c, "AT+Z")) { ++w_restarts; w_cmd_mode = w_next_mode; w_baud = w_next_baud; w_garbage = 0; return; }
+  CHECK(strncmp(c, "AT+UART", 7)); /* поиск и настройка не меняют скорость моста */
+  if (!strcmp(c, "AT+Z")) { ++w_restarts; w_cmd_mode = w_next_mode; w_garbage = 0; return; }
   if (!strncmp(c, "AT+NETP=", 8)) { strcpy(w_netp, c); w_text("+ok\r\n\r\n"); return; }
   if (!strncmp(c, "AT+SOCKB=", 9)) { strcpy(w_sockb, c + 9); w_text("+ok\r\n\r\n"); return; }
   if (!strcmp(c, "AT+SOCKB")) { char r[120]; snprintf(r, sizeof(r), "+ok=%s\r\n\r\n", w_sockb); w_text(r); return; }
@@ -228,7 +228,7 @@ static void wifi_model_reset(uint8_t cmd_mode, uint32_t baud, uint8_t tcp)
   channel_opened = channel_closed = channel_faults = 0;
   w_rx = NULL; w_cap = w_count = w_outbox_count = w_inbox_count = w_body_count = w_expect = 0;
   w_sends = w_recvs = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_wrong = w_clears = 0;
-  w_cmd_mode = w_next_mode = cmd_mode; w_baud = w_next_baud = baud; w_plate_baud = 115200u;
+  w_cmd_mode = w_next_mode = cmd_mode; w_baud = baud; w_plate_baud = 115200u;
   w_tcp = tcp; w_dead = w_garbage = 0; w_ping_ok = w_ap = 1;
   w_netp[0] = w_sockb[0] = w_ssid[0] = w_key[0] = 0;
   sim_start(); comm_channel_init(w_event); wf.f.ready = 0; wf.baud = 0; wf.trial = 0; /* новый стенд, порт на 115200 */
@@ -246,12 +246,12 @@ static unsigned w_until_ready(unsigned ticks) { unsigned i = 0; while (i < ticks
 static void channel_wifi_tests(void)
 {
   uint16_t capacity = 0; uint8_t *slot; char expect[96]; uint8_t big[1040];
-  /* Мост из коробки (прозрачный на 115200): на 460800 молчит, с префиксом USR на 115200 настроен -
-     A сервером на мосту, B на сервер 1, командный режим, 460800, перезапуск; через 8 с канал открыт. */
+  /* Мост из коробки на 115200: без префикса молчит, с USR настроен -
+     A сервером на мосту, B на сервер 1, командный режим; скорость прежняя, через 8 с канал открыт. */
   wifi_model_reset(0, 115200u, 1);
   w_until_ready(1500);
   CHECK(comm_channel_ready() && channel_opened == 1 && w_restarts == 1 && sim_now <= 13000);
-  CHECK(w_cmd_mode == 1 && w_baud == 460800u && w_plate_baud == 460800u && comm_channel_wifi_link() == 2);
+  CHECK(w_cmd_mode == 1 && w_baud == 115200u && w_plate_baud == 115200u && comm_channel_wifi_link() == 2);
   snprintf(expect, sizeof(expect), "TCP,%u,%s", test_config.port, test_config.host);
   CHECK(!strcmp(w_sockb, expect) && !strcmp(w_netp, "AT+NETP=TCP,SERVER,15013,10.0.0.1"));
   /* Кадр уходит через AT+SNDB: приглашение, данные, +ok=5; слот свободен. */
@@ -285,27 +285,27 @@ static void channel_wifi_tests(void)
   CHECK(channel_opened == 2 && comm_channel_ready() && w_restarts == 1);
   /* Съёмка: порт у камеры, команд мосту нет; мусор камеры в буфере моста закрывается одиночным CR, TCP проверяется. */
   { unsigned commands = w_commands, links = w_links, clears = w_clears, wrong = w_wrong; comm_channel_wifi_pause(true);
-    w_plate_baud = 115200u; w_garbage = 1; /* камера на 115200 */
+    w_plate_baud = 57600u; w_garbage = 1; /* камера на 57600 */
     for (unsigned i = 0; i < 300; ++i) sim_tick();
     CHECK(w_commands == commands && w_wrong == wrong);
     comm_channel_wifi_pause(false);
     for (unsigned i = 0; i < 10; ++i) sim_tick();
-    CHECK(w_clears == clears + 1 && w_plate_baud == 460800u && w_links == links + 1 && comm_channel_ready() && !w_garbage); }
+    CHECK(w_clears == clears + 1 && w_plate_baud == 115200u && w_links == links + 1 && comm_channel_ready() && !w_garbage); }
   /* Проверка интернета идёт через AT+PING моста. */
   CHECK(comm_channel_probe(COMM_CH_PING));
   for (unsigned i = 0; i < 10; ++i) sim_tick();
   CHECK(w_pings == 1 && comm_channel_probe_result() == COMM_CH_PING);
   /* Перезапуск платы при настроенном мосте (мусор в его буфере): CR, E=off, сверка сокета B - без перезапуска моста. */
-  wifi_model_reset(1, 460800u, 1); snprintf(w_sockb, sizeof(w_sockb), "TCP,%u,%s", test_config.port, test_config.host); w_garbage = 1;
+  wifi_model_reset(1, 115200u, 1); snprintf(w_sockb, sizeof(w_sockb), "TCP,%u,%s", test_config.port, test_config.host); w_garbage = 1;
   CHECK(w_until_ready(100) < 100 && w_restarts == 0 && channel_opened == 1 && w_clears == 1);
   /* Мост наш, но сокет B смотрит на другой сервер: настройка без префикса и перезапуск. */
-  wifi_model_reset(1, 460800u, 1); strcpy(w_sockb, "TCP,1,other.host");
+  wifi_model_reset(1, 115200u, 1); strcpy(w_sockb, "TCP,1,other.host");
   w_until_ready(1500);
   CHECK(comm_channel_ready() && w_restarts == 1 && !strcmp(w_sockb, expect));
-  /* Мост в командном режиме на 115200 (прежняя прошивка платы): третья попытка, настройка, 460800. */
+  /* Командный режим без настроенного B: первая попытка, настройка на прежней скорости. */
   wifi_model_reset(1, 115200u, 1);
   w_until_ready(2500);
-  CHECK(comm_channel_ready() && w_restarts == 1 && w_baud == 460800u && channel_opened == 1 && sim_now <= 16000);
+  CHECK(comm_channel_ready() && w_restarts == 1 && w_baud == 115200u && channel_opened == 1 && sim_now <= 13000);
   /* Точка доступа по USB: SSID и ключ записаны, настройка повторена, перезапуск, канал открыт заново. */
   CHECK(w_setup("Home\0pass123\0", 13) == 0);
   CHECK(comm_channel_wifi_setup((const uint8_t *)"X\0y\0", 4) == 1);
@@ -338,7 +338,7 @@ static void channel_wifi_tests(void)
   w_until_ready(2000);
   CHECK(comm_channel_ready());
   test_config.wifi = 0; w_dead = 0;
-  puts("comm_wifi: DR164 socket B 460800 box setup/send/recv/link loss/pause/ping/restart/AP/fallback PASS");
+  puts("comm_wifi: DR164 115200/camera 57600 box setup/send/recv/link loss/pause/ping/restart/AP/fallback PASS");
 }
 /* Опрос сигнала: при открытом TCP - очередью канала (прежний путь), без TCP - служебной командой
    модема: и в паузе после отказа 566, и пока QIOPEN ждёт ответа (плата №1 20.10.2026: 150 с без URC).

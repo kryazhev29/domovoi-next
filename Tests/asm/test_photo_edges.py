@@ -82,17 +82,18 @@ def camera_sync():
     ack=b'\xaa\x0e\x0d\0\0\0';sync=b'\xaa\x0d\0\0\0\0'
     for parts in ((ack+sync,), (sync,ack), tuple(bytes([v]) for v in ack+sync)):
         m=PhotoMachine();m.boot_media()
+        m.u.mem_write(m.addr('config')+fields('config_s')['rs485Periphery']+2,b'\1\1')
         del m.stubs[m.addr('uart_init')]
-        m.checked('uart_init',460800,0,0x21000000,64)
+        m.checked('uart_init',115200,0,0x21000000,64)
         m.packet(7,b'\5');m.drain();m.port()
-        assert int.from_bytes(m.u.mem_read(0x40013808,4),'little')==625 and m.pget('stage')==1
+        assert int.from_bytes(m.u.mem_read(0x40013808,4),'little')==1250 and m.pget('stage')==1
         assert m.commands[-1]==sync
         m.feed(b'\xfeT+ERR=-1\r\n')
         for part in parts:m.feed(part)
         assert m.pget('stage')==2 and m.commands[-1]==ack
         for command in (1,6,5):
             m.now+=50;m.port()
-            assert m.commands[-1][1]==command and int.from_bytes(m.u.mem_read(0x40013808,4),'little')==625
+            assert m.commands[-1][1]==command and int.from_bytes(m.u.mem_read(0x40013808,4),'little')==1250
             m.feed(b'\x17'+bytes([0xaa,0x0e,command,0,0,0]))
         m.now+=50;m.port();m.feed(b'\xaa\x0a\x01\x3a\0\0');m.drain()
         m.data(b'x'*58)

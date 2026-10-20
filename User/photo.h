@@ -17,6 +17,8 @@ void photo_poll(void);
 void photo_connection_lost(void);
 // Получить общую скорость шины из настройки.
 uint32_t rs485_baud(void);
+// Есть ли активный Wi-Fi-мост в таблице RS485 независимо от текущего канала.
+bool rs485_wifi_enabled(void);
 // Настроить приём обычных устройств RS485.
 void rs485_init(void);
 // Применить параметры RS485 и остановить несовместимую съёмку.

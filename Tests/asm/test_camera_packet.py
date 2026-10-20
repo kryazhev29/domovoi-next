@@ -4,7 +4,7 @@ import json
 import struct
 import sys
 from pathlib import Path
-from test_photo_runtime import PhotoMachine, HEAD
+from test_photo_runtime import PhotoMachine, HEAD, fields
 from photo_latency_audit import capture
 from iar_image import result_path
 from iar_irq_support import Machine
@@ -14,10 +14,10 @@ sys.path.insert(0, str(ROOT / 'Tools/Photo'))
 from camera_emulator import C328
 
 
-def uart_packet(size):
+def uart_packet(size, baud):
     m = Machine(); buffer = 0x21000000; usart = 0x40013800
     m.u.mem_write(buffer, b'\xa5' * (size + 8))
-    m.call('uart_init', 115200, 0, buffer, size)
+    m.call('uart_init', baud, 0, buffer, size)
     assert m.read(usart + 20) == 0  # USART1: RXNE IRQ, без DMA.
     data = bytes(i & 255 for i in range(size))
     for i, byte in enumerate(data):
@@ -49,7 +49,10 @@ def stream(m, number=0, offset=0):
 
 def run():
     m = PhotoMachine(); m.boot_media(); m.record_changes = True
-    uart_packet(m.packet_size)
+    for baud in (115200,57600,38400):
+        uart_packet(m.packet_size, baud)
+    # Полные JPEG снимаются при мосте в последней строке таблицы; обычная скорость 115200.
+    m.u.mem_write(m.addr('config')+fields('config_s')['rs485Periphery']+14,b'\1\1')
     photos = []
     model = []
     for number in (1791995602, 1791995675):
@@ -57,6 +60,7 @@ def run():
         photos.append(data)
         m.write(m.device + m.d['datetime'], number)
         m.begin_camera(len(data))
+        assert m.uart_calls[-1][0] == 57600
         address = m.pget('address', 4)
         camera = C328(data)
         for command in m.commands:
@@ -81,8 +85,9 @@ def run():
             assert m.pget('written', 2) == min(off + m.packet_size - 6, len(data))
         assert m.events[-1] == number
         assert m.flash[address + HEAD:address + HEAD + len(data)] == data
-        for delay in (0, 60):
-            model.append(capture(data, 115200, delay))
+        for baud in (115200,57600,38400):
+            for delay in (0, 60):
+                model.append(capture(data, baud, delay))
     assert stream(m) == b''.join(photos)
     raw = b''.join(m.sent)
     result_path('camera-packet.stream').write_bytes(raw)

@@ -3,13 +3,13 @@
    плата шлёт AT+SNDB и опрашивает AT+RCVB. Сокет A мост держит сервером у себя (наружу не подключается):
    приём сокета A в прошивке моста V1.0.15 портит все пакеты после первого, у B этой ошибки нет
    (стенд 20.10.2026: 200 обменов до 1000 Б без ошибок).
-   Мост работает на WF_BAUD при линии 115200: это уменьшает помехи камере, но не исключает ответы моста
-   (опыт m7: до 4 из 40 посылок, в том числе через 0,7-1,0 мс). Порт переключается:
-   мост - WF_BAUD, камера - rs485_baud() (photo_runtime). Ответы читаются после тишины линии;
+   Мост работает на 115200, камера при мосте в таблице 485 - на 57600 (photo_runtime).
+   Разнос скоростей не гарантирует отсутствия ответов моста во время съёмки.
+   Порт переключается в wifi_port и PR_CAMERA. Ответы читаются после тишины линии;
    данные RCVB ложатся в общий слот frame, короткие ответы - в wf_line.
    Отказ моста переводит канал на GSM до нового сеанса; точка доступа задаётся тем же автоматом по USB 113.
-   Включается в конец comm_channel.c. Опыт v5 20.10.2026: 115200 отвечает, WF_BAUD - таймауты;
-   через USB-485 WF_BAUD отвечает. Совместная работа с камерой на плате не подтверждена.
+   Включается в конец comm_channel.c. Опыт v5 20.10.2026: 115200 отвечает, 460800 - таймауты.
+   Совместная работа с камерой на 57600 на плате пока не подтверждена.
 */
 #ifndef __UART_H /* стенд без драйвера USART1: прототипы совпадают с uart_stm32f10x.h */
 bool uart_init(uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t bfsize);
@@ -26,14 +26,13 @@ uint8_t uart_getstate(void);
 enum { WF_POLL_MS = 50, WF_LINK_MS = 3000, WF_OPEN_MS = 40000, WF_CMD_MS = 800, WF_CLEAR_MS = 100, WF_PING_MS = 6000,
        WF_SEND_MS = 3000, WF_HOLD_MS = 30, WF_RECV_MS = 800, WF_RESTART_MS = 8000, WF_CHUNK = 1000, WF_READ = 512,
        WF_DEAD_MS = 5000, WF_GIVEUP_MS = 60000, WF_RETRY_MS = 600000, WF_MISSES = 3 };
-#define WF_BAUD 460800u /* мост; линия камеры 115200 - в 4 раза медленнее */
-/* Где искать мост: уже наш (командный режим на WF_BAUD), из коробки (прозрачный на 115200, префикс USR),
-   командный на 115200 (прежние прошивки платы), прозрачный на WF_BAUD. */
+#define WF_BAUD 115200u /* мост; камера при мосте в таблице 485 - в 2 раза медленнее */
+/* Где искать мост: уже наш (командный режим), из коробки (прозрачный, префикс USR). */
 static const struct { uint32_t baud; uint8_t prefix; } wf_try[] = {
-  {WF_BAUD, 0}, {115200u, 1}, {115200u, 0}, {WF_BAUD, 1}
+  {WF_BAUD, 0}, {WF_BAUD, 1}
 };
 enum { W_NONE, W_CLEAR, W_ECHO, W_SET_MODE, W_SET_SSID, W_SET_KEY, W_EVENT, W_TCPTO, W_NETP, W_SOCKB, W_TMODE,
-       W_UART, W_RESTART, W_SOCKQ, W_LINK, W_WSLK, W_SEND, W_HOLD, W_DATA, W_RECV, W_PING, W_DIS_OFF, W_DIS_ON };
+       W_RESTART, W_SOCKQ, W_LINK, W_WSLK, W_SEND, W_HOLD, W_DATA, W_RECV, W_PING, W_DIS_OFF, W_DIS_ON };
 static struct {
   uint32_t since, polled, linked, opening, series_at, fell_at, baud;
   uint16_t count, offset, head;
@@ -102,7 +101,7 @@ static void wifi_begin(uint8_t op, const char *text, uint16_t number, const char
   wf.op = op; wf.since = ch.now;
 }
 /* Поиск моста на текущей попытке: в командном режиме сначала одиночный CR - он закрывает мусор
-   в буфере моста (байты камеры, команда на чужой скорости), иначе мусор испортит AT+E. */
+   в буфере моста (байты камеры), иначе мусор испортит AT+E. */
 static void wifi_probe(void)
 {
   if (wf_try[wf.trial].prefix) wifi_begin(W_ECHO, "AT+E=off", 0, NULL);
@@ -201,7 +200,8 @@ static const char *wifi_server(uint16_t *port)
   return host ? host : "";
 }
 /* Применить законченную операцию моста; следующая начинается здесь же или в wifi_next.
-   Настройка: E=off, [WMODE, WSSSID, WSKEY,] EVENT=off, TCPTO=0, NETP (A сервером), SOCKB, TMODE=cmd, UART, Z. */
+   Настройка: E=off, [WMODE, WSSSID, WSKEY,] EVENT=off, TCPTO=0, NETP (A сервером), SOCKB, TMODE=cmd, Z.
+   AT+UART не нужен: обе попытки поиска и заводская настройка моста - 115200. */
 static void wifi_done(uint8_t op, uint8_t ok)
 {
   const uint8_t *p = wf_line; uint16_t n = uart_received(), port = 0;
@@ -291,9 +291,6 @@ static void wifi_done(uint8_t op, uint8_t ok)
     if (ok == 1) { wifi_begin(W_TMODE, "AT+TMODE=cmd", 0, NULL); return; }
     wifi_fail(); break;
   case W_TMODE:
-    if (ok == 1) { wifi_begin(W_UART, "AT+UART=460800,8,1,NONE,NFC", 0, NULL); return; }
-    wifi_fail(); break;
-  case W_UART:
     if (ok == 1) { wifi_begin(W_RESTART, "AT+Z", 0, NULL); return; }
     wifi_fail(); break;
   case W_RESTART: /* после перезапуска мост в командном режиме на WF_BAUD, сокет B на сервер 1 */
