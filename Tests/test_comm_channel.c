@@ -306,26 +306,27 @@ static void channel_wifi_tests(void)
   test_config.wifi = 0; w_dead = 0;
   puts("comm_wifi: DR164 transparent setup/send/recv/mix/link loss/pause/ping/cmd-mode/AP/fallback PASS");
 }
-/* Настоящий опрос без TCP (отказ 566 и пауза повтора), прежний порядок и период;
-   ожидающие вызов, кадр и приоритетная операция обходят фоновый запрос. */
+/* Опрос сигнала: при открытом TCP - очередью канала (прежний путь), без TCP - служебной командой
+   модема: и в паузе после отказа 566, и пока QIOPEN ждёт ответа (плата №1 20.10.2026: 150 с без URC).
+   Порядок и период прежние; ожидающие вызов, кадр и приоритетная операция обходят фоновый запрос. */
 static void channel_info_tests(void)
 {
-  for (unsigned offline = 0; offline < 2; ++offline) {
-    channel_model_reset(); sim_open_error = offline; channel_until(15000);
-    if (offline) CHECK(!comm_channel_ready() && slm.attempt.status.modem_code == 566);
+  for (unsigned mode = 0; mode < 3; ++mode) { /* 0 - TCP открыт, 1 - отказ 566, 2 - QIOPEN без ответа */
+    channel_model_reset(); sim_open_error = mode;
+    if (mode < 2) channel_until(15000);
+    else for (unsigned guard = 0; !(ch.state == CH_OPENING && ch.flags.open_ack); ++guard) { CHECK(guard < 1500); sim_tick(); }
+    CHECK(comm_channel_ready() == !mode);
+    if (mode == 1) CHECK(slm.attempt.status.modem_code == 566);
     info.step = info.antenna = info.daily = 0; info.next = sim_now;
-    info.v.csq = 99; info.v.creg = info.v.cgreg = 0;
-    for (unsigned step = 0; step < 6; ++step) {
-      comm_info_poll(sim_now);
-      CHECK(query.cmd && !strcmp(query.cmd, info_cmd[step]));
-      for (unsigned guard = 0; query.cmd; ++guard) { CHECK(guard < 100); sim_tick(); }
+    info.v.csq = 99; info.v.creg = info.v.cgreg = info.v.net = 0;
+    bool channel_path = false;
+    for (unsigned i = 0; i < 300 && (info.v.net != 4 || sim_qeng_queries == 0); ++i) {
+      comm_info_poll(sim_now); channel_path |= query.cmd != NULL; sim_tick();
     }
+    CHECK(channel_path == !mode);
     CHECK(comm_info()->csq == 22 && comm_info()->creg && comm_info()->cgreg && comm_info()->net == 4);
     CHECK(sim_qeng_queries == 1);
-    if (offline) {
-      comm_channel_reopen(60000);
-      for (unsigned guard = 0; ch.state != CH_PAUSE; ++guard) { CHECK(guard < 100); sim_tick(); }
-    }
+    if (mode == 2) CHECK(ch.state == CH_OPENING);
     sim_csq = 18;
     while ((int32_t)(sim_now - info.next) < 0) { comm_info_poll(sim_now); sim_tick(); }
     CHECK(comm_info()->csq == 22 && sim_qeng_queries == 1);
@@ -345,7 +346,7 @@ static void channel_info_tests(void)
   sim_tick(); CHECK(!strcmp(sim_sent, "AT+QISEND=0,4") && query.cmd);
   for (unsigned i = 0; i < 100; ++i) sim_tick();
   CHECK(!comm_tx_busy() && !query.cmd && comm_info()->csq == 22);
-  puts("comm_info no-server: 566/pause/30s/order/call/frame/priority PASS");
+  puts("comm_info no-server: TCP/566/QIOPEN wait/30s/call/frame/priority PASS");
 }
 // Запустить проверки путей и отказов канала.
 static void channel_regressions(void)

@@ -120,11 +120,32 @@ static void info_line(const uint8_t *p, uint16_t n)
   }
 }
 
+/* Без TCP сервера опрос идёт служебной командой модема, как обзор SMS: канал без соединения
+   ждёт QIOPEN до 150 с, и всё это время NextConfig видел «нет сети» (плата №1, 20.10.2026). */
+static comm_side_t info_side = {.mode = COMM_AT_TEXT, .timeout = COMM_T_AT_SIMPLE};
+static void (*info_side_line)(const uint8_t *, uint16_t);
+static void info_side_reply(const uint8_t *p, uint16_t n, uint16_t detail) { (void)detail; info_side_line(p, n); }
+static bool info_query(const char *cmd, void (*line)(const uint8_t *, uint16_t))
+{
+  if (comm_channel_ready()) return comm_channel_query(cmd, line);
+  info_side.cmd = cmd; info_side.line = info_side_reply;
+  if (!comm_modem_side(&info_side)) return false;
+  info_side_line = line; return true;
+}
+
 /* Поставить очередной фоновый запрос сведений. */
-/* Проверено на плате №1 14.10.2026 (11584e0): снимок сети в USB-журнал раз в 30 с, статус 69/69. */
+/* Проверено на плате №1 14.10.2026 (11584e0): снимок сети в USB-журнал раз в 30 с, статус 69/69.
+   Изменено 20.10.2026: без TCP опрос идёт служебной командой модема - на плате не проверено. */
 void comm_info_poll(uint32_t now_ms)
 {
   if (info.antenna && (int32_t)(now_ms - info.antenna_until) >= 0) info.antenna = 0;
+  /* Результат служебной команды забирается сразу: занятый слот держит SMS и звонок. */
+  if (info_side_line) {
+    uint8_t r = comm_modem_side_result(&info_side);
+    if (r == UINT8_MAX) return;
+    void (*line)(const uint8_t *, uint16_t) = info_side_line;
+    info_side_line = NULL; line(NULL, r != COMM_AT_OK);
+  }
   /* Модем не на связи - цифры прошлого сеанса не показываем, опрос заново с начала. */
   if (!comm_modem_ready()) {
     info.v.rsrp = info.v.rsrq = info.v.sinr = info.v.band = info.v.bandwidth = 255;
@@ -138,7 +159,7 @@ void comm_info_poll(uint32_t now_ms)
   if (!quick && !due) return;
   /* QENG использует общий COMM_T_AT_SIMPLE: отдельного срока в §9.25 нет. */
   uint8_t step = quick ? 5u : info.step;
-  if (!comm_channel_query(info_cmd[step], step == 5u ? info_lte_line : info_line)) return;
+  if (!info_query(info_cmd[step], step == 5u ? info_lte_line : info_line)) return;
   if (step == 5u) {
     info.qeng_slot = slot;
     info.qeng_ok = 0; /* значения не сбрасываем: запрос ждёт свободного канала, 112 видит прежние */

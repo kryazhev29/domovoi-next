@@ -277,6 +277,7 @@ def gsm_and_events():
     # Конец полного цикла опроса сети отдаёт снимок comm_info_t как есть.
     info = m.addr('info')
     m.stubs[m.addr('comm_modem_ready')] = lambda: m.ret(1)
+    m.stubs[m.addr('comm_channel_ready')] = lambda: m.ret(1)  # TCP открыт: опрос идёт очередью канала
     m.stubs[m.addr('comm_channel_query')] = lambda: m.ret(1)
     m.write(info + offset('info', 'step'), 5, 1)
     m.write(info + offset('info', 'daily'), 1, 1)
