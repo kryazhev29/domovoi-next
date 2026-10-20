@@ -105,3 +105,32 @@ static void modem_stall_tests(void)
   test_config.wifi = 0; stall_keep_online = 0;
   puts("modem stall: CUSD without URC/OK, late URC, immediate restart then powered 30/60 min, Wi-Fi statuses and GSM URCs PASS");
 }
+
+static void wifi_server_refusal_tests(void)
+{
+  for (unsigned reserve = 0; reserve < 2; ++reserve) {
+    for (unsigned reject = 0; reject < 2; ++reject) {
+      stall_start(); stall_keep_online = 0; reserve_enabled = reserve;
+      stall_registrations = 0;
+      stall_drop_registration = !reject; stall_reject_registration = reject;
+      uint32_t start = sim_now;
+      comm_channel_reopen(0);
+      for (unsigned i = 0; (ch.wifi || !comm_server_online()) && i < 30000; ++i) stall_tick();
+      printf("Wi-Fi registration refusal: reserve=%u reject=%u attempts=%u elapsed=%u GSM=%u\n",
+             reserve, reject, stall_registrations, sim_now - start, !ch.wifi && comm_server_online());
+      CHECK(!ch.wifi && comm_server_online() && sim_now - start < 300000);
+      CHECK(stall_registrations == (reject ? 3u : 6u));
+      unsigned n = reject ? 1u : 2u;
+      CHECK(stall_registration_at[n] - stall_registration_at[0] >= 30000);
+      CHECK(stall_registration_at[2 * n] - stall_registration_at[n] >= 60000);
+      /* Принятая регистрация GSM и возврат на мост через прежние 10 мин. */
+      stall_drop_registration = stall_reject_registration = 0;
+      uint32_t fell_at = wf.fell_at;
+      while (sim_now - fell_at < WF_RETRY_MS - 1000u) { stall_tick(); CHECK(!ch.wifi); }
+      stall_run(15000);
+      CHECK(ch.wifi && comm_server_online() && ch.connections == 0);
+      test_config.wifi = 0;
+    }
+  }
+  puts("Wi-Fi registration silence/rejection: growing pauses, GSM after three connections, return in 10 min PASS");
+}

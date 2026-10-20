@@ -39,13 +39,15 @@ void comm_server_note(uint8_t kind) { server_link(kind, 0); }
 uint8_t comm_server_address(void) { return sv.address; }
 /* Проверить интернет перед новой попыткой сервера; отсчёт между попытками, не после ping. */
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
-   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
+   Изменено 2026-10-21 (коммит «Уходить на GSM после отказов регистрации через мост»):
+   повторы моста ограничивает канал без второй серверной паузы — на плате не проверено. */
 static void server_check(void)
 {
   sv.flags.status_wait = sv.flags.status_due = sv.flags.stable = sv.flags.probe_failed = 0;
   if (sv.state == SV_ONLINE) sv.silent_since = sv.now;
   /* Отказ основного до регистрации: резерв сразу, проверка интернета после него. */
-  if (sv.state != SV_ONLINE && !sv.address && comm_modem_reserve()) {
+  if (comm_channel_bridge() || (sv.state != SV_ONLINE && !sv.address && comm_modem_reserve())) {
     comm_channel_reopen(0); sv.state = SV_OFF;
   } else sv.state = SV_PING;
 }

@@ -224,6 +224,7 @@ static void channel_wifi_tests(void)
   wifi_model_reset(0, 1);
   for (unsigned i = 0; i < 1500 && !comm_channel_ready(); ++i) sim_tick();
   CHECK(comm_channel_ready() && channel_opened == 1 && w_restarts == 1 && !w_tcpto && !w_plain && !w_stray && sim_now <= 12000);
+  comm_channel_registered(); /* дальнейший обмен моделирует уже принятый сервером сеанс */
   snprintf(expect, sizeof(expect), "AT+NETP=TCP,CLIENT,%u,%s", test_config.port, test_config.host);
   CHECK(!strcmp(w_netp, expect) && comm_channel_wifi() && comm_channel_wifi_link() == 2);
   /* Кадр уходит в линию как есть, слот свободен сразу. */

@@ -25,6 +25,8 @@ void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),
 void comm_channel_rx_capacity(uint16_t count);
 /* Сообщить, открыт ли серверный TCP. */
 bool comm_channel_ready(void);
+/* Транспорт сервера — мост, независимо от фоновой настройки RS-485. */
+bool comm_channel_bridge(void);
 /* Модем перестал отвечать посреди работы канала: нужен перезапуск модема. */
 bool comm_channel_fault(void);
 /* Служебная команда при свободном канале; false - занят или нет соединения.

@@ -38,6 +38,7 @@ static void wifi_poll(void);
 static bool wifi_locked(void);
 static void wifi_reset(void);
 static bool wifi_retry(void);
+static void wifi_fallback(void);
 static void wifi_hold(void);
 static void wifi_unhold(void);
 uint8_t comm_channel_probe_result(void) { return probe_result; }
@@ -91,7 +92,7 @@ static uint16_t channel_binary(const uint8_t *p, uint16_t n)
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
    основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
    Изменено 2026-10-15 (611d3e9): учёт окна и продвижения ACK — на плате не проверено.
-   Изменено 2026-10-21 (коммит «Изолировать мост от отказов модема»): отказ AT и URC GSM
+   Изменено 2026-10-21 (fcfa0b7): отказ AT и URC GSM
    не закрывают канал моста — на плате не проверено. */
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
@@ -180,6 +181,8 @@ void comm_channel_rx_capacity(uint16_t count)
 { ch.capacity = count > 256u ? 256u : count; }
 /* Сообщить, открыт ли серверный TCP. */
 bool comm_channel_ready(void) { return ch.state == CH_OPEN; }
+/* Текущий сервер идёт через мост; настройка моста параллельно GSM сюда не входит. */
+bool comm_channel_bridge(void) { return ch.wifi; }
 /* Сообщить о потере границ AT, требующей перезапуска модема. */
 bool comm_channel_fault(void) { return ch.state == CH_FAULT; }
 #if DOMOVOI_DIAG
@@ -218,13 +221,20 @@ void comm_channel_registered(void)
 }
 /* Закрыть прежний TCP и назначить обычную повторную попытку. */
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
-   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с. */
+   основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
+   Изменено 2026-10-21 (коммит «Уходить на GSM после отказов регистрации через мост»):
+   паузы 30/60 с и GSM после трёх соединений без регистрации — на плате не проверено. */
 void comm_channel_reopen(uint32_t pause_ms)
 {
   if (ch.call.active) { ch.call.lost = 1; return; }
   if (ch.state == CH_CLOSE || ch.state == CH_CLOSING || ch.state == CH_VERIFY || ch.state == CH_PAUSE || ch.state == CH_FAULT) return;
   if (ch.state == CH_INITIAL) ch.connections = 1;
   bool had_socket = ch.state == CH_OPEN;
+  if (ch.wifi && had_socket && ch.connections) {
+    if (ch.connections >= 3u) { wifi_fallback(); return; }
+    uint32_t pause = comm_timeouts[COMM_T_SERVER_RETRY_1 + ch.connections - 1u];
+    if (pause_ms < pause) pause_ms = pause;
+  }
   ch.state = CH_CLOSE; ch.reopen_pause = pause_ms; ch.probe = ch.probe_active = ch.probe_answer = 0;
   /* Основной -> резервный -> новая цепочка; после звонка один раз прежний адрес. */
   if (!ch.call.expected) ch.address = !ch.flags.registered_session && !ch.address && comm_modem_reserve();

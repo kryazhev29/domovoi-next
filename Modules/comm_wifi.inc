@@ -42,7 +42,7 @@ static void wifi_rebuffer(void)
 static bool wifi_locked(void)
 { return wf.setup || wf.op || (ch.wifi && ch.tx_state == TX_FREE && uart_received()); }
 /* Новый сеанс канала: операция моста и серия включений забыты; что мост уже настроен (ready) - помнится. */
-static void wifi_reset(void) { wf.op = W_NONE; wf.prefix = 1; wf.f.series = wf.f.answered = wf.f.fell = wf.f.resume = 0; }
+static void wifi_reset(void) { wf.op = W_NONE; wf.prefix = 1; wf.f.series = wf.f.answered = wf.f.fell = wf.f.resume = 0; ch.connections = 0; }
 /* Канал идёт через мост или мост настраивается: порт RS-485 принадлежит каналу. */
 bool comm_channel_wifi(void) { return ch.wifi || wf.setup; }
 /* 0 - точки доступа нет, 1 - точка доступа есть, 2 - TCP сервера открыт. */
