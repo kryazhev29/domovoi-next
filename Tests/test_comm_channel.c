@@ -306,10 +306,51 @@ static void channel_wifi_tests(void)
   test_config.wifi = 0; w_dead = 0;
   puts("comm_wifi: DR164 transparent setup/send/recv/mix/link loss/pause/ping/cmd-mode/AP/fallback PASS");
 }
+/* Настоящий опрос без TCP (отказ 566 и пауза повтора), прежний порядок и период;
+   ожидающие вызов, кадр и приоритетная операция обходят фоновый запрос. */
+static void channel_info_tests(void)
+{
+  for (unsigned offline = 0; offline < 2; ++offline) {
+    channel_model_reset(); sim_open_error = offline; channel_until(15000);
+    if (offline) CHECK(!comm_channel_ready() && slm.attempt.status.modem_code == 566);
+    info.step = info.antenna = info.daily = 0; info.next = sim_now;
+    info.v.csq = 99; info.v.creg = info.v.cgreg = 0;
+    for (unsigned step = 0; step < 6; ++step) {
+      comm_info_poll(sim_now);
+      CHECK(query.cmd && !strcmp(query.cmd, info_cmd[step]));
+      for (unsigned guard = 0; query.cmd; ++guard) { CHECK(guard < 100); sim_tick(); }
+    }
+    CHECK(comm_info()->csq == 22 && comm_info()->creg && comm_info()->cgreg && comm_info()->net == 4);
+    CHECK(sim_qeng_queries == 1);
+    if (offline) {
+      comm_channel_reopen(60000);
+      for (unsigned guard = 0; ch.state != CH_PAUSE; ++guard) { CHECK(guard < 100); sim_tick(); }
+    }
+    sim_csq = 18;
+    while ((int32_t)(sim_now - info.next) < 0) { comm_info_poll(sim_now); sim_tick(); }
+    CHECK(comm_info()->csq == 22 && sim_qeng_queries == 1);
+    for (unsigned i = 0; i < 100; ++i) { comm_info_poll(sim_now); sim_tick(); }
+    CHECK(comm_info()->csq == 18 && sim_qeng_queries == 2);
+  }
+  channel_model_reset(); channel_until(15000);
+  CHECK(comm_channel_query("AT+CSQ", info_line));
+  comm_channel_call(true); unsigned before = sim_commands;
+  for (unsigned i = 0; i < 10; ++i) sim_tick();
+  CHECK(sim_commands == before && query.cmd);
+  comm_channel_call(false);
+  comm_channel_priority(true); sim_tick(); CHECK(sim_commands == before);
+  comm_channel_priority(false);
+  uint16_t capacity; uint8_t *tx = comm_tx_acquire(&capacity);
+  CHECK(tx && capacity >= 4); memcpy(tx, "TEST", 4); CHECK(comm_tx_commit(4));
+  sim_tick(); CHECK(!strcmp(sim_sent, "AT+QISEND=0,4") && query.cmd);
+  for (unsigned i = 0; i < 100; ++i) sim_tick();
+  CHECK(!comm_tx_busy() && !query.cmd && comm_info()->csq == 22);
+  puts("comm_info no-server: 566/pause/30s/order/call/frame/priority PASS");
+}
 // Запустить проверки путей и отказов канала.
 static void channel_regressions(void)
 {
-  channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests(); channel_wifi_tests();
+  channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests(); channel_info_tests(); channel_wifi_tests();
   comm_modem_transport(NULL); sim_poll = comm_modem_poll;
   puts("comm_channel: original TCP/READ/late URC/capacity/backpressure/timing PASS");
 }

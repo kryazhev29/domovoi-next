@@ -25,7 +25,7 @@ void comm_channel_rx_capacity(uint16_t count);
 bool comm_channel_ready(void);
 /* Модем перестал отвечать посреди работы канала: нужен перезапуск модема. */
 bool comm_channel_fault(void);
-/* Служебная команда при свободном канале; false - занят или нет соединения.
+/* Служебная команда при свободном AT; false - очередь занята или модем не готов.
    line(NULL, n) - конец ответа: n = 1 при ERROR/таймауте. */
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t));
 /* Собрать состояние канала для стендовой команды 111. */

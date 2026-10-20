@@ -228,7 +228,7 @@ void comm_channel_reopen(uint32_t pause_ms)
 /* Самый низкий приоритет: только при свободном канале, без отправки и чтения. */
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t))
 {
-  if (!comm_channel_ready() || query.cmd) return false;
+  if (!comm_modem_ready() || query.cmd) return false;
   query.cmd = cmd; query.line = line; return true;
 }
 /* Поставить проверку интернета по запросу надзора сервера. */
@@ -259,7 +259,8 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
   uint8_t r = op == OP_SEND ? comm_modem_payload(frame, ch.frame_count, ch.now)
     : comm_modem_request(&req, ch.now);
   if (r != COMM_AT_ACCEPTED) return false;
-  ch.operation = op; ch.answer = 0; ch.operation_since = ch.now;
+  ch.operation = op; ch.answer = 0;
+  if (op != OP_QUERY) ch.operation_since = ch.now; /* Опрос не продлевает паузу повторного TCP. */
   if (op == OP_OPEN || op == OP_READ) {
     comm_modem_record(op == OP_OPEN ? SLM_TCP : SLM_READ, 0, 0);
     if (op == OP_OPEN) ch.flags.open_ack = ch.flags.open_seen = 0;
@@ -403,7 +404,12 @@ void comm_channel_poll(uint32_t now_ms)
     return;
   }
   if (ch.state == CH_PAUSE) {
-    if (now_ms - ch.operation_since < ch.reopen_pause) return;
+    if (now_ms - ch.operation_since < ch.reopen_pause) {
+      if (!ch.operation && ch.tx_state == TX_FREE && !ch.flags.urgent && query.cmd)
+        channel_command(query.cmd, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_QUERY);
+      return;
+    }
+    if (ch.operation) return; /* Дождаться уже начатого фонового ответа. */
     if (!channel_command(NULL, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_OPEN)) return;
     ch.flags.peer_closed = 0;
     ch.state = CH_OPENING;

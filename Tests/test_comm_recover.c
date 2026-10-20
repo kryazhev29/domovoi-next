@@ -227,7 +227,11 @@ static void server_outage_tests(void)
       CHECK(!ch.probe_active && !pings);
       if (packet==4) comm_channel_reopen(0); /* Отмена через публичный запрос нового TCP. */
       else sim_feed("+QIURC: \"closed\",0\r\n");
-      if (packet!=4) { rc_tick(10); CHECK(ch.probe_active==COMM_CH_PING && opens==first+2u); }
+      if (packet!=4) {
+        /* Без TCP теперь мог уже начаться фоновый AT: он заканчивается за свой срок. */
+        for (unsigned wait=0;!ch.probe_active;++wait) { CHECK(wait<31); rc_tick(10); }
+        CHECK(ch.probe_active==COMM_CH_PING && opens==first+2u);
+      }
     }
     rc_run(comm_timeouts[COMM_T_QIOPEN]+10000u);
     printf("board outage packet=%u: sv=%u ch=%u tx=%u probe=%u pings=%u opens=%u event13=%u\n",
