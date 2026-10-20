@@ -12,7 +12,8 @@ def review_unit():
     code = code.replace('uint8_t protocolVersion, hardwareVersion;',
                         'uint8_t protocolVersion, hardwareVersion, moduleType;')
     user = source('User/c/user_modem.c')
-    code += '\nstatic struct { char netOperator[32], server1[32], server2[32]; uint8_t netType, useServer1, useServer2; } config;\n'
+    code += ('\nstatic struct { char netOperator[32], server1[32], server2[32]; uint8_t netType, useServer1, useServer2, rs485Mode;'
+             ' struct { uint8_t address, type; } rs485Periphery[8]; } config;\n')
     code += user[user.index('static char comm_host'):user.index('// Обработчики')]
     code += '\n'.join(function(user, name) for name in ('comm_split', 'comm_endpoints', 'comm_text', 'comm_number'))
     code += (ROOT / 'Tests/test_comm_review.c').read_bytes().decode('utf-8')

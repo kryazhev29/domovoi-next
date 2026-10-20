@@ -99,6 +99,26 @@ static void review_settings(void)
   strcpy(config.server2, "next-backup.local:7778");
   comm_endpoints();
   CHECK(!strcmp(comm_text(SLM_CFG_HOST2, &capacity), "next-backup.local") && comm_number(SLM_CFG_PORT2) == 7778);
+  /* Адрес без порта (сервер СофтЭксперт, 20.10): заводской порт своего поля, не 0. */
+  strcpy(config.server1, "gate.gsmgate.ru"); strcpy(config.server2, "gate.gsmgate.ru");
+  config.useServer1 = 1; config.useServer2 = 0;
+  comm_endpoints();
+  CHECK(comm_number(SLM_CFG_PORT) == 15010 && comm_number(SLM_CFG_PORT2) == 15020);
+  CHECK(!strcmp(comm_text(SLM_CFG_HOST, &capacity), "gate.gsmgate.ru"));
+  config.useServer1 = 0; config.useServer2 = 1;
+  comm_endpoints();
+  CHECK(comm_number(SLM_CFG_PORT) == 15020);
+  strcpy(config.server1, "gate.gsmgate.ru:"); config.useServer1 = 1; config.useServer2 = 0;
+  comm_endpoints();
+  CHECK(comm_number(SLM_CFG_PORT) == 0);
+  /* Wi-Fi: тип 1 включает мост только с адресом не 0 (сервер 20.10 писал адрес на место типа). */
+  config.rs485Mode = 1;
+  for (uint8_t i = 0; i < 8u; ++i) { config.rs485Periphery[i].address = 0; config.rs485Periphery[i].type = i; }
+  CHECK(comm_number(SLM_CFG_WIFI) == 0);
+  config.rs485Periphery[1].address = 5;
+  CHECK(comm_number(SLM_CFG_WIFI) == 1);
+  config.rs485Mode = 0;
+  CHECK(comm_number(SLM_CFG_WIFI) == 0);
 }
 // Запустить все сценарии этого стенда.
 int main(void)

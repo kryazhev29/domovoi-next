@@ -51,7 +51,8 @@ bool user_comm_link(uint8_t kind, uint8_t address)
 // Сообщить занятость обновлением или телефонным вызовом.
 bool user_comm_busy(void) { return device.FWinProgress != 0 || comm_call_active(); }
 
-// Сохранить разобранные домен и порт одного сервера.
+// Сохранить разобранные домен и порт одного сервера. Адрес без порта (так его записал
+// сервер СофтЭксперт 20.10) получает заводской порт своего поля: 15010 или 15020.
 static void comm_split(uint8_t n, const char *server)
 {
   const char *colon = NULL, *p = server;
@@ -60,8 +61,9 @@ static void comm_split(uint8_t n, const char *server)
   len = colon ? (size_t)(colon - server) : (size_t)(p - server);
   if (len >= sizeof(comm_host[n])) len = sizeof(comm_host[n]) - 1u;
   memcpy(comm_host[n], server, len); comm_host[n][len] = 0;
-  comm_port[n] = 0;
+  comm_port[n] = server == config.server2 ? 15020u : 15010u;
   if (colon) {
+    comm_port[n] = 0;
     uint16_t pos = 0, count = (uint16_t)(p - colon - 1);
     uint32_t port;
     if (comm_at_number((const uint8_t *)colon + 1, count, &pos, UINT16_MAX, &port) && pos == count)
@@ -112,10 +114,12 @@ static uint16_t comm_number(uint8_t field)
   /* Пустой резерв разрешён протоколом; непустой проверяется даже при порте 0.
      Когда выбран только сервер 2, второго адреса для повтора нет. */
   case SLM_CFG_RESERVE: return config.useServer1 && config.useServer2 && comm_host[1][0];
-  /* Wi-Fi-мост DR164 задан в таблице 485 типом 1 при активном режиме линии. */
+  /* Wi-Fi-мост DR164 задан в таблице 485 типом 1 при активном режиме линии. Адрес 0 -
+     резерв по Протоколу2: такая запись не включает мост (сервер 20.10 писал адрес на место типа). */
   case SLM_CFG_WIFI: {
     if (config.rs485Mode != 1) return 0;
-    for (uint8_t i = 0; i < 8u; ++i) if (config.rs485Periphery[i].type == 1) return 1;
+    for (uint8_t i = 0; i < 8u; ++i)
+      if (config.rs485Periphery[i].type == 1 && config.rs485Periphery[i].address) return 1;
     return 0;
   }
   /* Ручной тип (команда 105) имеет приоритет; 0/255 - определить по AT+GMM. */
