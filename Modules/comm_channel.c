@@ -90,17 +90,22 @@ static uint16_t channel_binary(const uint8_t *p, uint16_t n)
 /* Разобрать ответы канала и уведомления о потере соединения. */
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
    основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
-   Изменено 2026-10-15 (611d3e9): учёт окна и продвижения ACK — на плате не проверено. */
+   Изменено 2026-10-15 (611d3e9): учёт окна и продвижения ACK — на плате не проверено.
+   Изменено 2026-10-21 (коммит «Изолировать мост от отказов модема»): отказ AT и URC GSM
+   не закрывают канал моста — на плате не проверено. */
 static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detail)
 {
   if (kind == COMM_AT_NO_ANSWER || kind == COMM_AT_STREAM_ERROR) {
     uint8_t reason = kind == COMM_AT_NO_ANSWER ? SLM_ERR_NO_ANSWER : SLM_ERR_STREAM;
-    channel_read_done(reason);
     if (comm_modem_ready()) comm_modem_record(SLM_STEP_COUNT, reason, comm_modem_status()->modem_code);
+    if (ch.wifi) return;
+    channel_read_done(reason);
     ch.state = CH_FAULT; channel_emit(COMM_CH_FAULT, (uint8_t)detail); return;
   }
   if (kind == COMM_AT_DONE) return;
   if (!p) return;
+  if (ch.operation == OP_QUERY && kind == COMM_AT_LINE) { query.line(p, n); return; }
+  if (ch.wifi) return; /* Сокет GSM и его URC не принадлежат мосту. */
   uint32_t v[8];
   if (comm_at_parse(p,n,"+QIURC: \"recv\",\005",v) && v[0] == 0) ch.flags.recv = 1;
   if (comm_at_parse(p,n,"+QIURC: \"closed\",\005",v) && v[0] == 0) {
@@ -114,7 +119,6 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
     ch.call.pdp_lost = 1;
     comm_channel_reopen(0); return;
   }
-  if (ch.operation == OP_QUERY && kind == COMM_AT_LINE) { query.line(p, n); return; }
   if (ch.operation == OP_VERIFY && comm_at_prefix(p,n,"+QISTATE:")) ch.answer = 1;
   if (ch.operation == OP_OPEN) {
     if (comm_at_parse(p,n,"+QIOPEN:\005,\005",v) && v[0] == 0) {
@@ -156,6 +160,16 @@ void comm_channel_init(void (*event)(uint8_t, uint8_t))
   comm_at_sink(channel_binary);
   ch.wifi = comm_modem_settings()->number(SLM_CFG_WIFI) != 0;
   wifi_reset();
+}
+/* После перезапуска модема мост сохраняет TCP и слот; отменяется только его запрос AT.
+   true — серверный сеанс не требует повторного init. */
+bool comm_channel_modem_reset(void)
+{
+  if (!ch.wifi) return false;
+  ch.operation = OP_NONE; ch.call.active = 0;
+  if (query.cmd) { query.line(NULL, 1); query.cmd = NULL; }
+  comm_at_sink(channel_binary);
+  return true;
 }
 /* Назначить владельца тела и результата чтения. */
 void comm_channel_receive(uint16_t (*binary)(const uint8_t *, uint16_t),

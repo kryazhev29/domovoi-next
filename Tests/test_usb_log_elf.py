@@ -79,6 +79,29 @@ def enabled_at_stream():
     assert m.packets == [wire(1, b'AT+CSQ')], '108 включена, но команда AT не дала кадр 109'
 
 
+def ussd_silence():
+    """Таймаут CUSD и молчание CMEE не выключают 109; выполняется IAR-код."""
+    m = machine(7, ack=True)
+    m.stubs[0x21000f00] = m.ret
+    m.u.mem_write(0x21000800, struct.pack('<II', 0x21000f01, 0))
+    m.call('comm_at_init', 0x21000800, 2000)
+    for name, value in (('comm_uart_peek', 0), ('comm_uart_tx', 1),
+                        ('comm_uart_tx_done', 1), ('comm_uart_errors', 0)):
+        m.stubs[m.addr(name)] = lambda value=value: m.ret(value)
+    command = b'AT+CUSD=1,"*105#",15'
+    m.u.mem_write(0x21000000, command)
+    m.u.mem_write(0x21000820, struct.pack('<IHBBI', 0x21000000, len(command), 0, 0, 30000))
+    assert m.call('comm_at_start', 0x21000820, 10) == 0
+    m.call('comm_at_poll', 30010)
+    m.call('comm_at_poll', 32010)
+    assert m.packets[0] == wire(1, command)
+    assert wire(1, b'AT+CMEE?') in m.packets
+    assert sum(p[9] == 4 for p in m.packets) == 2
+    assert m.read(m.addr('device') + fields('device_s')['logBits'], 1) == 7
+    send(m, 1, b'USRAT+TCPLK')
+    assert m.packets[-1] == wire(1, b'USRAT+TCPLK')
+
+
 def transport():
     m = machine()
     send(m)
@@ -316,7 +339,7 @@ def gsm_and_events():
 
 def run():
     result = {}
-    for test in (enabled_at_stream, transport, masks_and_loss, at_hooks, gsm_and_events):
+    for test in (enabled_at_stream, ussd_silence, transport, masks_and_loss, at_hooks, gsm_and_events):
         result[test.__name__] = test() or 'PASS'
     return result
 

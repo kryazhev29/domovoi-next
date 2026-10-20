@@ -89,7 +89,8 @@ static void rc_failed(void)
   switch (s->reason) {
   case SLM_ERR_NO_ANSWER: case SLM_ERR_STREAM:
     /* Замолчал посреди работы - питание сразу; молчит после включения - по паузам. */
-    rc_power_ladder(s->step >= SLM_TCP ? rc_now_then_ladder() : rc_pause(COMM_T_POWER_1, rc.power_step));
+    /* При Wi-Fi шаг TCP модемом не исполнялся; завершённый PDP также означает работу. */
+    rc_power_ladder(s->completed_phases & (1u << SLM_PHASE_PDP) ? rc_now_then_ladder() : rc_pause(COMM_T_POWER_1, rc.power_step));
     return;
   case SLM_ERR_NO_SIM: case SLM_ERR_PIN: case SLM_ERR_PUK: case SLM_ERR_TYPE:
     rc_power_ladder(rc_pause(COMM_T_POWER_1, rc.power_step));
@@ -179,7 +180,7 @@ void comm_recover_poll(uint32_t now_ms)
   if (comm_channel_call_pending() && !comm_modem_status()->at_fault) return;
   bool early = rc.early;
   rc.early = 0;
-  if (comm_server_online()) {
+  if (comm_server_online() && comm_modem_ready()) {
     if (!rc.online) { rc.online = 1; rc.online_since = now_ms; }
     else if (now_ms - rc.online_since >= comm_timeouts[COMM_T_STABLE])
       rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;
@@ -189,7 +190,7 @@ void comm_recover_poll(uint32_t now_ms)
     rc.state = RC_WATCH;
     if (comm_modem_restart(rc.power != 0u, now_ms)) {
       rc.last_start = now_ms;
-      rc.hooks->reset_session();
+      if (!comm_channel_modem_reset()) rc.hooks->reset_session();
     }
     return;
   }

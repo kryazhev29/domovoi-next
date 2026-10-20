@@ -14,6 +14,8 @@ enum { COMM_CH_PING = 1, COMM_CH_DNS = 2 };
 /* init только после отмены UART/начала изолированного сеанса драйвера.
    обработчик только отмечает событие; не запускает AT. */
 void comm_channel_init(void (*event)(uint8_t kind, uint8_t result));
+/* Отменить запрос AT после рестарта модема; true — сеанс моста сохранён. */
+bool comm_channel_modem_reset(void);
 /* Продвинуть канал, передачу, чтение и фоновые запросы. */
 void comm_channel_poll(uint32_t now_ms);
 /* Тело предварительно до read_done OK; вместимость 0 откладывает QIRD. */
