@@ -321,11 +321,33 @@ static void server_outage_tests(void)
   rc_online(); reserve_enabled=1; sim_open_error=3; ping_success=dns_success=0; probe_result=0;
   user_send_statusPack(CH_SERVER); socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n"); rc_run(1800000u);
   CHECK(pings && dns_requests && comm_channel_probe_result()==3);
+  printf("server no internet: decisions=%u soft=%u power=%u event13=%u\n", rc_logged, rc_soft_starts, rc_power_starts, event13);
   CHECK(rc_logged>=3 && rc_soft_starts==1 && rc_power_starts>=1 && !event13);
   rc_expect(0,0,0); rc_expect(1,0,1); rc_expect(2,600000u,1);
 }
+/* Поздний OK после closed; потерянный OK при живом CMEE; действительно молчащий модем. */
+static void probe_ack_tests(void)
+{
+  for (unsigned mode=0;mode<3;++mode) {
+    rc_online(); reserve_enabled=1; sim_open_error=1;
+    probe_ok_delay=1500; probe_no_ok=mode!=0;
+    comm_channel_reopen(0);
+    for (unsigned guard=0;!pings;++guard) { CHECK(guard<1000); rc_tick(10); }
+    sim_feed("+QIURC: \"closed\",0\r\n");
+    if (mode==2) { modem_silent=1; ping_reply_kind=0; }
+    rc_run(8000);
+    if (!mode) CHECK(comm_channel_probe_result()==COMM_CH_PING && !dns_requests);
+    if (mode<2) CHECK(!rc_logged && !rc_power_starts && !rc_soft_starts && comm_modem_ready());
+    else CHECK(rc_power_starts && rc_logged);
+  }
+  rc_online(); probe_ok_delay=1500;
+  CHECK(comm_channel_probe(COMM_CH_DNS)); rc_run(3000);
+  CHECK(comm_channel_probe_result()==COMM_CH_DNS && !rc_logged && comm_modem_ready());
+  puts("probe OK: 1500ms + closed / missing OK + live CMEE / silent restart / DNS 1500ms PASS");
+}
 static void recover_tests(void)
 {
+  probe_ack_tests();
   server_outage_tests();
   info_tests();
   /* 1. Нет SIM час: только снятие питания, паузы 10/30 мин, AT-перезапусков нет. */

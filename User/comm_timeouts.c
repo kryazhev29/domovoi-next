@@ -72,4 +72,5 @@ const uint32_t comm_timeouts[COMM_T_COUNT] = {
   150000, /* COMM_T_ATTACH: CGATT зависит от сети, Common V2.24 §12.1 */
   3500, /* Потерян AT READY: запас от отпускания PWRKEY, плата №1 14.10 */
   200, /* Повтор незрелого ответа настройки/SIM в той же попытке */
+  2000, /* OK на QPING/QIDNSGIP; сроки результата COMM_T_PING/COMM_T_DNS прежние */
 };

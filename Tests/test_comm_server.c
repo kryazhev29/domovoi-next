@@ -12,6 +12,7 @@ static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)
 static unsigned server_commands, server_sessions, event13, event_retry;
 static unsigned registrations_sent, statuses_sent, opens, closes, pings, dns_requests;
 static unsigned tx_unacked, drop_register, drop_status, ping_success, dns_success, close_error;
+static unsigned probe_ok_delay, probe_no_ok, modem_silent;
 static unsigned send_silence, prompt_silence, reserve_enabled, junk_mode, invalid_reserve;
 static uint8_t unique, last_status;
 static uint16_t incoming_count;
@@ -211,6 +212,10 @@ static void transport_tx(void)
   CHECK(tx_count>=3 && tx_count<=128 && tx_data[0]=='A' && tx_data[1]=='T');
   char cmd[128]; CHECK(tx_count<=sizeof(cmd)); memcpy(cmd,tx_data,tx_count); cmd[tx_count-1u]=0;
   snprintf(last_command,sizeof(last_command),"%s",cmd);
+  if (modem_silent) {
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC); return;
+  }
   if (!strncmp(cmd,"AT+CMG",6) || !strncmp(cmd,"AT+CPMS",7) || !strncmp(cmd,"AT+CNMI",7)) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
@@ -358,11 +363,13 @@ static void transport_tx(void)
       else sim_reply((error==2 || (error==3 && ch.address)) ? "OK\r\n" : !socket_model ? "OK\r\n+QIOPEN: 0,566\r\n" : "OK\r\n+QIOPEN: 0,0\r\n",30);
     } else if (!strncmp(cmd,"AT+QPING=",9)) {
       CHECK(!strcmp(cmd,"AT+QPING=1,\"ya.ru\",3,2")); ++pings;
-      sim_reply("OK\r\n",20); ping_reply_due=sim_now+1000;
+      if (!probe_no_ok) sim_reply("OK\r\n",probe_ok_delay ? probe_ok_delay : 20);
+      ping_reply_due=sim_now+(probe_ok_delay ? probe_ok_delay : 0)+1000;
       ping_reply_kind=ping_success==2 ? 3 : ping_success ? 1 : 2;
     } else if (!strncmp(cmd,"AT+QIDNSGIP=",12)) {
-      ++dns_requests; sim_reply("OK\r\n",20);
-      if (dns_success) dns_late=sim_now+500;
+      ++dns_requests;
+      if (!probe_no_ok) sim_reply("OK\r\n",probe_ok_delay ? probe_ok_delay : 20);
+      if (dns_success) dns_late=sim_now+(probe_ok_delay ? probe_ok_delay : 0)+500;
     } else {
       ++sim_qird; unsigned want; CHECK(sscanf(cmd,"AT+QIRD=0,%u",&want)==1 && want<=256);
       uint16_t n=incoming_count<want ? incoming_count : (uint16_t)want;
@@ -422,6 +429,7 @@ static void server_reset_start(bool cold)
   comm_modem_transport(NULL); sim_reset();
   info.next=0; info.step=0; info.antenna=0; /* время модели начинается заново */
   server_commands=server_sessions=event13=event_retry=registrations_sent=statuses_sent=opens=closes=pings=dns_requests=0;
+  probe_ok_delay=probe_no_ok=modem_silent=0;
   reject_register=tx_unacked=drop_register=drop_status=close_error=send_silence=prompt_silence=reserve_enabled=junk_mode=0;
   ping_success=dns_success=1; unique=last_status=uniqIDCnt=0;
   memcpy(device.IMEIGSM,"123456789012345",sizeof(device.IMEIGSM));

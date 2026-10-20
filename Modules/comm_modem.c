@@ -186,6 +186,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
     uint32_t registered;
     static const char *const domains[] = {"+CREG:", "+CGREG:", "+CEREG:"};
     for (uint8_t i = 0; i < 3; ++i) {
+      bool reply = false;
       uint16_t pos = i ? 7u : 6u;
       if (!comm_at_prefix(p,n,domains[i]) || !comm_at_scan(p,n,&pos,5,&registered)) continue;
       /* Ответ запроса: <n>,<stat>; URC: <stat>[,"LAC",...]. */
@@ -193,6 +194,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
         ++pos; pos = comm_at_spaces(p,n,pos);
         if (pos < n && p[pos] != '"') {
           if (registered > 2 || !comm_at_scan(p,n,&pos,5,&registered)) continue;
+          reply = true;
           if (kind == COMM_AT_LINE && slm.attempt.status.step == SLM_NETWORK) slm.attempt.answer = 1;
         }
       }
@@ -200,7 +202,7 @@ static void slm_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_t detai
       if (registered == 1 || registered == 5) {
         slm.attempt.net_registered |= bit;
         if (slm.attempt.status.step == SLM_NETWORK) slm.attempt.next = slm.attempt.now;
-        comm_recover_registered();
+        if (!reply) comm_recover_registered(); /* Ответ опроса не отменяет ступень восстановления. */
       } else slm.attempt.net_registered &= (uint8_t)~bit;
     }
   }

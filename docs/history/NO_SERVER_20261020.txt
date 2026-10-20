@@ -13,3 +13,27 @@ Host: comm_info no-server: 566/pause/30s/order/call/frame/priority PASS.
 фонового AT за <=310 мс; открытие новых TCP и сохранение пробы проверяются.
 ReleaseCustomer: 88440 -> 88480 Б (+40), RAM 19339 Б (без роста).
 На плате проверить статус 101/112 при отказе TCP и при возврате сервера.
+
+2. Медленный OK пинга/DNS
+COMM_T_PROBE_ACK=2000 мс вместо 300; результат по-прежнему 6/15 с.
+При потере OK работает прежняя ресинхронизация CMEE: живой ответ не приводит
+к перезапуску; молчание сохраняет прежний путь перезапуска по питанию.
+Обнаружено взаимодействие нового опроса с восстановлением: ответ регистрации
+<n>,<stat> снимал длинную паузу как будто пришла самостоятельная URC.
+Теперь только формат URC будит восстановление, включая URC во время запроса.
+Один локальный bool различает форматы, нового состояния и буфера нет.
+Host: probe OK: 1500ms + closed / missing OK + live CMEE / silent restart /
+DNS 1500ms PASS. Полный comm_server_host.py PASS.
+comm_slm: power/setup/SIM1/SIM2/network/APN/QIACT/timeouts/timing PASS.
+comm_review: active/idle parser and UART faults recover; time windows;
+manual APN; RAT; live endpoints PASS.
+Release: DomovoiNext Release BIN 90510.
+ReleaseCustomer: 88480 -> 88500 Б (+20), к базе +60 Б; RAM без роста.
+PASS QUICK: Release=PASS, under_5_minutes=PASS; 11.53s.
+Документация Quectel LTE Standard TCP/IP V1.1, 2019-10-28, §2.1.11, с.23:
+OK и +QPING показаны отдельно; timeout задаёт срок ответа каждого ping,
+по умолчанию 4 с. Фиксированного максимума ожидания именно OK там нет.
+2 с выбраны по наблюдению владельца, это не норма SLM336 из документа.
+https://quectel.com/content/uploads/2021/03/Quectel_LTE_Standard_TCPIP_Application_Note_V1.1.pdf
+BIN: C:\Users\kryaz\AppData\Local\Temp\domovoi-no-server-build\ReleaseCustomer\ExePath\DomovoiNext.bin
+Плата: повторить поздний OK/closed и сохранение пинга без снятия питания.

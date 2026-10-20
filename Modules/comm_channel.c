@@ -432,7 +432,7 @@ void comm_channel_poll(uint32_t now_ms)
     if (dns && ch.flags.dns_fence && now_ms - ch.dns_since < comm_timeouts[COMM_T_DNS_FENCE]) {
       return; // Старое окно DNS ещё не означает отсутствие интернета.
     } else if (channel_command(dns ? "AT+QIDNSGIP=1,\"ya.ru\"" : "AT+QPING=1,\"ya.ru\",3,2",
-                              COMM_AT_TEXT, COMM_T_AT_SIMPLE, dns ? OP_DNS : OP_PING)) {
+                              COMM_AT_TEXT, COMM_T_PROBE_ACK, dns ? OP_DNS : OP_PING)) {
       if (dns) { ch.flags.dns_fence = 1; ch.dns_since = now_ms; }
       ch.probe_active = ch.probe; ch.probe_answer = 0;
       ch.probe_since = now_ms;
