@@ -4,7 +4,7 @@ UART и NOR моделируются; кадры, владение буфера�
 """
 from test_work_memory import take, drop, PHOTO, REPLY
 from iar_image import image_paths
-import json,struct
+import hashlib,json,struct
 from storage_machine import *
 
 HEAD=13

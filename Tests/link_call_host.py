@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from comm_server_host import ROOT, ZIG, source as project_source, unit
+from comm_server_host import ROOT, ZIG, function, source as project_source, unit
 
 
 def replace_once(code, old, new):
@@ -64,6 +64,18 @@ def main():
     original = subprocess.check_output(['git', 'show', '5d0cf6e:Modules/comm_channel.c'], cwd=ROOT).decode('utf-8')
     original = '\n'.join(line for line in original.splitlines() if not line.startswith('#include'))
     baseline = replace_once(code, old, original)
+    # База 5d0cf6e знает только GSM: современный Wi-Fi не принадлежит её автомату.
+    # Убираем его реализацию и только Wi-Fi-сценарии из baseline, не из current.
+    wifi = project_source('Modules/comm_wifi.inc').replace('\r\n', '\n')
+    wifi = '\n'.join(line for line in wifi.splitlines() if not line.startswith('#include'))
+    baseline = replace_once(baseline, wifi, '')
+    fixture = project_source('Tests/test_comm_channel.c').replace('\r\n', '\n')
+    begin = fixture.index('/* Стенд моста DR164')
+    end = fixture.index('/* Опрос сигнала:', begin)
+    baseline = replace_once(baseline, fixture[begin:end], '')
+    baseline = replace_once(baseline, ' channel_wifi_tests();', '')
+    baseline = replace_once(baseline, function(baseline, 'wifi_server_tests'), '')
+    baseline = replace_once(baseline, ' wifi_server_tests();', '')
     baseline = baseline.replace('ch.sent=ch.acked=tcp_sent=tcp_acked=', 'tcp_sent=tcp_acked=').replace('ch.acked==ch.sent', 'tcp_acked==tcp_sent').replace('ch.sent==ch.acked', 'tcp_sent==tcp_acked')
     baseline = baseline.replace('COMM_CH_CLOSED, COMM_CH_PROBE_DONE', 'COMM_CH_CLOSED, COMM_CH_TX_DONE, COMM_CH_PROBE_DONE')
     before = run(baseline, out, 'baseline', ('measure', str(out / 'before.stream')))

@@ -53,7 +53,7 @@ CASES = (
 
 
 def main():
-    from comm_server_host import unit
+    from comm_server_host import source as project_source, unit
     from comm_at_host import ZIG
     production = unit().replace('\r\n', '\n')
     base = Path(os.environ.get('DOMOVOI_COMPARE_BUILD', tempfile.gettempdir()))/'recover-mutations'
@@ -61,8 +61,11 @@ def main():
     changes = []
     for name, old, new, *where in CASES:
         old, new = (data.decode('utf-8').replace('\r\n', '\n') for data in (old, new))
-        assert production.count(old) == 1, name
-        changes.append((name, production.replace(old,new)))
+        # Мутируем указанный модуль, а не совпавший текст сценария в общей единице C.
+        source = project_source((where[0] if where else SOURCE).relative_to(ROOT).as_posix())
+        source = '\n'.join(line for line in source.splitlines() if not line.startswith('#include'))
+        assert source.count(old) == 1 and production.count(source) == 1, name
+        changes.append((name, production.replace(source, source.replace(old,new))))
     # Вернуть прежнюю копию pending: отмена пробы поздним closed оставит её навсегда.
     stale = production
     for old,new in (

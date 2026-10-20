@@ -73,10 +73,25 @@ def run():
             for authorized in (0, 1):
                 reference, wire = command(m, 250, channel, authorized)
                 assert reference and not wire
-                for code in (111, 113):
-                    answers, wires = command(m, code, channel, authorized)
-                    assert not wires and len(answers) == len(reference)
-                    assert [a[1:] for a in answers] == [a[1:] for a in reference]
+                answers, wires = command(m, 111, channel, authorized)
+                assert not wires and len(answers) == len(reference)
+                assert [a[1:] for a in answers] == [a[1:] for a in reference]
+
+    # Команда 113 теперь читает состояние Wi-Fi в обоих профилях: только USB с ПИН.
+    # Длинный пакет 113 диагностики по запросу 111 выше проверяется отдельно.
+    for channel in (0, 1):
+        for authorized in (0, 1):
+            answers, wires = command(m, 113, channel, authorized)
+            if channel:
+                assert not answers and not wires
+            elif not authorized:
+                reference, wire = command(m, 250, channel, authorized)
+                assert answers and not wires and not wire
+                assert [a[1:] for a in answers] == [a[1:] for a in reference]
+            else:
+                expected = struct.pack('<HBBB', 5, 255, 37, 113) + b'\0\0'
+                expected = b'SLDN' + expected + struct.pack('<H', crc16(expected))
+                assert not answers and wires == [expected]
 
     for mask in (0, 1):
         from unicorn.arm_const import UC_ARM_REG_PRIMASK
@@ -96,6 +111,6 @@ def run():
         else:
             assert 'usb_out_ago' not in m.symbols
     assert bytes(m.flash) == before
-    return {'diagnostics': enabled, 'customer_cases': 8 if not enabled else 0,
+    return {'diagnostics': enabled, 'customer_cases': 4 if not enabled else 0, 'wifi_status_cases': 4,
             'bench_packets': [111, 112, 113] if enabled else [112],
             'bench_hex': packets, 'usb_recovery_primask': [0, 1], 'nor_unchanged': True}
