@@ -77,6 +77,34 @@ def stream():
         m.feed(frame(b'x'*58));m.drain();assert m.pget('written',2)==58
     return 26
 
+# Проверить SYNC/ACK с мусором и реальное переключение USART1 с моста на камеру.
+def camera_sync():
+    ack=b'\xaa\x0e\x0d\0\0\0';sync=b'\xaa\x0d\0\0\0\0'
+    for parts in ((ack+sync,), (sync,ack), tuple(bytes([v]) for v in ack+sync)):
+        m=PhotoMachine();m.boot_media()
+        del m.stubs[m.addr('uart_init')]
+        m.checked('uart_init',460800,0,0x21000000,64)
+        m.packet(7,b'\5');m.drain();m.port()
+        assert int.from_bytes(m.u.mem_read(0x40013808,4),'little')==625 and m.pget('stage')==1
+        assert m.commands[-1]==sync
+        m.feed(b'\xfeT+ERR=-1\r\n')
+        for part in parts:m.feed(part)
+        assert m.pget('stage')==2 and m.commands[-1]==ack
+        for command in (1,6,5):
+            m.now+=50;m.port()
+            assert m.commands[-1][1]==command and int.from_bytes(m.u.mem_read(0x40013808,4),'little')==625
+            m.feed(b'\x17'+bytes([0xaa,0x0e,command,0,0,0]))
+        m.now+=50;m.port();m.feed(b'\xaa\x0a\x01\x3a\0\0');m.drain()
+        m.data(b'x'*58)
+        assert len(m.events)==1 and m.pget('stage')==0 and int.from_bytes(m.u.mem_read(0x40013808,4),'little')==625
+    # Ответ 0 на команду 7 означает только запуск: молчащая камера завершится без события.
+    m=PhotoMachine();m.boot_media();m.packet(7,b'\5');m.drain()
+    assert m.answers[-1][1]==0
+    for _ in range(32):m.now+=50;m.port()
+    assert not m.photo_ptr() and not m.events
+    assert len(m.commands)==30 and all(c==sync for c in m.commands)
+    return 4
+
 # Проверить занятый транспорт, отказ рабочего буфера и разрыв соединения.
 def transport_and_heap():
     m=PhotoMachine();m.boot_media();_,stamp=m.capture(b'x'*768)
@@ -142,5 +170,5 @@ def headers_and_space():
     return 9
 
 if __name__=='__main__':
-    out={fn.__name__:fn() for fn in (cancellation,corrupt,failures,stream,transport_and_heap,ownership,full_cleanup,headers_and_space)}
+    out={fn.__name__:fn() for fn in (cancellation,corrupt,failures,stream,camera_sync,transport_and_heap,ownership,full_cleanup,headers_and_space)}
     print(json.dumps(out,indent=2));print('PASS photo edges')
