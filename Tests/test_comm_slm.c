@@ -28,6 +28,7 @@ static const char *sim_qeng, *sim_nwinfo;
 static unsigned sim_qeng_queries;
 static unsigned sim_empty_urc, sim_pause, sim_send_sim2, sim_nwinfo_error, sim_csq, sim_lose_clip;
 static const char *sim_imsi;
+static unsigned sim_imsi_delay;
 static const char *sim_apn_response;
 static unsigned sim_apn_queries, sim_imsi_queries, sim_activations, sim_pdp_failures, sim_pdp_timeouts, sim_apn_count;
 static char sim_apn_commands[8][128];
@@ -122,7 +123,7 @@ static void sim_reset(void)
   sim_no_sim = sim_pin = sim_open_error = sim_rat_change = sim_port_change = 0;
   sim_network_wait = sim_early_open = sim_trickle = sim_empty_urc = sim_pause = sim_lose_clip = 0;
   sim_send_sim2 = 1; sim_nwinfo_error = 0; sim_csq = 22; sim_open_delay = 500; sim_activation_delay = 700; sim_data_echo = 1; sim_send_race = 0;
-  sim_imsi = "250011234567890\r\nOK\r\n"; sim_open_pending = false; power_events = 0;
+  sim_imsi = "250011234567890\r\nOK\r\n"; sim_imsi_delay = 30; sim_open_pending = false; power_events = 0;
   sim_qeng = "+QENG: \"servingcell\",\"NOCONN\",\"LTE\",\"FDD\",\"250\",\"01\",\"ABC123\",17,1300,3,5,5,00AF,-105,-10,-73,175,25\r\nOK\r\n";
   sim_nwinfo = "+QNWINFO: \"FDD LTE\",\"25001\",\"LTE BAND 3\",1300\r\nOK\r\n";
   sim_qeng_queries = 0;
@@ -181,7 +182,7 @@ static void sim_tx(void)
     sim_reply(sim_network_wait == 1 ? "+CGREG: 0,2\r\nOK\r\n" : (sim_network_wait == 2 || sim_network_wait == 4) ? "+CGREG: 0,3\r\nOK\r\n" : "+CGREG: 0,1\r\nOK\r\n", 80);
   } else if (!strcmp(sim_sent, "AT+CEREG?")) {
     sim_reply(sim_network_wait == 1 ? "+CEREG: 0,2\r\nOK\r\n" : (sim_network_wait == 3 || sim_network_wait == 4) ? "+CEREG: 0,3\r\nOK\r\n" : "+CEREG: 0,1\r\nOK\r\n", 80);
-  } else if (!strcmp(sim_sent, "AT+CIMI")) { ++sim_imsi_queries; sim_imsi_at = sim_now; sim_reply(sim_imsi, 30); }
+  } else if (!strcmp(sim_sent, "AT+CIMI")) { ++sim_imsi_queries; sim_imsi_at = sim_now; sim_reply(sim_imsi, sim_imsi_delay); }
   else if (!strcmp(sim_sent, "AT+CGCONTRDP=1")) { ++sim_apn_queries; sim_reply(sim_apn_response, 30); }
   else if (!strncmp(sim_sent, "AT+QICSGP=", 10)) {
     sim_apn_at = sim_now; strcpy(sim_apn_commands[sim_apn_count++ % 8u], sim_sent); sim_reply("OK\r\n", 30);
@@ -507,6 +508,10 @@ static void fast_start_tests(void)
   while (slm.attempt.status.step != SLM_AT_READY) { CHECK(sim_now < 10000); sim_tick(); }
   interrupt_byte(0, USART_SR_FE); sim_tick(); sim_until(15000);
   CHECK(comm_modem_ready() && !slm.diag.failure_count);
+
+  /* Плата Алексея 20.10: CIMI сразу после CPIN READY ответил через 2 с - это не сбой сети. */
+  sim_reset(); sim_imsi_delay = 2000; sim_start(); sim_until(15000);
+  CHECK(comm_modem_ready() && !slm.diag.failure_count && sim_imsi_queries == 1);
 }
 // Запустить все сценарии этого стенда.
 int main(void)

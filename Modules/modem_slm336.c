@@ -27,7 +27,8 @@ const comm_modem_step_t slm_steps[] = {
   {"QCFG=\"nwscanmode\",\001,1", COMM_T_RAT_SET, SLM_CMEE, SLM_CMEE, (SLM_PHASE_SETUP << 4) | MODEM_OK},
   {"\011", COMM_T_AT_SIMPLE, SLM_NET_APN, SLM_APN, (SLM_PHASE_NETWORK << 4) | MODEM_NETWORK},
   {"CGCONTRDP=1", COMM_T_AT_SIMPLE, SLM_APN, SLM_APN, (SLM_PHASE_PDP << 4) | MODEM_APN_QUERY},
-  {"CIMI", COMM_T_AT_SIMPLE, SLM_NETWORK, SLM_NETWORK, (SLM_PHASE_NETWORK << 4) | MODEM_IMSI},
+  /* Сразу после CPIN READY SLM336 отвечает на CIMI до 2 с (плата Алексея 20.10): срок как у SIM. */
+  {"CIMI", COMM_T_SIM, SLM_NETWORK, SLM_NETWORK, (SLM_PHASE_NETWORK << 4) | MODEM_IMSI},
   {"QICSGP=1,1,\"\002\",\"\003\",\"\004\",\010", COMM_T_AT_SIMPLE, SLM_NETWORK, SLM_NETWORK, (SLM_PHASE_NETWORK << 4) | MODEM_OK},
   /* Сбросить оставшийся активным контекст перед QIACT; неактивный также даёт OK. */
   {"QIDEACT=1", COMM_T_QIDEACT, SLM_ACTIVATE, SLM_ACTIVATE, (SLM_PHASE_PDP << 4) | MODEM_ANY},
