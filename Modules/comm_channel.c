@@ -312,7 +312,7 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
    Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): два звонка в 4G без VoLTE
    во время обмена, поздний ответ на опрос ACK — TCP не переоткрывался, фото дошли.
    Изменено 2026-10-15 (611d3e9): SEND OK отпускает слот, SEND FAIL ждёт повтор — на плате не проверено.
-   Изменено 2026-10-21 (task/net-research): ERROR диагностического снимка не закрывает TCP — на плате не проверено. */
+   Изменено 2026-10-21 (25558ee): ERROR диагностического снимка не закрывает TCP — на плате не проверено. */
 static void channel_completed(void)
 {
   uint8_t op = ch.operation, result = comm_modem_result();

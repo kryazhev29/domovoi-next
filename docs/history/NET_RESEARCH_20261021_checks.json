@@ -1,0 +1,43 @@
+{
+  "baseline_commit": "2cad088",
+  "code_commit": "25558ee09d626902da9d4ba77b2712e9b4a1e62b",
+  "baseline": {
+    "code_flash": 86515,
+    "code_ram": 476,
+    "data_flash": 2745,
+    "data_ram": 19359,
+    "bin_bytes": 89260,
+    "sha256": "360f0b5362709d49681e3a16de51272b5c613408ed0b7348f9220772e7f03b47",
+    "stack_estimate_bytes": 1940,
+    "stack_upper_bound_proven": false
+  },
+  "current": {
+    "code_flash": 86979,
+    "code_ram": 476,
+    "data_flash": 2777,
+    "data_ram": 19355,
+    "bin_bytes": 89756,
+    "sha256": "20592ed77bd7d79fc898912accfe252979fa0ad26fbf6a24a737e494d971dadf",
+    "stack_estimate_bytes": 1940,
+    "stack_upper_bound_proven": false
+  },
+  "bin_delta": 496,
+  "ram_data_delta": -4,
+  "checks": {
+    "comm_server_host_sanitize": "PASS",
+    "balance_regression": {
+      "current_pass": 20,
+      "baseline_expected_failures": 20
+    },
+    "quick_release": "PASS",
+    "quick_customer": "12/12 PASS",
+    "settings_elf": {
+      "Release": "10 settings / 4 ownership / 11 balance checks PASS",
+      "ReleaseCustomer": "10 settings / 4 ownership / 11 balance checks PASS"
+    },
+    "dead_code": "0 functions / 0 data",
+    "mutations": "90 communication + 5 user mutations detected across initial run and targeted reruns"
+  },
+  "board_tested": false,
+  "bin": "Binaries/NET_RESEARCH_20261021/DomovoiNext-ReleaseCustomer.bin"
+}
