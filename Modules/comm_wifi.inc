@@ -8,6 +8,7 @@
    Изменено 2026-10-21 (3cc4118): отключение TCP перед камерой и новый сеанс после неё — на плате не проверено.
    Изменено 2026-10-21 (e2f3615): пауза перед командой мосту от конца кадра; закрытие на съёмку плановое.
    Проверено на плате №1 21.10.2026 (сборка 1792552760): 6 фото до «Нависета» через мост за 14–19 с, USRAT в данных сервера нет.
+   Изменено 2026-10-21: пауза ненастроенного моста, проверка SOCKB перед камерой — на плате не проверено.
 */
 #ifndef __UART_H /* стенд без драйвера USART1: прототипы совпадают с uart_stm32f10x.h */
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize);
@@ -23,7 +24,7 @@ bool uart_isReceiving(void);
 enum { WF_LINK_MS = 5000, WF_OPEN_MS = 40000, WF_CMD_MS = 800, WF_PING_MS = 6000, WF_RESTART_MS = 8000,
        WF_GAP_MS = 50, WF_DEAD_MS = 5000, WF_GIVEUP_MS = 60000, WF_RETRY_MS = 600000, WF_MISSES = 3, WF_LOG = 40 };
 enum { W_NONE, W_ECHO, W_SET_MODE, W_SET_SSID, W_SET_KEY, W_EVENT, W_TCPTO, W_NETP, W_TMODE, W_RESTART,
-       W_LINK, W_WSLK, W_PING, W_DIS_OFF, W_DIS_ON, W_CAMERA_OFF, W_CAMERA_ON };
+       W_LINK, W_WSLK, W_PING, W_DIS_OFF, W_DIS_ON, W_CAMERA_OFF, W_CAMERA_ON, W_CAMERA_CHECK_B };
 enum { WF_CAMERA_WAIT = 1, WF_CAMERA_HELD, WF_CAMERA_RELEASE };
 static struct {
   uint32_t since, linked, opening, series_at, fell_at, sent_at;
@@ -58,8 +59,9 @@ bool comm_channel_wifi_pause(bool on)
   if (on) {
     if (!comm_modem_settings()->number(SLM_CFG_WIFI)) return true;
     if (!wf.paused) {
-      if (wf.setup || !wf.f.ready || (ch.wifi && ch.tx_state != TX_FREE)) return false; /* сначала ответ на команду 7 */
+      if (wf.setup || (!wf.f.ready && wf.op) || (ch.wifi && ch.tx_state != TX_FREE)) return false; /* сначала ответ на команду 7 */
       wf.paused = WF_CAMERA_WAIT; wf.sent_at = ch.now;
+      wf.prefix = 1; /* после неудачной настройки prefix мог остаться 0, а мост — прозрачным */
       if (ch.wifi) {
         /* Съёмка не штрафует новый сеанс и не стирает прежние отказы регистрации. */
         uint8_t attempts = ch.connections;
@@ -290,7 +292,11 @@ static void wifi_done(uint8_t op, uint8_t ok)
   case W_DIS_OFF: wifi_begin(W_DIS_ON, "AT+TCPDIS=on", 0, NULL); return;
   case W_DIS_ON: wifi_pause(ch.reopen_pause); break;
   case W_CAMERA_OFF:
-    if (ok == 1 && wf.paused == WF_CAMERA_WAIT) {
+    if (ok == 1 && wf.paused == WF_CAMERA_WAIT) { wifi_begin(W_CAMERA_CHECK_B, "AT+SOCKB", 0, NULL); return; }
+    wf.sent_at = ch.now;
+    break;
+  case W_CAMERA_CHECK_B: /* TCPDIS выключает только SOCKA; второй сокет должен быть отключён владельцем. */
+    if (ok == 1 && wf.paused == WF_CAMERA_WAIT && n - wf.at >= 9u && !memcmp(p + wf.at, "+ok=NONE\r", 9)) {
       wf.paused = WF_CAMERA_HELD;
       if (wf.link == 2) wf.link = 1;
     }

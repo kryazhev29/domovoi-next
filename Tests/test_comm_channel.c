@@ -150,7 +150,7 @@ static uint8_t w_outbox[1100], w_body[64];
 static uint16_t w_outbox_count, w_body_count, w_take;
 static unsigned w_frames, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands, w_plain, w_stray;
 static uint8_t w_cmd_mode, w_next_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_tcpto, w_mix;
-static uint8_t w_enabled, w_silent_dis, w_receiving;
+static uint8_t w_enabled, w_silent_dis, w_receiving, w_sockb;
 /* w_wire: кадр занимает линию 10 бит на байт при 115200, как блокирующий uart_send; команда ближе 20 мс
    к концу кадра (Pack Interval моста) уходит серверу как данные и остаётся без ответа (w_glued). */
 static uint8_t w_wire; static uint32_t w_wire_end; static unsigned w_glued;
@@ -174,7 +174,7 @@ void uart_send(uint8_t *buf, uint16_t size)
   bool glued = w_wire && usr && !w_cmd_mode && sim_now - w_wire_end < 20u;
   if (!w_cmd_mode && (!usr || glued)) { /* прозрачный режим: байты уходят серверу */
     ++w_frames; w_glued += glued;
-    if (w_tcp && w_enabled) { CHECK(w_outbox_count + size <= sizeof(w_outbox)); memcpy(w_outbox + w_outbox_count, buf, size); w_outbox_count = (uint16_t)(w_outbox_count + size); }
+    if ((w_tcp && w_enabled) || w_sockb) { CHECK(w_outbox_count + size <= sizeof(w_outbox)); memcpy(w_outbox + w_outbox_count, buf, size); w_outbox_count = (uint16_t)(w_outbox_count + size); }
     if (w_wire && !glued) { sim_now += size * 10000u / 115200u; w_wire_end = sim_now; }
     return;
   }
@@ -186,6 +186,7 @@ void uart_send(uint8_t *buf, uint16_t size)
   if (!strcmp(c, "AT+E=off") || !strcmp(c, "AT+EVENT=off") || !strcmp(c, "AT+WMODE=STA")) { w_text("+ok\r\n\r\n"); return; }
   if (!strcmp(c, "AT+TCPTO=0")) { w_tcpto = 0; w_text("+ok\r\n\r\n"); return; }
   if (!strcmp(c, "AT+TMODE=throughput")) { w_next_mode = 0; w_text("+ok\r\n\r\n"); return; } /* вступит после перезапуска */
+  if (!strcmp(c, "AT+SOCKB")) { w_text(w_sockb ? "+ok=TCP,15010,example.org\r\n\r\n" : "+ok=NONE\r\n\r\n"); return; }
   if (!strncmp(c, "AT+TCPDIS=", 10)) {
     ++w_dis;
     if (w_silent_dis) return;
@@ -222,7 +223,7 @@ static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
   w_rx = NULL; w_cap = w_count = w_outbox_count = w_body_count = w_take = 0;
   w_frames = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_plain = w_stray = 0;
   w_cmd_mode = w_next_mode = cmd_mode; w_tcp = tcp; w_dead = w_mix = 0; w_ping_ok = w_ap = w_tcpto = 1;
-  w_enabled = 1; w_silent_dis = w_receiving = w_wire = 0; w_wire_end = 0; w_glued = 0;
+  w_enabled = 1; w_silent_dis = w_receiving = w_wire = w_sockb = 0; w_wire_end = 0; w_glued = 0;
   w_netp[0] = w_ssid[0] = w_key[0] = 0;
   sim_start(); comm_channel_init(w_event); wf.f.ready = 0; /* новый стенд - ненастроенный мост */
   comm_channel_receive(w_binary, w_read_done);
@@ -398,6 +399,48 @@ static void channel_wifi_tests(void)
   comm_channel_wifi_pause(false);
   for (unsigned i = 0; i < 20; ++i) sim_tick();
   CHECK(!ch.wifi && comm_channel_ready() && w_enabled);
+  /* Ненастроенный прозрачный мост: камера получает линию только после отключения TCP.
+     0 - сразу после старта; 1 - GSM после молчания моста, когда prefix остался равен 0. */
+  for (unsigned failed = 0; failed < 2; ++failed) {
+    wifi_model_reset(0, 1);
+    if (failed) {
+      w_dead = 1;
+      for (unsigned i = 0; i < 5000 && (ch.wifi || !comm_channel_ready()); ++i) sim_tick();
+      CHECK(!ch.wifi && comm_channel_ready() && !wf.prefix);
+      w_dead = 0;
+    }
+    CHECK(!wf.f.ready);
+    CHECK(!comm_channel_wifi_pause(true) && wf.paused);
+    for (unsigned i = 0; i < 20; ++i) sim_tick();
+    CHECK(comm_channel_wifi_pause(true) && !w_enabled && !w_restarts);
+    uint8_t camera[] = {0xaa, 0x0d, 0, 0, 0, 0};
+    unsigned before = w_outbox_count;
+    uart_send(camera, sizeof(camera));
+    CHECK(w_outbox_count == before && !w_plain);
+    if (failed) CHECK(!ch.wifi && comm_channel_ready());
+    comm_channel_wifi_pause(false);
+    for (unsigned i = 0; i < 20; ++i) sim_tick();
+    CHECK(w_enabled && !wf.paused);
+  }
+  /* Нет ответа, либо автономный SOCKB настроен: камера не должна передавать ни байта.
+     Отключение только SOCKA недостаточно, а состояние SOCKB прошивка не меняет. */
+  for (unsigned second = 0; second < 2; ++second) {
+    wifi_model_reset(0, 1);
+    w_sockb = second; w_silent_dis = !second;
+    CHECK(!comm_channel_wifi_pause(true) && wf.paused);
+    for (unsigned i = 0; i < 200; ++i) {
+      sim_tick();
+      CHECK(!comm_channel_wifi_pause(true));
+    }
+    CHECK(w_enabled == !second && w_sockb == second && !w_outbox_count);
+    comm_channel_wifi_pause(false); w_silent_dis = 0;
+    for (unsigned i = 0; i < 200 && wf.paused; ++i) sim_tick();
+    CHECK(w_enabled && !wf.paused);
+  }
+  /* Незаконченная настройка не подменяется командой паузы и не выдаёт порт камере. */
+  wifi_model_reset(0, 1);
+  wifi_begin(W_ECHO, "AT+E=off", 0, NULL);
+  CHECK(!comm_channel_wifi_pause(true) && !wf.paused && wf.op == W_ECHO);
   test_config.wifi = 0; w_dead = 0;
   puts("comm_wifi: DR164 transparent setup/send/recv/mix/link loss/pause/ping/cmd-mode/AP/fallback PASS");
 }
