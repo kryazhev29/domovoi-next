@@ -31,12 +31,12 @@ static void photo_stop(void)
   uart_init(rs485_baud(), 0, port_buffer, PORTBUFSIZE);
   photo->stage = P_IDLE;
   device.getPhoto = 0;
-  comm_channel_wifi_pause(false);
 }
 
 // Выбираем общую скорость RS485 по сохранённой настройке.
 uint32_t rs485_baud(void)
 {
+  if (device.wifiModem || comm_channel_wifi()) return 115200;
   switch (config.reserv[0]) {
   case 1: return 57600;
   case 2: return 38400;
@@ -65,7 +65,7 @@ void rs485_set_config(const uint8_t *data)
   // Не трогаем курсор и запросы выгрузки уже сохранённых фотографий.
   if (changed && photo && photo->stage) photo_stop();
   memcpy(&config, data, sizeof(config));
-  if (!photo || !photo->stage) rs485_init();
+  if ((!photo || !photo->stage) && !comm_channel_wifi()) rs485_init();
 }
 
 // Отправляем команду камеры и назначаем срок ожидания ответа.

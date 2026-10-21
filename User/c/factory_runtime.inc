@@ -4,7 +4,7 @@ enum { FACTORY_MARK = 1, FACTORY_ERASE, FACTORY_SAVE = 4, FACTORY_ERROR };
 static void factory_reply(void)
 {
   if (factory.reply != 2) return;
-  if (factory.channel == CH_USB && factory.epoch != usb_bus_resets) {
+  if (factory.channel >= 3 || (factory.channel == CH_USB && factory.epoch != usb_bus_resets)) {
     factory.reply = 0;
     return;
   }
@@ -118,9 +118,12 @@ static void factory_poll(uint32_t now)
       if (!saved) { p->phase = FACTORY_ERROR; return; }
       memcpy(saved, &device, sizeof(device));
       user_factory_variables(saved);
-      work_release(saved, WORK_CONFIG);
       sched16_reset_mark(true);
-      user_default_values();
+      user_default_values(factory.reply == 1 ? factory.channel : CH_USB);
+      if (factory.reply == 1 && factory.channel >= 1 && factory.channel <= 3)
+        memcpy(&device.wifiModem, &saved->wifiModem, 4); // Сервер не управляет локальным выбором.
+      work_release(saved, WORK_CONFIG);
+      comm_channel_wifi_changed();
       p->phase = store_snapshot() ? FACTORY_SAVE : FACTORY_ERROR;
       return;
     }

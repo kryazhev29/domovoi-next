@@ -150,7 +150,9 @@ static uint8_t w_outbox[1100], w_body[64];
 static uint16_t w_outbox_count, w_body_count, w_take;
 static unsigned w_frames, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands, w_plain, w_stray;
 static uint8_t w_cmd_mode, w_next_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_tcpto, w_mix;
-static uint8_t w_enabled, w_silent_dis, w_receiving;
+static unsigned w_off_errors;
+void user_comm_wifi_stopped(bool ok) { test_config.wifi_stop=!ok; if (!ok) ++w_off_errors; }
+static uint8_t w_saved, w_enabled, w_silent_dis, w_receiving;
 /* w_wire: кадр занимает линию 10 бит на байт при 115200, как блокирующий uart_send; команда ближе 20 мс
    к концу кадра (Pack Interval моста) уходит серверу как данные и остаётся без ответа (w_glued). */
 static uint8_t w_wire; static uint32_t w_wire_end; static unsigned w_glued;
@@ -183,16 +185,17 @@ void uart_send(uint8_t *buf, uint16_t size)
   ++w_commands; if (!usr) ++w_plain;
   memcpy(w_cmd, buf, size - 1u); w_cmd[size - 1u] = 0;
   const char *c = w_cmd + (usr ? 3 : 0);
-  if (!strcmp(c, "AT+E=off") || !strcmp(c, "AT+EVENT=off") || !strcmp(c, "AT+WMODE=STA")) { w_text("+ok\r\n\r\n"); return; }
+  if (!strcmp(c, "AT+E=off") || !strcmp(c, "AT+EVENT=on") || !strcmp(c, "AT+WMODE=STA") || !strcmp(c,"AT+TCPDISB=off,1") || !strcmp(c,"AT+SOCKB=NONE")) { w_text("+ok\r\n\r\n"); return; }
   if (!strcmp(c, "AT+TCPTO=0")) { w_tcpto = 0; w_text("+ok\r\n\r\n"); return; }
   if (!strcmp(c, "AT+TMODE=throughput")) { w_next_mode = 0; w_text("+ok\r\n\r\n"); return; } /* вступит после перезапуска */
   if (!strncmp(c, "AT+TCPDIS=", 10)) {
     ++w_dis;
     if (w_silent_dis) return;
-    w_enabled = !strcmp(c + 10, "on");
+    w_enabled = !strncmp(c + 10, "on", 2);
+    if (strstr(c,",1")) w_saved=w_enabled;
     w_text("+ok\r\n\r\n"); return;
   }
-  if (!strcmp(c, "AT+Z")) { ++w_restarts; w_cmd_mode = w_next_mode; w_enabled = 1; return; }
+  if (!strcmp(c, "AT+Z")) { ++w_restarts; w_cmd_mode = w_next_mode; w_enabled = w_saved; return; }
   if (!strncmp(c, "AT+NETP=", 8)) { strcpy(w_netp, c); w_text("+ok\r\n\r\n"); return; }
   if (!strncmp(c, "AT+WSSSID=", 10)) { strcpy(w_ssid, c + 10); w_text("+ok\r\n\r\n"); return; }
   if (!strncmp(c, "AT+WSKEY=", 9)) { strcpy(w_key, c + 9); w_text("+ok\r\n\r\n"); return; }
@@ -217,7 +220,8 @@ static void w_event(uint8_t kind, uint8_t value) { if (kind == COMM_CH_OPEN_FAIL
 // Начать независимый сценарий канала через мост: 0 - мост в прозрачном режиме, 1 - в командном.
 static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
 {
-  sim_reset(); test_config.wifi = 1;
+  sim_reset(); memset(&wf,0,sizeof(wf)); test_config.wifi = 2;
+  w_off_errors=0; w_saved=1;
   channel_opened = channel_closed = channel_faults = 0;
   w_rx = NULL; w_cap = w_count = w_outbox_count = w_body_count = w_take = 0;
   w_frames = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_plain = w_stray = 0;
@@ -274,138 +278,127 @@ static void channel_wifi_tests(void)
     for (unsigned i = 0; i < 600 && w_links == links; ++i) sim_tick();
     w_wire = 0; w_outbox_count = 0;
     CHECK(!w_glued && channel_opened == opened && channel_closed == closed && w_links > links && comm_channel_ready()); }
-  /* Потеря TCP замечена проверкой TCPLK не позже 5 с: закрытие, новое открытие после возврата без перезапуска. */
-  w_tcp = 0;
-  for (unsigned i = 0; i < 600 && !channel_closed; ++i) sim_tick();
-  for (unsigned i = 0; i < 5; ++i) sim_tick();
-  CHECK(channel_closed == 1 && !comm_channel_ready() && w_dis == 3); /* TCPDIS=on настройки + off/on переоткрытия */
-  w_tcp = 1;
-  for (unsigned i = 0; i < 600 && channel_opened < 2; ++i) sim_tick();
-  CHECK(channel_opened == 2 && comm_channel_ready() && w_restarts == 1);
-  /* Съёмка: TCP физически отключён до камеры, после неё новый сеанс без штрафной паузы. */
-  { unsigned dis = w_dis, opened = channel_opened;
-    comm_channel_registered();
-    wifi_begin(W_LINK, "AT+TCPLK", 0, NULL); /* съёмка пришла во время запроса мосту */
-    unsigned links = w_links;
-    CHECK(!comm_channel_wifi_pause(true));
-    for (unsigned i = 0; i < 600; ++i) sim_tick();
-    CHECK(w_links == links && w_dis == dis + 1 && !w_enabled && !comm_channel_ready());
-    w_receiving = 1; /* после +ok ещё выходит хвост данных с линии */
-    for (unsigned i = 0; i < 10; ++i) sim_tick();
-    CHECK(!comm_channel_wifi_pause(true));
-    w_receiving = 0;
-    for (unsigned i = 0; i < 4; ++i) sim_tick();
-    CHECK(!comm_channel_wifi_pause(true));
+  /* Сервер закрыл: во всей паузе автоподключение модели моста выключено. */
+  w_tcp=0;
+  for (unsigned i=0;i<600 && !channel_closed;++i) sim_tick();
+  for (unsigned i=0;i<10;++i) sim_tick();
+  CHECK(channel_closed==1 && !w_enabled && wf.f.off && ch.state==CH_PAUSE);
+  w_tcp=1;
+  unsigned empty_connections=0;
+  while (sim_now-ch.operation_since < ch.reopen_pause-20u) {
+    if (w_enabled) ++empty_connections;
     sim_tick();
-    CHECK(comm_channel_wifi_pause(true) && comm_tx_acquire(&capacity) == NULL);
-    uint8_t camera[] = {0xaa, 0x0d, 0, 0, 0, 0};
-    unsigned before = w_outbox_count;
-    uart_send(camera, sizeof(camera));
-    CHECK(w_outbox_count == before); /* байты камеры не уходят серверу */
-    comm_channel_wifi_pause(false);
-    CHECK(!w_enabled);
-    w_receiving = 1;
-    for (unsigned i = 0; i < 10; ++i) sim_tick();
-    CHECK(!w_enabled);
-    w_receiving = 0;
-    for (unsigned i = 0; i < 4; ++i) sim_tick();
-    CHECK(!w_enabled); /* хвост камеры должен выйти до команды TCPDIS=on */
-    for (unsigned i = 0; i < 200 && !comm_channel_ready(); ++i) sim_tick();
-    CHECK(w_dis == dis + 2 && w_enabled && channel_opened == opened + 1 && comm_channel_ready()); }
-  /* Нет подтверждения отключения: линию камере не выдавать, отмена возвращает мост. */
-  { w_silent_dis = 1;
-    CHECK(!comm_channel_wifi_pause(true));
-    for (unsigned i = 0; i < 160; ++i) sim_tick();
-    CHECK(!comm_channel_wifi_pause(true) && w_enabled);
-    comm_channel_wifi_pause(false); w_silent_dis = 0;
-    for (unsigned i = 0; i < 200 && !comm_channel_ready(); ++i) sim_tick();
-    CHECK(comm_channel_ready() && w_enabled); }
-  /* Повторные снимки не копят штрафы подключения и не оставляют мост выключенным. */
-  for (unsigned shot = 0; shot < 10; ++shot) {
-    comm_channel_registered();
-    CHECK(!comm_channel_wifi_pause(true));
-    for (unsigned i = 0; i < 20; ++i) sim_tick();
-    CHECK(comm_channel_wifi_pause(true) && !w_enabled);
-    comm_channel_wifi_pause(false);
-    for (unsigned i = 0; i < 200 && !comm_channel_ready(); ++i) sim_tick();
-    CHECK(comm_channel_ready() && ch.wifi && w_enabled && w_restarts == 1);
   }
-  /* Ответ на команду съёмки должен уйти до разрыва серверного TCP. */
-  slot = comm_tx_acquire(&capacity); CHECK(slot); memcpy(slot, "PHOTO-ACK", 9);
-  CHECK(comm_tx_commit(9));
-  { unsigned sent = w_outbox_count;
-    CHECK(!comm_channel_wifi_pause(true) && !wf.paused);
-    sim_tick();
-    CHECK(w_outbox_count == sent + 9 && !memcmp(w_outbox + sent, "PHOTO-ACK", 9)); }
-  /* Команда возврата потеряна: обычная повторная настройка оживляет мост. */
-  unsigned attempts_before_photo = ch.connections;
-  CHECK(!comm_channel_wifi_pause(true));
-  CHECK(ch.connections == attempts_before_photo); /* съёмка не обнуляет прежние отказы регистрации */
-  for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK(comm_channel_wifi_pause(true));
-  w_silent_dis = 1; comm_channel_wifi_pause(false);
-  for (unsigned i = 0; i < 1500 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready() && ch.wifi && w_enabled && w_restarts == 2);
-  w_silent_dis = 0;
-  /* Проверка интернета идёт через AT+PING моста. */
+  CHECK(!empty_connections && !w_enabled);
+  for (unsigned i=0;i<300 && !comm_channel_ready();++i) sim_tick();
+  CHECK(comm_channel_ready() && w_enabled && w_restarts==1);
+  comm_channel_registered();
+  /* EVENT внутри бинарного SLDN и дроблёный приём не закрывают TCP. */
+  { const uint8_t packet[]="SLDN\x15\0\1\0\0+EVENT=SOCKA_OFF\r\n\0\0";
+    w_body_count=0; w_take=2; unsigned closed=channel_closed;
+    w_push(packet,sizeof(packet)-1);
+    for (unsigned i=0;i<30;++i) sim_tick();
+    CHECK(channel_closed==closed && comm_channel_ready());
+    w_take=0; w_body_count=0;
+    const char *event="+EVENT=SOCKA_OFF\r\n";
+    for (unsigned i=0;event[i];++i) { w_push(event+i,1); sim_tick(); }
+    CHECK(channel_closed==closed+1 && !w_enabled);
+  }
+  /* Смена NETP — повторная настройка, без перезагрузки платы. */
+  strcpy(test_config.host,"new.example"); test_config.port=9876;
+  comm_channel_wifi_changed();
+  for (unsigned i=0;i<2000 && !comm_channel_ready();++i) sim_tick();
+  CHECK(strstr(w_netp,"9876,new.example") && w_restarts==2 && comm_channel_ready());
   CHECK(comm_channel_probe(COMM_CH_PING));
-  for (unsigned i = 0; i < 10; ++i) sim_tick();
-  CHECK(w_pings == 1 && comm_channel_probe_result() == COMM_CH_PING);
-  /* Мост в командном режиме (после прежней прошивки): префикс без ответа, настройка без него, прозрачный режим после перезапуска. */
-  wifi_model_reset(1, 1);
-  for (unsigned i = 0; i < 3000 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready() && w_restarts == 1 && !w_cmd_mode && w_plain == 7 && w_stray == 1 && channel_opened == 1 && sim_now <= 25000);
-  /* Точка доступа по USB: SSID и ключ записаны, настройка моста повторена, перезапуск, канал открыт заново. */
-  CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass123\0", 13) == 0);
-  CHECK(comm_channel_wifi_setup((const uint8_t *)"X\0y\0", 4) == 1);
-  for (unsigned i = 0; i < 1500 && channel_opened < 2; ++i) sim_tick();
-  CHECK(!strcmp(w_ssid, "Home") && !strcmp(w_key, "pass123") && w_restarts == 2 && channel_opened == 2 && !wf.setup);
-  memset(big, 'a', sizeof(big)); big[50] = 0; big[sizeof(big) - 1u] = 0;
-  CHECK(comm_channel_wifi_setup((const uint8_t *)"\0a\0", 3) == 2 && comm_channel_wifi_setup(big, sizeof(big)) == 2);
-  /* Мост молчит: через 5 с серии сервер идёт через GSM без отказов открытия для надзора. */
-  wifi_model_reset(0, 1); w_dead = 1;
-  for (unsigned i = 0; i < 3000 && ch.wifi; ++i) sim_tick();
-  CHECK(!ch.wifi && sim_now <= 12000 && !w_failed && !comm_channel_wifi());
-  for (unsigned i = 0; i < 2000 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready() && channel_opened == 1);
-  /* Через 10 мин на GSM канал закрывает TCP и пробует мост; мост всё ещё молчит - GSM возвращается. */
-  { unsigned commands = w_commands;
-    for (unsigned i = 0; i < 61000 && !ch.wifi; ++i) sim_tick();
-    for (unsigned i = 0; i < 5; ++i) sim_tick();
-    CHECK(ch.wifi && channel_closed == 1 && w_commands > commands);
-    for (unsigned i = 0; i < 3000 && (ch.wifi || !comm_channel_ready()); ++i) sim_tick();
-    CHECK(!ch.wifi && comm_channel_ready() && channel_opened == 2); }
-  /* На GSM после отказа моста записана точка доступа: мост настроен и перезапущен, через 8 с канал открывается через мост. */
-  w_dead = 0; w_tcp = 1;
-  CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass\0", 10) == 0);
-  for (unsigned i = 0; i < 3000 && (!ch.wifi || !comm_channel_ready()); ++i) sim_tick();
-  CHECK(ch.wifi && comm_channel_ready() && w_restarts == 1 && !strcmp(w_ssid, "Home") && channel_opened == 3);
-  /* Мост отвечает, но TCP не поднимается: один перезапуск, серия длится минуту, затем GSM. */
-  wifi_model_reset(0, 0);
-  for (unsigned i = 0; i < 8000 && ch.wifi; ++i) sim_tick();
-  CHECK(!ch.wifi && sim_now >= 60000 && sim_now <= 70000 && w_links >= 20 && w_restarts == 1 && !w_failed);
-  /* Уходя на GSM, плата выключила TCP моста: иначе мост сам долбит сервер пустыми подключениями (gate 21.10). */
-  CHECK(!w_enabled && wf.f.off && !wf.f.drop);
-  for (unsigned i = 0; i < 2000 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready());
-  /* GSM продолжает работу, но автономный TCP моста тоже выключается перед камерой. */
-  CHECK(!comm_channel_wifi_pause(true));
-  for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK(comm_channel_wifi_pause(true) && !w_enabled && !ch.wifi && comm_channel_ready());
-  wf.fell_at = sim_now - WF_RETRY_MS;
-  for (unsigned i = 0; i < 10; ++i) sim_tick();
-  CHECK(!ch.wifi && comm_channel_ready()); /* возврат на Wi-Fi не отбирает линию у камеры */
-  slot = comm_tx_acquire(&capacity); CHECK(slot); comm_tx_release();
-  wf.fell_at = sim_now;
-  comm_channel_wifi_pause(false);
-  for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK(!ch.wifi && comm_channel_ready() && !w_enabled); /* на GSM после съёмки TCP моста не включается */
-  /* Через 10 мин мост пробуется снова: плата включает его TCP, канал идёт через мост. */
-  w_tcp = 1; wf.fell_at = sim_now - WF_RETRY_MS;
-  for (unsigned i = 0; i < 3000 && !(ch.wifi && comm_channel_ready()); ++i) sim_tick();
-  CHECK(ch.wifi && comm_channel_ready() && w_enabled && !wf.f.off);
-  test_config.wifi = 0; w_dead = 0;
-  puts("comm_wifi: DR164 transparent setup/send/recv/mix/link loss/pause/ping/cmd-mode/AP/fallback PASS");
+  for (unsigned i=0;i<10;++i) sim_tick();
+  CHECK(w_pings==1 && comm_channel_probe_result()==COMM_CH_PING);
+  /* Командный режим: три USR без ответа, обычный AT выключает мост, дальше настройка. */
+  wifi_model_reset(1,1);
+  for (unsigned i=0;i<2000 && !comm_channel_ready();++i) sim_tick();
+  CHECK(comm_channel_ready() && !w_cmd_mode && w_stray==3 && w_plain>=8);
+  CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass123\0",13)==0);
+  CHECK(comm_channel_wifi_setup((const uint8_t *)"X\0y\0",4)==1);
+  for (unsigned i=0;i<2000 && w_restarts<2;++i) sim_tick();
+  for (unsigned i=0;i<1200 && !comm_channel_ready();++i) sim_tick();
+  CHECK(!strcmp(w_ssid,"Home") && !strcmp(w_key,"pass123") && comm_channel_ready());
+  memset(big,'a',sizeof(big)); big[50]=big[100]=0;
+  CHECK(comm_channel_wifi_setup((const uint8_t *)"\0a\0",3)==2 && comm_channel_wifi_setup(big,sizeof(big))==2);
+  /* Предельные строки и усечённые поля: ни чтения за буфером, ни обрезанного AT. */
+  CHECK(comm_channel_wifi_setup((const uint8_t *)"x",1)==2);
+  CHECK(comm_channel_wifi_setup((const uint8_t *)"x\0",2)==2);
+  memset(big,'a',sizeof(big)); big[32]=big[96]=big[97]=0;
+  CHECK(comm_channel_wifi_setup(big,98)==2);
+  CHECK(comm_channel_wifi_setup(big,97)==0);
+  for (unsigned i=0;i<3000 && (wf.setup || !comm_channel_ready());++i) sim_tick();
+  CHECK(strlen(w_ssid)==32 && strlen(w_key)==63 && comm_channel_ready());
+  /* Моста нет: GSM работает и при фоновой проверке через 10 минут не закрывается. */
+  wifi_model_reset(0,1); w_dead=1;
+  for (unsigned i=0;i<3000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready() && comm_channel_wifi()); /* порт всё ещё выбран мосту */
+  unsigned closed=channel_closed, opened=channel_opened;
+  wf.fell_at=sim_now-WF_RETRY_MS;
+  for (unsigned i=0;i<1000;++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready() && channel_closed==closed && channel_opened==opened);
+  /* Мост вернулся, но Wi-Fi отсутствует: WSLK не разрешает закрыть GSM. */
+  w_dead=0; w_ap=0; wf.fell_at=sim_now-WF_RETRY_MS;
+  for (unsigned i=0;i<2000;++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready() && channel_closed==closed && !w_enabled);
+  /* Wi-Fi есть, PING не проходит — GSM по-прежнему открыт. */
+  w_ap=1; w_ping_ok=0; wf.fell_at=sim_now-WF_RETRY_MS;
+  for (unsigned i=0;i<100;++i) sim_tick();
+  CHECK(!ch.wifi && channel_closed==closed && w_pings);
+  /* Только WSLK + PING разрешают закрытие старого GSM TCP. */
+  w_ping_ok=1; wf.fell_at=sim_now-WF_RETRY_MS;
+  for (unsigned i=0;i<2000 && !(ch.wifi && comm_channel_ready());++i) sim_tick();
+  CHECK(ch.wifi && comm_channel_ready() && channel_closed==closed+1);
+  /* Отказы регистрации подряд: 10, 30, 60 минут. */
+  for (unsigned attempt=0;attempt<3;++attempt) {
+    comm_channel_reopen(0);
+    for (unsigned i=0;i<1000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
+    CHECK(!ch.wifi && comm_channel_ready());
+    CHECK(wifi_delay()==(attempt==0 ? 600000u : attempt==1 ? 1800000u : 3600000u));
+    uint32_t delay=wifi_delay(); wf.fell_at=sim_now-delay+1000;
+    for (unsigned i=0;i<90;++i) { sim_tick(); CHECK(!ch.wifi); }
+    for (unsigned i=0;i<2000 && !(ch.wifi && comm_channel_ready());++i) sim_tick();
+    CHECK(ch.wifi && comm_channel_ready());
+  }
+  comm_channel_registered(); CHECK(wifi_delay()==600000u && !wf.f.retry);
+  /* Выключение без ответа: три USR + один AT, событие, порт свободен. */
+  test_config.wifi=0; test_config.wifi_stop=1; comm_channel_wifi_changed(); w_dead=1;
+  unsigned commands=w_commands, stray=w_stray;
+  for (unsigned i=0;i<500;++i) sim_tick();
+  CHECK(!comm_channel_wifi() && w_off_errors==1 && test_config.wifi_stop);
+  CHECK(w_commands-commands+w_stray-stray==3); /* четвёртый обычный AT в прозрачном режиме */
+  /* Следующий запуск с долгом: съёмка блокирует повторы, после неё выключение завершается. */
+  w_dead=0; test_config.camera_busy=1; comm_channel_init(w_event);
+  commands=w_commands;
+  for (unsigned i=0;i<100;++i) sim_tick();
+  CHECK(w_commands==commands);
+  test_config.camera_busy=0;
+  for (unsigned i=0;i<100;++i) sim_tick();
+  CHECK(!test_config.wifi_stop && !w_enabled && !comm_channel_wifi());
+  /* Сервер меняет адрес без выбранного моста: никаких AT на линии камеры. */
+  commands=w_commands; comm_channel_wifi_changed();
+  for (unsigned i=0;i<100;++i) sim_tick();
+  CHECK(w_commands==commands);
+  /* Только Wi-Fi: отсутствие моста не открывает серверный TCP через GSM. */
+  wifi_model_reset(0,1); test_config.wifi=3; comm_channel_wifi_changed(); w_dead=1;
+  for (unsigned i=0;i<7000;++i) sim_tick();
+  CHECK(ch.wifi && !channel_opened && comm_modem_ready());
+  /* Живой GSM -> «Только Wi-Fi»: старый сокет закрывается даже при отсутствующем мосте. */
+  wifi_model_reset(0,1); w_dead=1;
+  for (unsigned i=0;i<3000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready());
+  closed=channel_closed; opened=channel_opened;
+  test_config.wifi=3; comm_channel_wifi_changed();
+  for (unsigned i=0;i<7000;++i) sim_tick();
+  CHECK(ch.wifi && !comm_channel_ready() && channel_closed==closed+1 && channel_opened==opened);
+  /* Выбранный USR / Только GSM: TCP моста выключен, порт остаётся за ним. */
+  wifi_model_reset(0,1); test_config.wifi=1; comm_channel_wifi_changed();
+  for (unsigned i=0;i<3000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready() && comm_channel_wifi() && !w_enabled && wf.f.off);
+  test_config.wifi=0; w_dead=0;
+  puts("comm_wifi: session/off pause/background probe/recovery/10-30-60/NETP/disable debt/only-WiFi PASS");
 }
 /* Опрос сигнала: при открытом TCP - очередью канала (прежний путь), без TCP - служебной командой
    модема: и в паузе после отказа 566, и пока QIOPEN ждёт ответа (плата №1 20.10.2026: 150 с без URC).

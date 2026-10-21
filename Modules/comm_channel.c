@@ -42,6 +42,7 @@ static uint8_t probe_result;
 static void wifi_poll(void);
 static bool wifi_locked(void);
 static void wifi_reset(void);
+static void wifi_registered(void);
 static bool wifi_retry(void);
 static void wifi_fallback(void);
 static void wifi_hold(void);
@@ -231,7 +232,7 @@ void comm_channel_stable(void) { ch.retry_step = ch.connections = 0; }
 /* Зафиксировать принятый сервером новый сеанс. */
 void comm_channel_registered(void)
 {
-  comm_modem_online();
+  comm_modem_online(); wifi_registered();
   ch.connections = 0; ch.flags.registered_session = 1; ch.call.expected = ch.call.lost = 0;
 }
 /* Закрыть прежний TCP и назначить обычную повторную попытку. */
@@ -240,17 +241,17 @@ void comm_channel_registered(void)
    Изменено 2026-10-21 (35a4a72):
    паузы 30/60 с и GSM после трёх соединений без регистрации — на плате не проверено.
    Изменено 2026-10-21 (e2f3615): planned - закрытие моста на съёмку, сервер не пишет отказ;
-   на плате №1 21.10 (1792552760) 5 съёмок без событий 18/14. */
-static void channel_reopen(uint32_t pause_ms, uint8_t planned)
+   на плате №1 21.10 (1792552760) 5 съёмок без событий 18/14.
+   Изменено 2026-10-21 (task/wifi-one): один отказ регистрации переводит на GSM; на плате не проверено. */
+void comm_channel_reopen(uint32_t pause_ms)
 {
   if (ch.call.active) { ch.call.lost = 1; return; }
   if (ch.state == CH_CLOSE || ch.state == CH_CLOSING || ch.state == CH_VERIFY || ch.state == CH_PAUSE || ch.state == CH_FAULT) return;
   if (ch.state == CH_INITIAL) ch.connections = 1;
   bool had_socket = ch.state == CH_OPEN;
-  if (ch.wifi && had_socket && ch.connections) {
-    if (ch.connections >= 3u) { wifi_fallback(); return; }
-    uint32_t pause = comm_timeouts[COMM_T_SERVER_RETRY_1 + ch.connections - 1u];
-    if (pause_ms < pause) pause_ms = pause;
+  if (ch.wifi && had_socket) {
+    if (!ch.flags.registered_session) { wifi_fallback(); return; }
+    if (pause_ms < comm_timeouts[COMM_T_SERVER_RETRY_1]) pause_ms=comm_timeouts[COMM_T_SERVER_RETRY_1];
   }
   ch.state = CH_CLOSE; ch.reopen_pause = pause_ms; ch.probe = ch.probe_active = ch.probe_answer = 0;
   /* Основной -> резервный -> новая цепочка; после звонка один раз прежний адрес. */
@@ -264,9 +265,8 @@ static void channel_reopen(uint32_t pause_ms, uint8_t planned)
     if (ch.retry_step < 3) ++ch.retry_step;
     ch.connections = 0;
   }
-  if (had_socket) channel_emit(COMM_CH_CLOSED, planned);
+  if (had_socket) channel_emit(COMM_CH_CLOSED, 0);
 }
-void comm_channel_reopen(uint32_t pause_ms) { channel_reopen(pause_ms, 0); }
 /* Самый низкий приоритет: только при свободном канале, без отправки и чтения. */
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t))
 {
@@ -403,9 +403,9 @@ void comm_channel_poll(uint32_t now_ms)
   ch.now = now_ms;
   comm_modem_poll(now_ms);
   if (ch.state == CH_FAULT) return;
-  if (comm_channel_wifi() || wifi_locked()) { wifi_poll(); if (ch.wifi) return; } /* мост обслуживается и при GSM */
+  if (comm_channel_wifi()) { wifi_poll(); if (ch.wifi) return; } /* мост обслуживается и при GSM */
   if (ch.operation) channel_completed();
-  if (wifi_retry()) return; /* на GSM после отказа моста: раз в 10 мин попробовать мост снова */
+  if (wifi_retry()) return; /* WSLK/PING без разрыва GSM; отказ регистрации: 10/30/60 мин. */
   if (ch.state == CH_INITIAL) {
     if (!comm_modem_ready()) return;
     ch.state = CH_PAUSE;

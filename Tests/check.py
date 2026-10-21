@@ -20,7 +20,10 @@ def main():
     p=argparse.ArgumentParser();mode=p.add_mutually_exclusive_group(required=True)
     mode.add_argument('--quick',action='store_true');mode.add_argument('--full',action='store_true')
     p.add_argument('--jobs',type=int,help='Число независимых групп на профиль.')
+    p.add_argument('--config',choices=('Release','ReleaseCustomer'),help='Профиль --quick; по умолчанию Release.')
     a=p.parse_args();start=time.monotonic()
+    if a.full and a.config:p.error('--full уже проверяет оба профиля')
+    quick_profile=a.config or 'Release'
     if a.jobs is not None and a.jobs < 1:p.error('--jobs должен быть положительным')
     base=Path(os.environ.get('DOMOVOI_COMPARE_BUILD',Path(tempfile.gettempdir())/'domovoi-agent-build'))
     base.mkdir(parents=True,exist_ok=True)
@@ -31,7 +34,7 @@ def main():
     env['PYTHONDONTWRITEBYTECODE']='1'
     results={}
     try:
-        for config in (('Release',) if a.quick else ('Release','ReleaseCustomer')):
+        for config in ((quick_profile,) if a.quick else ('Release','ReleaseCustomer')):
             with contextlib.redirect_stdout(io.StringIO()):build(base,config)
         if a.full:
             with contextlib.redirect_stdout(io.StringIO()):build(base,boot=True)
@@ -51,7 +54,7 @@ def main():
             with log_path.open('wb') as log:r=subprocess.run(cmd,cwd=ROOT,env=profile_env,stdout=log,stderr=subprocess.STDOUT)
             if r.returncode:print(log_path.read_bytes()[-2400:].decode('utf-8',errors='replace'))
             return config,r.returncode==0
-        if a.quick:results.update([run_profile('Release')])
+        if a.quick:results.update([run_profile(quick_profile)])
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
                 results.update(pool.map(run_profile,('Release','ReleaseCustomer')))

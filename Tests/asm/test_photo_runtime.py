@@ -47,7 +47,7 @@ class PhotoMachine(StorageMachine):
           ('uart_isReceiving',lambda:self.ret(0)),('uart_received',lambda:self.ret(self.rx_count)),
           ('uart_clear',self.uart_clear),('log_addPhotoEvent',self.event),
           ('usb_send',self.usb_send),('comm_channel_ready',lambda:self.ret(1)),
-          ('comm_channel_wifi_pause',lambda:self.ret(1)), # модель камеры без моста; ожидание проверяется отдельно
+          ('comm_channel_wifi',lambda:self.ret(0)), # мост в этом стенде не занимает порт
           ('comm_tx_acquire',self.acquire),('comm_tx_release',self.ret),
           ('comm_tx_commit',self.commit),('comm_tx_busy',lambda:self.ret(self.transport_busy))]:
             self.stubs[self.addr(name)]=fn
@@ -253,31 +253,21 @@ def errors():
     return 9
 
 def camera_bridge_wait():
-    """Камера ждёт отключения моста; отказ и отмена освобождают исполнитель."""
-    for mode in ('ready', 'timeout', 'cancel'):
-        m=PhotoMachine();m.boot_media();ready=False;released=[]
-        def hold():
-            on=m.args()[0]
-            if not on:released.append(m.now)
-            m.ret(int(ready) if on else 1)
-        m.stubs[m.addr('comm_channel_wifi_pause')]=hold
-        m.packet(7,b'\5');m.tick()
-        assert m.active() and not m.commands and m.pget('stage')==0
-        m.now+=1000;m.tick()
-        assert m.active() and not m.commands and not m.counts['start']
-        if mode=='ready':
-            ready=True;m.drain();m.port()
-            assert m.commands and m.pget('stage')==1
-            m.checked('photo_storage_cancel')
-        elif mode=='timeout':
-            m.now+=1001;m.tick()
-        else:m.checked('photo_storage_cancel')
-        m.drain()
-        assert not m.active() and not m.pget('stage') and len(released)==1
-        assert not m.rget('fault') and not m.counts['start']
-        ready=True;m.packet(7,b'\5');m.drain()
-        assert m.answers[-1][1]==0 and m.pget('stage')==1
-    print('camera waits for bridge: ready/2s-timeout/cancel/retry PASS',flush=True)
+    """Выбранный мост блокирует команду 7 и автоматическое фото до UART/NOR."""
+    m=PhotoMachine();m.boot_media()
+    m.write(m.device+m.d['wifiModem'],1,1)
+    starts=m.counts['start'];m.packet(7,b'\5');m.drain()
+    assert m.answers[-1][1]==1 and not m.commands and not m.active()
+    assert m.checked('photo_start',5,1)==1 and not m.commands and m.counts['start']==starts
+    m.write(m.device+m.d['wifiModem'],0,1)
+    m.packet(7,b'\5');m.drain()
+    assert m.answers[-1][1]==0 and m.pget('stage')==1
+    from test_photo_access import ready
+    m=ready();m.write(m.device+m.d['wifiModem'],1,1)
+    m.u.mem_write(m.cfg+m.c['rs485Periphery'],bytes((1,1,5,3)))
+    assert m.checked('user_activateOut',1,1,6,0)
+    assert len(m.loads)==2 and not m.active() and not m.commands
+    print('camera: USB/server command + output refused with local Wi-Fi, normal without it PASS',flush=True)
 
 if __name__=='__main__':
     out={'units':'Unicorn instructions with NOR/UART models; NOT cycles/time','normal':normal(),'upload':uploads(),'errors':errors()}

@@ -61,7 +61,8 @@ typedef enum{
   LOG_SYS_LOWBALANCE,
   LOG_SYS_LOWSIGNAL,
   LOG_SYS_RESETONPOWER = 39, // Перезагрузка по падению питания; аргументы нулевые
-  LOG_SYS_RESETCAUSE = 40 // Аргумент 1 — байт флагов RCC->CSR [31:24]
+  LOG_SYS_RESETCAUSE = 40, // Аргумент 1 — байт флагов RCC->CSR [31:24]
+  LOG_SYS_WIFI_OFF_TIMEOUT = 41 // Мост не ответил на выключение; аргументы нулевые
 }logSystem_e;
 
 // событиe доступа журнала
@@ -318,7 +319,9 @@ typedef struct {
   uint8_t cchFWupdate;
   uint16_t updateTimeout;
 
-  uint8_t reserv[329];
+  uint8_t reserv[40]; // Устойчивые курсоры и маркер расписаний: смещения сохранены.
+  uint8_t wifiModem, wifiMode, wifiStop, wifiMark; // Локальный USB-выбор; 0/1, 0..2, долг выключения, 0x57.
+  uint8_t reservWifi[285];
   uint16_t crc; // контрольная сумма
 } device_s; // 512 байт
 #pragma pack(pop)

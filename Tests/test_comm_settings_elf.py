@@ -21,10 +21,10 @@ from test_service_runtime import ServiceMachine
 
 
 # Сформировать полный проверенный кадр команды 12 с фиксированным уникальным номером.
-def command(machine, config):
+def command(machine, config, channel=0):
     body = struct.pack('<HBBB', len(config) + 3, 0, 73, 12) + config
     machine.u.mem_write(0x21000000, body + struct.pack('<H', crc16(body)))
-    machine.receive_command(0x21000000, 0)
+    machine.receive_command(0x21000000, channel)
 
 
 # Подготовить внешний набор настроек, сохраняя реальные размеры полей из DWARF.
@@ -72,9 +72,9 @@ def rejected(m, candidate):
 
 
 # Дождаться реального атомарного сохранения и применения исправленного набора.
-def accepted(m, config):
+def accepted(m, config, channel=0):
     m.sent.clear()
-    command(m, config)
+    command(m, config, channel)
     for _ in range(5000):
         m.now += 1
         m.checked('user_storage_poll')

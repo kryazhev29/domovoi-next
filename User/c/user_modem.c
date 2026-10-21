@@ -28,7 +28,13 @@ uint32_t user_comm_local_time(void)
 const char *user_comm_ussd(void) { return device.moduleType == MODEM_TYPE_SLM336 ? "" : config.ussdBalance; }
 
 // Вернуть разрешение VoLTE для текущего профиля.
-uint8_t user_comm_volte(void) { return config.useVoLTE; }
+uint8_t user_comm_volte(void) { return device.wifiModem ? 0 : config.useVoLTE; }
+// Результат выключения RS-485: долг переживает питание, ошибка передаётся обычным журналом.
+void user_comm_wifi_stopped(bool ok)
+{
+  if (device.wifiStop != !ok) { device.wifiStop = !ok; store_save_requested = 1; }
+  if (!ok) log_addSystemEvent(LOG_SYS_WIFI_OFF_TIMEOUT);
+}
 
 // Обновить баланс и записать его изменение в журнал.
 void user_comm_balance(int32_t rubles)
@@ -114,14 +120,10 @@ static uint16_t comm_number(uint8_t field)
   /* Пустой резерв разрешён протоколом; непустой проверяется даже при порте 0.
      Когда выбран только сервер 2, второго адреса для повтора нет. */
   case SLM_CFG_RESERVE: return config.useServer1 && config.useServer2 && comm_host[1][0];
-  /* Wi-Fi-мост DR164 задан в таблице 485 типом 1 при активном режиме линии. Адрес 0 -
-     резерв по Протоколу2: такая запись не включает мост (сервер 20.10 писал адрес на место типа). */
-  case SLM_CFG_WIFI: {
-    if (config.rs485Mode != 1) return 0;
-    for (uint8_t i = 0; i < 8u; ++i)
-      if (config.rs485Periphery[i].type == 1 && config.rs485Periphery[i].address) return 1;
-    return 0;
-  }
+  /* 0 — не выбран, 1 — только GSM, 2 — резерв GSM, 3 — только Wi-Fi. */
+  case SLM_CFG_WIFI: return device.wifiModem ? device.wifiMode + 1u : 0u;
+  case SLM_CFG_WIFI_STOP: return device.wifiStop;
+  case SLM_CFG_RS485_BUSY: return device.getPhoto;
   /* Ручной тип (команда 105) имеет приоритет; 0/255 - определить по AT+GMM. */
   case SLM_CFG_TYPE: return device.moduleType;
   default: return 0;

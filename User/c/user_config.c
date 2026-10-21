@@ -49,11 +49,9 @@ void user_initvariables (void)
   device.connectionhandle = -1;
   device.memID = w25_read_devID();
 
-  // Конфигурация уже прочитана; восстановление рабочих курсоров перекрываем питанием.
-  user_comm_boot();
-
-  // чтение сохранённой информации
+  // Сначала локальный device: тип модема и Wi-Fi не принадлежат конфигурации сервера.
   user_readsavedinformation();
+  user_comm_boot();
   device.protocolVersion = PROTOCOL_VERSION;
 
   user_ids_boot();
@@ -77,6 +75,7 @@ void config_exchange(uint8_t *data)
 
 // Завершить строковые поля на границе нового config.
 // Завершить только поле без нуля: исправленная конфигурация получает новую CRC.
+#pragma inline=forced
 static bool config_terminate(char *text, size_t capacity)
 {
   if (memchr(text, 0, capacity)) return false;
@@ -87,13 +86,15 @@ static bool config_terminate(char *text, size_t capacity)
 void config_terminate_strings(void)
 {
   bool changed = false;
-  changed |= config_terminate(config.server1, sizeof(config.server1));
-  changed |= config_terminate(config.server2, sizeof(config.server2));
-  changed |= config_terminate(config.NTPserver, sizeof(config.NTPserver));
-  changed |= config_terminate(config.netOperator, sizeof(config.netOperator));
-  changed |= config_terminate(config.countryCode, sizeof(config.countryCode));
-  changed |= config_terminate(config.simPhone, sizeof(config.simPhone));
-  changed |= config_terminate(config.ussdBalance, sizeof(config.ussdBalance));
+  // Все строковые поля внешней конфигурации проходят одну проверку границы.
+  static const struct { uint8_t offset, size; } strings[]={
+#define CONFIG_STRING(name) { offsetof(config_s,name), sizeof(config.name) }
+    CONFIG_STRING(server1), CONFIG_STRING(server2), CONFIG_STRING(NTPserver),
+    CONFIG_STRING(netOperator), CONFIG_STRING(countryCode), CONFIG_STRING(simPhone), CONFIG_STRING(ussdBalance)
+#undef CONFIG_STRING
+  };
+  for (uint8_t i=0; i<sizeof(strings)/sizeof(strings[0]); ++i)
+    changed |= config_terminate((char *)&config+strings[i].offset,strings[i].size);
   if (changed) config.crc = crc16_calc((uint8_t *)&config, sizeof(config) - 2);
 }
 
@@ -117,7 +118,7 @@ void user_readconfig(void)
 }
 
 // Сформировать заводские настройки текущего профиля.
-void user_default_values(void)
+void user_default_values(uint8_t source)
 {
   wdt_reload();
 
@@ -138,14 +139,17 @@ void user_default_values(void)
 
   device.loadDefaultConfig = 1;
   device.moduleType = MODEM_TYPE_AUTO;
+  device.wifiStop |= device.wifiModem != 0;
+  device.wifiModem = device.wifiMode = 0;
+  device.wifiMark = 0x57;
   device.status.defaultConfig = 1;
-  log_addSystemEvent(LOG_SYS_DEFCONF);
+  log_addSystemValue(LOG_SYS_DEFCONF, source);
 
 }
 
 void user_setdefault(void)
 {
-  user_default_values();
+  user_default_values(5); // восстановление повреждённой/отсутствующей конфигурации
   user_writeConfigAndDevice();
 }
 
@@ -168,30 +172,22 @@ static void user_restore_device(device_s *saved)
   saved->IMEIGSM[sizeof(saved->IMEIGSM) - 1] = 0; // Завершаем после проверки CRC.
   strcpy(device.IMEIGSM, saved->IMEIGSM); // восстанавливаем IMEI GSM
 
-  device.hardwareVersion = saved->hardwareVersion;
-  device.firmwareVersion = saved->firmwareVersion;
-  device.bootVersion = saved->bootVersion;
-  device.buildDate = saved->buildDate;
-
-  device.datetimeConfig = saved->datetimeConfig;
-  device.datetimeID = saved->datetimeID;
-  device.datetimeShedule = saved->datetimeShedule;
-  device.datetimeGroup = saved->datetimeGroup;
-  device.datetimeHoliday = saved->datetimeHoliday;
-
-  device.triggers = saved->triggers;
+  // Непрерывные устойчивые поля; рабочие сроки/состояния при старте не восстанавливаем.
+  static const uint8_t keep[][2]={
+    {offsetof(device_s,hardwareVersion), offsetof(device_s,datetime)-offsetof(device_s,hardwareVersion)},
+    {offsetof(device_s,firmwareSize), offsetof(device_s,readLogIDIndex)-offsetof(device_s,firmwareSize)},
+#define DEVICE_KEEP(name) {offsetof(device_s,name),sizeof(device.name)}
+    DEVICE_KEEP(triggers), DEVICE_KEEP(FWblockIdx), DEVICE_KEEP(FWinProgress),
+    DEVICE_KEEP(updateTimeout), DEVICE_KEEP(moduleType)
+#undef DEVICE_KEEP
+  };
+  for (uint8_t i=0; i<sizeof(keep)/sizeof(keep[0]); ++i)
+    memcpy((uint8_t *)&device+keep[i][0],(uint8_t *)saved+keep[i][0],keep[i][1]);
   // Бит 15 статуса: после заводского сброса сервер видит запрос полной синхронизации.
   device.status.defaultConfig = saved->status.defaultConfig;
 
-  device.firmwareSize = saved->firmwareSize;
-  device.firmwareCRC = saved->firmwareCRC;
-  device.FWblockCount = saved->FWblockCount;
-  device.FWblockIdx = saved->FWblockIdx;
-  device.firmwarePercent = saved->firmwarePercent;
-  device.FWinProgress = saved->FWinProgress;
-  device.updateTimeout = saved->updateTimeout;
-
-  device.moduleType = saved->moduleType;
+  if (saved->wifiMark == 0x57 && (saved->wifiModem | saved->wifiStop) <= 1 && saved->wifiMode <= 2)
+    memcpy(&device.wifiModem, &saved->wifiModem, 4);
   upload_restore(saved);
   sched16_restore(saved);
 }

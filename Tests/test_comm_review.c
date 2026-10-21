@@ -111,14 +111,16 @@ static void review_settings(void)
   strcpy(config.server1, "gate.gsmgate.ru:"); config.useServer1 = 1; config.useServer2 = 0;
   comm_endpoints();
   CHECK(comm_number(SLM_CFG_PORT) == 0);
-  /* Wi-Fi: тип 1 включает мост только с адресом не 0 (сервер 20.10 писал адрес на место типа). */
-  config.rs485Mode = 1;
-  for (uint8_t i = 0; i < 8u; ++i) { config.rs485Periphery[i].address = 0; config.rs485Periphery[i].type = i; }
-  CHECK(comm_number(SLM_CFG_WIFI) == 0);
-  config.rs485Periphery[1].address = 5;
-  CHECK(comm_number(SLM_CFG_WIFI) == 1);
-  config.rs485Mode = 0;
-  CHECK(comm_number(SLM_CFG_WIFI) == 0);
+  /* Серверная таблица не владеет локальным выбором модема. */
+  config.rs485Mode=1; config.rs485Periphery[0].type=1; config.rs485Periphery[0].address=1;
+  device.wifiModem=0; CHECK(comm_number(SLM_CFG_WIFI)==0);
+  device.wifiModem=1;
+  for (uint8_t mode=0;mode<3;++mode) {
+    device.wifiMode=mode; config.rs485Mode=0;
+    CHECK(comm_number(SLM_CFG_WIFI)==mode+1u);
+  }
+  device.wifiModem=0;
+
 }
 // Запустить все сценарии этого стенда.
 int main(void)

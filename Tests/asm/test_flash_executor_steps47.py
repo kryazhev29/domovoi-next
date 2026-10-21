@@ -32,7 +32,8 @@ def factory_reset():
     outcomes = []
     for channel, fail, reset in ((0, False, False), (0, True, False), (0, False, True),
                                   (1, False, False), (1, True, False),
-                                  (2, False, False), (2, True, False)):
+                                  (2, False, False), (2, True, False), (3, False, False),
+                                  (4, False, False), (4, True, False)):
         m, _, _ = config_machine()
         # Небольшие реальные диапазоны, включая частичный сектор таблицы.
         blocks = {2: (0x41000, 4096), 3: (0x1c9000, 4096),
@@ -43,13 +44,18 @@ def factory_reset():
             m.flash[address:address + size] = b'\x5a' * size
         m.flash[0x1ca000:0x1ca800] = b'\x37' * 2048
         m.write(m.addr('store_runtime'), 1, 1)
+        m.u.mem_write(m.device+m.d['wifiModem'],bytes((1,2,0,0x57)))
         m.stubs[m.addr('user_comm_boot')] = m.ret
+        m.stubs[m.addr('comm_channel_wifi_changed')] = m.ret
         m.stubs[m.addr('w25_read_devID')] = lambda: m.ret(0x17c2)
         # Завершение factory не вызывает стартовое форматирование журнала.
         def startup_format():
             raise AssertionError('factory used startup synchronous format')
         m.stubs[m.addr('log_getRecordsCount')] = startup_format
-        m.stubs[m.addr('log_addSystemEvent')] = lambda: m.ret(1)
+        events=[]
+        def system_value():
+            events.append(tuple(m.args()[:2]));m.ret(1)
+        m.stubs[m.addr('log_addSystemValue')] = system_value
         zero_fields = {'FWinProgress': 1, 'updateTimeout': 2, 'FWblockCount': 2, 'FWblockIdx': 2,
                        'numbersCount': 2, 'tempIDsCount': 2, 'logsCount': 2, 'countPhoto': 2}
         for name, width in zero_fields.items(): m.write(m.device + m.d[name], 7, width)
@@ -83,9 +89,12 @@ def factory_reset():
         if channel or reset: assert not m.answers and not messages, 'занятый или старый канал получил ответ'
         ready = True
         for _ in range(3): m.checked('user_storage_poll')
-        assert m.answers == ([] if reset or channel == 2 else [(3, 2 if fail else 0, channel, 73)]), m.answers
+        assert m.answers == ([] if reset or channel >= 2 else [(3, 2 if fail else 0, channel, 73)]), m.answers
         assert messages == ([(b'89035551122', b'DEFAULT: Error' if fail else b'DEFAULT: Complete')] if channel == 2 else []), messages
         if not fail:
+            expected=bytes((1,2,0,0x57)) if channel in (1,2,3) else bytes((0,0,1,0x57))
+            assert bytes(m.u.mem_read(m.device+m.d['wifiModem'],4))==expected, 'reset source changed Wi-Fi policy'
+            assert (0,channel) in events, events
             for address, size in blocks.values():
                 assert m.flash[address:address + size] == b'\xff' * size
             assert m.flash[0x1ca000:0x1ca800] == b'\x37' * 2048
@@ -101,7 +110,7 @@ def factory_reset():
             assert saved[m.d['IMEIGSM']:m.d['IMEIGSM']+15] == b'867442070217472'
             assert saved[m.d['firmwareVersion']:m.d['firmwareVersion']+2] == struct.pack('<H', 71)
             m.checked('user_storage_poll')
-            assert len(m.answers) + len(messages) == (0 if reset else 1)
+            assert len(m.answers) + len(messages) == (0 if reset or channel >= 3 else 1)
         outcomes.append({'channel': channel, 'failure': fail, 'USB_reset': reset})
     return outcomes
 

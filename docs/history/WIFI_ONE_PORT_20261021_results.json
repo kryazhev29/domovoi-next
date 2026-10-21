@@ -1,0 +1,156 @@
+{
+  "Release": {
+    "bin": 92046,
+    "bin_sha256": "15dec454ab0f174769f5abfb4227173f041ba8a1988b4c19c50c5f3933d83ad1",
+    "elf_sha256": "2e70b9d2c65edfc0f695457c70b6dfeec069020863e8cfcfa4c183e39f9f4f32",
+    "readonly  code": 89037,
+    "readwrite code": 476,
+    "readonly  data": 3009,
+    "readwrite data": 19699,
+    "quick": {
+      "mode": "quick",
+      "passed": true,
+      "seconds": 9.34,
+      "results": {
+        "Release": true,
+        "under_5_minutes": true
+      }
+    },
+    "local": {
+      "local": "USB114 persist/verify/failure/legacy/VoLTE",
+      "factory": [
+        {
+          "channel": 0,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 0,
+          "failure": true,
+          "USB_reset": false
+        },
+        {
+          "channel": 0,
+          "failure": false,
+          "USB_reset": true
+        },
+        {
+          "channel": 1,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 1,
+          "failure": true,
+          "USB_reset": false
+        },
+        {
+          "channel": 2,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 2,
+          "failure": true,
+          "USB_reset": false
+        },
+        {
+          "channel": 3,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 4,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 4,
+          "failure": true,
+          "USB_reset": false
+        }
+      ],
+      "button": 7,
+      "metadata": "all persistent fields preserved; all seven string boundaries",
+      "camera": null,
+      "elf_sha256": "2e70b9d2c65edfc0f695457c70b6dfeec069020863e8cfcfa4c183e39f9f4f32"
+    }
+  },
+  "ReleaseCustomer": {
+    "bin": 90056,
+    "bin_sha256": "bac63a0befefd1cea2eeef9b25a35299843f6a54482eb4ddf7abceff6d1ecb7a",
+    "elf_sha256": "5c9d4d919b54a264fe10e7954da3a77077a2a6b09b61f1e41c93fb0059f33282",
+    "readonly  code": 87053,
+    "readwrite code": 476,
+    "readonly  data": 3003,
+    "readwrite data": 19355,
+    "quick": {
+      "mode": "quick",
+      "passed": true,
+      "seconds": 9.28,
+      "results": {
+        "ReleaseCustomer": true,
+        "under_5_minutes": true
+      }
+    },
+    "local": {
+      "local": "USB114 persist/verify/failure/legacy/VoLTE",
+      "factory": [
+        {
+          "channel": 0,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 0,
+          "failure": true,
+          "USB_reset": false
+        },
+        {
+          "channel": 0,
+          "failure": false,
+          "USB_reset": true
+        },
+        {
+          "channel": 1,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 1,
+          "failure": true,
+          "USB_reset": false
+        },
+        {
+          "channel": 2,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 2,
+          "failure": true,
+          "USB_reset": false
+        },
+        {
+          "channel": 3,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 4,
+          "failure": false,
+          "USB_reset": false
+        },
+        {
+          "channel": 4,
+          "failure": true,
+          "USB_reset": false
+        }
+      ],
+      "button": 7,
+      "metadata": "all persistent fields preserved; all seven string boundaries",
+      "camera": null,
+      "elf_sha256": "5c9d4d919b54a264fe10e7954da3a77077a2a6b09b61f1e41c93fb0059f33282"
+    }
+  }
+}

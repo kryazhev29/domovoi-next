@@ -90,7 +90,7 @@ extern uint8_t store_runtime, store_reset_requested;
 extern store_state_s store;
 bool store_factory_begin(void);
 bool store_factory_request(uint8_t channel, uint8_t uniq, uint8_t delay, const char *number);
-void user_default_values(void);
+void user_default_values(uint8_t source);
 extern device_s device;
 extern uint8_t unblock_active;
 extern logControl_e server_out_event;

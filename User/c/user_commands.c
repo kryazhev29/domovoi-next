@@ -70,6 +70,29 @@ static bool command_args_valid(const uint8_t *ptr, uint16_t len)
   }
 }
 
+// Локальный USB-контракт Wi-Fi не расходует стек обычных команд сервера.
+static void usb_wifi_command(uint8_t *ptr, uint16_t len, uint8_t uniqId)
+{
+  if (ptr[4] == 113) {
+    uint8_t reply[6];
+    if (len > 3u) { reply[0] = comm_channel_wifi_setup(&ptr[5], (uint16_t)(len - 3u)); reply[1]=0; }
+    else { reply[2]=1; reply[3]=device.wifiModem; reply[4]=device.wifiMode; reply[0] = comm_channel_bridge(); reply[1] = comm_channel_wifi_link();
+      reply[5] = reply[0] ? 1u : device.netType == 4 ? 4u : device.netType == 1 ? 2u : 0u; }
+    user_send_anyData(113, reply, len > 3u ? 2u : sizeof(reply), CH_USB, uniqId);
+    return;
+  }
+  if (len != 5u || ptr[5] > 1u || ptr[6] > 2u || (!ptr[5] && ptr[6])) {
+    user_send_answer_comand(114, CMD_PARAMERROR, CH_USB, uniqId); return;
+  }
+  {
+    uint8_t old[4]; memcpy(old, &device.wifiModem, 4);
+    device.wifiStop |= device.wifiModem && (!ptr[5] || !ptr[6]);
+    device.wifiModem = ptr[5]; device.wifiMode = ptr[6]; device.wifiMark = 0x57;
+    store_command_start(114, CH_USB, uniqId);
+    memcpy(&device.wifiModem, old, 4); // Применение только после verify.
+  }
+}
+
 // Выполнить одну команду с проверенными длиной и контрольной суммой.
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
@@ -128,7 +151,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         // пробная прошивка могла сама прочитать IMEI неверно: не подтверждаем и базу не стираем,
         // при повторении откат по таймауту вернёт прежнюю прошивку
         if (!app_trial_active())
-          user_factoryReset();
+          store_factory_request(3, 0, 1, NULL);
         device.registredOnServer = 0;
         comm_channel_reopen(0);
         break;
@@ -510,14 +533,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         usb_log_enable(ptr[5]);
       break;
 
-    case 113: { // Wi-Fi-мост: точка доступа "SSID\0ключ\0" или состояние при пустом теле
-      uint8_t reply[2] = {0, 0};
-      if (cch != CH_USB) break;
-      if (len > 3u) reply[0] = comm_channel_wifi_setup(&ptr[5], (uint16_t)(len - 3u));
-      else { reply[0] = comm_channel_wifi(); reply[1] = comm_channel_wifi_link(); }
-      user_send_anyData(113, reply, sizeof(reply), cch, uniqId);
-      break;
-    }
+    case 113: case 114: if (cch == CH_USB) usb_wifi_command(ptr,len,uniqId); break;
 
     default: // команда не поддерживается
       user_send_answer_comand(ptr[4], CMD_UNDEFINE, cch, uniqId);

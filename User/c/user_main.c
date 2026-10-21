@@ -27,6 +27,23 @@ void timers_user_handle(void)
   uart_timer1ms();
 }
 
+// JMP1 проверяется только при включении питания: три нуля, две паузы по 50 мс.
+// Удержание после старта и перезапуск по WDT/команде не вызывают повторной очистки.
+static void user_factory_button(uint32_t csr)
+{
+  if ((csr & (RCC_CSR_PORRSTF | RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF |
+              RCC_CSR_SFTRSTF | RCC_CSR_LPWRRSTF)) != RCC_CSR_PORRSTF) return;
+  uint8_t checks=3;
+  while (!(GPIOA->IDR & GPIO_Pin_14)) {
+    if (!--checks) {
+      store_factory_request(4, 0, 1, NULL); // локальная кнопка, без ответа в транспорт
+      user_factoryReset();
+      return;
+    }
+    delay_ms(50);
+  }
+}
+
 // Восстановить память и настройки, затем разрешить рабочие команды.
 void user_init(void)
 {
@@ -97,6 +114,7 @@ void user_init(void)
   rs485_init(); // порт 485
   uart_setRecTimeout(10); // время заполнения/ожидания приемного буфера 10 мс
   store_runtime = 1;
+  user_factory_button(reset_csr);
 }
 
 // Выполнить очередной шаг входов, выходов и календарных сроков.

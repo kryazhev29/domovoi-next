@@ -45,7 +45,7 @@ static struct {
   char host[64], apn[31], login[31], password[31];
   uint16_t port;
   uint8_t modem_type, network_type;
-  uint8_t wifi;
+  uint8_t wifi, wifi_stop, camera_busy;
   uint8_t fallback; /* сценарии восстановления включают raw config.netType == 0 явно */
 } test_config;
 static const char *sim_text(uint8_t field, uint16_t *capacity)
@@ -72,7 +72,9 @@ static uint16_t sim_number(uint8_t field)
   }
   return field == SLM_CFG_PORT ? test_config.port : field == SLM_CFG_TYPE
     ? test_config.modem_type : field == SLM_CFG_NETWORK ? test_config.network_type
-    : field == SLM_CFG_WIFI ? test_config.wifi : 0;
+    : field == SLM_CFG_WIFI ? test_config.wifi
+    : field == SLM_CFG_WIFI_STOP ? test_config.wifi_stop
+    : field == SLM_CFG_RS485_BUSY ? test_config.camera_busy : 0;
 }
 static const slm_settings_t sim_settings = {sim_text, sim_number};
 

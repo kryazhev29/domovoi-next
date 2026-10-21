@@ -262,7 +262,8 @@ bool store_command_allowed(uint8_t cmd)
    фото USB отвечает без пропусков (457 ответов подряд).
    Изменено 2026-10-15 (cefcd36): готовность проверяется только источником кадра — на плате не проверено.
    Изменено 2026-10-15 (23e9519): удалён допуск команды 21 во время полной очистки — на плате не проверено.
-   Изменено 2026-10-16 (a5f1efc): команда 8 ждёт продолжаемый поиск ID — на плате не проверено. */
+   Изменено 2026-10-16 (a5f1efc): команда 8 ждёт продолжаемый поиск ID — на плате не проверено.
+   Изменено 2026-10-21 (task/wifi-one): USB114 ждёт готовности хранилища — на плате не проверено. */
 bool user_command_ready(const uint8_t *ptr, bool usb_input)
 {
   // Ответы из RAM не зависят от владельца W25. 9/10 сохраняют только намерение.
@@ -274,7 +275,7 @@ bool user_command_ready(const uint8_t *ptr, bool usb_input)
     switch (ptr[4]) {
     case 2: case 3: case 5: case 7: case 8:
     case 12: case 13: case 14: case 15: case 16: case 17: case 18:
-    case 19: case 20: case 21: case 23: case 103: case 105: case 110:
+    case 19: case 20: case 21: case 23: case 103: case 105: case 110: case 114:
       break;
     default: return true; // Включая CMD_UNDEFINE для неподдерживаемого номера.
     }
@@ -383,11 +384,15 @@ void store_command_start(uint8_t cmd, dataChanel_e cch, uint8_t uniq)
 static void store_config_complete(void)
 {
   uint8_t wiegand = config.wiegandType;
-  rs485_set_config(mem_config_snapshot());
+  const config_s *next = (const config_s *)mem_config_snapshot();
+  bool endpoint = memcmp(config.server1,next->server1,sizeof(config.server1)+sizeof(config.server2)) ||
+    memcmp(&config.useServer1,&next->useServer1,2);
+  rs485_set_config((const uint8_t *)next);
   // Считыватель включается и выключается новой настройкой, а не только при старте.
   if (!config.wiegandType) WG_stop();
   else if (!wiegand) WG_init();
   comm_endpoints();
+  if (endpoint) comm_channel_wifi_changed();
   device.datetimeConfig = config.datetime;
   device.status.defaultConfig = 0;
   // Действующая разблокировка не открывает повторно; включение новой настройкой открывает.
@@ -477,6 +482,12 @@ static void store_poll(uint32_t now, uint8_t result)
     uint8_t job = store_phase();
     if (job == US_CONFIG) {
       store_config_complete();
+    } else if (job == US_COMMAND && store.cmd == 114) {
+      const device_s *saved = (const device_s *)(mem_config_snapshot() + sizeof(config));
+      photo_storage_cancel();
+      memcpy(&device.wifiModem, &saved->wifiModem, 4);
+      if (device.wifiModem) rs485_init();
+      comm_channel_wifi_changed();
     }
     mem_config_reset();
     if (job == US_ACK) {

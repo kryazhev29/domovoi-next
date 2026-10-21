@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include "domovoi_diag.h"
 #include <stdbool.h>
-/* OPENING, OPENED и OPEN_FAILED - с адресом (0 - основной, 1 - резервный); CLOSED: 1 - мост закрыт на съёмку. */
+/* OPENING, OPENED и OPEN_FAILED - с адресом (0 - основной, 1 - резервный); CLOSED - закрытие TCP. */
 enum { COMM_CH_OPENED, COMM_CH_CLOSED, COMM_CH_PROBE_DONE, COMM_CH_FAULT, COMM_CH_OPEN_FAILED, COMM_CH_OPENING };
 enum { COMM_CH_PING = 1, COMM_CH_DNS = 2 };
 /* init только после отмены UART/начала изолированного сеанса драйвера.
@@ -70,10 +70,10 @@ uint8_t comm_channel_probe_result(void);
 /* Сервер идёт через Wi-Fi-мост DR164 на RS-485 или мост настраивается: порт принадлежит каналу. */
 bool comm_channel_wifi(void);
 /* Состояние моста для USB 113: 0 нет точки доступа, 1 есть, 2 TCP сервера открыт. */
+/* 0 нет связи, 1 отвечает, 2 TCP, 3 TCP выключен, 4 off без ACK, 5 выключение. */
 uint8_t comm_channel_wifi_link(void);
-/* true: запросить линию для камеры, вернуть готовность после отключения TCP.
-   false: вернуть линию мосту; повторное TCP-соединение выполняется асинхронно. */
-bool comm_channel_wifi_pause(bool on);
+/* Успешно сохранены endpoint или локальный выбор Wi-Fi; применить после текущего кадра. */
+void comm_channel_wifi_changed(void);
 /* Точка доступа "SSID\0ключ\0" для моста: 0 принято, 1 занято, 2 неверные данные. */
 uint8_t comm_channel_wifi_setup(const uint8_t *data, uint16_t count);
 #endif

@@ -10,7 +10,7 @@ from comm_server_host import ROOT, ZIG, unit, source, function
 def review_unit():
     code = unit().replace('int main(void)', 'static int original_regressions(void)')
     code = code.replace('uint8_t protocolVersion, hardwareVersion;',
-                        'uint8_t protocolVersion, hardwareVersion, moduleType;')
+                        'uint8_t protocolVersion, hardwareVersion, moduleType, wifiModem, wifiMode, wifiStop, getPhoto;')
     user = source('User/c/user_modem.c')
     code += ('\nstatic struct { char netOperator[32], server1[32], server2[32]; uint8_t netType, useServer1, useServer2, rs485Mode;'
              ' struct { uint8_t address, type; } rs485Periphery[8]; } config;\n')

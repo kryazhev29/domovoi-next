@@ -33,15 +33,16 @@ void board_init(void)
   // Маски затрагивают только ножки платы, остальные настройки принадлежат драйверам.
   // PA0 — реле, PA2/PA3 — Wiegand; PA1/PA4 остаются в прежнем состоянии.
   GPIOA->CRL = (GPIOA->CRL & ~0x0000FF0Fu) | 0x00008803u;
-  // PA8 — подтяжка USB, PA13 — подтяжка входа загрузчика.
-  GPIOA->CRH = (GPIOA->CRH & ~0x00F0000Fu) | 0x00800003u;
+  // PA8 — USB; PA13 — загрузчик, PA14 (JMP1) — местный сброс, оба с подтяжкой.
+  // SWJ уже отключён загрузчиком (boot_platform.c), PA13/PA14 доступны как GPIO.
+  GPIOA->CRH = (GPIOA->CRH & ~0x0FF0000Fu) | 0x08800003u;
   // PB0/PB1 — аналоговые IN1/IN2; PB3 — реле, PB6/PB7 — светодиоды.
   GPIOB->CRL = (GPIOB->CRL & ~0xFF00F0FFu) | 0x33003000u;
   // PB8 — светодиод, PB12 — CS, PB14 — RTS, PB15 — детект USB.
   GPIOB->CRH = (GPIOB->CRH & ~0xFF0F000Fu) | 0x43030003u;
   // PC13 — питание модема, PC14 — открытый сток ключа запуска.
   GPIOC->CRH = (GPIOC->CRH & ~0x0FF00000u) | 0x07300000u;
-  GPIOA->BSRR = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_13;
+  GPIOA->BSRR = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_13 | GPIO_Pin_14;
   LED1_OFF;
   LED2_OFF;
   LED3_OFF;
