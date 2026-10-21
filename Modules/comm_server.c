@@ -8,6 +8,7 @@
 #include "comm_server.h"
 #include "comm_channel.h"
 #include "comm_modem.h"
+#include "comm_recover.h"
 #include "comm_timeouts.h"
 #include <string.h>
 static struct {
@@ -149,7 +150,9 @@ void comm_server_status_ack(uint8_t unique_id)
 /* Продвинуть регистрацию, статусы и надзор ответов сервера. */
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
    основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
-   Изменено 14.10.2026 (1a4b571): съём USB-журнала; на плате №1 14.10 видны TCP и регистрация, коды 8/9 не вызывались. */
+   Изменено 14.10.2026 (1a4b571): съём USB-журнала; на плате №1 14.10 видны TCP и регистрация, коды 8/9 не вызывались.
+   Изменено 2026-10-21 (task/link-fixes): первая регистрация после старта без ответа через модем - питание модема сразу,
+   без второго захода и резервного адреса — на плате не проверено. */
 void comm_server_poll(uint32_t now_ms)
 {
   sv.now = now_ms;
@@ -170,7 +173,9 @@ void comm_server_poll(uint32_t now_ms)
   if (sv.state == SV_REG_WAIT && now_ms - sv.registration_since >= comm_timeouts[COMM_T_SERVER_REPLY]) {
     if (usb_log_on(2)) usb_log_value(17, 8, sv.address);
     comm_modem_failure(SLM_ERR_SERVER, 0);
-    if (sv.registrations < 2) sv.state = SV_REG;
+    /* Через модем первая регистрация после старта без ответа - питание модема сразу (мост тут ни при чём). */
+    if (!comm_channel_bridge() && comm_recover_first_silence()) { server_link(COMM_LINK_FAIL, sv.address); sv.state = SV_OFF; }
+    else if (sv.registrations < 2) sv.state = SV_REG;
     else { server_link(COMM_LINK_FAIL, sv.address); server_check(); }
   }
   if (sv.state == SV_REG && !comm_tx_busy() && !comm_channel_call_pending()) {

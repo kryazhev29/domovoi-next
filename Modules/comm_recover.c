@@ -19,6 +19,7 @@ static struct {
   uint32_t at_times[3];                /* millis последних таймаутов AT в работе */
   uint16_t night_day;                   /* сутки последнего ночного перезапуска */
   uint8_t state, power, power_step, soft_step, soft_fails, net_step, online;
+  uint8_t first;                        /* сервер уже отвечал или перезапуск по первой регистрации сделан */
   uint8_t at_count;
   uint8_t at_i, early;
 } rc;
@@ -166,6 +167,17 @@ void comm_recover_no_internet(void)
   if (rc.net_step < 2u) rc.net_step++;
 }
 
+/* Первый сеанс SLM336 после старта платы бывает без данных: TCP открыт, регистрация не доходит до сервера,
+   после снятия питания модема всё проходит (плата №1 21.10.2026, МегаФон, наш и gate). Раньше до питания
+   доходило через второй заход, резервный адрес и проверку интернета - около 30-40 с. */
+bool comm_recover_first_silence(void)
+{
+  if (rc.first) return false;
+  rc.first = 1;
+  rc_schedule(true, 0);
+  return true;
+}
+
 /* Модем сам зарегистрировался: подключаться с AT, отменив остаток паузы. */
 void comm_recover_registered(void)
 {
@@ -181,7 +193,7 @@ void comm_recover_poll(uint32_t now_ms)
   bool early = rc.early;
   rc.early = 0;
   if (comm_server_online() && comm_modem_ready()) {
-    if (!rc.online) { rc.online = 1; rc.online_since = now_ms; }
+    if (!rc.online) { rc.online = rc.first = 1; rc.online_since = now_ms; }
     else if (now_ms - rc.online_since >= comm_timeouts[COMM_T_STABLE])
       rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;
   } else rc.online = 0;

@@ -278,7 +278,7 @@ static void channel_wifi_tests(void)
   w_tcp = 0;
   for (unsigned i = 0; i < 600 && !channel_closed; ++i) sim_tick();
   for (unsigned i = 0; i < 5; ++i) sim_tick();
-  CHECK(channel_closed == 1 && !comm_channel_ready() && w_dis == 2);
+  CHECK(channel_closed == 1 && !comm_channel_ready() && w_dis == 3); /* TCPDIS=on настройки + off/on переоткрытия */
   w_tcp = 1;
   for (unsigned i = 0; i < 600 && channel_opened < 2; ++i) sim_tick();
   CHECK(channel_opened == 2 && comm_channel_ready() && w_restarts == 1);
@@ -354,7 +354,7 @@ static void channel_wifi_tests(void)
   /* Мост в командном режиме (после прежней прошивки): префикс без ответа, настройка без него, прозрачный режим после перезапуска. */
   wifi_model_reset(1, 1);
   for (unsigned i = 0; i < 3000 && !comm_channel_ready(); ++i) sim_tick();
-  CHECK(comm_channel_ready() && w_restarts == 1 && !w_cmd_mode && w_plain == 6 && w_stray == 1 && channel_opened == 1 && sim_now <= 25000);
+  CHECK(comm_channel_ready() && w_restarts == 1 && !w_cmd_mode && w_plain == 7 && w_stray == 1 && channel_opened == 1 && sim_now <= 25000);
   /* Точка доступа по USB: SSID и ключ записаны, настройка моста повторена, перезапуск, канал открыт заново. */
   CHECK(comm_channel_wifi_setup((const uint8_t *)"Home\0pass123\0", 13) == 0);
   CHECK(comm_channel_wifi_setup((const uint8_t *)"X\0y\0", 4) == 1);
@@ -384,6 +384,8 @@ static void channel_wifi_tests(void)
   wifi_model_reset(0, 0);
   for (unsigned i = 0; i < 8000 && ch.wifi; ++i) sim_tick();
   CHECK(!ch.wifi && sim_now >= 60000 && sim_now <= 70000 && w_links >= 20 && w_restarts == 1 && !w_failed);
+  /* Уходя на GSM, плата выключила TCP моста: иначе мост сам долбит сервер пустыми подключениями (gate 21.10). */
+  CHECK(!w_enabled && wf.f.off && !wf.f.drop);
   for (unsigned i = 0; i < 2000 && !comm_channel_ready(); ++i) sim_tick();
   CHECK(comm_channel_ready());
   /* GSM продолжает работу, но автономный TCP моста тоже выключается перед камерой. */
@@ -397,7 +399,11 @@ static void channel_wifi_tests(void)
   wf.fell_at = sim_now;
   comm_channel_wifi_pause(false);
   for (unsigned i = 0; i < 20; ++i) sim_tick();
-  CHECK(!ch.wifi && comm_channel_ready() && w_enabled);
+  CHECK(!ch.wifi && comm_channel_ready() && !w_enabled); /* на GSM после съёмки TCP моста не включается */
+  /* Через 10 мин мост пробуется снова: плата включает его TCP, канал идёт через мост. */
+  w_tcp = 1; wf.fell_at = sim_now - WF_RETRY_MS;
+  for (unsigned i = 0; i < 3000 && !(ch.wifi && comm_channel_ready()); ++i) sim_tick();
+  CHECK(ch.wifi && comm_channel_ready() && w_enabled && !wf.f.off);
   test_config.wifi = 0; w_dead = 0;
   puts("comm_wifi: DR164 transparent setup/send/recv/mix/link loss/pause/ping/cmd-mode/AP/fallback PASS");
 }

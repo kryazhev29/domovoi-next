@@ -49,7 +49,7 @@ static void rc_online(void)
 {
   server_reset();
   comm_server_no_internet(comm_recover_no_internet);
-  comm_recover_init(&rc_hooks, sim_now);
+  comm_recover_init(&rc_hooks, sim_now); rc.first = 1; /* плата уже была на связи после старта */
   rc_logged = rc_power_starts = rc_soft_starts = 0; rc_last_since = UINT32_MAX;
   rc_last_attempt = slm.session; rc_clock = UINT32_MAX; rc_busy_flag = false;
 }
@@ -317,6 +317,23 @@ static void server_outage_tests(void)
     rc_keep_opens=false;
     printf("server outage %u: 1h no restarts; one event13; restored in %u ms PASS\n",failure,sim_now-back);
   }
+  /* Плата №1 21.10: первая регистрация после старта без ответа - питание модема сразу, один раз за включение;
+     дальше молчание сервера идёт обычным путём без перезапусков. */
+  rc_online(); rc.first = 0; drop_register = 1; rc_keep_opens = true;
+  comm_channel_reopen(0);
+  for (unsigned i = 0; !rc_logged; ++i) { CHECK(i < 2000); rc_tick(10); }
+  rc_expect(0, 0, 1); CHECK(registrations_sent >= 1 && link_count(COMM_LINK_FAIL, 0) == 1);
+  rc_run(1800000u);
+  CHECK(rc_logged == 1 && rc_power_starts == 1 && !rc_soft_starts && rc.first && pings);
+  { uint32_t back = sim_now; drop_register = 0;
+    while (!comm_server_online() && sim_now - back <= 302000u) rc_tick(10);
+    CHECK(comm_server_online() && rc_logged == 1); }
+  rc_keep_opens = false;
+  /* Сервер ответил хотя бы раз: молчание следующей регистрации модем не перезапускает. */
+  rc_online(); rc.first = 0; rc_tick(10); CHECK(rc.first);
+  drop_register = 1; comm_channel_reopen(0); rc_run(60000u);
+  CHECK(!rc_logged && !rc_power_starts); drop_register = 0;
+  puts("first registration silent: one power restart at once, then ordinary path; not after online PASS");
   /* При отказе открытия TCP без интернета остаётся прежняя лестница TCP/AT/питание. */
   rc_online(); reserve_enabled=1; sim_open_error=3; ping_success=dns_success=0; probe_result=0;
   user_send_statusPack(CH_SERVER); socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n"); rc_run(1800000u);

@@ -36,6 +36,9 @@ uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left);
 #endif
 /* Сервер молчит, ping и DNS не прошли: TCP заново, потом модем с AT, потом питание. */
 void comm_recover_no_internet(void);
+/* Сервер молчит на первую регистрацию после включения платы: питание модема сразу.
+   Один раз за включение; true - перезапуск назначен. */
+bool comm_recover_first_silence(void);
 /* URC регистрации отменяет паузу: следующая попытка без снятия питания. */
 void comm_recover_registered(void);
 /* Код экрана связи и остаток ожидания перезапуска, мс. */

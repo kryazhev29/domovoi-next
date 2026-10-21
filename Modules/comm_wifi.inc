@@ -8,6 +8,9 @@
    Изменено 2026-10-21 (3cc4118): отключение TCP перед камерой и новый сеанс после неё — на плате не проверено.
    Изменено 2026-10-21 (e2f3615): пауза перед командой мосту от конца кадра; закрытие на съёмку плановое.
    Проверено на плате №1 21.10.2026 (сборка 1792552760): 6 фото до «Нависета» через мост за 14–19 с, USRAT в данных сервера нет.
+   Изменено 2026-10-21 (task/link-fixes): уходя на GSM, плата выключает TCP моста (TCPDIS=off), возвращаясь - включает;
+   после съёмки на GSM мост остаётся без TCP — на плате не проверено. Причина: мост сам переподключается к серверу
+   без данных, gate 21.10 14:25 получил с нашего адреса 207 пустых подключений за 29 с, пока плата шла через GSM.
 */
 #ifndef __UART_H /* стенд без драйвера USART1: прототипы совпадают с uart_stm32f10x.h */
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize);
@@ -23,13 +26,14 @@ bool uart_isReceiving(void);
 enum { WF_LINK_MS = 5000, WF_OPEN_MS = 40000, WF_CMD_MS = 800, WF_PING_MS = 6000, WF_RESTART_MS = 8000,
        WF_GAP_MS = 50, WF_DEAD_MS = 5000, WF_GIVEUP_MS = 60000, WF_RETRY_MS = 600000, WF_MISSES = 3, WF_LOG = 40 };
 enum { W_NONE, W_ECHO, W_SET_MODE, W_SET_SSID, W_SET_KEY, W_EVENT, W_TCPTO, W_NETP, W_TMODE, W_RESTART,
-       W_LINK, W_WSLK, W_PING, W_DIS_OFF, W_DIS_ON, W_CAMERA_OFF, W_CAMERA_ON };
+       W_LINK, W_WSLK, W_PING, W_DIS_OFF, W_DIS_ON, W_CAMERA_OFF, W_CAMERA_ON, W_SETUP_ON, W_OPEN_ON, W_DROP };
 enum { WF_CAMERA_WAIT = 1, WF_CAMERA_HELD, WF_CAMERA_RELEASE };
 static struct {
   uint32_t since, linked, opening, series_at, fell_at, sent_at;
   uint16_t head, at;
   uint8_t op, link, prefix, setup, paused, misses;
-  struct { uint8_t series:1, answered:1, fell:1, resume:1, ready:1, sent:1; } f;
+  /* drop - уход на GSM ждёт TCPDIS=off; off - TCP моста выключен платой, при возврате включить. */
+  struct { uint8_t series:1, answered:1, fell:1, resume:1, ready:1, sent:1, drop:1, off:1; } f;
 } wf;
 static uint8_t wf_line[96]; /* ответы моста, пока слот frame занят кадром или настройкой */
 /* Приёмный буфер линии: frame, пока канал через мост и слот свободен; иначе короткий wf_line. */
@@ -193,16 +197,22 @@ static void wifi_pause(uint32_t pause_ms)
   ch.flags.recv = 0; ch.tx_state = TX_FREE; ch.frame_count = 0; ch.sent = ch.acked = 0;
   ch.state = CH_PAUSE; ch.reopen_pause = pause_ms; ch.operation_since = ch.now;
 }
-/* Серия включений моста не удалась: сервер идёт через GSM, мост пробуется снова через WF_RETRY_MS. */
-static void wifi_fallback(void)
+/* Канал уходит на GSM; мост пробуется снова через WF_RETRY_MS. */
+static void wifi_gsm(void)
 {
-  if (ch.state == CH_OPEN) channel_emit(COMM_CH_CLOSED, 0);
-  wifi_pause(0);
   ch.wifi = 0; wf.op = W_NONE; wf.link = 0; ch.state = CH_INITIAL;
   ch.connections = ch.retry_step = 0; ch.probe = ch.probe_active = 0;
   wf.f.series = wf.f.resume = 0; wf.f.fell = 1; wf.fell_at = ch.now;
   wifi_rebuffer(); /* на GSM линию чистит порт RS-485 */
   if (usb_log_on(2)) usb_log_value(17, 10, 1);
+}
+/* Серия включений моста не удалась. Настроенный мост сам переподключается к серверу без данных:
+   сначала TCPDIS=off (wifi_next), потом GSM. */
+static void wifi_fallback(void)
+{
+  if (ch.state == CH_OPEN) channel_emit(COMM_CH_CLOSED, 0);
+  wifi_pause(0);
+  if (wf.f.ready) wf.f.drop = 1; else wifi_gsm();
 }
 /* Отказ настройки или включения: повтор через 2 с, пока не вышел срок серии; сервер об этом не узнаёт. */
 static void wifi_fail(void)
@@ -258,9 +268,12 @@ static void wifi_done(uint8_t op, uint8_t ok)
   case W_NETP:
     if (ok == 1) { wifi_begin(W_TMODE, "AT+TMODE=throughput", 0, NULL); return; }
     wifi_fail(); break;
-  case W_TMODE:
-    if (ok == 1) { wifi_begin(W_RESTART, "AT+Z", 0, NULL); return; }
+  case W_TMODE: /* TCP моста мог остаться выключенным до перезагрузки платы */
+    if (ok == 1) { wifi_begin(W_SETUP_ON, "AT+TCPDIS=on", 0, NULL); return; }
     wifi_fail(); break;
+  case W_SETUP_ON: /* без ответа перезапуск всё равно: он тоже поднимает TCP */
+    if (ok == 1) wf.f.off = 0;
+    wifi_begin(W_RESTART, "AT+Z", 0, NULL); return;
   case W_RESTART: /* после перезапуска мост в прозрачном режиме с новыми настройками */
     wf.f.ready = 1; wf.prefix = 1; wf.link = 0;
     if (ch.wifi) wifi_pause(WF_RESTART_MS);
@@ -287,6 +300,10 @@ static void wifi_done(uint8_t op, uint8_t ok)
     uint8_t good = (uint8_t)(ok == 1 && wifi_find(p, n, "Success") >= 0);
     probe_result = good ? ch.probe_active : 3u;
     ch.probe = ch.probe_active = 0; channel_emit(COMM_CH_PROBE_DONE, good); break; }
+  case W_OPEN_ON:
+    if (ok == 1) { wf.f.off = 0; wf.linked = ch.now; } else wifi_fail();
+    break;
+  case W_DROP: wf.f.drop = 0; wf.f.off = 1; wifi_gsm(); break; /* без ответа мост молчит: GSM всё равно */
   case W_DIS_OFF: wifi_begin(W_DIS_ON, "AT+TCPDIS=on", 0, NULL); return;
   case W_DIS_ON: wifi_pause(ch.reopen_pause); break;
   case W_CAMERA_OFF:
@@ -312,7 +329,10 @@ static void wifi_next(void)
     if (uart_isReceiving()) { wf.sent_at = ch.now; return; }
     if (ch.now - wf.sent_at < WF_GAP_MS) return;
     if (wf.paused == WF_CAMERA_WAIT) wifi_begin(W_CAMERA_OFF, "AT+TCPDIS=off", 0, NULL);
-    else if (wf.paused == WF_CAMERA_RELEASE) wifi_begin(W_CAMERA_ON, "AT+TCPDIS=on", 0, NULL);
+    else if (wf.paused == WF_CAMERA_RELEASE) {
+      if (ch.wifi) wifi_begin(W_CAMERA_ON, "AT+TCPDIS=on", 0, NULL);
+      else { wf.paused = 0; wifi_rebuffer(); } /* на GSM мост остаётся без TCP до возврата на него */
+    }
     return;
   }
   if (wf.setup == 1) {
@@ -322,6 +342,7 @@ static void wifi_next(void)
     wifi_begin(W_ECHO, "AT+E=off", 0, NULL); return;
   }
   if (!ch.wifi) return;
+  if (wf.f.drop) { wifi_begin(W_DROP, "AT+TCPDIS=off", 0, NULL); return; }
   if (ch.state == CH_INITIAL) { wifi_pause(0); if (usb_log_on(2)) usb_log_value(17, 10, 0); }
   if (ch.state == CH_PAUSE) {
     if (ch.now - ch.operation_since < ch.reopen_pause) return;
@@ -330,6 +351,7 @@ static void wifi_next(void)
     if (!wf.f.series) { wf.f.series = 1; wf.f.answered = 0; wf.series_at = ch.now; }
     if (!wf.f.ready) { wifi_begin(W_ECHO, "AT+E=off", 0, NULL); return; } /* настройка моста и перезапуск */
     wf.linked = ch.now - 1000u;
+    if (wf.f.off) { wifi_begin(W_OPEN_ON, "AT+TCPDIS=on", 0, NULL); return; } /* возврат с GSM */
   }
   if (ch.state == CH_CLOSE) { wifi_begin(W_DIS_OFF, "AT+TCPDIS=off", 0, NULL); return; }
   if (ch.state == CH_OPENING) {
