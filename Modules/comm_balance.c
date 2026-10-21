@@ -1,19 +1,22 @@
 /* Доработка: Кряжев А., 2026.
    Запрашивает баланс SIM через USSD и разбирает ответ оператора.
-   Запрос идёт раз в сутки, отказ повторяется через заданную паузу.
+   Запрос идёт раз в сутки после пяти минут зарегистрированного сеанса.
    Меню оператора закрывается после получения результата.
 */
 #include "comm_balance.h"
 #include "comm_modem.h"
+#include "comm_channel.h"
+#include "comm_server.h"
+#include "comm_sms.h"
 #include "comm_timeouts.h"
 #include <string.h>
-/* ASK - команда у модема, WAIT - ждём +CUSD (обычно после OK), CANCEL - закрыть меню. */
-enum { BAL_IDLE, BAL_ASK, BAL_WAIT, BAL_CANCEL };
+/* ASK - команда у модема, WAIT - ждём +CUSD, CLOSE/CANCEL - поставить/дождаться отмены меню. */
+enum { BAL_IDLE, BAL_ASK, BAL_WAIT, BAL_CLOSE, BAL_CANCEL };
 static const comm_side_t bal_cancel = {"AT+CUSD=2", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_AT_SIMPLE};
 static struct {
   const char *(*code)(void);
   void (*result)(int32_t);
-  uint32_t now, since, next;
+  uint32_t since, next;
   comm_side_t req;
   char cmd[24];
   char text[64];
@@ -48,7 +51,7 @@ static void bal_answer(const uint8_t *p, uint16_t n)
 }
 /* Передать строку ответа текущего запроса разборщику USSD. */
 static void bal_line(const uint8_t *p, uint16_t n, uint16_t detail) { (void)detail; bal_answer(p, n); }
-/* Сумма после "баланс"/"balance" (иначе первое число): "-12,30", "123.45 р". */
+/* Сумма после "баланс"/"balance" либо ответ, начинающийся с суммы. */
 bool comm_balance_parse(const char *t, int32_t *rubles)
 {
   static const char *const words[] = {"\xE0\xEB\xE0\xED\xF1", "alance"}; /* [Бб]аланс, [Bb]alance */
@@ -60,7 +63,12 @@ bool comm_balance_parse(const char *t, int32_t *rubles)
       if (!words[w][i]) { s = f; break; }
     }
   }
-  if (!s) s = t;
+  if (!s) {
+    s = t;
+    while (*s == ' ') ++s;
+    if (*s == '-') ++s;
+    if (*s < '0' || *s > '9') return false;
+  }
   while (*s && (*s < '0' || *s > '9')) ++s;
   if (!*s) return false;
   bool minus = s > t && s[-1] == '-';
@@ -70,15 +78,13 @@ bool comm_balance_parse(const char *t, int32_t *rubles)
   return true;
 }
 /* Выдать сумму и назначить следующий срок запроса. */
-static void bal_finish(bool ok)
+static void bal_finish(bool ok, uint32_t now_ms)
 {
   int32_t v;
   bal.state = BAL_IDLE;
-  if (ok && comm_balance_parse(bal.text, &v)) {
-    bal.next = bal.now + comm_timeouts[COMM_T_DAY];
-    bal.result(v);
-  } else bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];
-  if (bal.menu && comm_modem_side(&bal_cancel)) bal.state = BAL_CANCEL; /* меню оператора - закрыть */
+  bal.next = now_ms + comm_timeouts[COMM_T_DAY];
+  if (ok && !bal.menu && comm_balance_parse(bal.text, &v)) bal.result(v);
+  if (bal.menu) bal.state = BAL_CLOSE; /* занятый служебный слот не теряет отмену меню */
 }
 /* Подключить настройки, результат и уведомления USSD. */
 void comm_balance_init(const char *(*code)(void), void (*result)(int32_t))
@@ -89,13 +95,13 @@ void comm_balance_init(const char *(*code)(void), void (*result)(int32_t))
   comm_modem_listen(COMM_URC_BALANCE, bal_answer);
 }
 /* Продвинуть запрос баланса, ожидание ответа или закрытие меню. */
-void comm_balance_poll(uint32_t now_ms)
+void comm_balance_poll(uint32_t now_ms, bool idle)
 {
   uint8_t r;
-  bal.now = now_ms;
   switch (bal.state) {
   case BAL_IDLE: {
-    if (!comm_modem_ready() || (int32_t)(now_ms - bal.next) < 0) return;
+    if (!idle || !comm_server_settled() || !comm_channel_idle() || comm_sms_busy() ||
+        !comm_modem_ready() || (int32_t)(now_ms - bal.next) < 0) return;
     const char *c = bal.code();
     if (!*c) return;
     uint8_t i = 0;
@@ -110,12 +116,15 @@ void comm_balance_poll(uint32_t now_ms)
   }
   case BAL_ASK:
     if ((r = comm_modem_side_result(&bal.req)) == UINT8_MAX) break;
-    if (r != COMM_AT_OK) bal_finish(false);
+    if (r != COMM_AT_OK) bal_finish(false, now_ms);
     else bal.state = BAL_WAIT;
     break;
   case BAL_WAIT:
-    if (bal.got) bal_finish(true);
-    else if (now_ms - bal.since >= comm_timeouts[COMM_T_USSD]) bal_finish(false);
+    if (bal.got) bal_finish(true, now_ms);
+    else if (now_ms - bal.since >= comm_timeouts[COMM_T_USSD]) bal_finish(false, now_ms);
+    break;
+  case BAL_CLOSE:
+    if (comm_modem_side(&bal_cancel)) bal.state = BAL_CANCEL;
     break;
   case BAL_CANCEL:
     if (comm_modem_side_result(&bal_cancel) != UINT8_MAX) bal.state = BAL_IDLE;

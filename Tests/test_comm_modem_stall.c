@@ -70,7 +70,7 @@ static void modem_stall_tests(void)
   /* OK без URC и совсем без OK, но с ответом на ресинхронизацию:
      ожидание заканчивается, слот освобождён, мост всё время передаёт статусы. */
   for (unsigned silent = 0; silent < 2; ++silent) {
-    stall_start(); ussd_code = "*100#"; cusd_silence = silent;
+    stall_start(); stall_run(301000); ussd_code = "*100#"; cusd_silence = silent;
     unsigned session = slm.session, statuses = stall_statuses, links0 = w_links;
     stall_run(40000);
     CHECK(cusd_count == 1 && bal.state == BAL_IDLE && !balance_count);
@@ -85,7 +85,7 @@ static void modem_stall_tests(void)
   }
   /* Модем замолк вместе с CUSD: первый короткий перезапуск немедленно,
      затем действующие ступени 30/60 минут при включённом питании. Мост жив каждый poll. */
-  stall_start(); ussd_code = "*100#"; cusd_silence = 2;
+  stall_start(); stall_run(301000); ussd_code = "*100#"; cusd_silence = 2;
   unsigned session = slm.session, resets = rc_session_resets, statuses = stall_statuses;
   stall_run(50000);
   printf("silent modem after 50 s: state=%u step=%u reason=%u recovery=%u/%u power=%u\n",

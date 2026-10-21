@@ -33,6 +33,12 @@ static upload_s *upload_current(void)
 {
   return flash_job.kind == FX_UPLOAD && flash_job.result == FX_PENDING ? flash_job.data.context : upload_reply;
 }
+/* Не начинать USSD между подготовкой кадра журнала и его подтверждением. */
+bool upload_runtime_busy(void)
+{
+  return upload_current() || upload_pending[0].state == 1 || upload_pending[1].state == 1 ||
+    (log_pending32[0] | log_pending32[1]);
+}
 static uint8_t up_phase(const upload_s *p)
 {
   return flash_job.kind == FX_UPLOAD && flash_job.result == FX_PENDING ? flash_job.step : p->reply_step;

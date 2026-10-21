@@ -98,6 +98,10 @@ void comm_server_init(const comm_server_handlers_t *handlers)
 }
 /* Сообщить, принял ли сервер регистрацию. */
 bool comm_server_online(void) { return sv.state == SV_ONLINE; }
+/* Срок принятой регистрации не сбрасывается периодическим ACK статуса. */
+bool comm_server_settled(void)
+{ return comm_server_online() && !(sv.flags.status_wait | sv.misses) &&
+    sv.now - sv.registration_since >= comm_timeouts[COMM_T_USSD_STABLE]; }
 uint8_t comm_server_condition(void)
 {
   if (sv.flags.rejected) return LINK_IMEI_REJECTED;
@@ -126,6 +130,7 @@ void comm_server_registered(uint8_t success)
   sv.flags.probe_failed = 0;
   comm_channel_registered(); sv.state = SV_ONLINE; sv.flags.traffic_event = sv.misses = sv.registrations = sv.flags.status_wait = 0;
   sv.flags.stable = 1; sv.stable_since = sv.periodic_since = sv.now;
+  sv.registration_since = sv.now;
   sv.flags.first_status = 1;
   if (!sv.flags.quiet) server_link(COMM_LINK_UP, sv.address); sv_noted = 0; sv.flags.quiet = 0;
 }

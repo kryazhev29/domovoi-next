@@ -84,8 +84,8 @@ def run():
         ('channel', 'ussd-long-line-fault', 'comm_at_prefix(line, line_count, "+CUSD:") || ', ''),
         ('channel', 'ussd-ucs2-ignored', '  if (dcs == 72u) {', '  if (0) {'),
         ('channel', 'ussd-first-number-only', 'if (!words[w][i]) { s = f; break; }', 'if (0) { s = f; break; }'),
-        ('channel', 'ussd-failure-waits-a-day', 'bal.next = bal.now + comm_timeouts[COMM_T_USSD_RETRY];', 'bal.next = bal.now + comm_timeouts[COMM_T_DAY];'),
-        ('channel', 'ussd-menu-left-open', 'if (bal.menu && comm_modem_side(&bal_cancel))', 'if (0 && comm_modem_side(&bal_cancel))'),
+        ('channel', 'ussd-failure-repeats-in-30min', 'bal.next = now_ms + comm_timeouts[COMM_T_DAY];', 'bal.next = now_ms + 1800000u;'),
+        ('channel', 'ussd-menu-left-open', 'if (bal.menu) bal.state = BAL_CLOSE;', 'if (0) bal.state = BAL_CLOSE;'),
         ('channel', 'volte-unsupported-retried', 'call.volte_modem = VOLTE_UNSUPPORTED;', 'call.volte_modem = VOLTE_UNKNOWN;'),
         ('channel', 'volte-during-call', 'call.state != CALL_IDLE || call.volte_modem', 'call.volte_modem'),
         ('channel', 'volte-written-every-time', 'call.volte_modem != want ? &volte_set[want] : NULL', '&volte_set[want]'),
@@ -162,7 +162,7 @@ def user_mutations(out):
             assert text.count(old) == 1, label
             path.write_bytes(text.replace(old, new).replace('\n', '\r\n').encode('utf-8'))
             result = subprocess.run([sys.executable, str(ROOT / 'Tests/run_host.py'), 'work', group[0] if group else 'sms'], capture_output=True,
-                                    timeout=120, env={**os.environ, 'DOMOVOI_ROOT': str(tmp)})
+                                    timeout=120, env={**os.environ, 'DOMOVOI_ROOT': str(tmp), 'DOMOVOI_ZIG': ZIG})
             (out / (label + '.log')).write_bytes(result.stdout + result.stderr)
             assert result.returncode and b'FAIL ' in result.stderr, ('undetected', label)
         print(label, 'detected', flush=True)

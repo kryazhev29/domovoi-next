@@ -22,13 +22,17 @@ static struct {
   uint16_t frame_count, capacity, bytes, open_code;
   uint8_t state, tx_state, operation, answer;
   uint8_t address, connections, retry_step, probe;
-  uint8_t probe_active, probe_answer, ack_timeouts, wifi;
+  uint8_t probe_active, probe_answer, ack_timeouts, wifi, diagnostic;
   struct { uint8_t active:1, expected:1, lost:1, pdp_lost:1; } call;
   struct { uint8_t open_seen:1, open_ack:1, recv:1, read_active:1, urgent:1, dns_fence:1, registered_session:1, peer_closed:1; } flags;
 } ch;
 enum { CH_INITIAL, CH_OPEN, CH_CLOSE, CH_CLOSING, CH_VERIFY, CH_PAUSE, CH_OPENING, CH_FAULT, CH_PROBE };
 enum { TX_FREE, TX_BUILD, TX_QUEUED, TX_PROMPT, TX_PAYLOAD, TX_SENDING, TX_RETRY };
-enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY };
+enum { OP_NONE, OP_PROMPT, OP_SEND, OP_ACK, OP_CLOSE, OP_VERIFY, OP_OPEN, OP_PING, OP_DNS, OP_READ, OP_QUERY, OP_DIAG };
+/* Один снимок на задержку ACK >=5 с, только при включённом AT-журнале USB.
+   Последняя ошибка читается первой, пока следующие запросы её не заменили. */
+static const char *const stalled_cmd[] = {"AT+QIGETERROR", "AT+QISTATE=0,1",
+  "AT+QENG=\"servingcell\"", "AT+CGPADDR=1", "AT+CEREG?"};
 /* Служебный запрос (сигнал, регистрация): одна команда, строки ответа - заказчику. */
 static struct { const char *cmd; void (*line)(const uint8_t *, uint16_t); } query;
 /* Последний законченный тест переживает переподключение канала. */
@@ -130,7 +134,7 @@ static void channel_at_event(uint8_t kind, const uint8_t *p, uint16_t n, uint16_
   } else if (ch.operation == OP_ACK) {
     if (comm_at_parse(p,n,"+QISEND:\001,\001,\001",v) && v[0] - ch.acked <= ch.sent - ch.acked
         && v[2] == v[0] - v[1] && v[1] - ch.acked <= v[0] - ch.acked) {
-      if (v[1] != ch.acked) ch.tx_since = ch.now;
+      if (v[1] != ch.acked) { ch.tx_since = ch.now; ch.diagnostic = 0; }
       ch.acked = v[1]; ch.answer = 1;
     }
   }
@@ -194,6 +198,14 @@ uint32_t comm_channel_diag(void)
 #endif
 /* Сообщить, занят ли единственный слот отправки. */
 bool comm_tx_busy(void) { return ch.tx_state != TX_FREE; }
+/* USSD допустим только в паузе всего обмена, включая ожидание TCP ACK. */
+bool comm_channel_idle(void)
+{
+  /* QIRD уже занят operation; начатая проба сохраняет probe до завершения. */
+  return comm_channel_ready() && !(ch.operation | ch.tx_state | ch.probe) && ch.sent == ch.acked &&
+    !(ch.flags.recv | ch.flags.urgent | ch.call.active) &&
+    !query.cmd && !comm_modem_busy() && !wifi_locked();
+}
 /* Отложить фоновые операции ради регистрации или статуса. */
 void comm_channel_priority(bool pending) { ch.flags.urgent = (uint8_t)pending; }
 /* Выдать свободный слот производителю кадра. */
@@ -202,7 +214,7 @@ uint8_t *comm_tx_acquire(uint16_t *capacity)
   *capacity = sizeof(frame);
   if (!comm_channel_ready() || ch.tx_state != TX_FREE || ch.flags.urgent
       || (ch.call.active && !ch.wifi) || wifi_locked()) return NULL;
-  if (ch.sent == ch.acked) ch.tx_since = ch.now;
+  if (ch.sent == ch.acked) { ch.tx_since = ch.now; ch.diagnostic = 0; }
   ch.tx_state = TX_BUILD; if (ch.wifi) wifi_hold(); return frame; /* через мост приём линии уходит из слота */
 }
 /* Передать заполненный слот каналу до SEND OK. */
@@ -299,7 +311,8 @@ static bool channel_command(const char *s, uint8_t mode, uint8_t timeout_id, uin
 /* Применить завершение текущей операции канала.
    Проверено на плате №1 14.10.2026 (29e91ad, сборка 1791990283): два звонка в 4G без VoLTE
    во время обмена, поздний ответ на опрос ACK — TCP не переоткрывался, фото дошли.
-   Изменено 2026-10-15 (611d3e9): SEND OK отпускает слот, SEND FAIL ждёт повтор — на плате не проверено. */
+   Изменено 2026-10-15 (611d3e9): SEND OK отпускает слот, SEND FAIL ждёт повтор — на плате не проверено.
+   Изменено 2026-10-21 (task/net-research): ERROR диагностического снимка не закрывает TCP — на плате не проверено. */
 static void channel_completed(void)
 {
   uint8_t op = ch.operation, result = comm_modem_result();
@@ -346,6 +359,7 @@ static void channel_completed(void)
     return;
   }
   if (ch.state == CH_CLOSE && op != OP_CLOSE) return;
+  if (op == OP_DIAG) return; /* Ответ уже в USB AT-журнале; ERROR диагностики не закрывает TCP. */
   if (op == OP_CLOSE || op == OP_VERIFY) {
     if (op == OP_CLOSE && result == COMM_AT_ERROR && !ch.flags.peer_closed) {
       ch.state = CH_VERIFY; return;
@@ -463,6 +477,10 @@ void comm_channel_poll(uint32_t now_ms)
   }
   else if (ch.tx_state == TX_FREE && !ch.flags.urgent && ch.flags.recv && ch.capacity)
     channel_command(NULL, COMM_AT_TEXT, COMM_T_QIRD, OP_READ);
+  else if (ch.tx_state == TX_FREE && !ch.flags.urgent && usb_log_on(1) && ch.sent != ch.acked &&
+           now_ms - ch.tx_since >= 5000u && ch.diagnostic < sizeof(stalled_cmd) / sizeof(stalled_cmd[0])) {
+    if (channel_command(stalled_cmd[ch.diagnostic], COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_DIAG)) ++ch.diagnostic;
+  }
   else if (ch.tx_state == TX_FREE && !ch.flags.urgent && query.cmd)
     channel_command(query.cmd, COMM_AT_TEXT, COMM_T_AT_SIMPLE, OP_QUERY);
 }

@@ -50,6 +50,11 @@ static uint8_t volte_flag_model(void) { return volte_flag; }
 static const char *cusd_reply, *ussd_code; static unsigned cusd_count, cusd_cancel, cusd_error, cusd_early, balance_count;
 static uint32_t cusd_due; static int32_t balance_value;
 static unsigned cusd_silence;
+static bool balance_app_idle = true;
+static unsigned cusd_startup_fault;
+static unsigned cusd_cancel_error;
+static unsigned stalled_count, stalled_error;
+static uint32_t stalled_first;
 static const char *ussd_model(void) { return ussd_code; }
 // Запомнить полученный баланс SIM.
 static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_count; }
@@ -217,6 +222,15 @@ static void transport_tx(void)
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC); return;
   }
+  if (ch.operation==OP_DIAG) {
+    static const char *const expected[]={"AT+QIGETERROR", "AT+QISTATE=0,1", "AT+QENG=\"servingcell\"", "AT+CGPADDR=1", "AT+CEREG?"};
+    CHECK(stalled_count<5 && !strcmp(cmd,expected[stalled_count]));
+    if (!stalled_count) stalled_first=sim_now;
+    ++stalled_count;
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    sim_reply(stalled_error ? "ERROR\r\n" : "OK\r\n",30); return;
+  }
   if (!strncmp(cmd,"AT+CMG",6) || !strncmp(cmd,"AT+CPMS",7) || !strncmp(cmd,"AT+CNMI",7)) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
@@ -271,8 +285,9 @@ static void transport_tx(void)
   if (!strncmp(cmd,"AT+CUSD=",8)) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC);
-    if (!strcmp(cmd,"AT+CUSD=2")) { ++cusd_cancel; sim_reply("OK\r\n",30); return; }
+    if (!strcmp(cmd,"AT+CUSD=2")) { ++cusd_cancel; sim_reply(cusd_cancel_error ? "+CME ERROR: 53\r\n" : "OK\r\n",30); return; }
     CHECK(!strcmp(cmd,"AT+CUSD=1,\"*100#\",15")); ++cusd_count;
+    if (cusd_startup_fault && !comm_server_online()) { modem_silent = 1; return; }
     if (cusd_silence) { modem_silent = cusd_silence == 2; return; }
     if (cusd_error) sim_reply("+CME ERROR: 4\r\n",30);
     else if (cusd_early && cusd_reply) { char r[400]; snprintf(r,sizeof(r),"%sOK\r\n",cusd_reply); sim_reply(r,30); }
@@ -417,7 +432,7 @@ static void transport_tick(unsigned increment)
   }
   server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now);
   CHECK(msg.count <= sizeof(msg.queue)/sizeof(msg.queue[0]));
-  comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now); comm_balance_poll(sim_now);
+  comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now); comm_balance_poll(sim_now, balance_app_idle);
   if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
   transport_tx(); sim_now+=increment;
 }
@@ -453,7 +468,10 @@ static void server_reset_start(bool cold)
   chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(user_comm_call, volte_flag_model);
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=sms_events=0; comm_sms_init(sms_received_model);
   sms_listing_pos=sms_listing_len=0;
-  ussd_code=""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
+  ussd_code=cusd_startup_fault ? "*100#" : ""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
+  balance_app_idle=true;
+  cusd_cancel_error=0;
+  net_log_mask=stalled_count=stalled_error=stalled_first=0;
   cusd_silence=0;
   comm_balance_init(ussd_model, balance_model);
   /* Выход к TCP — принятой моделью этапа 3. */
@@ -657,6 +675,12 @@ static void link_tests(void)
   sim_open_error=1; comm_channel_reopen(0);
   for (unsigned i=0;links<6;++i) { CHECK(i<100000); transport_tick(10); }
   CHECK(link_count(COMM_LINK_FAIL,0)==2);
+  /* TCP оборвался до ответа на регистрацию: ещё нет принятого сеанса для события LOST. */
+  server_reset(); drop_register=1; comm_channel_reopen(0);
+  for (unsigned i=0;sv.state!=SV_REG_WAIT && i<1000;++i) transport_tick(10);
+  CHECK(sv.state==SV_REG_WAIT);
+  sim_feed("+QIURC: \"closed\",0\r\n"); advance(2000);
+  CHECK(link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_UP,0)==1);
   /* TCP открыт, регистрацию сервер не принял - ошибка соединения, не «подключён» и не «потеря». */
   server_reset(); drop_register=1; comm_channel_reopen(0); advance(30000);
   CHECK(link_count(COMM_LINK_LOST,0)==1 && link_count(COMM_LINK_FAIL,0)==1 && link_count(COMM_LINK_UP,0)==1); /* UP - от server_reset */
@@ -740,4 +764,4 @@ static void wifi_server_tests(void)
   }
 }
 int main(void)
-{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); wifi_server_tests(); modem_stall_tests(); wifi_camera_link_tests(); wifi_server_refusal_tests(); return 0; }
+{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); net_diagnostic_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); wifi_server_tests(); modem_stall_tests(); wifi_camera_link_tests(); wifi_server_refusal_tests(); return 0; }

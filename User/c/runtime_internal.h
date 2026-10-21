@@ -116,6 +116,7 @@ void expiry_runtime_poll(uint32_t),expiry_runtime_cancel(void);
 uint8_t idclear_runtime_begin(uint8_t,uint8_t);
 void idclear_runtime_poll(uint32_t),idclear_runtime_cancel(void),idclear_runtime_quiet(uint8_t);
 bool upload_runtime_begin(uint8_t,dataChanel_e,uint8_t);
+bool upload_runtime_busy(void);
 void upload_runtime_request(uint8_t,dataChanel_e,uint8_t,uint8_t),upload_pending_poll(void);
 void upload_pending_retry(uint8_t);
 void upload_runtime_poll(void),upload_runtime_cancel(void),upload_runtime_quiet(uint8_t);

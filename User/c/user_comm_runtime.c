@@ -5,6 +5,7 @@
 */
 #include "user_fun.h"
 #include "user_comm.h"
+#include "photo.h"
 #include <string.h>
 #include "../../Modules/comm_server.h"
 #include "../../Modules/comm_channel.h"
@@ -18,6 +19,7 @@ extern device_s device;
 void server_rx_process(void);
 /* Начать ограниченный проход приёма кадров сервера. */
 void server_rx_begin_pass(void);
+bool upload_runtime_busy(void);
 /* Собрать прежний кадр регистрации сервера. */
 static void user_comm_registration(void) { user_send_registrationData(CH_SERVER); }
 /* Собрать прежний кадр состояния устройства. */
@@ -75,5 +77,6 @@ void user_comm_poll(uint32_t now_ms)
   comm_call_poll(now_ms, flash_exec_read_allowed());
   /* Обработчик вызова мог сменить владельца флеша: для SMS нужен свежий снимок. */
   if (flash_exec_read_allowed()) comm_sms_poll(now_ms);
-  comm_balance_poll(now_ms);
+  comm_balance_poll(now_ms, !user_comm_busy() && !photo_busy() && !device.status.readyPhoto &&
+                    !upload_runtime_busy() && !device.status.readyToUpdate && !device.rebootToUpdate);
 }
