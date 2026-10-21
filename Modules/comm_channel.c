@@ -6,6 +6,7 @@
 #include "domovoi_diag.h"
 #include "comm_channel.h"
 #include "comm_modem.h"
+#include "comm_recover.h"
 #include "comm_uart.h"
 #include "comm_timeouts.h"
 #include "uart_stm32f10x.h"
@@ -410,8 +411,10 @@ void comm_channel_poll(uint32_t now_ms)
     ch.state = CH_PAUSE;
   }
   if (ch.state == CH_OPEN && !comm_modem_ready()) comm_channel_reopen(0);
-  if (!ch.call.active && ch.state == CH_OPEN && (ch.sent != ch.acked || ch.tx_state != TX_FREE) && now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED])
+  if (!ch.call.active && ch.state == CH_OPEN && (ch.sent != ch.acked || ch.tx_state != TX_FREE) && now_ms - ch.tx_since > comm_timeouts[COMM_T_UNACKED]) {
+    comm_recover_data(COMM_DATA_FAILED);
     comm_channel_reopen(0);
+  }
   if (ch.probe_active) {
     uint8_t t = ch.probe_active == COMM_CH_PING ? COMM_T_PING : COMM_T_DNS;
     if (ch.probe_answer == 1 || now_ms - ch.probe_since >= comm_timeouts[t] || (ch.probe_active == COMM_CH_DNS && ch.probe_answer == 3)) {

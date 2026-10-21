@@ -220,6 +220,67 @@ def balance_ownership():
     return len(names) + 3
 
 
+def fallback_config():
+    """Временный GSM на настоящем ELF не меняет config, ответы 12/106 и запись NOR."""
+    good = configuration()
+    struct.pack_into('<H', good, 510, crc16(good[:510]))
+    m = machine(good)
+    m.checked('comm_recover_init', 0, 123456)
+    def send_config():
+        p, count = m.args()[:2]
+        assert 0 < count <= 1040
+        m.sent.append(bytes(m.u.mem_read(p, count)))
+        m.ret(1)
+    m.stubs[m.addr('usb_send')] = send_config
+    # Радиосеть и PDP - внешняя граница; адаптер config и автомат восстановления настоящие.
+    m.stubs[m.addr('comm_modem_lte')] = lambda: m.ret(1)
+    m.stubs[m.addr('comm_modem_state')] = lambda: m.ret(2)
+    m.stubs[m.addr('comm_channel_bridge')] = lambda: m.ret(0)
+    lines = []
+    def log():
+        kind, body, count = m.args()[:3]
+        lines.append((kind, bytes(m.u.mem_read(body, count))))
+        m.ret()
+    m.stubs[m.addr('usb_log')] = log
+    # 106 до и после: кадр сравнивается целиком, включая CRC.
+    m.sent.clear()
+    m.checked('user_send_configToConfigurator', 0)
+    before = m.sent[-1]
+    for _ in range(2):
+        m.checked('comm_recover_data', 0)
+        m.checked('comm_recover_data', 1)
+    assert m.checked('comm_number', 6) == 1
+    assert m.checked('comm_number', 11) == 1  # сохранённое авто
+    m.sent.clear()
+    m.checked('user_send_configToConfigurator', 0)
+    assert m.sent[-1] == before, 'временный GSM попал в 106'
+    assert lines == [(3, b'4G->2G')], lines
+    accepted(m, good)
+    assert m.checked('comm_number', 6) == 1, 'синхронизация 12 отменила сутки GSM'
+    # Ответ 12 содержит код результата, а не config; accepted уже сверил все 510 сохраняемых байт.
+    m.sent.clear()
+    m.checked('user_send_configToConfigurator', 0)
+    assert m.sent[-1] == before, 'синхронизация изменила выдаваемый netType'
+    expected = [0, 1, 0, 5, 3]
+    for raw in range(1, 5):
+        m.write(m.addr('config') + fields('config_s')['netType'], raw, 1)
+        assert m.checked('comm_number', 6) == expected[raw]
+        assert m.checked('comm_number', 11) == 0
+    m.write(m.addr('config') + fields('config_s')['netType'], 0, 1)
+    assert m.checked('comm_number', 6) == 1
+    m.stubs[m.addr('comm_modem_restart')] = lambda: m.ret(0)
+    m.checked('comm_recover_poll', 123456 + 86400000 - 1)
+    assert m.checked('comm_number', 6) == 1 and len(lines) == 1
+    m.checked('comm_recover_poll', 123456 + 86400000)
+    assert m.checked('comm_number', 6) == 0 and lines[-1] == (3, b'->AUTO')
+    m.checked('comm_recover_data', 0)
+    m.checked('comm_recover_data', 1)
+    assert m.checked('comm_number', 6) == 1  # одна неудача пробного авто
+    m.checked('comm_recover_init', 0, 0)
+    assert m.checked('comm_number', 6) == 0
+    return '12/106 unchanged; sync keeps GSM; explicit modes; boot auto; USB text'
+
+
 # Выбрать только единственный проект указанного профиля и сохранить привязку результата к ELF.
 def main():
     parser = argparse.ArgumentParser()
@@ -232,6 +293,7 @@ def main():
     result = {'cases': run(), 'elf_sha256': hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
     result['ownership_checks'] = dispatcher_ownership()
     result['balance_ownership_checks'] = balance_ownership()
+    result['fallback_config'] = fallback_config()
     if args.output:
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print('PASS настройки связи ELF:', len(result['cases']), 'набора, команда/старт/исправление')

@@ -563,6 +563,9 @@ static uint8_t slm_issue(uint8_t step)
 
 /* Сообщить, готовы ли SIM, сеть и мобильный интернет. */
 bool comm_modem_ready(void) { return slm.attempt.status.state == SLM_READY; }
+/* Сохранённое «авто» отдельно от временного nwscanmode; EPS допустим только с поднятым PDP. */
+uint16_t comm_modem_auto(void) { return slm.settings.number(SLM_CFG_AUTO); }
+bool comm_modem_lte(void) { return comm_modem_ready() && (slm.attempt.net_registered & NET_EPS); }
 const slm_diag_t *comm_modem_diag(void)
 {
 #if DOMOVOI_DIAG

@@ -30,9 +30,9 @@ static void rc_tick(unsigned ms)
 // Запомнить событие восстановления.
 static void rc_note(void)
 {
-  if (rc.state == RC_WAIT && rc.wait_since != rc_last_since) {
-    rc_last_since = rc.wait_since;
-    if (rc_logged < sizeof(rc_log) / sizeof(rc_log[0])) { rc_log[rc_logged].at = sim_now; rc_log[rc_logged].ms = rc.wait_ms; rc_log[rc_logged].power = rc.power; rc_log[rc_logged].opens = opens; }
+  if (rc.state == RC_WAIT && rc.wait_until != rc_last_since) {
+    rc_last_since = rc.wait_until;
+    if (rc_logged < sizeof(rc_log) / sizeof(rc_log[0])) { rc_log[rc_logged].at = sim_now; rc_log[rc_logged].ms = rc_left(rc.now); rc_log[rc_logged].power = rc.power; rc_log[rc_logged].opens = opens; }
     ++rc_logged;
   }
   if (!rc_keep_opens && opens > 8) opens = 0; /* учёт модели, не поведение */
@@ -59,7 +59,7 @@ static void rc_fresh(void) { CHECK(comm_modem_restart(true, sim_now)); rc_sessio
 static void rc_wait_power(void)
 {
   for (unsigned i = 0; rc.state != RC_WAIT || !rc.power; ++i) { CHECK(i < 60000); rc_tick(10); }
-  CHECK(rc.wait_ms == 600000u && sim_power_on);
+  CHECK(rc_left(rc.now) == 600000u && sim_power_on);
 }
 // Проверить ожидаемую ступень и срок восстановления.
 static void rc_expect(unsigned i, uint32_t ms, uint8_t power)
@@ -382,7 +382,7 @@ static void recover_tests(void)
   for (unsigned i = 0; i < 3; ++i) {
     rc_online(); sim_network_wait = 1; rc_fresh(); rc_wait_power();
     sim_feed("+CEREG: 2\r\n+CGREG: 0\r\n+CREG: 3\r\n"); rc_tick(10);
-    CHECK(rc.state == RC_WAIT && rc.wait_ms == 600000u);
+    CHECK(rc.state == RC_WAIT && rc_log[rc_logged-1].ms == 600000u && rc_left(rc.now) > 599000u);
     unsigned powers = rc_power_starts; uint32_t begin = sim_now;
     sim_network_wait = 0; sim_feed(registered[i]); rc_tick(10);
     CHECK(rc.state == RC_WATCH && rc_soft_starts == 3 && rc_power_starts == powers);

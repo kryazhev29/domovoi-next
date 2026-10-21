@@ -58,6 +58,7 @@ static void server_check(void)
 static void server_channel_event(uint8_t kind, uint8_t value)
 {
   if (kind == COMM_CH_OPENING) {
+    comm_recover_data(COMM_DATA_BEGIN);
     /* Начало пары или первая попытка на прежний резервный после звонка. */
     if (!value || sv.address) sv.silent_since = sv.now;
     return;
@@ -72,6 +73,7 @@ static void server_channel_event(uint8_t kind, uint8_t value)
     sv.state = SV_OFF; sv.flags.stable = 0;
   } else {
     if (kind == COMM_CH_OPEN_FAILED) {
+      comm_recover_data(COMM_DATA_FAILED);
       sv.address = value; server_link(COMM_LINK_FAIL, value); server_check(); return;
     }
     if (kind == COMM_CH_PROBE_DONE && (sv.state == SV_PING || sv.state == SV_DNS)) {
@@ -148,6 +150,7 @@ void comm_server_status_ack(uint8_t unique_id)
 {
   if (!comm_server_online() || !sv.flags.status_wait || (unique_id != sv.status_id && unique_id != sv.last_status_id)) return;
   comm_channel_alive();
+  comm_recover_data(COMM_DATA_OK);
   sv.flags.status_wait = sv.misses = sv.flags.traffic_event = 0;
   sv.state = SV_ONLINE;
   if (!sv.flags.stable) { sv.flags.stable = 1; sv.stable_since = sv.now; }
@@ -157,7 +160,8 @@ void comm_server_status_ack(uint8_t unique_id)
    основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
    Изменено 14.10.2026 (1a4b571): съём USB-журнала; на плате №1 14.10 видны TCP и регистрация, коды 8/9 не вызывались.
    Изменено 2026-10-21 (task/link-fixes): первая регистрация после старта без ответа через модем - питание модема сразу,
-   без второго захода и резервного адреса — на плате не проверено. */
+   без второго захода и резервного адреса — на плате не проверено.
+   Изменено 2026-10-21 (task/4g-research): учёт LTE-сеанса без ответа — на плате не проверено. */
 void comm_server_poll(uint32_t now_ms)
 {
   sv.now = now_ms;
@@ -178,6 +182,7 @@ void comm_server_poll(uint32_t now_ms)
   if (sv.state == SV_REG_WAIT && now_ms - sv.registration_since >= comm_timeouts[COMM_T_SERVER_REPLY]) {
     if (usb_log_on(2)) usb_log_value(17, 8, sv.address);
     comm_modem_failure(SLM_ERR_SERVER, 0);
+    comm_recover_data(COMM_DATA_FAILED);
     /* Через модем первая регистрация после старта без ответа - питание модема сразу (мост тут ни при чём). */
     if (!comm_channel_bridge() && comm_recover_first_silence()) { server_link(COMM_LINK_FAIL, sv.address); sv.state = SV_OFF; }
     else if (sv.registrations < 2) sv.state = SV_REG;

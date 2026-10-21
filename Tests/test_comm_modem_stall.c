@@ -40,7 +40,7 @@ static void stall_tick(void)
   comm_info_poll(sim_now);
   if (stall_keep_online && !(ch.wifi && comm_server_online() && ch.state == CH_OPEN)) {
     fprintf(stderr, "Wi-Fi lost: now=%u CUSD silence=%u modem=%u reason=%u channel=%u server=%u recovery=%u/%u\n",
-            sim_now, cusd_silence, comm_modem_state(), slm.attempt.status.reason, ch.state, sv.state, rc.state, rc.wait_ms);
+            sim_now, cusd_silence, comm_modem_state(), slm.attempt.status.reason, ch.state, sv.state, rc.state, rc_left(sim_now));
     CHECK(0);
   }
 }
@@ -89,15 +89,15 @@ static void modem_stall_tests(void)
   unsigned session = slm.session, resets = rc_session_resets, statuses = stall_statuses;
   stall_run(50000);
   printf("silent modem after 50 s: state=%u step=%u reason=%u recovery=%u/%u power=%u\n",
-         comm_modem_state(), slm.attempt.status.step, slm.attempt.status.reason, rc.state, rc.wait_ms, sim_power_on);
+         comm_modem_state(), slm.attempt.status.step, slm.attempt.status.reason, rc.state, rc_left(sim_now), sim_power_on);
   CHECK(slm.session == session + 1 && rc_session_resets == resets);
-  CHECK(rc.state == RC_WAIT && rc.wait_ms == 1800000 && sim_power_on);
+  CHECK(rc.state == RC_WAIT && rc_left(sim_now) > 1750000 && rc_left(sim_now) <= 1800000 && sim_power_on);
   CHECK(stall_statuses > statuses + 1 && bal.state == BAL_IDLE);
   stall_run(1820000);
-  CHECK(rc.state == RC_WAIT && rc.wait_ms == 3600000 && sim_power_on);
+  CHECK(rc.state == RC_WAIT && rc_left(sim_now) > 3550000 && rc_left(sim_now) <= 3600000 && sim_power_on);
   /* Модем снова отвечает на следующем коротком старте; серверный сеанс прежний. */
   modem_silent = 0; cusd_silence = 0; ussd_code = "";
-  stall_run(rc.wait_ms - (sim_now - rc.wait_since) + 20000);
+  stall_run(rc_left(sim_now) + 20000);
   CHECK(comm_modem_ready() && rc_session_resets == resets && info.v.csq != 99);
   /* URC сокета GSM не закрывают TCP моста. */
   sim_feed("+QIURC: \"closed\",0\r\n+QIURC: \"pdpdeact\",1\r\n"); stall_run(100);

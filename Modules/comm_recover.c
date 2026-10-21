@@ -13,15 +13,14 @@
 #include <string.h>
 
 enum { RC_WATCH, RC_WAIT };
+enum { RAT_AUTO, RAT_FAILED, RAT_GSM, RAT_PROBE };
 static struct {
   const comm_recover_hooks_t *hooks;
-  uint32_t now, wait_since, wait_ms, online_since, last_start;
-  uint32_t at_times[3];                /* millis последних таймаутов AT в работе */
+  uint32_t now, wait_until, online_since, last_start;
+  uint32_t at_times[3], rat_since;     /* окно отказов AT и начало суток GSM */
   uint16_t night_day;                   /* сутки последнего ночного перезапуска */
   uint8_t state, power, power_step, soft_step, soft_fails, net_step, online;
-  uint8_t first;                        /* сервер уже отвечал или перезапуск по первой регистрации сделан */
-  uint8_t at_count;
-  uint8_t at_i, early;
+  uint8_t first, at_count, at_i, early, rat, tested;
 } rc;
 
 /* Ступень паузы: 0, 1, 2 и дальше последняя. */
@@ -35,9 +34,42 @@ static void rc_schedule(bool power, uint32_t pause)
 {
   rc.power = (uint8_t)power;
   rc.state = RC_WAIT;
-  rc.wait_since = rc.now;
-  rc.wait_ms = pause;
+  rc.wait_until = rc.now + pause;
   if (usb_log_on(2)) usb_log_value(18, (uint8_t)power, pause);
+}
+
+/* Паузы не длиннее часа; знаковая разность сохраняет дедлайн через оборот millis. */
+static uint32_t rc_left(uint32_t now_ms)
+{
+  int32_t left = (int32_t)(rc.wait_until - now_ms);
+  return left > 0 ? (uint32_t)left : 0;
+}
+
+/* Команда 12: авто, GSM, авто 3G/4G, UMTS, LTE. Только raw 0 допускает временный GSM. */
+uint8_t comm_recover_network(uint8_t net_type)
+{
+  static const uint8_t mode[] = {0, 1, 0, 5, 3};
+  if (!net_type) return rc.rat == RAT_GSM;
+  return net_type < sizeof(mode) ? mode[net_type] : 0;
+}
+
+/* Перезапуск тем же автоматом, без новой лестницы и без событий сервера. */
+static void rc_rat(uint8_t next)
+{
+  rc.rat = next;
+  rc.rat_since = rc.now;
+  usb_log(3, (const uint8_t *)(next == RAT_GSM ? "4G->2G" : "->AUTO"), 6);
+  rc_schedule(true, 0);
+}
+
+/* Один результат на LTE-сеанс. Регистрация без подтверждённого статуса не успех. */
+void comm_recover_data(uint8_t result)
+{
+  if (result == COMM_DATA_BEGIN) { rc.tested = !comm_modem_lte(); return; }
+  if (!comm_modem_auto() || !comm_modem_lte() || comm_channel_bridge() || rc.rat == RAT_GSM) return;
+  if (result == COMM_DATA_OK) rc.rat = RAT_AUTO;
+  else if (!rc.tested && rc.rat++ != RAT_AUTO) rc_rat(RAT_GSM);
+  rc.tested = 1;
 }
 
 /* Питание сразу; если и после этого не помогло - по паузам 10/30/60 мин. */
@@ -129,8 +161,8 @@ static void rc_night(void)
 /* Сервисный код выбирается из действующих состояний, без своего автомата. */
 uint8_t comm_recover_link(uint32_t now_ms, uint32_t *wait_left)
 {
-  *wait_left = rc.state == RC_WAIT && now_ms - rc.wait_since < rc.wait_ms ? rc.wait_ms - (now_ms - rc.wait_since) : 0;
-  if (rc.state == RC_WAIT) return LINK_RESTART_WAIT;
+  if (rc.state == RC_WAIT) { *wait_left = rc_left(now_ms); return LINK_RESTART_WAIT; }
+  *wait_left = 0;
   const slm_status_t *s = comm_modem_status();
   if (s->state == SLM_STARTING) return LINK_CONNECTING;
   if (s->reason == SLM_ERR_NO_SIM || s->reason == SLM_ERR_PIN || s->reason == SLM_ERR_PUK) return LINK_NO_SIM;
@@ -144,7 +176,7 @@ uint8_t comm_recover_link(uint32_t now_ms, uint32_t *wait_left)
 /* Собрать ступени и остаток паузы для команды 111. */
 uint32_t comm_recover_diag(uint32_t now_ms, uint32_t *wait_left)
 {
-  *wait_left = rc.state == RC_WAIT && now_ms - rc.wait_since < rc.wait_ms ? rc.wait_ms - (now_ms - rc.wait_since) : 0;
+  *wait_left = rc.state == RC_WAIT ? rc_left(now_ms) : 0;
   return rc.state | (uint32_t)rc.power << 4 | (uint32_t)rc.power_step << 8 | (uint32_t)rc.soft_step << 16 | (uint32_t)rc.net_step << 24;
 }
 #endif
@@ -181,7 +213,7 @@ bool comm_recover_first_silence(void)
 /* Модем сам зарегистрировался: подключаться с AT, отменив остаток паузы. */
 void comm_recover_registered(void)
 {
-  if (rc.state == RC_WAIT) { rc.power = 0; rc.wait_ms = 0; }
+  if (rc.state == RC_WAIT) { rc.power = 0; rc.wait_until = rc.now; }
 }
 
 /* Исполнить назначенный перезапуск или проверить условия надзора. */
@@ -190,6 +222,7 @@ void comm_recover_poll(uint32_t now_ms)
   rc.now = now_ms;
   rc_expire(rc.at_times, 3, rc.at_i, &rc.at_count, COMM_T_EARLY_AT);
   if (comm_channel_call_pending() && !comm_modem_status()->at_fault) return;
+  if (rc.rat == RAT_GSM && comm_modem_auto() && now_ms - rc.rat_since >= comm_timeouts[COMM_T_DAY]) rc_rat(RAT_PROBE);
   bool early = rc.early;
   rc.early = 0;
   if (comm_server_online() && comm_modem_ready()) {
@@ -198,7 +231,7 @@ void comm_recover_poll(uint32_t now_ms)
       rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;
   } else rc.online = 0;
   if (rc.state == RC_WAIT) {
-    if (now_ms - rc.wait_since < rc.wait_ms) return;
+    if (rc_left(now_ms)) return;
     rc.state = RC_WATCH;
     if (comm_modem_restart(rc.power != 0u, now_ms)) {
       rc.last_start = now_ms;

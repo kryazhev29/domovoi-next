@@ -69,15 +69,15 @@ static void call_tests(void)
   }
   /* Нет мобильного интернета: в длинной паузе номер открывает, затем ATA и CHUP. */
   rc_online(); call_writer_ready=true; calls=call_actions=0; sim_error_step=SLM_ACTIVATE; rc_fresh(); rc_wait_power();
-  unsigned powers=rc_power_starts, resets=rc_session_resets; uint32_t pause=rc.wait_since;
+  unsigned powers=rc_power_starts, resets=rc_session_resets; uint32_t pause=rc.wait_until;
   ring("+CLIP: \"+79161234567\",145\r\n");
   for (unsigned i=0; !chups || comm_channel_call_pending(); ++i) { CHECK(i<400); rc_tick(10); }
   CHECK(calls==1 && call_actions==1 && answers==1 && chups==1 && !call_present);
   CHECK(call_action_at<=answer_at && answer_at<hangup_at && hangup_at-answer_at<=2500);
-  CHECK(rc.state==RC_WAIT && rc.wait_since==pause && rc_power_starts==powers && rc_session_resets==resets && sim_power_on);
+  CHECK(rc.state==RC_WAIT && rc.wait_until==pause && rc_power_starts==powers && rc_session_resets==resets && sim_power_on);
   /* Конец паузы во время разговора ждёт штатного отбоя. */
   advance(10000); ring("+CLIP: \"+79161234567\",145\r\n"); rc_tick(10);
-  rc.wait_since=sim_now-rc.wait_ms; rc_tick(500);
+  rc.wait_until=sim_now; rc_tick(500);
   CHECK(comm_channel_call_pending() && rc_power_starts==powers && sim_power_on);
   for (unsigned i=0; rc_power_starts==powers; ++i) { CHECK(i<500); rc_tick(10); }
   CHECK(chups==2 && rc_power_starts==powers+1u);
@@ -89,7 +89,7 @@ static void call_tests(void)
   CHECK(comm_channel_call_pending()); powers=rc_power_starts;
   interrupt_byte(0,USART_SR_ORE); rc_tick(10);
   CHECK(comm_modem_status()->at_fault);
-  rc.wait_since=sim_now-rc.wait_ms; rc_tick(10);
+  rc.wait_until=sim_now; rc_tick(10);
   CHECK(rc_power_starts==powers+1u && comm_power_v5_state()==COMM_PWR_DISCHARGE);
   sim_error_step=-1; rc_run(30000u);
   CHECK(comm_server_online() && !comm_channel_call_pending());
@@ -335,10 +335,10 @@ static void call_tests(void)
   /* Первый отказ быстрой попытки возвращает обычные паузы и счёт. */
   call_reset(); call_drop=2; call_drop_urc=1; call_activation_error=1;
   ring("+CLIP: \"+79161234567\",145\r\n"); call_until_hangup();
-  for (unsigned i=0;rc.state!=RC_WAIT || !rc.wait_ms;++i) {
+  for (unsigned i=0;rc.state!=RC_WAIT || !rc_left(rc.now);++i) {
     CHECK(i<600); transport_tick(10); comm_recover_poll(sim_now);
   }
-  CHECK(rc.wait_ms==10000 && rc.soft_fails==1 && call_activations==1);
+  CHECK(rc_left(rc.now)==10000 && rc.soft_fails==1 && call_activations==1);
   call_reset(); call_drop=1; call_drop_urc=1; sim_open_error=1;
   ring("+CLIP: \"+79161234567\",145\r\n"); advance(2500);
   CHECK(!comm_channel_expected() && opens==2);

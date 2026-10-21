@@ -351,6 +351,7 @@ static void transport_tx(void)
     if (!socket_model && !strncmp(cmd,"AT+QISEND=",10)) sim_reply("ERROR\r\n",20);
     else if (!strcmp(cmd,"AT+QISEND=0,0")) {
       char reply[80]; if (!tx_unacked) tcp_acked=tcp_sent;
+      else if (tx_unacked == 2 && tcp_sent >= 48u) tcp_acked = 48u; /* регистрация дошла, первый статус потерян */
       snprintf(reply,sizeof(reply),"+QISEND: %u,%u,%u\r\nOK\r\n",tcp_sent,tcp_acked,tcp_sent-tcp_acked);
       sim_reply(reply,20);
     }
@@ -764,4 +765,4 @@ static void wifi_server_tests(void)
   }
 }
 int main(void)
-{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); net_diagnostic_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); wifi_server_tests(); modem_stall_tests(); wifi_camera_link_tests(); wifi_server_refusal_tests(); return 0; }
+{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); net_diagnostic_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); fallback_tests(); wifi_server_tests(); modem_stall_tests(); wifi_camera_link_tests(); wifi_server_refusal_tests(); return 0; }

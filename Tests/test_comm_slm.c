@@ -46,6 +46,7 @@ static struct {
   uint16_t port;
   uint8_t modem_type, network_type;
   uint8_t wifi;
+  uint8_t fallback; /* сценарии восстановления включают raw config.netType == 0 явно */
 } test_config;
 static const char *sim_text(uint8_t field, uint16_t *capacity)
 {
@@ -60,6 +61,10 @@ static const char *sim_text(uint8_t field, uint16_t *capacity)
 // Выдать числовую настройку имитатора модема.
 static uint16_t sim_number(uint8_t field)
 {
+#ifdef COMM_CHANNEL_MODEL
+  if (field == SLM_CFG_AUTO) return test_config.fallback;
+  if (field == SLM_CFG_NETWORK && test_config.fallback) return comm_recover_network(0);
+#endif
   if (field == SLM_CFG_NETWORK && sim_send_race && slm.attempt.status.step == SLM_RAT_SET) {
     unsigned race = sim_send_race; sim_send_race = 0;
     interrupt_byte('\r', USART_SR_RXNE);

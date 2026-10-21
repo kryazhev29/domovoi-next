@@ -6,6 +6,7 @@
 #include "../../Modules/comm_call.h"
 #include "../../Modules/comm_server.h"
 #include "../../Modules/comm_modem.h"
+#include "../../Modules/comm_recover.h"
 #include "user_comm.h"
 #include "../../Modules/comm_at.h"
 #include "../comm_timeouts.h"
@@ -108,11 +109,8 @@ static uint16_t comm_number(uint8_t field)
   switch (field) {
   case SLM_CFG_PORT: return comm_port[0];
   case SLM_CFG_PORT2: return comm_port[1];
-  case SLM_CFG_NETWORK: {
-    /* Команда 12: авто, GSM, авто 3G/4G, UMTS, LTE; значения QCFG другие. */
-    static const uint8_t rat[] = {0, 1, 0, 5, 3};
-    return config.netType < sizeof(rat) ? rat[config.netType] : 0;
-  }
+  case SLM_CFG_NETWORK: return comm_recover_network(config.netType);
+  case SLM_CFG_AUTO: return config.netType == 0;
   /* Пустой резерв разрешён протоколом; непустой проверяется даже при порте 0.
      Когда выбран только сервер 2, второго адреса для повтора нет. */
   case SLM_CFG_RESERVE: return config.useServer1 && config.useServer2 && comm_host[1][0];
