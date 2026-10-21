@@ -225,8 +225,9 @@ void comm_channel_registered(void)
 /* Проверено на плате №1 12.10.2026 (ee0979b): сервер выключен 4 мин - ping ya.ru, событие 13 одно,
    основной -> сразу резервный, модем не перезапускался, возврат 4 мин 23 с.
    Изменено 2026-10-21 (35a4a72):
-   паузы 30/60 с и GSM после трёх соединений без регистрации — на плате не проверено. */
-void comm_channel_reopen(uint32_t pause_ms)
+   паузы 30/60 с и GSM после трёх соединений без регистрации — на плате не проверено.
+   Изменено 2026-10-21 (после 09eef64): planned - закрытие моста на съёмку, сервер не пишет отказ — на плате не проверено. */
+static void channel_reopen(uint32_t pause_ms, uint8_t planned)
 {
   if (ch.call.active) { ch.call.lost = 1; return; }
   if (ch.state == CH_CLOSE || ch.state == CH_CLOSING || ch.state == CH_VERIFY || ch.state == CH_PAUSE || ch.state == CH_FAULT) return;
@@ -249,8 +250,9 @@ void comm_channel_reopen(uint32_t pause_ms)
     if (ch.retry_step < 3) ++ch.retry_step;
     ch.connections = 0;
   }
-  if (had_socket) channel_emit(COMM_CH_CLOSED, 0);
+  if (had_socket) channel_emit(COMM_CH_CLOSED, planned);
 }
+void comm_channel_reopen(uint32_t pause_ms) { channel_reopen(pause_ms, 0); }
 /* Самый низкий приоритет: только при свободном канале, без отправки и чтения. */
 bool comm_channel_query(const char *cmd, void (*line)(const uint8_t *, uint16_t))
 {

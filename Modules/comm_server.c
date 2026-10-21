@@ -14,7 +14,8 @@ static struct {
   comm_server_handlers_t handlers;
   uint32_t now, registration_since, status_since, periodic_since, stable_since, silent_since;
   uint8_t state, registrations, misses, status_id, last_status_id, silent_step, address;
-  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, first_status:1, rejected:1, probe_failed:1; } flags;
+  /* quiet - сеанс закрыт на съёмку: ни отказа, ни нового подключения в журнал, пока не записан настоящий отказ. */
+  struct { uint8_t status_wait:1, status_due:1, traffic_event:1, stable:1, first_status:1, rejected:1, probe_failed:1, quiet:1; } flags;
 } sv;
 enum { SV_OFF, SV_REG, SV_REG_WAIT, SV_ONLINE, SV_PING, SV_DNS, SV_SILENT };
 /* Вне sv: переживают comm_server_init при перезапуске модема. */
@@ -29,6 +30,7 @@ void comm_server_link(bool (*handler)(uint8_t, uint8_t)) { sv_link = handler; }
 static void server_link(uint8_t kind, uint8_t address)
 {
   uint8_t bit = kind == COMM_LINK_FAIL ? (uint8_t)(1u << address) : kind >= COMM_LINK_NO_NET ? (uint8_t)(1u << (kind - 1u)) : 0u;
+  if (kind == COMM_LINK_FAIL || kind == COMM_LINK_LOST) sv.flags.quiet = 0; /* после отказа подключение снова пишется */
   if ((sv_noted & bit)) return;
   if (usb_log_on(2)) usb_log_value(17, kind, address);
   if (sv_link(kind, address)) sv_noted |= bit;
@@ -64,7 +66,8 @@ static void server_channel_event(uint8_t kind, uint8_t value)
     if (usb_log_on(2)) usb_log_value(17, 5, value);
   } else if (kind == COMM_CH_CLOSED || kind == COMM_CH_FAULT) {
     if (usb_log_on(2)) usb_log_value(17, 6, sv.address);
-    if (sv.state != SV_OFF) server_link((sv.state >= SV_ONLINE && !sv.registrations) ? COMM_LINK_LOST : COMM_LINK_FAIL, sv.address);
+    if (kind == COMM_CH_CLOSED && value && sv.state >= SV_ONLINE) sv.flags.quiet = 1; /* мост закрыт на съёмку */
+    else if (sv.state != SV_OFF) server_link((sv.state >= SV_ONLINE && !sv.registrations) ? COMM_LINK_LOST : COMM_LINK_FAIL, sv.address);
     sv.state = SV_OFF; sv.flags.stable = 0;
   } else {
     if (kind == COMM_CH_OPEN_FAILED) {
@@ -123,7 +126,7 @@ void comm_server_registered(uint8_t success)
   comm_channel_registered(); sv.state = SV_ONLINE; sv.flags.traffic_event = sv.misses = sv.registrations = sv.flags.status_wait = 0;
   sv.flags.stable = 1; sv.stable_since = sv.periodic_since = sv.now;
   sv.flags.first_status = 1;
-  server_link(COMM_LINK_UP, sv.address); sv_noted = 0;
+  if (!sv.flags.quiet) server_link(COMM_LINK_UP, sv.address); sv_noted = 0; sv.flags.quiet = 0;
 }
 /* Начать срок ожидания подтверждения отправленного статуса. */
 void comm_server_status_sent(uint8_t unique_id)

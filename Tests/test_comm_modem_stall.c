@@ -106,6 +106,31 @@ static void modem_stall_tests(void)
   puts("modem stall: CUSD without URC/OK, late URC, immediate restart then powered 30/60 min, Wi-Fi statuses and GSM URCs PASS");
 }
 
+/* Съёмка закрывает сеанс моста: в журнал связи ни отказа, ни нового подключения (плата №1 21.10: события 18 и 14
+   на каждый снимок). Если после съёмки сервер не принял регистрацию - отказ и затем подключение пишутся. */
+static void wifi_camera_link_tests(void)
+{
+  for (unsigned drop = 0; drop < 2; ++drop) {
+    stall_start(); stall_keep_online = 0;
+    unsigned before = links;
+    for (unsigned i = 0; !comm_channel_wifi_pause(true) && i < 300; ++i) stall_tick();
+    CHECK(comm_channel_wifi_pause(true) && !comm_server_online() && links == before);
+    stall_drop_registration = drop; comm_channel_wifi_pause(false);
+    if (!drop) {
+      for (unsigned i = 0; !comm_server_online() && i < 2000; ++i) stall_tick();
+      CHECK(comm_server_online() && ch.wifi && links == before);
+    } else {
+      for (unsigned i = 0; links == before && i < 30000; ++i) stall_tick();
+      CHECK(links > before && link_kinds[before] == COMM_LINK_FAIL);
+      stall_drop_registration = 0;
+      for (unsigned i = 0; !comm_server_online() && i < 60000; ++i) stall_tick();
+      CHECK(comm_server_online() && link_kinds[links - 1u] == COMM_LINK_UP);
+    }
+    test_config.wifi = 0;
+  }
+  puts("Wi-Fi camera pause: no link events for planned close, refusal after it still logged PASS");
+}
+
 static void wifi_server_refusal_tests(void)
 {
   for (unsigned reserve = 0; reserve < 2; ++reserve) {

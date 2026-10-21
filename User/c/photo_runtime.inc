@@ -643,7 +643,8 @@ void photo_poll(void)
       if (photo->stage && (int32_t)(now - photo->deadline) >= 0 &&
         (photo->stage == P_DATA || (uint32_t)(now - photo->last) >= 50u)) {
         if (photo->stage != P_DATA || pr_data_ready()) {
-          if (photo->retry++ >= (photo->stage == P_SYNC ? 30 : 3)) {
+          /* C328: SYNC до 60 раз, ACK обычно после ~25; на 30 (1,5 с) камера на плате №1 21.10 раз не ответила. */
+          if (photo->retry++ >= (photo->stage == P_SYNC ? 60 : 3)) {
             photo_stop();
           }
           else {

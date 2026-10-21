@@ -6,6 +6,7 @@
    Включается в конец comm_channel.c. Прозрачный режим написан вечером 19.10.2026; проверен на плате №1 (aa0c162, сборка 1792419754): мост из командного
    режима настроен и перезапущен прошивкой, регистрация и статусы через мост со стендовым сервером, 4 мин без переоткрытий.
    Изменено 2026-10-21 (3cc4118): отключение TCP перед камерой и новый сеанс после неё — на плате не проверено.
+   Изменено 2026-10-21 (после 09eef64): пауза перед командой мосту от конца кадра; закрытие на съёмку плановое — на плате не проверено.
 */
 #ifndef __UART_H /* стенд без драйвера USART1: прототипы совпадают с uart_stm32f10x.h */
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize);
@@ -27,7 +28,7 @@ static struct {
   uint32_t since, linked, opening, series_at, fell_at, sent_at;
   uint16_t head, at;
   uint8_t op, link, prefix, setup, paused, misses;
-  struct { uint8_t series:1, answered:1, fell:1, resume:1, ready:1; } f;
+  struct { uint8_t series:1, answered:1, fell:1, resume:1, ready:1, sent:1; } f;
 } wf;
 static uint8_t wf_line[96]; /* ответы моста, пока слот frame занят кадром или настройкой */
 /* Приёмный буфер линии: frame, пока канал через мост и слот свободен; иначе короткий wf_line. */
@@ -61,7 +62,7 @@ bool comm_channel_wifi_pause(bool on)
       if (ch.wifi) {
         /* Съёмка не штрафует новый сеанс и не стирает прежние отказы регистрации. */
         uint8_t attempts = ch.connections;
-        ch.connections = 0; comm_channel_reopen(0); ch.connections = attempts;
+        ch.connections = 0; channel_reopen(0, 1); ch.connections = attempts;
       }
     }
     return wf.paused == WF_CAMERA_HELD && !uart_isReceiving() && ch.now - wf.sent_at >= WF_GAP_MS;
@@ -176,12 +177,13 @@ static void wifi_unhold(void)
   if (n) wifi_deliver(wf_line, n);
   wifi_rebuffer();
 }
-/* Кадр в линию как есть: мост упакует его в один TCP-пакет; подтверждений нет, слот свободен сразу. */
+/* Кадр в линию как есть: мост упакует его в один TCP-пакет; подтверждений нет, слот свободен сразу.
+   uart_send ждёт последний байт, а ch.now взят до отправки: паузу WF_GAP_MS отсчитывает следующий проход. */
 static void wifi_send(void)
 {
   wifi_note(1, "TX ", ch.frame_count);
   uart_send(frame, ch.frame_count);
-  ch.tx_state = TX_FREE; ch.frame_count = 0; ch.sent = ch.acked = 0; wf.sent_at = ch.now;
+  ch.tx_state = TX_FREE; ch.frame_count = 0; ch.sent = ch.acked = 0; wf.f.sent = 1;
   wifi_unhold();
 }
 /* Назначить паузу перед новым включением; слот и окно как после закрытия TCP. */
@@ -348,6 +350,8 @@ static void wifi_next(void)
    модем обслуживает только служебные запросы. */
 static void wifi_poll(void)
 {
+  /* Отсчёт от конца кадра: после кадра 534 Б (46 мс) мост склеивал USRAT+TCPLK с данными для сервера (плата №1 21.10). */
+  if (wf.f.sent) { wf.f.sent = 0; wf.sent_at = ch.now; }
   if (ch.operation == OP_QUERY) channel_completed();
   if (wf.paused == WF_CAMERA_HELD) {
     if (uart_isReceiving()) wf.sent_at = ch.now;

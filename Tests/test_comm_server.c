@@ -740,4 +740,4 @@ static void wifi_server_tests(void)
   }
 }
 int main(void)
-{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); wifi_server_tests(); modem_stall_tests(); wifi_server_refusal_tests(); return 0; }
+{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); wifi_server_tests(); modem_stall_tests(); wifi_camera_link_tests(); wifi_server_refusal_tests(); return 0; }

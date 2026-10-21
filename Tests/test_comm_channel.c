@@ -151,6 +151,9 @@ static uint16_t w_outbox_count, w_body_count, w_take;
 static unsigned w_frames, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands, w_plain, w_stray;
 static uint8_t w_cmd_mode, w_next_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_tcpto, w_mix;
 static uint8_t w_enabled, w_silent_dis, w_receiving;
+/* w_wire: кадр занимает линию 10 бит на байт при 115200, как блокирующий uart_send; команда ближе 20 мс
+   к концу кадра (Pack Interval моста) уходит серверу как данные и остаётся без ответа (w_glued). */
+static uint8_t w_wire; static uint32_t w_wire_end; static unsigned w_glued;
 // Положить байты моста в текущий приёмный буфер канала.
 static void w_push(const void *s, uint16_t n)
 {
@@ -168,9 +171,11 @@ void uart_send(uint8_t *buf, uint16_t size)
 {
   CHECK(size >= 1 && size <= sizeof(w_outbox));
   bool usr = size >= 3 && !memcmp(buf, "USR", 3);
-  if (!w_cmd_mode && !usr) { /* прозрачный режим: байты уходят серверу */
-    ++w_frames;
+  bool glued = w_wire && usr && !w_cmd_mode && sim_now - w_wire_end < 20u;
+  if (!w_cmd_mode && (!usr || glued)) { /* прозрачный режим: байты уходят серверу */
+    ++w_frames; w_glued += glued;
     if (w_tcp && w_enabled) { CHECK(w_outbox_count + size <= sizeof(w_outbox)); memcpy(w_outbox + w_outbox_count, buf, size); w_outbox_count = (uint16_t)(w_outbox_count + size); }
+    if (w_wire && !glued) { sim_now += size * 10000u / 115200u; w_wire_end = sim_now; }
     return;
   }
   if (w_cmd_mode && usr) { ++w_stray; return; } /* командный режим: префикс мосту неизвестен, ответа нет */
@@ -217,7 +222,7 @@ static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
   w_rx = NULL; w_cap = w_count = w_outbox_count = w_body_count = w_take = 0;
   w_frames = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_plain = w_stray = 0;
   w_cmd_mode = w_next_mode = cmd_mode; w_tcp = tcp; w_dead = w_mix = 0; w_ping_ok = w_ap = w_tcpto = 1;
-  w_enabled = 1; w_silent_dis = w_receiving = 0;
+  w_enabled = 1; w_silent_dis = w_receiving = w_wire = 0; w_wire_end = 0; w_glued = 0;
   w_netp[0] = w_ssid[0] = w_key[0] = 0;
   sim_start(); comm_channel_init(w_event); wf.f.ready = 0; /* новый стенд - ненастроенный мост */
   comm_channel_receive(w_binary, w_read_done);
@@ -258,6 +263,17 @@ static void channel_wifi_tests(void)
   /* Звонок не трогает канал моста. */
   comm_channel_call(true); CHECK(comm_tx_acquire(&capacity) != NULL); comm_tx_release(); comm_channel_call(false);
   CHECK(comm_channel_ready() && !comm_channel_expected());
+  /* Фото кадрами по 534 Б (46 мс на линии) через проход: проверка TCPLK не уходит серверу вместе с данными
+     и сеанс не переоткрывается (плата №1 21.10: USRAT+TCPLK в хвосте куска фото, таймаут, новый сеанс). */
+  { unsigned opened = channel_opened, closed = channel_closed, links = w_links; w_wire = 1;
+    for (unsigned k = 0; k < 400; ++k) {
+      w_outbox_count = 0;
+      if (k % 2 == 0 && (slot = comm_tx_acquire(&capacity)) != NULL) { memset(slot, 0x55, 534); CHECK(comm_tx_commit(534)); }
+      sim_tick();
+    }
+    for (unsigned i = 0; i < 600 && w_links == links; ++i) sim_tick();
+    w_wire = 0; w_outbox_count = 0;
+    CHECK(!w_glued && channel_opened == opened && channel_closed == closed && w_links > links && comm_channel_ready()); }
   /* Потеря TCP замечена проверкой TCPLK не позже 5 с: закрытие, новое открытие после возврата без перезапуска. */
   w_tcp = 0;
   for (unsigned i = 0; i < 600 && !channel_closed; ++i) sim_tick();
