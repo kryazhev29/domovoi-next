@@ -68,7 +68,8 @@ with TemporaryDirectory(prefix='domovoi-host-') as d:
         user=source('User/c/user_*.c');strings=source('User/user_str_fun.c')
         code='\n'.join(function(strings,n) for n in ('skipchar','user_strcpy','user_parse_pin'))+'\n'
         code+=re.search(r'enum \{ UNIVERSAL_PIN_BASE[^}]*\};',user).group(0)+'\n'
-        code+='\n'.join(function(user,n) for n in ('user_pin_valid','sms_command','user_last10digitsnumber','user_sendsms','user_comm_server','user_smsreceived','log_addSystemValue','user_comm_link','user_comm_balance','user_comm_low_signal'))
+        code+='\n'.join(function(user,n) for n in ('user_pin_valid','sms_command','user_last10digitsnumber','user_sendsms','user_comm_server','user_smsreceived','log_addSystemValue','user_comm_link','user_comm_balance','user_comm_ussd','user_comm_low_signal'))
+        code=re.search(r'enum \{ MODEM_TYPE_AUTO[^}]*\};',source('Modules/modem_slm336.h')).group(0)+'\n'+code
         links=re.search(r'enum \{ COMM_LINK_UP[^}]*\};',source('Modules/comm_server.h')).group(0)
         code=re.search(r'enum \{ SMS_UNKNOWN[^}]*\};',user).group(0)+'\n'+code
         types=typedefs(source('structures.h'),'logSystem_e','logControl_e','codeType_e')+'\n'+links

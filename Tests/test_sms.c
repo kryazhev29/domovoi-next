@@ -16,10 +16,10 @@ static struct { uint8_t before[16]; char bytes[128]; uint8_t after[16]; } scratc
 #define tempStrBuffer scratch.bytes
 static char debug_text[128];
 static unsigned recv_debug_lines;
-static struct { uint32_t pinCode; struct { bool onCmdServer; } rele[2]; uint8_t useServer1, useServer2; } config;
+static struct { uint32_t pinCode; struct { bool onCmdServer; } rele[2]; uint8_t useServer1, useServer2; char ussdBalance[8]; } config;
 static struct {
     char IMEIGSM[16]; unsigned csq, connected, firmwareVersion, timeToReset, netType;
-    uint16_t balance;
+    uint16_t balance; uint8_t moduleType;
     struct { uint8_t handUnBlock, sheduleUnBlock, autoregistration, openAll; bool smsToAdmin; } triggers;
 } device;
 /* Адрес канала связи (0 - основной, 1 - резервный) и события журнала без SMS. */
@@ -174,6 +174,9 @@ static void test_journal(void)
     init(); user_comm_balance(100); CHECK(!value_events && device.balance == 100);
     init(); user_comm_balance(70000); CHECK(!value_events && device.balance == 65000);
     init(); user_comm_balance(-9999999); CHECK(value_events == 1 && !strcmp(value_id, "-9999999"));
+    /* Код баланса: на SLM336 запрос не шлётся (USSD рвёт данные), на другом модеме - из настроек. */
+    init(); strcpy(config.ussdBalance, "*105#"); device.moduleType = MODEM_TYPE_SLM336; CHECK(!*user_comm_ussd());
+    device.moduleType = MODEM_TYPE_AUTO; CHECK(!strcmp(user_comm_ussd(), "*105#"));
     init(); user_comm_low_signal(9); CHECK(value_events == 1 && last_event == LOG_SYS_LOWSIGNAL && !strcmp(value_id, "9"));
     puts("comm journal: events 11, 12, 14-19 by server number, 37 balance text, 38 signal text passed");
 }
