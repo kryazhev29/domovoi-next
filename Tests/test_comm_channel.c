@@ -309,6 +309,17 @@ static void channel_wifi_tests(void)
   comm_channel_wifi_changed();
   for (unsigned i=0;i<2000 && !comm_channel_ready();++i) sim_tick();
   CHECK(strstr(w_netp,"9876,new.example") && w_restarts==2 && comm_channel_ready());
+  /* Мост сообщает о своём подключении уже после открытия канала (плата №1 22.10: канал закрыт через 32 мс
+     после TCPLK=on, до регистрации): до регистрации событие сеанс не закрывает, после — закрывает. */
+  { unsigned closed=channel_closed; const char *event="+EVENT=SOCKA_ON\r\n";
+    w_push(event,(uint16_t)strlen(event));
+    for (unsigned i=0;i<30;++i) sim_tick();
+    CHECK(channel_closed==closed && ch.wifi && comm_channel_ready());
+    comm_channel_registered(); w_push(event,(uint16_t)strlen(event));
+    for (unsigned i=0;i<30;++i) sim_tick();
+    CHECK(channel_closed==closed+1 && ch.wifi);
+    for (unsigned i=0;i<5000 && !comm_channel_ready();++i) sim_tick();
+    CHECK(comm_channel_ready()); }
   CHECK(comm_channel_probe(COMM_CH_PING));
   for (unsigned i=0;i<10;++i) sim_tick();
   CHECK(w_pings==1 && comm_channel_probe_result()==COMM_CH_PING);

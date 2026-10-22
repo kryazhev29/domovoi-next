@@ -2,7 +2,10 @@
    DR164: прозрачный транспорт, RS-485 принадлежит только мосту либо камере.
    Проверено на плате №1 21.10.2026 (1792552760): прежний прозрачный обмен.
    Изменено 2026-10-21 (task/wifi-one): локальный выбор, выключенное ожидание,
-   фоновая проверка без разрыва GSM и границы TCP; на плате не проверено. */
+   фоновая проверка без разрыва GSM и границы TCP; на плате не проверено.
+   Проверено на плате №1 22.10.2026 (1792631158): настройка моста, WSLK/PING, закрытие GSM, регистрация на gate
+   через мост (со второй попытки), 5 мин 60 TCPLK=on без переоткрытий.
+   Изменено 2026-10-22: событие моста до регистрации не закрывает сеанс — на плате не проверено. */
 #ifndef __UART_H
 void uart_rebuffer(uint8_t *, uint16_t);
 void uart_send(uint8_t *, uint16_t);
@@ -154,7 +157,12 @@ static uint16_t wifi_deliver(const uint8_t *p, uint16_t n)
   ch.flags.read_active = 1; ch.bytes = 0;
   uint16_t used = channel_binary(p, n);
   channel_read_done(0);
-  if (wifi_boundary(p,used)) comm_channel_reopen(0);
+  /* SOCKA_ON/OFF до регистрации — это открываемый сейчас сеанс (событие может прийти после TCPLK=on),
+     после регистрации — мост переподключился сам, сервер плату уже не помнит. Код 11: 0 до, 1 после. */
+  if (wifi_boundary(p,used)) {
+    usb_log_value(17,11,ch.flags.registered_session);
+    if (ch.flags.registered_session) comm_channel_reopen(0);
+  }
   return used;
 }
 
