@@ -38,11 +38,14 @@ static bool uart_addbyte(uint8_t data)
 
 #pragma call_graph_root="interrupt"
 // Принять аппаратный байт RS-485 в единственный буфер.
+// RXNEIE вызывает прерывание и по ORE (RM0008 §27.6.1); ORE снимает только чтение SR, затем DR,
+// иначе ORE без RXNE повторяет прерывание до сторожевого таймера. Байт в DR при ORE целый.
 void USART1_IRQHandler(void)
 {
-  if (USART1->SR & USART_SR_RXNE) {
-    USART1->SR = (uint16_t)~USART_SR_RXNE;
-    uart_addbyte(USART1->DR);
+  uint32_t sr = USART1->SR;
+  if (sr & (USART_SR_RXNE | USART_SR_ORE)) {
+    uint8_t data = (uint8_t)USART1->DR;
+    if (sr & USART_SR_RXNE) uart_addbyte(data);
   }
 }
 
@@ -79,14 +82,20 @@ bool uart_init(uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t 
 }
 
 // Сменить приёмный буфер атомарно относительно ISR; порт и скорость не трогаются.
-void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize)
+// used — уже разобранные байты: пришедшие после них во время разбора переносятся в начало
+// нового буфера (UINT16_MAX — ничего не переносить).
+void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize, uint16_t used)
 {
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
+  uint16_t left = uart.received > used ? (uint16_t)(uart.received - used) : 0u;
+  if (left > bfsize) left = bfsize;
+  // Перенос к началу: прямое копирование верно и внутри того же буфера; короче вызова memmove.
+  for (uint16_t i = 0; i < left; ++i) rxbuffer[i] = uart.rxbuffer[used + i];
   uart.rxbuffer = rxbuffer;
   uart.bfsize = bfsize;
-  uart.received = uart.twait = 0;
-  uart.state = uart.receiving = 0;
+  uart.received = left;
+  if (!left) uart.twait = uart.state = uart.receiving = 0;
   __set_PRIMASK(mask);
 }
 

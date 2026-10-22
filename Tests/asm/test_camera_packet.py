@@ -33,6 +33,15 @@ def uart_packet(size):
     assert m.call('uart_received') == size
     assert bytes(m.u.mem_read(buffer, size + 8)) == data + b'\xa5' * 8
     m.call('uart_clear'); assert m.call('uart_received') == 0
+    # ORE без RXNE: DR читается (иначе прерывание повторяется до сторожевого таймера), байта нет;
+    # ORE вместе с RXNE: байт в DR целый и принимается.
+    from unicorn import UC_HOOK_MEM_READ
+    reads = []
+    m.u.hook_add(UC_HOOK_MEM_READ, lambda *a: reads.append(1), begin=usart + 4, end=usart + 7)
+    m.write(usart, 0x08); m.write(usart + 4, 0x77); m.call('USART1_IRQHandler')
+    assert reads and m.call('uart_received') == 0
+    m.write(usart, 0x28); m.call('USART1_IRQHandler')
+    assert m.call('uart_received') == 1 and m.u.mem_read(buffer, 1) == b'\x77'
 
 
 def stream(m, number=0, offset=0):

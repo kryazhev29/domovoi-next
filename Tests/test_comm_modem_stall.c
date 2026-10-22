@@ -132,3 +132,31 @@ static void wifi_server_refusal_tests(void)
   }
   puts("Wi-Fi registration silence/rejection: growing pauses, GSM after one connection, return in 10 min PASS");
 }
+
+/* Резервный GSM потерял интернет: QIOPEN 566, ping и DNS без ответа, лестница доходит до паузы
+   перезапуска модема (канал в проверке). Проверенный WSLK+PING мост забирает связь, не дожидаясь паузы. */
+static void wifi_return_gsm_down_tests(void)
+{
+  stall_start(); stall_keep_online = 0; stall_drop_registration = 1;
+  comm_server_no_internet(comm_recover_no_internet); rc.first = 1;
+  comm_channel_reopen(0);
+  for (unsigned i = 0; (ch.wifi || !comm_server_online()) && i < 30000; ++i) stall_tick();
+  CHECK(!ch.wifi && comm_server_online());
+  stall_drop_registration = 0; w_ap = 0; /* пока GSM падает, точки доступа нет */
+  sim_open_error = 1; ping_success = dns_success = 0; socket_model = false;
+  sim_feed("+QIURC: \"closed\",0\r\n");
+  uint32_t start = sim_now;
+  while (!(ch.state == CH_PROBE && rc.state == RC_WAIT && rc_left(sim_now) > 300000u)) {
+    CHECK(!ch.wifi && sim_now - start < 1800000u); stall_tick();
+  }
+  uint32_t wait = rc_left(sim_now);
+  CHECK(!comm_server_online());
+  w_ap = 1; wf.fell_at = sim_now - wifi_delay(); uint32_t back = sim_now; unsigned registrations = stall_registrations;
+  for (unsigned i = 0; (!ch.wifi || !comm_server_online()) && i < 6000; ++i) stall_tick();
+  CHECK(stall_registrations == registrations + 1 && ch.state == CH_OPEN);
+  printf("Wi-Fi return while GSM waits restart: GSM down %u s, modem restart in %u s, Wi-Fi online after %u ms\n",
+         (back - start) / 1000u, wait / 1000u, sim_now - back);
+  CHECK(ch.wifi && comm_server_online() && rc.state == RC_WAIT); /* перезапуск модема ещё впереди */
+  sim_open_error = 0; ping_success = dns_success = 1; test_config.wifi = 0;
+  puts("Wi-Fi return: GSM without internet waiting modem restart does not hold the bridge PASS");
+}

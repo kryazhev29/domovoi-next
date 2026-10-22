@@ -5,9 +5,12 @@
    фоновая проверка без разрыва GSM и границы TCP; на плате не проверено.
    Проверено на плате №1 22.10.2026 (1792631158): настройка моста, WSLK/PING, закрытие GSM, регистрация на gate
    через мост (со второй попытки), 5 мин 60 TCPLK=on без переоткрытий.
-   Изменено 2026-10-22: событие моста до регистрации не закрывает сеанс — на плате не проверено. */
+   Изменено 2026-10-22: событие моста до регистрации не закрывает сеанс — на плате не проверено.
+   Изменено 2026-10-22 (разбор отчёта Аргона): байты, пришедшие во время разбора, переносятся, а не стираются;
+   при GSM приём моста не уходит серверу; GSM без сеанса (отказ, проверка, неготовый модем) не держит
+   возврат на мост до перезапуска модема — на плате не проверено. */
 #ifndef __UART_H
-void uart_rebuffer(uint8_t *, uint16_t);
+void uart_rebuffer(uint8_t *, uint16_t, uint16_t);
 void uart_send(uint8_t *, uint16_t);
 uint16_t uart_received(void);
 uint8_t uart_getstate(void);
@@ -35,11 +38,13 @@ static uint8_t wf_line[96];
 /* mode: 0 нет моста, 1 только GSM, 2 Wi-Fi с резервом GSM, 3 только Wi-Fi. */
 WF_INLINE static uint8_t wifi_mode(void) { return (uint8_t)comm_modem_settings()->number(SLM_CFG_WIFI); }
 static uint32_t wifi_delay(void) { return (wf.step < 2 ? 1u : wf.step == 2 ? 3u : 6u) * (uint32_t)WF_RETRY_MS; }
-static void wifi_rebuffer(void)
+/* used — разобранная часть приёма; пришедшее после неё во время разбора переносится в новый буфер. */
+static void wifi_keep(uint16_t used)
 {
   wf.buffer=ch.wifi && !wf.setup && ch.tx_state == TX_FREE ? frame : wf_line;
-  uart_rebuffer(wf.buffer,wf.buffer == frame ? sizeof(frame) : sizeof(wf_line)); wf.pos.head=0;
+  uart_rebuffer(wf.buffer,wf.buffer == frame ? sizeof(frame) : sizeof(wf_line),used); wf.pos.head=0;
 }
+static void wifi_rebuffer(void) { wifi_keep(UINT16_MAX); }
 /* Фоновый AT использует wf_line и не запирает слот GSM. */
 static bool wifi_locked(void)
 { return wf.setup || (ch.wifi && (wf.op || (ch.tx_state == TX_FREE && uart_received()))); }
@@ -176,21 +181,21 @@ static void wifi_strip(void)
   wifi_deliver(p, wf.pos.at); wifi_deliver(p + end, (uint16_t)(n - end));
 }
 
+/* При GSM канал открыт модемом: строки моста (EVENT) серверу не отдаются, их стирает следующая команда мосту. */
 WF_INLINE static void wifi_rx(void)
 {
-  if (ch.state != CH_OPEN || wf.op || wf.setup || ch.tx_state != TX_FREE || !uart_getstate()) return;
+  if (!ch.wifi || ch.state != CH_OPEN || wf.op || wf.setup || ch.tx_state != TX_FREE || !uart_getstate()) return;
   uint16_t n = uart_received();
-  if (n > wf.pos.head) wf.pos.head = (uint16_t)(wf.pos.head + wifi_deliver(frame + wf.pos.head, (uint16_t)(n - wf.pos.head)));
-  if (wf.pos.head >= n) wifi_rebuffer();
+  if (n > wf.pos.head) wf.pos.head = (uint16_t)(wf.pos.head + wifi_deliver(wf.buffer + wf.pos.head, (uint16_t)(n - wf.pos.head)));
+  if (wf.pos.head >= n) wifi_keep(n);
 }
 
-WF_INLINE static void wifi_hold(void) { wifi_rebuffer(); }
+/* wifi_locked выдаёт слот только при пустом приёме: пришедшее после проверки уходит в wf_line. */
+WF_INLINE static void wifi_hold(void) { wifi_keep(0); }
 
 static void wifi_unhold(void)
 {
-  uint16_t n = uart_received();
-  wifi_deliver(wf_line, n);
-  wifi_rebuffer();
+  wifi_keep(wifi_deliver(wf_line, uart_received()));
 }
 
 WF_INLINE static void wifi_send(void)
@@ -236,11 +241,17 @@ WF_INLINE static bool wifi_retry(void)
   if (ch.wifi || wf.mode < 2) return false;
   if (wf.mode == 3) wf.f.resume=1;
   if (wf.f.resume) {
-    if (ch.state == CH_PAUSE || ch.state == CH_INITIAL) {
+    /* GSM без сеанса ждёт перезапуска модема до 10/30/60 мин (отказ, неготовый модем) — мост его не ждёт.
+       Сокет GSM, открытый или после отказа QIOPEN, сначала закрывается штатно, если модем отвечает. */
+    if (ch.state == CH_PAUSE || ch.state == CH_INITIAL || ch.state == CH_FAULT
+        || (ch.state != CH_OPEN && !comm_modem_ready())) {
+      if (ch.state != CH_INITIAL) wifi_pause(0);
       ch.wifi=1; wf.f.resume=0; wf.rx=0; ch.reopen_pause=0; ch.connections=0;
+      ch.operation=OP_NONE; ch.probe=ch.probe_active=0; /* запрос и проверка GSM мосту не принадлежат */
       wifi_rebuffer(); return true;
     }
-    if (ch.state == CH_OPEN && ch.tx_state == TX_FREE && ch.sent == ch.acked && !ch.operation && !ch.call.active)
+    if (!ch.operation && !ch.call.active && (ch.state == CH_PROBE
+        || (ch.state == CH_OPEN && ch.tx_state == TX_FREE && ch.sent == ch.acked)))
       comm_channel_reopen(0);
     return false;
   }

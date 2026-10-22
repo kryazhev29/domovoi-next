@@ -164,7 +164,13 @@ static void w_push(const void *s, uint16_t n)
   memcpy(w_rx + w_count, s, n); w_count = (uint16_t)(w_count + n);
 }
 static void w_text(const char *s) { w_push(s, (uint16_t)strlen(s)); }
-void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize) { w_rx = rxbuffer; w_cap = bfsize; w_count = 0; }
+void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize, uint16_t used)
+{
+  uint16_t left = w_rx && w_count > used ? (uint16_t)(w_count - used) : 0u;
+  if (left > bfsize) left = bfsize;
+  if (left) memmove(rxbuffer, w_rx + used, left);
+  w_rx = rxbuffer; w_cap = bfsize; w_count = left;
+}
 uint16_t uart_received(void) { return w_count; }
 uint8_t uart_getstate(void) { return w_count != 0; }
 bool uart_isReceiving(void) { return w_receiving != 0; }
@@ -208,12 +214,16 @@ void uart_send(uint8_t *buf, uint16_t size)
   if (!strcmp(c, "AT+PING=ya.ru")) { ++w_pings; w_text(w_ping_ok ? "+ok=Success:32 bytes\r\n\r\n" : "+ok=Timeout\r\n\r\n"); return; }
   CHECK(0); /* неизвестная мосту команда */
 }
+/* w_during: байты, пришедшие по линии, пока приёмник разбирает предыдущие (прерывание UART во время разбора). */
+static const char *w_during;
 // Приёмник данных сервера через мост: собирает тело без проверки источника, не больше w_take за раз.
 static uint16_t w_binary(const uint8_t *p, uint16_t n)
 {
   if (w_take && n > w_take) n = w_take;
   CHECK(w_body_count + n <= sizeof(w_body));
-  memcpy(w_body + w_body_count, p, n); w_body_count = (uint16_t)(w_body_count + n); return n;
+  memcpy(w_body + w_body_count, p, n); w_body_count = (uint16_t)(w_body_count + n);
+  if (w_during) { const char *s = w_during; w_during = NULL; w_text(s); }
+  return n;
 }
 static void w_read_done(uint16_t n, uint8_t reason) { (void)n; CHECK(!reason); ++w_reads; }
 static void w_event(uint8_t kind, uint8_t value) { if (kind == COMM_CH_OPEN_FAILED) ++w_failed; channel_model_event(kind, value); }
@@ -226,7 +236,7 @@ static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
   w_rx = NULL; w_cap = w_count = w_outbox_count = w_body_count = w_take = 0;
   w_frames = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_plain = w_stray = 0;
   w_cmd_mode = w_next_mode = cmd_mode; w_tcp = tcp; w_dead = w_mix = 0; w_ping_ok = w_ap = w_tcpto = 1;
-  w_enabled = 1; w_silent_dis = w_receiving = w_wire = 0; w_wire_end = 0; w_glued = 0;
+  w_enabled = 1; w_silent_dis = w_receiving = w_wire = 0; w_wire_end = 0; w_glued = 0; w_during = NULL;
   w_netp[0] = w_ssid[0] = w_key[0] = 0;
   sim_start(); comm_channel_init(w_event); wf.f.ready = 0; /* новый стенд - ненастроенный мост */
   comm_channel_receive(w_binary, w_read_done);
@@ -260,6 +270,15 @@ static void channel_wifi_tests(void)
   w_body_count = 0; slot = comm_tx_acquire(&capacity); CHECK(slot); w_push("QRS", 3);
   memcpy(slot, "HI", 2); CHECK(comm_tx_commit(2)); sim_tick();
   CHECK(w_frames == 2 && w_body_count == 3 && !memcmp(w_body, "QRS", 3));
+  /* Начало следующего пакета, пришедшее во время разбора предыдущего, не стирается очисткой буфера:
+     при свободном слоте и при раздаче принятого во время передачи кадра. */
+  w_body_count = 0; w_during = "NEXT"; w_push("PREV", 4);
+  for (unsigned i = 0; i < 3; ++i) sim_tick();
+  CHECK(w_body_count == 8 && !memcmp(w_body, "PREVNEXT", 8) && !w_count && !w_during);
+  w_body_count = 0; slot = comm_tx_acquire(&capacity); CHECK(slot); w_push("QRS", 3); w_during = "TUV";
+  memcpy(slot, "HI", 2); CHECK(comm_tx_commit(2));
+  for (unsigned i = 0; i < 3; ++i) sim_tick();
+  CHECK(w_frames == 3 && w_body_count == 6 && !memcmp(w_body, "QRSTUV", 6) && !w_count && !w_during);
   /* Ответ моста на TCPLK среди данных сервера: данные до и после отдаются приёмнику. */
   w_body_count = 0; w_mix = 1;
   for (unsigned i = 0; i < 600 && !w_body_count; ++i) sim_tick();
@@ -412,6 +431,17 @@ static void channel_wifi_tests(void)
   wifi_model_reset(0,1); test_config.wifi=1; comm_channel_wifi_changed();
   for (unsigned i=0;i<3000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
   CHECK(!ch.wifi && comm_channel_ready() && comm_channel_wifi() && !w_enabled && wf.f.off);
+  /* Событие моста при работе через GSM не попадает в приёмник сервера (раньше уходил старый кадр слота). */
+  { unsigned body=w_body_count; memcpy(frame,"SLDN",4); w_text("+EVENT=CON_OFF\r\n");
+    for (unsigned i=0;i<30;++i) sim_tick();
+    CHECK(w_body_count==body && comm_channel_ready()); }
+  /* GSM в отказе ждёт перезапуска модема (до 10/30/60 мин): ожившая сеть Wi-Fi забирает связь сразу. */
+  wifi_model_reset(0,1); w_dead=1;
+  for (unsigned i=0;i<3000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready());
+  ch.state=CH_FAULT; w_dead=0; wf.fell_at=sim_now-wifi_delay();
+  for (unsigned i=0;i<2000 && !(ch.wifi && comm_channel_ready());++i) sim_tick();
+  CHECK(ch.wifi && comm_channel_ready() && !comm_channel_fault());
   test_config.wifi=0; w_dead=0;
   puts("comm_wifi: session/off pause/background probe/recovery/10-30-60/NETP/disable debt/only-WiFi PASS");
 }

@@ -25,11 +25,12 @@ if mode in ('adc','all'):
         if a==0x40012408:m.write(a,m.read(a)&~8)
     m.u.hook_add(UC_HOOK_MEM_READ,reset_calibration);m.call('adc_init',budget=1500000)
     assert not m.read(0x40012408)&1,'B34 second calibration stuck'
-    for cr2 in (1,1|(1<<22)):
-        m=Machine();m.init();m.write(0x40012408,cr2)
+    # sr=4: JEOC прошлого замера (снимается только программно) не выдаётся за новый.
+    for cr2,sr in ((1,0),(1|(1<<22),0),(1,4)):
+        m=Machine();m.init();m.write(0x40012408,cr2);m.write(0x40012400,sr)
         assert not m.call('adc_startInjectedConvertion',budget=1500000)
         assert not m.read(0x40012408)&1,'B34 failed conversion left ADC enabled'
-    print('B34 IAR ADC calibration/JEOC stuck: bounded, conversion rejected PASS')
+    print('B34 IAR ADC calibration/JEOC stuck or stale: bounded, conversion rejected PASS')
 if mode in ('clock','all'):
     for cr in (0,0x20000,0x2020000):
         m=Machine();m.init();m.write(0x40021000,cr);resets=[]
@@ -47,7 +48,13 @@ if mode in ('healthy','all'):
     def calibration(u,access,a,n,value,_):
         if a==0x40012408:m.write(a,m.read(a)&~12)
     m.u.hook_add(UC_HOOK_MEM_READ,calibration);m.call('adc_init');assert m.call('adc_ready')
-    m.write(0x40012400,6);assert m.call('adc_startInjectedConvertion')
+    from unicorn import UC_HOOK_MEM_WRITE
+    # Моделирует конец преобразования: JSWSTART выставляет JEOC.
+    def convert(u,access,a,n,value,_):
+        if value&(1<<21):m.write(0x40012400,m.read(0x40012400)|4)
+    hook=m.u.hook_add(UC_HOOK_MEM_WRITE,convert,begin=0x40012408,end=0x4001240b)
+    m.write(0x40012400,2);assert m.call('adc_startInjectedConvertion')
+    m.u.hook_del(hook)
     m.write(0x40012400,0);before=bytes(m.u.mem_read(m.addr('device'),m.map_size('device')))
     m.call('user_readinputs',budget=1500000)
     assert bytes(m.u.mem_read(m.addr('device'),m.map_size('device')))==before

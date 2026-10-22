@@ -402,8 +402,8 @@ void comm_channel_poll(uint32_t now_ms)
 {
   ch.now = now_ms;
   comm_modem_poll(now_ms);
-  if (ch.state == CH_FAULT) return;
-  if (comm_channel_wifi()) { wifi_poll(); if (ch.wifi) return; } /* мост обслуживается и при GSM */
+  if (comm_channel_wifi()) { wifi_poll(); if (ch.wifi) return; } /* мост обслуживается и при GSM, и при его отказе */
+  if (ch.state == CH_FAULT) { wifi_retry(); return; }
   if (ch.operation) channel_completed();
   if (wifi_retry()) return; /* WSLK/PING без разрыва GSM; отказ регистрации: 10/30/60 мин. */
   if (ch.state == CH_INITIAL) {

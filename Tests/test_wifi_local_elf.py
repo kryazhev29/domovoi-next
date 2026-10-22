@@ -127,6 +127,13 @@ def run():
     assert m.wifi()==bytes((0,0,1,0x57)),'shutdown debt not durable'
     m.checked('user_comm_wifi_stopped',0);assert m.wifi()[2]==1
     m.checked('user_comm_wifi_stopped',1);assert m.wifi()[2]==0
+    # Долг выключения только при уходе с Wi-Fi: в «Только GSM» TCP моста гасится при каждом запуске.
+    m=WifiMachine();m.u.mem_write(m.device+d['wifiModem'],bytes((1,0,0,0x57)));m.command_wifi(b'\0\0');m.finish()
+    assert m.wifi()==bytes((0,0,0,0x57)),'needless shutdown debt'
+    for before,debt in (((1,0,0,0x57),0),((1,1,0,0x57),1),((1,2,0,0x57),1),((0,0,0,0x57),0),((1,0,1,0x57),1)):
+        m=WifiMachine();m.u.mem_write(m.device+d['wifiModem'],bytes(before))
+        m.stubs[m.addr('log_addSystemValue')]=lambda:m.ret(1)
+        m.checked('user_default_values',0);assert m.wifi()==bytes((0,0,debt,0x57)),(before,m.wifi())
     # РЎС‚Р°СЂС‹Рµ / СЃС‚С‘СЂС‚С‹Рµ reserve РЅРµ РІРєР»СЋС‡Р°СЋС‚ РјРѕРґРµРј.
     for raw in (bytes(4),b'\xff'*4,bytes((1,3,0,0x57)),bytes((2,1,0,0x57))):
         m=WifiMachine();saved=0x21000400;m.u.mem_write(saved,bytes(512));m.u.mem_write(saved+d['wifiModem'],raw)

@@ -139,7 +139,7 @@ void user_default_values(uint8_t source)
 
   device.loadDefaultConfig = 1;
   device.moduleType = MODEM_TYPE_AUTO;
-  device.wifiStop |= device.wifiModem != 0;
+  device.wifiStop |= device.wifiModem && device.wifiMode; /* как USB 114: долг только при уходе с Wi-Fi */
   device.wifiModem = device.wifiMode = 0;
   device.wifiMark = 0x57;
   device.status.defaultConfig = 1;

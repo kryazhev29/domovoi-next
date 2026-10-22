@@ -65,6 +65,8 @@ uint16_t adc_getinjectedvalue_mV (uint8_t ind)
 uint8_t adc_startInjectedConvertion(void)
 {
   if (!adc_ready()) return 0;
+  // JEOC снимается только программно (RM0008 §11.12.1), иначе ожидание видит флаг прошлого замера.
+  ADC1->SR = ~(uint32_t)ADC_SR_JEOC;
   ADC1->CR2 |= ADC_CR2_JEXTTRIG | ADC_CR2_JSWSTART;
   return adc_wait();
 }

@@ -86,7 +86,8 @@ static void usb_wifi_command(uint8_t *ptr, uint16_t len, uint8_t uniqId)
   }
   {
     uint8_t old[4]; memcpy(old, &device.wifiModem, 4);
-    device.wifiStop |= device.wifiModem && (!ptr[5] || !ptr[6]);
+    /* Долг выключения — только при уходе с Wi-Fi: в «Только GSM» TCP моста уже выключен при каждом запуске. */
+    device.wifiStop |= device.wifiModem && device.wifiMode && (!ptr[5] || !ptr[6]);
     device.wifiModem = ptr[5]; device.wifiMode = ptr[6]; device.wifiMark = 0x57;
     store_command_start(114, CH_USB, uniqId);
     memcpy(&device.wifiModem, old, 4); // Применение только после verify.
