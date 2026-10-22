@@ -275,7 +275,7 @@ static void usb_rx_consume(uint16_t length)
 {
   uint16_t count = usb_buffer_count, expired = usb_rx_expired;
   count -= length;
-  memmove(usb_buffer, usb_buffer + length, count);
+  if (count) memmove(usb_buffer, usb_buffer + length, count);
   usb_buffer_count = count;
   usb_rx_expired = expired > length ? expired - length : 0;
   if (count == 0) usb_rx_silence = 0;

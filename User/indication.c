@@ -1,6 +1,6 @@
 // Доработка: Кряжев А., 2026
 // Индикация платы v5: два используемых светодиода и 16-битные рисунки.
-// Сдвиг рисунка выполняется каждые 100 мс, перезагрузка — после 16 шагов.
+// Фаза рисунка меняется каждые 100 мс, период — 16 шагов.
 // Рисунок меняется при загрузке, аппаратные уровни — на очередном шаге.
 
 #include "indication.h"
@@ -11,7 +11,6 @@ static void led_set_port(unsigned char data);
 
 Int8U led_shiftindex[LEDSCOUNT]; // Индекс выбора состояния светодиода из регистра
 Int16U led_reg[LEDSCOUNT]; // Регистр состояния светодиодов
-Int16U led_set[LEDSCOUNT]; // Регистр установки значения
 
 // Обновить фазу индикации через 100 мс.
 void led_fun100ms (void)
@@ -29,7 +28,6 @@ void led_fun100ms (void)
     if ((++led_shiftindex[i]) >= 16)
     {
       led_shiftindex[i] = 0;
-      led_reg[i] = led_set[i]; // перезагружаем регистр
     }
   }
 
@@ -39,8 +37,8 @@ void led_fun100ms (void)
 // Загрузить рисунок выбранного светодиода.
 void led_load (Int8U led, Int16U val)
 {
-  if (led_set[led] != val){
-    led_set[led] = val;
+  if (led_reg[led] != val){
+    led_reg[led] = val;
     led_shiftindex[led] = 0;
   }
 }

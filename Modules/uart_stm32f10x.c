@@ -4,7 +4,6 @@
 // Граница приёма проверяет ёмкость; ожидание освобождения TX ограничено.
 
 #include "uart_stm32f10x.h"
-#include <string.h>
 
 typedef struct {
   uint8_t *rxbuffer;
@@ -75,7 +74,6 @@ bool uart_init(uint32_t Baudrate, uint8_t Stopbits, uint8_t *rxbuffer, uint16_t 
   uint32_t divider = (25u * clock) / (4u * Baudrate);
   uint32_t integer = divider / 100u;
   USART1->BRR = (integer << 4) | (((divider - 100u * integer) * 16u + 50u) / 100u & 15u);
-  SCB->AIRCR = 0x05FA0600u;
   board_irq_enable(USART1_IRQn, 0xF0u);
   USART1->CR1 |= USART_CR1_UE;
   return true;
@@ -123,7 +121,7 @@ void uart_clear(void)
   if (uart.rxbuffer == NULL) return;
   uint32_t mask = __get_PRIMASK();
   __disable_irq();
-  memset(uart.rxbuffer, 0, uart.received);
+  // Владельцы разбирают только received байт; содержимое за границей кадра незначимо.
   uart.received = uart.twait = 0;
   uart.state = uart.receiving = 0;
   __set_PRIMASK(mask);

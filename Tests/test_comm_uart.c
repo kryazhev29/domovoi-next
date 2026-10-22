@@ -13,8 +13,6 @@ typedef struct { volatile uint32_t CCR, CNDTR, CPAR, CMAR; } DMA_Channel_TypeDef
 typedef struct { volatile uint32_t AHBENR, APB1ENR, APB2ENR, APB1RSTR, CFGR; } RCC_TypeDef;
 typedef struct { volatile uint32_t CRH, BSRR; } GPIO_TypeDef;
 static GPIO_TypeDef gpio;
-static struct { uint32_t AIRCR; } scb = {0x600};
-#define SCB (&scb)
 static uint32_t SystemCoreClock = 72000000u;
 static uint8_t irq_priorities[64];
 static uint32_t irq_enabled[2];

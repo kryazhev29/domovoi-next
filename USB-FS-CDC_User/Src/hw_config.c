@@ -56,19 +56,12 @@ void Set_USBClock(void)
   RCC->APB1ENR |= RCC_APB1ENR_USBEN;
 }
 
-// Отметить переход USB в приостановленное состояние.
-
-// Восстановить состояние USB после выхода из приостановки.
-
 // Назначить приоритеты и разрешить IRQ USB.
 void USB_Interrupts_Config(void)
 {
-  SCB->AIRCR = 0x05FA0500u;
   board_irq_enable(USB_LP_CAN1_RX0_IRQn, 0x80u);
-  board_irq_enable(USBWakeUp_IRQn, 0);
+  board_irq_enable(USBWakeUp_IRQn, 0x80u);
 }
-
-// Принять настройки CDC без перенастройки физического UART.
 
 // Передать принятые USB-байты разборщику приложения.
 void USB_To_USART_Send_Data(uint8_t *data_buffer, uint8_t Nb_bytes)

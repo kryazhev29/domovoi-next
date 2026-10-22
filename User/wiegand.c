@@ -37,7 +37,7 @@ void WG_init(void)
 {
   const uint32_t lines = EXTI_IMR_MR2 | EXTI_IMR_MR3;
   board_exti_config(lines, 1);
-  // Группа приоритетов задаётся другими драйверами, как в исходной программе.
+  // Группировка задаётся только board_init; D0 и D1 не вытесняют друг друга.
   board_irq_enable(EXTI2_IRQn, 0x10u);
   board_irq_enable(EXTI3_IRQn, 0x10u);
   wgData = 0;
@@ -62,22 +62,23 @@ static bool wg_parity_valid(uint32_t data)
 
 // Снять кадр независимо от флеш; свободное хранилище обрабатывает его в этом проходе.
 void WG_process(void){
-  uint32_t mask = __get_PRIMASK();
-  __disable_irq();
-  uint32_t now = timers_getMillis();
-  /* SIA: интервал между импульсами не больше 20 мс, поэтому тишина 25 мс -
-     конец кадра (было 250 мс: четверть секунды ожидания у двери). */
-  bool complete = ((now - wgTime) > 25u);
   uint32_t data = 0;
   uint8_t count = 0;
-  if (complete){
-    data = wgData;
-    count = wgBitCount;
-    wgTime = now;
-    wgData = 0;
-    wgBitCount = 0;
+  // В тишине IRQ не закрываем, но уже собранную очередь ниже продолжаем обслуживать.
+  if (wgBitCount) {
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    uint32_t now = timers_getMillis();
+    // SIA: между импульсами не больше 20 мс; тишина 25 мс завершает кадр.
+    if ((uint32_t)(now - wgTime) > 25u) {
+      data = wgData;
+      count = wgBitCount;
+      wgTime = now;
+      wgData = 0;
+      wgBitCount = 0;
+    }
+    __set_PRIMASK(mask); // следующий фронт уже принадлежит следующему кадру
   }
-  __set_PRIMASK(mask); // следующий фронт уже принадлежит следующему кадру
   if (count) {
     if (wg_count < 4u) {
       uint8_t slot = (wg_head + wg_count) & 3u;

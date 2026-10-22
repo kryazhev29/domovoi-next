@@ -13,17 +13,27 @@ static struct {uint32_t PR;} exti;
 #define EXTI_Line3 8
 static uint32_t clock_ms,irqmask,lastid;
 static unsigned seen;
+static unsigned irq_disables,time_reads;
+static bool read_allowed=true;
 uint32_t __get_PRIMASK(void){return irqmask;}
-void __disable_irq(void){irqmask=1;}
+void __disable_irq(void){irqmask=1;irq_disables++;}
 void __set_PRIMASK(uint32_t m){irqmask=m;}
-uint32_t timers_getMillis(void){return clock_ms;}
+uint32_t timers_getMillis(void){time_reads++;return clock_ms;}
 void WG_readedID(uint32_t id){seen++;lastid=id;}
-bool flash_exec_read_allowed(void){return true;}
+bool flash_exec_read_allowed(void){return read_allowed;}
 bool user_access_ready(const char *id){CHECK(id[10] == 0); return true;}
 /* КОД */
 static void reset(void){wgData=wgTime=wgID=wg_overflows=0;wgBitCount=wg_head=wg_count=0;clock_ms=100;irqmask=0;seen=0;}
 static void bits(unsigned n){for(unsigned i=0;i<n;i++){if(i&1)EXTI3_IRQHandler();else EXTI2_IRQHandler();}}
 int main(void){
+  reset();
+  for(unsigned tick=0;tick<100;tick++){clock_ms+=26;WG_process();}
+  CHECK(!irq_disables&&!time_reads&&!wgTime);
+  bits(26);clock_ms+=26;read_allowed=false;WG_process();
+  CHECK(wg_count==1&&!wgBitCount&&!seen);
+  unsigned locked=irq_disables,reads=time_reads;
+  read_allowed=true;WG_process();
+  CHECK(seen==1&&!wg_count&&irq_disables==locked&&time_reads==reads);
   reset();bits(282);clock_ms=400;WG_process();WG_process();CHECK(seen==0);
   reset();bits(538);clock_ms=400;WG_process();WG_process();CHECK(seen==0);
   reset();bits(26);uint32_t expected=(wgData>>1)&0x03FFFFFF;clock_ms=400;WG_process();CHECK(seen==1 && wgBitCount==0 && lastid==expected);WG_process();CHECK(seen==1);

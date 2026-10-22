@@ -117,6 +117,9 @@ void out_load (Int8U out, Int8U mode, Int16U activ, Int16U pause, Int8U period)
     break;
 
   case OUT_IMP: // импульс
+    // Пустой импульс останавливает автомат, сохраняя текущий уровень выхода.
+    out_period[out] = 0;
+    if (!period || !activ) break;
     /* Протокол2 (E254/E255): время в секундах 1-255; out_process идёт раз в 100 мс,
        поэтому внутри десятые доли. Реле включается сразу, а не на следующем такте:
        проход не ждёт до секунды. */
@@ -125,7 +128,7 @@ void out_load (Int8U out, Int8U mode, Int16U activ, Int16U pause, Int8U period)
     out_period[out] = period;
     out_time[out] = (Int16U)(activ * 10u);
     out_activpause |= (1<<out);
-    if (period && activ) out_set (out, 1);
+    out_set (out, 1);
     break;
 
   default: break;
@@ -137,5 +140,3 @@ uint8_t out_getmodestate (uint8_t out)
 {
   return out_period[out] != 0;
 }
-
-// Вернуть битовую маску состояния всех реле.

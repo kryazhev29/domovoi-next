@@ -11,11 +11,11 @@ RCC = 0x40021000
 GPIO = 0x40010C00
 
 
-# Проверить делитель, соседние GPIO и обе группы NVIC, встречающиеся при старте v5.
+# Проверить делитель и GPIO; драйвер не меняет группировку, заданную платой.
 def initialization():
     for clock, prescaler, brr in ((72000000, 0, 625), (72000000, 4, 312),
                                   (72000000, 5, 156), (24000000, 0, 208)):
-        for group, priority in ((7, 0x70), (6, 0xF0)):
+        for group, priority in ((3, 0xF0), (6, 0xF0), (7, 0xF0)):
             m = Machine()
             m.init()
             m.write(m.addr('SystemCoreClock'), clock)
@@ -24,6 +24,7 @@ def initialization():
             m.write(0xE000ED0C, group << 8)
             m.u.reg_write(UC_ARM_REG_PRIMASK, 1)
             m.call('comm_uart_init', 115200)
+            assert m.read(0xE000ED0C) == group << 8
             assert m.u.reg_read(UC_ARM_REG_PRIMASK) == 1
             assert m.read(USART + 8) == brr
             assert m.read(USART + 12) == 0x200C

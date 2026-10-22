@@ -53,8 +53,17 @@ int main(void){
   CHECK(run_while(1,1,3000)==2550);
   CHECK(!out_getmodestate(1));
   /* Ноль повторов или нулевое время - выход не трогается, как раньше. */
-  reset();out_load(0,OUT_IMP,3,1,0);CHECK(pin[0]==0);for(int i=0;i<100;i++)out_process();CHECK(pin[0]==0);
-  reset();out_load(0,OUT_IMP,0,1,1);CHECK(pin[0]==0);
+  for(unsigned out=0;out<2;out++)for(unsigned initial=0;initial<3;initial++)
+    for(unsigned activ=0;activ<2;activ++)for(unsigned repeats=0;repeats<2;repeats++){
+      if(activ&&repeats)continue;
+      reset();
+      if(initial==1)out_load(out,OUT_ON,0,0,0);
+      if(initial==2)out_load(out,OUT_IMP,3,1,3);
+      int level=pin[out];
+      out_load(out,OUT_IMP,activ,1,repeats);
+      CHECK(!out_getmodestate(out)&&pin[out]==level);
+      for(unsigned tick=0;tick<100;tick++){out_process();CHECK(!out_getmodestate(out)&&pin[out]==level);}
+    }
   /* Уровень: включить и инвертировать - сразу, без отсчёта. */
   reset();out_load(1,OUT_ON,0,0,0);CHECK(pin[1]==1);out_load(1,OUT_INV,0,0,0);CHECK(pin[1]==0);
   puts("outs: relay on at load, impulse/pause seconds as 100 ms ticks, repeats, 255 s, zero cases, level modes PASS");

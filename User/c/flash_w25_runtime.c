@@ -122,7 +122,7 @@ bool w25_erase_sector (Int32U address)
 // Чтение Id памяти -----------------------------------------------------------
 Int16U w25_read_devID (void)
 {
-  Int16U result;
+  Int16U result = 0xFFFF;
 
   if (w25_busy() & 1u) return 0xFFFF;
 
@@ -132,7 +132,7 @@ Int16U w25_read_devID (void)
   w25_chip_OFF();
   w25_delay_OFF();
 
-  return result;
+  return spi_ready() ? result : 0xFFFF;
 }
 
 // Чтение статуса -------------------------------------------------------------

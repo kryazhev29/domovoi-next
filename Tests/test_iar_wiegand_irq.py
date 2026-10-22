@@ -20,6 +20,12 @@ for at in range(steps):
     assert m.u.reg_read(UC_ARM_REG_PRIMASK)==0
     max_stack=max(max_stack,m.top-m.minimum)
 setup();m.u.reg_write(UC_ARM_REG_PRIMASK,1);m.call('WG_process');assert m.u.reg_read(UC_ARM_REG_PRIMASK)==1
+# Первый фронт вокруг быстрой проверки пустого приёмника не должен потеряться.
+m.init();m.write(m.addr('milliSeconds'),400);m.call('WG_process');idle_steps=m.steps
+for at in range(idle_steps):
+    m.init();m.write(m.addr('milliSeconds'),400)
+    m.call('WG_process',inject_at=at,irq=('EXTI3_IRQHandler',()))
+    assert m.read(m.addr('wgBitCount'),1)==1 and m.read(m.addr('wgData'))==1,('first idle edge lost',at)
 m.init()
 for i in range(282):m.call('EXTI3_IRQHandler')
 assert m.read(m.addr('wgBitCount'),1)!=26

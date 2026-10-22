@@ -168,10 +168,9 @@ void comm_uart_init(uint32_t baud)
   USART3->CR2 = 0;
   USART3->CR3 = USART_CR3_CTSE | USART_CR3_DMAR | USART_CR3_EIE;
   USART3->CR1 = USART_CR1_RE | USART_CR1_TE | USART_CR1_UE;
-  /* До настройки RS-485 группа 0, после — 1: сохраняем прежнее кодирование NVIC. */
-  uint8_t priority = (SCB->AIRCR & (7u << 8)) == (7u << 8) ? 0x70u : 0xF0u;
-  board_irq_enable(USART3_IRQn, priority);
-  board_irq_enable(DMA1_Channel3_IRQn, priority);
+  // Группировка принадлежит board_init; UART, его DMA и SysTick не вытесняют друг друга.
+  board_irq_enable(USART3_IRQn, 0xF0u);
+  board_irq_enable(DMA1_Channel3_IRQn, 0xF0u);
   __set_PRIMASK(mask);
 }
 

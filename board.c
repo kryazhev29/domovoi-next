@@ -59,7 +59,8 @@ void board_init(void)
   PWR->CR = (PWR->CR & ~PWR_CR_PLS) | PWR_CR_DBP | PWR_CR_PLS_2V5;
   EXTI->PR = EXTI_PR_PR16;
   board_exti_config(EXTI_IMR_MR16, 0);
-  SCB->AIRCR = 0x05FA0700u;
+  // 4 бита вытеснения: PVD 0, Wiegand 1, USB 8, UART/DMA/SysTick 15.
+  SCB->AIRCR = 0x05FA0300u;
   board_irq_enable(PVD_IRQn, 0);
   // Детектор включается последним: EXTI/NVIC уже готовы принять низкое питание при старте.
   PWR->CR |= PWR_CR_PVDE;
