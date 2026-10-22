@@ -106,7 +106,7 @@ def run():
         ('channel', 'no-net-without-sim', 's->phase == SLM_PHASE_SIM || s->phase == SLM_PHASE_NETWORK', 's->phase == SLM_PHASE_NETWORK'),
         ('channel', 'no-internet-qiact', 's->reason == SLM_ERR_PDP || s->phase == SLM_PHASE_PDP', '0'),
         ('channel', 'no-internet-probe', '  comm_server_note(COMM_LINK_NO_INTERNET);\n  if (rc.net_step', '  if (rc.net_step'),
-        ('channel', 'low-signal-threshold', 'if (info.v.csq < 15u)', 'if (info.v.csq <= 15u)'),
+        ('channel', 'low-signal-threshold', 'if (info_low && info.v.csq < 15u)', 'if (info_low && info.v.csq <= 15u)'),
         ('channel', 'low-signal-once', '(int32_t)(now_ms - info.day) >= 0', '0'),
         ('channel', 'sms-deleted-before-forward', 'if (!done) return;', '(void)done;'),
         ('channel', 'unknown-id-notification-dropped', 'unreg_sms_pending.due = 1;', 'unreg_sms_pending.due = 0;'),

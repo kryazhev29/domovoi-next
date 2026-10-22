@@ -24,7 +24,7 @@ static struct {
   uint16_t acc, out_count, erase, stuck;
   uint8_t session, step, op, ready, scan, deliver, tx;
   uint8_t queue[8], count;
-  /* Разбор PDU потоком: hex -> октет -> поле; 7 бит - через накопитель acc. */
+  /* Разбор PDU потоком: acc — 7 бит; half — ожидание UCS2-октета или GSM-расширения. */
   uint8_t field, left, half, hi, nib_half, nib, alpha, coding, udh, skip, bits, septets, nlen, tlen;
   char cmd[24], tx_cmd[16]; /* чтение/стирание и отправка не делят строку */
   char number[21];
@@ -44,7 +44,8 @@ static void sms_char(char c)
 static void sms_septet(uint8_t s)
 {
   if (msg.skip) { --msg.skip; return; }
-  if (s == 0x1B) return;
+  if (msg.half) { msg.half = 0; return; } /* второй септет расширения */
+  if (s == 0x1B) { sms_char('?'); msg.half = 1; return; }
   sms_char(s == 0 ? '@' : s == 2 ? '$' : s == 0x11 ? '_' : s == '\r' || s == '\n' ? (char)s
            : s < 0x20 || s == 0x24 || s == 0x40 || (s >= 0x5B && s <= 0x60) || s >= 0x7B ? '?' : (char)s);
 }
@@ -196,7 +197,8 @@ static void sms_command(uint8_t op, const char *at, uint8_t index, uint8_t mode,
 /* Применить завершение настройки, чтения, удаления или отправки SMS. */
 /* Проверено на плате №1 12.10.2026 (eed4de6): CNMI=0,1 принят, +CMTI модем не шлёт - SMS находит
    обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ.
-   Изменено 22.10.2026 (task/wifi-one): три отказа CMGD - ячейка пропускается обзором - на плате не проверено. */
+   Изменено 22.10.2026 (task/wifi-one): три отказа CMGD - ячейка пропускается обзором - на плате не проверено.
+   Изменено 22.10.2026 (task/comm-review): пустой отправитель «+» не исполняется — на плате не проверено. */
 static void sms_done(uint8_t r)
 {
   uint8_t op = msg.op;
@@ -224,7 +226,7 @@ static void sms_done(uint8_t r)
        Битая (разбор не дошёл до конца) - только событие, без команды. */
     msg.erase = 0x100u | index;
     msg.number[msg.nlen] = 0;
-    if (msg.field != P_END || msg.nib_half || !msg.nlen) msg.tlen = 0;
+    if (msg.field != P_END || msg.nib_half || !msg.nlen || (msg.nlen == 1u && msg.number[0] == '+')) msg.tlen = 0;
     msg.text[msg.tlen] = 0; msg.deliver = 1;
   } else if (op == SMS_OP_DELETE) {
     /* CMS 321 - ячейки уже нет; иначе повтор, чтобы не прочитать SMS второй раз.
@@ -243,8 +245,9 @@ static void sms_done(uint8_t r)
 /* Продвинуть очередь SIM и передать готовое сообщение приложению. */
 /* Проверено на плате №1 12.10.2026 (eed4de6): CNMI=0,1 принят, +CMTI модем не шлёт - SMS находит
    обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ.
-   Изменено 22.10.2026 (task/wifi-one): новый запуск модема снова стирает застрявшую ячейку - на плате не проверено. */
-void comm_sms_poll(uint32_t now_ms)
+   Изменено 22.10.2026 (task/wifi-one): новый запуск модема снова стирает застрявшую ячейку - на плате не проверено.
+   Изменено 22.10.2026 (task/comm-review): результат AT снимается и при занятой Flash — на плате не проверено. */
+void comm_sms_poll(uint32_t now_ms, bool access_ready)
 {
   msg.now = now_ms;
   uint8_t session = comm_modem_session();
@@ -259,6 +262,7 @@ void comm_sms_poll(uint32_t now_ms)
     sms_done(r);
   }
   if (msg.deliver) {
+    if (!access_ready) return; /* результат AT уже снят; PDU и ячейка ждут приложения */
     /* first: событие о приёме пишется один раз, даже если команда ждёт флеш. */
     bool first = msg.deliver == 1u;
     bool done = msg.received(msg.number, msg.text, &first);
@@ -310,8 +314,8 @@ bool comm_sms_send(const char *number, const char *text)
   if (!n) return false;
   if (n >= 11u && (n != 11u || number[0] != '8')) type = 0x91; /* 8XXXXXXXXXX без '+' — национальный */
   bool gsm = true;
-  while (text[len] && len < 255u) { if ((uint8_t)text[len] >= 0x80u) gsm = false; ++len; }
-  uint8_t chars = gsm ? (len > SMS_UD * 8u / 7u ? (uint8_t)(SMS_UD * 8u / 7u) : len)
+  while (len < SMS_UD * 8u / 7u && text[len]) { if ((uint8_t)text[len] >= 0x80u) gsm = false; ++len; }
+  uint8_t chars = gsm ? len
                       : (len > SMS_UD / 2u ? (uint8_t)(SMS_UD / 2u) : len);
   msg.out_count = 0;
   sms_put(0x00); sms_put(0x11); sms_put(0x00); /* SMSC из SIM; SUBMIT, срок жизни; MR */

@@ -163,7 +163,7 @@ def dispatcher_ownership():
             else:m.ret()
         # Запомнить допуск обработчика SMS.
         def sms_poll():
-            sms.append(1)
+            sms.append(bool(m.args()[1]))
             m.ret()
         for name in ('comm_recover_poll', 'comm_info_poll'):
             m.stubs[m.addr(name)] = m.ret
@@ -171,7 +171,7 @@ def dispatcher_ownership():
         m.stubs[m.addr('comm_call_poll')] = call_poll
         m.stubs[m.addr('comm_sms_poll')] = sms_poll
         m.checked('user_comm_poll', 100)
-        assert calls == [expected_call] and len(sms) == expected_sms, (server_busy, call_busy, calls, sms)
+        assert calls == [expected_call] and sms == [bool(expected_sms)], (server_busy, call_busy, calls, sms)
         assert m.exec_state() == ((12,30,1) if server_busy or call_busy else (0,0,0))
         assert not m.io_budget
     # Единственный выбранный сервер 2 не должен резервировать сам себя.

@@ -99,13 +99,13 @@ static void wifi_server_refusal_tests(void)
       stall_start(); stall_keep_online = 0; reserve_enabled = reserve;
       stall_registrations = 0;
       stall_drop_registration = !reject; stall_reject_registration = reject;
-      uint32_t start = sim_now;
+      uint32_t start = sim_now; unsigned bridge_pings=w_pings;
       comm_channel_reopen(0);
       for (unsigned i = 0; (ch.wifi || !comm_server_online()) && i < 30000; ++i) stall_tick();
       printf("Wi-Fi registration refusal: reserve=%u reject=%u attempts=%u elapsed=%u GSM=%u\n",
              reserve, reject, stall_registrations, sim_now - start, !ch.wifi && comm_server_online());
       CHECK(!ch.wifi && comm_server_online() && sim_now - start < 300000);
-      CHECK(stall_registrations == (reject ? 1u : 2u));
+      CHECK(stall_registrations == (reject ? 1u : 2u) && w_pings==bridge_pings);
       /* Принятая регистрация GSM и возврат на мост через прежние 10 мин. */
       stall_drop_registration = stall_reject_registration = 0;
       uint32_t fell_at = wf.fell_at;

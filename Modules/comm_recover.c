@@ -212,10 +212,12 @@ bool comm_recover_first_silence(void)
   return true;
 }
 
-/* Модем сам зарегистрировался: подключаться с AT, отменив остаток паузы. */
+/* URC снимает только ожидание регистрации; сбой AT/PDP и плановое питание остаются. */
 void comm_recover_registered(void)
 {
-  if (rc.state == RC_WAIT) { rc.power = 0; rc.wait_until = rc.now; }
+  const slm_status_t *s = comm_modem_status();
+  if (rc.state == RC_WAIT && rc.power <= RC_POWER && s->state == SLM_FAILED
+      && s->phase == SLM_PHASE_NETWORK && !s->at_fault) { rc.power = RC_SOFT; rc.wait_until = rc.now; }
 }
 
 /* Исполнить назначенный перезапуск или проверить условия надзора. */

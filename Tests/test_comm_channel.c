@@ -332,6 +332,18 @@ static void channel_wifi_tests(void)
     for (unsigned i=0;event[i];++i) { w_push(event+i,1); sim_tick(); }
     CHECK(channel_closed==closed+1 && !w_enabled);
   }
+  /* Обрыв SLDN скрывает текст EVENT, но независимый TCPLK обнаруживает потерю сокета. */
+  for (unsigned i=0;i<5000 && !comm_channel_ready();++i) sim_tick();
+  comm_channel_registered();
+  { unsigned closed=channel_closed; uint32_t begin=sim_now;
+    const uint8_t partial[]="SLDN\xF8\x07\1\0\0+EVENT=SOCKA_OFF\r\n";
+    w_body_count=0; w_push(partial,sizeof(partial)-1); sim_tick();
+    CHECK(channel_closed==closed && wf.rx==6);
+    w_tcp=0;
+    for (unsigned i=0;i<1500 && channel_closed==closed;++i) sim_tick();
+    CHECK(channel_closed==closed+1 && sim_now-begin<10000u);
+    w_tcp=1;
+  }
   /* Смена NETP — повторная настройка, без перезагрузки платы. */
   strcpy(test_config.host,"new.example"); test_config.port=9876;
   comm_channel_wifi_changed();

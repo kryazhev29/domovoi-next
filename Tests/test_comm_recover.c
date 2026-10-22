@@ -91,7 +91,9 @@ static void info_tests(void)
     CHECK(comm_info()->band == (i ? 7 : 1) && comm_info()->bandwidth == (i ? 5 : 3));
     /* Без последнего поля и с хвостом строка не публикуется. */
     const char *end = strrchr(slm_lte[i], ',');
+    info.qeng_ok = 0;
     info_lte_line((const uint8_t *)slm_lte[i], (uint16_t)(end - slm_lte[i]));
+    info_lte_line(NULL, 0);
     CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
     CHECK(info.v.band == 255 && info.v.bandwidth == 255);
     info_lte_line((const uint8_t *)slm_lte[i], (uint16_t)strlen(slm_lte[i]));
@@ -135,8 +137,17 @@ static void info_tests(void)
   edge = "+QENG: \"servingcell\",\"CONNECT\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,-89,-7,-60,250,0";
   info_lte_line((const uint8_t *)edge, (uint16_t)strlen(edge));
   CHECK(info.v.sinr == 250);
+  { comm_info_t saved = info.v;
+    const char *noise[] = {"+QENG: \"servingcell\",\"SEARCH\"", "junk", "+QENG: \"LTE\",bad"};
+    for (unsigned i=0;i<3;++i) info_lte_line((const uint8_t *)noise[i], (uint16_t)strlen(noise[i]));
+    info_lte_line(NULL, 0);
+    CHECK(!memcmp(&saved, &info.v, sizeof(saved)));
+    info_lte_line(NULL, 1); CHECK(info.v.rsrp == 255);
+  }
   for (uint16_t n = 0; n < strlen(edge); ++n) {
+    info.qeng_ok = 0;
     info_lte_line((const uint8_t *)edge, n);
+    info_lte_line(NULL, 0);
     CHECK(info.v.rsrp == 255 && info.v.rsrq == 255 && info.v.sinr == 255);
   }
   edge = "+QENG: \"servingcell\",\"CONNECT\",\"LTE\",0,250,01,ABCD,17,1300,3,5,5,00AF,0,0,-60,0,-3";
@@ -151,6 +162,8 @@ static void info_tests(void)
   CHECK(comm_info()->rsrp == 255 && comm_info()->rsrq == 255 && comm_info()->sinr == 255);
   /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
   /* Время модели после rc_online идёт с начала, срок опроса - из прошлого сценария: 2 мин на свежий цикл. */
+  rc_online(); comm_info_low_signal(NULL); sim_csq=12; rc_run(40000u);
+  CHECK(info.daily);
   rc_online(); sim_csq = 12; rc_run(120000u); comm_info_low_signal(low_model); rc_run(40000u);
   CHECK(low_signals == 1 && low_csq == 12);
   rc_run(3600000u); CHECK(low_signals == 1);
@@ -393,6 +406,19 @@ static void recover_tests(void)
   rc_expect(0, 10000u, 0); rc_expect(1, 30000u, 0); rc_expect(2, 600000u, 1);
   rc_expect(3, 60000u, 0); rc_expect(4, 60000u, 0); rc_expect(5, 1800000u, 1);
   CHECK(link_count(COMM_LINK_NO_NET, 0) == 1);
+  /* Регистрация не отменяет плановое питание или восстановление AT/PDP. */
+  for (unsigned mode=0;mode<4;++mode) {
+    rc_online();
+    if (mode==0) { rc.first=0; CHECK(comm_recover_first_silence()); }
+    else if (mode==1) { rc.first=0; CHECK(comm_recover_first_silence()); comm_recover_poll(sim_now); CHECK(rc.power==RC_QPOWD); }
+    else if (mode==2) { rc.net_step=2; comm_recover_no_internet(); }
+    else { sim_no_sim=1; rc_fresh(); rc_wait_power(); }
+    uint8_t power=rc.power; uint32_t until=rc.wait_until;
+    sim_feed("+CREG: 1\r\n+CGREG: 5\r\n+CEREG: 1\r\n");
+    comm_modem_poll(sim_now);
+    if (mode==1) comm_recover_registered(); /* позднее уведомление уже после QPOWD */
+    CHECK(rc.state==RC_WAIT && rc.power==power && rc.wait_until==until);
+  }
   /* Каждый домен регистрации снимает длинную паузу без перезапуска питания. */
   static const char *const registered[] = {"+CREG: 1\r\n", "+CGREG: 5,\"1234\",\"5678\"\r\n", "+CEREG: 1\r\n"};
   for (unsigned i = 0; i < 3; ++i) {

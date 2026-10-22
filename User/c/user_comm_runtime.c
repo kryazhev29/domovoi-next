@@ -73,5 +73,5 @@ void user_comm_poll(uint32_t now_ms)
   comm_info_poll(now_ms);
   comm_call_poll(now_ms, flash_exec_read_allowed());
   /* Обработчик вызова мог сменить владельца флеша: для SMS нужен свежий снимок. */
-  if (flash_exec_read_allowed()) comm_sms_poll(now_ms);
+  comm_sms_poll(now_ms, flash_exec_read_allowed());
 }

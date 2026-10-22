@@ -64,6 +64,36 @@ static void sms_tests(void)
   CHECK(comm_server_online());
   sms_arrive(1,pdu_cmd7); sms_expect("+79161234567","#status 4321,");
   CHECK(!sim_store[1] && strstr(sms_log,"AT+CMGR=1;AT+CMGD=1;"));
+  /* ESC и следующий септет дают один '?', в том числе через границу кусочков PDU. */
+  static const char escaped[] = "00000291210000000000000000000BC14D59B8410D371BE206";
+  sms_reset(); sms_arrive(1,escaped); sms_expect("+12","A?B?C?D?");
+  for (unsigned cut=0;cut<=strlen(escaped);++cut) {
+    msg.op=SMS_OP_READ; sms_line((const uint8_t *)"+CMGR:",6,0);
+    sms_line((const uint8_t *)escaped,(uint16_t)cut,0);
+    sms_line((const uint8_t *)escaped+cut,(uint16_t)(strlen(escaped)-cut),0);
+    msg.text[msg.tlen]=0;
+    CHECK(msg.field==P_END && !strcmp(msg.text,"A?B?C?D?"));
+  }
+  sms_reset(); sms_arrive(1,"000004D0D80D0000000000000000000141"); sms_expect("X?","A");
+  sms_reset(); sms_arrive(1,"0040029121000000000000000000120500032A0201829BB270831A6E36C40D"); sms_expect("+12","A?B?C?D?");
+  /* Ноль цифр OA с международным типом: событие о битой SMS, без выполнения текста. */
+  sms_reset(); sms_arrive(1,"000000910000000000000000000141");
+  CHECK(sms_events==1 && !sms_received_count && !sim_store[1]);
+  /* Flash занята: освободить завершённый AT-слот, но сохранить текст и ячейку. */
+  sms_reset(); sms_access_ready=false; sms_arrive(1,pdu_cmd7);
+  CHECK(msg.deliver && !msg.op && !slm.side.done && !slm.side.running && !slm.side.queued && !sms_events && sim_store[1]);
+  CHECK(comm_sms_send("1234","queued")); advance(1000);
+  CHECK(msg.deliver && msg.tx && !sms_events && sim_store[1] && !strstr(sms_log,"AT+CMGD=1;"));
+  sms_access_ready=true; advance(300);
+  sms_expect("+79161234567","#status 4321,");
+  CHECK(sms_events==1 && !sim_store[1] && !msg.tx);
+  /* Кириллица за пределами отправляемых 114 символов не меняет кодировку. */
+  { char text[116]; memset(text,'A',114); text[114]=(char)0xCF; text[115]=0;
+    sms_reset(); CHECK(comm_sms_send("1234",text)); advance(300);
+    CHECK(!strncmp(sms_sent_pdu,"001100048121430000AA72",22) && strlen(sms_sent_pdu)==222);
+    text[113]=(char)0xCF; CHECK(comm_sms_send("1234",text)); advance(300);
+    CHECK(!strncmp(sms_sent_pdu,"001100048121430008AA64",22));
+  }
   /* Кириллица UCS2 от буквенного отправителя -> cp1251. */
   sms_reset(); sms_arrive(3,pdu_ucs2);
   sms_expect("MTS","\xC1\xE0\xEB\xE0\xED\xF1 100 \xF0. \xA8\xB8");

@@ -43,7 +43,6 @@ static void info_lte_line(const uint8_t *p, uint16_t n)
   uint16_t pos = 0;
   uint32_t value;
   uint8_t rsrp = 255, rsrq = 255, sinr = 255, band = 255, bandwidth = 255;
-  info.v.rsrp = info.v.rsrq = info.v.sinr = info.v.band = info.v.bandwidth = 255;
   while (pos + 6u <= n && memcmp(p + pos, "\"LTE\",", 6)) ++pos;
   if (pos + 6u > n) return;
   pos += 6u;
@@ -126,7 +125,8 @@ static bool info_query(const char *cmd, void (*line)(const uint8_t *, uint16_t))
 
 /* Поставить очередной фоновый запрос сведений. */
 /* Проверено на плате №1 14.10.2026 (11584e0): снимок сети в USB-журнал раз в 30 с, статус 69/69.
-   Изменено 20.10.2026: без TCP опрос идёт служебной командой модема - на плате не проверено. */
+   Изменено 20.10.2026: без TCP опрос идёт служебной командой модема - на плате не проверено.
+   Изменено 22.10.2026 (task/comm-review): необязательный обработчик low_signal — на плате не проверено. */
 void comm_info_poll(uint32_t now_ms)
 {
   if (info.antenna && (int32_t)(now_ms - info.antenna_until) >= 0) info.antenna = 0;
@@ -164,7 +164,7 @@ void comm_info_poll(uint32_t now_ms)
   /* Событие 38: сигнал ниже 15 - после первого полного опроса, дальше раз в сутки. */
   if (!info.daily || (int32_t)(now_ms - info.day) >= 0) {
     info.daily = 1; info.day = now_ms + comm_timeouts[COMM_T_DAY];
-    if (info.v.csq < 15u) info_low(info.v.csq);
+    if (info_low && info.v.csq < 15u) info_low(info.v.csq);
   }
 }
 

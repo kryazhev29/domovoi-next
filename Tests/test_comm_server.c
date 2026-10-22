@@ -30,7 +30,7 @@ static uint8_t open_addresses[64];
 // Выдать время модели для кадров приложения.
 static uint32_t timers_getMillis(void) { return sim_now; }
 /* Звонок: сколько раз сброшен, ответ модема на сброс, последняя команда перед данными. */
-static bool call_access_ready, call_registration_noise;
+static bool call_access_ready, call_registration_noise, sms_access_ready;
 static unsigned chups, chup_silence, answers, answer_mode, answer_delay;
 static unsigned call_present, hangup_ignored, clccs, clcc_error, clcc_silence;
 static unsigned call_drop, call_drop_urc, call_activations, call_activation_error, call_net_queries, call_pdp_queries, call_tcp_queries;
@@ -418,7 +418,7 @@ static void transport_tick(unsigned increment)
   }
   server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now);
   CHECK(msg.count <= sizeof(msg.queue)/sizeof(msg.queue[0]));
-  comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now);
+  comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now, sms_access_ready);
   transport_tx(); sim_now+=increment;
 }
 // Пройти заданный интервал с шагом модели 10 мс.
@@ -444,7 +444,7 @@ static void server_reset_start(bool cold)
   primary_restored=reserve_works=false;
   if (cold) comm_power_v5_cold_start();
   CHECK(modem_slm336_start(&server_settings,&transport_handlers,sim_now));
-  call_access_ready=true; call_registration_noise=false;
+  call_access_ready=sms_access_ready=true; call_registration_noise=false;
   chups=chup_silence=answers=answer_mode=0; answer_delay=40;
   call_present=hangup_ignored=clccs=clcc_error=clcc_silence=0;
   answer_at=answer_due=hangup_at=hangup_due=call_network_due=call_tcp_due=0;

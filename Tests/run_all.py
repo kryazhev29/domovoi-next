@@ -179,6 +179,7 @@ def main():
     if not args.fast and not args.quick:
         run('comm mutations',['Tests/comm_mutations.py'])
         run('recover mutations',['Tests/recover_mutations.py'])
+        run('comm review mutations',['Tests/test_comm_review_mutations.py'])
         run('RX mutations',['Tests/rx_budget_mutations.py'])
         run('call mutations',['Tests/call_mutations.py'])
         run('link call',['Tests/link_call_host.py','--mutations'])
