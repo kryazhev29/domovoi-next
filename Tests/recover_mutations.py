@@ -38,7 +38,7 @@ CASES = (
     ('no-sim-soft', b'case SLM_ERR_NO_SIM: case SLM_ERR_PIN:', b'case 250: case SLM_ERR_PIN:'),
     ('repeat-power-no-pause', b'return rc.power_step ? rc_pause(COMM_T_POWER_1, (uint8_t)(rc.power_step - 1u)) : 0;', b'return 0;'),
     ('no-tcp-first', b'if (rc.net_step == 0u) comm_channel_reopen(0);', b'if (0) comm_channel_reopen(0);'),
-    ('no-soft-step', b'else if (rc.net_step == 1u) rc_schedule(false, 0);', b'else if (rc.net_step == 1u) rc_schedule(true, 0);'),
+    ('no-soft-step', b'else if (rc.net_step == 1u) rc_schedule(RC_SOFT, 0);', b'else if (rc.net_step == 1u) rc_schedule(RC_POWER, 0);'),
     ('early-counts-startup', b'if (step < SLM_TCP || (step == SLM_TCP && reason == SLM_ERR_TIMEOUT)) return;', b'if (step > 200u) return;'),
     ('early-window', b'>= comm_timeouts[window]', b'>= comm_timeouts[window] * 10u'),
     ('night-busy-ignored', b'  if (busy) return;\r\n', b'  if (busy && false) return;\r\n'),

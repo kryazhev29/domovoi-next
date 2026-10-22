@@ -19,7 +19,9 @@ static struct {
   bool (*received)(char *, char *, bool *);
   uint32_t now, retry, scan_due;
   comm_side_t req;
-  uint16_t acc, out_count, erase; /* erase: 0x100 | индекс, ячейка 0 допустима */
+  /* erase: 0x100 | индекс (ячейка 0 допустима) + 0x200 за каждый отказ CMGD;
+     stuck: так же ячейка, которую SIM не стёрла за три попытки, - обзор её пропускает. */
+  uint16_t acc, out_count, erase, stuck;
   uint8_t session, step, op, ready, scan, deliver, tx;
   uint8_t queue[8], count;
   /* Разбор PDU потоком: hex -> октет -> поле; 7 бит - через накопитель acc. */
@@ -114,6 +116,7 @@ static bool sms_index(const uint8_t *p, uint16_t n, uint16_t pos, uint16_t *inde
 /* Добавить новый индекс SIM без дубля или назначить повторный обзор. */
 static void sms_queue(uint8_t index)
 {
+  if (msg.stuck == (0x100u | index)) return; /* уже прочитана и отдана приложению */
   for (uint8_t i = 0; i < msg.count; ++i) if (msg.queue[i] == index) return;
   if (msg.count < sizeof(msg.queue)) msg.queue[msg.count++] = index;
   else msg.scan = 1; /* не влезло - повторный обзор SIM после разбора очереди */
@@ -192,7 +195,8 @@ static void sms_command(uint8_t op, const char *at, uint8_t index, uint8_t mode,
 }
 /* Применить завершение настройки, чтения, удаления или отправки SMS. */
 /* Проверено на плате №1 12.10.2026 (eed4de6): CNMI=0,1 принят, +CMTI модем не шлёт - SMS находит
-   обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ. */
+   обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ.
+   Изменено 22.10.2026 (task/wifi-one): три отказа CMGD - ячейка пропускается обзором - на плате не проверено. */
 static void sms_done(uint8_t r)
 {
   uint8_t op = msg.op;
@@ -223,8 +227,12 @@ static void sms_done(uint8_t r)
     if (msg.field != P_END || msg.nib_half || !msg.nlen) msg.tlen = 0;
     msg.text[msg.tlen] = 0; msg.deliver = 1;
   } else if (op == SMS_OP_DELETE) {
-    /* CMS 321 - ячейки уже нет; иначе повтор, чтобы не прочитать SMS второй раз. */
-    if (r == COMM_AT_OK || (r == COMM_AT_CME && comm_modem_side_code() == 321u)) msg.erase = 0;
+    /* CMS 321 - ячейки уже нет; иначе повтор, чтобы не прочитать SMS второй раз.
+       Третий отказ: чтение SIM продолжается без этой ячейки, стирание - в следующем запуске модема. */
+    if (r == COMM_AT_OK || (r == COMM_AT_CME && comm_modem_side_code() == 321u)) {
+      if ((uint8_t)msg.stuck == (uint8_t)msg.erase) msg.stuck = 0;
+      msg.erase = 0;
+    } else if ((msg.erase += 0x200u) >= 0x700u) { msg.stuck = 0x100u | (uint8_t)msg.erase; msg.erase = 0; }
 #if DOMOVOI_DIAG
     if (r == COMM_AT_OK) ++msg.diag.deleted;
 #endif
@@ -234,14 +242,16 @@ static void sms_done(uint8_t r)
 }
 /* Продвинуть очередь SIM и передать готовое сообщение приложению. */
 /* Проверено на плате №1 12.10.2026 (eed4de6): CNMI=0,1 принят, +CMTI модем не шлёт - SMS находит
-   обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ. */
+   обзор раз в 15 с; 6 SMS прочитаны и стёрты, #add -> событие 67 и ответ.
+   Изменено 22.10.2026 (task/wifi-one): новый запуск модема снова стирает застрявшую ячейку - на плате не проверено. */
 void comm_sms_poll(uint32_t now_ms)
 {
   msg.now = now_ms;
   uint8_t session = comm_modem_session();
-  if (session != msg.session) { /* новый запуск модема: настройка и обзор SIM заново */
+  if (session != msg.session) { /* новый запуск модема: настройка, стирание застрявшей ячейки и обзор SIM заново */
     if (msg.op) { (void)comm_modem_side_result(&msg.req); msg.op = SMS_OP_NONE; }
     msg.session = session; msg.step = msg.ready = 0; msg.retry = now_ms;
+    if (!msg.erase) msg.erase = msg.stuck;
   }
   if (msg.op) {
     uint8_t r = comm_modem_side_result(&msg.req);

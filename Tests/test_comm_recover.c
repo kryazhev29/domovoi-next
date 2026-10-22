@@ -30,7 +30,7 @@ static void rc_tick(unsigned ms)
 // Запомнить событие восстановления.
 static void rc_note(void)
 {
-  if (rc.state == RC_WAIT && rc.wait_until != rc_last_since) {
+  if (rc.state == RC_WAIT && rc.power != RC_QPOWD && rc.wait_until != rc_last_since) { /* срок QPOWD - не новое решение */
     rc_last_since = rc.wait_until;
     if (rc_logged < sizeof(rc_log) / sizeof(rc_log[0])) { rc_log[rc_logged].at = sim_now; rc_log[rc_logged].ms = rc_left(rc.now); rc_log[rc_logged].power = rc.power; rc_log[rc_logged].opens = opens; }
     ++rc_logged;
@@ -50,7 +50,7 @@ static void rc_online(void)
   server_reset();
   comm_server_no_internet(comm_recover_no_internet);
   comm_recover_init(&rc_hooks, sim_now); rc.first = 1; /* плата уже была на связи после старта */
-  rc_logged = rc_power_starts = rc_soft_starts = 0; rc_last_since = UINT32_MAX;
+  rc_logged = rc_power_starts = rc_soft_starts = qpowd_count = 0; rc_last_since = UINT32_MAX;
   rc_last_attempt = slm.session; rc_clock = UINT32_MAX; rc_busy_flag = false;
 }
 /* Перезапуск со снятием питания, как после сбоя: дальше модем идёт уже с флагами сценария. */
@@ -322,9 +322,9 @@ static void server_outage_tests(void)
   rc_online(); rc.first = 0; drop_register = 1; rc_keep_opens = true;
   comm_channel_reopen(0);
   for (unsigned i = 0; !rc_logged; ++i) { CHECK(i < 2000); rc_tick(10); }
-  rc_expect(0, 0, 1); CHECK(registrations_sent >= 1 && link_count(COMM_LINK_FAIL, 0) == 1);
+  rc_expect(0, 0, RC_PLANNED); CHECK(registrations_sent >= 1 && link_count(COMM_LINK_FAIL, 0) == 1);
   rc_run(1800000u);
-  CHECK(rc_logged == 1 && rc_power_starts == 1 && !rc_soft_starts && rc.first && pings);
+  CHECK(rc_logged == 1 && rc_power_starts == 1 && qpowd_count == 1 && !rc_soft_starts && rc.first && pings);
   { uint32_t back = sim_now; drop_register = 0;
     while (!comm_server_online() && sim_now - back <= 302000u) rc_tick(10);
     CHECK(comm_server_online() && rc_logged == 1); }
@@ -334,6 +334,22 @@ static void server_outage_tests(void)
   drop_register = 1; comm_channel_reopen(0); rc_run(60000u);
   CHECK(!rc_logged && !rc_power_starts); drop_register = 0;
   puts("first registration silent: one power restart at once, then ordinary path; not after online PASS");
+  /* Плановый перезапуск: QPOWD, питание снимается по POWERED DOWN (модель 0,25 с); канал, SMS и опрос
+     в это время в UART не пишут. Молчащий модем - через COMM_T_POWER_DOWN; отказ с ладдера - без QPOWD. */
+  for (unsigned silent = 0; silent < 2; ++silent) {
+    rc_online(); rc_run(20000u); CHECK(comm_server_online());
+    unsigned powers = rc_power_starts; uint32_t begin = sim_now;
+    modem_silent = silent; rc_schedule(RC_PLANNED, 0);
+    while (rc_power_starts == powers) { CHECK(sim_now - begin < 3000u); rc_tick(10); }
+    uint32_t spent = sim_now - begin;
+    CHECK(qpowd_count == 1 && !strcmp(last_command, "AT+QPOWD")); /* после QPOWD - ни одной команды */
+    CHECK(silent ? spent >= comm_timeouts[COMM_T_POWER_DOWN] && spent < comm_timeouts[COMM_T_POWER_DOWN] + 100u
+                 : spent >= 250u && spent < 400u);
+    modem_silent = 0; rc_run(60000u); CHECK(comm_server_online() && rc_power_starts == powers + 1u);
+    printf("planned restart, %s modem: QPOWD, power cut after %u ms PASS\n", silent ? "silent" : "answering", spent);
+  }
+  rc_online(); rc_run(20000u); CHECK(comm_server_online());
+  rc_schedule(RC_POWER, 0); rc_run(60000u); CHECK(comm_server_online() && rc_power_starts == 1u && !qpowd_count);
   /* При отказе открытия TCP без интернета остаётся прежняя лестница TCP/AT/питание. */
   rc_online(); reserve_enabled=1; sim_open_error=3; ping_success=dns_success=0; probe_result=0;
   user_send_statusPack(CH_SERVER); socket_model=false; sim_feed("+QIURC: \"closed\",0\r\n"); rc_run(1800000u);
@@ -440,9 +456,9 @@ static void recover_tests(void)
   /* 9. Ночь: в 03:00 модем перезапускается раз; занят - ждёт; без часов - раз в сутки работы. */
   rc_online(); rc_clock = 1790899200u + 2u * 3600u + 3590u; /* 02:59:50 по модели */
   rc_busy_flag = true; rc_run(60000u); CHECK(!rc_logged);
-  rc_busy_flag = false; rc_run(60000u); CHECK(rc_logged == 1); rc_expect(0, 0, 1);
+  rc_busy_flag = false; rc_run(60000u); CHECK(rc_logged == 1 && qpowd_count == 1); rc_expect(0, 0, RC_PLANNED);
   rc_run(1800000u); CHECK(rc_logged == 1 && comm_server_online());  /* в то же окно второй раз нет */
-  rc_online(); rc_run(23u * 3600000u); CHECK(!rc_logged); rc_run(3600000u + 60000u); CHECK(rc_logged == 1); rc_expect(0, 0, 1);
+  rc_online(); rc_run(23u * 3600000u); CHECK(!rc_logged); rc_run(3600000u + 60000u); CHECK(rc_logged == 1 && qpowd_count == 1); rc_expect(0, 0, RC_PLANNED);
   /* 10 мин устойчивой связи - ступени с начала. */
   rc_online(); sim_no_sim = 1; rc_fresh(); rc_run(700000u); CHECK(rc.power_step == 2);
   sim_no_sim = 0; rc_run(1800000u + 700000u); CHECK(comm_server_online() && rc.power_step == 0);

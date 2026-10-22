@@ -13,6 +13,8 @@
 #include <string.h>
 
 enum { RC_WATCH, RC_WAIT };
+/* Перезапуск: с AT, со снятием питания, плановый (сначала QPOWD), QPOWD отправлен. */
+enum { RC_SOFT, RC_POWER, RC_PLANNED, RC_QPOWD };
 enum { RAT_AUTO, RAT_FAILED, RAT_GSM, RAT_PROBE };
 static struct {
   const comm_recover_hooks_t *hooks;
@@ -30,12 +32,12 @@ static uint32_t rc_pause(uint8_t first, uint8_t step)
 }
 
 /* Перезапуск через pause мс; до него питание и служебные AT сохраняются. */
-static void rc_schedule(bool power, uint32_t pause)
+static void rc_schedule(uint8_t power, uint32_t pause)
 {
-  rc.power = (uint8_t)power;
+  rc.power = power;
   rc.state = RC_WAIT;
   rc.wait_until = rc.now + pause;
-  if (usb_log_on(2)) usb_log_value(18, (uint8_t)power, pause);
+  if (usb_log_on(2)) usb_log_value(18, power != RC_SOFT, pause); /* NextConfig ждёт 0/1 */
 }
 
 /* Паузы не длиннее часа; знаковая разность сохраняет дедлайн через оборот millis. */
@@ -59,7 +61,7 @@ static void rc_rat(uint8_t next)
   rc.rat = next;
   rc.rat_since = rc.now;
   usb_log(3, (const uint8_t *)(next == RAT_GSM ? "4G->2G" : "->AUTO"), 6);
-  rc_schedule(true, 0);
+  rc_schedule(RC_PLANNED, 0);
 }
 
 /* Один результат на LTE-сеанс. Регистрация без подтверждённого статуса не успех. */
@@ -81,7 +83,7 @@ static uint32_t rc_now_then_ladder(void)
 /* Продвинуть ступень перезапуска со снятием питания. */
 static void rc_power_ladder(uint32_t pause)
 {
-  rc_schedule(true, pause);
+  rc_schedule(RC_POWER, pause);
   if (rc.power_step < 3u) rc.power_step++;
   rc.soft_fails = 0;
 }
@@ -136,7 +138,7 @@ static void rc_failed(void)
   }
   /* Сеть, мобильный интернет, ответ модема - заново с AT; три раза подряд - питание. */
   if (++rc.soft_fails >= 3u) { rc_power_ladder(rc_pause(COMM_T_POWER_1, rc.power_step)); return; }
-  rc_schedule(false, rc_pause(COMM_T_SOFT_1, rc.soft_step));
+  rc_schedule(RC_SOFT, rc_pause(COMM_T_SOFT_1, rc.soft_step));
   if (rc.soft_step < 3u) rc.soft_step++;
 }
 
@@ -151,10 +153,10 @@ static void rc_night(void)
     uint16_t day = (uint16_t)(t / 86400u);
     if (second >= 3u * 3600u && second < 4u * 3600u && day != rc.night_day) {
       rc.night_day = day;
-      rc_schedule(true, 0);
+      rc_schedule(RC_PLANNED, 0);
     }
   } else if (rc.now - rc.last_start >= comm_timeouts[COMM_T_DAY]) {
-    rc_schedule(true, 0);
+    rc_schedule(RC_PLANNED, 0);
   }
 }
 
@@ -194,7 +196,7 @@ void comm_recover_no_internet(void)
 {
   comm_server_note(COMM_LINK_NO_INTERNET);
   if (rc.net_step == 0u) comm_channel_reopen(0);
-  else if (rc.net_step == 1u) rc_schedule(false, 0);
+  else if (rc.net_step == 1u) rc_schedule(RC_SOFT, 0);
   else rc_power_ladder(rc_now_then_ladder());
   if (rc.net_step < 2u) rc.net_step++;
 }
@@ -206,7 +208,7 @@ bool comm_recover_first_silence(void)
 {
   if (rc.first) return false;
   rc.first = 1;
-  rc_schedule(true, 0);
+  rc_schedule(RC_PLANNED, 0);
   return true;
 }
 
@@ -231,9 +233,12 @@ void comm_recover_poll(uint32_t now_ms)
       rc.power_step = rc.soft_step = rc.soft_fails = rc.net_step = 0;
   } else rc.online = 0;
   if (rc.state == RC_WAIT) {
-    if (rc_left(now_ms)) return;
+    /* Плановый перезапуск: модем, отвечающий на AT, сначала выходит из сети (QPOWD), иначе
+       следующая регистрация дольше на 12 с (плата №1, 13.10.2026); ждём не дольше COMM_T_POWER_DOWN. */
+    if (rc.power == RC_PLANNED && !rc_left(now_ms)) { rc.power = RC_QPOWD; rc.wait_until = now_ms + comm_timeouts[COMM_T_POWER_DOWN]; }
+    if (rc.power == RC_QPOWD ? !comm_modem_powered_down() && rc_left(now_ms) : rc_left(now_ms) != 0) return;
     rc.state = RC_WATCH;
-    if (comm_modem_restart(rc.power != 0u, now_ms)) {
+    if (comm_modem_restart(rc.power != RC_SOFT, now_ms)) {
       rc.last_start = now_ms;
       if (!comm_channel_modem_reset()) rc.hooks->reset_session();
     }
@@ -241,7 +246,7 @@ void comm_recover_poll(uint32_t now_ms)
   }
   uint8_t state = comm_modem_state();
   if (state == SLM_FAILED) {
-    if (comm_channel_expected() && comm_modem_status()->reason == SLM_ERR_PDP) rc_schedule(false, 0);
+    if (comm_channel_expected() && comm_modem_status()->reason == SLM_ERR_PDP) rc_schedule(RC_SOFT, 0);
     else rc_failed();
     return;
   }

@@ -361,8 +361,13 @@ static void edge_tests(void)
   sim_reset(); CHECK(comm_modem_powered_down() && !slm.down);
   sim_start(); sim_until(15000);
   CHECK(!comm_modem_powered_down() && tx_count == 9u && !memcmp(tx_data, "AT+QPOWD\r", 9));
-  sim_feed("\r\nOK\r\n\r\nPOWERE"); CHECK(!comm_modem_powered_down());
-  sim_feed("D DOWN\r\n"); CHECK(comm_modem_powered_down());
+  /* После QPOWD модем не готов: канал и служебные команды ждут, опрос не забирает ответ из UART. */
+  { static const comm_side_t side = {"AT+CSQ", NULL, NULL, 0, COMM_AT_TEXT, COMM_T_AT_SIMPLE};
+    comm_at_request_t req = {(const uint8_t *)"AT", 2, COMM_AT_TEXT, 300};
+    CHECK(!comm_modem_ready() && !comm_modem_side(&side) && comm_modem_request(&req, sim_now) == COMM_AT_BUSY); }
+  sim_feed("\r\nOK\r\n\r\nPOWERE"); comm_modem_poll(sim_now); CHECK(!comm_modem_powered_down());
+  sim_feed("D DOWN\r\n"); comm_modem_poll(sim_now); CHECK(comm_modem_powered_down());
+  CHECK(comm_modem_restart(true, sim_now) && !slm.down);
   comm_modem_off(); CHECK(!slm.down);
   /* Потерянная команда настройки: один повтор без отказа попытки, вторая потеря - отказ. */
   sim_reset(); sim_lose_clip = 1; sim_start(); sim_until(15000);

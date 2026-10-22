@@ -31,7 +31,7 @@ def main():
         ('first-open-counted', 'if (!ch.call.expected) ++ch.connections;', '++ch.connections;'),
         ('pre-registration-unlimited', 'else if (had_socket && ch.connections >= 3)', 'else if (0)'),
         ('live-TCP-reopened', 'if (ch.call.lost) comm_channel_reopen(0);', 'comm_channel_reopen(0);'),
-        ('expected-PDP-pause', 'if (comm_channel_expected() && comm_modem_status()->reason == SLM_ERR_PDP) rc_schedule(false, 0);', 'if (0) rc_schedule(false, 0);'),
+        ('expected-PDP-pause', 'if (comm_channel_expected() && comm_modem_status()->reason == SLM_ERR_PDP) rc_schedule(RC_SOFT, 0);', 'if (0) rc_schedule(RC_SOFT, 0);'),
         ('network-URC-ignored', 'if (registered == 1 || registered == 5)', 'if (0 && (registered == 1 || registered == 5))'),
         ('TCP-attempt-failure-free', 'if (!ch.call.expected) ++ch.connections;\n    ch.call.expected = ch.call.lost = 0;', 'if (!ch.call.expected) ++ch.connections;'),
     )

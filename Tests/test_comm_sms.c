@@ -159,6 +159,15 @@ static void sms_tests(void)
   advance(31000);CHECK(sms_events==1 && !sim_store[0]);
   sms_reset();cmgd_error=1;sms_arrive(0,sms_phone[0].pdu);CHECK(sms_events==1 && sim_store[0]);
   advance(31000);CHECK(sms_events==1 && !sim_store[0]);
+  /* SIM не стирает ячейку: три отказа CMGD, дальше обзор её пропускает - SMS не исполняется второй раз,
+     другие читаются; новый запуск модема стирает её снова. */
+  sms_reset();cmgd_error=3;sms_arrive(0,sms_phone[0].pdu);advance(65000);
+  CHECK(sms_events==1 && sim_store[0] && !msg.erase && msg.stuck==0x100u);
+  sms_arrive(1,sms_phone[1].pdu);advance(31000);
+  CHECK(sms_events==2 && !sim_store[1] && sim_store[0] && msg.stuck==0x100u);
+  sms_log[0]=0;CHECK(comm_modem_restart(false,sim_now));rc_session(); /* как перезапуск из восстановления */
+  for (unsigned i=0;!strstr(sms_log,"AT+CMGD=0;") && i<3000;++i) transport_tick(10);
+  advance(100);CHECK(sms_events==2 && !sim_store[0] && !msg.stuck && !msg.erase);
   sms_reset();sms_hold=true;sms_arrive(0,sms_phone[0].pdu);advance(1000);CHECK(sms_events==1 && sim_store[0]);
   sms_hold=false;advance(500);CHECK(sms_events==1 && !sim_store[0]);
   /* Неверная длина UDH и оборванный октет: событие и удаление, команды нет. */

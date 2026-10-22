@@ -12,7 +12,7 @@ static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)
 static unsigned server_commands, server_sessions, event13, event_retry;
 static unsigned registrations_sent, statuses_sent, opens, closes, pings, dns_requests;
 static unsigned tx_unacked, drop_register, drop_status, ping_success, dns_success, close_error;
-static unsigned probe_ok_delay, probe_no_ok, modem_silent;
+static unsigned probe_ok_delay, probe_no_ok, modem_silent, qpowd_count;
 static unsigned send_silence, prompt_silence, reserve_enabled, junk_mode, invalid_reserve;
 static uint8_t unique, last_status;
 static uint16_t incoming_count;
@@ -208,6 +208,13 @@ static void transport_tx(void)
   CHECK(tx_count>=3 && tx_count<=128 && tx_data[0]=='A' && tx_data[1]=='T');
   char cmd[128]; CHECK(tx_count<=sizeof(cmd)); memcpy(cmd,tx_data,tx_count); cmd[tx_count-1u]=0;
   snprintf(last_command,sizeof(last_command),"%s",cmd);
+  if (!strcmp(cmd,"AT+QPOWD")) { /* выход из сети: прежний ответ теряется, через 0,25 с POWERED DOWN */
+    ++qpowd_count; sim_pending[0]=0; sim_open_pending=false;
+    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
+    interrupt_byte(0,USART_SR_TC);
+    if (!modem_silent) sim_reply("OK\r\n\r\nPOWERED DOWN\r\n",250);
+    return;
+  }
   if (modem_silent) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
     interrupt_byte(0,USART_SR_TC); return;

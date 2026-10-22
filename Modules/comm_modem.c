@@ -33,7 +33,9 @@ static struct {
   void (*transport_event)(uint8_t, const uint8_t *, uint16_t, uint16_t);
   void (*urc[COMM_URC_COUNT])(const uint8_t *, uint16_t);
   uint8_t call_active;
-  uint8_t down; /* 0 - QPOWD не отправлен, иначе 1 + найдено букв "POWERED DOWN" */
+  /* 0 - QPOWD не отправлен, иначе 1 + найдено букв "POWERED DOWN";
+     после отправки модем не готов: AT, данные и служебные команды ждут перезапуска. */
+  uint8_t down;
   uint8_t session; /* растёт с каждой попыткой запуска */
   /* Служебная команда вне очереди канала: queued ждёт AT, prompted - получен '>',
      данные уходят в том же poll; результат забирает только владелец req. */
@@ -335,7 +337,7 @@ static void slm_begin(bool power, uint32_t now_ms)
 #endif
   memset(slm.diag.phases, 0, sizeof(slm.diag.phases));
   memset(&slm.attempt, 0, sizeof(slm.attempt));
-  slm_side_cancel(); slm.call_active = 0;
+  slm_side_cancel(); slm.call_active = slm.down = 0;
   slm.attempt.pdp_dirty = !power;
   slm.attempt.query = slm.settings.number(SLM_CFG_NETWORK) == 1 ? 2 : 1;
   if (power || !slm.apn.locked) memset(&slm.apn, 0, sizeof(slm.apn));
@@ -401,8 +403,8 @@ uint8_t comm_modem_session(void) { return slm.session; }
 /* После настройки порта служебные AT работают и в паузе отказавшего подключения. */
 static bool slm_side_allowed(void)
 {
-  return slm.attempt.status.state == SLM_READY
-    || (slm.attempt.status.state >= SLM_STARTING && slm.attempt.status.phase >= SLM_PHASE_SIM);
+  return !slm.down && (slm.attempt.status.state == SLM_READY
+    || (slm.attempt.status.state >= SLM_STARTING && slm.attempt.status.phase >= SLM_PHASE_SIM));
 }
 /* Проверено на плате №1 13.10.2026 (a83833c): 9 стартов подряд, QPOWD перед каждым, до TCP 14,8-15,9 с, сбоев настройки нет; повтор шага проверен на модели, на плате не срабатывал */
 /* Плановое выключение: модем, уже отвечавший на AT, выходит из сети (AT+QPOWD),
@@ -494,7 +496,7 @@ bool comm_modem_busy(void) { return comm_at_busy(); }
 /* Передать команду канала после завершения настройки модема. */
 uint8_t comm_modem_request(const comm_at_request_t *request, uint32_t now_ms)
 {
-  if (slm.attempt.status.state != SLM_READY || slm.side.prompted || slm.side.queued || slm.call_active) return COMM_AT_BUSY;
+  if (!comm_modem_ready() || slm.side.prompted || slm.side.queued || slm.call_active) return COMM_AT_BUSY;
   uint8_t r = comm_at_start(request, now_ms);
   if (r == COMM_AT_ACCEPTED) slm.attempt.done = 0;
   return r;
@@ -562,7 +564,7 @@ static uint8_t slm_issue(uint8_t step)
 }
 
 /* Сообщить, готовы ли SIM, сеть и мобильный интернет. */
-bool comm_modem_ready(void) { return slm.attempt.status.state == SLM_READY; }
+bool comm_modem_ready(void) { return slm.attempt.status.state == SLM_READY && !slm.down; }
 /* Сохранённое «авто» отдельно от временного nwscanmode; EPS допустим только с поднятым PDP. */
 uint16_t comm_modem_auto(void) { return slm.settings.number(SLM_CFG_AUTO); }
 bool comm_modem_lte(void) { return comm_modem_ready() && (slm.attempt.net_registered & NET_EPS); }
@@ -738,7 +740,7 @@ static void slm_completed(void)
 /* Принять состояние питания из SysTick, продвинуть AT и попытку запуска. */
 void comm_modem_poll(uint32_t now_ms)
 {
-  if (slm.attempt.status.state == SLM_IDLE) return;
+  if (slm.attempt.status.state == SLM_IDLE || slm.down) return; /* после QPOWD UART читает только ожидание POWERED DOWN */
   slm.attempt.now = now_ms;
   comm_modem_record(SLM_STEP_COUNT + 1u, 0, slm.attempt.status.modem_code);
   /* При снятом/нарастающем питании UART может ловить FE и шум загрузки.

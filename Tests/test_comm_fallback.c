@@ -21,6 +21,9 @@ static void fallback_failures(void)
       rc_tick(10);
       CHECK(opens <= before + 2u);
     }
+    /* Переход плановый: питание снимается после QPOWD. */
+    for (unsigned i = 0; rc.state == RC_WAIT; ++i) { CHECK(i < 300); rc_tick(10); }
+    CHECK(rc.power == RC_QPOWD && qpowd_count == (mode == 3 ? 2u : 1u));
     CHECK(opens == before + 2u && rc_power_starts == (mode == 3 ? 2u : 1u) && test_config.network_type == 0);
     CHECK(rc.rat == RAT_GSM && comm_recover_network(0) == 1);
     printf("LTE fallback cause=%u: second session, power starts=%u PASS\n", mode, rc_power_starts);
@@ -81,7 +84,7 @@ static void fallback_day(void)
   /* Обычная шкала и сутки через UINT32_MAX. RTC специально не участвует. */
   for (unsigned wrap = 0; wrap < 2; ++wrap) {
     fallback_start(0);
-    while (comm_recover_network(0) == 0) rc_tick(10);
+    while (comm_recover_network(0) == 0 || rc.state == RC_WAIT) rc_tick(10); /* до конца QPOWD перехода */
     uint32_t start = wrap ? UINT32_MAX - 1000u : sim_now;
     rc.rat_since = start; rc_clock = 0; rc_busy_flag = false;
     unsigned session = slm.session;
@@ -94,7 +97,8 @@ static void fallback_day(void)
     CHECK(slm.session == session && sim_number(SLM_CFG_NETWORK) == 3);
     test_config.fallback = 1;
     comm_recover_poll(start + 86400000u);
-    CHECK(slm.session == session + 1u && comm_recover_network(0) == 0);
+    /* Модем ещё до AT: QPOWD некому слать, питание снимается в том же опросе. */
+    CHECK(slm.session == session + 1u && !slm.down && comm_recover_network(0) == 0);
     CHECK(rc.rat == RAT_PROBE);
     slm.attempt.status.state = SLM_READY; slm.attempt.net_registered = NET_EPS;
     comm_recover_data(COMM_DATA_BEGIN); comm_recover_data(COMM_DATA_FAILED);
