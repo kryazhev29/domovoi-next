@@ -335,6 +335,10 @@ static void channel_wifi_tests(void)
   wifi_model_reset(0,1); w_dead=1;
   for (unsigned i=0;i<3000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
   CHECK(!ch.wifi && comm_channel_ready() && comm_channel_wifi()); /* порт всё ещё выбран мосту */
+  /* Молчащий мост на GSM не получает выключение каждые несколько секунд: до проверки по расписанию тишина. */
+  unsigned dis=w_dis;
+  for (unsigned i=0;i<6000;++i) sim_tick();
+  CHECK(w_dis==dis);
   unsigned closed=channel_closed, opened=channel_opened;
   wf.fell_at=sim_now-WF_RETRY_MS;
   for (unsigned i=0;i<1000;++i) sim_tick();

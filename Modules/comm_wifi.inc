@@ -265,7 +265,7 @@ WF_INLINE static void wifi_done(uint8_t op, uint8_t ok)
       wf.f.off=0;
       if (wf.f.stop) { wf.f.stop=0; user_comm_wifi_stopped(false); }
       if (wf.mode < 2) { wf.f.dirty=wf.f.drop=0; wf.setup=0; if (ch.wifi) wifi_gsm(); }
-      else { wifi_fail(); wf.since=ch.now; }
+      else { wifi_fail(); wf.f.drop=0; } /* молчащий мост: повтор по расписанию 10/30/60 мин, не каждые 5 с */
       wf.link=4; break;
     }
     wf.f.off=1; wf.f.drop=0; wf.link=3;
