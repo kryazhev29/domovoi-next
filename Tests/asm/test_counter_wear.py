@@ -218,6 +218,33 @@ def server_crc():
     assert m.sent and m.sent[-1][10:12]==struct.pack('<H',crc16(expected[:16000]))
     return {'command13_crc_exact':True,'command18_crc_exact':True,'command101_hex':status,'max_read_bytes_per_poll':peak}
 
+# Замена сектора без строк слоя сохраняет кэш CRC; сектор со строкой даёт точную CRC после сброса кэша.
+def replace_keeps_crc():
+    from test_id_sync_fast import SyncMachine,fixture
+    class M(CounterMachine,SyncMachine):pass
+    m=M();fixture(m,130);m.boot()
+    b=bytearray(cell(130));b[21:29]=struct.pack('<Q',123456);m.update(130,bytes(b))
+    cached=bytearray(m.flash[BASE:BASE+SIZE]);cached[129*32:130*32]=b
+    m.check_crc(cached)
+    def table(data):
+        m.command(13,data,1)
+        for _ in range(20000):
+            if not m.active():break
+            m.now+=1;m.checked('user_storage_poll',budget=1000000)
+        else:raise AssertionError('table did not finish')
+    # Сектор 0 без строк слоя: кэш остаётся готовым, ответ команды берёт CRC из него.
+    table(cell(1,1))
+    expected=bytearray(m.flash[BASE:BASE+SIZE]);expected[129*32:130*32]=b
+    assert m.checked('idcrc_get',0x21000500),'CRC cache dropped by a sector without layer rows'
+    assert int.from_bytes(m.u.mem_read(0x21000500,2),'little')==crc16(expected)
+    assert m.sent[-1][14:16]==struct.pack('<H',crc16(expected)),m.sent[-1].hex()
+    # Сектор 1 со строкой 130: кэш сбрасывается, CRC считается по базе с согласованным слоем.
+    table(cell(130,1))
+    expected=bytearray(m.flash[BASE:BASE+SIZE])
+    assert m.sent[-1][14:16]==struct.pack('<H',crc16(expected)),m.sent[-1].hex()
+    assert m.logical(1)==cell(1,1) and m.logical(130)==cell(130,1)
+    return {'cache_kept_without_rows':True,'crc_exact_with_rows':True}
+
 if __name__=='__main__':
     import sys
     print(ring(int(sys.argv[1]),int(sys.argv[2]),len(sys.argv)>3) if len(sys.argv)>1 else smoke())

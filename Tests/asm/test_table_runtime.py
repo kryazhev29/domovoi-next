@@ -66,6 +66,41 @@ def test_cancel_and_reconnect():
     assert not m.timestamps;results+=1
     return results
 
+# Проверяет отмену после записи всех секторов: граница и счёт ID публикуются, CRC не дочитывается.
+def test_cancel_after_write():
+    m=StorageMachine();m.write(m.addr('mem')+2*8+4,1601536);m.flash[0x4101f]=0
+    # Граница известна: после записи считается CRC до новой границы, а не полный пересчёт.
+    m.write(m.addr('id_used_bytes'),32);m.write(m.addr('id_cells_end'),1,2)
+    before=int.from_bytes(m.u.mem_read(m.device+m.d['numbersCount'],2),'little')
+    m.command(13,rows([1,50048]),2)
+    for _ in range(3000):
+        if m.exec_state()==(7,3,1):break
+        m.tick()
+    else:raise AssertionError('CRC phase not reached')
+    m.tick();m.tick() # Часть базы уже прочитана: отмена приходит посреди расчёта CRC.
+    m.checked('table_runtime_cancel')
+    for ticks in range(1,6):
+        m.tick()
+        if not m.active():break
+    else:raise AssertionError('CRC scan continues after cancel')
+    assert not m.timestamps and not m.answers and m.io is None
+    assert m.flash[0x1c7fe0:0x1c7fe2]==struct.pack('<H',50048),'last cell not written'
+    assert m.u.mem_read(m.addr('id_cells_end'),2)==struct.pack('<H',50048),'id_cells_end lost after cancel'
+    assert m.u.mem_read(m.addr('id_used_bytes'),4)==struct.pack('<I',50048*32),'id_used_bytes lost after cancel'
+    assert int.from_bytes(m.u.mem_read(m.device+m.d['numbersCount'],2),'little')==before+2,'numbersCount lost after cancel'
+    m.settle_crc()
+    # Неизвестная граница: полный пересчёт доводится до конца и публикует итог даже после отмены.
+    m=StorageMachine();m.write(m.addr('mem')+2*8+4,1601536);m.flash[0x4101f]=0
+    m.command(13,rows([1,50048]),2)
+    for _ in range(3000):
+        if m.exec_state()==(7,3,1):break
+        m.tick()
+    else:raise AssertionError('CRC phase not reached')
+    m.checked('table_runtime_cancel');m.drain(30000)
+    assert not m.timestamps and m.u.mem_read(m.addr('id_cells_end'),2)==struct.pack('<H',50048)
+    assert m.u.mem_read(m.addr('id_used_bytes'),4)==struct.pack('<I',50048*32)
+    return {'polls_after_cancel':ticks}
+
 # Проверяет отказы каждой границы обмена и состояние после них.
 def test_faults():
     count=0
@@ -147,6 +182,7 @@ if __name__=='__main__':
     for cmd,idx in [(13,[1]),(13,list(range(1,64))),(13,[8,9,128,129,1,129]),(14,[8,9,64]),(15,[16,17,128]),(16,[1,2])]:
         out['normal'][str(cmd)+'/'+str(len(idx))]=test_normal(cmd,idx,True);print('normal',cmd,len(idx),'PASS',flush=True)
     out['cancel_reconnect']=test_cancel_and_reconnect();print('cancel/reconnect PASS',flush=True)
+    out['cancel_after_write']=test_cancel_after_write();print('cancel after write PASS',flush=True)
     out['faults']=test_faults();print('faults/heap PASS',flush=True)
     out['corruption']=test_corrupt();print('backup corruption PASS',flush=True)
     out['interaction_heap']=test_interaction_and_heap();print('full ID/ownership/reset/real heap PASS',flush=True)

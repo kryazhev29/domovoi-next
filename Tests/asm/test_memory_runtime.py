@@ -33,6 +33,24 @@ def config_machine():
     m.u.mem_write(0x21000000,data)
     return m,old,data
 
+# Строка курсора над образом без маркера не подставляет резерв как последний номер журнала.
+def cursor_without_marker():
+    out=[]
+    for marker,last in ((0,0xffffffff),(0xffffffff,0xffffffff),(0x354C5055,7)):
+        m=StorageMachine();m.write(m.addr('cfg_cached_active'),SLOT0)
+        row=struct.pack('<IIHH',5,6,0,0);crc=crc16(row);row+=struct.pack('<I',crc|((~crc&0xffff)<<16))
+        m.flash[SLOT0+4096+16:SLOT0+4096+32]=row
+        image=bytearray(512);r=m.d['reserv']
+        struct.pack_into('<I',image,r+16,marker);struct.pack_into('<I',image,r+28,last)
+        m.u.mem_write(0x21000000,bytes(image))
+        assert m.checked('mem_cursor_restore',0x21000000,budget=2000000)
+        got=bytes(m.u.mem_read(0x21000000,512))
+        assert got[r+16:r+20]==struct.pack('<I',0x354C5055) and got[r+20:r+28]==row[:8]
+        expected=last if marker==0x354C5055 else 0
+        assert got[r+28:r+32]==struct.pack('<I',expected),(hex(marker),got[r+28:r+32].hex())
+        out.append(expected)
+    return out
+
 # Доводит публикацию снимка A/B до результата.
 def run_config(m):
     costs=[];reads=[]

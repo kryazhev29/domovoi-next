@@ -1,6 +1,6 @@
 // Доработка: Кряжев А., 2026
 // Фоновая проверка сроков ID, чтение базы по 64 Б.
-// Запись завершённого прохода выполняется через журнал секторов.
+// Отметка прохода дописывается в слой счётчиков; журнал секторов — при полном слое или смене ячейки.
 // Рабочая память и флеш освобождаются при отмене, ошибке или завершении.
 #include "runtime_internal.h"
 enum {
@@ -168,6 +168,16 @@ void expiry_runtime_poll(uint32_t now)
   default: goto retry;
   }
 found: p->target=address;
+  {
+    int written=counter_write(address,(const cellID_s *)p->record);
+    if(written<0) goto retry;
+    if(written==1) {
+      flash_job.step=EXP_SCAN;
+      log_addControlEvent((logControl_e)138,(char *)p->record+2,255);
+      if(p->cancelled) goto retry;
+      return;
+    }
+  }
 flash_job.step=EXP_START;
 return;
 retry:

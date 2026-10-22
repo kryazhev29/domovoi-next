@@ -29,6 +29,7 @@ class ResetMachine(StorageMachine):
         self.reloads = self.max_gap = 0
         self.reset_at = None
         self.ready_at = 0
+        self.allow_pending = False
         self.u.hook_add(UC_HOOK_MEM_WRITE, self.watch, begin=0x40003000, end=0x40003003)
         self.u.hook_add(UC_HOOK_MEM_WRITE, self.watch, begin=0xe000ed0c, end=0xe000ed0f)
         self.checked('log_getRecordsCount', budget=1000000)
@@ -45,7 +46,7 @@ class ResetMachine(StorageMachine):
         elif address == 0xe000ed0c:
             assert value & 0xffff0004 == 0x05fa0004, 'неверный SYSRESETREQ'
             assert self.now - self.last_reload < 3000, 'IWDG истёк перед SYSRESETREQ'
-            assert self.io is None and not self.read8('log_pendingCount'), 'сброс до сохранения журнала'
+            assert self.io is None and (self.allow_pending or not self.read8('log_pendingCount')), 'сброс до сохранения журнала'
             self.reset_at = self.now
             raise ResetReached()
 
@@ -85,9 +86,15 @@ class ResetMachine(StorageMachine):
 
 def reset_paths():
     results = []
-    for mode in ('command', 'update', 'queued', 'sync'):
+    for mode in ('command', 'update', 'queued', 'sync', 'log paused'):
         m = ResetMachine()
-        if mode == 'update':
+        if mode == 'log paused':
+            # Журнал остановлен после трёх ошибок записи: ждать его бессмысленно.
+            assert m.checked('log_addSystemEvent', 33)
+            m.write(m.addr('log_retry_at'), (m.now + 30000) | 1)
+            m.allow_pending = True
+            m.write(m.device + m.d['timeToReset'], 1, 1)
+        elif mode == 'update':
             m.candidate()
             m.write(m.device + m.d['rebootToUpdate'], 1, 1)
         elif mode == 'command':
@@ -113,6 +120,8 @@ def reset_paths():
         except ResetReached:
             pass
         assert m.reloads and m.max_gap < 3000
+        if mode == 'log paused':
+            assert m.reset_at < 5000, ('перезапуск ждал остановленный журнал', m.reset_at)
         if mode == 'update':
             assert m.flash[:4] == struct.pack('<I', 0x4e465744), 'кандидат не опубликован'
             assert m.reloads >= 0x17e00 // 128, 'CRC образа не обслуживал сторож'
@@ -156,6 +165,9 @@ def mutations():
         'reset-never-finishes': ('reset_paths', [('User/c/user_store.c',
             'if (store_reset_waits_log(now) || store_save_requested) {',
             'if (store_reset_waits_log(now) || store_save_requested || store_reset_requested) {')]),
+        'reset-waits-paused-log': ('reset_paths', [('User/c/user_store.c',
+            'return log_pendingCount && log_write_ready() && mem_storage_ready && now - store_ready_at < 10000u;',
+            'return log_pendingCount && mem_storage_ready && now - store_ready_at < 10000u;')]),
         'watchdog-not-serviced': ('reset_paths', [('Modules/wdt_stm32f10x.c',
             'IWDG->KR = 0xAAAAu;', '(void)0;')]),
         'trial-out-of-bounds': ('trial_clock', [('Bootloader/app_update.c',

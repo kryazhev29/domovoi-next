@@ -3,6 +3,7 @@
 // Индекс ускоряет поиск; во время пересборки остаётся перебор блоками 256 Б.
 // Стартовый скан сверяет метку индекса с базой; ошибка чтения отличается от отсутствия ID.
 #include "user_logic_internal.h"
+#include "fast_kernels.h"
 #include "../../Bootloader/app_update.h"
 uint32_t id_used_bytes = UINT32_MAX;
 uint16_t id_cells_end;
@@ -246,15 +247,15 @@ void user_ids_scan(void){
   cellID_s *c;
   uint16_t n = (uint16_t)(mem[MB_ID].size - offset > sizeof(tbuffer) ?
                          sizeof(tbuffer) : mem[MB_ID].size - offset);
-  if (!mem_read(mem[MB_ID].start + offset, tbuffer, n)) {
+  /* Слой счётчиков меняет только байты 21..28: номер, ID и признак читаем из базы. */
+  if (!counter_base_read(mem[MB_ID].start + offset, tbuffer, n)) {
     flash_exec_finish(FX_ERROR);
     return;
   }
   for (uint16_t a = 0; a < n; a += sizeof(cellID_s)){
     c = (cellID_s*)&tbuffer[a];
     /* Последняя ячейка, где есть хоть один записанный байт: за ней флеш стёрта. */
-    for (uint8_t b = 0; b < sizeof(cellID_s); b++)
-      if (tbuffer[a + b] != 0xff) { id_scan.used = id_scan_cell; break; }
+    if (!fast_all_ff(&tbuffer[a], sizeof(cellID_s))) id_scan.used = id_scan_cell;
     uint16_t cell = id_scan_cell++;
     // пустая ячейка
     if (c->index == 0xffff || c->reserve[9] == 255) continue;

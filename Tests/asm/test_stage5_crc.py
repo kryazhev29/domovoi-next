@@ -13,8 +13,13 @@ def get(m):
     p=0x21000800
     return int.from_bytes(m.u.mem_read(p,2),'little') if m.checked('idcrc_get',p) else None
 
-# Считает результат по независимому эталону сырых данных.
-def oracle(m):return crc16(m.flash[BASE:BASE+8192])
+# Считает результат по независимому эталону логического образа: слой счётчиков наложен, как для сервера.
+def oracle(m):
+    out=bytearray();reads=m.counts['read'] # Эталон читает модель, но не входит в счёт чтений проверяемого кода.
+    for off in range(0,8192,64):
+        assert m.checked('mem_read',BASE+off,0x21000000,64,budget=5000000);out+=m.u.mem_read(0x21000000,64)
+    m.counts['read']=reads
+    return crc16(out)
 
 # Доводит кэш CRC до готовности перед проверкой записи.
 def warm(m):
@@ -46,7 +51,7 @@ def run():
     e.start_expiry();e.expiry_drain();assert get(e)==oracle(e);assert warm(e)==oracle(e)
     c=ClearMachine();c.flash[BASE:BASE+32]=cell(1);assert warm(c)==oracle(c)
     c.parse();c.clear_drain();assert get(c)==oracle(c);assert warm(c)==oracle(c)
-    return {'writers':['packet13 append','packet13 sector journal','user_updateID / cntPass / first-pass','expiry','clear'],'CRC':'raw full oracle'}
+    return {'writers':['packet13 append','packet13 sector journal','user_updateID / cntPass / first-pass','expiry','clear'],'CRC':'logical full oracle'}
 
 # Проверяет восстановление после обрывов изменяющих операций.
 def power():

@@ -203,7 +203,10 @@ static uint8_t pr_prepare(uint32_t size)
   uint32_t end = photo_storage_end();
   if (!size || size>65535) return 0;
   uint32_t need=(size+PHOTO_RECORD_HEAD+4095u)&~4095u;
-  if (need>end-photo->address) photo->address=mem[MB_PHOTO].start;
+  if (need>end-photo->address) {
+    if (pr.oldest>=photo->address) return 0; // Хвост занят самым старым снимком: заворот его сотрёт.
+    photo->address=mem[MB_PHOTO].start;
+  }
   if (pr.oldest && ((photo->address<=pr.oldest && photo->address+need>=pr.oldest) ||
       (photo->address+need==end && pr.oldest==mem[MB_PHOTO].start))) return 0;
   photo->size = (uint16_t)size;

@@ -199,7 +199,10 @@ bool mem_cursor_restore(device_s *saved)
     cfg_cursor_offset = off + 16;
     uint16_t crc = (uint16_t)row[3];
     if (crc != (uint16_t)~(row[3] >> 16) || crc != crc16_calc((uint8_t *)row, 12)) continue;
-    uint32_t magic=LOG_CURSOR_MAGIC;
+    uint32_t magic;
+    memcpy(&magic,saved->reserv+16,4);
+    if (magic!=LOG_CURSOR_MAGIC) memset(saved->reserv+28,0,4); // Образ без маркера: номер журнала не хранил.
+    magic=LOG_CURSOR_MAGIC;
     memcpy(saved->reserv+16,&magic,4);
     magic=DEVICE_UPLOAD_MARK;memcpy(saved->reserv,&magic,4);
     memcpy(saved->reserv + 20, row, 8);

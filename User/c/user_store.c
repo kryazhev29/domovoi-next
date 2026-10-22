@@ -450,7 +450,7 @@ void user_storage_poll(void)
 // Перезагрузка ждёт журнал не дольше 10 с от запроса и только при готовом хранилище.
 static bool store_reset_waits_log(uint32_t now)
 {
-  return log_pendingCount && mem_storage_ready && now - store_ready_at < 10000u;
+  return log_pendingCount && log_write_ready() && mem_storage_ready && now - store_ready_at < 10000u;
 }
 static void store_poll(uint32_t now, uint8_t result)
 {

@@ -181,12 +181,12 @@ bool counter_replaced(uint32_t address)
   if (marker==SJ_COMMIT) return true;
   if (!ct.page && !ct_load()) return false;
   if (!ct.used) return true;
-  idcrc_unknown();
   uint16_t end=ct.used;
   ct_row row,last;
   for (uint16_t n=0;n<end;n++) {
     uint16_t key=ct_keys[n];
     if (!ct_key_valid(key) || ((mem[MB_ID].start+32u*key)&~4095u)!=address || !ct_last(n)) continue;
+    idcrc_unknown(); // Логический образ сектора отличался от физического: разность CRC неверна.
     if (!ct_read(n,&row)) return false;
     if (!w25_read_data(mem[MB_ID].start+32u*key+21,last.value,8)) return false;
     if (!memcmp(row.value,last.value,8)) continue;

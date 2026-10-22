@@ -37,7 +37,8 @@ def expiry_scheduler():
             raise AssertionError('scheduler did not drain expiry')
         if cancel_at is None:
             assert m.expiry_events == [(138, b'abcdefghij'.hex(), 255)]
-            assert m.flash[0x41000 + 28] == 56
+            assert m.flash[0x41000 + 28] == 0, 'expiry mark must go to the counter layer'
+            assert m.image()[28] == 56
         assert m.io is None
         assert owned(m)==0
         cases.append({'cancel_at': cancel_at, 'passes': len(costs),

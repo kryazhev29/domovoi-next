@@ -17,6 +17,9 @@ class ExpiryMachine(StorageMachine):
         self.write(self.addr('id_endScan'),1,1)
         self.write(self.addr('mem')+2*8+4,8192)
         self.legacy=False
+        # Готовая страница слоя счётчиков: отметка срока дописывается строкой без стартового чтения страниц.
+        self.flash[0x1fb000:0x1fb00c]=struct.pack('<III',0,0xffffffff,0)
+        self.write(self.addr('ct'),0x1fb000)
     # Читает модельную NOR с контролем диапазона и заданным отказом.
     def read(self):
         a,p,n,_=self.args();self.read_budget+=n
@@ -52,9 +55,16 @@ class ExpiryMachine(StorageMachine):
         self.symbols['expiry_legacy']=self.addr('user_checkIdTimeEnd')+4
         self.symboltypes['expiry_legacy']='STT_FUNC'
         self.checked('expiry_legacy',budget=5000000)
+    # Логический образ базы: слой счётчиков наложен так же, как для доступа и сервера.
+    def image(self):
+        out=bytearray()
+        for off in range(0,8192,1024):
+            assert self.checked('mem_read',BASE+off,0x21000000,1024,budget=5000000)
+            out+=self.u.mem_read(0x21000000,1024)
+        return bytes(out)
     # Возвращает данные, события и метаданные для сравнения.
     def result(self):
-        return (bytes(self.flash[BASE:BASE+8192]),self.expiry_events,
+        return (self.image(),self.expiry_events,
                 bytes(self.u.mem_read(self.addr('id_nextEnd'),4)),
                 bytes(self.u.mem_read(self.addr('id_endScan'),1)))
 
@@ -86,9 +96,10 @@ def differential():
 # Проверяет отмену в рабочих фазах и смену сеансов.
 def cancel_and_sessions():
     count=0
-    # Отменяем поиск до журнала и в каждой фазе долговечной записи.
+    # Отменяем поиск до журнала и в каждой фазе долговечной записи; полный слой ведёт в журнал сектора.
     for phase in (0,16,1,2,3,5,6,8,10,12,15,30):
-        m=ExpiryMachine();m.install([record()]);assert m.start_expiry()
+        m=ExpiryMachine();m.install([record()]);m.stubs[m.addr('counter_write')]=lambda m=m: m.ret(2)
+        assert m.start_expiry()
         if phase:
             for _ in range(3000):
                 if m.u.mem_read(m.addr('sjr')+54,1)[0]==phase:break
@@ -108,12 +119,30 @@ def cancel_and_sessions():
     assert m.u.mem_read(m.addr('store_reset_requested'),1)==b'\1';count+=1
     return count
 
-# Проверяет последствия отказов чтения, записи и обратной проверки.
+# Отметка срока дописывается в слой счётчиков; журнал сектора — только при отказе слоя.
+def layer():
+    m=ExpiryMachine();m.install([record()]);m.record_changes=True;m.changes=[]
+    assert m.start_expiry();m.expiry_drain()
+    assert len(m.expiry_events)==1 and m.flash[BASE+28]==0,'base sector rewritten instead of the layer'
+    assert m.image()[28]==56 and m.io is None
+    assert all(kind=='write' for kind,_,_ in m.changes) and sum(len(d) for _,_,d in m.changes)==10,m.changes
+    # Слой полон или ячейка изменилась: запись идёт журналом сектора; отказ NOR слоя завершает проход.
+    for code,base_mark in ((2,56),(0,56),(0xffffffff,0)):
+        m=ExpiryMachine();m.install([record()]);m.stubs[m.addr('counter_write')]=lambda m=m,code=code: m.ret(code)
+        assert m.start_expiry();m.expiry_drain()
+        assert m.flash[BASE+28]==base_mark and len(m.expiry_events)==(1 if base_mark else 0),code
+        assert m.io is None and m.u.mem_read(m.addr('id_endScan'),1)==(b'\0' if base_mark else b'\1')
+    return {'layer_writes':2,'layer_bytes':10}
+
+# Проверяет последствия отказов чтения, записи и обратной проверки: слой и журнал сектора.
 def faults():
     count=0
-    for kind,points in [('read',(1,2,3,65,130,192,257)),('start',(1,2,3,66,68,100)),('poll',(1,10,200,390))]:
+    for kind,points in [('read',(1,2,3,4,65,130,192,257)),('start',(1,2,3,66,68,100)),('poll',(1,10,200,390))]:
         for point in points:
-            m=ExpiryMachine();m.install([record()]);m.fault=(kind,point);assert m.start_expiry();m.expiry_drain()
+          for full in (False,True):
+            m=ExpiryMachine();m.install([record()]);m.fault=(kind,point)
+            if full:m.stubs[m.addr('counter_write')]=lambda m=m: m.ret(2)
+            assert m.start_expiry();m.expiry_drain()
             if m.counts[kind]<point:continue
             assert not m.expiry_events and m.io is None
             assert m.u.mem_read(m.addr('id_endScan'),1)==b'\1'
@@ -172,7 +201,7 @@ if __name__=='__main__':
     import argparse
     p=argparse.ArgumentParser();p.add_argument('--power',action='store_true');a=p.parse_args()
     out={'differential':differential()};print('legacy/canonical/fallback/boundaries PASS',flush=True)
-    out['cancel_reset_sessions']=cancel_and_sessions();out['faults_oom']=faults()
+    out['cancel_reset_sessions']=cancel_and_sessions();out['faults_oom']=faults();out['layer']=layer()
     print('cancel/reset/session/I/O/OOM/priority PASS',flush=True)
     out['full_scan_heap']=full_scan_and_heap();print('full ID/heap/fragmentation/coalescing PASS',flush=True)
     if a.power:out['power_cuts']=power();print('power cuts',out['power_cuts'],'PASS',flush=True)

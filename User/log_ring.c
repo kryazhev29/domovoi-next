@@ -32,7 +32,7 @@ bool log_write_ready(void)
 static struct {
   uint32_t live,maximum,header[8],word,previous[24];
   uint8_t seq[24],count[24];
-  uint8_t position,low,high,scan;
+  uint8_t position,scan;
   uint8_t head,target,forced,part,init,ready,after;
 } lr;
 #define NONE 255u
@@ -108,20 +108,7 @@ uint8_t log_ring_init_step(void)
       lr.live&=~(1u<<lr.forced);
       lr.count[lr.forced]=0;
     }
-    lr.low=0;
-    lr.high=127;
-    lr.init=2;
-    return 1;
-  }
-  if(lr.init==2) {
-    if(lr.low<lr.high) {
-      uint16_t middle=(uint16_t)((lr.low+lr.high)/2);
-      if(!w25_read_data(sector(lr.head)+32u+32u*middle,(uint8_t *)&cell,32)) return 3;
-      if(log_blank(&cell)) lr.high=middle;
-      else lr.low=middle+1;
-      return 1;
-    }
-    lr.position=lr.low;
+    lr.position=127;
     lr.scan=0;
     lr.count[lr.head]=0;
     if(log_lastIndex<lr.header[3]) log_lastIndex=lr.header[3];

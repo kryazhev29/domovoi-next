@@ -57,12 +57,12 @@ CASES = {
     'id_sync_fast': [('test_id_sync_fast', 'contracts'), ('test_id_sync_fast', 'mutations')],
     **{n:[('elf_contracts',n)] for n in ('event_append','fw_blocks','fw_bridge','usb_queue','owner_lifetimes')},
     'access': [('test_access_reads', n) for n in ('table_cells','holidays','find_id','access','temp_read_error','autoregistration')],
-    'config': [('test_memory_runtime', n) for n in ('allocator','cached_reads','config_ownership','config_faults')],
+    'config': [('test_memory_runtime', n) for n in ('allocator','cached_reads','config_ownership','config_faults','cursor_without_marker')],
     'index': [('test_idindex_runtime', n) for n in ('test_normal','test_faults','test_cancel_restart','test_boundaries','test_real_w25')],
     'service': [('test_service_runtime', n) for n in ('wire_and_budgets','faults_and_lifetime','config_reply','config_cached_source','ff_affine','pending_timeout','real_w25','unrecovered_storage')],
     'upload': [('test_upload_runtime', n) for n in ('test_normal','test_parser','test_media_gate','test_gaps_and_faults','test_busy_empty_cancel','test_heap_ack')],
     'clear': [('test_idclear_runtime', n) for n in ('success_and_heap','sessions_cancel_faults','guards')],
-    'expiry': [('test_expiry_runtime', n) for n in ('cancel_and_sessions','faults','full_scan_and_heap')],
+    'expiry': [('test_expiry_runtime', n) for n in ('cancel_and_sessions','faults','full_scan_and_heap','layer')],
     'firmware': [('test_fw_service_runtime', n) for n in ('normal','heap_reservation','boundaries_errors','io_faults','busy_cancel','real_spi','exact_failure_logs')],
     'photo': [('test_photo_runtime', n) for n in ('normal','uploads','errors')],
     'camera packet': [('test_camera_packet','run')],
@@ -71,8 +71,8 @@ CASES = {
     'photo dispatch': [('test_photo_dispatch', 'run')],
     'photo latency': [('test_photo_latency','run'), ('test_photo_latency','mutations')],
     'photo access': [('test_photo_access', n) for n in ('passage','skipped','same_camera_path')],
-    'photo_edges': [('test_photo_edges', n) for n in ('cancellation','corrupt','failures','stream','transport_and_heap','ownership','full_cleanup','headers_and_space')],
-    'table': [('test_table_runtime', n) for n in ('test_cancel_and_reconnect','test_faults','test_corrupt','test_interaction_and_heap')],
+    'photo_edges': [('test_photo_edges', n) for n in ('cancellation','corrupt','failures','stream','transport_and_heap','ownership','full_cleanup','headers_and_space','wrap_keeps_oldest')],
+    'table': [('test_table_runtime', n) for n in ('test_cancel_and_reconnect','test_cancel_after_write','test_faults','test_corrupt','test_interaction_and_heap')],
     'owners': [('test_owner_integration', n) for n in ('expiry_scheduler','clear_scheduler')],
     'usb_replies': [('test_owned_usb_replies','run')],
     'storage_boundary': [('test_storage_boundaries',None)],
@@ -86,7 +86,7 @@ CASES = {
     'photo_power': [('test_photo_power', n) for n in ('capture_cuts','acknowledgement_cuts','cleanup_cuts')],
     'table_power': [('test_table_runtime','test_power')],
 }
-CASES['counter pages']=[('test_counter_wear',n) for n in ('smoke','append_power','gc_power','fold_power','access_days','server_crc','overflow')]
+CASES['counter pages']=[('test_counter_wear',n) for n in ('smoke','append_power','gc_power','fold_power','access_days','server_crc','overflow','replace_keeps_crc')]
 CASES['photo ring']=[('test_flash_wear2',n) for n in ('photo_smoke','photo_queue','photo_repeat_ack','photo_power','photo_rotation_power')]
 CASES['wear2 mutations']=[('test_flash_wear2_mutations','run')]
 CORE = ('peripheral init','protocol lengths','protocol config','protocol text','sched16','ids boot read','log time pending','fw install wait','stage5 countends','stage5 logcommit','stage5 2MB','stage5 log','stage5 CRC','stage5 ID','stage5 Wiegand','stage4 FW CRC','stage4 USB','sync entry','stage3 input guards','diagnostics config','stack canary','format ABI','workspace','id_sync_fast','access','config','index','service','upload','clear','expiry','firmware','photo','photo_edges','table','owners','owner_lifetimes','usb_replies','storage_boundary')
@@ -103,6 +103,8 @@ CORE += ('flash wear','counter pages','photo ring','wear2 mutations','counter ba
 CORE += ('flash fixes',)
 CASES['fixes1 mutations'] = [('test_fixes1_mutations', 'run')]
 CORE += ('flash mutations', 'unblock delay mutations', 'fixes1 mutations')
+CASES['storage review mutations'] = [('test_storage_review_mutations', 'run')]
+CORE += ('storage review mutations',)
 CORE += ('reset cause', 'reset cause mutations')
 CORE += ('reset runtime', 'reset runtime mutations')
 CASES['flash executor'] = [('test_flash_executor', 'run')]

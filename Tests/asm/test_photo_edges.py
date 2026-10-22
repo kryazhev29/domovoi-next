@@ -139,6 +139,19 @@ def headers_and_space():
     assert m.flash==f
     return 9
 
+# Заворот указателя записи не пропускает самый старый неподтверждённый снимок в хвосте кольца.
+def wrap_keeps_oldest():
+    m=PhotoMachine();m.boot_media();start,end=0x200000,m.checked('photo_storage_end')
+    assert end==start+0x100000 # Снимок 65535 Б занимает 17 секторов: хвост 16 секторов его не вмещает.
+    for oldest,allowed in ((end-8192,0),(end-65536,0),(start+0x80000,1)):
+        m=PhotoMachine();m.boot_media();m.packet(7,b'\5');m.drain()
+        assert m.pget('stage')==1
+        m.write(m.photo_ptr()+pf()['address'],end-65536)
+        m.write(m.addr('pr')+m.runtime_fields['oldest'],oldest)
+        assert m.checked('pr_prepare',65535)==allowed,(hex(oldest),allowed)
+        assert m.pget('address',4)==(start if allowed else end-65536),hex(oldest)
+    return 3
+
 if __name__=='__main__':
-    out={fn.__name__:fn() for fn in (cancellation,corrupt,failures,stream,transport_and_heap,ownership,full_cleanup,headers_and_space)}
+    out={fn.__name__:fn() for fn in (cancellation,corrupt,failures,stream,transport_and_heap,ownership,full_cleanup,headers_and_space,wrap_keeps_oldest)}
     print(json.dumps(out,indent=2));print('PASS photo edges')

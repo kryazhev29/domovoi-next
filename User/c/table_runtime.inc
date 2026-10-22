@@ -149,7 +149,8 @@ static void table_runtime_finish(void)
   uint8_t cmd=table_job.cmd;
   flash_result_t result = table_job.failed ? FX_ERROR : table_job.cancelled ? FX_CANCELLED : FX_OK;
   flash_exec_finish(result);
-  if (cmd == 13 && (table_job.scan_full == 2 || result == FX_OK)) {
+  // scan_full==0 означает, что все сектора записаны: отмена после записи не теряет границу и счёт.
+  if (cmd == 13 && (table_job.scan_full == 2 || (!table_job.scan_full && !table_job.failed))) {
     if (table_job.scan_full == 2) {
       device.numbersCount = table_job.numbers;
       idindex_scanned(table_job.sum, table_job.last);
@@ -293,8 +294,13 @@ void table_runtime_poll(uint32_t now)
     return;
   }
   if (flash_job.step==TABLE_CRC) {
-    uint8_t *b=sjr.data, chunks=4;
+    // Отмена после записи: CRC не нужна, граница известна; полный пересчёт доводим до конца.
+    if (table_job.cancelled && !table_job.scan_full) {
+      flash_job.step=TABLE_REPLY;
+      return;
+    }
     // Журнал свободен: используем его буфер.
+    uint8_t *b=sjr.data, chunks=4;
     uint32_t started=timers_getMillis();
     do {
       uint16_t n=64;
