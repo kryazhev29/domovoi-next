@@ -255,14 +255,15 @@ void user_saveindex (void)
   user_writeConfigAndDevice();
 }
 
-// Сохранить config/device через их единственный атомарный владелец.
+// Сохранить config/device при старте тем же автоматом A/B, что в работе, дожидаясь проверки W25.
 bool user_writeConfigAndDevice(void)
 {
   wdt_reload();
   config.crc = crc16_calc((pInt8U)&config, sizeof(config)-2);
   device.crc = crc16_calc((pInt8U)&device, sizeof(device)-2);
-  bool ok = mem_patch2(mem[MB_CONFIG].start, (const uint8_t*)&config, sizeof(config),
-                      (const uint8_t*)&device, sizeof(device));
-  wdt_reload();
+  if (!mem_config_begin((const uint8_t*)&config, (const uint8_t*)&device)) return false;
+  while (mem_config_result() == 1) { wdt_reload(); mem_config_poll(timers_getMillis()); }
+  bool ok = mem_config_result() == 2;
+  mem_config_reset();
   return ok;
 }

@@ -35,13 +35,8 @@ const uint8_t *mem_config_snapshot(void);
 bool mem_recover(void);
 // Проверяет доступность таблиц без повторного восстановления.
 #include "flash_exec.h"
-typedef uint8_t (*mem_page_reader)(const void *context, uint16_t offset, uint8_t *page);
-// Атомарно заменяет сектор из источника страниц.
-bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context);
-// Атомарно изменяет один фрагмент образа.
-bool mem_patch(Int32U adr, const uint8_t *data, Int16U size);
-// Атомарно изменяет два смежных фрагмента образа.
-bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *second, Int16U nsecond);
+// При старте атомарно заменяет сектор фоновым журналом из источника кусков по 64 Б.
+bool mem_replace_sector(uint32_t adr, uint8_t (*reader)(const void *, uint16_t, uint8_t *), const void *context);
 
 // Чтение данных с памяти
 bool mem_read (Int32U adr, pInt8U buff, Int16U size);

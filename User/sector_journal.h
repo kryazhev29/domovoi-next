@@ -26,9 +26,6 @@ uint8_t sj_destination(uint32_t address);
 uint8_t sj_span(uint32_t address, uint16_t size);
 // Завершает перенос после сброса при целом журнале.
 uint8_t sj_recover(void);
-typedef uint8_t (*sj_page_reader)(const void *context, uint16_t offset, uint8_t *page);
-// Публикует резервный образ перед заменой назначения.
-uint8_t sj_replace_pages(uint32_t address, sj_page_reader reader, const void *context);
 // Читает через проверяемый низкий уровень владельца.
 uint8_t sj_io_read(uint32_t address, uint8_t *data, uint16_t size);
 // Пишет через низкий уровень с обязательным обратным чтением.

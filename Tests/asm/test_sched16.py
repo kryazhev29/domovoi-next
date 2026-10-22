@@ -188,6 +188,8 @@ def migration_machine(flash=None):
     m.u.mem_write(m.addr('mem')+6*8,struct.pack('<II',0x1cd400,4096))
     m.stubs[m.addr('fw_resume_after_boot')] = m.ret
     m.stubs[m.addr('timers_pause')] = m.ret
+    # Сброс сообщает связи о снятом выборе Wi-Fi; модем в этом стенде не запущен.
+    m.stubs[m.addr('comm_channel_wifi_changed')] = m.ret
     # При старте читается полный снимок устройства 512 Б; фоновые шаги ограничены.
     def read():
         a,p,n,_=m.args()

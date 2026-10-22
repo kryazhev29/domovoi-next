@@ -60,13 +60,13 @@ void sched16_reset_mark(bool complete)
   else memset(device.reserv + SCHED16_MARK_OFFSET, 0, 8);
 }
 
-// Готовит пустую страницу расписаний для журнальной очистки.
-static uint8_t sched16_empty_page(const void *context,uint16_t offset,uint8_t *page)
+// Готовит пустой кусок 64 Б расписаний для журнальной очистки; соседняя таблица сектора сохраняется.
+static uint8_t sched16_empty_chunk(const void *context,uint16_t offset,uint8_t *chunk)
 {
   (void)context;
   uint32_t address=(mem[MB_SHEDULE].start&~4095u)+offset;
-  if (address<mem[MB_SHEDULE].start) return w25_read_data(address,page,256);
-  memset(page,255,256); return 1;
+  if (address<mem[MB_SHEDULE].start) return w25_read_data(address,chunk,64);
+  memset(chunk,255,64); return 1;
 }
 
 // Завершает переход формата расписаний после стартового восстановления.
@@ -77,7 +77,7 @@ bool sched16_boot(void)
   // Отсутствие маркера означает незавершённый переход; после восстановления
   // журнала очищаем расписания и только затем публикуем маркер.
   if (!flash_exec_read_allowed() ||
-      !mem_replace_pages(mem[MB_SHEDULE].start&~4095u,sched16_empty_page,0)) goto bad;
+      !mem_replace_sector(mem[MB_SHEDULE].start&~4095u,sched16_empty_chunk,0)) goto bad;
   memcpy(device.reserv+SCHED16_MARK_OFFSET,sched16_mark,8);
   if (user_writeConfigAndDevice()) return true;
 bad:

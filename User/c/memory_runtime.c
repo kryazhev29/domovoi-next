@@ -11,7 +11,7 @@
 #include "counter_runtime.inc"
 
 bool mem_storage_ready = false;
-// Запрещает таблицы после ошибки даже при прямом вызове журнала, минуя mem_replace_pages.
+// Запрещает таблицы после ошибки даже при прямом вызове журнала, минуя mem_replace_sector (восстановление при старте).
 static uint8_t mem_journal_result(uint8_t ok)
 {
   if (!ok) mem_storage_ready = false;
@@ -45,37 +45,16 @@ static bool mem_reserved(uint32_t adr, uint16_t n)
 {
   return n && (adr < 0x1FE000u && adr + n > SJ_DATA);
 }
-// Заменяет сектор из источника страниц без копии 4 КиБ в ОЗУ.
-bool mem_replace_pages(uint32_t adr, mem_page_reader reader, const void *context)
+// Заменяет сектор при старте тем же фоновым журналом, что в работе, дожидаясь его.
+// Отказ, как и прежде, снимает готовность таблиц до следующего восстановления.
+bool mem_replace_sector(uint32_t adr, sj_chunk_reader reader, const void *context)
 {
-  mem_storage_ready = sj_replace_pages(adr, reader, context);
+  uint8_t r = 0;
+  if (sj_runtime_begin(adr, reader, context))
+    do { wdt_reload(); r = sj_runtime_poll(timers_getMillis()); } while (r == 1);
+  sj_runtime_reset();
+  mem_storage_ready = r == 2;
   return mem_storage_ready;
-}
-
-// Две смежные правки: config/device не требуют общей копии сектора.
-typedef struct {
-  uint32_t source, offset;
-  const uint8_t *first, *second;
-  uint16_t nfirst, nsecond;
-} mem_image_s;
-
-// Накладывает изменяемый фрагмент на страницу сохранённого образа.
-static void mem_overlay(uint8_t *page, uint16_t off, uint32_t start, const uint8_t *data, uint16_t size)
-{
-  uint32_t from = off > start ? off : start;
-  uint32_t end = (uint32_t)off + SJ_PAGE;
-  if (end > start + size) end = start + size;
-  if (from < end) memcpy(page + from - off, data + from - start, end - from);
-}
-
-// Читает исходную страницу и накладывает обе смежные правки.
-static uint8_t mem_image_page(const void *context, uint16_t off, uint8_t *page)
-{
-  const mem_image_s *image = context;
-  if (!w25_read_data(image->source + off, page, SJ_PAGE) || !counter_overlay(image->source + off,page,SJ_PAGE)) return 0;
-  mem_overlay(page, off, image->offset, image->first, image->nfirst);
-  mem_overlay(page, off, image->offset + image->nfirst, image->second, image->nsecond);
-  return 1;
 }
 
 // Два слота по 8 КиБ: образ 4 КиБ и отдельный сектор публикации.
@@ -121,58 +100,11 @@ static void cfg_select(void)
   if (va) { cfg_cached_generation = a; cfg_cached_active = MEM_CONFIG_SLOT0; return; }
   cfg_cached_generation = 0; cfg_cached_active = MEM_CONFIG_LEGACY;
 }
-// Сравнивает изменяемую часть, чтобы не стирать слот без изменений.
-static uint8_t cfg_same_part(uint32_t address, const uint8_t *data, uint16_t size)
-{
-  uint8_t check[64];
-  while (size) {
-    uint16_t n = size > sizeof(check) ? sizeof(check) : size;
-    if (!w25_read_data(address, check, n) || memcmp(check, data, n)) return 0;
-    address += n; data += n; size -= n;
-  }
-  return 1;
-}
-// Пишет неактивный слот; заголовок публикуется после проверенного драйвером образа.
-static uint8_t cfg_publish_pages(const mem_image_s *image, uint32_t active, uint32_t generation)
-{
-  uint32_t h[4];
-  uint32_t target = active == MEM_CONFIG_SLOT0 ? MEM_CONFIG_SLOT1 : MEM_CONFIG_SLOT0;
-  uint8_t page[SJ_PAGE];
-  if (!w25_erase_sector(target + MEMSECTORSIZE)) return 0;
-  if (!w25_erase_sector(target)) return 0;
-  h[0] = CFG_MAGIC; h[1] = generation + 1u;
-  uint32_t crc = crc32_update(0xFFFFFFFFu, (uint8_t*)&h[1], 4);
-  for (uint16_t off = 0; off < MEMSECTORSIZE; off += SJ_PAGE) {
-    wdt_reload();
-    if (!mem_image_page(image, off, page)) return 0;
-    crc = crc32_update(crc, page, sizeof(page));
-    if (!w25_write_data(target + off, page, sizeof(page))) return 0;
-  }
-  h[2] = crc; h[3] = ~h[2];
-  if (!w25_write_data(target + MEMSECTORSIZE, (uint8_t*)h, sizeof(h))) return 0;
-  cfg_cached_active = target; cfg_cached_generation = h[1]; cfg_cursor_offset = 16;
-  return 1;
-}
-
 // Выбирает слот один раз при старте.
 static uint8_t cfg_boot_select(void)
 {
   if (!cfg_boot_done) { cfg_select(); cfg_boot_done = 1; }
   return 1;
-}
-// Сохраняет смежные части настроек, сохраняя остальные байты активного образа.
-static bool cfg_commit_parts(uint16_t offset, const uint8_t *first, uint16_t nfirst, const uint8_t *second, uint16_t nsecond)
-{
-  if (!cfg_boot_select()) return false;
-  uint32_t active = cfg_cached_active;
-  if (active != MEM_CONFIG_LEGACY &&
-      cfg_same_part(active + offset, first, nfirst) &&
-      cfg_same_part(active + offset + nfirst, second, nsecond)) return true;
-  mem_image_s image = {active, offset, first, second, nfirst, nsecond};
-  if (!cfg_publish_pages(&image, active, cfg_cached_generation)) {
-    DOMOVOI_DIAG_INC(mem_config_errors); return false;
-  }
-  return true;
 }
 // Распознаёт логический диапазон настроек для перенаправления в A/B.
 static uint8_t cfg_range(uint32_t adr, uint16_t size)
@@ -198,25 +130,8 @@ bool mem_read (Int32U adr, pInt8U buff, Int16U size)
 // данные пишутся в предварительно стертый сектор
 bool mem_write (Int32U adr, pInt8U buff, Int16U size)
 {
-  if (cfg_range(adr, size)) return mem_patch(adr, buff, size);
+  if (cfg_range(adr, size)) return false; /* настройки пишет только mem_config_begin (A/B) */
   return !mem_reserved(adr, size) && mem_guard(adr, size) && w25_write_data(adr, buff, size);
-}
-
-// Атомарно применяет две смежные правки через слот или журнал таблиц.
-bool mem_patch2(Int32U adr, const uint8_t *first, Int16U nfirst, const uint8_t *second, Int16U nsecond)
-{
-  uint32_t size = (uint32_t)nfirst + nsecond;
-  if (cfg_range(adr, (uint16_t)size)) return cfg_commit_parts((uint16_t)(adr - MEM_CONFIG_LEGACY), first, nfirst, second, nsecond);
-  uint32_t sector = adr & ~4095u;
-  if (!flash_exec_read_allowed()) return false;
-  mem_image_s image = {sector, adr - sector, first, second, nfirst, nsecond};
-  return mem_replace_pages(sector, mem_image_page, &image);
-}
-
-// Передаёт одну правку общему пути атомарного сохранения.
-bool mem_patch(Int32U adr, const uint8_t *data, Int16U size)
-{
-  return mem_patch2(adr, data, size, NULL, 0);
 }
 
 // Стирает обычный сектор, учитывая резерв и готовность таблиц.
@@ -252,6 +167,7 @@ void mem_config_reset(void)
 // Принимает готовые config/device, не сохраняя указатели вызывающего.
 bool mem_config_begin(const uint8_t *first, const uint8_t *second)
 {
+  if (!store_runtime) cfg_boot_select(); /* стартовая запись выбирает слот сама, как чтение */
   if (table_fault || sj_runtime_blocked() || cfg_job.result || w25_async_active() || !cfg_boot_done) return false;
   cfg_job.snapshot = work_acquire(1024, WORK_CONFIG);
   if (!cfg_job.snapshot) return false;

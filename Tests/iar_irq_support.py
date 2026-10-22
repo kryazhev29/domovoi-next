@@ -76,6 +76,8 @@ class Machine:
         self.u.mem_map(0x20000000,int(os.environ.get('DOMOVOI_MODEL_RAM_BYTES','0x5000'),0));self.u.mem_map(0x21000000,0x1000)
         self.u.mem_map(0xe0001000,0x1000)
         self.u.mem_map(0x40000000,0x30000);self.u.mem_map(0xE000E000,0x1000)
+        # PA14 (JMP1) с подтяжкой: кнопка заводского сброса не нажата, как на плате.
+        self.u.mem_write(0x40010808,(1<<14).to_bytes(4,'little'))
         self.maptext=map_path.read_text(errors='replace')
         self.top=self.map_addr('CSTACK$$Limit');self.bottom=self.map_addr('CSTACK$$Base')
         self.heap_bytes=self.map_addr('HEAP$$Limit')-self.map_addr('HEAP$$Base') if 'HEAP$$Limit' in self.symbols else 0

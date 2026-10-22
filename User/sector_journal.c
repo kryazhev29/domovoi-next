@@ -48,30 +48,6 @@ static uint8_t sj_flash_crc(uint32_t address, uint32_t *crc)
   *crc = ~c;
   return 1;
 }
-// Проверка страницы не требует второй страницы в ОЗУ.
-static uint8_t sj_page_equal(uint32_t address, const uint8_t *page, uint8_t *equal)
-{
-  uint8_t check[32];
-  *equal = 1;
-  for (uint16_t off = 0; off < SJ_PAGE; off += sizeof(check)) {
-    if (!sj_io_read(address + off, check, sizeof(check))) return 0;
-    if (memcmp(check, page + off, sizeof(check))) *equal = 0;
-  }
-  return 1;
-}
-
-// Выявляет неизменный сектор, чтобы сохранить ресурс флеш-памяти.
-static uint8_t sj_pages_equal(uint32_t address, sj_page_reader reader, const void *context, uint8_t *equal)
-{
-  uint8_t page[SJ_PAGE], same;
-  *equal = 1;
-  for (uint16_t off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
-    sj_io_service();
-    if (!reader(context, off, page) || !sj_page_equal(address + off, page, &same)) return 0;
-    if (!same) *equal = 0;
-  }
-  return 1;
-}
 // Сравнивает назначение с проверенным резервным образом при восстановлении.
 static uint8_t sj_flash_equal(uint32_t a, uint32_t b, uint8_t *equal)
 {
@@ -120,27 +96,4 @@ uint8_t sj_recover(void)
   // Сравнение всех байтов с уже проверенным образом заменяет второй CRC назначения.
   if (!sj_flash_equal(h[2], SJ_DATA, &equal)) return 0;
   return equal ? (SJ_AFTER_TARGET(h[2]) && sj_io_erase(SJ_META)) : sj_copy_data(h[2]);
-}
-// Заменяет сектор после стартового восстановления; W25 проверяет каждую запись.
-// Метка журнала ставится последней, а стирается после переноса проверенных данных.
-uint8_t sj_replace_pages(uint32_t address, sj_page_reader reader, const void *context)
-{
-  uint32_t h[8], expected = 0xFFFFFFFFu;
-  uint8_t equal, page[SJ_PAGE];
-  uint16_t off;
-  if (!sj_pages_equal(address, reader, context, &equal)) return 0;
-  if (equal) return 1;
-  if (!sj_io_erase(SJ_META) || !sj_io_erase(SJ_DATA)) return 0;
-  for (off = 0; off < SJ_SECTOR; off += SJ_PAGE) {
-    sj_io_service();
-    if (!reader(context, off, page)) return 0;
-    expected = crc32_update(expected, page, sizeof(page));
-    if (!sj_io_write(SJ_DATA + off, page, sizeof(page))) return 0;
-  }
-  h[0] = SJ_MAGIC; h[1] = SJ_VERSION; h[2] = address; h[3] = SJ_SECTOR;
-  h[4] = ~expected; h[5] = ~h[4];
-  h[6] = ~crc32_update(0xFFFFFFFFu, (const uint8_t*)h, 24); h[7] = SJ_COMMIT;
-  if (!sj_io_write(SJ_META, (const uint8_t*)h, 28) ||
-      !sj_io_write(SJ_META + 28, (const uint8_t*)&h[7], 4)) return 0;
-  return sj_copy_data(address);
 }
