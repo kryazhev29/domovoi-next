@@ -74,4 +74,7 @@ uint8_t comm_channel_wifi_link(void);
 void comm_channel_wifi_changed(void);
 /* Точка доступа "SSID\0ключ\0" для моста: 0 принято, 1 занято, 2 неверные данные. */
 uint8_t comm_channel_wifi_setup(const uint8_t *data, uint16_t count);
+/* Для USB 113 (out не меньше 34 Б): [точка доступа: 0 нет данных, 1 нет, 2 есть; уровень WSLQ, % (255 нет);
+   SSID до 32 Б без нуля], возвращает длину. Взводит запрос моста: не чаще раза в 10 с, пока идут чтения. */
+uint8_t comm_channel_wifi_info(uint8_t *out);
 #endif

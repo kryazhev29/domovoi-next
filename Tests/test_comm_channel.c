@@ -153,7 +153,8 @@ static uint8_t w_outbox[1100], w_body[64];
 static uint16_t w_outbox_count, w_body_count, w_take;
 static unsigned w_frames, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands, w_plain, w_stray;
 static uint8_t w_cmd_mode, w_next_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_tcpto, w_mix;
-static unsigned w_off_errors;
+static unsigned w_off_errors, w_asked, w_quality;
+static const char *w_wslk, *w_wslq; /* NULL — ответы по w_ap */
 void user_comm_wifi_stopped(bool ok) { test_config.wifi_stop=!ok; if (!ok) ++w_off_errors; }
 static uint8_t w_saved, w_enabled, w_silent_dis, w_receiving;
 /* w_wire: кадр занимает линию 10 бит на байт при 115200, как блокирующий uart_send; команда ближе 20 мс
@@ -213,7 +214,12 @@ void uart_send(uint8_t *buf, uint16_t size)
     w_text(w_tcp && w_enabled ? "+ok=on\r\n\r\n" : "+ok=off\r\n\r\n");
     if (w_mix) w_text("CD"); return;
   }
-  if (!strcmp(c, "AT+WSLK")) { w_text(w_ap ? "+ok=Home(AA:BB)\r\n\r\n" : "+ok=Disconnected\r\n\r\n"); return; }
+  if (!strcmp(c, "AT+WSLK")) {
+    ++w_asked; if (w_mix) w_text("AB");
+    w_text(w_wslk ? w_wslk : w_ap ? "+ok=Home(AA:BB)\r\n\r\n" : "+ok=Disconnected\r\n\r\n");
+    if (w_mix) w_text("CD"); return;
+  }
+  if (!strcmp(c, "AT+WSLQ")) { ++w_quality; w_text(w_wslq ? w_wslq : w_ap ? "+ok=Good,85%\r\n\r\n" : "+ok=Disconnected\r\n\r\n"); return; }
   if (!strcmp(c, "AT+PING=ya.ru")) { ++w_pings; w_text(w_ping_ok ? "+ok=Success:32 bytes\r\n\r\n" : "+ok=Timeout\r\n\r\n"); return; }
   CHECK(0); /* неизвестная мосту команда */
 }
@@ -234,7 +240,7 @@ static void w_event(uint8_t kind, uint8_t value) { if (kind == COMM_CH_OPEN_FAIL
 static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
 {
   sim_reset(); memset(&wf,0,sizeof(wf)); test_config.wifi = 2;
-  w_off_errors=0; w_saved=1;
+  w_off_errors=w_asked=w_quality=0; w_saved=1; w_wslk=w_wslq=NULL;
   channel_opened = channel_closed = channel_faults = 0;
   w_rx = NULL; w_cap = w_count = w_outbox_count = w_body_count = w_take = 0;
   w_frames = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_plain = w_stray = 0;
@@ -448,6 +454,77 @@ static void channel_wifi_tests(void)
   test_config.wifi=0; w_dead=0;
   puts("comm_wifi: session/off pause/background probe/recovery/10-30-60/NETP/disable debt/only-WiFi PASS");
 }
+/* Чтение USB 113 с запросом моста, срок прошёл: дождаться WSLK/WSLQ и прочитать снова. */
+static uint8_t w_info(uint8_t *out)
+{
+  wf.info_at=sim_now-WF_INFO_MS; comm_channel_wifi_info(out);
+  for (unsigned i=0;i<100;++i) sim_tick();
+  return comm_channel_wifi_info(out);
+}
+/* Имя сети и уровень для USB 113 (22.10.2026): мост спрашивается только по чтению NextConfig, не чаще раза в 10 с,
+   при сервере и через мост, и через GSM; ответ среди данных сервера их не портит; прерванный запрос не съедает PING. */
+static void channel_wifi_info_tests(void)
+{
+  uint8_t out[40];
+  wifi_model_reset(0,1);
+  for (unsigned i=0;i<1500 && !comm_channel_ready();++i) sim_tick();
+  comm_channel_registered();
+  CHECK(comm_channel_ready() && ch.wifi);
+  /* Без чтений USB мост о точке доступа не спрашивается. */
+  for (unsigned i=0;i<3000;++i) sim_tick();
+  CHECK(!w_asked && !w_quality);
+  /* Первое чтение: сведений ещё нет; запрос — WSLK, затем WSLQ. */
+  CHECK(comm_channel_wifi_info(out)==2 && out[0]==0);
+  for (unsigned i=0;i<100;++i) sim_tick();
+  CHECK(w_asked==1 && w_quality==1 && comm_channel_wifi_info(out)==6 && out[0]==2 && out[1]==85 && !memcmp(out+2,"Home",4));
+  CHECK(comm_channel_ready() && ch.wifi && wf.link==2); /* связь моста запросом не меняется */
+  /* Чтения чаще 10 с отдают прежнее без команд мосту. */
+  { uint32_t start=sim_now; unsigned asked=w_asked;
+    while (sim_now-start < 9000u) { comm_channel_wifi_info(out); sim_tick(); }
+    CHECK(w_asked==asked);
+    while (sim_now-start < 11000u) { comm_channel_wifi_info(out); sim_tick(); }
+    CHECK(w_asked==asked+1); }
+  /* Пробел перед процентами и скобки в имени сети; без MAC; длинное имя — 32 байта; уровень вне 0..100 и без процентов — нет данных. */
+  w_wslk="+ok=My (Net)(AA:BB:CC)\r\n\r\n"; w_wslq="+ok=Normal, 55%\r\n\r\n";
+  CHECK(w_info(out)==10 && out[0]==2 && out[1]==55 && !memcmp(out+2,"My (Net)",8));
+  w_wslk="+ok=Home\r\n\r\n"; w_wslq="+ok=Weak\r\n\r\n";
+  CHECK(w_info(out)==6 && out[1]==255 && !memcmp(out+2,"Home",4));
+  w_wslk="+ok=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789(AA)\r\n\r\n"; w_wslq="+ok=Good,150%\r\n\r\n";
+  CHECK(w_info(out)==34 && out[1]==255 && !memcmp(out+2,"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",32));
+  /* Нет точки доступа: WSLQ не нужен. */
+  { unsigned quality=w_quality; w_wslk="+ok=Disconnected\r\n\r\n";
+    CHECK(w_info(out)==2 && out[0]==1 && out[1]==255 && w_quality==quality); }
+  /* Ответ на WSLK среди данных сервера: данные отдаются приёмнику целиком. */
+  w_wslk=w_wslq=NULL; w_body_count=0; w_mix=1;
+  CHECK(w_info(out)==6 && out[0]==2); w_mix=0;
+  CHECK(w_body_count==4 && !memcmp(w_body,"ABCD",4) && comm_channel_ready());
+  /* Мост молчит: сведений нет, сеанс не трогается. */
+  { unsigned closed=channel_closed; w_dead=1;
+    wf.info_at=sim_now-WF_INFO_MS; comm_channel_wifi_info(out);
+    for (unsigned i=0;i<120;++i) sim_tick();
+    w_dead=0; CHECK(comm_channel_wifi_info(out)==2 && out[0]==0 && channel_closed==closed); }
+  /* Без выбранного модема запрос не идёт. */
+  wf.mode=0; wf.f.info=1; wf.info_at=sim_now-WF_INFO_MS; CHECK(!wifi_info_due()); wf.mode=2;
+  /* Сервер через GSM, мост молчит: его не спрашивают (ни команд, ни строк в линию). */
+  wifi_model_reset(0,1); w_dead=1;
+  for (unsigned i=0;i<3000 && (ch.wifi || !comm_channel_ready());++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready());
+  { unsigned commands=w_commands, frames=w_frames; w_dead=0;
+    CHECK(w_info(out)==2 && out[0]==0 && w_commands==commands && w_frames==frames); }
+  /* Сервер через GSM, мост отвечает, сети Wi-Fi нет: по чтению мост спрашивается, GSM не трогается. */
+  wifi_model_reset(0,0); w_ap=0;
+  for (unsigned i=0;i<8000 && !(!ch.wifi && comm_channel_ready() && wf.f.off);++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready() && wf.f.off);
+  { unsigned closed=channel_closed, quality=w_quality;
+    CHECK(w_info(out)==2 && out[0]==1 && w_quality==quality && !ch.wifi && channel_closed==closed && comm_channel_ready());
+    w_ap=1; CHECK(w_info(out)==6 && out[0]==2 && out[1]==85 && !ch.wifi && channel_closed==closed && comm_channel_ready()); }
+  /* Прерванный запрос не превращает WSLK проверки в запрос: проверка доходит до PING. */
+  { unsigned pings=w_pings; w_ping_ok=0; wf.f.asking=1; wf.fell_at=sim_now-wifi_delay();
+    for (unsigned i=0;i<3000 && w_pings==pings;++i) sim_tick();
+    CHECK(w_pings==pings+1 && !wf.f.asking && !ch.wifi && comm_channel_ready()); }
+  test_config.wifi=0;
+  puts("comm_wifi_info: on-demand WSLK/WSLQ, 10 s limit, SSID/level parse, server data around, silent bridge, GSM, PING kept PASS");
+}
 /* Опрос сигнала: при открытом TCP - очередью канала (прежний путь), без TCP - служебной командой
    модема: и в паузе после отказа 566, и пока QIOPEN ждёт ответа (плата №1 20.10.2026: 150 с без URC).
    Порядок и период прежние; ожидающие вызов, кадр и приоритетная операция обходят фоновый запрос. */
@@ -493,7 +570,7 @@ static void channel_info_tests(void)
 // Запустить проверки путей и отказов канала.
 static void channel_regressions(void)
 {
-  channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests(); channel_info_tests(); channel_wifi_tests();
+  channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests(); channel_info_tests(); channel_wifi_tests(); channel_wifi_info_tests();
   comm_modem_transport(NULL); sim_poll = comm_modem_poll;
   puts("comm_channel: original TCP/READ/late URC/capacity/backpressure/timing PASS");
 }

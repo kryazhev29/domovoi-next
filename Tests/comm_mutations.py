@@ -81,6 +81,8 @@ def run():
         ('channel', 'sms-stuck-cell-reread', 'if (msg.stuck == (0x100u | index)) return;', ''),
         ('channel', 'sms-delete-retried-forever', '>= 0x700u', '>= 0xF000u'),
         ('channel', 'sms-stuck-not-retried', 'if (!msg.erase) msg.erase = msg.stuck;', ''),
+        ('channel', 'wifi-interrupted-ask-eats-PING', 'wf.f.asking = op == W_WSLQ;', 'if (op == W_WSLQ) wf.f.asking = 1;'),
+        ('channel', 'wifi-ask-silent-bridge', 'if (wf.f.off && wifi_info_due()) wifi_ask();', 'if (wifi_info_due()) wifi_ask();'),
         ('channel', 'planned-restart-without-QPOWD', 'if (rc.power == RC_PLANNED && !rc_left(now_ms))', 'if (0)'),
         ('channel', 'QPOWD-without-deadline', '!comm_modem_powered_down() && rc_left(now_ms)', '!comm_modem_powered_down()'),
         ('channel', 'UART-read-during-QPOWD', '== SLM_IDLE || slm.down) return;', '== SLM_IDLE) return;'),

@@ -8,7 +8,9 @@
    Изменено 2026-10-22: событие моста до регистрации не закрывает сеанс — на плате не проверено.
    Изменено 2026-10-22 (разбор отчёта Аргона): байты, пришедшие во время разбора, переносятся, а не стираются;
    при GSM приём моста не уходит серверу; GSM без сеанса (отказ, проверка, неготовый модем) не держит
-   возврат на мост до перезапуска модема — на плате не проверено. */
+   возврат на мост до перезапуска модема — на плате не проверено.
+   Изменено 2026-10-22: имя сети и уровень (WSLK/WSLQ) для USB 113 — только пока NextConfig читает состояние,
+   не чаще раза в 10 с — на плате не проверено. */
 #ifndef __UART_H
 void uart_rebuffer(uint8_t *, uint16_t, uint16_t);
 void uart_send(uint8_t *, uint16_t);
@@ -23,18 +25,20 @@ void user_comm_wifi_stopped(bool ok);
 #define WF_INLINE
 #endif
 enum { WF_LINK_MS=5000, WF_OPEN_MS=40000, WF_CMD_MS=800, WF_PING_MS=6000,
-       WF_RESTART_MS=8000, WF_GAP_MS=50, WF_RETRY_MS=600000, WF_LOG=40 };
+       WF_RESTART_MS=8000, WF_GAP_MS=50, WF_RETRY_MS=600000, WF_LOG=40, WF_INFO_MS=10000 };
 enum { W_NONE, W_OFF, W_OFFB, W_ECHO, W_SET_MODE, W_SET_SSID, W_SET_KEY, W_EVENT,
-       W_TCPTO, W_NETP, W_TMODE, W_RESTART, W_LINK, W_WSLK, W_PING, W_ON };
+       W_TCPTO, W_NETP, W_TMODE, W_RESTART, W_LINK, W_WSLK, W_PING, W_ON, W_WSLQ };
 static struct {
-  uint32_t since, fell_at, sent_at;
+  uint32_t since, fell_at, sent_at, info_at;
   uint8_t *buffer; // фактический буфер UART, независимо от смены владельца кадра
   union { uint16_t head, at; } pos; /* приём данных и AT-ответ взаимоисключены */
   uint16_t left;
   uint8_t op, link, prefix, setup, step, misses, mode, rx;
-  struct { uint8_t ready, sent, off, retry, resume, drop, dirty, stop; } f;
+  uint8_t ap, level, ssid_len; /* для USB 113: 0 нет данных, 1 нет точки доступа, 2 подключён; WSLQ, % (255 нет) */
+  struct { uint8_t ready, sent, off, retry, resume, drop, dirty, stop, info, asking; } f;
 } wf;
 static uint8_t wf_line[96];
+static uint8_t wf_ssid[32];
 /* mode: 0 нет моста, 1 только GSM, 2 Wi-Fi с резервом GSM, 3 только Wi-Fi. */
 WF_INLINE static uint8_t wifi_mode(void) { return (uint8_t)comm_modem_settings()->number(SLM_CFG_WIFI); }
 static uint32_t wifi_delay(void) { return (wf.step < 2 ? 1u : wf.step == 2 ? 3u : 6u) * (uint32_t)WF_RETRY_MS; }
@@ -78,12 +82,53 @@ uint8_t comm_channel_wifi_setup(const uint8_t *data, uint16_t count)
   wf.f.ready=0; wf.setup=1; if (ch.wifi) wifi_rebuffer();
   memcpy(frame,data,count); return 0;
 }
+/* Чтение взводит запрос: мост спрашивается, только пока NextConfig опрашивает плату, не чаще раза в WF_INFO_MS. */
+uint8_t comm_channel_wifi_info(uint8_t *out)
+{
+  wf.f.info=1; out[0]=wf.ap; out[1]=wf.level;
+  memcpy(out+2,wf_ssid,wf.ssid_len);
+  return (uint8_t)(2u+wf.ssid_len);
+}
+WF_INLINE static bool wifi_info_due(void) { return wf.f.info && wf.mode && ch.now-wf.info_at >= WF_INFO_MS; }
+/* Начало значения «+ok=…» и конец его строки; -1 — ответа нет, -2 — «Disconnected». */
+static int16_t wifi_value(const uint8_t *p, uint16_t n, uint8_t ok, uint16_t *end)
+{
+  int16_t at=ok == 1 ? comm_at_find(p,n,"+ok=") : -1;
+  if (at < 0) return -1;
+  at=(int16_t)(at+4); *end=(uint16_t)at;
+  while (*end < n && p[*end] != '\r' && p[*end] != '\n') ++*end;
+  return comm_at_prefix(p+at,(uint16_t)(*end-at),"Disconnected") ? -2 : at;
+}
+/* WSLK: «+ok=SSID(MAC)» — имя до последней скобки; «Disconnected» — точки доступа нет. */
+static void wifi_ap(const uint8_t *p, uint16_t n, uint8_t ok)
+{
+  uint16_t end=0, cut;
+  int16_t at=wifi_value(p,n,ok,&end);
+  wf.level=255; wf.ssid_len=0; wf.ap=at == -2 ? 1u : 0u;
+  if (at < 0) return;
+  for (cut=end; cut > (uint16_t)at && p[cut-1u] != '('; --cut) {}
+  uint16_t len=(uint16_t)((cut > (uint16_t)at ? cut-1u : end)-(uint16_t)at);
+  if (len > (uint16_t)sizeof(wf_ssid)) len=(uint16_t)sizeof(wf_ssid);
+  wf.ssid_len=(uint8_t)len; memcpy(wf_ssid,p+at,len); wf.ap=2;
+}
+/* WSLQ: «+ok=Good,85%» — проценты после запятой. */
+static void wifi_quality(const uint8_t *p, uint16_t n, uint8_t ok)
+{
+  uint16_t end=0; uint32_t v;
+  int16_t at=wifi_value(p,n,ok,&end);
+  if (at == -2) { wf.ap=1; wf.ssid_len=0; }
+  if (at < 0) return;
+  uint16_t pos=(uint16_t)at;
+  while (pos < end && p[pos] != ',') ++pos;
+  if (++pos < end && comm_at_scan(p,end,&pos,100u,&v)) wf.level=(uint8_t)v;
+}
+static void wifi_asked(void) { wf.f.asking=0; wf.f.info=0; wf.info_at=ch.now; }
 
 static void wifi_begin(uint8_t op)
 {
   static const char * const command[]={"TCPDIS=off", "TCPDISB=off,1", "E=off", "WMODE=STA",
     "WSSSID=", "WSKEY=", "EVENT=on", "TCPTO=0", "NETP=TCP,CLIENT,", "TMODE=throughput",
-    "Z", "TCPLK", "WSLK", "PING=ya.ru", "TCPDIS=on,0"};
+    "Z", "TCPLK", "WSLK", "PING=ya.ru", "TCPDIS=on,0", "WSLQ"};
   const char *text=command[op-W_OFF], *tail=NULL;
   uint16_t number=0;
   if (op == W_OFF) tail=wf.f.ready && !wf.f.stop ? ",0" : ",1";
@@ -102,7 +147,10 @@ static void wifi_begin(uint8_t op)
   usb_log(1, (const uint8_t *)cmd, (uint16_t)(n - 1u)); /* команда мосту в AT-журнале */
   uart_send((uint8_t *)cmd, n);
   wf.op = op; wf.since = ch.now;
+  wf.f.asking = op == W_WSLQ; /* прерванный запрос не превращает WSLK проверки в запрос: PING не теряется */
 }
+/* Запрос NextConfig: WSLK, при точке доступа — WSLQ. */
+static void wifi_ask(void) { wifi_begin(W_WSLK); wf.f.asking=1; }
 
 static void wifi_log(uint8_t op)
 {
@@ -306,8 +354,16 @@ WF_INLINE static void wifi_done(uint8_t op, uint8_t ok)
     }
     break; }
   case W_WSLK:
-    wf.link=ok == 1 && comm_at_find(p,n,"Disconnected") < 0;
+    wifi_ap(p,n,ok);
+    if (wf.f.asking) { /* запрос NextConfig: связь моста не трогает */
+      if (wf.ap == 2) { wifi_begin(W_WSLQ); return; }
+      wifi_asked(); break;
+    }
+    wf.link=wf.ap == 2;
     if (wf.link) { wifi_begin(W_PING); return; }
+    break;
+  case W_WSLQ:
+    wifi_quality(p,n,ok); wifi_asked();
     break;
   case W_PING: {
     uint8_t good=ok == 1 && comm_at_find(p,n,"Success") >= 0;
@@ -333,7 +389,8 @@ WF_INLINE static void wifi_next(void)
   }
   if (wf.f.stop) { wifi_off(); return; }
   if (wf.f.drop) { if (ch.now-wf.since >= WF_LINK_MS) wifi_off(); return; }
-  if (!ch.wifi) return;
+  /* Сервер через GSM: линия свободна; молчащий мост (не подтвердил off) не спрашивается. */
+  if (!ch.wifi) { if (wf.f.off && wifi_info_due()) wifi_ask(); return; }
   if (ch.state == CH_INITIAL) wifi_pause(0);
   if (ch.state == CH_PAUSE) {
     if (ch.now-ch.operation_since < ch.reopen_pause) return;
@@ -353,6 +410,7 @@ WF_INLINE static void wifi_next(void)
   if (ch.probe && !ch.probe_active) { ch.probe_active=ch.probe; wifi_begin(W_PING); return; }
   if (ch.state != CH_OPEN) return;
   if (ch.now-wf.since >= WF_LINK_MS) { wifi_begin(W_LINK); return; }
+  if (wifi_info_due()) { wifi_ask(); return; }
   if (!ch.operation && query.cmd && comm_modem_ready() && !comm_modem_busy())
     channel_command(query.cmd,COMM_AT_TEXT,COMM_T_AT_SIMPLE,OP_QUERY);
 }

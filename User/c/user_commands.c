@@ -74,11 +74,12 @@ static bool command_args_valid(const uint8_t *ptr, uint16_t len)
 static void usb_wifi_command(uint8_t *ptr, uint16_t len, uint8_t uniqId)
 {
   if (ptr[4] == 113) {
-    uint8_t reply[6];
+    uint8_t reply[40], count = 2; /* 6 Б состояния + точка доступа, уровень и SSID моста (22.10.2026) */
     if (len > 3u) { reply[0] = comm_channel_wifi_setup(&ptr[5], (uint16_t)(len - 3u)); reply[1]=0; }
     else { reply[2]=1; reply[3]=device.wifiModem; reply[4]=device.wifiMode; reply[0] = comm_channel_bridge(); reply[1] = comm_channel_wifi_link();
-      reply[5] = reply[0] ? 1u : device.netType == 4 ? 4u : device.netType == 1 ? 2u : 0u; }
-    user_send_anyData(113, reply, len > 3u ? 2u : sizeof(reply), CH_USB, uniqId);
+      reply[5] = reply[0] ? 1u : device.netType == 4 ? 4u : device.netType == 1 ? 2u : 0u;
+      count = (uint8_t)(6u + comm_channel_wifi_info(&reply[6])); }
+    user_send_anyData(113, reply, count, CH_USB, uniqId);
     return;
   }
   if (len != 5u || ptr[5] > 1u || ptr[6] > 2u || (!ptr[5] && ptr[6])) {
