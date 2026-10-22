@@ -57,7 +57,8 @@ def run():
         'D33-answer-constant': ('rx_capacity', [('User/packet.c',
             'rt_put16(packet+14,user_comm_rx_capacity());', 'rt_put16(packet+14,2048);')]),
         'D02-TTL255': ('fw_request_ttl', [('User/c/user_protocol.c',
-            'send_buffer[6] = 20;', 'send_buffer[6] = 255;')]),
+            'frame_begin(send_local, sizeof(send_local), cch, 20, uniqIDCnt, 13);',
+            'frame_begin(send_local, sizeof(send_local), cch, 255, uniqIDCnt, 13);')]),
     }
     results.update(run_mutations(protocol, 'test_protocol_guards', 'fixes1-mutations'))
     return results

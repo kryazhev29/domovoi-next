@@ -46,18 +46,8 @@ static char sms_listing[4096]; static unsigned sms_listing_pos, sms_listing_len;
 static uint8_t volte_flag, volte_modem; static unsigned volte_error, volte_queries, volte_sets;
 // Выдать требуемую настройку VoLTE.
 static uint8_t volte_flag_model(void) { return volte_flag; }
-/* Баланс: ответ модели на AT+CUSD=1 (URC через 2 с или до OK), счётчики, итог. */
-static const char *cusd_reply, *ussd_code; static unsigned cusd_count, cusd_cancel, cusd_error, cusd_early, balance_count;
-static uint32_t cusd_due; static int32_t balance_value;
-static unsigned cusd_silence;
-static bool balance_app_idle = true;
-static unsigned cusd_startup_fault;
-static unsigned cusd_cancel_error;
 static unsigned stalled_count, stalled_error;
 static uint32_t stalled_first;
-static const char *ussd_model(void) { return ussd_code; }
-// Запомнить полученный баланс SIM.
-static void balance_model(int32_t rubles) { balance_value=rubles; ++balance_count; }
 // Обозначить границу фото, не участвующую в данном сценарии.
 static void photo_connection_lost(void) {}
 static void user_parse_comand(uint8_t *p, unsigned channel);
@@ -282,18 +272,6 @@ static void transport_tx(void)
     else { CHECK(!strcmp(cmd,"AT+SETVOLTE=0") || !strcmp(cmd,"AT+SETVOLTE=1")); ++volte_sets; volte_modem=cmd[12]=='1'; sim_reply("OK\r\n",30); }
     return;
   }
-  if (!strncmp(cmd,"AT+CUSD=",8)) {
-    for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
-    interrupt_byte(0,USART_SR_TC);
-    if (!strcmp(cmd,"AT+CUSD=2")) { ++cusd_cancel; sim_reply(cusd_cancel_error ? "+CME ERROR: 53\r\n" : "OK\r\n",30); return; }
-    CHECK(!strcmp(cmd,"AT+CUSD=1,\"*100#\",15")); ++cusd_count;
-    if (cusd_startup_fault && !comm_server_online()) { modem_silent = 1; return; }
-    if (cusd_silence) { modem_silent = cusd_silence == 2; return; }
-    if (cusd_error) sim_reply("+CME ERROR: 4\r\n",30);
-    else if (cusd_early && cusd_reply) { char r[400]; snprintf(r,sizeof(r),"%sOK\r\n",cusd_reply); sim_reply(r,30); }
-    else { sim_reply("OK\r\n",30); cusd_due=sim_now+2000; }
-    return;
-  }
   CHECK(strcmp(cmd,"ATH")); /* SLM336: ATH даёт OK, но вызов не завершает. */
   if (!strcmp(cmd,"AT+CLCC")) {
     for (unsigned i=0;i<tx_count;++i) interrupt_byte(0,USART_SR_TXE);
@@ -433,8 +411,7 @@ static void transport_tick(unsigned increment)
   }
   server_rx_begin_pass(); comm_channel_rx_capacity(user_comm_rx_capacity()); comm_server_poll(sim_now);
   CHECK(msg.count <= sizeof(msg.queue)/sizeof(msg.queue[0]));
-  comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now); comm_balance_poll(sim_now, balance_app_idle);
-  if (cusd_due && (int32_t)(sim_now-cusd_due)>=0) { cusd_due=0; if (cusd_reply) sim_feed(cusd_reply); }
+  comm_call_poll(sim_now, call_access_ready); comm_sms_poll(sim_now);
   transport_tx(); sim_now+=increment;
 }
 // Пройти заданный интервал с шагом модели 10 мс.
@@ -469,12 +446,7 @@ static void server_reset_start(bool cold)
   chups=chup_silence=0; last_command[0]=0; volte_error=volte_queries=volte_sets=0; comm_call_init(user_comm_call, volte_flag_model);
   sms_log[0]=sms_sent_pdu[0]=0; cmgs_error=sms_received_count=sms_events=0; comm_sms_init(sms_received_model);
   sms_listing_pos=sms_listing_len=0;
-  ussd_code=cusd_startup_fault ? "*100#" : ""; cusd_reply=NULL; cusd_due=0; cusd_count=cusd_cancel=cusd_error=cusd_early=balance_count=0; balance_value=0;
-  balance_app_idle=true;
-  cusd_cancel_error=0;
   net_log_mask=stalled_count=stalled_error=stalled_first=0;
-  cusd_silence=0;
-  comm_balance_init(ussd_model, balance_model);
   /* Выход к TCP — принятой моделью этапа 3. */
   comm_server_link(link_model); comm_server_no_internet(server_no_internet);
   comm_server_init(&test_server_handlers); links=link_refuse=0;
@@ -765,4 +737,4 @@ static void wifi_server_tests(void)
   }
 }
 int main(void)
-{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); balance_tests(); net_diagnostic_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); fallback_tests(); wifi_server_tests(); modem_stall_tests(); wifi_server_refusal_tests(); wifi_return_gsm_down_tests(); return 0; }
+{ CHECK(slm_regressions()==0); server_startup_tests(); reset_session_contract(); channel_regressions(); server_tests(); probe_overlap_tests(); call_tests(); link_diag_tests(); sms_tests(); net_diagnostic_tests(); volte_tests(); garbage_test(); link_tests(); pending_update_tests(); unregistered_sms_tests(); reader_tests(); recover_tests(); fallback_tests(); wifi_server_tests(); modem_stall_tests(); wifi_server_refusal_tests(); wifi_return_gsm_down_tests(); return 0; }

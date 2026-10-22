@@ -9,16 +9,9 @@
 #include "c/user_logic_internal.h"
 #include "sched16.h"
 #include "sector_journal.h"
-extern uint8_t sync_pending,sync_quiet;
 extern uint32_t id_nextEnd;
 extern uint32_t id_time_end(cellID_s *);
 extern void id_watch_end(uint32_t);
-// Получает день UTC для отметки прохода.
-static uint16_t id_today(void) { return device.datetime>=1600000000u ? (uint16_t)(device.datetime/86400u) : 0; }
-// Записывает день прохода в резерв записи ID.
-static void id_set_pass_day(cellID_s *c,uint16_t day) { memcpy(c->reserve+4,&day,2); }
-// Отмечает таблицу для отложенной синхронизации.
-static void sync_packet(uint8_t bit) { sync_pending|=bit; sync_quiet=30; }
 enum {
   SYNC_ID=1,SYNC_GROUP=4,SYNC_SHEDULE=8,SYNC_HOLIDAY=16
 };

@@ -6,8 +6,8 @@ import argparse, os, subprocess, json
 from temp_cleanup import TemporaryDirectory
 from comm_slm_host import unit as slm_unit, memory, ROOT, ZIG, HEADERS, MODULES
 
-NEW = ('Modules/comm_channel.c', 'Modules/comm_wifi.inc', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c', 'Modules/comm_call.c', 'Modules/comm_sms.c', 'Modules/comm_balance.c')
-NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h', 'Modules/comm_info.h', 'Modules/comm_call.h', 'Modules/comm_sms.h', 'Modules/comm_balance.h')
+NEW = ('Modules/comm_channel.c', 'Modules/comm_wifi.inc', 'Modules/comm_server.c', 'Modules/comm_recover.c', 'Modules/comm_info.c', 'Modules/comm_call.c', 'Modules/comm_sms.c')
+NEW_HEADERS = ('Modules/comm_channel.h', 'Modules/comm_server.h', 'Modules/comm_recover.h', 'Modules/comm_info.h', 'Modules/comm_call.h', 'Modules/comm_sms.h')
 
 def source(name):
     return source_text(ROOT,name)
@@ -35,9 +35,11 @@ def unit():
     user = source('User/c/user_*.c')
     rx = 'void server_rx_process(void);\n' + function(source('User/c/runtime_internal.h').replace('static inline ','static '),'rt_get16') + '\n' + re.sub(r'^#include[^\n]*', '', source('User/c/user_rx.c'), flags=re.M)
     # Сохранённый сборщик и его стык QIRD; настоящие CRC/границы/отложенное исполнение.
-    helpers = '\n'.join(function(user,n) for n in ('user_comm_acquire','user_comm_free'))
+    helpers = '\n'.join(function(user,n) for n in ('user_comm_acquire','user_comm_free','frame_begin'))
     producers = ('user_send_registrationData', 'user_send_statusPack', 'user_send_anyData', 'user_send_smsToServer')
-    legacy = '\n'.join(function(user, n).replace(n, 'legacy_' + n).replace('user_comm_acquire(', 'legacy_acquire(').replace('comm_tx_acquire(', 'legacy_tx_acquire(')
+    # Заголовок кадра общий: эталонная копия берёт слот через свой legacy_acquire.
+    legacy = function(user, 'frame_begin').replace('frame_begin', 'legacy_frame_begin').replace('user_comm_acquire(', 'legacy_acquire(') + '\n'
+    legacy += '\n'.join(function(user, n).replace(n, 'legacy_' + n).replace('frame_begin(', 'legacy_frame_begin(').replace('user_comm_acquire(', 'legacy_acquire(').replace('comm_tx_acquire(', 'legacy_tx_acquire(')
                        .replace('comm_tx_commit(', 'legacy_commit(').replace('packet_send(', 'legacy_packet_send(').replace('user_comm_free(', 'legacy_free(') for n in producers)
     current = '\n'.join(function(user, n) for n in producers)
     status = re.search(r'enum \{ STATUS_EVENT_MASK[^}]*\};', user).group(0)
@@ -66,7 +68,7 @@ def unit():
     # Автоматы хранения проверяются на связанном ELF; здесь модель модема
     # проверяет уведомление владельцев при смене сеанса.
     old += '\n#define flash_exec_quiet(ch) do { if(store.channel == (unsigned)(ch)) store.quiet = 1; } while(0)\n#define service_crc_quiet(ch) ((void)(ch))\n#define upload_runtime_quiet(ch) ((void)(ch))\n#define fw_service_quiet(ch) ((void)(ch))\n'
-    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* КОНТРОЛЬНАЯ СУММА */', function(source('Tests/reference/crc_runtime.c'), 'crc16_calcInit')+'\n'+function(source('Tests/reference/crc_runtime.c'), 'crc16_calc')).replace('/* ПРИЁМ */', rx).replace('/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */', producer_code).replace('/* ВОССТАНОВЛЕНИЕ */', source('Tests/test_comm_recover.c') + '\n' + source('Tests/test_comm_fallback.c')).replace('/* ОТКАЗ МОДЕМА ПРИ WI-FI */', source('Tests/test_comm_modem_stall.c')).replace('/* ВЫЗОВ */', source('Tests/test_link_diag.c') + source('Tests/test_comm_call.c').replace('/* ОБРАБОТЧИК ЗВОНКА ПРИЛОЖЕНИЯ */', '\n'.join(function(user, n) for n in ('user_incomingcall', 'user_comm_call')).replace('device.status.readyToUpdate', '(device.status & (1u << 11))')) + source('Tests/test_comm_sms.c').replace('/* СЦЕНАРИИ SMS SLM336 */',sms_cases) + source('Tests/test_comm_balance.c') + source('Tests/test_comm_net.c') + source('Tests/test_comm_volte.c'))
+    return old + '\n' + headers + '\n' + code + '\n' + source('Tests/test_comm_channel.c') + '\n' + source('Tests/test_comm_server.c').replace('/* КОНТРОЛЬНАЯ СУММА */', function(source('Tests/reference/crc_runtime.c'), 'crc16_calcInit')+'\n'+function(source('Tests/reference/crc_runtime.c'), 'crc16_calc')).replace('/* ПРИЁМ */', rx).replace('/* ПРОИЗВОДИТЕЛИ ПАКЕТОВ */', producer_code).replace('/* ВОССТАНОВЛЕНИЕ */', source('Tests/test_comm_recover.c') + '\n' + source('Tests/test_comm_fallback.c')).replace('/* ОТКАЗ МОДЕМА ПРИ WI-FI */', source('Tests/test_comm_modem_stall.c')).replace('/* ВЫЗОВ */', source('Tests/test_link_diag.c') + source('Tests/test_comm_call.c').replace('/* ОБРАБОТЧИК ЗВОНКА ПРИЛОЖЕНИЯ */', '\n'.join(function(user, n) for n in ('user_incomingcall', 'user_comm_call')).replace('device.status.readyToUpdate', '(device.status & (1u << 11))')) + source('Tests/test_comm_sms.c').replace('/* СЦЕНАРИИ SMS SLM336 */',sms_cases) + source('Tests/test_comm_net.c') + source('Tests/test_comm_volte.c'))
 
 def arm(out):
     names = (*HEADERS, *NEW_HEADERS, *MODULES, *NEW, 'Modules/comm_at.c', 'User/user_comm.h', 'User/c/user_comm_runtime.c')

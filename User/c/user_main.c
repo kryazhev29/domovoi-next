@@ -15,8 +15,6 @@
 #include "../../Modules/comm_channel.h"
 #include "../../Bootloader/app_update.h"
 #pragma data_alignment=4
-uint8_t port_buffer[PORTBUFSIZE];
-#pragma data_alignment=4
 char tempStrBuffer[128];
 uint8_t uniqIDCnt;
 

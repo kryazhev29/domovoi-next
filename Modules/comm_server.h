@@ -47,6 +47,4 @@ void comm_server_status_ack(uint8_t unique_id);
 void comm_server_status_sent(uint8_t unique_id);
 /* Действующая подтверждённая регистрация; проверка интернета не означает online. */
 bool comm_server_online(void);
-/* Сервер принял регистрацию не менее пяти минут назад, сеанс не переоткрывался. */
-bool comm_server_settled(void);
 #endif

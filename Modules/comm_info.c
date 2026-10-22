@@ -31,15 +31,6 @@ void comm_info_antenna(uint32_t now_ms)
   info.antenna = 1; info.antenna_until = now_ms + 60000u;
 }
 
-/* Есть ли в строке подстрока (короткие строки ответа, без кучи). */
-static bool info_has(const uint8_t *p, uint16_t n, const char *s)
-{
-  uint16_t k = (uint16_t)strlen(s);
-  for (uint16_t i = 0; i + k <= n; i++)
-    if (!memcmp(p + i, s, k)) return true;
-  return false;
-}
-
 /* Common V2.24 §9.25: после поля "LTE" пропустить 10 полей, включая hex/кавычки.
    Буфер AT не копируется; публикуем только полный набор, SINR оставляем сырым.
    Прежние значения держатся до конца нового ответа: пустой ответ, ERROR или таймаут - 255. */
@@ -114,9 +105,9 @@ static void info_line(const uint8_t *p, uint16_t n)
       }
     }
     /* Первое поле - технология: "LTE"/"FDD LTE"/"TDD LTE", "GSM"/"EDGE"/"GPRS", "WCDMA"/"HSPA"... */
-    info.v.net = info_has(p, n, "LTE") ? 4u
-      : info_has(p, n, "GSM") || info_has(p, n, "EDGE") || info_has(p, n, "GPRS") ? 1u
-      : info_has(p, n, "No Service") || info_has(p, n, "NONE") ? 0u : 3u;
+    info.v.net = (comm_at_find(p, n, "LTE") >= 0) ? 4u
+      : (comm_at_find(p, n, "GSM") >= 0) || (comm_at_find(p, n, "EDGE") >= 0) || (comm_at_find(p, n, "GPRS") >= 0) ? 1u
+      : (comm_at_find(p, n, "No Service") >= 0) || (comm_at_find(p, n, "NONE") >= 0) ? 0u : 3u;
   }
 }
 

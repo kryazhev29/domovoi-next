@@ -15,10 +15,7 @@ uint32_t user_comm_local_time(void);
 /* SMS на номер; false - не принято к отправке. */
 bool user_comm_sms(const char *number, const char *text);
 bool user_comm_busy(void);
-const char *user_comm_ussd(void);
 uint8_t user_comm_volte(void);
-/* Баланс в рублях (минус - долг): статус 2 и событие 37. */
-void user_comm_balance(int32_t rubles);
 /* Журнал связи: события 11, 12, 14-19 (comm_server.h), 38 - сигнал ниже 15. */
 bool user_comm_link(uint8_t kind, uint8_t address);
 void user_comm_low_signal(uint8_t csq);

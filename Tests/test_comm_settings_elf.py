@@ -165,7 +165,7 @@ def dispatcher_ownership():
         def sms_poll():
             sms.append(1)
             m.ret()
-        for name in ('comm_recover_poll', 'comm_info_poll', 'comm_balance_poll'):
+        for name in ('comm_recover_poll', 'comm_info_poll'):
             m.stubs[m.addr(name)] = m.ret
         m.stubs[m.addr('comm_server_poll')] = server_poll
         m.stubs[m.addr('comm_call_poll')] = call_poll
@@ -185,39 +185,6 @@ def dispatcher_ownership():
     m = machine(config)
     assert m.uart_starts == 1 and not m.checked('comm_modem_reserve')
     return 4
-
-
-def balance_ownership():
-    # Проверяется исполняемый адаптер user_comm_poll, а не копия его выражения.
-    names = ['idle', 'call', 'firmware', 'photo', 'photo-ready', 'upload', 'update-ready', 'update-reboot']
-    for name in names:
-        m = machine(configuration()); allowed = []
-        for field in ('status', 'FWinProgress', 'rebootToUpdate'):
-            m.write(m.device + m.d[field], 0, 2 if field == 'status' else 1)
-        for fn in ('comm_server_poll', 'comm_recover_poll', 'comm_info_poll', 'comm_call_poll', 'comm_sms_poll'):
-            m.stubs[m.addr(fn)] = m.ret
-        m.stubs[m.addr('comm_call_active')] = lambda: m.ret(name == 'call')
-        m.stubs[m.addr('photo_busy')] = lambda: m.ret(name == 'photo')
-        m.stubs[m.addr('upload_runtime_busy')] = lambda: m.ret(name == 'upload')
-        if name == 'firmware': m.write(m.device + m.d['FWinProgress'], 1, 1)
-        if name == 'photo-ready': m.write(m.device + m.d['status'], 1 << 13, 2)
-        if name == 'update-ready': m.write(m.device + m.d['status'], 1 << 11, 2)
-        if name == 'update-reboot': m.write(m.device + m.d['rebootToUpdate'], 1, 1)
-        def balance():
-            allowed.append(bool(m.args()[1])); m.ret()
-        m.stubs[m.addr('comm_balance_poll')] = balance
-        m.checked('user_comm_poll', 400000)
-        assert allowed == [name == 'idle'], (name, allowed)
-    # Журнал: неподтверждённый пакет любого канала запрещает USSD даже без активной записи Flash.
-    m = machine(configuration())
-    assert not m.checked('upload_runtime_busy')
-    for channel in (0, 1):
-        p = m.addr('log_pending32') + 4 * channel
-        m.write(p, 1); assert m.checked('upload_runtime_busy')
-        m.write(p, 0); assert not m.checked('upload_runtime_busy')
-    assert m.checked('upload_runtime_begin', 9, 0, 73)
-    assert m.checked('upload_runtime_busy')
-    return len(names) + 3
 
 
 def fallback_config():
@@ -292,7 +259,6 @@ def main():
     select_image(args.build_root)
     result = {'cases': run(), 'elf_sha256': hashlib.sha256(image_paths()[0].read_bytes()).hexdigest()}
     result['ownership_checks'] = dispatcher_ownership()
-    result['balance_ownership_checks'] = balance_ownership()
     result['fallback_config'] = fallback_config()
     if args.output:
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

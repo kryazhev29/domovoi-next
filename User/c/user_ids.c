@@ -60,7 +60,7 @@ void id_watch_end(uint32_t end){
 }
 
 // Вернуть номер текущих местных суток для счётчиков ID.
-static uint16_t id_today(void){
+uint16_t id_today(void){
   return device.datetime >= ID_TIME_VALID ? (uint16_t)(device.datetime / ONE_DAY) : 0;
 }
 
@@ -72,7 +72,7 @@ static uint16_t id_pass_day(cellID_s *c){
 }
 
 // Записать сутки последнего прохода в запись ID.
-static void id_set_pass_day(cellID_s *c, uint16_t day){
+void id_set_pass_day(cellID_s *c, uint16_t day){
   memcpy(&c->reserve[4], &day, 2);
 }
 

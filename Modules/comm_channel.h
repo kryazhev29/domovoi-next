@@ -45,8 +45,6 @@ bool comm_tx_commit(uint16_t count);
 void comm_tx_release(void);
 /* Сообщить, занят ли единственный слот отправки. */
 bool comm_tx_busy(void);
-/* Канал открыт, нет передачи, чтения, ACK, пробы, вызова и служебного AT. */
-bool comm_channel_idle(void);
 /* Отложить фоновые операции ради регистрации или статуса. */
 void comm_channel_priority(bool pending);
 /* Закрыть прежний TCP и назначить обычную повторную попытку. */

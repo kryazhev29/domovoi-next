@@ -82,10 +82,6 @@ def run():
         ('channel', 'sms-cmgs-length-with-smsc', 'uint16_t tpdu = (uint16_t)(msg.out_count / 2u - 1u);', 'uint16_t tpdu = (uint16_t)(msg.out_count / 2u);'),
         ('channel', 'sms-cms-error-not-final', '&& !comm_at_prefix(line, line_count, "+CMS ERROR:")', ''),
         ('channel', 'ussd-long-line-fault', 'comm_at_prefix(line, line_count, "+CUSD:") || ', ''),
-        ('channel', 'ussd-ucs2-ignored', '  if (dcs == 72u) {', '  if (0) {'),
-        ('channel', 'ussd-first-number-only', 'if (!words[w][i]) { s = f; break; }', 'if (0) { s = f; break; }'),
-        ('channel', 'ussd-failure-repeats-in-30min', 'bal.next = now_ms + comm_timeouts[COMM_T_DAY];', 'bal.next = now_ms + 1800000u;'),
-        ('channel', 'ussd-menu-left-open', 'if (bal.menu) bal.state = BAL_CLOSE;', 'if (0) bal.state = BAL_CLOSE;'),
         ('channel', 'volte-unsupported-retried', 'call.volte_modem = VOLTE_UNSUPPORTED;', 'call.volte_modem = VOLTE_UNKNOWN;'),
         ('channel', 'volte-during-call', 'call.state != CALL_IDLE || call.volte_modem', 'call.volte_modem'),
         ('channel', 'volte-written-every-time', 'call.volte_modem != want ? &volte_set[want] : NULL', '&volte_set[want]'),
@@ -146,7 +142,6 @@ def user_mutations(out):
         ('sms-offline-blocks-queue', "comm_server_online() && !user_send_smsToServer(data)", "!user_send_smsToServer(data)"),
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
         ('sms-command-wrong', 'return i + 1u;', 'return i + 2u;'),
-        ('balance-event-threshold', 'if (rubles < 100) log_addSystemValue', 'if (rubles < 1) log_addSystemValue'),
     )
     for label, old, new, *group in cases:
         with TemporaryDirectory(dir=out) as tmp:

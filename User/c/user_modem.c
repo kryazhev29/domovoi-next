@@ -22,11 +22,6 @@ static const slm_settings_t comm_settings = {comm_text, comm_number};
 uint32_t user_comm_local_time(void)
 { return device.datetime >= ID_TIME_VALID ? device.datetime : UINT32_MAX; }
 
-// Вернуть настроенный запрос баланса. SLM336 - пусто: USSD рвёт передачу данных и в 2G, и в 4G
-// (плата №1 21.10.2026: после меню *105# статус без TCP-подтверждения, модем завис, перезапуск питанием);
-// старая v5 (gsm.c, gsm_sendussd) USSD на SLM336 тоже не отправляла.
-const char *user_comm_ussd(void) { return device.moduleType == MODEM_TYPE_SLM336 ? "" : config.ussdBalance; }
-
 // Вернуть разрешение VoLTE для текущего профиля.
 uint8_t user_comm_volte(void) { return device.wifiModem ? 0 : config.useVoLTE; }
 // Результат выключения RS-485: долг переживает питание, ошибка передаётся обычным журналом.
@@ -34,14 +29,6 @@ void user_comm_wifi_stopped(bool ok)
 {
   if (device.wifiStop != !ok) { device.wifiStop = !ok; store_save_requested = 1; }
   if (!ok) log_addSystemEvent(LOG_SYS_WIFI_OFF_TIMEOUT);
-}
-
-// Обновить баланс и записать его изменение в журнал.
-void user_comm_balance(int32_t rubles)
-{
-  device.balance = rubles < 1 ? 1u : rubles > 65000 ? 65000u : (uint16_t)rubles; /* статус 2: 0 - не определён */
-  /* 37 «Баланс ниже нормы»: после каждого запроса, порог 100 р (триггер «баланс менее 100»). */
-  if (rubles < 100) log_addSystemValue(LOG_SYS_LOWBALANCE, rubles);
 }
 
 // Записать системное событие слабого сигнала.

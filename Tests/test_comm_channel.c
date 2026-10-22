@@ -108,6 +108,9 @@ static void channel_edge_tests(void)
 {
   channel_model_reset();  channel_until(15000);
   sim_feed("+QIURC: \"closed\",1\r\n"); sim_tick(); CHECK(comm_channel_ready());
+  /* USSD оператора без запроса длиннее строки AT (реклама): хвост отбрасывается, поток не рвётся. */
+  { char urc[320]; memcpy(urc, "+CUSD: 0,\"", 10); memset(urc + 10, 'A', 300); memcpy(urc + 310, "\",15\r\n", 7);
+    sim_feed(urc); for (unsigned i = 0; i < 5; ++i) sim_tick(); CHECK(comm_channel_ready()); }
   sim_feed("+QIURC: \"closed\",0\r\n"); sim_tick(); CHECK(slm.attempt.status.reason == SLM_ERR_TCP);
   channel_model_reset();  channel_until(15000); sim_read_size = 64; comm_channel_rx_capacity(64);
   sim_pause = 1; sim_feed("+QIURC: \"recv\",0\r\n");

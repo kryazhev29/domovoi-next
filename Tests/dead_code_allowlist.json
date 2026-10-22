@@ -1,1 +1,12 @@
-{}
+{
+  "Modules/comm_wifi.inc:wifi_reset": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_registered": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_result": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_rx": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_hold": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_send": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_retry": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_done": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_next": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)",
+  "Modules/comm_wifi.inc:wifi_poll": "WF_INLINE (#pragma inline=forced): тело встроено в comm_channel_poll, отдельного объекта нет; без встраивания прошивка больше на 88 Б (сборка 22.10.2026)"
+}

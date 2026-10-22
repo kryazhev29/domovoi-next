@@ -200,14 +200,6 @@ uint32_t comm_channel_diag(void)
 #endif
 /* Сообщить, занят ли единственный слот отправки. */
 bool comm_tx_busy(void) { return ch.tx_state != TX_FREE; }
-/* USSD допустим только в паузе всего обмена, включая ожидание TCP ACK. */
-bool comm_channel_idle(void)
-{
-  /* QIRD уже занят operation; начатая проба сохраняет probe до завершения. */
-  return comm_channel_ready() && !(ch.operation | ch.tx_state | ch.probe) && ch.sent == ch.acked &&
-    !(ch.flags.recv | ch.flags.urgent | ch.call.active) &&
-    !query.cmd && !comm_modem_busy() && !wifi_locked();
-}
 /* Отложить фоновые операции ради регистрации или статуса. */
 void comm_channel_priority(bool pending) { ch.flags.urgent = (uint8_t)pending; }
 /* Выдать свободный слот производителю кадра. */

@@ -11,8 +11,6 @@ C_FILES=(
     'Bootloader/app_update.h',
     'Modules/comm_at.c',
     'Modules/comm_at.h',
-    'Modules/comm_balance.c',
-    'Modules/comm_balance.h',
     'Modules/comm_call.c',
     'Modules/comm_call.h',
     'Modules/comm_channel.c',
@@ -34,7 +32,6 @@ C_FILES=(
     'Modules/modem_slm336.c',
     'Modules/modem_slm336.h',
     'Tests/test_comm_at.c',
-    'Tests/test_comm_balance.c',
     'Tests/test_comm_call.c',
     'Tests/test_comm_channel.c',
     'Tests/test_comm_recover.c',
@@ -151,7 +148,7 @@ def check():
         if name.startswith('User/c/'):
             assert not re.search(r'\b(?:asm|__asm)\s*\(',text), ('inline assembler in C mirror',name)
     for name in ('Modules/comm_uart.c','Modules/comm_at.c','Modules/comm_modem.c','Modules/modem_slm336.c',
-                 'Modules/comm_channel.c','Modules/comm_server.c','Modules/comm_recover.c','Modules/comm_call.c','Modules/comm_sms.c','Modules/comm_balance.c','User/c/user_comm_runtime.c'):
+                 'Modules/comm_channel.c','Modules/comm_server.c','Modules/comm_recover.c','Modules/comm_call.c','Modules/comm_sms.c','User/c/user_comm_runtime.c'):
         text=(ROOT/name).read_bytes().decode('utf-8')
         assert not any(word in text for word in ('malloc(', 'calloc(', 'realloc(', 'snprintf(')), name
         # Этап 5: связь никогда не перезагружает процессор.

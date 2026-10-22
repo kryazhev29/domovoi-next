@@ -45,6 +45,14 @@ bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text)
   return count >= n && !memcmp(data, text, n);
 }
 
+/* Позиция подстроки в ответе или -1 (короткие ответы модема и моста, без кучи). */
+int16_t comm_at_find(const uint8_t *data, uint16_t count, const char *text)
+{
+  uint16_t n = (uint16_t)strlen(text);
+  for (uint16_t i = 0; i + n <= count; ++i) if (!memcmp(data + i, text, n)) return (int16_t)i;
+  return -1;
+}
+
 /* Число без знака, переполнения и неявной обрезки; индекс только в строке. */
 bool comm_at_number(const uint8_t *data, uint16_t count, uint16_t *pos,
                    uint32_t limit, uint32_t *value)

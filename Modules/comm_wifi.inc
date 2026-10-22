@@ -113,12 +113,6 @@ static void wifi_log(uint8_t op)
   else usb_log_value(4, COMM_AT_TIMEOUT, 0);
 }
 
-static int16_t wifi_find(const uint8_t *p, uint16_t n, const char *text)
-{
-  uint16_t len = (uint16_t)strlen(text);
-  for (uint16_t i = 0; i + len <= n; ++i) if (!memcmp(p + i, text, len)) return (int16_t)i;
-  return -1;
-}
 
 WF_INLINE static uint8_t wifi_result(void)
 {
@@ -128,8 +122,8 @@ WF_INLINE static uint8_t wifi_result(void)
      столкнётся с хвостом ответа моста (проверено на плате в командном режиме). */
   if (!uart_getstate() && !late) return 0;
   uint16_t n = uart_received(); const uint8_t *p = wf.buffer;
-  int16_t at = wifi_find(p, n, "+ok");
-  if (at < 0) at = wifi_find(p, n, "+ERR");
+  int16_t at = comm_at_find(p, n, "+ok");
+  if (at < 0) at = comm_at_find(p, n, "+ERR");
   if (at < 0) { wf.pos.at = n; return late ? 2 : 0; }
   wf.pos.at = (uint16_t)at;
   return p[at + 1] == 'o' ? 1 : 2;
@@ -301,7 +295,7 @@ WF_INLINE static void wifi_done(uint8_t op, uint8_t ok)
     if (ok == 1) { wf.f.off=0; wf.since=ch.now-1000u; } else wifi_fail();
     break;
   case W_LINK: {
-    bool on=ok == 1 && wifi_find(p,n,"+ok=on") >= 0;
+    bool on=ok == 1 && comm_at_find(p,n,"+ok=on") >= 0;
     wf.since=ch.now;
     if (on) {
       wf.link=2;
@@ -312,11 +306,11 @@ WF_INLINE static void wifi_done(uint8_t op, uint8_t ok)
     }
     break; }
   case W_WSLK:
-    wf.link=ok == 1 && wifi_find(p,n,"Disconnected") < 0;
+    wf.link=ok == 1 && comm_at_find(p,n,"Disconnected") < 0;
     if (wf.link) { wifi_begin(W_PING); return; }
     break;
   case W_PING: {
-    uint8_t good=ok == 1 && wifi_find(p,n,"Success") >= 0;
+    uint8_t good=ok == 1 && comm_at_find(p,n,"Success") >= 0;
     if (!ch.wifi) wf.f.resume=good;
     else { probe_result=good ? ch.probe_active : 3u; ch.probe=ch.probe_active=0; channel_emit(COMM_CH_PROBE_DONE,good); }
     break; }

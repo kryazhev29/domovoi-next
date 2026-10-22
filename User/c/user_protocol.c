@@ -40,6 +40,14 @@ void user_comm_free(uint8_t *buffer, dataChanel_e channel)
   else work_release(buffer, WORK_REPLY);
 }
 
+// Выдать буфер кадра (сервер — общий слот, иначе local) и записать заголовок команды SLDN.
+static uint8_t *frame_begin(uint8_t *local, uint16_t size, dataChanel_e cch, uint8_t ttl, uint8_t uniq, uint8_t cmd)
+{
+  uint8_t *b = cch == CH_SERVER ? user_comm_acquire(size) : local;
+  if (b) { b[6] = ttl; b[7] = uniq; b[8] = cmd; }
+  return b;
+}
+
 // Собрать произвольное тело ответа через общий кадр SLDN.
 void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId){
   // весь кадр должен помещаться в 16-битную длину транспорта
@@ -68,15 +76,12 @@ void user_send_registrationData(dataChanel_e cch){
 
   uint16_t len = 40;
   uint8_t send_local[48];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, TIMETOREGRESPONSE, uniqIDCnt, 1);
   if (!send_buffer) return;
+  uniqIDCnt++;
   uint32_t tmp32;
 
   // ------- меняемый блок ---------
-  send_buffer[6] = TIMETOREGRESPONSE; // таймаут актуальности команды
-  send_buffer[7] = uniqIDCnt++;
-  send_buffer[8] = 1;
-
   memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
 
   send_buffer[24] = device.protocolVersion; // версия протокола
@@ -111,15 +116,12 @@ void user_send_statusPack(dataChanel_e cch){
 
   uint16_t len = 18;
   uint8_t send_local[26];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, TIMETOSTATUSRESPONSE, uniqIDCnt, 2);
   if (!send_buffer) return;
+  uniqIDCnt++;
   uint32_t tmp32;
 
   // ------- меняемый блок ---------
-  send_buffer[6] = TIMETOSTATUSRESPONSE; // таймаут актуальности команды
-  send_buffer[7] = uniqIDCnt++;
-  send_buffer[8] = 2;
-
   tmp32 = device.datetime;
   memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
   memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // статус
@@ -148,15 +150,11 @@ void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
 
   uint16_t len = 24;
   uint8_t send_local[32];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 255, uniqId, 3);
   if (!send_buffer) return;
   uint32_t tmp32;
 
   // ------- меняемый блок ---------
-  send_buffer[6] = 255; // таймаут актуальности команды
-  send_buffer[7] = uniqId;
-  send_buffer[8] = 3;
-
   tmp32 = device.datetime;
   memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
   send_buffer[13] = device.csq; // уровень сигнала
@@ -189,7 +187,7 @@ void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8
   (void)cmd;
   uint16_t len = 5;
   uint8_t send_local[13];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 255, uniqId, 4);
   if (!send_buffer) {
     if (cch == CH_SERVER) {
       fw_status_pending.due=1; fw_status_pending.percent=device.firmwarePercent;
@@ -199,10 +197,6 @@ void user_send_statusUpdateFW(uint8_t cmd, uint8_t code, dataChanel_e cch, uint8
   }
 
   // ------- меняемый блок ---------
-  send_buffer[6] = 255; // таймаут актуальности команды
-  send_buffer[7] = uniqId;
-  send_buffer[8] = 4;
-  //send_buffer[9] = 20; // Отправка блока прошивки
   send_buffer[9] = device.firmwarePercent; // Процент хода обновления или код ошибки
   send_buffer[10] = code; // 0 блок принят, 253 загрузка прекращена, 254 и 255 блок запрошен снова
   // ------- меняемый блок ---------
@@ -272,12 +266,9 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
 
   uint16_t len = 10;
   uint8_t send_local[18];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 255, uniqId, 12);
   if (!send_buffer) return;
 
-  send_buffer[6] = 255; // таймаут актуальности команды
-  send_buffer[7] = uniqId;
-  send_buffer[8] = 12;
   send_buffer[9] = sht; // к каким данным относится таймштамп
   memcpy(&send_buffer[10], (uint8_t*)&time, 4); // таймштамп
   memcpy(&send_buffer[14], (uint8_t*)&crcData, 2); // Контрольная сумма структуры
@@ -290,13 +281,10 @@ void user_send_identPackToConfigurator(dataChanel_e cch){
 
   uint16_t len = 19;
   uint8_t send_local[27];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 0, 0, 100);
   if (!send_buffer) return;
 
   // ------- меняемый блок ---------
-  send_buffer[6] = 0; // таймаут актуальности команды
-  send_buffer[7] = 0;
-  send_buffer[8] = 100;
   memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
   if (config.pinCode == 4321u)
     send_buffer[24] = 1;
@@ -313,15 +301,11 @@ void user_send_statusPackToConfigurator(dataChanel_e cch){
 
   uint16_t len = 34;
   uint8_t send_local[42 + sizeof(fault_record)];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 0, 0, 101);
   if (!send_buffer) return;
   uint32_t tmp32;
 
   // ------- меняемый блок ---------
-  send_buffer[6] = 0; // таймаут актуальности команды
-  send_buffer[7] = 0;
-  send_buffer[8] = 101;
-
   tmp32 = device.datetime;
   memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
   memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // статус
@@ -364,13 +348,11 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   if (fw_service_busy()) return false;
   if (flash_job.kind == FX_FWBLOCK && flash_job.result == FX_PENDING) return false;
   uint8_t send_local[16];
-  uint8_t *send_buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(send_local)) : send_local;
+  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 20, uniqIDCnt, 13);
   if (!send_buffer) return false;
+  uniqIDCnt++;
   uint16_t len = 5;
 
-  send_buffer[6] = 20; // таймаут актуальности команды
-  send_buffer[7] = uniqIDCnt++;
-  send_buffer[8] = 13;
   send_buffer[9] = _1B(block);  // номер блока
   send_buffer[10] = _2B(block);
 

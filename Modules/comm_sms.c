@@ -32,8 +32,6 @@ static struct {
   struct { uint32_t cmti, cmgl, deleted; uint16_t used, total; uint8_t setup, read, stop, index; } diag;
 #endif
 } msg;
-/* Включая SMS, ожидающую флеш или свободный AT между шагами. */
-bool comm_sms_busy(void) { return (msg.op | msg.tx | msg.count | msg.deliver | msg.erase) || !msg.ready; }
 /* Добавить декодированный символ в ограниченное поле SMS. */
 static void sms_char(char c)
 {

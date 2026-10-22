@@ -19,8 +19,6 @@ void comm_sms_diag(uint32_t *v);
 #endif
 /* Продвинуть очередь SIM и передать готовое сообщение приложению. */
 void comm_sms_poll(uint32_t now_ms);
-/* Настройка, чтение, обработка или отправка SMS ещё не закончены. */
-bool comm_sms_busy(void);
 /* Номер "+7..." или цифры; текст cp1251. Только латиница - GSM 7 бит до 114 символов,
    иначе UCS2 до 50; длиннее обрезается. false - предыдущая ещё уходит или неверный номер. */
 bool comm_sms_send(const char *number, const char *text);

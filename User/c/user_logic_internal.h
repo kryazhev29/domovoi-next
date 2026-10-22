@@ -21,7 +21,7 @@ enum {
 #define ID_TIME_DONE 0x38u
 // Размещение долговечных намерений в резерве device задано прежним образом флеша.
 #define STORE_CLEAR_MARK 0x31434C00u
-extern uint8_t port_buffer[PORTBUFSIZE], uniqIDCnt;
+extern uint8_t uniqIDCnt;
 extern char tempStrBuffer[128];
 extern uint8_t store_save_requested;
 extern store_state_s store;
@@ -68,6 +68,9 @@ void user_comm_rx_done(uint16_t count, uint8_t reason);
 void user_comm_session(bool open);
 // Отметить таблицу для уведомления об окончании синхронизации.
 void sync_packet(uint8_t bit);
+// Номер текущих суток для счётчиков ID и запись суток прохода в ID (user_ids.c).
+uint16_t id_today(void);
+void id_set_pass_day(cellID_s *c, uint16_t day);
 // Записать окончание синхронизации после периода тишины.
 void sync_end_tick(void);
 // Обменять рабочую конфигурацию с телом принимаемой команды.
@@ -140,12 +143,8 @@ void user_send_usbDiag(uint8_t uniqId);
 void user_send_commDiag(uint8_t uniqId);
 // Вернуть достоверное местное время для автомата восстановления.
 uint32_t user_comm_local_time(void);
-// Вернуть настроенный запрос баланса.
-const char *user_comm_ussd(void);
 // Вернуть разрешение VoLTE для текущего профиля.
 uint8_t user_comm_volte(void);
-// Обновить баланс и записать его изменение в журнал.
-void user_comm_balance(int32_t rubles);
 // Записать системное событие слабого сигнала.
 void user_comm_low_signal(uint8_t csq);
 // Обновить поколение связи и записать событие её изменения.

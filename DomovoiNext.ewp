@@ -2246,9 +2246,6 @@
         <file>
             <name>$PROJ_DIR$\Modules\comm_sms.c</name>
         </file>
-        <file>
-            <name>$PROJ_DIR$\Modules\comm_balance.c</name>
-        </file>
     </group>
     <group>
         <name>STM32_USB-FS-Device_Driver</name>

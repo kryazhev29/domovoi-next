@@ -13,13 +13,11 @@
 #include "../../Modules/comm_info.h"
 #include "../../Modules/comm_call.h"
 #include "../../Modules/comm_sms.h"
-#include "../../Modules/comm_balance.h"
 extern device_s device;
 /* Обработать уже проверенные кадры сервера вне приёма AT. */
 void server_rx_process(void);
 /* Начать ограниченный проход приёма кадров сервера. */
 void server_rx_begin_pass(void);
-bool upload_runtime_busy(void);
 /* Собрать прежний кадр регистрации сервера. */
 static void user_comm_registration(void) { user_send_registrationData(CH_SERVER); }
 /* Собрать прежний кадр состояния устройства. */
@@ -61,7 +59,6 @@ bool user_comm_start(const slm_settings_t *settings, const slm_handlers_t *handl
   comm_recover_init(&hooks, now_ms);
   comm_call_init(user_comm_call, user_comm_volte);
   comm_sms_init(user_smsreceived);
-  comm_balance_init(user_comm_ussd, user_comm_balance);
   return true;
 }
 /* Одна SMS в очереди: занято или неверный номер - false, событие отправки не пишется. */
@@ -77,6 +74,4 @@ void user_comm_poll(uint32_t now_ms)
   comm_call_poll(now_ms, flash_exec_read_allowed());
   /* Обработчик вызова мог сменить владельца флеша: для SMS нужен свежий снимок. */
   if (flash_exec_read_allowed()) comm_sms_poll(now_ms);
-  comm_balance_poll(now_ms, !user_comm_busy() && !photo_busy() && !device.status.readyPhoto &&
-                    !upload_runtime_busy() && !device.status.readyToUpdate && !device.rebootToUpdate);
 }

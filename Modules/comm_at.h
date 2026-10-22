@@ -15,6 +15,8 @@ bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text);
 uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names);
 /* Проверить начало ограниченной строки без выхода за границу. */
 bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text);
+/* Найти подстроку в ограниченной строке: позиция или -1. */
+int16_t comm_at_find(const uint8_t *data, uint16_t count, const char *text);
 /* Пропустить разрешённые пробелы перед полем ответа. */
 uint16_t comm_at_spaces(const uint8_t *data, uint16_t count, uint16_t pos);
 /* Прочитать число внешнего ответа с проверкой переполнения. */

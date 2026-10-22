@@ -95,7 +95,7 @@ void comm_modem_off(void);
 /* Плановое выключение: AT+QPOWD; true - модем вышел из сети или AT нет. */
 bool comm_modem_powered_down(void);
 /* URC (RING, +CLIP, +CMTI) - слушателям при любом состоянии AT; AT из них нельзя. */
-enum { COMM_URC_CALL, COMM_URC_SMS, COMM_URC_BALANCE, COMM_URC_COUNT };
+enum { COMM_URC_CALL, COMM_URC_SMS, COMM_URC_COUNT };
 /* Подключить постоянного потребителя уведомлений. */
 void comm_modem_listen(uint8_t slot, void (*urc)(const uint8_t *, uint16_t));
 /* Номер попытки запуска модема: изменился - модем настроен заново. */

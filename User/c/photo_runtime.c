@@ -4,7 +4,6 @@
 // Заголовок публикуется после данных, частичная докачка живёт только в RAM.
 #include "photo.h"
 #include "../../Modules/comm_channel.h"
-extern uint8_t port_buffer[PORTBUFSIZE];
 #include "photo_context.h"
 #define PHOTO_BLOCK 512u
 #define PHOTO_RESOLUTION 7u // Разрешение C328: 640 на 480 точек.
@@ -26,9 +25,10 @@ static uint8_t photo_alloc(void)
 bool photo_busy(void) { return photo && (photo->stage || photo->pending); }
 
 // Завершаем съёмку и возвращаем обычный приём RS485.
+// Вне съёмки и моста байты линии никто не читает: приём без буфера (драйвер их отбрасывает).
 static void photo_stop(void)
 {
-  uart_init(rs485_baud(), 0, port_buffer, PORTBUFSIZE);
+  uart_init(rs485_baud(), 0, NULL, 0);
   photo->stage = P_IDLE;
   device.getPhoto = 0;
 }
@@ -51,7 +51,7 @@ void rs485_init(void)
 {
   if (config.rs485Mode > 1) config.rs485Mode = 0;
   if (config.reserv[0] > 4) config.reserv[0] = 0;
-  uart_init(rs485_baud(), 0, port_buffer, PORTBUFSIZE);
+  uart_init(rs485_baud(), 0, NULL, 0);
   uart_setRecTimeout(10);
 }
 

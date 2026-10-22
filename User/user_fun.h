@@ -10,9 +10,6 @@
 #include "arm_comm.h"
 #include "structures.h"
 
-/* Обычный RX 485; на время съёмки photo.c подключает буфер из heap. */
-enum { PORTBUFSIZE = 32 };
-
 extern cellMem_s mem[10];
 
 // Принять кадр канала после проверки его границы и контрольной суммы.

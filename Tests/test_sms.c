@@ -168,17 +168,8 @@ static void test_journal(void)
         CHECK(user_comm_link(links[i].kind, links[i].address) && plain_events == 1 && last_event == links[i].event);
     }
     init(); log_refuse = true; CHECK(!user_comm_link(COMM_LINK_FAIL, 0));
-    /* 37: баланс ниже 100 - сумма текстом (с минусом), в статус 2 - 1..65000. */
-    init(); user_comm_balance(-12); CHECK(value_events == 1 && last_event == LOG_SYS_LOWBALANCE && !strcmp(value_id, "-12") && device.balance == 1);
-    init(); user_comm_balance(99); CHECK(value_events == 1 && !strcmp(value_id, "99") && device.balance == 99);
-    init(); user_comm_balance(100); CHECK(!value_events && device.balance == 100);
-    init(); user_comm_balance(70000); CHECK(!value_events && device.balance == 65000);
-    init(); user_comm_balance(-9999999); CHECK(value_events == 1 && !strcmp(value_id, "-9999999"));
-    /* Код баланса: на SLM336 запрос не шлётся (USSD рвёт данные), на другом модеме - из настроек. */
-    init(); strcpy(config.ussdBalance, "*105#"); device.moduleType = MODEM_TYPE_SLM336; CHECK(!*user_comm_ussd());
-    device.moduleType = MODEM_TYPE_AUTO; CHECK(!strcmp(user_comm_ussd(), "*105#"));
     init(); user_comm_low_signal(9); CHECK(value_events == 1 && last_event == LOG_SYS_LOWSIGNAL && !strcmp(value_id, "9"));
-    puts("comm journal: events 11, 12, 14-19 by server number, 37 balance text, 38 signal text passed");
+    puts("comm journal: events 11, 12, 14-19 by server number, 38 signal text passed");
 }
 static void test_debug(void)
 {

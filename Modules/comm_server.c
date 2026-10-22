@@ -97,10 +97,6 @@ void comm_server_init(const comm_server_handlers_t *handlers)
 }
 /* Сообщить, принял ли сервер регистрацию. */
 bool comm_server_online(void) { return sv.state == SV_ONLINE; }
-/* Срок принятой регистрации не сбрасывается периодическим ACK статуса. */
-bool comm_server_settled(void)
-{ return comm_server_online() && !(sv.flags.status_wait | sv.misses) &&
-    sv.now - sv.registration_since >= comm_timeouts[COMM_T_USSD_STABLE]; }
 uint8_t comm_server_condition(void)
 {
   if (sv.flags.rejected) return LINK_IMEI_REJECTED;
