@@ -153,8 +153,20 @@ static uint8_t w_outbox[1100], w_body[64];
 static uint16_t w_outbox_count, w_body_count, w_take;
 static unsigned w_frames, w_links, w_restarts, w_dis, w_pings, w_reads, w_failed, w_commands, w_plain, w_stray;
 static uint8_t w_cmd_mode, w_next_mode, w_tcp, w_dead, w_ping_ok, w_ap, w_tcpto, w_mix;
-static unsigned w_off_errors, w_asked, w_quality;
-static const char *w_wslk, *w_wslq; /* NULL — ответы по w_ap */
+static unsigned w_off_errors, w_asked, w_quality, w_scans;
+static const char *w_wslk, *w_wslq, *w_scan; /* NULL — ответы по w_ap / список по умолчанию */
+static const char *w_late; static uint32_t w_late_at; /* хвост ответа WSCAN приходит после паузы поиска */
+/* Ответ WSCAN как у моста (UDP 48899, 22.10.2026): заголовок, строки с концами \n\r и \r\n вперемешку, сильные первыми,
+   в конце «+ok». Повтор имени (5 ГГц), скрытая сеть, имя в 33 байта и запятая в имени — для разбора. */
+static const char w_scan_default[] =
+  "+ok=\n\rCh,SSID,BSSID,Security,Indicator\r\n"
+  "13,Home,AA:BB:CC:DD:EE:01,WPA2PSK/AES,100\n\r"
+  "36,Home,AA:BB:CC:DD:EE:02,WPA2PSK/AES,90\n\r"
+  "1,Cafe, Bar,AA:BB:CC:DD:EE:03,WPA2PSK/TKIPAES,47\r\n"
+  "6,,AA:BB:CC:DD:EE:04,WPA2PSK/AES,40\r\n"
+  "11,ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456,AA:BB:CC:DD:EE:05,OPEN/NONE,30\r\n"
+  "11,Open Net,AA:BB:CC:DD:EE:06,OPEN/NONE,6\n\r"
+  "+ok\r\n\r\n";
 void user_comm_wifi_stopped(bool ok) { test_config.wifi_stop=!ok; if (!ok) ++w_off_errors; }
 static uint8_t w_saved, w_enabled, w_silent_dis, w_receiving;
 /* w_wire: кадр занимает линию 10 бит на байт при 115200, как блокирующий uart_send; команда ближе 20 мс
@@ -168,6 +180,13 @@ static void w_push(const void *s, uint16_t n)
   memcpy(w_rx + w_count, s, n); w_count = (uint16_t)(w_count + n);
 }
 static void w_text(const char *s) { w_push(s, (uint16_t)strlen(s)); }
+// Живой мост (22.10.2026): заголовок WSCAN сразу, строки и «+ok» через 0,9 с поиска.
+static void w_answer_scan(const char *s)
+{
+  const char *rows = s; unsigned lines = 0;
+  while (lines < 2) if (*rows++ == '\n') ++lines; /* «+ok=» и строка заголовка */
+  w_push(s, (uint16_t)(rows - s)); w_late = rows; w_late_at = sim_now + 900u;
+}
 void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize, uint16_t used)
 {
   uint16_t left = w_rx && w_count > used ? (uint16_t)(w_count - used) : 0u;
@@ -175,7 +194,11 @@ void uart_rebuffer(uint8_t *rxbuffer, uint16_t bfsize, uint16_t used)
   if (left) memmove(rxbuffer, w_rx + used, left);
   w_rx = rxbuffer; w_cap = bfsize; w_count = left;
 }
-uint16_t uart_received(void) { return w_count; }
+uint16_t uart_received(void)
+{
+  if (w_late && (int32_t)(sim_now - w_late_at) >= 0) { const char *s = w_late; w_late = NULL; w_text(s); }
+  return w_count;
+}
 uint8_t uart_getstate(void) { return w_count != 0; }
 bool uart_isReceiving(void) { return w_receiving != 0; }
 // Разобрать команду мосту или принять кадр платы в сокет.
@@ -221,6 +244,7 @@ void uart_send(uint8_t *buf, uint16_t size)
   }
   if (!strcmp(c, "AT+WSLQ")) { ++w_quality; w_text(w_wslq ? w_wslq : w_ap ? "+ok=Good,85%\r\n\r\n" : "+ok=Disconnected\r\n\r\n"); return; }
   if (!strcmp(c, "AT+PING=ya.ru")) { ++w_pings; w_text(w_ping_ok ? "+ok=Success:32 bytes\r\n\r\n" : "+ok=Timeout\r\n\r\n"); return; }
+  if (!strcmp(c, "AT+WSCAN")) { ++w_scans; w_answer_scan(w_scan ? w_scan : w_scan_default); return; }
   CHECK(0); /* неизвестная мосту команда */
 }
 /* w_during: байты, пришедшие по линии, пока приёмник разбирает предыдущие (прерывание UART во время разбора). */
@@ -240,7 +264,7 @@ static void w_event(uint8_t kind, uint8_t value) { if (kind == COMM_CH_OPEN_FAIL
 static void wifi_model_reset(uint8_t cmd_mode, uint8_t tcp)
 {
   sim_reset(); memset(&wf,0,sizeof(wf)); test_config.wifi = 2;
-  w_off_errors=w_asked=w_quality=0; w_saved=1; w_wslk=w_wslq=NULL;
+  w_off_errors=w_asked=w_quality=w_scans=0; w_saved=1; w_wslk=w_wslq=w_scan=w_late=NULL;
   channel_opened = channel_closed = channel_faults = 0;
   w_rx = NULL; w_cap = w_count = w_outbox_count = w_body_count = w_take = 0;
   w_frames = w_links = w_restarts = w_dis = w_pings = w_reads = w_failed = w_commands = w_plain = w_stray = 0;
@@ -537,6 +561,98 @@ static void channel_wifi_info_tests(void)
   test_config.wifi=0;
   puts("comm_wifi_info: on-demand WSLK/WSLQ, 10 s limit, SSID/level parse, server data around, silent bridge, GSM, PING kept PASS");
 }
+/* Список сетей для USB 115 (22.10.2026): поиск только по запросу NextConfig, ответ моста и сжатый список в слоте frame,
+   слот закрыт для кадров на время поиска и пока список читают; страницы, повтор, устаревание, молчащий мост, GSM, настройка. */
+static void channel_wifi_scan_tests(void)
+{
+  uint8_t out[242]; uint16_t capacity=0, n; unsigned i; uint32_t at;
+  static char big[2200];
+  wifi_model_reset(0,1);
+  for (i=0;i<1500 && !comm_channel_ready();++i) sim_tick();
+  comm_channel_registered(); CHECK(comm_channel_ready() && ch.wifi);
+  /* Без запроса мост не сканируется. */
+  for (i=0;i<2000;++i) sim_tick();
+  CHECK(!w_scans);
+  /* Запрос взводит поиск: ответ 1, команда одна, слот на время поиска закрыт, состояние 113 не трогается. */
+  at=sim_now; CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==1);
+  for (i=0;i<5;++i) sim_tick();
+  CHECK(w_scans==1 && wf.f.scan==2 && comm_tx_acquire(&capacity)==NULL);
+  CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==1 && comm_channel_wifi_info(out)==2);
+  for (i=0;i<50;++i) sim_tick();
+  CHECK(wf.f.scan==2 && comm_tx_acquire(&capacity)==NULL); /* заголовок «+ok=» — ещё не конец списка */
+  for (i=0;i<50;++i) sim_tick();
+  CHECK(w_scans==1 && wf.f.scan==3 && sim_now-at < 2000u);
+  /* Список: сильные первыми, без повтора имени, скрытой и длинной сети; запятая в имени сохраняется. */
+  n=comm_channel_wifi_scan(0,out,sizeof out);
+  CHECK(n==29 && out[0]==0 && out[1]==255 && out[2]==100 && out[3]==4 && !memcmp(out+4,"Home",4)
+        && out[8]==47 && out[9]==9 && !memcmp(out+10,"Cafe, Bar",9) && out[19]==6 && out[20]==8 && !memcmp(out+21,"Open Net",8));
+  /* Последняя страница отпускает слот; сеанс цел, список не ушёл приёмнику сервера. */
+  CHECK(!wf.f.scan && comm_channel_ready() && ch.wifi && !w_body_count && !channel_closed);
+  CHECK(comm_tx_acquire(&capacity)!=NULL); comm_tx_release();
+  /* Страницы по вместимости ответа: в ответе следующая строка, конец — 255; после конца — новый поиск. */
+  CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==1);
+  for (i=0;i<100;++i) sim_tick();
+  CHECK(w_scans==2 && comm_channel_wifi_scan(0,out,12)==8 && out[0]==0 && out[1]==1 && out[2]==100);
+  CHECK(comm_channel_wifi_scan(1,out,20)==13 && out[0]==0 && out[1]==2 && out[2]==47);
+  CHECK(comm_channel_wifi_scan(2,out,sizeof out)==12 && out[0]==0 && out[1]==255 && out[2]==6 && !wf.f.scan);
+  /* Список не читают: 5 с слот держится (TCPLK стоит), потом отпускается и опрос TCPLK идёт; байты моста,
+     пришедшие пока список держался, приёмнику отдаются только после отпускания. */
+  CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1);
+  for (i=0;i<100;++i) sim_tick();
+  { unsigned links=w_links; w_body_count=0;
+    w_push("ABCD",4); sim_tick(); CHECK(wf.f.scan==3 && !w_body_count);
+    for (i=0;i<380;++i) sim_tick();
+    CHECK(wf.f.scan==3 && w_links==links && !w_body_count);
+    for (i=0;i<120;++i) sim_tick(); /* 5 с от готовности списка */
+    CHECK(!wf.f.scan && w_body_count==4 && !memcmp(w_body,"ABCD",4));
+    for (i=0;i<600;++i) sim_tick();
+    CHECK(w_links>links && comm_channel_ready() && ch.wifi); }
+  /* 255 — забыть готовый список и искать заново. */
+  CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1);
+  for (i=0;i<100;++i) sim_tick();
+  { unsigned scans=w_scans; CHECK(wf.f.scan==3 && comm_channel_wifi_scan(255,out,sizeof out)==1 && out[0]==1);
+    for (i=0;i<100;++i) sim_tick();
+    CHECK(w_scans==scans+1 && wf.f.scan==3 && comm_channel_wifi_scan(0,out,sizeof out)==29 && !wf.f.scan); }
+  /* Длинный ответ (40 сетей, 1,8 КБ) не влезает в слот: разбираются целые строки, сильные первыми; сеанс цел. */
+  { unsigned total=(unsigned)snprintf(big,sizeof big,"+ok=\r\nCh,SSID,BSSID,Security,Indicator\r\n"), fit=0, first;
+    for (i=0;i<40;++i) { unsigned len=(unsigned)snprintf(big+total,sizeof big-total,"%u,Net%02u,AA:BB:CC:DD:EE:%02u,WPA2PSK/AES,%u\r\n",1u+i%13u,i,i,99u-2u*i);
+      if (total+len <= sizeof(frame)) ++fit; total+=len; }
+    CHECK(total > sizeof(frame) && fit > 20 && fit < 40); first=fit > 34 ? 34 : fit; /* страница — до 34 строк по 7 Б */
+    w_scan=big; w_body_count=0; CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1);
+    for (i=0;i<100;++i) sim_tick();
+    n=comm_channel_wifi_scan(0,out,sizeof out); CHECK(wf.f.scan==(fit > 34 ? 3 : 0) && n==2+7*first && out[0]==0 && out[1]==(fit > 34 ? 34 : 255)); /* одна страница отпускает слот сразу */
+    CHECK(out[2]==99 && out[3]==5 && !memcmp(out+4,"Net00",5) && out[2+7*20]==99-2*20 && !memcmp(out+2+7*20+2,"Net20",5));
+    if (fit > 34) { n=comm_channel_wifi_scan(34,out,sizeof out); CHECK(n==2+7*(fit-34) && out[0]==0 && out[1]==255 && out[2]==99-2*34); }
+    w_scan=NULL; CHECK(!wf.f.scan && comm_channel_ready() && ch.wifi && !w_body_count); }
+  /* Мост молчит: через 6 с ответ 3 и слот свободен; следующий запрос ищет снова. */
+  w_dead=1; at=sim_now; CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1);
+  for (i=0;i<700 && wf.f.scan!=4;++i) sim_tick();
+  w_dead=0; CHECK(wf.f.scan==4 && sim_now-at>=6000u && sim_now-at<6200u && comm_tx_acquire(&capacity)==NULL);
+  CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==3 && !wf.f.scan);
+  sim_tick(); CHECK(comm_tx_acquire(&capacity)!=NULL); comm_tx_release();
+  CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==1);
+  for (i=0;i<100;++i) sim_tick();
+  CHECK(wf.f.scan==3 && comm_channel_wifi_scan(0,out,sizeof out)==29);
+  /* Wi-Fi-модем не выбран: ответ 2, мост не спрашивается. */
+  { unsigned scans=w_scans; wf.mode=0; CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==2 && !wf.f.scan); wf.mode=2;
+    for (i=0;i<100;++i) sim_tick(); CHECK(w_scans==scans); }
+  /* Выбранная сеть важнее списка: настройка принимается, список забыт. */
+  CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1);
+  for (i=0;i<100;++i) sim_tick();
+  CHECK(wf.f.scan==3 && comm_channel_wifi_setup((const uint8_t *)"Home\0secret\0",12)==0 && !wf.f.scan && wf.setup);
+  for (i=0;i<1200 && !(comm_channel_ready() && wf.f.ready);++i) sim_tick();
+  CHECK(comm_channel_ready() && !strcmp(w_ssid,"Home") && !strcmp(w_key,"secret"));
+  /* Сервер через GSM, мост отвечает: поиск идёт через слот, GSM не трогается. */
+  wifi_model_reset(0,0); w_ap=0;
+  for (i=0;i<8000 && !(!ch.wifi && comm_channel_ready() && wf.f.off);++i) sim_tick();
+  CHECK(!ch.wifi && comm_channel_ready() && wf.f.off);
+  { unsigned closed=channel_closed; CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==1);
+    for (i=0;i<100;++i) sim_tick();
+    CHECK(w_scans==1 && comm_channel_wifi_scan(0,out,sizeof out)==29 && out[2]==100 && !wf.f.scan);
+    CHECK(!ch.wifi && comm_channel_ready() && channel_closed==closed); }
+  test_config.wifi=0;
+  puts("comm_wifi_scan: on-demand WSCAN, slot lock, pack/dedupe/limits, pages, hold 5 s, rescan, long list, silent bridge, no modem, setup wins, GSM PASS");
+}
 /* Опрос сигнала: при открытом TCP - очередью канала (прежний путь), без TCP - служебной командой
    модема: и в паузе после отказа 566, и пока QIOPEN ждёт ответа (плата №1 20.10.2026: 150 с без URC).
    Порядок и период прежние; ожидающие вызов, кадр и приоритетная операция обходят фоновый запрос. */
@@ -582,7 +698,7 @@ static void channel_info_tests(void)
 // Запустить проверки путей и отказов канала.
 static void channel_regressions(void)
 {
-  channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests(); channel_info_tests(); channel_wifi_tests(); channel_wifi_info_tests();
+  channel_path_tests(); channel_error_tests(); channel_read_tests(); channel_edge_tests(); channel_diagnostic_tests(); channel_info_tests(); channel_wifi_tests(); channel_wifi_info_tests(); channel_wifi_scan_tests();
   comm_modem_transport(NULL); sim_poll = comm_modem_poll;
   puts("comm_channel: original TCP/READ/late URC/capacity/backpressure/timing PASS");
 }

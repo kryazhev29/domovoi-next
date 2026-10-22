@@ -26,7 +26,7 @@ def frames(wire):
 
 def run(baseline=False):
     costs = {}
-    for command in (101, 106, 111, 112):
+    for command in (101, 106, 111, 112, 115):
         if command == 111 and os.environ.get('DOMOVOI_TEST_DIAG') == '0':
             continue
         m = SourceMachine()
@@ -44,6 +44,8 @@ def run(baseline=False):
         assert [p[8] for p in wire] == ([111, 113] if not baseline and command == 111 else [command]), [p[8] for p in wire]
         if command in (111, 112):
             assert all(p[7] == 73 for p in wire), wire
+        if command == 115:  # список сетей без выбранного Wi-Fi-модема: ответ 2 одним байтом
+            assert wire[0][9:-2] == b'\x02', wire[0]
         if command == 106:
             assert len(wire[0]) == 523
             assert wire[0][9:-2] == bytes(m.u.mem_read(m.addr('config'), 512))

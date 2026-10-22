@@ -73,8 +73,13 @@ static bool command_args_valid(const uint8_t *ptr, uint16_t len)
 // Локальный USB-контракт Wi-Fi не расходует стек обычных команд сервера.
 static void usb_wifi_command(uint8_t *ptr, uint16_t len, uint8_t uniqId)
 {
+  uint8_t reply[242]; /* 113: 6 Б состояния + точка доступа, уровень и SSID моста; 115: страница списка сетей (22.10.2026) */
+  if (ptr[4] == 115) { /* список сетей Wi-Fi: тело [первая строка], ответ страницей */
+    user_send_anyData(115, reply, comm_channel_wifi_scan(len > 3u ? ptr[5] : 0u, reply, sizeof(reply)), CH_USB, uniqId);
+    return;
+  }
   if (ptr[4] == 113) {
-    uint8_t reply[40], count = 2; /* 6 Б состояния + точка доступа, уровень и SSID моста (22.10.2026) */
+    uint8_t count = 2;
     if (len > 3u) { reply[0] = comm_channel_wifi_setup(&ptr[5], (uint16_t)(len - 3u)); reply[1]=0; }
     else { reply[2]=1; reply[3]=device.wifiModem; reply[4]=device.wifiMode; reply[0] = comm_channel_bridge(); reply[1] = comm_channel_wifi_link();
       reply[5] = reply[0] ? 1u : device.netType == 4 ? 4u : device.netType == 1 ? 2u : 0u;
@@ -537,7 +542,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       }
       break;
 
-    case 113: case 114: if (cch == CH_USB) usb_wifi_command(ptr,len,uniqId); break;
+    case 113: case 114: case 115: if (cch == CH_USB) usb_wifi_command(ptr,len,uniqId); break;
 
     default: // команда не поддерживается
       user_send_answer_comand(ptr[4], CMD_UNDEFINE, cch, uniqId);

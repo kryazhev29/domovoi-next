@@ -10,7 +10,9 @@
    при GSM приём моста не уходит серверу; GSM без сеанса (отказ, проверка, неготовый модем) не держит
    возврат на мост до перезапуска модема — на плате не проверено.
    Изменено 2026-10-22: имя сети и уровень (WSLK/WSLQ) для USB 113 — только пока NextConfig читает состояние,
-   не чаще раза в 10 с — на плате не проверено. */
+   не чаще раза в 10 с — на плате не проверено.
+   Изменено 2026-10-22: список сетей (WSCAN) для USB 115 — ответ моста и сжатый список живут в слоте frame,
+   слот на это время закрыт для кадров — на плате не проверено. */
 #ifndef __UART_H
 void uart_rebuffer(uint8_t *, uint16_t, uint16_t);
 void uart_send(uint8_t *, uint16_t);
@@ -25,9 +27,10 @@ void user_comm_wifi_stopped(bool ok);
 #define WF_INLINE
 #endif
 enum { WF_LINK_MS=5000, WF_OPEN_MS=40000, WF_CMD_MS=800, WF_PING_MS=6000,
-       WF_RESTART_MS=8000, WF_GAP_MS=50, WF_RETRY_MS=600000, WF_LOG=40, WF_INFO_MS=10000 };
+       WF_RESTART_MS=8000, WF_GAP_MS=50, WF_RETRY_MS=600000, WF_LOG=40, WF_INFO_MS=10000,
+       WF_SCAN_MS=6000, WF_SCAN_HOLD_MS=5000 };
 enum { W_NONE, W_OFF, W_OFFB, W_ECHO, W_SET_MODE, W_SET_SSID, W_SET_KEY, W_EVENT,
-       W_TCPTO, W_NETP, W_TMODE, W_RESTART, W_LINK, W_WSLK, W_PING, W_ON, W_WSLQ };
+       W_TCPTO, W_NETP, W_TMODE, W_RESTART, W_LINK, W_WSLK, W_PING, W_ON, W_WSLQ, W_WSCAN };
 static struct {
   uint32_t since, fell_at, sent_at, info_at;
   uint8_t *buffer; // фактический буфер UART, независимо от смены владельца кадра
@@ -35,7 +38,8 @@ static struct {
   uint16_t left;
   uint8_t op, link, prefix, setup, step, misses, mode, rx;
   uint8_t ap, level, ssid_len; /* для USB 113: 0 нет данных, 1 нет точки доступа, 2 подключён; WSLQ, % (255 нет) */
-  struct { uint8_t ready, sent, off, retry, resume, drop, dirty, stop, info, asking; } f;
+  /* scan — список сетей для USB 115: 0 нет, 1 запрошен, 2 идёт (ответ моста в frame), 3 список в frame, 4 мост не ответил. */
+  struct { uint8_t ready:1, sent:1, off:1, retry:1, resume:1, drop:1, dirty:1, stop:1, info, asking, scan; } f; /* восемь флагов одним байтом: 4 Б вместо 11 */
 } wf;
 static uint8_t wf_line[96];
 static uint8_t wf_ssid[32];
@@ -45,16 +49,17 @@ static uint32_t wifi_delay(void) { return (wf.step < 2 ? 1u : wf.step == 2 ? 3u 
 /* used — разобранная часть приёма; пришедшее после неё во время разбора переносится в новый буфер. */
 static void wifi_keep(uint16_t used)
 {
-  wf.buffer=ch.wifi && !wf.setup && ch.tx_state == TX_FREE ? frame : wf_line;
+  /* Поиск сетей принимает в frame и при GSM; готовый список (3/4) в frame приёмом не трогается. */
+  wf.buffer=(ch.wifi || wf.f.scan == 2) && wf.f.scan < 3 && !wf.setup && ch.tx_state == TX_FREE ? frame : wf_line;
   uart_rebuffer(wf.buffer,wf.buffer == frame ? sizeof(frame) : sizeof(wf_line),used); wf.pos.head=0;
 }
 static void wifi_rebuffer(void) { wifi_keep(UINT16_MAX); }
 /* Фоновый AT использует wf_line и не запирает слот GSM. */
 static bool wifi_locked(void)
-{ return wf.setup || (ch.wifi && (wf.op || (ch.tx_state == TX_FREE && uart_received()))); }
+{ return wf.setup || wf.f.scan >= 2 || (ch.wifi && (wf.op || (ch.tx_state == TX_FREE && uart_received()))); }
 WF_INLINE static void wifi_reset(void)
 {
-  wf.op=W_NONE; wf.prefix=1; wf.rx=0; wf.mode=wifi_mode();
+  wf.op=W_NONE; wf.prefix=1; wf.rx=0; wf.f.scan=0; wf.mode=wifi_mode();
   wf.f.stop=comm_modem_settings()->number(SLM_CFG_WIFI_STOP) != 0 || wf.mode == 1;
   wf.f.resume=0; ch.connections=0;
   ch.wifi=wf.mode >= 2 && (!wf.f.retry || wf.mode == 3);
@@ -79,6 +84,7 @@ uint8_t comm_channel_wifi_setup(const uint8_t *data, uint16_t count)
   while (ssid < count && data[ssid]) ++ssid;
   if (!wf.mode || ssid-1u >= 32u || count-ssid-2u > 63u || data[count-1u]) return 2;
   if ((wf.setup | wf.op) || ch.tx_state != TX_FREE || (ch.wifi && uart_received())) return 1;
+  wf.f.scan=0; /* выбранная сеть важнее списка: frame отдаётся настройке */
   wf.f.ready=0; wf.setup=1; if (ch.wifi) wifi_rebuffer();
   memcpy(frame,data,count); return 0;
 }
@@ -90,6 +96,50 @@ uint8_t comm_channel_wifi_info(uint8_t *out)
   return (uint8_t)(2u+wf.ssid_len);
 }
 WF_INLINE static bool wifi_info_due(void) { return wf.f.info && wf.mode && ch.now-wf.info_at >= WF_INFO_MS; }
+/* Список прочитан, устарел или отброшен: слот снова кадрам; пришедшее тем временем раздаёт wifi_rx. */
+static void wifi_scan_free(void) { wf.f.scan=0; if (!uart_received()) wifi_rebuffer(); }
+/* WSCAN: строки «канал,SSID,BSSID,защита,уровень» (сильные первыми, концы строк \r и \n вперемешку) сжимаются
+   на месте в frame: [уровень %][длина][SSID]…, конец 255. Сжатая строка короче исходной, поэтому запись не
+   обгоняет чтение. Скрытые сети, имена длиннее 32 Б и повторы имён (2,4 и 5 ГГц) пропускаются. */
+static uint8_t wifi_scan_pack(const uint8_t *p, uint16_t n)
+{
+  uint16_t k=0, s=0; uint8_t rows=0;
+  while (s < n) {
+    uint16_t e=s, a=s, c[3], q=0, pos; uint32_t level;
+    while (e < n && p[e] != '\r' && p[e] != '\n') ++e;
+    if (e >= n) break; /* незаконченная строка (полный буфер) не разбирается */
+    for (pos=e; pos > s && q < 3u; --pos) if (p[pos-1u] == ',') c[q++]=pos; /* уровень, защита, BSSID — с конца */
+    while (a < e && p[a] != ',') ++a;                                        /* канал до первой запятой */
+    pos=c[0];
+    if (q == 3u && a+2u < c[2] && p[s] >= '0' && p[s] <= '9' && comm_at_number(p,e,&pos,100u,&level) && pos == e) {
+      uint16_t len=(uint16_t)(c[2]-2u-a), d=0; ++a;                           /* SSID между первой запятой и BSSID */
+      while (d < k && (frame[d+1u] != len || memcmp(frame+d+2u,p+a,len))) d=(uint16_t)(d+2u+frame[d+1u]);
+      if (len <= (uint16_t)sizeof(wf_ssid) && d >= k) {
+        frame[k]=(uint8_t)level; frame[k+1u]=(uint8_t)len; memmove(frame+k+2u,p+a,len);
+        k=(uint16_t)(k+2u+len); ++rows;
+      }
+    }
+    s=(uint16_t)(e+1u);
+  }
+  frame[k]=255u; return rows;
+}
+/* USB 115: row — первая строка страницы, 255 — забыть список и искать заново. Ответ [0 страница / 1 поиск идёт /
+   2 Wi-Fi-модем не выбран / 3 мост не ответил][следующая строка, 255 — конец][строки: уровень, длина, SSID].
+   Список держится в слоте, пока NextConfig читает страницы, последняя страница или 5 с без чтений отпускают слот. */
+uint16_t comm_channel_wifi_scan(uint8_t row, uint8_t *out, uint16_t capacity)
+{
+  if (!wf.mode) { out[0]=2; return 1; }
+  if (row == 255u && wf.f.scan >= 3) wifi_scan_free();
+  if (wf.f.scan == 4) { wifi_scan_free(); out[0]=3; return 1; }
+  if (wf.f.scan != 3) { if (!wf.f.scan) wf.f.scan=1; out[0]=1; return 1; }
+  const uint8_t *p=frame; uint8_t i=0; uint16_t n=2;
+  while (i < row && *p != 255u) { p+=2u+p[1]; ++i; }
+  while (*p != 255u && n+2u+p[1] <= capacity) { memcpy(out+n,p,2u+p[1]); n=(uint16_t)(n+2u+p[1]); p+=2u+p[1]; ++i; }
+  out[0]=0; out[1]=*p == 255u ? 255u : i;
+  wf.since=ch.now;
+  if (*p == 255u) wifi_scan_free();
+  return n;
+}
 /* Начало значения «+ok=…» и конец его строки; -1 — ответа нет, -2 — «Disconnected». */
 static int16_t wifi_value(const uint8_t *p, uint16_t n, uint8_t ok, uint16_t *end)
 {
@@ -128,7 +178,7 @@ static void wifi_begin(uint8_t op)
 {
   static const char * const command[]={"TCPDIS=off", "TCPDISB=off,1", "E=off", "WMODE=STA",
     "WSSSID=", "WSKEY=", "EVENT=on", "TCPTO=0", "NETP=TCP,CLIENT,", "TMODE=throughput",
-    "Z", "TCPLK", "WSLK", "PING=ya.ru", "TCPDIS=on,0", "WSLQ"};
+    "Z", "TCPLK", "WSLK", "PING=ya.ru", "TCPDIS=on,0", "WSLQ", "WSCAN"};
   const char *text=command[op-W_OFF], *tail=NULL;
   uint16_t number=0;
   if (op == W_OFF) tail=wf.f.ready && !wf.f.stop ? ",0" : ",1";
@@ -164,6 +214,13 @@ static void wifi_log(uint8_t op)
 
 WF_INLINE static uint8_t wifi_result(void)
 {
+  if (wf.op == W_WSCAN) { /* список целиком: конец — строка «+ok» (заголовок — «+ok=»), отказ — +ERR;
+                             полный буфер или 6 с — разбирается то, что пришло (сильные сети первыми) */
+    uint16_t n = uart_received(); const uint8_t *p = wf.buffer;
+    if (n >= sizeof(frame) || ch.now - wf.since >= WF_SCAN_MS) return 2;
+    if (!uart_getstate()) return 0;
+    return comm_at_find(p, n, "+ok\r") >= 0 ? 1 : comm_at_find(p, n, "+ERR") >= 0 ? 2 : 0;
+  }
   bool late = ch.now - wf.since >= (wf.op == W_PING ? (uint32_t)WF_PING_MS : (uint32_t)WF_CMD_MS);
   if (wf.op == W_RESTART) return ch.now - wf.since >= WF_RESTART_MS; /* ответа не ждём */
   /* Линия полудуплексная: разбирать только после тишины 10 мс, иначе следующая посылка
@@ -226,7 +283,7 @@ static void wifi_strip(void)
 /* При GSM канал открыт модемом: строки моста (EVENT) серверу не отдаются, их стирает следующая команда мосту. */
 WF_INLINE static void wifi_rx(void)
 {
-  if (!ch.wifi || ch.state != CH_OPEN || wf.op || wf.setup || ch.tx_state != TX_FREE || !uart_getstate()) return;
+  if (!ch.wifi || ch.state != CH_OPEN || wf.op || wf.setup || wf.f.scan >= 2 || ch.tx_state != TX_FREE || !uart_getstate()) return;
   uint16_t n = uart_received();
   if (n > wf.pos.head) wf.pos.head = (uint16_t)(wf.pos.head + wifi_deliver(wf.buffer + wf.pos.head, (uint16_t)(n - wf.pos.head)));
   if (wf.pos.head >= n) wifi_keep(n);
@@ -365,6 +422,9 @@ WF_INLINE static void wifi_done(uint8_t op, uint8_t ok)
   case W_WSLQ:
     wifi_quality(p,n,ok); wifi_asked();
     break;
+  case W_WSCAN: /* неполный ответ со строками — тоже список; без строк и без +ok — мост не ответил */
+    wf.f.scan=wifi_scan_pack(p,n) || ok == 1 ? 3u : 4u; wf.since=ch.now;
+    break;
   case W_PING: {
     uint8_t good=ok == 1 && comm_at_find(p,n,"Success") >= 0;
     if (!ch.wifi) wf.f.resume=good;
@@ -389,6 +449,11 @@ WF_INLINE static void wifi_next(void)
   }
   if (wf.f.stop) { wifi_off(); return; }
   if (wf.f.drop) { if (ch.now-wf.since >= WF_LINK_MS) wifi_off(); return; }
+  if (wf.f.scan) { /* список сетей: поиск при свободном слоте и пустом приёме, готовый список ждёт чтений в слоте */
+    if (wf.f.scan == 1) { if (ch.tx_state == TX_FREE && !uart_received()) { wf.f.scan=2; wf.rx=0; wifi_begin(W_WSCAN); } }
+    else if (wf.f.scan >= 3 && ch.now-wf.since >= WF_SCAN_HOLD_MS) wifi_scan_free();
+    return;
+  }
   /* Сервер через GSM: линия свободна; молчащий мост (не подтвердил off) не спрашивается. */
   if (!ch.wifi) { if (wf.f.off && wifi_info_due()) wifi_ask(); return; }
   if (ch.state == CH_INITIAL) wifi_pause(0);
@@ -423,7 +488,7 @@ WF_INLINE static void wifi_poll(void)
     if (!r) return;
     uint8_t op=wf.op;
     wifi_log(op);
-    if (op != W_RESTART) wifi_strip();
+    if (op != W_RESTART && op != W_WSCAN) wifi_strip(); /* список сетей — не данные сервера */
     wf.op=W_NONE;
     wifi_done(op,r);
     if (wf.op) return;
