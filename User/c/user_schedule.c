@@ -49,7 +49,9 @@ uint8_t data[64];
   for(uint32_t offset=0;offset<1024;offset+=64) {
     if(!mem_read(mem[MB_HOLIDAY].start+offset,data,64)) return 2;
     for(unsigned i=0;i<64;i+=sizeof(cellHoliday_s)) {
-      uint32_t value; memcpy(&value,data+i,4); if(value/86400u==day) return 1;
+      uint32_t value; memcpy(&value,data+i,4);
+      if(value==0xffffffffu) return 0; // Команда 16 пишет праздники подряд: дальше стёрто.
+      if(value/86400u==day) return 1;
     }
   }
   return 0;

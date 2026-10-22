@@ -75,12 +75,20 @@ def table_cells():
 
 
 def holidays():
+    # Команда 16 пишет праздники подряд от начала области: пустая запись завершает проверку.
     m = AccessMachine()
-    assert m.checked('user_dayIsHoliday') == 0 and m.counts['read'] == 16, '16 reads of 64 bytes'
+    assert m.checked('user_dayIsHoliday') == 0 and m.counts['read'] == 1, 'empty table: one read of 64 bytes'
+    for n in range(250): struct.pack_into('<I', m.flash, HOLIDAY + 4 * n, TODAY + 86400 * (n + 1))
+    before = m.counts['read']
+    assert m.checked('user_dayIsHoliday') == 0 and m.counts['read'] - before == 16, '250 holidays: 16 reads of 64 bytes'
     for k in (1, 5, 16):
         m.fail_read(k); assert m.checked('user_dayIsHoliday') == 2, ('read error', k)
     m.flash[HOLIDAY + 900:HOLIDAY + 904] = struct.pack('<I', TODAY - 100)
-    assert m.checked('user_dayIsHoliday') == 1
+    before = m.counts['read']
+    assert m.checked('user_dayIsHoliday') == 1 and m.counts['read'] - before == 15
+    m.flash[HOLIDAY + 8:HOLIDAY + 12] = struct.pack('<I', TODAY + 100)
+    before = m.counts['read']
+    assert m.checked('user_dayIsHoliday') == 1 and m.counts['read'] - before == 1
     return {'stack': m.stack_peak}
 
 

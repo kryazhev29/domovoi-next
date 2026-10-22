@@ -188,8 +188,10 @@ __attribute__((naked)) static void jump(uint32_t sp,uint32_t pc) {
 #endif
 
 void boot_start_app(void) {
- // До запуска, включая откат на старую FW, таблицы должны быть восстановлены.
- if(!sj_recover())return;
+ /* До запуска таблицы восстанавливаются по возможности: приложение повторяет mem_recover()
+    и при отказе внешней флеш-памяти работает без таблиц, но со связью. Отказ SPI здесь
+    не должен оставлять прибор в USB-загрузчике без связи. */
+ (void)sj_recover();
  BootHeader h;unsigned i;
  if(!boot_validate(0,BOOT_APP_BASE,&h))return;
  __disable_interrupt();USB_PULLUP_OFF;

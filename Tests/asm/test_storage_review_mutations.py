@@ -59,6 +59,25 @@ def groups():
                 '    if (magic!=LOG_CURSOR_MAGIC) memset(saved->reserv+28,0,4); // Образ без маркера: номер журнала не хранил.\n',
                 '')]),
         }),
+        # Блок 5: писатель загрузчика, праздники, служебные USB-команды.
+        ('test_iar_boot_review', {
+            'ram-writer-single-read': ('ram_writer', [('Bootloader/app_update.c',
+                '  for(tries=8;tries;tries--) {\n   *(volatile uint32_t*)0x40003000u=0xaaaau;',
+                '  for(tries=1;tries;tries--) {\n   *(volatile uint32_t*)0x40003000u=0xaaaau;')]),
+            'ram-writer-single-program': ('ram_writer', [('Bootloader/app_update.c',
+                '  for(tries=4;tries;tries--) {\n   *sr=0x34u;*cr=2u;*ar=page;*cr=0x42u;',
+                '  for(tries=1;tries;tries--) {\n   *sr=0x34u;*cr=2u;*ar=page;*cr=0x42u;')]),
+        }),
+        ('test_access_reads', {
+            'holiday-no-early-exit': ('holidays', [('User/c/user_schedule.c',
+                '      if(value==0xffffffffu) return 0; // Команда 16 пишет праздники подряд: дальше стёрто.\n',
+                '')]),
+        }),
+        ('test_usb_service_commands', {
+            'command-107-any-channel': ('run', [('User/c/user_commands.c',
+                '    case 107: // режим прозрачной передачи gsm\n      if (cch == CH_USB)\n        user_send_anyData(107, NULL, 0, cch, uniqId);',
+                '    case 107: // режим прозрачной передачи gsm\n      user_send_anyData(107, NULL, 0, cch, uniqId);')]),
+        }),
     ]
 
 

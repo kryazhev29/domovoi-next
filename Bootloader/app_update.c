@@ -216,22 +216,31 @@ __ramfunc static void replace_ram(const uint32_t *page_crc) {
  __disable_interrupt();
  *kr=0x45670123u;*kr=0xcdef89abu;
  for(page=0x08000000u;page<BOOT_APP_BASE;page+=1024) {
-  *(volatile uint32_t*)0x40003000u=0xaaaau;
-  /* Каждое чтение по SPI проверяется до стирания своей страницы внутренней флеш-памяти. */
-  if(!ram_read_page(BOOT_CANDIDATE+page-0x08000000u,image)||
-     ram_page_crc(image)!=page_crc[(page-0x08000000u)/1024])break;
-  *sr=0x34u;*cr=2u;*ar=page;*cr=0x42u;
-  timeout=2000000u;while((*sr&1u)&&--timeout){}
-  if(!timeout||(*sr&0x14u))break;
-  *cr=0;
-  for(i=0;i<1024;i+=2) {
-   half=(uint16_t)image[i]|((uint16_t)image[i+1]<<8);
-   *sr=0x34u;*cr=1u;*(volatile uint16_t*)(page+i)=half;
-   timeout=100000u;while((*sr&1u)&&--timeout){}
-   if(!timeout||(*sr&0x14u)||*(volatile uint16_t*)(page+i)!=half)break;
-   *cr=0;
+  uint32_t tries;
+  /* Каждое чтение по SPI проверяется до стирания своей страницы внутренней флеш-памяти.
+     После стирания страницы 0 отказ означает нерабочий загрузчик: одиночная помеха шины
+     или отказ одной операции флеш-памяти повторяются, а не завершают запись. */
+  for(tries=8;tries;tries--) {
+   *(volatile uint32_t*)0x40003000u=0xaaaau;
+   if(ram_read_page(BOOT_CANDIDATE+page-0x08000000u,image)&&
+      ram_page_crc(image)==page_crc[(page-0x08000000u)/1024])break;
   }
-  if(i!=1024)break;
+  if(!tries)break;
+  for(tries=4;tries;tries--) {
+   *sr=0x34u;*cr=2u;*ar=page;*cr=0x42u;
+   timeout=2000000u;while((*sr&1u)&&--timeout){}
+   *cr=0;
+   if(!timeout||(*sr&0x14u))continue;
+   for(i=0;i<1024;i+=2) {
+    half=(uint16_t)image[i]|((uint16_t)image[i+1]<<8);
+    *sr=0x34u;*cr=1u;*(volatile uint16_t*)(page+i)=half;
+    timeout=100000u;while((*sr&1u)&&--timeout){}
+    *cr=0;
+    if(!timeout||(*sr&0x14u)||*(volatile uint16_t*)(page+i)!=half)break;
+   }
+   if(i==1024)break;
+  }
+  if(!tries)break;
  }
  *cr=0x80u;
  *(volatile uint32_t*)0xe000ed0cu=0x05fa0004u;

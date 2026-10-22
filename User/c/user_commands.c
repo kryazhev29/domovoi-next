@@ -488,7 +488,8 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 107: // режим прозрачной передачи gsm
-      user_send_anyData(107, NULL, 0, cch, uniqId);
+      if (cch == CH_USB)
+        user_send_anyData(107, NULL, 0, cch, uniqId);
       break;
 
     #if DOMOVOI_DIAG
@@ -530,9 +531,10 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     }
 
     case 108: // включить лог
-      user_send_anyData(108, NULL, 0, cch, uniqId);
-      if (cch == CH_USB)
+      if (cch == CH_USB) {
+        user_send_anyData(108, NULL, 0, cch, uniqId);
         usb_log_enable(ptr[5]);
+      }
       break;
 
     case 113: case 114: if (cch == CH_USB) usb_wifi_command(ptr,len,uniqId); break;
