@@ -8,6 +8,7 @@
 extern volatile uint32_t fault_record[12];
 #define FAULT_RECORD_MAGIC 0x31544C46u
 
+void fault_capture(void);
 void NMI_Handler(void);
 void HardFault_Handler(void);
 void MemManage_Handler(void);
@@ -18,4 +19,7 @@ void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
 void USB_LP_CAN1_RX0_IRQHandler(void);
+void USBWakeUp_IRQHandler(void);
+void ADC1_2_IRQHandler(void);
+void PVD_IRQHandler(void);
 #endif

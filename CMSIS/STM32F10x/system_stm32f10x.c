@@ -5,6 +5,7 @@
 
 #include "stm32f10x.h"
 
+extern const uint32_t __vector_table[];
 uint32_t SystemCoreClock = 72000000u;
 
 // Ограниченно ждать PLL/переключение частоты; отказ запрещает дальнейший старт.
@@ -30,11 +31,9 @@ static void SetSysClockTo72(void)
     return;
   }
 
-  FLASH->ACR |= FLASH_ACR_PRFTBE;
-  FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | FLASH_ACR_LATENCY_2;
-  RCC->CFGR |= RCC_CFGR_PPRE1_DIV2;
+  FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | FLASH_ACR_PRFTBE | FLASH_ACR_LATENCY_2;
   RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLXTPRE | RCC_CFGR_PLLMULL)) |
-              RCC_CFGR_PLLSRC_HSE | RCC_CFGR_PLLMULL6;
+              RCC_CFGR_PPRE1_DIV2 | RCC_CFGR_PLLSRC_HSE | RCC_CFGR_PLLMULL6;
   RCC->CR |= RCC_CR_PLLON;
   if (!clock_wait(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY)) return;
   RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
@@ -45,6 +44,10 @@ static void SetSysClockTo72(void)
 #pragma call_graph_root="func"
 void SystemInit(void)
 {
+  // Собственная таблица приложения или загрузчика — до настройки RCC и запуска среды C.
+  SCB->VTOR = (uint32_t)__vector_table;
+  __DSB();
+  __ISB();
   RCC->CR |= RCC_CR_HSION;
   RCC->CFGR &= 0xF8FF0000u;
   RCC->CR &= 0xFEF6FFFFu;
@@ -52,6 +55,4 @@ void SystemInit(void)
   RCC->CFGR &= 0xFF80FFFFu;
   RCC->CIR = 0x009F0000u;
   SetSysClockTo72();
-  // Это исходное положение ST; приложение и загрузчик задают свой VTOR после старта.
-  SCB->VTOR = FLASH_BASE;
 }

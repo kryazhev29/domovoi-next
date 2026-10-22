@@ -66,16 +66,12 @@ __stackless void stack_canary_check(void)
 // Инициализировать плату и выполнять обработчики приложения.
 void main()
 {
-  stack_paint();
-  // инициализация входов
-  board_init();
-
+  // Таблица уже установлена в SystemInit; стек и PVD готовим при закрытых IRQ.
+  __disable_interrupt();
   // Разрешаем события UsageFault, BusFault, MemFault
   SCB->SHCSR = SCB_SHCSR_USGFAULTENA_Msk | SCB_SHCSR_BUSFAULTENA_Msk | SCB_SHCSR_MEMFAULTENA_Msk;
-
-  // переносим таблицу прерываний, т.к. она уже начинается не с нулевого адреса
-  __disable_interrupt(); // Запрещаем прерывания
-  SCB->VTOR = APLICATION_ADDRESS;
+  stack_paint();
+  board_init();
   __enable_interrupt();
 
   // начальная индикация

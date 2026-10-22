@@ -11,17 +11,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <math.h>
 #include <time.h>
 
 #include "board.h"
 #include "stm32_it.h"
 #include "structures.h"
 #include "user_str_fun.h"
-
-#ifdef BOOTLOADER
-  #include "bootloader.h"
-#endif
 
 #include "hw_config.h"
 #include "usb_lib.h"
@@ -30,7 +25,6 @@
 #include "usb_istr.h"
 
 // периферия
-#include "main.h"
 #include "timers.h"
 #include "adc_stm32f10x.h"
 #include "uart_stm32f10x.h"
@@ -42,7 +36,6 @@
 #include "indication.h"
 #include "user_fun.h"
 #include "outs.h"
-#include "crc.h"
 
 #include "wiegand.h"
 

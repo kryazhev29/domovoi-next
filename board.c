@@ -29,6 +29,17 @@ void board_init(void)
 {
   RCC->APB2ENR |= RCC_APB2ENR_AFIOEN | RCC_APB2ENR_IOPAEN |
                   RCC_APB2ENR_IOPBEN | RCC_APB2ENR_IOPCEN;
+  // Задать уровни и направление подтяжек до переключения ножек в рабочие режимы.
+  GPIOA->BSRR = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_13 | GPIO_Pin_14;
+  LED1_OFF;
+  LED2_OFF;
+  LED3_OFF;
+  GSM_PWR_OFF;
+  OUT1_OFF;
+  OUT2_OFF;
+  GSM_KEY_OFF;
+  CSEL_HIGH;
+  RTSG_LOW;
   // Режимы по 4 бита: 0 — аналог, 3 — выход 50 МГц, 7 — открытый сток, 8 — подтяжка.
   // Маски затрагивают только ножки платы, остальные настройки принадлежат драйверам.
   // PA0 — реле, PA2/PA3 — Wiegand; PA1/PA4 остаются в прежнем состоянии.
@@ -42,20 +53,10 @@ void board_init(void)
   GPIOB->CRH = (GPIOB->CRH & ~0xFF0F000Fu) | 0x43030003u;
   // PC13 — питание модема, PC14 — открытый сток ключа запуска.
   GPIOC->CRH = (GPIOC->CRH & ~0x0FF00000u) | 0x07300000u;
-  GPIOA->BSRR = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_13 | GPIO_Pin_14;
-  LED1_OFF;
-  LED2_OFF;
-  LED3_OFF;
-  GSM_PWR_OFF;
-  OUT1_OFF;
-  OUT2_OFF;
-  GSM_KEY_OFF;
-  CSEL_HIGH;
-  RTSG_LOW;
 
   RCC->AHBENR |= RCC_AHBENR_CRCEN;
   RCC->APB1ENR |= RCC_APB1ENR_PWREN | RCC_APB1ENR_BKPEN;
-  PWR->CR = (PWR->CR & ~PWR_CR_PLS) | PWR_CR_DBP | 0x60u;
+  PWR->CR = (PWR->CR & ~PWR_CR_PLS) | PWR_CR_DBP | PWR_CR_PLS_2V5;
   EXTI->PR = EXTI_PR_PR16;
   board_exti_config(EXTI_IMR_MR16, 0);
   SCB->AIRCR = 0x05FA0700u;
@@ -63,9 +64,3 @@ void board_init(void)
   // Детектор включается последним: EXTI/NVIC уже готовы принять низкое питание при старте.
   PWR->CR |= PWR_CR_PVDE;
 }
-
-// Отключить и сбросить GPIO и AFIO перед переходом к загрузчику.
-
-// Запросить системный сброс с барьерами CMSIS.
-
-// Ограниченно ждать восстановления питания, обслуживая аппаратный сторож.
