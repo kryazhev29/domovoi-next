@@ -624,10 +624,10 @@ static void channel_wifi_scan_tests(void)
     CHECK(out[2]==99 && out[3]==5 && !memcmp(out+4,"Net00",5) && out[2+7*20]==99-2*20 && !memcmp(out+2+7*20+2,"Net20",5));
     if (fit > 34) { n=comm_channel_wifi_scan(34,out,sizeof out); CHECK(n==2+7*(fit-34) && out[0]==0 && out[1]==255 && out[2]==99-2*34); }
     w_scan=NULL; CHECK(!wf.f.scan && comm_channel_ready() && ch.wifi && !w_body_count); }
-  /* Мост молчит: через 6 с ответ 3 и слот свободен; следующий запрос ищет снова. */
+  /* Мост молчит: через 10 с ответ 3 и слот свободен; следующий запрос ищет снова. */
   w_dead=1; at=sim_now; CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1);
-  for (i=0;i<700 && wf.f.scan!=4;++i) sim_tick();
-  w_dead=0; CHECK(wf.f.scan==4 && sim_now-at>=6000u && sim_now-at<6200u && comm_tx_acquire(&capacity)==NULL);
+  for (i=0;i<1100 && wf.f.scan!=4;++i) sim_tick();
+  w_dead=0; CHECK(wf.f.scan==4 && sim_now-at>=10000u && sim_now-at<10200u && comm_tx_acquire(&capacity)==NULL);
   CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==3 && !wf.f.scan);
   sim_tick(); CHECK(comm_tx_acquire(&capacity)!=NULL); comm_tx_release();
   CHECK(comm_channel_wifi_scan(0,out,sizeof out)==1 && out[0]==1);

@@ -28,7 +28,7 @@ void user_comm_wifi_stopped(bool ok);
 #endif
 enum { WF_LINK_MS=5000, WF_OPEN_MS=40000, WF_CMD_MS=800, WF_PING_MS=6000,
        WF_RESTART_MS=8000, WF_GAP_MS=50, WF_RETRY_MS=600000, WF_LOG=40, WF_INFO_MS=10000,
-       WF_SCAN_MS=6000, WF_SCAN_HOLD_MS=5000 };
+       WF_SCAN_MS=10000, WF_SCAN_HOLD_MS=5000 }; /* мост по линии отдаёт заголовок WSCAN через ~5 с, строки ещё через ~1 с (плата №1 22.10) */
 enum { W_NONE, W_OFF, W_OFFB, W_ECHO, W_SET_MODE, W_SET_SSID, W_SET_KEY, W_EVENT,
        W_TCPTO, W_NETP, W_TMODE, W_RESTART, W_LINK, W_WSLK, W_PING, W_ON, W_WSLQ, W_WSCAN };
 static struct {
@@ -215,7 +215,7 @@ static void wifi_log(uint8_t op)
 WF_INLINE static uint8_t wifi_result(void)
 {
   if (wf.op == W_WSCAN) { /* список целиком: конец — строка «+ok» (заголовок — «+ok=»), отказ — +ERR;
-                             полный буфер или 6 с — разбирается то, что пришло (сильные сети первыми) */
+                             полный буфер или 10 с — разбирается то, что пришло (сильные сети первыми) */
     uint16_t n = uart_received(); const uint8_t *p = wf.buffer;
     if (n >= sizeof(frame) || ch.now - wf.since >= WF_SCAN_MS) return 2;
     if (!uart_getstate()) return 0;
