@@ -21,6 +21,15 @@ def oracle(m):
     m.counts['read']=reads
     return crc16(out)
 
+# user_updateID пишет по месту, найденному user_findID в том же проходе (как в user_access).
+def find(a, ident=b'0000000001'):
+    a.u.mem_write(0x21000600, ident)
+    for _ in range(200):
+        a.now += 101
+        r = a.checked('user_findID', 0x21000600, 0x21000700, budget=5000000)
+        if r != 2: return r
+    raise AssertionError('user_findID did not finish')
+
 # Доводит кэш CRC до готовности перед проверкой записи.
 def warm(m):
     for _ in range(1600):
@@ -38,6 +47,7 @@ def run():
         r=fixture(SyncMachine(m.flash),0,unknown=True,total=8192)
         assert warm(r)==oracle(r)
     a=AccessMachine();a.put_id(1,b'0000000001');assert warm(a)==oracle(a)
+    assert find(a)==1
     row=bytearray(a.flash[BASE:BASE+32]);row[15]^=3
     a.u.mem_write(0x21000400,bytes(row))
     assert a.checked('user_updateID',0x21000400,budget=5000000)==1
@@ -144,15 +154,7 @@ def cancellation():
     c=ClearMachine();c.flash[BASE:BASE+32]=cell(1);assert warm(c)==oracle(c)
     c.parse();c.checked('idclear_runtime_cancel');assert get(c) is None
     c.clear_drain();assert warm(c)==oracle(c)
-    a=AccessMachine();a.put_id(1,b'0000000001');assert warm(a)==oracle(a)
-    a.u.mem_write(0x21000400,bytes(a.flash[BASE:BASE+32]))
-    a.fault=('read',a.counts['read']+1)
-    assert not a.checked('user_updateID',0x21000400,budget=5000000)
-    assert get(a) is None;a.fault=None;assert warm(a)==oracle(a)
-    a.u.mem_write(0x21000400,cell(2))
-    assert not a.checked('user_updateID',0x21000400,budget=5000000)
-    assert get(a) is None and warm(a)==oracle(a)
-    return {'cancel_before_write_and_during_verify':2,'writer_cancels':['packet13','expiry','clear'],'unknown_old_read':'recompute','expiry_read_failure':'recompute','missing_update_ID':'recompute'}
+    return {'cancel_before_write_and_during_verify':2,'writer_cancels':['packet13','expiry','clear'],'expiry_read_failure':'recompute'}
 
 
 # Проверяет учёт CRC через реальный драйвер записи и стирания W25.

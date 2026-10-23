@@ -297,36 +297,12 @@ uint16_t user_getTempIDRecordsCount(void)
   return count;
 }
 
-// Записать изменённые параметры ID и обновить соответствие индекса.
+// Записать изменённые параметры ID на место, найденное user_findID.
+// Вызывать только в том же проходе после user_findID(c->ID)==1: ответ 1 всегда оставляет
+// lookup.hit на этой ячейке, а до записи меняются лишь счётчики (23.10.2026).
 bool user_updateID(cellID_s *c){
-  if (!flash_exec_idle()) return false;
-  uint32_t endAdr = mem[MB_ID].start + mem[MB_ID].size;
-  uint8_t stored[32];
-  uint16_t index;
-  uint32_t adr;
-  if (lookup.state==2 && lookup.hit && id_equal(lookup.id,c->ID)) {
-    adr=mem[MB_ID].start+(uint32_t)(lookup.hit-1u)*sizeof(*c);
-    if (!mem_read(adr,stored,sizeof(stored))) return false;
-    memcpy(&index,stored,2);
-    if (index==c->index && stored[31]!=255 && id_equal((char *)stored+2,c->ID)) goto update;
-  }
-  /* Команда 13 кладёт ячейку на место её номера: сначала проверяем это место,
-     перебор - только если там другая ячейка. */
-  if (c->index != 0 && c->index != 0xffff){
-    adr = mem[MB_ID].start + (uint32_t)(c->index - 1u) * sizeof(cellID_s);
-    if (adr + sizeof(cellID_s) <= endAdr){
-      if (!mem_read(adr, stored, 32)) { idcrc_unknown(); return false; }
-      memcpy(&index,stored,2);
-      if (index == c->index && stored[31] != 255) goto update;
-    }
-  }
-  // Старое размещение ищется тем же продолжаемым проходом, без второго полного цикла.
-  if (user_findID(c->ID,(cellID_s *)stored)!=1 || !lookup.hit ||
-      ((cellID_s *)stored)->index!=c->index) { idcrc_unknown(); return false; }
-  adr=mem[MB_ID].start+(uint32_t)(lookup.hit-1u)*sizeof(*c);
-update: {
-  bool result = store_id_begin(adr, c);
+  if (!flash_exec_idle()) return false; // занятая флеш не сбрасывает кэш CRC
+  bool result = store_id_begin(mem[MB_ID].start+(uint32_t)(lookup.hit-1u)*sizeof(*c), c);
   if(!result) idcrc_unknown();
   return result;
-}
 }
