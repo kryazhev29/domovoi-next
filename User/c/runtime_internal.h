@@ -102,6 +102,8 @@ extern uint16_t id_cells_end, id_scan_cell;
 void user_ids_scan(void);
 void idindex_runtime_suspend(void);
 bool idindex_runtime_begin(void);
+// Есть ли область индекса на установленной W25 (User/storage_profile.c).
+bool storage_has_index(void);
 bool idcrc_background_begin(void);
 void idcrc_background_poll(void);
 void idindex_table_commit(uint32_t delta, uint16_t end);

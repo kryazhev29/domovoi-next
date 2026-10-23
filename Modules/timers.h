@@ -24,5 +24,7 @@ void timers_handle(void);
 void timers_pause(const unsigned int msec);
 // Атомарно прочитать миллисекундное время без изменения PRIMASK.
 unsigned int timers_getMillis(void);
+// Тиковая работа приложения; вызывается из timers_handle (User/c/user_main.c).
+void timers_user_handle(void);
 
 #endif

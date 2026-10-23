@@ -5,6 +5,7 @@
 #include "user_logic_internal.h"
 #include "../table_runtime.h"
 #include "../sched16.h"
+#include "../log_ring.h"
 #include "photo_runtime.h"
 #include "../../Modules/comm_modem.h"
 #pragma data_alignment=4

@@ -4,6 +4,7 @@
 // Граница приёма проверяет ёмкость; ожидание освобождения TX ограничено.
 
 #include "uart_stm32f10x.h"
+#include "board.h"
 
 typedef struct {
   uint8_t *rxbuffer;

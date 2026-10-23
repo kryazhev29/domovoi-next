@@ -3,7 +3,7 @@
 // Готовое тело начинается с байта 6; буфер всегда остаётся у вызывающего.
 // Фоновые ответы копируются в серверный TX или передаются USB с учётом владельца.
 #include "packet.h"
-#include "c/runtime_internal.h"
+#include "c/user_logic_internal.h"
 
 // Дополняет готовое тело единственными общими заголовком и CRC SLDN.
 void packet_frame(uint8_t *buffer, uint16_t length)
