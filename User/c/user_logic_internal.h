@@ -63,6 +63,7 @@ void server_rx_process(void);
 // Вернуть свободное место для QIRD-backpressure.
 uint16_t user_comm_rx_capacity(void);
 bool text_terminated(const char *text, size_t capacity);
+void store_reset_request(void);
 // Принять очередную часть ещё не завершённого QIRD.
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count);
 // Разрешить разбор законченного QIRD либо отбросить его при ошибке.

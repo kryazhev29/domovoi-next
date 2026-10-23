@@ -16,6 +16,9 @@
 #include "../../Bootloader/boot_manual.h"
 #include "prof.h"
 
+// Ответ 11 отдаёт сам владелец или он не нужен; коды протокола 0–9, 254 и 255 заняты.
+#define CMD_OWNER_REPLY ((cmdCode_e)253)
+
 // Определить команды USB, доступные до авторизации.
 static bool usb_cmd_without_pin(uint8_t cmd)
 {
@@ -106,7 +109,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   uint16_t len;
   uint8_t uniqId;
   uint32_t tmp32;
-  cmdCode_e code = (cmdCode_e)255; // 255: ответ 11 отдаёт сам владелец или он не нужен
+  cmdCode_e code = CMD_OWNER_REPLY;
 
   len = ptr[1]; // длина
   len = (len<<8) | ptr[0];
@@ -489,5 +492,5 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
   }
 reply:
-  if ((uint8_t)code != 255) user_send_answer_comand(ptr[4], code, cch, uniqId);
+  if (code != CMD_OWNER_REPLY) user_send_answer_comand(ptr[4], code, cch, uniqId);
 }

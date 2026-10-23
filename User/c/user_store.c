@@ -16,6 +16,8 @@
 enum { US_SAVE=1, US_ACK, US_CONFIG=6, US_RESET, US_REPLY, US_COMMAND };
 static void store_usb_session(void);
 uint8_t store_runtime, store_save_requested, store_reset_requested;
+// Момент запроса перезагрузки: предел ожидания владельцев.
+static uint32_t store_reset_at;
 // Последний проход с готовым хранилищем без запроса перезагрузки; 0 — такого ещё не было.
 static uint32_t store_ready_at;
 store_state_s store;
@@ -510,6 +512,12 @@ uint8_t cmd=store.cmd,id=store.uniq,quiet=store.quiet;
   else if(cmd==9) user_send_tempIDs(cch,id);
   else user_send_answer_comand(cmd,cmd == 8 ? (cmdCode_e)store.code : CMD_SUCCESS,cch,id);
 }
+// Запрос перезагрузки с отметкой времени для предела ожидания.
+void store_reset_request(void)
+{
+  store_reset_requested = 1;
+  store_reset_at = timers_getMillis();
+}
 // Продвинуть одного владельца хранения в порядке приоритетов.
 void user_storage_poll(void)
 {
@@ -519,6 +527,11 @@ void user_storage_poll(void)
   if (!store_reset_requested) {
     if (mem_storage_ready) store_ready_at = now | 1u;
     else if (store_ready_at && now - store_ready_at >= 30000u) user_savereset();
+  } else if (now - store_reset_at >= 15000u) {
+    // Запрошенная перезагрузка не ждёт застрявшего владельца дольше 15 с: снимок A/B не обязателен.
+    USB_PULLUP_OFF;
+    user_comm_off();
+    NVIC_SystemReset();
   }
   factory_reply();
   // Отложенный ответ и возобновление работы — в начале прохода.
