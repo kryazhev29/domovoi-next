@@ -336,6 +336,8 @@ bool store_command_allowed(uint8_t cmd)
   if (id_scan_cell && (cmd==3 || cmd==13 || cmd==17 || cmd==18 || cmd==103)) return false;
   if (cmd == 24 || cmd == 27) return true;
   if (cmd == 8) return flash_exec_read_allowed();
+  // Неотправленный отложенный ответ держит рабочую память владельца: команда ждёт его ухода.
+  if (fx_reply.packet) return false;
   if (cmd == 21) return !store_priority_pending() && flash_exec_idle();
   return !fw_event_waiting() && !store_phase() && !store_reset_requested && flash_exec_idle();
 }

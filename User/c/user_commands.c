@@ -106,6 +106,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   uint16_t len;
   uint8_t uniqId;
   uint32_t tmp32;
+  cmdCode_e code = (cmdCode_e)255; // 255: ответ 11 отдаёт сам владелец или он не нужен
 
   len = ptr[1]; // длина
   len = (len<<8) | ptr[0];
@@ -113,16 +114,16 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
   wdt_reload();
 
   if (!command_args_valid(ptr, len)){
-    user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-    return;
+    code = CMD_PARAMERROR;
+    goto reply;
   }
 
   /* ПИН (команда 102) проверялся, но нигде не требовался: без него по USB стирались база ID
      и настройки. Теперь остальные команды по USB - только после верного ПИНа, иначе ответ 4
      «нужен пароль» (18.09.2026). */
   if (cch == CH_USB && !device.userAutorized && !usb_cmd_without_pin(ptr[4])){
-    user_send_answer_comand(ptr[4], CMD_GETPASSWORD, cch, uniqId);
-    return;
+    code = CMD_GETPASSWORD;
+    goto reply;
   }
 
   switch (ptr[4]) // команда
@@ -172,23 +173,16 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       /* Бит 11 (E440): перезагрузка отменяет загрузку; откат или установка, уже идущие в
          загрузчик, не трогаются. */
       if (device.rebootToUpdate){
-        user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+        code = CMD_RUNERROR;
         break;
       }
       if (device.FWinProgress) fw_cancel(FW_REASON_CANCEL);
-      if (ptr[5] == 0){
-
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
-        device.timeToReset = 2;
-      } else{
-        user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId); // кода 5 в ответе 11 нет (строка 537)
-        device.timeToReset = ptr[5];
-      }
+      device.timeToReset = ptr[5] ? ptr[5] : 2; // кода 5 в ответе 11 нет (строка 537)
+      code = CMD_SUCCESS;
       break;
 
     case 3: // команда установить заводские настройки
-      if (!store_factory_request((uint8_t)cch, uniqId, ptr[5], NULL))
-        user_send_answer_comand(3, CMD_RUNERROR, cch, uniqId);
+      if (!store_factory_request((uint8_t)cch, uniqId, ptr[5], NULL)) code = CMD_RUNERROR;
       break;
 
     case 5: // Установка состояния триггерных функций
@@ -216,20 +210,18 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         // сохранить состояние в памяти
         store_command_start(5, cch, uniqId);
       }
-      else{
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-      }
+      else code = CMD_PARAMERROR;
       break;
 
     case 6:
       device.timeToGetID = ptr[5];
       device.sourceGetID = ptr[6];
       device.addressGetID = ptr[7];
-      user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
+      code = CMD_SUCCESS;
       break;
 
     case 7: // запрос фото с камеры
-      user_send_answer_comand(7, len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR, cch, uniqId);
+      code = len == 4 ? photo_start(ptr[5]) : CMD_PARAMERROR;
       break;
 
     case 8: // управление выходами
@@ -262,19 +254,14 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
             res8 = CMD_RUNERROR;
         }
         if (flash_job.kind == FX_STORE && flash_job.step >= FS_ID) store_access_reply((uint8_t)cch, uniqId);
-        else user_send_answer_comand(ptr[4], res8, cch, uniqId);
+        else code = res8;
       }
-      else{
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-      }
+      else code = CMD_PARAMERROR;
       break;
 
     case 9: // запрос журнала событий
-      upload_runtime_request(10, cch, uniqId, ptr[2]);
-      break;
-
     case 10: // запрос ID добавленных через SMS или Авторегистрацию
-      upload_runtime_request(9, cch, uniqId, ptr[2]);
+      upload_runtime_request(ptr[4] == 9 ? 10 : 9, cch, uniqId, ptr[2]); // 9 — журнал, 10 — временные ID
       break;
 
     case 11: { // отправить смс на заданный номер с заданным текстом
@@ -289,20 +276,17 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         char number[sizeof(config.countryCode) + 11];
         char *text = work_acquire(text_size + 1u, WORK_SMS);
         if (text == NULL){
-          user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          code = CMD_RUNERROR;
           break;
         }
         strcpy(number, config.countryCode);
         user_strcpy(number + strlen(number), (char*)&ptr[5], 0, 10);
         memcpy(text, &ptr[15], text_size);
         text[text_size] = 0;
-        cmdCode_e result = user_sendsms(text, number) ? CMD_SUCCESS : CMD_RUNERROR;
+        code = user_sendsms(text, number) ? CMD_SUCCESS : CMD_RUNERROR;
         work_release(text, WORK_SMS);
-        user_send_answer_comand(ptr[4], result, cch, uniqId);
       }
-      else{
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-      }
+      else code = CMD_PARAMERROR;
       break;
     }
 
@@ -316,7 +300,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
            задаёт useServer2. */
         if ((received->server1[0] == 0) || (received->countryCode[0] == 0) ||
             !config_pin_number(&pin)){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+          code = CMD_PARAMERROR;
         }
         else{
           uint32_t oldtime = device.datetimeConfig;
@@ -329,7 +313,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           comm_endpoints();
           if (!comm_modem_valid_settings()) {
             config_exchange(&ptr[5]); comm_endpoints();
-            user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+            code = CMD_PARAMERROR;
             break;
           }
           device.datetimeConfig = config.datetime;
@@ -340,75 +324,36 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
           device.datetimeConfig = oldtime;
           device.crc = oldcrc;
           device.status.defaultConfig = olddefault;
-          if (!saved) user_send_answer_comand(ptr[4], CMD_RUNERROR, cch, uniqId);
+          if (!saved) code = CMD_RUNERROR;
         }
       }
-      else{
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-      }
+      else code = CMD_PARAMERROR;
       break;
 
     case 13: // отправить блок ID абонентов в контроллер
-      {
-        // определяем сектор, в который будем писать, читаем, стираем и пишем.
-        if (!sync_cells_valid(ptr, len, MB_ID, sizeof(cellID_s))){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }
-        if (!table_runtime_begin(ptr,cch,uniqId))
-          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-
-      }
-      break;
-
     case 14: // синхро. расписаний
-      {
-        if (!sched16_valid(ptr, len)){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }
-        if (!table_runtime_begin(ptr,cch,uniqId))
-          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-
-      }
-      break;
-
     case 15: // синхро групп
-      {
-        if (!sync_cells_valid(ptr, len, MB_GROUP, sizeof(cellGroup_s))){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }
-        if (!table_runtime_begin(ptr,cch,uniqId))
-          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-
-      }
+    case 16: { // синхро. праздников
+      bool valid;
+      if (ptr[4] == 13) valid = sync_cells_valid(ptr, len, MB_ID, sizeof(cellID_s));
+      else if (ptr[4] == 14) valid = sched16_valid(ptr, len);
+      else if (ptr[4] == 15) valid = sync_cells_valid(ptr, len, MB_GROUP, sizeof(cellGroup_s));
+      /* Праздники - список дат без номера ячейки (Протокол2, строки 359-362), синхронизируются
+         целиком. Раньше номером ячейки считался младший байт даты: полночь отвергалась. */
+      else valid = len >= 8 && ptr[9] != 0 && (uint32_t)(len - 8) == (uint32_t)ptr[9] * sizeof(cellHoliday_s);
+      // Сектор определяется, читается, стирается и пишется автоматом таблиц.
+      if (!valid) code = CMD_PARAMERROR;
+      else if (!table_runtime_begin(ptr,cch,uniqId)) code = CMD_RUNERROR;
       break;
-
-    case 16: // синхро. праздников
-      {
-        /* Праздники - список дат без номера ячейки (Протокол2, строки 359-362), синхронизируются
-           целиком. Раньше номером ячейки считался младший байт даты: полночь отвергалась. */
-        if (len < 8 || ptr[9] == 0 || (uint32_t)(len - 8) != (uint32_t)ptr[9] * sizeof(cellHoliday_s)){
-          user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-          break;
-        }
-        if (!table_runtime_begin(ptr,cch,uniqId))
-          user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
-
-      }
-      break;
+    }
 
     case 17: // CRC всех 5-ти блоков данных
       user_send_crcPack(cch, uniqId);
       break;
 
     case 18: // запрос CRC базы абонентов поблочно
-      if (ptr[5] > 100) { // блоков 100: номер больше - чтение мимо базы
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-        break;
-      }
-      user_send_crcMemoryID(ptr[5], cch, uniqId);
+      if (ptr[5] > 100) code = CMD_PARAMERROR; // блоков 100: номер больше - чтение мимо базы
+      else user_send_crcMemoryID(ptr[5], cch, uniqId);
       break;
 
     case 19: // Обновление прошивки
@@ -416,7 +361,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
         (void)fw_service_begin(ptr+5,cch,uniqId);
       } else{
         fw_event_request(LOG_FW_FAIL, FW_REASON_PARAM);
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
+        code = CMD_PARAMERROR;
       }
       break;
 
@@ -432,7 +377,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if (len == 3 || len == 9)
 
         photo_request_answer(cch,uniqId,ptr+5,(uint8_t)(len-3));
-      else user_send_answer_comand(21, CMD_PARAMERROR, cch, uniqId);
+      else code = CMD_PARAMERROR;
       break;
 
     case 22: // запрос статуса 2
@@ -442,7 +387,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     case 23: // установить время контроллера
       memcpy((uint8_t*)&tmp32, &ptr[5], 4);
       log_setTime(tmp32);
-      user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
+      code = CMD_SUCCESS;
       break;
 
     case 24: // команда подтверждения приема команды от контроллера
@@ -453,7 +398,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 27: // произвольная команда
-      user_send_answer_comand(ptr[4], CMD_SUCCESS, cch, uniqId);
+      code = CMD_SUCCESS;
       break;
 
     case 100: // идентификация для конфигуратора
@@ -475,8 +420,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 103: // очистить память идентификаторов
-      if (cch==CH_USB && !idclear_runtime_begin(cch,uniqId))
-        user_send_answer_comand(ptr[4],CMD_RUNERROR,cch,uniqId);
+      if (cch==CH_USB && !idclear_runtime_begin(cch,uniqId)) code = CMD_RUNERROR;
       break;
 
     case 105: // задать тип модуля
@@ -510,16 +454,12 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     case MANUAL_BOOT_COMMAND: { /* Файл загрузчика вручную, только по USB. */
       uint8_t response[8];
       if (cch != CH_USB || len < 4) {
-        user_send_answer_comand(ptr[4], CMD_PARAMERROR, cch, uniqId);
-        break;
-      }
-      if (device.FWinProgress || device.rebootToUpdate || app_trial_active()) {
-        user_send_answer_comand(ptr[4], CMD_RUNNING, cch, uniqId);
+        code = CMD_PARAMERROR;
         break;
       }
       flash_exec_args_t args = { NULL, FS_SYNC };
-      if (!flash_exec_begin(FX_STORE, &args)) {
-        user_send_answer_comand(MANUAL_BOOT_COMMAND, CMD_RUNNING, cch, uniqId);
+      if (device.FWinProgress || device.rebootToUpdate || app_trial_active() || !flash_exec_begin(FX_STORE, &args)) {
+        code = CMD_RUNNING;
         break;
       }
       boot_manual_command(1, &ptr[5], (uint16_t)(len-3), response);
@@ -545,7 +485,9 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
     case 113: case 114: case 115: if (cch == CH_USB) usb_wifi_command(ptr,len,uniqId); break;
 
     default: // команда не поддерживается
-      user_send_answer_comand(ptr[4], CMD_UNDEFINE, cch, uniqId);
+      code = CMD_UNDEFINE;
       break;
   }
+reply:
+  if ((uint8_t)code != 255) user_send_answer_comand(ptr[4], code, cch, uniqId);
 }

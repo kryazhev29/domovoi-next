@@ -53,7 +53,7 @@ def run():
     results = run_mutations(scenarios, 'test_unblock', 'fixes1-mutations')
     protocol = {
         'D33-status-constant': ('rx_capacity', [('User/c/user_protocol.c',
-            'tmp32 = user_comm_rx_capacity();', 'tmp32 = 2048;')]),
+            'uint16_t capacity = user_comm_rx_capacity();', 'uint16_t capacity = 2048;')]),
         'D33-answer-constant': ('rx_capacity', [('User/packet.c',
             'rt_put16(packet+14,user_comm_rx_capacity());', 'rt_put16(packet+14,2048);')]),
         'D02-TTL255': ('fw_request_ttl', [('User/c/user_protocol.c',

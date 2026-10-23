@@ -17,6 +17,12 @@
 #pragma data_alignment=4
 char tempStrBuffer[128];
 uint8_t uniqIDCnt;
+/* Логический адрес старого места настроек MB_CONFIG: memory.c хранит новые образы
+   в резерве 0x1F5000..0x1F8FFF (два сектора данных и два сектора фиксации). */
+static const cellMem_s mem_map[10] = {
+  {0, 131072}, {135168, 131072}, {266240, 1601536}, {1871872, 2048}, {1878016, 2048},
+  {1884160, 1024}, {1889280, 4096}, {1900544, 98304}, {1999872, 49152}, {2097152, 1048576}
+};
 
 // Вызвать обработчики миллисекундного тика драйверов.
 void timers_user_handle(void)
@@ -55,32 +61,9 @@ void user_init(void)
   // Определяем тип памяти
   device.memID = w25_read_devID();
 
-  // константы адресов памяти
-  mem[MB_FIRMWARE].start = 0;
-  mem[MB_FIRMWARE].size = 131072;
-  mem[MB_BACKUP].start = 135168;
-  mem[MB_BACKUP].size = 131072;
-  mem[MB_ID].start = 266240;
-  mem[MB_ID].size = 1601536;
-  mem[MB_GROUP].start = 1871872;
-  mem[MB_GROUP].size = 2048;
-  mem[MB_SHEDULE].start = 1878016;
-  mem[MB_SHEDULE].size = 2048;
-  mem[MB_HOLIDAY].start = 1884160;
-  mem[MB_HOLIDAY].size = 1024;
-  /* Логический адрес старого места. memory.c хранит новые образы в резерве 0x1F5000..0x1F8FFF
-     (два сектора данных и два сектора фиксации). */
-  mem[MB_CONFIG].start = 1889280;
-  mem[MB_CONFIG].size = 4096;
-  mem[MB_LOG].start = 1900544;
-  mem[MB_LOG].size = 98304;
-  mem[MB_TEMPID].start = 1999872;
-  mem[MB_TEMPID].size = 49152;
-
-  if ((device.memID >> 8) >= 0x17 && (device.memID >> 8) <= 0x18){ // память 16–32 МиБ
-    mem[MB_PHOTO].start = 2097152;
-    mem[MB_PHOTO].size = 1048576;
-  } else{
+  // Карта внешней флеш; фото есть только на 16–32 МиБ (старший байт memID 0x17–0x18).
+  memcpy(mem, mem_map, sizeof mem_map);
+  if ((device.memID >> 8) < 0x17 || (device.memID >> 8) > 0x18){
     mem[MB_PHOTO].start = 0;
     mem[MB_PHOTO].size = 0;
   }
@@ -217,9 +200,10 @@ void user_loop(void)
     log_checkPending(); // события, ждущие времени от сервера
     if (flash_exec_read_allowed()) user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
     // вычислим день недели, час и минуту
+    uint32_t daytime = device.datetime % 86400u;
     device.day = user_getweakday(device.datetime);
-    device.hour = device.datetime % 86400u / 3600u;
-    device.minute = device.datetime % 3600u / 60u;
+    device.hour = daytime / 3600u;
+    device.minute = daytime % 3600u / 60u;
     // уровень сигнала
     device.connected = comm_channel_ready();
     /* Статусы 1/2 и NextConfig: сигнал, регистрация CS/PS, тип сети (как у прежней связи). */
