@@ -33,7 +33,7 @@ CASES = {
     'log time pending': [('test_log_time_pending','main')],
     'reset cause': [('test_resetcause','run')],
     'reset cause mutations': [('test_resetcause','mutations')],
-    'reset runtime': [('test_reset_runtime', n) for n in ('reset_paths', 'trial_clock', 'scheduled_reset')],
+    'reset runtime': [('test_reset_runtime', n) for n in ('reset_paths', 'trial_clock', 'scheduled_reset', 'tx_drain')],
     'reset runtime mutations': [('test_reset_runtime', 'mutations')],
     'fw install wait': [('test_fw_install_wait','main')],
     'sched16_power': [('test_sched16','migration_power')],
