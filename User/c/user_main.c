@@ -181,8 +181,9 @@ void user_loop(void)
       if (status_event_due(st, timers_getMillis()))
         user_send_statusPack(CH_SERVER);
     }
-    // состояние выхода отображаем светодиодом
-    if (device.status.stateOut1 || device.status.stateOut2){
+    // Светодиод выхода — только от обычного управления: реле разблокировки его не зажигает (Алексей 23.10).
+    if ((device.status.stateOut1 && !config.rele[0].useInBlock) ||
+        (device.status.stateOut2 && !config.rele[1].useInBlock)){
       LED3_ON;
     } else{
       LED3_OFF;

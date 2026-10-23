@@ -14,7 +14,7 @@ def main():
     source = (ROOT/'User/c/user_access.c').read_text(encoding='utf-8')
     priority = source.replace('else if (device.triggers.sheduleUnBlock', 'if (device.triggers.sheduleUnBlock', 1)
     priority = priority.replace('      uint8_t scenes[8];', '      uint8_t scenes[8];\n      next = 0;', 1)
-    order = source.replace('state = next && !unblock_wait;', 'state = next;', 1)
+    order = source.replace('state = !next || unblock_wait;', 'state = !next;', 1)
     offline = source.replace('>= 1800u', '>= 0xffffffffu')
     results = {}
     for name, mutant, test, message in (

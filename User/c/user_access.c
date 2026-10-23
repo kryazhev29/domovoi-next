@@ -19,7 +19,7 @@ static uint8_t unblock_wait, unblock_level;
 /* Бит 0 — предыдущий опрос датчика, бит 1 — закрытие уже обработано. */
 static uint8_t unblock_gate;
 
-// Реле разблокировки включено только при разблокировке: ИК идёт через его нормально замкнутый контакт.
+// Реле разблокировки инверсное: включено и держит линию ИК, на время разблокировки выключается (Алексей 23.10).
 static void unblock_set(uint8_t i, uint8_t state)
 {
   out_load(i, state, 0, 0, 0);
@@ -27,15 +27,13 @@ static void unblock_set(uint8_t i, uint8_t state)
 
 // При включении ждём штатное открытие; датчик даёт один импульс при разорванной ИК.
 /* Проверено на плате №1 12.10.2026 (ee0979b): включение - один щелчок реле 1, ИК разорвана через 4 с;
-   перезагрузка командой 2 - реле 1 молчит, ИК разорвана сразу; выключение - ИК замкнута.
-   Изменено 23.10.2026: реле разблокировки в обычном режиме выключено, при разблокировке
-   включено (решение Алексея) - на плате не проверено. */
+   перезагрузка командой 2 - реле 1 молчит, ИК разорвана сразу; выключение - ИК замкнута. */
 static void unblock_open(uint8_t relays, bool entry)
 {
   if (!relays || relays == 3) return;
   uint8_t i = relays & 1u;
   if (entry) {
-    unblock_set(i ^ 1u, OUT_OFF);
+    unblock_set(i ^ 1u, OUT_ON);
     unblock_wait = i + 1;
   }
   if (config.rele[i].mode == 0)
@@ -68,9 +66,7 @@ void user_unblock_input_poll(void)
 
 // Пересчитать намерение; занятое хранилище откладывает только чтение сцен.
 /* Проверено на плате №1 12.10.2026 (ee0979b): включение - один щелчок реле 1, ИК разорвана через 4 с;
-   перезагрузка командой 2 - реле 1 молчит, ИК разорвана сразу; выключение - ИК замкнута.
-   Изменено 23.10.2026: реле разблокировки в обычном режиме выключено, при разблокировке
-   включено (решение Алексея) - на плате не проверено. */
+   перезагрузка командой 2 - реле 1 молчит, ИК разорвана сразу; выключение - ИК замкнута. */
 void user_unblock_recheck(bool restore)
 {
   uint8_t next = 0, relays = 0;
@@ -109,7 +105,7 @@ void user_unblock_recheck(bool restore)
     for (uint8_t n = 0; n < 2; ++n) {
       uint8_t i = (relays & 1u ? 0 : 1) ^ n, state;
       if (unblock_wait & (1u << i)) continue;
-      if (relays & (1u << i)) state = next && !unblock_wait;
+      if (relays & (1u << i)) state = !next || unblock_wait;
       else if (!next && (unblock_level & (1u << i))) state = unblock_level >> 2;
       else if (unblock_relays & (1u << i)) state = OUT_OFF;
       else continue;
@@ -144,7 +140,7 @@ void user_unblock_poll(void)
       : !out_getmodestate(unblock_wait - 1))) {
     unblock_wait = 0;
     for (uint8_t i = 0; i < 2; ++i)
-      if (unblock_relays & (1u << i)) unblock_set(i, OUT_ON);
+      if (unblock_relays & (1u << i)) unblock_set(i, OUT_OFF);
   }
 }
 
