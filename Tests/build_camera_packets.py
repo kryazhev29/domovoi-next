@@ -39,11 +39,12 @@ def main():
             def memory(kind):
                 return int(re.search(r"([\d']+) bytes of\s+" + kind.replace('  ', r'\s+') + r'\s+memory', maptext)[1].replace("'", ''))
             stack_limit = int(re.search(r"CSTACK\$\$Limit\s+0x([\da-f']+)", maptext)[1].replace("'", ''), 16)
+            stack_base = int(re.search(r"CSTACK\$\$Base\s+0x([\da-f']+)", maptext)[1].replace("'", ''), 16)
             rows.append(dict(packet=size, bin=str(binary), bin_bytes=binary.stat().st_size,
                              sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                              rw_data=memory('readwrite data'), rw_code=memory('readwrite code'),
                              ro_code=memory('readonly  code'), ro_data=memory('readonly  data'),
-                             cstack=4096, free_above_stack=0x20004fc0-stack_limit,
+                             cstack=stack_limit-stack_base, free_above_stack=0x20004fc0-stack_limit,
                              evidence=evidence))
         assert len({r['evidence']['flash_sha256'] for r in rows}) == 1
         assert len({r['evidence']['stream_sha256'] for r in rows}) == 1

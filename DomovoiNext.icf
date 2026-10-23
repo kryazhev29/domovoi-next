@@ -9,8 +9,12 @@ define symbol __ICFEDIT_region_ROM_end__   = 0x0801FFFF;
 define symbol __ICFEDIT_region_RAM_start__ = 0x20000000;
 define symbol __ICFEDIT_region_RAM_end__   = 0x20004FBF;
 /*-Sizes-*/
-define symbol __ICFEDIT_size_cstack__ = 0x1000;
+define symbol __ICFEDIT_size_cstack__ = 0xE00;
 /**** End of ICF editor section. ###ICF###*/
+/* Стек 3,5 КБ (23.10.2026): по STACK USAGE линкера пик 1 312 Б (Release, USB 111) и 1 168 Б
+   (ReleaseCustomer) с одним уровнем вложенного разбора через мост, прерывания до 344 Б;
+   обновление 1 636 Б идёт с закрытыми прерываниями. Второй уровень вложенности не открывается:
+   wifi_locked не отдаёт слот передачи, пока в приёме есть байты. */
 
 define memory mem with size = 4G;
 define region ROM_region   = mem:[from __ICFEDIT_region_ROM_start__   to __ICFEDIT_region_ROM_end__];
