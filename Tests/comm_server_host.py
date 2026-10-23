@@ -33,7 +33,7 @@ def unit():
     headers = '\n'.join(line for n in NEW_HEADERS for line in source(n).splitlines() if not line.startswith('#include "'))
     code = '\n'.join(line for n in NEW for line in source(n).splitlines() if not line.startswith('#include'))
     user = source('User/c/user_*.c')
-    rx = 'void server_rx_process(void);\n' + function(source('User/c/runtime_internal.h').replace('static inline ','static '),'rt_get16') + '\n' + re.sub(r'^#include[^\n]*', '', source('User/c/user_rx.c'), flags=re.M)
+    rx = 'void server_rx_process(void);\nstatic void answer_reply_drop(void) {} /* очередь ответов 11 вне модели сервера */\n' + function(source('User/c/runtime_internal.h').replace('static inline ','static '),'rt_get16') + '\n' + re.sub(r'^#include[^\n]*', '', source('User/c/user_rx.c'), flags=re.M)
     # Сохранённый сборщик и его стык QIRD; настоящие CRC/границы/отложенное исполнение.
     # Таблицы полей кадров 1 и 2 и их сборщик берутся из того же источника.
     tables = re.search(r'typedef struct \{ uint8_t dst, src, len; \} field_s;\n#define F\(.*?\n#define FIELDS\(.*?\n', user, re.S).group(0)
