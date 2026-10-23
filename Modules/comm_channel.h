@@ -67,6 +67,8 @@ bool comm_channel_probe(uint8_t kind);
 uint8_t comm_channel_probe_result(void);
 /* Сервер идёт через Wi-Fi-мост DR164 на RS-485 или мост настраивается: порт принадлежит каналу. */
 bool comm_channel_wifi(void);
+/* Строка моста, 96 Б: вне моста свободна — в ней пассивный приём ID с линии 485 (хозяина линии задаёт rs485_init). */
+extern uint8_t wf_line[96];
 /* Состояние моста для USB 113: 0 нет точки доступа, 1 есть, 2 TCP сервера открыт. */
 /* 0 нет связи, 1 отвечает, 2 TCP, 3 TCP выключен, 4 off без ACK, 5 выключение. */
 uint8_t comm_channel_wifi_link(void);

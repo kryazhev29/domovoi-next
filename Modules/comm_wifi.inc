@@ -12,7 +12,9 @@
    Изменено 2026-10-22: имя сети и уровень (WSLK/WSLQ) для USB 113 — только пока NextConfig читает состояние,
    не чаще раза в 10 с — на плате не проверено.
    Изменено 2026-10-22: список сетей (WSCAN) для USB 115 — ответ моста и сжатый список живут в слоте frame,
-   слот на это время закрыт для кадров — на плате не проверено. */
+   слот на это время закрыт для кадров — на плате не проверено.
+   Изменено 2026-10-23 (task/rs485-passive): после последнего off невыбранного моста линия возвращается
+   приложению (rs485_init); строка wf_line вне моста — буфер пассивного приёма 485 — на плате не проверено. */
 #ifndef __UART_H
 void uart_rebuffer(uint8_t *, uint16_t, uint16_t);
 void uart_send(uint8_t *, uint16_t);
@@ -21,6 +23,7 @@ uint8_t uart_getstate(void);
 bool uart_isReceiving(void);
 #endif
 void user_comm_wifi_stopped(bool ok);
+void rs485_init(void); /* хозяин линии 485 вне моста: буфер, скорость, пауза приёма */
 #ifdef __IAR_SYSTEMS_ICC__
 #define WF_INLINE _Pragma("inline=forced")
 #else
@@ -41,7 +44,7 @@ static struct {
   /* scan — список сетей для USB 115: 0 нет, 1 запрошен, 2 идёт (ответ моста в frame), 3 список в frame, 4 мост не ответил. */
   struct { uint8_t ready:1, sent:1, off:1, retry:1, resume:1, drop:1, dirty:1, stop:1, info, asking, scan; } f; /* восемь флагов одним байтом: 4 Б вместо 11 */
 } wf;
-static uint8_t wf_line[96];
+uint8_t wf_line[96]; /* строка моста; вне моста — буфер пассивного приёма ID с линии 485 (rs485_init) */
 static uint8_t wf_ssid[32];
 /* mode: 0 нет моста, 1 только GSM, 2 Wi-Fi с резервом GSM, 3 только Wi-Fi. */
 WF_INLINE static uint8_t wifi_mode(void) { return (uint8_t)comm_modem_settings()->number(SLM_CFG_WIFI); }
@@ -432,7 +435,8 @@ WF_INLINE static void wifi_done(uint8_t op, uint8_t ok)
     break; }
   default: break;
   }
-  wifi_rebuffer();
+  /* Мост не выбран и выключен (off принят или молчание): линия возвращается приложению — rs485_init. */
+  if (comm_channel_wifi()) wifi_rebuffer(); else rs485_init();
 }
 WF_INLINE static void wifi_next(void)
 {

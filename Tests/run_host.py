@@ -118,6 +118,16 @@ with TemporaryDirectory(prefix='domovoi-host-') as d:
     elif kind=='tempidmeta':
         ids=source('User/c/user_ids.c');begin=ids.index('// 5 бит поколения');end=ids.index('void user_ids_boot(',begin)
         unit=source('Tests/test_tempid_meta.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* КОД МОДУЛЯ */',function(source('User/c/user_*.c').replace('static inline bool id_equal','static bool id_equal'),'id_equal')+'\n'+ids[begin:end])
+    elif kind=='rs485id':
+        user=source('User/c/user_*.c')
+        types=typedefs(source('structures.h'),'codeType_e','logControl_e','cellID_s','cellGroup_s','cellShedule_s')
+        code='\n'.join(function(user,n) for n in ('reader_id','WG_readedID','rs485_readedID','user_checkIdAndControl','user_activateOut','user_access_complete','port_check_data'))
+        unit=source('Tests/test_rs485_id.c').replace('/* ТИПЫ ПРОТОКОЛА */',types).replace('/* КОД МОДУЛЯ */',code)
+    elif kind=='rs485owner':
+        photo=source('User/c/photo_runtime.c')
+        types=typedefs(source('structures.h'),'rs485Periphery_s','releMode_s','config_s')
+        code='\n'.join(function(photo,n) for n in ('rs485_baud','rs485_init','photo_stop','rs485_set_config'))
+        unit=source('Tests/test_rs485_owner.c').replace('/* ТИПЫ ПРОТОКОЛА */',types).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='commuart':
         header=source('Modules/comm_uart.h')
         code=source('Modules/comm_uart.c')

@@ -1,11 +1,12 @@
 // Доработка: Кряжев А., 2026
-// Wiegand и звонок: проверка ID, групп, расписаний и управление реле.
+// Wiegand, линия 485 и звонок: проверка ID, групп, расписаний и управление реле.
 // При ошибке чтения разрешение не выдаётся; ограничения выходов действуют для всех путей.
 // Счётчики проходов сохраняет модуль ID, событие принимает очередь журнала.
 #include "user_logic_internal.h"
 #include "../user_format.h"
 #include "../sched16.h"
 #include "../photo.h"
+#include "../../Modules/comm_channel.h"
 logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 uint8_t unblock_active;
 static uint8_t unblock_relays, unblock_pending, unblock_offline;
@@ -142,21 +143,50 @@ void user_unblock_poll(void)
   }
 }
 
+// Отдать ID захвату команды 6 с этого источника (событие 78 и ответ 8) или проверить доступ;
+// во время чужого захвата доступ по считывателю не даётся (D09).
+static void reader_id(char *id, uint8_t source, codeType_e tp)
+{
+  if (device.timeToGetID) {
+    if (device.sourceGetID == source) {
+      device.timeToGetID = 0;
+      device.sourceGetID = 0;
+      log_addControlEvent(LOG_CON_RECVIDONREADER, id, 0);
+      user_send_readedIDtoServer((uint8_t *)id, 1);
+    }
+    return;
+  }
+  user_checkIdAndControl(id, tp);
+}
+
 // Превратить код Wiegand в десятибайтовый ID и проверить доступ.
 void WG_readedID(uint32_t id){
   char tb[11];
 
   format_id(tb, id);
-  if (device.timeToGetID) {
-    if (device.sourceGetID == 1) {
-      device.timeToGetID = 0;
-      device.sourceGetID = 0;
-      log_addControlEvent(LOG_CON_RECVIDONREADER, tb, 0);
-      user_send_readedIDtoServer((uint8_t *)tb, 1);
-    }
-    return;
+  reader_id(tb, 1, CT_WIEGAND);
+}
+
+// Пассивный режим 485: ID — последние 10 печатных символов посылки (0x21..0x7E), короче 10 — нули
+// слева, как у Wiegand (format_id); CR, LF, пробел и прочие управляющие (<0x21, 0x7F) пропускаются.
+// Мусор (байт вне ASCII, ни одного печатного) и слишком длинная посылка (полный буфер wf_line)
+// отбрасываются без записи. false — доступ ещё не готов: кадр остаётся в буфере до следующего прохода.
+bool rs485_readedID(const uint8_t *p, uint16_t n)
+{
+  char id[11];
+  uint8_t k = 10;
+  if (n >= sizeof(wf_line)) return true;
+  for (uint16_t i = 0; i < n; ++i) if (p[i] >= 0x80) return true;
+  while (n && k) {
+    uint8_t c = p[--n];
+    if (c > ' ' && c != 0x7F) id[--k] = (char)c;
   }
-  user_checkIdAndControl(tb, CT_WIEGAND);
+  if (k == 10) return true;
+  memset(id, '0', k);
+  id[10] = 0;
+  if (!user_access_ready(id)) return false;
+  reader_id(id, 3, CT_OTHER);
+  return true;
 }
 
 // Нормализовать номер звонящего и проверить доступ.
@@ -205,6 +235,9 @@ void user_checkIdAndControl(char *id, codeType_e tp){
         break;
       case CT_AUTO:
         if (config.rele[i].onCamera) onOut[i] = true;
+        break;
+      case CT_RFID:
+        if (config.rele[i].onRFID) onOut[i] = true;
         break;
       case CT_SERVER:
         if (config.rele[i].onCmdServer) onOut[i] = true;
@@ -290,6 +323,9 @@ void user_checkIdAndControl(char *id, codeType_e tp){
         break;
       case CT_AUTO:
         if (group.onAuto == 0) return;
+        break;
+      case CT_RFID:
+        if (group.onRFID == 0) return;
         break;
       default:
         break;
@@ -430,6 +466,10 @@ void user_access_complete(uint8_t outputs, codeType_e tp, char *id, uint8_t cnt,
     break;
   case CT_AUTO:
     log_addControlEvent(LOG_CON_OUTONBYAVTO, id, cnt);
+    break;
+  case CT_RFID:
+  case CT_OTHER: // 485 прочие: своего события нет; по листу событий ID с линии 485 — 70 «RFID 485»
+    log_addControlEvent(LOG_CON_OUTONBYRFID, id, cnt);
     break;
   case CT_SERVER:
     if (id != NULL) log_addControlEvent(server_out_event, id, cnt);
