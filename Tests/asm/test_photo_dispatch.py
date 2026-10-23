@@ -33,7 +33,8 @@ def run():
     m.u.mem_write(m.addr('flash_job'), bytes((7, 1, 1))) # FX_TABLE, pending
     packet = wire(21, bytes(6), 6, 30) + wire(8, bytes((1, 1, 1)), 7, 30)
     m.u.mem_write(0x21000000, packet)
-    m.checked('user_dataconnection', 0, 0x21000000, len(packet))
+    m.checked('user_comm_rx', 0x21000000, len(packet)); m.checked('user_comm_rx_done', len(packet), 0)
+    m.checked('server_rx_process')
     m.now += 999; m.checked('server_rx_process'); assert not m.sent
     m.now += 1; m.checked('server_rx_process')
     assert m.sent[0][7:10] == bytes((6, 11, 2))
@@ -60,7 +61,8 @@ def run():
     packet = wire(21, bytes(6), 6, 30)
     for fragment, delay in ((packet[:10], 0), (packet[10:], 5000)):
         m.now += delay; m.u.mem_write(0x21000000, fragment)
-        m.checked('user_dataconnection', 0, 0x21000000, len(fragment))
+        m.checked('user_comm_rx', 0x21000000, len(fragment)); m.checked('user_comm_rx_done', len(fragment), 0)
+        m.checked('server_rx_process')
     m.now += 999; m.checked('server_rx_process'); assert not m.sent
     m.now += 1; m.checked('server_rx_process'); assert len(m.sent) == 1
     # Бит фото использует прежний антидребезг статуса в 1 с.

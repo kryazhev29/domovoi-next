@@ -47,7 +47,9 @@ class BusyMachine(PhotoMachine):
         p = wire(cmd, uniq=uniq, ttl=ttl)
         self.write(self.device+self.d['connectionhandle'], 0, 1)
         self.u.mem_write(0x21000000, p)
-        self.checked('user_dataconnection', 0, 0x21000000, len(p))
+        self.checked('user_comm_rx', 0x21000000, len(p))
+        self.checked('user_comm_rx_done', len(p), 0)
+        self.checked('server_rx_process')
         self.checked('server_rx_process')
 
     def step(self, dt=1):

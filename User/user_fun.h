@@ -13,7 +13,6 @@
 extern cellMem_s mem[10];
 
 // Принять кадр канала после проверки его границы и контрольной суммы.
-void user_dataconnection (int8_t handle, uint8_t* data, uint16_t siz);
 // Принять SMS от модема и выполнить разрешённую текстовую команду.
 bool user_smsreceived (char* num, char* data, bool *first);
 // Проверить числовой ПИН настроек либо универсальный ПИН действительного IMEI.

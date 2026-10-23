@@ -33,8 +33,9 @@ class Machine:
             call('usb_datareceived', 0x22000000, len(frame), budget=budget)
             call('usb_check_data', budget=budget)
         else:
-            handle = self.u.mem_read(self.addr('device') + fields('device_s')['connectionhandle'], 1)[0]
-            call('user_dataconnection', handle, 0x22000000, len(frame), budget=budget)
+            call('user_comm_rx', 0x22000000, len(frame), budget=budget)
+            call('user_comm_rx_done', len(frame), 0, budget=budget)
+            call('server_rx_process', budget=budget)
 
     def __init__(self, boot=False):
         self.symbols={}

@@ -60,24 +60,6 @@ static void server_rx_scan(void)
   if (skipped) server_rx_consume(skipped);
 }
 
-// Принять доступную часть данных соединения без переполнения.
-void user_dataconnection(int8_t handle, uint8_t *data, uint16_t size)
-{
-  uint16_t n;
-  if (handle != device.connectionhandle) return;
-  if (!server_rx_pending) server_rx_begin_pass();
-  while (size) {
-    if (server_rx_count == SERVER_RX_CAPACITY) server_rx_process();
-    n = SERVER_RX_CAPACITY - server_rx_count;
-    if (!n) return;
-    if (n > size) n = size;
-    if (!server_rx_count) server_rx_last = timers_getMillis();
-    memcpy(server_rx_buffer + server_rx_count, data, n);
-    server_rx_count += n; data += n; size -= n;
-    if (!server_rx_pending) server_rx_process();
-  }
-}
-
 // Выполнить один готовый кадр и сохранить хвост потока.
 void server_rx_process(void)
 {
@@ -108,7 +90,7 @@ uint16_t user_comm_rx_capacity(void)
   return SERVER_RX_CAPACITY - server_rx_count;
 }
 
-// Принять очередную часть ещё не завершённого QIRD.
+// Принять очередную часть ещё не завершённого QIRD; разбор — после user_comm_rx_done.
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count)
 {
   uint16_t capacity;
@@ -116,7 +98,11 @@ uint16_t user_comm_rx(const uint8_t *data, uint16_t count)
   capacity = user_comm_rx_capacity();
   if (count > capacity) count = capacity;
   server_rx_pending = 1;
-  user_dataconnection(device.connectionhandle, (uint8_t *)data, count);
+  if (count) {
+    if (!server_rx_count) server_rx_last = timers_getMillis();
+    memcpy(server_rx_buffer + server_rx_count, data, count);
+    server_rx_count += count;
+  }
   return count;
 }
 
