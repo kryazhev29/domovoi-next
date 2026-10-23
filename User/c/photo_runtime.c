@@ -24,11 +24,10 @@ static uint8_t photo_alloc(void)
 // Не включает просто сохранённые снимки: без запроса 21 журнал не ждёт бесконечно.
 bool photo_busy(void) { return photo && (photo->stage || photo->pending); }
 
-// Завершаем съёмку и возвращаем обычный приём RS485.
-// Вне съёмки и моста байты линии никто не читает: приём без буфера (драйвер их отбрасывает).
+// Завершаем съёмку и возвращаем линию 485 её хозяину вне съёмки.
 static void photo_stop(void)
 {
-  uart_init(rs485_baud(), 0, NULL, 0);
+  rs485_init();
   photo->stage = P_IDLE;
   device.getPhoto = 0;
 }
@@ -46,12 +45,16 @@ uint32_t rs485_baud(void)
   }
 }
 
-// Настраиваем RS485 и устраняем недопустимые значения конфигурации.
+// Настраиваем RS485, устраняем недопустимые значения конфигурации и назначаем единственного хозяина
+// линии вне съёмки: мост (модем выбран или ещё выключается) берёт буфер сам, камера — на время снимка;
+// иначе в пассивном режиме линию слушает приёмник ID в свободной строке моста wf_line,
+// в активном режиме без опроса устройств — никто (байты отбрасывает драйвер).
 void rs485_init(void)
 {
   if (config.rs485Mode > 1) config.rs485Mode = 0;
   if (config.reserv[0] > 4) config.reserv[0] = 0;
-  uart_init(rs485_baud(), 0, NULL, 0);
+  bool listen = !config.rs485Mode && !device.wifiModem && !comm_channel_wifi();
+  uart_init(rs485_baud(), 0, listen ? wf_line : NULL, listen ? sizeof(wf_line) : 0u);
   uart_setRecTimeout(10);
 }
 

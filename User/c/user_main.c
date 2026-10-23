@@ -298,13 +298,16 @@ void user_loop(void)
   } // 1 минута
 }
 
-// Обработать RS485 после окончания кадра и освободить приёмный буфер.
+// Обработать RS485 после окончания кадра: камера, затем линия её хозяина вне съёмки (rs485_init).
+// Пассивный режим: посылка — ID. Активный опрос периферии по адресам (протоколов устройств пока нет)
+// встанет сюда же веткой rs485Mode == 1 вместо простого освобождения кадра.
 void port_check_data(void)
 {
   if (!flash_exec_read_allowed()) return;
   photo_poll();
-  if (!device.getPhoto && !comm_channel_wifi() && uart_getstate() && !uart_isReceiving())
-    uart_clear();
+  if (device.getPhoto || comm_channel_wifi() || !uart_getstate() || uart_isReceiving()) return;
+  if (!config.rs485Mode && !rs485_readedID(wf_line, uart_received())) return; // доступ не готов: кадр ждёт
+  uart_clear();
 }
 
 // Продвинуть связь и владельцев хранения в главном цикле.

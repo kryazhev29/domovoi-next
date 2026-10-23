@@ -41,6 +41,8 @@ C_FILES=(
     'Tests/test_comm_sms.c',
     'Tests/test_comm_uart.c',
     'Tests/test_comm_volte.c',
+    'Tests/test_rs485_id.c',
+    'Tests/test_rs485_owner.c',
     'Tests/test_sms.c',
     'Tests/test_tempid_meta.c',
     'Tests/reference/crc_asm.c',

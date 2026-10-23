@@ -17,7 +17,7 @@ import time
 sys.path.insert(0,str(Path(__file__).resolve().parent/'asm'))
 from firmware_suite import ROOT, CORE, POWER, select_image
 sys.path.insert(0,str(ROOT/'Tests'))
-GROUPS = ('access', 'bootjournal', 'cfgstrings', 'cmdlengths', 'commands', 'commat', 'commserver', 'commslm', 'commuart', 'countends', 'crc', 'crcblocks', 'crcff', 'flashcmds', 'fwblockbounds', 'fwstart', 'idexpiry', 'idindex', 'idsync', 'idtext', 'log', 'logcommit', 'logupload', 'outs', 'persistence', 'photo', 'recovery', 'rs485cfg', 'rules', 'rx', 'sectorjournal', 'serverrx', 'sms', 'storage', 'sync', 'tempidmeta', 'timersirq', 'uarttimer', 'uploadretry', 'usbdesc', 'usbresetwait', 'usbresume', 'usbsetupbounds', 'utcday', 'w25', 'wiegandirq')
+GROUPS = ('access', 'bootjournal', 'cfgstrings', 'cmdlengths', 'commands', 'commat', 'commserver', 'commslm', 'commuart', 'countends', 'crc', 'crcblocks', 'crcff', 'flashcmds', 'fwblockbounds', 'fwstart', 'idexpiry', 'idindex', 'idsync', 'idtext', 'log', 'logcommit', 'logupload', 'outs', 'persistence', 'photo', 'recovery', 'rs485cfg', 'rs485id', 'rs485owner', 'rules', 'rx', 'sectorjournal', 'serverrx', 'sms', 'storage', 'sync', 'tempidmeta', 'timersirq', 'uarttimer', 'uploadretry', 'usbdesc', 'usbresetwait', 'usbresume', 'usbsetupbounds', 'utcday', 'w25', 'wiegandirq')
 TX = ('idle', 'reset', 'esof', 'busy', 'large')
 
 
