@@ -217,7 +217,12 @@ void fx_reply_drop(uint8_t kind)
 {
   if (fx_reply.kind != kind) return;
   work_release(fx_reply.context, kind == FX_IDCLEAR ? WORK_IDCLEAR : WORK_SERVICE);
-  fx_reply.kind = 0;
+  fx_reply_forget();
+}
+// Очищает слот целиком: неотправленный кадр иначе держал бы ворота команд.
+void fx_reply_forget(void)
+{
+  memset(&fx_reply, 0, sizeof fx_reply);
 }
 // Закрытый канал глушит ответ принятой работы и отложенный ответ; выгрузка и CRC без канала
 // бессмысленны и возвращают флеш и память сразу.

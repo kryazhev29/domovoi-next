@@ -57,7 +57,7 @@ void upload_runtime_cancel(void)
   if(!p) return;
   if (upload_pending[p->channel].command == p->command && upload_pending[p->channel].uniq == p->uniq)
     upload_pending[p->channel].state = 3;
-  if (fx_reply.kind == FX_UPLOAD) fx_reply.kind = 0;
+  if (fx_reply.kind == FX_UPLOAD) fx_reply_forget();
   else flash_exec_finish(FX_CANCELLED);
   upload_release(p);
 }

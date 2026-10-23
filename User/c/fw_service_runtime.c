@@ -50,7 +50,7 @@ void fw_service_cancel(void)
     if (flash_job.wait || mem_config_result() == 1) return;
     if (mem_config_result()) mem_config_reset();
     flash_exec_finish(FX_CANCELLED);
-  } else fx_reply.kind = 0;
+  } else fx_reply_forget();
   fw_service_release(p);
 }
 // Успешный ответ 11 на откат продолжается копированием резерва.

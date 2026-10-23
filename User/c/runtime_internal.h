@@ -99,6 +99,7 @@ extern fx_reply_s fx_reply;
 void fx_reply_post(uint8_t kind, void *context, const uint8_t *packet, uint16_t length, uint8_t channel);
 // Снимает отложенный ответ очистки или CRC вместе с его памятью.
 void fx_reply_drop(uint8_t kind);
+void fx_reply_forget(void);
 // После ухода кадра: 0 — память возвращена, иначе шаг возобновления работы владельца.
 uint8_t upload_sent(void *context, bool sent), fw_service_sent(void *context, bool sent);
 #include "../../Modules/comm_channel.h"
