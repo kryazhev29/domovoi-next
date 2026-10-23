@@ -4,7 +4,7 @@
 // Рабочая память и флеш освобождаются при отмене, ошибке или завершении.
 #include "runtime_internal.h"
 enum {
-  EXP_SCAN=1, EXP_DIRECT=2, EXP_SEARCH=3,
+  EXP_SCAN=1, EXP_DIRECT=2,
   EXP_START=4, EXP_JOURNAL=5
 };
 extern bool id_endScan;
@@ -12,14 +12,14 @@ extern uint32_t id_nextEnd;
 extern uint32_t id_time_end(const cellID_s *);
 extern void id_watch_end(uint32_t);
 typedef struct {
-  uint32_t scan,used_limit,start,target,find,partition_limit;
+  uint32_t scan,used_limit,start,target;
   uint8_t cancelled;
   uint32_t scan_time;
   uint8_t record[32];
   uint32_t snapshot_base;
   uint8_t snapshot[64];
 } expiry_s;
-RT_ASSERT(expiry_size,sizeof(expiry_s)==132);
+RT_ASSERT(expiry_size,sizeof(expiry_s)==124);
 static expiry_s *expiry_current(void)
 {
   return flash_job.kind == FX_EXPIRY && flash_job.result == FX_PENDING ? flash_job.data.context : NULL;
@@ -47,15 +47,13 @@ static void expiry_release(flash_result_t result)
 // Начинает проход при наступлении ближайшего срока ID.
 bool expiry_runtime_begin(void)
 {
-  uint32_t now,start,size,end,used;
+  uint32_t now,start,used;
   expiry_s *p;
   if(id_scan_cell || !flash_exec_idle() || !flash_exec_read_allowed()) return false;
   now=device.datetime;
   if(now<1600000000u) return false;
   if(!id_endScan && (!id_nextEnd || now<id_nextEnd)) return false;
   start=mem[MB_ID].start;
-  size=mem[MB_ID].size;
-  end=start+size;
   used=32u*id_cells_end;
   p=work_acquire(sizeof *p, WORK_EXPIRY);
   if(!p) { id_endScan=1;
@@ -64,7 +62,6 @@ bool expiry_runtime_begin(void)
   p->scan=p->start=start;
   p->snapshot_base=start-sizeof(p->snapshot);
   p->used_limit=start+used;
-  p->partition_limit=end;
   p->scan_time=now;
   p->cancelled=0;
   flash_exec_args_t args = { p, EXP_SCAN };
@@ -89,9 +86,9 @@ static uint8_t expiry_chunk(const void *context,uint16_t offset,uint8_t *data)
 void expiry_runtime_poll(uint32_t now)
 {
   expiry_s *p=expiry_current();
-  uint8_t scratch[64],*record;
-  uint16_t index,got;
-  uint32_t address,n,end;
+  uint8_t *record;
+  uint16_t index;
+  uint32_t n,end;
   uint8_t result;
   if(!p) return;
   if(flash_job.step==EXP_JOURNAL) {
@@ -133,43 +130,13 @@ void expiry_runtime_poll(uint32_t now)
     if(end/86400u!=p->scan_time/86400u) return;
     memcpy(p->record,record,32);
     p->record[28]=56;
+    /* Отметка пишется туда, где запись прочитана: пока идёт FX_EXPIRY, область ID никто
+       не пишет. Прежний поиск по номеру при одинаковых номерах отмечал чужую ячейку (23.10.2026). */
+    p->target=p->scan-32;
     flash_job.step=EXP_DIRECT;
     return;
-  case EXP_DIRECT:
-    memcpy(&index,p->record,2);
-    if(index && index!=65535 && 32u*(index-1)<p->partition_limit-p->start) {
-      address=p->start+32u*(index-1);
-      if(!mem_read(address,scratch,32)) goto retry;
-      memcpy(&got,scratch,2);
-      if(got==index && scratch[31]!=255) goto found;
-    }
-    p->find=p->start;
-    flash_job.step=EXP_SEARCH;
-    return;
-  case EXP_SEARCH:
-    address=p->find;
-    n=p->partition_limit-address;
-    if(!n) goto retry;
-    if(n>64) n=64;
-    if(!mem_read(address,scratch,(uint16_t)n)) goto retry;
-    memcpy(&index,p->record,2);
-    memcpy(&got,scratch,2);
-    if(got==index && scratch[31]!=255) goto found;
-    if(n==64) { memcpy(&got,scratch+32,2);
-      if(got==index && scratch[63]!=255) { address+=32;
-        goto found;
-      } }
-    p->find+=n;
-    return;
-  case EXP_START:
-    if(!sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
-    flash_job.step=EXP_JOURNAL;
-    return;
-  default: goto retry;
-  }
-found: p->target=address;
-  {
-    int written=counter_write(address,(const cellID_s *)p->record);
+  case EXP_DIRECT: {
+    int written=counter_write(p->target,(const cellID_s *)p->record);
     if(written<0) goto retry;
     if(written==1) {
       flash_job.step=EXP_SCAN;
@@ -177,9 +144,15 @@ found: p->target=address;
       if(p->cancelled) goto retry;
       return;
     }
+    flash_job.step=EXP_START;
+    return;
   }
-flash_job.step=EXP_START;
-return;
+  case EXP_START:
+    if(!sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
+    flash_job.step=EXP_JOURNAL;
+    return;
+  default: goto retry;
+  }
 retry:
   idcrc_unknown();
   id_endScan = 1;

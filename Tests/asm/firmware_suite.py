@@ -62,7 +62,7 @@ CASES = {
     'service': [('test_service_runtime', n) for n in ('wire_and_budgets','faults_and_lifetime','config_reply','config_cached_source','ff_affine','pending_timeout','real_w25','unrecovered_storage')],
     'upload': [('test_upload_runtime', n) for n in ('test_normal','test_parser','test_media_gate','test_gaps_and_faults','test_busy_empty_cancel','test_heap_ack')],
     'clear': [('test_idclear_runtime', n) for n in ('success_and_heap','sessions_cancel_faults','guards')],
-    'expiry': [('test_expiry_runtime', n) for n in ('cancel_and_sessions','faults','full_scan_and_heap','layer')],
+    'expiry': [('test_expiry_runtime', n) for n in ('cancel_and_sessions','faults','full_scan_and_heap','layer','own_cells')],
     'firmware': [('test_fw_service_runtime', n) for n in ('normal','heap_reservation','boundaries_errors','io_faults','busy_cancel','real_spi','exact_failure_logs')],
     'photo': [('test_photo_runtime', n) for n in ('normal','uploads','errors')],
     'camera packet': [('test_camera_packet','run')],

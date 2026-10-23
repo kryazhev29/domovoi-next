@@ -48,11 +48,8 @@ def groups():
         }),
         ('test_expiry_runtime', {
             'expiry-journal-only': ('layer', [('User/c/expiry_runtime.c',
-                '  {\n    int written=counter_write(address,(const cellID_s *)p->record);\n'
-                '    if(written<0) goto retry;\n    if(written==1) {\n      flash_job.step=EXP_SCAN;\n'
-                '      log_addControlEvent((logControl_e)138,(char *)p->record+2,255);\n'
-                '      if(p->cancelled) goto retry;\n      return;\n    }\n  }\n',
-                '')]),
+                '    int written=counter_write(p->target,(const cellID_s *)p->record);\n',
+                '    int written=0;\n')]),
         }),
         ('test_memory_runtime', {
             'cursor-marker-forced': ('cursor_without_marker', [('User/c/memory_runtime.c',

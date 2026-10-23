@@ -78,8 +78,7 @@ def record(index=1,first=NOW-120,minutes=1,done=0,tag=b'abcdefghij'):
 def differential():
     scenarios=[([record()],None),([record(first=NOW,minutes=2)],None),
        ([record(done=56),record(2,first=NOW-86400)],None),
-       ([record(9)],(4,)),([record(2),record(2,tag=b'0123456789')],(0,1)),
-       ([record(8),record(8,tag=b'0123456789')],(1,4)),
+       ([record(9)],(4,)),
        ([record(0)],(3,)),([record(minutes=0),record(2,first=0xffffffff)],None),
        ([record(128),record(129)],(127,128))]
     out=[]
@@ -92,6 +91,20 @@ def differential():
                     'total_instructions':sum(new.runtime_costs),'max_reads':max(new.runtime_reads),
                     'stack':new.stack_peak,'legacy_instructions':old.costs[-1],'legacy_stack':old.stack_peak})
     return out
+
+# Одинаковые номера: каждая ячейка отмечается там, где прочитана; прежний поиск по номеру
+# отмечал первую найденную, и вторая оставалась без отметки (23.10.2026).
+def own_cells():
+    count=0
+    for rows,cells in (([record(2),record(2,tag=b'0123456789')],(0,1)),
+                       ([record(8),record(8,tag=b'0123456789')],(1,4)),
+                       ([record(9)],(4,)),([record(1),record(2)],None)):
+        m=ExpiryMachine();m.install(rows,cells);assert m.start_expiry();m.expiry_drain()
+        image=m.image();places=cells or range(len(rows))
+        assert [image[c*32+28] for c in places]==[56]*len(rows),(cells,[image[c*32+28] for c in places])
+        assert sorted(e[1] for e in m.expiry_events)==sorted(r[2:12].hex() for r in rows),m.expiry_events
+        count+=1
+    return count
 
 # Проверяет отмену в рабочих фазах и смену сеансов.
 def cancel_and_sessions():
@@ -194,8 +207,8 @@ def full_scan_and_heap():
     assert owned(m)==0
     return {'id_bytes':1601536,'passes':len(m.runtime_costs),'max_instructions':max(m.runtime_costs),
             'total_instructions':sum(m.runtime_costs),'max_read_bytes':max(m.runtime_reads),
-            'stack':m.stack_peak,'context_request':132,'workspace_bytes':fields('work_memory_s')['owned']+8,
-            'live_workspace_payload':SIZES[PHOTO]+534+132,'free_at_overlap':peak}
+            'stack':m.stack_peak,'context_request':124,'workspace_bytes':fields('work_memory_s')['owned']+8,
+            'live_workspace_payload':SIZES[PHOTO]+534+124,'free_at_overlap':peak}
 
 if __name__=='__main__':
     import argparse

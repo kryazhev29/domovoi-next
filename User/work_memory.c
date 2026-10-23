@@ -21,7 +21,7 @@ static uint8_t usb_reply[523];
 #define PACKET BIT(WORK_PHOTO_PACKET)
 #define FW (BIT(WORK_FW_CONTEXT)|BIT(WORK_FW_DATA)|BIT(WORK_CONFIG))
 #define UPLOAD (BIT(WORK_UPLOAD_CONTEXT)|BIT(WORK_UPLOAD_PACKET))
-static const uint16_t capacities[] = {0,sizeof(photo_s),534,132,128,1024,1024,40,248,32,1040,2032,2028,1024,2032};
+static const uint16_t capacities[] = {0,sizeof(photo_s),534,124,128,1024,1024,40,248,32,1040,2032,2028,1024,2032};
 // Выбирает фиксированный участок рабочей памяти по владельцу.
 static void *address(uint32_t slot)
 {
