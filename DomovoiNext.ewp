@@ -2249,6 +2249,40 @@
     </group>
     <group>
         <name>STM32_USB-FS-Device_Driver</name>
+        <configuration>
+            <name>Release</name>
+            <settings>
+                <name>ICCARM</name>
+                <archiveVersion>2</archiveVersion>
+                <data>
+                    <version>38</version>
+                    <wantNonLocal>1</wantNonLocal>
+                    <debug>0</debug>
+                    <option>
+                        <name>CCAllowList</name>
+                        <version>1</version>
+                        <state>11111111</state>
+                    </option>
+                <option><name>IExtraOptionsCheck</name><state>1</state></option><option><name>IExtraOptions</name><state>--source_encoding utf8</state></option></data>
+            </settings>
+        </configuration>
+        <configuration>
+            <name>ReleaseCustomer</name>
+            <settings>
+                <name>ICCARM</name>
+                <archiveVersion>2</archiveVersion>
+                <data>
+                    <version>38</version>
+                    <wantNonLocal>1</wantNonLocal>
+                    <debug>0</debug>
+                    <option>
+                        <name>CCAllowList</name>
+                        <version>1</version>
+                        <state>11111111</state>
+                    </option>
+                <option><name>IExtraOptionsCheck</name><state>1</state></option><option><name>IExtraOptions</name><state>--source_encoding utf8</state></option></data>
+            </settings>
+        </configuration>
         <file>
             <name>$PROJ_DIR$\STM32_USB-FS-Device_Driver\src\usb_core.c</name>
         </file>
@@ -2273,6 +2307,40 @@
     </group>
     <group>
         <name>USB-FS-CDC_User</name>
+        <configuration>
+            <name>Release</name>
+            <settings>
+                <name>ICCARM</name>
+                <archiveVersion>2</archiveVersion>
+                <data>
+                    <version>38</version>
+                    <wantNonLocal>1</wantNonLocal>
+                    <debug>0</debug>
+                    <option>
+                        <name>CCAllowList</name>
+                        <version>1</version>
+                        <state>11111111</state>
+                    </option>
+                <option><name>IExtraOptionsCheck</name><state>1</state></option><option><name>IExtraOptions</name><state>--source_encoding utf8</state></option></data>
+            </settings>
+        </configuration>
+        <configuration>
+            <name>ReleaseCustomer</name>
+            <settings>
+                <name>ICCARM</name>
+                <archiveVersion>2</archiveVersion>
+                <data>
+                    <version>38</version>
+                    <wantNonLocal>1</wantNonLocal>
+                    <debug>0</debug>
+                    <option>
+                        <name>CCAllowList</name>
+                        <version>1</version>
+                        <state>11111111</state>
+                    </option>
+                <option><name>IExtraOptionsCheck</name><state>1</state></option><option><name>IExtraOptions</name><state>--source_encoding utf8</state></option></data>
+            </settings>
+        </configuration>
         <file>
             <name>$PROJ_DIR$\USB-FS-CDC_User\Src\hw_config.c</name>
         </file>
