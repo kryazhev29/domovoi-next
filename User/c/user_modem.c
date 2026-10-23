@@ -5,6 +5,7 @@
 #include "user_logic_internal.h"
 #include "../../Modules/comm_call.h"
 #include "../../Modules/comm_server.h"
+#include "../../Modules/comm_channel.h"
 #include "../../Modules/comm_modem.h"
 #include "../../Modules/comm_recover.h"
 #include "user_comm.h"
@@ -141,10 +142,19 @@ void user_comm_boot(void)
 }
 
 // Проверено на плате №1 13.10.2026 (a83833c): 9 стартов подряд, QPOWD перед каждым, до TCP 14,8-15,9 с, сбоев настройки нет; повтор шага проверен на модели, на плате не срабатывал
-// Перед перезагрузкой: модем выходит из сети, затем снимается питание.
+// Изменено 2026-10-23 (HASH_TX_DRAIN): перед QPOWD слот отправки ждёт SEND OK не дольше 2 с — на плате не проверено.
+// Перед перезагрузкой: кадр из слота уходит в модем, модем выходит из сети, затем снимается питание.
 void user_comm_off(void)
 {
-  uint32_t start = timers_getMillis();
+  uint32_t start = timers_getMillis(), now = start;
+  /* Ответ 11 на команду 2 и пакет 4 со 100 % терялись: сброс шёл, пока кадр ещё лежал в слоте
+     (плата №1, 23.10.2026). Без TCP ждать нечего; обрыв TCP освобождает слот в опросе канала. */
+  while (comm_channel_ready() && comm_tx_busy() && now - start < 2000u) {
+    wdt_reload();
+    comm_channel_poll(now);
+    now = timers_getMillis();
+  }
+  start = now;
   while (!comm_modem_powered_down() && timers_getMillis() - start < comm_timeouts[COMM_T_POWER_DOWN])
     wdt_reload();
   comm_modem_off();

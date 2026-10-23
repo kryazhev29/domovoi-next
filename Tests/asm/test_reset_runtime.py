@@ -84,6 +84,102 @@ class ResetMachine(StorageMachine):
         self.flash[512:512 + len(data)] = data
 
 
+class DrainMachine(ResetMachine):
+    """Канал после отправки занят N мс до SEND OK модели; слот, сервер и опрос канала — заглушки, ожидание — ELF."""
+    def __init__(self, busy_ms, online=True):
+        super().__init__()
+        self.busy_ms = busy_ms; self.online = online
+        self.free_at = None; self.off_at = None; self.sent = []; self.polls = 0
+        self.transport = 0x21000800
+        self.stubs.pop(self.addr('user_send_answer_comand'))
+        for name, fn in (('comm_channel_ready', lambda: self.ret(self.online)),
+                         ('comm_server_online', lambda: self.ret(self.online)),
+                         ('comm_tx_busy', lambda: self.ret(self.slot_busy())),
+                         ('comm_tx_acquire', self.acquire), ('comm_tx_commit', self.commit),
+                         ('comm_tx_release', self.ret), ('comm_channel_poll', self.channel_poll)):
+            self.stubs[self.addr(name)] = fn
+        # USB_PULLUP_OFF (GPIOA->BRR, PA8) стоит перед user_comm_off: отсюда считается ожидание.
+        self.u.hook_add(UC_HOOK_MEM_WRITE, self.pullup, begin=0x40010814, end=0x40010817)
+
+    def pullup(self, u, access, address, size, value, data):
+        if value & 0x100 and self.off_at is None: self.off_at = self.now
+
+    def slot_busy(self):
+        return self.free_at is not None and self.now < self.free_at
+
+    def acquire(self):
+        self.write(self.args()[0], 1040, 2)
+        self.ret(0 if self.slot_busy() else self.transport)
+
+    def commit(self):
+        n = self.args()[0]
+        self.sent.append(bytes(self.u.mem_read(self.transport, n)))
+        self.free_at = self.now + self.busy_ms
+        self.ret(1)
+
+    def channel_poll(self):
+        self.polls += 1
+        if self.off_at is not None:
+            assert self.now - self.last_reload <= 10, 'сторож не обслужен в ожидании SEND OK'
+        if self.slot_busy(): self.advance(5)  # SEND OK приходит по времени, а не по числу опросов
+        self.ret()
+
+    def run(self):
+        try:
+            for _ in range(1500):
+                self.advance()
+                self.checked('user_loop', budget=8000000)
+                self.call('user_storage_poll', budget=1000000)
+            raise AssertionError('перезапуск не дошёл до SYSRESETREQ за 15 с модели')
+        except ResetReached:
+            pass
+        assert self.off_at is not None and self.reset_at >= self.off_at
+
+
+def tx_drain():
+    """Плановый сброс ждёт SEND OK кадра из слота не дольше 2 с; без TCP не ждёт (плата №1, 23.10.2026:
+    ответ 11 на команду 2 и пакет 4 со 100 % терялись, сброс шёл при кадре в слоте)."""
+    def command2(m):
+        m.command(2, b'', 0, 1, uniq=9, stamp=1)
+        assert len(m.sent) == 1 and m.sent[0][7:9] == bytes((9, 11)), m.sent
+
+    def update100(m):
+        # Последний блок принят: пакет 4 со 100 % уходит в слот, следующим проходом - установка в загрузчик.
+        m.candidate()
+        m.write(m.device + m.d['firmwarePercent'], 100, 1)
+        m.write(m.device + m.d['rebootToUpdate'], 1, 1)
+        m.checked('user_send_statusUpdateFW', 20, 0, 1, 5)
+
+    def drained(scenario, busy_ms, online=True):
+        m = DrainMachine(busy_ms, online); scenario(m); m.run(); return m
+
+    results = []
+    for name, scenario in (('command 2', command2), ('update 100%', update100)):
+        # Канал занят после отправки на 1,2 с дольше собственного пути сброса: кадр ещё в слоте.
+        probe = drained(scenario, 0)
+        m = drained(scenario, probe.off_at + 1200)
+        assert len(m.sent) == 1 and m.sent[0][7:10] == (bytes((9, 11)) + m.sent[0][9:10] if name == 'command 2' else bytes((5, 4, 100))), m.sent
+        assert m.off_at < m.free_at, ('кадр ушёл до сброса, ожидание не проверено', m.off_at, m.free_at)
+        assert m.reset_at >= m.free_at, ('сброс до SEND OK', name, m.reset_at, m.free_at)
+        assert m.reset_at - m.off_at < 2000, (name, m.reset_at - m.off_at)
+        if name == 'update 100%':
+            assert m.flash[:4] == struct.pack('<I', 0x4e465744), 'кандидат не опубликован'
+        results.append({'path': name, 'send_ok_ms': m.free_at, 'reset_ms': m.reset_at,
+                        'wait_ms': m.reset_at - m.off_at, 'max_reload_gap_ms': m.max_gap})
+    # SEND OK не приходит: ожидание ограничено 2 с, сторож обслужен.
+    m = drained(command2, 60000)
+    assert m.reset_at < m.free_at and 2000 <= m.reset_at - m.off_at <= 2100, ('предел 2 с', m.reset_at - m.off_at)
+    results.append({'path': 'no send ok', 'wait_ms': m.reset_at - m.off_at, 'max_reload_gap_ms': m.max_gap})
+    # TCP нет: занятый слот не задерживает сброс.
+    def offline(m):
+        m.free_at = 60000
+        m.write(m.device + m.d['timeToReset'], 1, 1)
+    m = drained(offline, 60000, online=False)
+    assert m.reset_at - m.off_at < 50, ('ожидание без связи', m.reset_at - m.off_at)
+    results.append({'path': 'offline', 'wait_ms': m.reset_at - m.off_at})
+    return results
+
+
 def reset_paths():
     results = []
     for mode in ('command', 'update', 'queued', 'sync', 'log paused'):
@@ -170,6 +266,12 @@ def mutations():
             'return log_pendingCount && mem_storage_ready && now - store_ready_at < 10000u;')]),
         'watchdog-not-serviced': ('reset_paths', [('Modules/wdt_stm32f10x.c',
             'IWDG->KR = 0xAAAAu;', '(void)0;')]),
+        'reset-without-tx-drain': ('tx_drain', [('User/c/user_modem.c',
+            'while (comm_channel_ready() && comm_tx_busy() && now - start < 2000u) {',
+            'while (0) {')]),
+        'tx-drain-unbounded': ('tx_drain', [('User/c/user_modem.c',
+            'while (comm_channel_ready() && comm_tx_busy() && now - start < 2000u) {',
+            'while (comm_channel_ready() && comm_tx_busy()) {')]),
         'trial-out-of-bounds': ('trial_clock', [('Bootloader/app_update.c',
             'return trial && (uint32_t)(timers_getMillis() - trial_started) >= TRIAL_SECONDS * 1000u;',
             'return trial && timers_get(6) >= TRIAL_SECONDS * 1000u;')]),
