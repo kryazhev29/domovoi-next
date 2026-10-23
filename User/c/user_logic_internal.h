@@ -129,8 +129,6 @@ uint8_t shedule_window(const cellShedule_s *s);
 bool log_blank(const cellLog_s *cell);
 // Пометить текущую запись отменённой без раннего освобождения флеша.
 void fw_async_cancel(void);
-// Подавить ответ записи при закрытии её канала.
-void fw_async_quiet(dataChanel_e channel);
 // Зафиксировать уникальный номер ответа текущему блоку.
 void fw_async_reply(uint8_t id);
 // Продвинуть проверенную запись блока и CRC полного образа.

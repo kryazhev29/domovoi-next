@@ -156,6 +156,14 @@ uint32_t log_ring_seek(uint32_t cursor)
   }
   return chosen==NONE?0:sector(chosen)+32u;
 }
+// Остаток выгрузки после сектора курсора: записи позднейших секторов целиком новее курсора,
+// их число даёт кольцо без чтения флеш.
+uint16_t log_ring_count_after(uint32_t address)
+{
+  uint16_t total=0;
+  for(uint8_t n=next_sector((uint8_t)((address-mem[MB_LOG].start)/4096u));n!=NONE;n=next_sector(n)) total+=lr.count[n];
+  return total;
+}
 // Продвигает адрес, полученный из кольца, до следующей записи.
 uint32_t log_ring_next(uint32_t address)
 {

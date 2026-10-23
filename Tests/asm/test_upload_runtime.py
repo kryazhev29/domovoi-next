@@ -68,7 +68,9 @@ class UploadMachine(StorageMachine):
 
     # Читает адрес текущего контекста из связанного образа.
     def ptr(self):
-        return self.read_word(self.addr('flash_job')+4) if self.exec_active(4) else self.read_word(self.addr('upload_reply'))
+        if self.exec_active(4):return self.read_word(self.addr('flash_job')+4)
+        r=self.addr('fx_reply');f=fields('fx_reply_s')
+        return self.read_word(r+f['context']) if self.read_word(r+f['kind'],1)==4 else 0
 
     # Читает слово состояния из связанной памяти.
     def read_word(self, at, n=4):
@@ -76,7 +78,7 @@ class UploadMachine(StorageMachine):
 
     # Читает фазу рабочего автомата.
     def phase(self):
-        return self.read_word(self.addr('flash_job')+1,1) if self.exec_active(4) else self.read_word(self.ptr()+31,1) if self.ptr() else 0
+        return self.read_word(self.addr('flash_job')+1,1) if self.exec_active(4) else 5 if self.ptr() else 0
 
     # Готовит базу и метаданные заданного сценария.
     def fixture(self, cmd, slots):

@@ -140,6 +140,6 @@ void photo_connection_lost(void)
 {
   if (photo && photo->channel == CH_SERVER) {
     photo->pending = 0;
-    if (flash_job.kind == FX_PHOTO && flash_job.result == FX_PENDING) pj.quiet = 1;
+    if (flash_job.kind == FX_PHOTO && flash_job.result == FX_PENDING) flash_job.quiet = 1;
   }
 }

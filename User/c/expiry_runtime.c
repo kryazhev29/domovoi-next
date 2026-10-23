@@ -90,7 +90,7 @@ void expiry_runtime_poll(uint32_t now)
   uint8_t *record;
   uint16_t index;
   uint32_t n,end;
-  if(!p || fx_waiting(now)) return;
+  if(!p || (fx_waiting(now) && flash_job.wait)) return; // итог журнала разбирается в этом же проходе
   if(flash_job.step==FX_STEP_FAIL) { if(sj_runtime_blocked()) mem_storage_ready=0;
     goto retry;
   }

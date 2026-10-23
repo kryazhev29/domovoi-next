@@ -76,7 +76,7 @@ static void factory_poll(uint32_t now)
 {
   factory_job_s *p = &flash_job.data.factory;
   uint8_t result;
-  if (fx_waiting(now)) return;
+  if (fx_waiting(now) && flash_job.wait) return; // итог стирания — в этом же проходе
   if (flash_job.step == FACTORY_ERROR || flash_job.step == FX_STEP_FAIL) {
     factory_done(false);
     return;

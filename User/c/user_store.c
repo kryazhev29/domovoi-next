@@ -20,6 +20,7 @@ uint8_t store_runtime, store_save_requested, store_reset_requested;
 static uint32_t store_ready_at;
 store_state_s store;
 flash_exec_job_t flash_job;
+fx_reply_s fx_reply;
 static void store_poll(uint32_t now, uint8_t result);
 static void factory_poll(uint32_t now);
 static void store_io_poll(uint32_t now);
@@ -64,6 +65,7 @@ bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
   if (kind == FX_LOG) memcpy(&flash_job.data.log.cell, context, sizeof(cellLog_s));
   else flash_job.data.context = context;
   flash_job.step = step;
+  flash_job.channel = 255; // канал ответа задаёт владелец
   flash_job.result = FX_PENDING;
   flash_job.kind = kind;
   return true;
@@ -85,7 +87,9 @@ flash_result_t flash_exec_take_result(void)
   if ((kind >= FX_TABLE && kind <= FX_LOG) || kind == FX_STORE) idcrc_owner_released();
   return result;
 }
-// Принятая команда W25 или журнал сектора ждут здесь; итог переводит шаг владельца.
+// Принятая команда W25 или журнал сектора ждут здесь; проход с опросом новую команду
+// не начинает (одно действие NOR за проход). Шаг владельца уже следующий; отказ проверки
+// заменяет его на FX_STEP_FAIL, недостигнутый шаг остаётся в next.
 bool fx_waiting(uint32_t now)
 {
   uint8_t r;
@@ -95,18 +99,18 @@ bool fx_waiting(uint32_t now)
   if (flash_job.wait == 2) sj_runtime_reset();
   flash_job.wait = 0;
   flash_job.step = r == 2 ? flash_job.next : FX_STEP_FAIL;
-  return false;
+  return true;
 }
 // Отказ запуска даёт тот же шаг FX_STEP_FAIL, что и ошибка проверки.
 void fx_start(uint32_t address, const uint8_t *src, uint16_t n, uint32_t now, uint8_t next)
 {
-  flash_job.next = next;
+  flash_job.next = flash_job.step = next;
   if (w25_async_start(address, src, n, now)) flash_job.wait = 1;
   else flash_job.step = FX_STEP_FAIL;
 }
 void fx_journal(uint32_t sector, sj_chunk_reader reader, const void *context, uint8_t next)
 {
-  flash_job.next = next;
+  flash_job.next = flash_job.step = next;
   if (sj_runtime_begin(sector, reader, context)) flash_job.wait = 2;
   else flash_job.step = FX_STEP_FAIL;
 }
@@ -118,6 +122,41 @@ bool fx_reply_ready(uint8_t channel, uint8_t *quiet, uint32_t now)
   if ((int32_t)(now - flash_job.reply_until) < 0) return false;
   *quiet = 1;
   return true;
+}
+// Готовый кадр владельца ждёт канал без удержания флеша; подавление наследуется от работы.
+void fx_reply_post(uint8_t kind, void *context, const uint8_t *packet, uint16_t length, uint8_t channel)
+{
+  fx_reply.kind = kind;
+  fx_reply.context = context;
+  fx_reply.packet = packet;
+  fx_reply.length = length;
+  fx_reply.channel = channel;
+  fx_reply.quiet = flash_job.quiet;
+  fx_reply.resume = 0;
+}
+// Отправляет отложенный ответ при свободном канале, затем владелец возобновляет работу
+// (resume) или его память возвращается.
+static void fx_reply_send(void)
+{
+  if (!fx_reply.kind || !fx_reply.packet) return;
+  if (!fx_reply.quiet && !reply_send(fx_reply.packet, fx_reply.length, fx_reply.channel)) return;
+  fx_reply.packet = NULL;
+  switch (fx_reply.kind) {
+  case FX_UPLOAD: fx_reply.resume = upload_sent(fx_reply.context, !fx_reply.quiet); break;
+  case FX_FWSERVICE: fx_reply.resume = fw_service_sent(fx_reply.context, !fx_reply.quiet); break;
+  case FX_IDCLEAR: work_release(fx_reply.context, WORK_IDCLEAR); break;
+  default: work_release(fx_reply.context, WORK_SERVICE); break;
+  }
+  if (!fx_reply.resume) fx_reply.kind = 0;
+}
+// Возобновляет работу владельца после ушедшего ответа, как только исполнитель свободен.
+static void fx_reply_resume(void)
+{
+  if (!fx_reply.kind || fx_reply.packet) return;
+  flash_exec_args_t args = { fx_reply.context, fx_reply.resume };
+  if (!flash_exec_begin(fx_reply.kind, &args)) return;
+  flash_job.channel = fx_reply.channel;
+  fx_reply.kind = 0;
 }
 // Единый допуск чтения: физическая команда и непубликованные таблицы закрывают NOR.
 // Проверка сроков закрывает чтение только на своей записи: её проход по базе дверь не держит.
@@ -163,19 +202,32 @@ void flash_exec_cancel(void)
   default:
     break;
   }
+  fx_reply_drop(FX_IDCLEAR);
+  fx_reply_drop(FX_CRC);
 }
+// Снимает отложенный ответ очистки или CRC вместе с его памятью.
+void fx_reply_drop(uint8_t kind)
+{
+  if (fx_reply.kind != kind) return;
+  work_release(fx_reply.context, kind == FX_IDCLEAR ? WORK_IDCLEAR : WORK_SERVICE);
+  fx_reply.kind = 0;
+}
+// Закрытый канал глушит ответ принятой работы и отложенный ответ; выгрузка и CRC без канала
+// бессмысленны и возвращают флеш и память сразу.
 void flash_exec_quiet(uint8_t channel)
 {
   if (store.channel == channel) store.quiet = 1;
   if (factory.channel == channel) factory.reply = 0;
-  if (flash_job.kind == FX_STORE && flash_job.step >= FS_ID && flash_job.data.storeio.channel == channel)
-    flash_job.data.storeio.reply = 0;
-  idclear_runtime_quiet(channel);
-  fw_service_quiet(channel);
+  if (flash_job.result == FX_PENDING && flash_job.channel == channel) {
+    flash_job.quiet = 1;
+    if (flash_job.kind == FX_UPLOAD) upload_runtime_cancel();
+    else if (flash_job.kind == FX_CRC) service_crc_cancel();
+  }
+  if (fx_reply.kind && fx_reply.channel == channel) {
+    fx_reply.quiet = 1;
+    if (fx_reply.kind == FX_UPLOAD) upload_runtime_cancel();
+  }
   upload_runtime_quiet(channel);
-  fw_async_quiet(channel);
-  table_runtime_quiet(channel);
-  service_crc_quiet(channel);
 }
 // Принятый kind не вытесняется; фон заканчивает квант в этом же проходе.
 // Полуполная очередь журнала идёт раньше CRC и индекса: пересборка индекса
@@ -462,12 +514,9 @@ void user_storage_poll(void)
     else if (store_ready_at && now - store_ready_at >= 30000u) user_savereset();
   }
   factory_reply();
-  bool replied = fw_service_reply_poll();
-  if (upload_reply_poll()) replied = true;
+  fx_reply_resume();
   if (store_phase() == US_REPLY) store_reply();
   upload_pending_poll();
-  // Освободившийся TX завершает проход; следующая запись принимается отдельно.
-  if (replied && flash_job.kind == FX_NONE) return;
   flash_exec_poll(now);
   uint8_t cmd = flash_job.kind == FX_TABLE ? flash_job.data.table.cmd : 0;
   if (flash_job.kind <= FX_LOG) {
@@ -475,6 +524,8 @@ void user_storage_poll(void)
     // Сцены читаются после публикации TABLE и снятия результата.
     if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(false);
   }
+  // Отложенный ответ уходит в конце прохода: кадр, собранный в этом проходе, не ждёт следующего.
+  fx_reply_send();
 }
 // Перезагрузка ждёт журнал не дольше 10 с от запроса и только при готовом хранилище.
 static bool store_reset_waits_log(uint32_t now)

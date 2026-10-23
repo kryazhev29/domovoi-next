@@ -125,6 +125,9 @@ class StorageMachine(Machine):
     def exec_active(self, kind):
         state=self.exec_state()
         return state[0]==kind and state[2]==1
+    # Вид работы, чей ответ ждёт канал в исполнителе (0 — нет).
+    def reply_kind(self):
+        return int.from_bytes(self.u.mem_read(self.addr('fx_reply')+fields('fx_reply_s')['kind'],1),'little')
     # Настоящий ограниченный стартовый проход через владельца INDEX.
     def boot_scan_tick(self):
         assert self.checked('idindex_runtime_begin')

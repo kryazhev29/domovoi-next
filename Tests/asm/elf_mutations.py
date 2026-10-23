@@ -86,8 +86,8 @@ def cases():
     add('table-cancel',m,'table_runtime_cancel','no-op',cancel)
     m=ServiceMachine();m.packet(17)
     def quiet(m=m):
-        m.checked('service_crc_quiet',0);m.drain();assert not m.sent
-    add('service-session-cancel',m,'service_crc_quiet','no-op',quiet)
+        m.checked('flash_exec_quiet',0);m.drain();assert not m.sent
+    add('service-session-cancel',m,'flash_exec_quiet','no-op',quiet)
     m=ServiceMachine();m.packet(17,channel=1);m.commit_fail=True
     def retry(m=m):
         for _ in range(200):

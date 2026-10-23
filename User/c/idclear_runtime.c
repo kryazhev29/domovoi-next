@@ -1,17 +1,17 @@
 // Доработка: Кряжев А., 2026
 // Фоновая очистка базы ID по секторам с ответом на команду 103.
 // Стирание проверяет W25; при частичной очистке таблицы блокируются.
-// Смена USB-сеанса подавляет ответ, сохраняя завершение текущей команды W25.
+// Ответ уходит отложенным ответом исполнителя; закрытый USB-сеанс его подавляет.
 #include "runtime_internal.h"
 enum {
   IDC_ERASE=1, IDC_ERASED=2, IDC_DONE=3, IDC_ERROR=4
 };
 typedef struct {
-  uint32_t cursor,end,epoch;
-  uint8_t cancel,quiet,touched,uniq;
+  uint32_t cursor,end;
+  uint8_t cancel,touched;
   uint8_t response[18];
 } idclear_s;
-RT_ASSERT(idclear_size, sizeof(idclear_s)==36);
+RT_ASSERT(idclear_size, sizeof(idclear_s)==28);
 static idclear_s *idclear_current(void)
 {
   return flash_job.kind == FX_IDCLEAR && flash_job.result == FX_PENDING ? flash_job.data.context : NULL;
@@ -23,16 +23,11 @@ void idclear_runtime_cancel(void)
   if (p) {
     idcrc_unknown();
     p->cancel = 1;
-    p->quiet = 1;
+    flash_job.quiet = 1;
   }
+  fx_reply_drop(FX_IDCLEAR);
 }
-// Подавляет ответ для завершившегося USB-сеанса.
-void idclear_runtime_quiet(uint8_t channel)
-{
-  idclear_s *p = idclear_current();
-  if (!channel && p) p->quiet = 1;
-}
-// Освобождает память автомата после ответа или отмены.
+// Освобождает память автомата после отмены или подавленного ответа.
 static void idclear_release(flash_result_t result)
 {
   work_release(idclear_current(), WORK_IDCLEAR);
@@ -48,9 +43,7 @@ uint8_t idclear_runtime_begin(uint8_t channel,uint8_t uniq)
   if(!p) return 0;
   p->cursor=start;
   p->end=end;
-  p->epoch=usb_bus_resets;
-  p->cancel=p->quiet=p->touched=0;
-  p->uniq=uniq;
+  p->cancel=p->touched=0;
   p->response[6]=255;
   p->response[7]=uniq;
   p->response[8]=103;
@@ -60,6 +53,8 @@ uint8_t idclear_runtime_begin(uint8_t channel,uint8_t uniq)
     work_release(p, WORK_IDCLEAR);
     return 0;
   }
+  flash_job.channel=CH_USB;
+  flash_job.uniq=uniq;
   idindex_runtime_suspend();
   return 1;
 }
@@ -68,15 +63,14 @@ static void idclear_error(idclear_s *p)
 {
   mem_storage_ready=0;
   flash_job.step=IDC_ERROR;
-  answer11(p->response,p->uniq,103,2);
+  answer11(p->response,flash_job.uniq,103,2);
 }
-// Стирает один сектор за шаг и отправляет итог через общий кадр.
+// Стирает один сектор за шаг и отдаёт итог отложенным ответом исполнителя.
 void idclear_runtime_poll(uint32_t now)
 {
   idclear_s *p=idclear_current();
   if(!p) return;
-  if(p->epoch!=usb_bus_resets) p->quiet=1;
-  if(fx_waiting(now)) return;
+  if(fx_waiting(now) && flash_job.wait) return; // итог стирания — в этом же проходе
   if(flash_job.step==FX_STEP_FAIL) { idclear_error(p);
     return;
   }
@@ -106,6 +100,11 @@ void idclear_runtime_poll(uint32_t now)
     if(flash_job.wait) p->touched=1;
     return;
   }
-  if(!p->quiet && !reply_send(p->response,flash_job.step==IDC_DONE?11:18,0)) return;
-  idclear_release(flash_job.step==IDC_DONE ? FX_OK : FX_ERROR);
+  flash_result_t result = flash_job.step==IDC_DONE ? FX_OK : FX_ERROR;
+  if(flash_job.quiet) { idclear_release(result);
+    return;
+  }
+  if(fx_reply.kind) return;
+  fx_reply_post(FX_IDCLEAR,p,p->response,flash_job.step==IDC_DONE?11:18,CH_USB);
+  flash_exec_finish(result);
 }

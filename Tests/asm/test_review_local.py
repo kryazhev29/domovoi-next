@@ -63,7 +63,7 @@ def rollback():
             m = FirmwareMachine(); m.fixture(); m.begin(1, channel)
             m.write(m.device + m.d['registredOnServer'], 1, 1)
             m.until(lambda: m.phase() == 10)
-            ctx = m.ptr(); m.checked('fw_service_reply_poll')
+            ctx = m.ptr(); m.checked('user_storage_poll')
             assert m.exec_active(3)
             writes = []
             def watch(u, access, address, size, value, data):

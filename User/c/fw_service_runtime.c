@@ -1,7 +1,7 @@
 // Доработка: Кряжев А., 2026
 // Команда 19: начало загрузки, проверка резерва и откат прошивки.
 // W25 выполняет проверенные операции по 64 Б; заголовок и CRC прошивки проверяются на границе.
-// Сохранение настроек передаётся владельцу store; поля его состояния заданы общим типом.
+// Сохранение настроек передаётся владельцу store; ответ уходит отложенным ответом исполнителя.
 #include "runtime_internal.h"
 #include "user_fw_reason.h"
 #include "../fw_crc.h"
@@ -17,63 +17,69 @@ extern uint8_t fw_same_download(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t,dat
 extern uint32_t fw_rollback_end;
 extern uint8_t fw_write_errors,store_save_requested;
 extern bool store_snapshot(void);
-// Состояние сохранения принадлежит user_store.c; сервис передаёт ему команду 19.
-extern store_state_s store;
 typedef struct {
   uint8_t data[64],header[32];
   void *reserve;
   uint32_t pos,end,crc,expected;
   uint16_t blocks;
-  uint8_t channel,uniq,reply_step,quiet,mode;
+  uint8_t channel,uniq,result,mode;
   uint16_t len;
   uint8_t cancel,reject_code;
 } fw_service_s;
 RT_ASSERT(fw_service_size,sizeof(fw_service_s)==128);
-static fw_service_s *fw_reply;
-static fw_service_s *fw_service_current(void)
+// Контекст сервиса: принятая работа либо отложенный ответ исполнителя.
+void *fw_service_busy(void)
 {
-  return flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING ? flash_job.data.context : fw_reply;
+  if (flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING) return flash_job.data.context;
+  return fx_reply.kind == FX_FWSERVICE ? fx_reply.context : NULL;
 }
-static uint8_t fw_phase(const fw_service_s *p)
+// Возвращает память сервиса.
+static void fw_service_release(fw_service_s *p)
 {
-  return flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING ? flash_job.step : p->reply_step;
-}
-static void fw_step(fw_service_s *p, uint8_t step)
-{
-  if (flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING) flash_job.step = step;
-  if (step == FWS_REPLY || flash_job.kind != FX_FWSERVICE) p->reply_step = step;
-  if (step == FWS_REPLY) fw_reply = p;
-}
-// Возвращает контекст занятого сервиса прошивки.
-void *fw_service_busy(void) { return fw_service_current();
-}
-// Подавляет ответ прошивки для закрытого канала.
-void fw_service_quiet(uint8_t channel)
-{ if(fw_service_current() && fw_service_current()->channel==channel) fw_service_current()->quiet=1;
-}
-// Отменяет сервис, сохраняя источник до завершения команды W25.
-void fw_service_cancel(void)
-{
-  fw_service_s *p=fw_service_current();
-  if(!p) return;
-  p->cancel = 1;
-  p->quiet = 1;
-  if (flash_job.kind == FX_FWSERVICE && (flash_job.wait || mem_config_result() == 1)) return;
-  if (flash_job.kind == FX_FWSERVICE && mem_config_result()) mem_config_reset();
-  if (fw_reply == p) fw_reply = NULL;
   work_release(p->reserve, WORK_FW_DATA);
   work_release(p, WORK_FW_CONTEXT);
-  if (flash_job.kind == FX_FWSERVICE) flash_exec_finish(FX_CANCELLED);
+}
+// Отменяет сервис, сохраняя источник до завершения команды W25; отложенный ответ снимается.
+void fw_service_cancel(void)
+{
+  fw_service_s *p=fw_service_busy();
+  if(!p) return;
+  if (flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING) {
+    p->cancel = 1;
+    flash_job.quiet = 1;
+    if (flash_job.wait || mem_config_result() == 1) return;
+    if (mem_config_result()) mem_config_reset();
+    flash_exec_finish(FX_CANCELLED);
+  } else fx_reply.kind = 0;
+  fw_service_release(p);
+}
+// Успешный ответ 11 на откат продолжается копированием резерва.
+static bool fw_copy_due(const fw_service_s *p)
+{
+  return p->data[8]==11 && !p->data[9] && p->mode==1;
+}
+// После ушедшего или подавленного ответа откат копирует резерв, остальное возвращает память.
+uint8_t fw_service_sent(void *context, bool sent)
+{
+  fw_service_s *p=context;
+  (void)sent;
+  if (fw_copy_due(p)) { p->pos = 0;
+    return FWS_COPY_ERASE;
+  }
+  fw_service_release(p);
+  return 0;
 }
 // Проверяет команду 19 на границе и выбирает загрузку либо откат.
 /* Проверено на плате №1 12.10.2026: загрузка по USB 5 раз (до f822023) и с сервера (216fc73) -
-   события 132/135/136, установка и выход на связь. */
+   события 132/135/136, установка и выход на связь.
+   Изменено 2026-10-23 (rewrite/storage-core): канал и номер ответа хранит исполнитель,
+   фаза задаётся при приёме работы — на плате не проверено. */
 bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
 {
   fw_service_s *p;
   fw_reason_e reason;
   uint8_t phase;
-  if(fw_service_current() || !flash_exec_idle() || !flash_exec_read_allowed()) return true;
+  if(fw_service_busy() || !flash_exec_idle() || !flash_exec_read_allowed()) return true;
   p=work_acquire(sizeof *p, WORK_FW_CONTEXT);
   if(!p) return true;
   memset(p,0,sizeof *p);
@@ -120,25 +126,25 @@ bool fw_service_begin(const uint8_t *data,dataChanel_e channel,uint8_t uniq)
 publish:;
   flash_exec_args_t args = { p, phase };
   if (!flash_exec_begin(FX_FWSERVICE, &args)) {
-    work_release(p->reserve, WORK_FW_DATA);
-    work_release(p, WORK_FW_CONTEXT);
+    fw_service_release(p);
     return true;
   }
-  fw_step(p, phase);
+  flash_job.channel=channel;
+  flash_job.uniq=uniq;
   return true;
 }
 // Проверяет резерв, копирует прошивку и согласует сохранение со store.
 void fw_service_poll(void)
 {
-  fw_service_s *p=fw_service_current();
+  fw_service_s *p=flash_job.data.context;
   uint8_t phase,result,code=2,next;
   uint32_t address,n;
   uint8_t *source;
   bool saved;
   fw_reason_e reason;
-  if(!p) return;
-  if(flash_job.kind == FX_FWSERVICE && fx_waiting(timers_getMillis())) return;
-  phase=fw_phase(p);
+  if(flash_job.kind != FX_FWSERVICE || flash_job.result != FX_PENDING) return;
+  if(fx_waiting(timers_getMillis())) return;
+  phase=flash_job.step;
   if(p->cancel) goto cancel;
   if(phase==FX_STEP_FAIL) { phase=flash_job.next; // Недостигнутый шаг задаёт причину отказа.
   goto io_error;
@@ -161,10 +167,11 @@ void fw_service_poll(void)
   next=FWS_COPY_WRITTEN;
 start:
     fx_start(address,source,(uint16_t)n,timers_getMillis(),next);
+    if(flash_job.wait) flash_job.step=phase; // текущая фаза видна, пока команда W25 не проверена
     return;
   case FWS_COPY_WRITTEN:
     p->pos+=p->len;
-    fw_step(p, p->pos>=p->end?FWS_COPY_HEADER:(p->pos&4095u)?FWS_COPY_READ:FWS_COPY_ERASE);
+    flash_job.step=p->pos>=p->end?FWS_COPY_HEADER:(p->pos&4095u)?FWS_COPY_READ:FWS_COPY_ERASE;
     return;
   case FWS_COPY_READ:
     n=p->end-p->pos;
@@ -172,7 +179,7 @@ start:
     p->len=(uint16_t)n;
     if(!w25_read_data(mem[MB_BACKUP].start+p->pos,p->data,p->len)) goto read_error;
     if(!p->pos) memset(p->data,255,4);
-    fw_step(p, FWS_COPY_WRITE);
+    flash_job.step=FWS_COPY_WRITE;
     return;
   case FWS_BACKUP_HEADER: case FWS_COPY_HEADER:
     if(!w25_read_data(mem[phase==FWS_BACKUP_HEADER?MB_BACKUP:MB_FIRMWARE].start,p->header,32)) goto read_error;
@@ -186,7 +193,7 @@ start:
     p->end=n+512;
     p->pos=512;
     p->crc=fw_crc_begin();
-    fw_step(p, phase==FWS_COPY_HEADER?FWS_COPY_CRC:FWS_BACKUP_CRC);
+    flash_job.step=phase==FWS_COPY_HEADER?FWS_COPY_CRC:FWS_BACKUP_CRC;
     return;
   case FWS_BACKUP_CRC: case FWS_COPY_CRC:
     n=p->end-p->pos;
@@ -227,7 +234,7 @@ handoff:
     saved = store_snapshot();
     if (!saved) goto io_error;
     store_save_requested=0;
-    fw_step(p, FWS_SAVE_WAIT);
+    flash_job.step=FWS_SAVE_WAIT;
     return;
   case FWS_SAVE_WAIT:
     result = mem_config_result();
@@ -239,13 +246,18 @@ handoff:
   case FWS_REJECT: code=p->reject_code;
   goto answer;
   case FWS_REPLY:
-    if(!p->quiet && !reply_send(p->data,p->len,p->channel)) return;
-    if(p->data[8]==11 && !p->data[9] && p->mode==1) {
-      fw_step(p, FWS_COPY_ERASE);
-      p->pos = 0;
-      return;
+    // Подавленный ответ не отменяет откат: копирование резерва продолжается.
+    if(flash_job.quiet) {
+      if(fw_copy_due(p)) { p->pos = 0;
+        flash_job.step = FWS_COPY_ERASE;
+        return;
+      }
+      goto cancel;
     }
-    goto cancel;
+    if(fx_reply.kind) return;
+    fx_reply_post(FX_FWSERVICE,p,p->data,p->len,p->channel);
+    flash_exec_finish(p->result);
+    return;
   default: return;
   }
 read_error:
@@ -272,8 +284,8 @@ error_log:
     p->data[10]=253;
     packet_frame(p->data,5);
     p->len = 13;
-    fw_step(p, FWS_REPLY);
-    flash_exec_finish(FX_ERROR);
+    p->result = FX_ERROR;
+    flash_job.step = FWS_REPLY;
     return;
   }
   fw_event_request((logUpdate_e)133,reason);
@@ -289,22 +301,8 @@ cleanup:
 answer:
   answer11(p->data,p->uniq,19,code);
   p->len = 18;
-  fw_step(p, FWS_REPLY);
-  flash_exec_finish(code ? FX_ERROR : FX_OK);
+  p->result = code ? FX_ERROR : FX_OK;
+  flash_job.step = FWS_REPLY;
   return;
 cancel: fw_service_cancel();
-}
-bool fw_service_reply_poll(void)
-{
-  fw_service_s *p = fw_service_current();
-  if (!p || flash_job.kind == FX_FWSERVICE) return false;
-  if (fw_phase(p) == FWS_REPLY) {
-    fw_service_poll();
-    return fw_service_current() != p || fw_phase(p) != FWS_REPLY;
-  }
-  if (fw_phase(p) == FWS_COPY_ERASE) {
-    flash_exec_args_t args = { p, FWS_COPY_ERASE };
-    flash_exec_begin(FX_FWSERVICE, &args);
-  }
-  return false;
 }

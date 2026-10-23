@@ -12,9 +12,8 @@ void store_access_reply(uint8_t channel, uint8_t uniq)
 {
   if (flash_job.kind != FX_STORE || flash_job.step < FS_ID) return;
   flash_job.data.storeio.reply = 1;
-  flash_job.data.storeio.channel = channel;
-  flash_job.data.storeio.uniq = uniq;
-  flash_job.data.storeio.epoch = usb_bus_resets;
+  flash_job.channel = channel;
+  flash_job.uniq = uniq;
 }
 static uint8_t store_id_chunk(const void *context, uint16_t offset, uint8_t *data)
 {
@@ -28,16 +27,17 @@ static uint8_t store_id_chunk(const void *context, uint16_t offset, uint8_t *dat
 static void store_io_done(bool ok)
 {
   store_io_s done = flash_job.data.storeio;
+  uint8_t channel = flash_job.channel, uniq = flash_job.uniq, quiet = flash_job.quiet;
   flash_exec_finish(ok ? FX_OK : FX_ERROR);
   flash_exec_take_result();
   if (ok && done.outputs && !unblock_active) {
     server_out_event = (logControl_e)done.event;
     user_access_complete(done.outputs, (codeType_e)done.type, ((cellID_s *)done.data)->ID, done.count, done.started);
   }
-  if (done.reply && (done.channel != CH_USB || done.epoch == usb_bus_resets)) {
+  if (done.reply && !quiet) {
     store.cmd = 8;
-    store.channel = done.channel;
-    store.uniq = done.uniq;
+    store.channel = channel;
+    store.uniq = uniq;
     store.quiet = 0;
     store.code = ok ? CMD_SUCCESS : CMD_RUNERROR;
     store_phase_set(US_REPLY);
@@ -48,7 +48,7 @@ static void store_io_done(bool ok)
 static void store_io_poll(uint32_t now)
 {
   store_io_s *p = &flash_job.data.storeio;
-  if (fx_waiting(now)) return;
+  if (fx_waiting(now) && flash_job.wait) return; // итог журнала — в этом же проходе
   if (flash_job.step == FX_STEP_FAIL) {
     idcrc_unknown();
     store_io_done(false);

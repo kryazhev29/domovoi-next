@@ -10,18 +10,13 @@ enum {
 #define table_job flash_job.data.table
 uint8_t table_fault;
 
-// Подавляет ответ команды для закрытого канала.
-void table_runtime_quiet(dataChanel_e channel)
-{
-  if (flash_job.kind == FX_TABLE && flash_job.result == FX_PENDING && table_job.channel==channel) table_job.quiet=1;
-}
 // Запрашивает отмену записи таблиц и незавершённого журнала.
 void table_runtime_cancel(void)
 {
   if (flash_job.kind != FX_TABLE || flash_job.result != FX_PENDING) return;
   if(table_job.cmd==13) idcrc_unknown();
   table_job.cancelled = 1;
-  table_job.quiet = 1;
+  flash_job.quiet = 1;
   sj_runtime_cancel();
 }
 // Накладывает записи команды на фрагмент исходного сектора.
@@ -96,8 +91,8 @@ bool table_runtime_begin(const uint8_t *ptr, dataChanel_e channel, uint8_t uniq)
   memcpy(&table_job.stamp,ptr+5,4);
   table_job.cmd=cmd;
   table_job.mb=mb;
-  table_job.channel=channel;
-  table_job.uniq=uniq;
+  flash_job.channel=channel;
+  flash_job.uniq=uniq;
   table_job.start=mem[mb].start;
   table_job.day=id_today();
   if (cmd==13) {
@@ -181,9 +176,9 @@ static void table_runtime_finish(void)
       bit=SYNC_HOLIDAY;
     }
     sync_packet(bit);
-    if (!table_job.quiet) user_send_timeshtamp((shtamp_e)kind,table_job.stamp,table_job.crc,(dataChanel_e)table_job.channel,table_job.uniq);
-  } else if (!table_job.quiet)
-    user_send_answer_comand(cmd,CMD_RUNERROR,(dataChanel_e)table_job.channel,table_job.uniq);
+    if (!flash_job.quiet) user_send_timeshtamp((shtamp_e)kind,table_job.stamp,table_job.crc,(dataChanel_e)flash_job.channel,flash_job.uniq);
+  } else if (!flash_job.quiet)
+    user_send_answer_comand(cmd,CMD_RUNERROR,(dataChanel_e)flash_job.channel,flash_job.uniq);
   work_release(table_job.records, WORK_TABLE);
   table_job.records=0;
 }
@@ -233,9 +228,10 @@ void table_runtime_poll(uint32_t now)
       if (index>table_job.last) table_job.last=index;
       if (32u*index>table_job.used) table_job.used=32u*index;
       id_watch_end(id_time_end((cellID_s *)record));
-      if (++table_job.position==table_job.count) table_scan_begin();
-      else flash_job.step=TABLE_APPEND_BODY;
-      return;
+      if (++table_job.position==table_job.count) { table_scan_begin(); return; }
+      flash_job.step=TABLE_APPEND_BODY; // следующее тело пишется в этом же проходе
+      record+=32u;
+      memcpy(&index,record,2);
     }
     if (flash_job.step==TABLE_APPEND_BODY && table_job.cancelled) {
       table_scan_begin();
@@ -246,6 +242,11 @@ void table_runtime_poll(uint32_t now)
     fx_start(table_job.start+32u*(index-1)+(commit?31:0),record+(commit?31:0),commit?1:31,now,
       commit?TABLE_APPEND_DONE:TABLE_APPEND_COMMIT);
     return;
+  }
+  if (flash_job.step==TABLE_JOURNAL) { // сектор зафиксирован журналом
+    table_job.position+=table_job.batch;
+    if (table_job.position==table_job.count || table_job.cancelled) { table_scan_begin(); return; }
+    flash_job.step=TABLE_SECTOR; // следующий сектор начинается в этом же проходе
   }
   if (flash_job.step==TABLE_SECTOR) {
     if (table_job.cancelled) {
@@ -266,12 +267,6 @@ void table_runtime_poll(uint32_t now)
       table_job.batch++;
     }
     fx_journal(table_job.sector,table_chunk,0,TABLE_JOURNAL);
-    return;
-  }
-  if (flash_job.step==TABLE_JOURNAL) { // сектор зафиксирован журналом
-    table_job.position+=table_job.batch;
-    if (table_job.position==table_job.count || table_job.cancelled) table_scan_begin();
-    else flash_job.step=TABLE_SECTOR;
     return;
   }
   if (flash_job.step==TABLE_CRC) {
@@ -315,5 +310,5 @@ void table_runtime_poll(uint32_t now)
     while (--chunks && timers_getMillis()-started<1u);
     return;
   }
-  if (flash_job.step==TABLE_REPLY && fx_reply_ready(table_job.channel,&table_job.quiet,now)) table_runtime_finish();
+  if (flash_job.step==TABLE_REPLY && fx_reply_ready(flash_job.channel,&flash_job.quiet,now)) table_runtime_finish();
 }

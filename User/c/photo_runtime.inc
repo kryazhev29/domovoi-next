@@ -39,7 +39,7 @@ void photo_storage_cancel(void)
   if (pr.tx_length) pr_tx_release();
   if (flash_job.kind == FX_PHOTO && flash_job.result == FX_PENDING) {
     pj.cancelled = 1;
-    pj.quiet = 1;
+    flash_job.quiet = 1;
     if (pj.task == PT_ACK) pr.initialized = 0;
   }
   if (photo) {
@@ -69,7 +69,7 @@ static void pr_fail(void)
   if (photo) {
     if (photo->stage) photo_stop();
     photo->pending = 0;
-    if ((pj.task == PT_REQUEST || pj.task == PT_ACK) && !pj.quiet)
+    if ((pj.task == PT_REQUEST || pj.task == PT_ACK) && !flash_job.quiet)
       user_send_answer_comand(21, CMD_RUNERROR, photo->channel, photo->requestId);
   }
   pr.initialized = 0;
@@ -240,6 +240,7 @@ static cmdCode_e pr_request(dataChanel_e channel, uint8_t id, const uint8_t *arg
   if (channel == CH_SMS || !pr_command_ready()) return CMD_RUNERROR;
   pr_tx_release(); // Новый курсор заменяет ещё не принятый транспортом пакет.
   if (!pr_begin(PR_HEAD)) return CMD_RUNERROR;
+  flash_job.channel = channel;
   pj.requested_number = 0xffffffffu;
   if (size) {
     memcpy(&pj.requested_number, args, 4);
@@ -264,6 +265,7 @@ void photo_request_answer(dataChanel_e channel, uint8_t id, const uint8_t *args,
 static void pr_send_begin(void)
 {
   if (!pr_begin(PR_HEAD)) return;
+  flash_job.channel = photo->channel;
   pj.task = PT_SEND;
   pr.usb_epoch = usb_bus_resets;
   pj.scan = photo->readAddress;
@@ -277,7 +279,7 @@ void photo_storage_poll(uint32_t now)
   uint16_t n;
   if (photo && photo->channel == CH_USB && pr.usb_epoch != usb_bus_resets &&
     (pj.task == PT_REQUEST || pj.task == PT_ACK || pj.task == PT_SEND)) {
-    pj.quiet = 1;
+    flash_job.quiet = 1;
     photo->pending = 0;
   }
   if (device.status.readyToUpdate) photo_storage_cancel();
@@ -291,6 +293,11 @@ void photo_storage_poll(uint32_t now)
     return;
   }
   switch (flash_job.step) {
+  case PR_IO_DONE:
+    pj.io_done += pj.io_step;
+    if (!pj.io_len || pj.io_done == pj.io_len) { flash_job.step = pj.after; break; }
+    flash_job.step = PR_IO; // следующая порция в этом же проходе
+    /* FALLTHROUGH */
   case PR_IO: {
       uint16_t page_left = (uint16_t)(256u - ((pj.io_address + pj.io_done) & 255u));
       n = pj.io_len - pj.io_done;
@@ -302,10 +309,6 @@ void photo_storage_poll(uint32_t now)
       fx_start(pj.io_address + pj.io_done, !pj.io_len ? 0 : source + pj.io_done, n, now, PR_IO_DONE);
       break;
     }
-  case PR_IO_DONE:
-    pj.io_done += pj.io_step;
-    flash_job.step = !pj.io_len || pj.io_done == pj.io_len ? pj.after : PR_IO;
-    break;
   case PR_HEAD: {
       uint16_t confirmed;
       bool physical=pj.task==PT_BOOT || pj.task==PT_FIND || pj.task==PT_OLD_REQUEST;
@@ -484,12 +487,12 @@ void photo_storage_poll(uint32_t now)
   case PR_OFFSET_ERROR:
   case PR_REQUEST_DONE: {
     uint8_t step = flash_job.step;
-    if (!fx_reply_ready(photo->channel, &pj.quiet, now)) break;
+    if (!fx_reply_ready(photo->channel, &flash_job.quiet, now)) break;
     // Старый курсор и неверное смещение ждут TX так же, как успешный ответ.
     // При неверном смещении скан ещё не закончен: очередь не публикуем.
     if (step == PR_OFFSET_ERROR) pr_release(FX_OK);
     else pr_queue_publish();
-    if (!pj.quiet) {
+    if (!flash_job.quiet) {
       user_send_answer_comand(21, step == PR_REQUEST_DONE ? CMD_SUCCESS : CMD_PARAMERROR,
                               photo->channel, photo->requestId);
       if (step == PR_REQUEST_DONE) {
@@ -537,7 +540,7 @@ void photo_storage_poll(uint32_t now)
     }
     break;
   case PR_SEND_COMMIT:
-    if (pj.quiet || !photo->pending) pr_release(FX_OK);
+    if (flash_job.quiet || !photo->pending) pr_release(FX_OK);
     else {
       pr.tx_length = pj.send_size ? pj.send_size + 22 : 12;
       pr.tx_address = pj.scan;

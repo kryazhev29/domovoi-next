@@ -122,7 +122,7 @@ void idindex_impl_poll(uint32_t base)
   uint32_t address = 0;
   const uint8_t *source = NULL;
   if (flash_job.kind != FX_INDEX || flash_job.result != FX_PENDING) return;
-  if (fx_waiting(timers_getMillis())) return;
+  if (fx_waiting(timers_getMillis()) && flash_job.wait) return; // итог без новой команды — в этом же проходе
   if (flash_job.step == FX_STEP_FAIL) goto error;
   op = flash_job.step <= IX_LOG_VALID ? flash_job.step : 0;
   if (op) {
