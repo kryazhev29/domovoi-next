@@ -124,15 +124,13 @@ def migrated_lifetimes():
         assert m.read_budget <= 256 and not m.io_budget
         if state(m)[2] != PENDING:break
     else:raise AssertionError('CRC did not finish')
-    assert state(m) == (CRC, 4, OK) and m.reply_kind() == CRC and not m.sent
+    assert state(m) == (CRC, 4, OK) and m.sent == [m.expected(17)] and not m.reply_kind()
     assert not m.checked('flash_exec_idle')
     retained = context(m)
     before = dict(m.counts)
     m.checked('flash_exec_poll', m.now)
     assert state(m) == (CRC, 4, OK) and context(m) == retained and m.counts == before
     finish(m)
-    # Отложенный ответ уходит проходом хранения уже без работы.
-    m.checked('user_storage_poll'); assert m.sent == [m.expected(17)] and not m.reply_kind()
     return {'cancel_after_W25_verify': True, 'CRC_oracle': True, 'retained_result': True}
 
 

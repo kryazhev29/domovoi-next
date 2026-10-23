@@ -124,6 +124,9 @@ bool fx_reply_ready(uint8_t channel, uint8_t *quiet, uint32_t now)
   return true;
 }
 // Готовый кадр владельца ждёт канал без удержания флеша; подавление наследуется от работы.
+static bool fx_reply_send(void);
+// Ответы очистки ID и CRC уходят сразу, как в базе; сервис прошивки и выгрузка
+// возобновляют работу после ухода кадра, их кадр ждёт следующего прохода.
 void fx_reply_post(uint8_t kind, void *context, const uint8_t *packet, uint16_t length, uint8_t channel)
 {
   fx_reply.kind = kind;
@@ -133,6 +136,7 @@ void fx_reply_post(uint8_t kind, void *context, const uint8_t *packet, uint16_t 
   fx_reply.channel = channel;
   fx_reply.quiet = flash_job.quiet;
   fx_reply.resume = 0;
+  if (kind == FX_CRC || kind == FX_IDCLEAR) fx_reply_send();
 }
 // Отправляет отложенный ответ при свободном канале, затем владелец возобновляет работу
 // (resume) или его память возвращается. true — кадр ушёл или снят.
