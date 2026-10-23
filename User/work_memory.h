@@ -17,6 +17,4 @@ const uint8_t *work_usb_source(const uint8_t *source, uint16_t length);
 uint8_t *work_usb_reply(uint16_t length);
 // Возвращает допустимый размер участка владельца.
 uint32_t work_capacity(uint32_t slot);
-// Проверяет удержанный контекст перед публикацией kind исполнителя.
-bool work_live(const void *pointer, uint32_t slot);
 #endif

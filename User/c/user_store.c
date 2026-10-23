@@ -51,24 +51,16 @@ static bool store_priority_pending(void)
   return store.intent || store_reset_requested || store_save_requested || fw_event_waiting() ||
     (log_pendingCount && log_write_ready() && (log_timeKnown || device.worktime >= LOG_TIME_WAIT));
 }
+// Вид работы, контекст и шаг задаёт сам вызывающий константами; контекст только что взят
+// из work_acquire и проверен. Проверяются только занятость и очерёдность (23.10.2026).
 bool flash_exec_begin(flash_kind_t kind, const flash_exec_args_t *args)
 {
-  if (kind == FX_NONE || kind > FX_STORE || !flash_exec_idle()) return false;
-  static const uint8_t slots[] = { 0, WORK_IDCLEAR, WORK_EXPIRY, WORK_FW_CONTEXT, WORK_UPLOAD_CONTEXT, 0,
-    WORK_SERVICE, WORK_TABLE, 0, WORK_FW_BLOCK, 0, 0, 0 };
+  if (!flash_exec_idle()) return false;
   void *context = args ? args->context : NULL;
   uint8_t step = args ? args->step : 0;
   if (counter_busy() && !(kind==FX_STORE && step==FS_ID)) return false;
   if ((kind == FX_EXPIRY || kind == FX_PHOTO || (kind == FX_CRC && !context)) &&
       store_priority_pending()) return false;
-  uint8_t slot = slots[kind];
-  if (kind == FX_CRC && !context) slot = 0;
-  if (slot && !work_live(context, slot)) return false;
-  if ((kind == FX_IDCLEAR || kind == FX_EXPIRY || (kind == FX_CRC && slot)) && step != 1) return false;
-  if (kind == FX_PHOTO && (context || !step)) return false;
-  if (kind == FX_LOG && (!context || step != 1)) return false;
-  if (kind == FX_INDEX && (context || step != FX_INDEX_READ)) return false;
-  if (kind == FX_CRC && !slot && step) return false;
   memset(&flash_job.data, 0, sizeof(flash_job.data));
   if (kind == FX_LOG) memcpy(&flash_job.data.log.cell, context, sizeof(cellLog_s));
   else flash_job.data.context = context;

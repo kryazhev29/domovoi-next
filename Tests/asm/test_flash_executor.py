@@ -72,8 +72,6 @@ def second_begin():
 
 def admission_and_result():
     m = StorageMachine()
-    assert not m.checked('flash_exec_begin', NONE, 0)
-    assert not m.checked('flash_exec_begin', 13, 0)
     m.u.mem_write(0x21000400, bytes(64))
     assert m.checked('w25_async_start', 0x350000, 0x21000400, 64, 0)
     assert not m.checked('flash_exec_begin', STORE, 0)
@@ -87,12 +85,6 @@ def admission_and_result():
         assert not m.checked('flash_exec_idle')
         finish(m, result)
         assert m.checked('flash_exec_idle')
-    assert not m.checked('flash_exec_begin', IDCLEAR, 0)
-    assert not m.checked('flash_exec_begin', EXPIRY, 0)
-    assert not m.checked('flash_exec_begin', INDEX, 0)
-    import struct
-    m.u.mem_write(0x21000800, struct.pack('<IB3x', 0x21000400, 1))
-    assert not m.checked('flash_exec_begin', CRC, 0x21000800)
     assert state(m) == (NONE, 0, IDLE)
     return {'physical_busy': 'rejected', 'results_once': 3}
 
@@ -196,7 +188,7 @@ def mutations():
             '    if (!below_crc && idcrc_background_begin()) return;\n    if (idindex_runtime_begin()) return;',
             '    if (idindex_runtime_begin()) return;\n    if (!below_crc && idcrc_background_begin()) return;')]),
         'executor-second-begin': ('second_begin', [(path,
-            'kind > FX_STORE || !flash_exec_idle()', 'kind > FX_STORE')]),
+            '  if (!flash_exec_idle()) return false;\n  void *context', '  void *context')]),
     }
     return run(cases, 'test_flash_executor', 'executor-mutations')
 
