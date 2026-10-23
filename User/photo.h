@@ -7,6 +7,7 @@
 #include "includes.h"
 #define PHOTO_FORMAT 0x32504850u /* Метка завершённой записи PHP2. */
 #define PHOTO_RECORD_HEAD (sizeof(photoParam_s) + 4u + 1u)
+#define RS485_CAMERA 2u /* Тип периферии 485 «Фотокамера» (C328) по списку сервера, 23.10.2026. */
 // Проверить команду 7 и запланировать съёмку выбранной камеры.
 cmdCode_e photo_start(uint8_t address);
 // Съёмка или принятый поток имеют приоритет перед серверным ACK журнала.

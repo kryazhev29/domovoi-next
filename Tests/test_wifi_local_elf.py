@@ -103,7 +103,7 @@ def run():
         active=m.select_config();assert bytes(m.flash[active+512+d['wifiModem']:active+512+d['wifiModem']+4])==expected
         assert m.changed==1
         # РљРѕРјР°РЅРґР° 12 СЃ СЃРµСЂРІРµСЂР° Рё С‚Р°Р±Р»РёС†РµР№ РєР°РјРµСЂР°+РјРѕСЃС‚ РЅРµ РїРµСЂРµРїРёСЃС‹РІР°РµС‚ Р»РѕРєР°Р»СЊРЅС‹Р№ РІС‹Р±РѕСЂ.
-        candidate=configuration();cf=fields('config_s');candidate[cf['rs485Periphery']:cf['rs485Periphery']+4]=bytes((1,1,5,3))
+        candidate=configuration();cf=fields('config_s');candidate[cf['rs485Periphery']:cf['rs485Periphery']+4]=bytes((1,1,5,2))
         accepted(m,candidate,1);assert m.wifi()==expected
         # РќРµР·Р°РІРёСЃРёРјС‹Р№ СЃС‚Р°СЂС‚ С‡РёС‚Р°РµС‚ С‚РѕР»СЊРєРѕ РІР°Р»РёРґРЅСѓСЋ Р»РѕРєР°Р»СЊРЅСѓСЋ Р·Р°РїРёСЃСЊ.
         saved=0x21000400;m.u.mem_write(saved,bytes(m.u.mem_read(m.device,512)))

@@ -18,8 +18,8 @@ class PassageMachine(PhotoMachine):
         self.stubs.pop(self.addr('log_addPhotoEvent'))
         self.write(self.addr('log_timeKnown'), 1, 1)
         self.write(self.device + self.d['datetime'], TODAY, 4)
-        # Interceptor впереди двух C328: выбирается только первая C328, адрес 5.
-        self.u.mem_write(self.cfg + self.c['rs485Periphery'], bytes([2, 2, 0, 0, 0, 0, 5, 3, 6, 3, 0, 0, 0, 0, 0, 0]))
+        # Домофон (тип 3) впереди двух фотокамер (тип 2): выбирается только первая камера, адрес 5.
+        self.u.mem_write(self.cfg + self.c['rs485Periphery'], bytes([2, 3, 0, 0, 0, 0, 5, 2, 6, 2, 0, 0, 0, 0, 0, 0]))
         for i in range(2):
             for name in ('onWiegand', 'onOther', 'onCmdServer', 'tImpulse', 'cnt'):
                 self.write(self.cfg + self.c['rele'] + i * 11 + self.rele[name], 1, 1)
@@ -91,10 +91,10 @@ def passage():
 
 
 def skipped():
-    for reason in ('no_camera', 'type2', 'passive', 'time', 'FW', 'memory', 'upload', 'scan'):
+    for reason in ('no_camera', 'type3', 'passive', 'time', 'FW', 'memory', 'upload', 'scan'):
         m = ready(prefix_flash(dirty=False) if reason == 'upload' else None)
-        if reason in ('no_camera', 'type2'):
-            m.u.mem_write(m.cfg + m.c['rs485Periphery'], bytes([2, 2] * 8) if reason == 'type2' else bytes(16))
+        if reason in ('no_camera', 'type3'):
+            m.u.mem_write(m.cfg + m.c['rs485Periphery'], bytes([2, 3] * 8) if reason == 'type3' else bytes(16))
         elif reason == 'passive': m.write(m.cfg + m.c['rs485Mode'], 0, 1)
         elif reason == 'time': m.write(m.device + m.d['datetime'], 0xffffffff)
         elif reason == 'FW': m.write(m.device + m.d['status'], 1 << 11, 2)

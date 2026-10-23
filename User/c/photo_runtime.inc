@@ -181,7 +181,7 @@ cmdCode_e photo_start(uint8_t address)
   if (comm_channel_wifi()) return CMD_RUNERROR; // Сначала завершить попытки выключения старого моста.
   uint8_t found = 0;
   for (uint8_t i = 0; i < 8; i++) {
-    if (config.rs485Periphery[i].type == 3 && config.rs485Periphery[i].address == address) {
+    if (config.rs485Periphery[i].type == RS485_CAMERA && config.rs485Periphery[i].address == address) {
       found = 1;
       break;
     }

@@ -458,7 +458,7 @@ void user_access_complete(uint8_t outputs, codeType_e tp, char *id, uint8_t cnt,
   // Штатное фото не задерживает реле; занятая или недоступная камера пропускается.
   if (outputs && config.rs485Mode == 1)
     for (out = 0; out < 8; out++)
-      if (config.rs485Periphery[out].type == 3) {
+      if (config.rs485Periphery[out].type == RS485_CAMERA) {
         photo_start(config.rs485Periphery[out].address);
         break;
       }
