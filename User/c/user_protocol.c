@@ -27,6 +27,9 @@ static const field_s status2_fields[] = { // статус 2
   F(17, buildDate, 4), F(21, bootVersion, 1), F(22, peripheryState, 8)
 };
 static const field_s ident_fields[] = { F(9, IMEIGSM, 15) }; // идентификация 100
+// Слитые поля таблиц лежат в device подряд.
+typedef char fields_adjacent[(offsetof(device_s, hardwareVersion) == offsetof(device_s, protocolVersion) + 1u &&
+                              offsetof(device_s, cgreg) == offsetof(device_s, creg) + 1u) ? 1 : -1];
 static const field_s cfg_status_fields[] = { // статус конфигуратора 101
   F(9, datetime, 4), F(13, status, 2), F(15, firmwareVersion, 1), F(16, buildDate, 4),
   F(20, bootVersion, 1), F(21, hardwareVersion, 1), F(22, csq, 1), F(23, balance, 2),

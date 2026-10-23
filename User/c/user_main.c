@@ -197,7 +197,6 @@ void user_loop(void)
 
     device.worktime++; // время работы от момента включения, в секундах
     device.datetime++; // внутренние часы
-    log_checkPending(); // события, ждущие времени от сервера
     if (flash_exec_read_allowed()) user_checkIdTimeEnd(); // окончание времени действия ID - событие 138
     // вычислим день недели, час и минуту
     uint32_t daytime = device.datetime % 86400u;

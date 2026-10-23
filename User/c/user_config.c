@@ -76,10 +76,17 @@ void config_exchange(uint8_t *data)
 
 // Завершить строковые поля на границе нового config.
 // Завершить только поле без нуля: исправленная конфигурация получает новую CRC.
+// Есть ли конец строки в первых capacity байтах.
+bool text_terminated(const char *text, size_t capacity)
+{
+  while (capacity--) if (!*text++) return true;
+  return false;
+}
+
 #pragma inline=forced
 static bool config_terminate(char *text, size_t capacity)
 {
-  if (memchr(text, 0, capacity)) return false;
+  if (text_terminated(text, capacity)) return false;
   text[capacity - 1u] = 0;
   return true;
 }

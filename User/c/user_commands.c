@@ -271,7 +271,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       if (len >= 14)
         while (digits < 10 && ptr[5 + digits] >= '0' && ptr[5 + digits] <= '9') ++digits;
       if (digits == 10 && ptr[15] != 0 &&
-          memchr(config.countryCode, 0, sizeof(config.countryCode)) != NULL){
+          text_terminated(config.countryCode, sizeof(config.countryCode))){
         uint16_t text_size = len - 13;
         char number[sizeof(config.countryCode) + 11];
         char *text = work_acquire(text_size + 1u, WORK_SMS);

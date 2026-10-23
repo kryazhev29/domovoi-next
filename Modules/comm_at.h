@@ -13,6 +13,8 @@
 bool comm_at_equal(const uint8_t *data, uint16_t count, const char *text);
 /* Найти точное совпадение среди коротких ответов. */
 uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names);
+/* index-я строка списка строк подряд через NUL; массив указателей не нужен. */
+const char *comm_at_nth(const char *list, uint8_t index);
 /* Проверить начало ограниченной строки без выхода за границу. */
 bool comm_at_prefix(const uint8_t *data, uint16_t count, const char *text);
 /* Найти подстроку в ограниченной строке: позиция или -1. */

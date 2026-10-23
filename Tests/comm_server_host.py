@@ -35,7 +35,10 @@ def unit():
     user = source('User/c/user_*.c')
     rx = 'void server_rx_process(void);\n' + function(source('User/c/runtime_internal.h').replace('static inline ','static '),'rt_get16') + '\n' + re.sub(r'^#include[^\n]*', '', source('User/c/user_rx.c'), flags=re.M)
     # Сохранённый сборщик и его стык QIRD; настоящие CRC/границы/отложенное исполнение.
-    helpers = '\n'.join(function(user,n) for n in ('user_comm_acquire','user_comm_free','frame_begin'))
+    # Таблицы полей кадров 1 и 2 и их сборщик берутся из того же источника.
+    tables = re.search(r'typedef struct \{ uint8_t dst, src, len; \} field_s;\n#define F\(.*?\n#define FIELDS\(.*?\n', user, re.S).group(0)
+    tables += ''.join(re.search(r'static const field_s %s\[\] = \{.*?\};\n' % n, user, re.S).group(0) for n in ('reg_fields', 'status_fields'))
+    helpers = '#include <stddef.h>\n' + tables + '\n'.join(function(user,n) for n in ('user_comm_acquire','user_comm_free','frame_begin','frame_fields'))
     producers = ('user_send_registrationData', 'user_send_statusPack', 'user_send_anyData', 'user_send_smsToServer')
     # Заголовок кадра общий: эталонная копия берёт слот через свой legacy_acquire.
     legacy = function(user, 'frame_begin').replace('frame_begin', 'legacy_frame_begin').replace('user_comm_acquire(', 'legacy_acquire(') + '\n'

@@ -121,8 +121,6 @@ bool log_addEvent(cellLog_s *cl);
 void log_flushPending(void);
 // Подставить полученное время событиям, записанным до синхронизации.
 void log_setTime(uint32_t now);
-// Продвинуть накопленные события при освобождении флеша.
-void log_checkPending(void);
 // получаем кол-во записей в журнале
 uint16_t log_getRecordsCount(void);
 // добавить системное событие

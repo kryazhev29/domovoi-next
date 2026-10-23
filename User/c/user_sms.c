@@ -6,17 +6,22 @@
 #include "../user_format.h"
 #include "../../Modules/comm_server.h"
 #include "user_comm.h"
+#include "../../Modules/comm_at.h"
 enum { SMS_UNKNOWN, SMS_ADD, SMS_IMEI, SMS_STATUS, SMS_RESET, SMS_SETOUT, SMS_DEFAULT };
 static struct { char id[10]; uint8_t due; } unreg_sms_pending;
 
 // Преобразовать имя SMS-команды в код для одного switch.
 static uint8_t sms_command(const char *name)
 {
-  static const char *const names[] = {"add", "imei", "status", "reset", "setout", "default"};
-  uint8_t i;
-  for (i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
-    if (!strcmp(name, names[i])) return i + 1u;
-  return SMS_UNKNOWN;
+  return comm_at_choice((const uint8_t *)name, (uint16_t)strlen(name), "add\0imei\0status\0reset\0setout\0default\0");
+}
+
+// Дописать текст к ответу и вернуть его новый конец.
+static char *sms_append(char *end, const char *text)
+{
+  size_t n = strlen(text);
+  memcpy(end, text, n + 1u);
+  return end + n;
 }
 
 // Проверить ПИН и выполнить одну принятую SMS-команду.
@@ -26,7 +31,7 @@ static uint8_t sms_command(const char *name)
    Изменено 2026-10-17: пересылка на сервер только при связи с ним — на плате не проверено. */
 bool user_smsreceived(char *num, char *data, bool *first)
 {
-  char *lineEnd, *pin, *arg, *reply = tempStrBuffer;
+  char *lineEnd, *pin, *arg, *reply = tempStrBuffer, *end;
   char name[11];
   uint8_t command;
   uint32_t pinValue;
@@ -54,15 +59,15 @@ bool user_smsreceived(char *num, char *data, bool *first)
   while (*arg == ' ') arg++; /* пробел после запятой */
   user_strcpy(name, data + 1, ' ', 10);
   command = sms_command(name);
-  strcpy(reply, name);
+  end = sms_append(reply, name);
   for (char *c = reply; *c; ++c) if (*c >= 'a' && *c <= 'z') *c -= 'a' - 'A';
   if (!validPin) {
-    strcat(reply, ": Error \"Pin not valid\"");
+    sms_append(end, ": Error \"Pin not valid\"");
     user_sendsms(reply, num); return true;
   }
   if (fw_update_quiet() && (command == SMS_ADD || command == SMS_RESET ||
                            command == SMS_SETOUT || command == SMS_DEFAULT)) {
-    strcat(reply, ": Error \"Update in progress\"");
+    sms_append(end, ": Error \"Update in progress\"");
     user_sendsms(reply, num); return true;
   }
   switch (command) {
@@ -71,25 +76,22 @@ bool user_smsreceived(char *num, char *data, bool *first)
     for (uint8_t i = 0; i < 10; i++)
       if (arg[i] < '0' || arg[i] > '9') goto format_error;
     if (!flash_exec_idle()) return false;
-    if (!user_addIdToTempBuffer(arg, CT_OTHER)) { strcat(reply, ": Error"); break; }
+    if (!user_addIdToTempBuffer(arg, CT_OTHER)) { sms_append(end, ": Error"); break; }
     log_addControlEvent(LOG_CON_IDADDBYSMS, arg, 0);
-    strcat(reply, ": ");
-    strcat(reply, arg);
-    strcat(reply, " - Ok");
+    sms_append(sms_append(sms_append(end, ": "), arg), " - Ok");
     break;
   case SMS_IMEI:
-    strcat(reply, ": "); strcat(reply, device.IMEIGSM);
+    sms_append(sms_append(end, ": "), device.IMEIGSM);
     break;
   case SMS_STATUS: {
-    static const char *const net[] = {"Not network", "gprs", "edge", "3G", "4G", "5G"};
-    format_status(reply, device.csq, net[device.netType < 6u ? device.netType : 0],
+    format_status(reply, device.csq, comm_at_nth("Not network\0gprs\0edge\0" "3G\0" "4G\0" "5G", device.netType < 6u ? device.netType : 0),
       device.connected, user_comm_server(comm_server_address()) + 1, device.firmwareVersion,
       device.triggers.handUnBlock, device.triggers.sheduleUnBlock,
       device.triggers.autoregistration, device.triggers.openAll);
     break;
   }
   case SMS_RESET:
-    strcat(reply, ": Go to reset"); device.timeToReset = 5;
+    sms_append(end, ": Go to reset"); device.timeToReset = 5;
     break;
   case SMS_SETOUT: {
     uint8_t out;
@@ -97,8 +99,8 @@ bool user_smsreceived(char *num, char *data, bool *first)
     if ((arg[0] != '1' && arg[0] != '2') || arg[1] != 0) goto format_error;
     out = arg[0] - '0';
     if (user_activateOut(out == 1, out == 2, CT_SERVER, NULL)) {
-      strcat(reply, out == 1 ? ": Out 1 enabled" : ": Out 2 enabled");
-    } else strcat(reply, ": Error, Out is blocked");
+      sms_append(end, out == 1 ? ": Out 1 enabled" : ": Out 2 enabled");
+    } else sms_append(end, ": Error, Out is blocked");
     break;
   }
   case SMS_DEFAULT:
@@ -108,7 +110,7 @@ bool user_smsreceived(char *num, char *data, bool *first)
   user_sendsms(reply, num);
   return true;
 format_error:
-  strcat(reply, ": Error \"Format not correct\"");
+  sms_append(end, ": Error \"Format not correct\"");
   user_sendsms(reply, num);
   return true;
 }
@@ -132,7 +134,7 @@ void unreg_sms_poll(void)
 {
   char text[31];
   if (!unreg_sms_pending.due) return;
-  memcpy(text, unreg_sms_pending.id, 10); text[10]=0;
-  strcat(text, ": ID is unregistred!");
+  memcpy(text, unreg_sms_pending.id, 10);
+  memcpy(text + 10, ": ID is unregistred!", sizeof ": ID is unregistred!");
   if (user_send_smsToServer(text)) unreg_sms_pending.due = 0;
 }

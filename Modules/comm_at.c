@@ -201,6 +201,11 @@ uint8_t comm_at_choice(const uint8_t *data, uint16_t count, const char *names)
   }
   return 0;
 }
+const char *comm_at_nth(const char *list, uint8_t index)
+{
+  while (index--) list += strlen(list) + 1u;
+  return list;
+}
 /* Определить строку самостоятельного уведомления модема. */
 static bool urc(void)
 {

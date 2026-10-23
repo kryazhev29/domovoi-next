@@ -1,14 +1,14 @@
 /* Доработка: Кряжев А., 2026. Переносимые C-ядра без ассемблерных вставок. */
 #include "fast_kernels.h"
 #include <string.h>
-uint32_t fast_fnv10(const uint8_t *p)
+uint32_t fast_fnv10_seed(uint32_t h, const uint8_t *p)
 {
-  uint32_t h = 2166136261u;
   #define F(i) h = (h ^ p[i]) * 16777619u
   F(0); F(1); F(2); F(3); F(4); F(5); F(6); F(7); F(8); F(9);
   #undef F
   return h;
 }
+uint32_t fast_fnv10(const uint8_t *p) { return fast_fnv10_seed(2166136261u, p); }
 uint16_t fast_gf2_apply(const uint16_t *m, uint16_t x)
 {
   uint16_t result = 0;
