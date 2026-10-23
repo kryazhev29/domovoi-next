@@ -6,8 +6,8 @@ def run():
     source = 'User/c/user_access.c'
     mutations = {
         'immediate-break': ('pulse_delay', [(source,
-            'state = !next || unblock_wait;',
-            'state = !next;')]),
+            'state = next && !unblock_wait;',
+            'state = next;')]),
         'no-level-restore': ('level_restore', [(source,
             'else if (!next && (unblock_level & (1u << i))) state = unblock_level >> 2;',
             'else if (!next && (unblock_level & (1u << i))) continue;')]),

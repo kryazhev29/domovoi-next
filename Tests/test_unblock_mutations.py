@@ -14,7 +14,7 @@ def main():
     source = (ROOT/'User/c/user_access.c').read_text(encoding='utf-8')
     priority = source.replace('else if (device.triggers.sheduleUnBlock', 'if (device.triggers.sheduleUnBlock', 1)
     priority = priority.replace('      uint8_t scenes[8];', '      uint8_t scenes[8];\n      next = 0;', 1)
-    order = source.replace('state = !next || unblock_wait;', 'state = !next;', 1)
+    order = source.replace('state = next && !unblock_wait;', 'state = next;', 1)
     offline = source.replace('>= 1800u', '>= 0xffffffffu')
     results = {}
     for name, mutant, test, message in (
@@ -23,7 +23,8 @@ def main():
         ('offline-30', offline, 'offline', 'оффлайн 30 минут')):
         assert mutant != source
         scope = base/name; scope.mkdir(parents=True, exist_ok=True)
-        for header in ('user_logic_internal.h', '../user_format.h', '../sched16.h'):
+        for header in ('user_logic_internal.h', '../user_format.h', '../sched16.h', '../photo.h',
+                       '../../Modules/comm_channel.h'):
             path = (ROOT/'User/c'/header).resolve().as_posix()
             mutant = mutant.replace(f'#include "{header}"', f'#include "{path}"')
         changed = scope/'user_access.c'

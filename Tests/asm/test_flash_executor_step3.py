@@ -170,7 +170,7 @@ def table_recheck():
     assert state(m)[0] == TABLE and m.effective() == 2
     m.checked('user_storage_poll')
     assert state(m) == (0, 0, 0)
-    assert not m.effective() and m.outputs()[1] == 1, 'TABLE recheck before releasing job'
+    assert not m.effective() and m.outputs()[1] == 0, 'TABLE recheck before releasing job'
     return {'scene_recheck': 'after take_result, gates open'}
 
 
