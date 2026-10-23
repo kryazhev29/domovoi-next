@@ -92,6 +92,7 @@ void unreg_sms_poll(void);
 void reader_reply_poll(void);
 // Отложенный ответ 11 серверу при занятом слоте.
 void answer_reply_poll(void);
+void answer_reply_drop(void);
 // Передать идентификацию устройства конфигуратору.
 void user_send_identPackToConfigurator(dataChanel_e cch);
 // Передать состояние устройства конфигуратору.
