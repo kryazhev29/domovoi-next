@@ -110,6 +110,7 @@ void user_loop(void)
   fw_status_poll();
   unreg_sms_poll();
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
+  answer_reply_poll(); /* ответ 11 серверу, не попавший в занятый слот */
 
   // Установка принимается в каждом проходе до фонового save, без вытеснения работы.
   if (device.rebootToUpdate && flash_exec_idle()) {

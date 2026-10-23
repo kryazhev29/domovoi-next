@@ -1,4 +1,5 @@
 """Служебные USB-команды 107 и 108 подтверждаются только по USB: сервер их ответов не получает."""
+import struct
 from storage_machine import *
 
 
@@ -17,6 +18,24 @@ def run():
         m = StorageMachine(); m.command(99, b'', 0, channel, stamp=0)
         assert m.answers and m.answers[-1][:2] == (99, 255), (channel, m.answers)
         out.append({'cmd': 99, 'channel': channel, 'answer': 255})
+    # Ответ 11 серверу при занятом слоте не теряется, а уходит первым свободным проходом
+    # (плата №1, 23.10.2026: ответ на команду 2 пропал, когда слот занял статус).
+    from test_service_runtime import ServiceMachine
+    m = ServiceMachine(); m.stubs.pop(m.addr('user_send_answer_comand'), None)
+    m.stubs[m.addr('comm_server_online')] = lambda: m.ret(1)
+    refused = [1]
+    def acquire_once():
+        m.write(m.args()[0], 1040, 2)
+        if refused: refused.pop(); m.ret(0)
+        else: m.ret(m.transport)
+    m.stubs[m.addr('comm_tx_acquire')] = acquire_once
+    m.command(99, b'', 0, 1, stamp=0)
+    assert not m.sent, m.sent
+    m.checked('answer_reply_poll')
+    body = struct.pack('<HBBBBIH', 10, 255, 7, 11, 255, int.from_bytes(m.u.mem_read(m.device+m.d['datetime'], 4), 'little'),
+                       2048 - int.from_bytes(m.u.mem_read(m.addr('server_rx_count'), 2), 'little'))
+    assert m.sent == [b'SLDN' + body + struct.pack('<H', crc16(body))], m.sent
+    out.append({'cmd': 99, 'channel': 1, 'deferred_answer': 255})
     return out
 
 

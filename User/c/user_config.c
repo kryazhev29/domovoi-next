@@ -239,7 +239,7 @@ void user_savereset (void)
     fw_service_cancel();
     upload_runtime_cancel();
     photo_storage_cancel();
-    store_reset_request();
+    store_reset_requested = 1;
     return;
   }
   log_flushPending(); // события, не дождавшиеся времени, - в журнал до перезагрузки

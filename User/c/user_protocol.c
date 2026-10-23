@@ -10,6 +10,8 @@
 enum { STATUS_EVENT_MASK = 0x28FFu, STATUS_EVENT_GAP_MS = 1000u };
 uint8_t sync_pending, sync_quiet;
 static struct { uint8_t due, percent, code, id; } fw_status_pending;
+// Ответ 11 серверу, не поместившийся в занятый слот: уходит первым свободным.
+static struct { uint8_t due, cmd, code, id; } answer_pending;
 static struct { uint8_t state; char id[10]; } reader_out;
 static uint16_t status_reported;
 static uint32_t status_reported_ms;
@@ -216,14 +218,30 @@ void reader_reply_poll(void)
 }
 
 // Передать единый ответ 11 без повторного формирования CRC.
+/* Слот сервера бывает занят статусом или регистрацией в том же проходе (плата №1, 23.10.2026:
+   ответ на команду 2 терялся); такой ответ ждёт в answer_pending. */
 void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId)
 {
   uint8_t local[18];
   uint8_t *buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(local)) : local;
-  if (!buffer) return;
+  if (!buffer) {
+    answer_pending.due = 1; answer_pending.cmd = cmd; answer_pending.code = (uint8_t)cc; answer_pending.id = uniqId;
+    return;
+  }
   answer11(buffer, uniqId, cmd, (uint8_t)cc);
   if (cch == CH_USB) usb_send(buffer, sizeof(local));
   else if (cch == CH_SERVER) comm_tx_commit(sizeof(local));
+}
+
+// Передать отложенный ответ 11 при свободном слоте сервера.
+void answer_reply_poll(void)
+{
+  uint8_t *b;
+  if (!answer_pending.due || !comm_server_online()) return;
+  b = user_comm_acquire(18);
+  if (!b) return;
+  answer11(b, answer_pending.id, answer_pending.cmd, answer_pending.code);
+  if (comm_tx_commit(18)) answer_pending.due = 0;
 }
 
 // Передать таймштамп и CRC изменённой таблицы.
