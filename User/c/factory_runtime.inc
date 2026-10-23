@@ -1,6 +1,6 @@
 // Заводская очистка: STORE до конца A/B, ответ — после verify.
 // Ответ хранится отдельно от принятой работы и ждёт готовности транспорта.
-enum { FACTORY_MARK = 1, FACTORY_ERASE, FACTORY_SAVE = 4, FACTORY_ERROR };
+enum { FACTORY_MARK = 1, FACTORY_ERASE, FACTORY_ERASED, FACTORY_SAVE, FACTORY_ERROR };
 static void factory_reply(void)
 {
   if (factory.reply != 2) return;
@@ -18,7 +18,7 @@ static void factory_reply(void)
 }
 bool store_factory_request(uint8_t channel, uint8_t uniq, uint8_t delay, const char *number)
 {
-  if (factory.reply || (flash_job.kind == FX_STORE && flash_job.step == US_FACTORY)) return false;
+  if (factory.reply || flash_job.kind == FX_FACTORY) return false;
   factory.channel = channel;
   factory.uniq = uniq;
   factory.epoch = usb_bus_resets;
@@ -33,16 +33,14 @@ bool store_factory_request(uint8_t channel, uint8_t uniq, uint8_t delay, const c
 bool store_factory_begin(void)
 {
   if (id_scan_cell) return false;
-  factory_job_s *p = &flash_job.data.factory;
-  if (!flash_exec_begin(FX_STORE, NULL)) return false;
+  flash_exec_args_t args = { NULL, FACTORY_MARK };
+  if (!flash_exec_begin(FX_FACTORY, &args)) return false;
   photo_storage_cancel();
   upload_reset(10);
   upload_reset(9);
   sched16_reset_mark(false);
-  p->phase = FACTORY_MARK;
-  p->block = MB_ID;
-  store_phase_set(US_FACTORY);
-  if (!store_snapshot()) p->phase = FACTORY_ERROR;
+  flash_job.data.factory.block = MB_ID;
+  if (!store_snapshot()) flash_job.step = FACTORY_ERROR;
   return true;
 }
 // Неполный сектор очищается через журнал, соседние данные сохраняются.
@@ -60,7 +58,6 @@ static uint8_t factory_chunk(const void *context, uint16_t offset, uint8_t *data
 static void factory_done(bool ok)
 {
   mem_config_reset();
-  store_phase_set(0);
   if (!ok) mem_storage_ready = false;
   flash_exec_finish(ok ? FX_OK : FX_ERROR);
   flash_exec_take_result();
@@ -79,34 +76,32 @@ static void factory_poll(uint32_t now)
 {
   factory_job_s *p = &flash_job.data.factory;
   uint8_t result;
-  if (p->phase == FACTORY_ERROR) {
+  if (fx_waiting(now) && flash_job.wait) return; // итог стирания — в этом же проходе
+  if (flash_job.step == FACTORY_ERROR || flash_job.step == FX_STEP_FAIL) {
     factory_done(false);
     return;
   }
-  if (p->phase == FACTORY_MARK || p->phase == FACTORY_SAVE) {
+  if (flash_job.step == FACTORY_MARK || flash_job.step == FACTORY_SAVE) {
     result = mem_config_result();
     if (result == 1) return;
     if (result != 2) {
       factory_done(false);
       return;
     }
-    if (p->phase == FACTORY_SAVE) {
+    if (flash_job.step == FACTORY_SAVE) {
       factory_done(true);
       return;
     }
     mem_config_reset();
-    p->phase = FACTORY_ERASE;
+    flash_job.step = FACTORY_ERASE;
   }
-  if (p->pending) {
-    result = p->pending == 1 ? w25_async_poll(now) : sj_runtime_poll(now);
-    if (result == 1) return;
-    if (p->pending == 2) sj_runtime_reset();
-    p->pending = 0;
-    if (result != 2 || !counter_replaced(p->address)) {
+  if (flash_job.step == FACTORY_ERASED) {
+    if (!counter_replaced(p->address)) {
       factory_done(false);
       return;
     }
     p->address += 4096;
+    flash_job.step = FACTORY_ERASE;
     return;
   }
   if (!p->address || p->address >= p->end) {
@@ -115,7 +110,7 @@ static void factory_poll(uint32_t now)
     if (p->block > MB_PHOTO) {
       // Существующая WORK_CONFIG сохраняет метаданные до единственной очистки device.
       device_s *saved = work_acquire(sizeof(device), WORK_CONFIG);
-      if (!saved) { p->phase = FACTORY_ERROR; return; }
+      if (!saved) { flash_job.step = FACTORY_ERROR; return; }
       memcpy(saved, &device, sizeof(device));
       user_factory_variables(saved);
       sched16_reset_mark(true);
@@ -124,7 +119,7 @@ static void factory_poll(uint32_t now)
         memcpy(&device.wifiModem, &saved->wifiModem, 4); // Сервер не управляет локальным выбором.
       work_release(saved, WORK_CONFIG);
       comm_channel_wifi_changed();
-      p->phase = store_snapshot() ? FACTORY_SAVE : FACTORY_ERROR;
+      flash_job.step = store_snapshot() ? FACTORY_SAVE : FACTORY_ERROR;
       return;
     }
     p->address = mem[p->block].start & ~4095u;
@@ -136,11 +131,6 @@ static void factory_poll(uint32_t now)
     }
   }
   bool partial = p->address < mem[p->block].start || p->address + 4096 > p->end;
-  bool accepted = partial ? sj_runtime_begin(p->address, factory_chunk, NULL) :
-    w25_async_start(p->address, NULL, 0, now);
-  if (!accepted) {
-    factory_done(false);
-    return;
-  }
-  p->pending = partial ? 2 : 1;
+  if (partial) fx_journal(p->address, factory_chunk, NULL, FACTORY_ERASED);
+  else fx_start(p->address, NULL, 0, now, FACTORY_ERASED);
 }

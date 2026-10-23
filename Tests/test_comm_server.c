@@ -1,12 +1,13 @@
 /* Доработка: Кряжев А., 2026. Модель суток и серверных отказов; без платы.
    Периферия и время моделируются; код проверяемого модуля берётся из проекта.
    Каждый сценарий проверяет наблюдаемое поведение без платы и сервера. */
-static struct {
+typedef struct { /* device_s: таблицы полей кадров берут смещения из этого типа */
   int8_t connectionhandle; uint8_t registredOnServer, answerTimeout, answerID;
   char IMEIGSM[16]; uint8_t protocolVersion, hardwareVersion;
   uint32_t datetime, datetimeID, datetimeGroup, datetimeShedule, datetimeConfig, datetimeHoliday;
   uint16_t status; uint8_t firmwarePercent; char callingnumber[21];
-} device;
+} device_s;
+static device_s device;
 #define CH_SERVER 1
 static uint8_t flash_model[2u * 1024u * 1024u], flash_before[sizeof(flash_model)];
 static unsigned server_commands, server_sessions, event13, event_retry;

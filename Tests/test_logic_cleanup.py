@@ -109,8 +109,7 @@ def rx_contracts():
     drain_rx(machine); assert len(machine.sent) == 1
     checks += 1
     machine = rx_machine(); receive(machine, good[:8], 8)
-    for name in ('photo_connection_lost', 'fw_service_quiet', 'upload_runtime_quiet',
-                 'table_runtime_quiet', 'service_crc_quiet'):
+    for name in ('photo_connection_lost', 'flash_exec_quiet'):
         machine.stubs[machine.addr(name)] = machine.ret
     machine.checked('user_comm_session', 1); assert not used(machine)
     receive(machine, good, 3); assert len(machine.sent) == 1

@@ -1,7 +1,7 @@
 // Доработка: Кряжев А., 2026
 // Фоновые CRC таблиц, настроек и сегментов ID.
 // Чтение ограничено фрагментами 64 Б и временем одного прохода.
-// Собственный ответ ждёт свободного канала; SLDN собирает packet.c.
+// Готовый кадр уходит отложенным ответом исполнителя; SLDN собирает packet.c.
 #include "runtime_internal.h"
 #include "fast_kernels.h"
 #include "../sched16.h"
@@ -16,7 +16,7 @@ enum {
 typedef struct {
   uint32_t address,real,erased,datetime;
   uint16_t crc;
-  uint8_t kind,failed,channel,uniq,segment,index;
+  uint8_t kind,failed,segment,index;
   uint16_t length;
   uint8_t waiting;
   uint32_t used;
@@ -40,12 +40,7 @@ void service_crc_cancel(void)
   service_crc_s *p;
   p = sc_current();
   if (p) sc_finish(FX_CANCELLED);
-}
-// Отменяет запрос CRC закрывшегося канала.
-void service_crc_quiet(uint8_t channel)
-{
-  service_crc_s *p = sc_current();
-  if (p && p->channel == channel) service_crc_cancel();
+  fx_reply_drop(FX_CRC);
 }
 // Создаёт запрос CRC и готовит общие поля тела ответа.
 static uint8_t sc_begin(uint8_t kind,uint8_t channel,uint8_t uniq,uint8_t index)
@@ -58,8 +53,6 @@ static uint8_t sc_begin(uint8_t kind,uint8_t channel,uint8_t uniq,uint8_t index)
   }
   memset(p,0,sizeof *p);
   p->kind=kind;
-  p->channel=channel;
-  p->uniq=uniq;
   p->index=index;
   p->used=id_used_bytes;
   p->datetime=config.datetime;
@@ -73,6 +66,8 @@ static uint8_t sc_begin(uint8_t kind,uint8_t channel,uint8_t uniq,uint8_t index)
     work_release(p, WORK_SERVICE);
     return 0;
   }
+  flash_job.channel=channel;
+  flash_job.uniq=uniq;
   return 1;
 }
 // Начинает расчёт CRC всех таблиц для команды 17.
@@ -172,7 +167,10 @@ read_more:
     flash_job.step=SC_SEND;
     return;
   }
-  if(reply_send(p->packet,p->length,p->channel)) sc_finish(p->failed ? FX_ERROR : FX_OK);
+  // Кадр уходит отложенным ответом исполнителя; память вернёт он же.
+  if(fx_reply.kind) return;
+  fx_reply_post(FX_CRC,p,p->packet,p->length,flash_job.channel);
+  flash_exec_finish(p->failed ? FX_ERROR : FX_OK);
   return;
 bad:
   p->failed = 1;

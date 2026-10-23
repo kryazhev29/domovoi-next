@@ -1,7 +1,7 @@
 """Контракты единственного исполнителя в связанном IAR ELF."""
 from storage_machine import StorageMachine
 
-NONE, IDCLEAR, EXPIRY, FWSERVICE, UPLOAD, INDEX, CRC, TABLE, PHOTO, FWBLOCK, LOG, CONFIG, STORE = range(13)
+NONE, IDCLEAR, EXPIRY, FWSERVICE, UPLOAD, INDEX, CRC, TABLE, PHOTO, FWBLOCK, LOG, CONFIG, STORE, FACTORY = range(14)
 IDLE, PENDING, OK, ERROR, CANCELLED = range(5)
 
 
@@ -124,7 +124,7 @@ def migrated_lifetimes():
         assert m.read_budget <= 256 and not m.io_budget
         if state(m)[2] != PENDING:break
     else:raise AssertionError('CRC did not finish')
-    assert state(m) == (CRC, 4, OK) and m.sent == [m.expected(17)]
+    assert state(m) == (CRC, 4, OK) and m.sent == [m.expected(17)] and not m.reply_kind()
     assert not m.checked('flash_exec_idle')
     retained = context(m)
     before = dict(m.counts)

@@ -34,7 +34,7 @@ class ClearMachine(StorageMachine):
     # Начинает очистку через настоящий вход команды 103.
     def start_clear(self,channel=0,uniq=7):return self.checked('idclear_runtime_begin',channel,uniq)
     # Читает признак незавершённой очистки базы.
-    def clear_active(self):return self.exec_active(1)!=0
+    def clear_active(self):return self.exec_active(1)!=0 or self.reply_kind()==1
     # Выполняет шаг очистки и проверяет бюджет обмена.
     def clear_tick(self):
         if not self.clear_active():
@@ -77,7 +77,11 @@ def success_and_heap():
         m.clear_tick()
         if m.counts['poll']<6:assert m.counters()==(7,129,8192)
     assert m.counters()==(0,0,0) and m.flash[BASE:BASE+8192]==b'\xff'*8192
-    assert m.wires==[wire()]*4 and m.io is None
+    assert m.wires==[wire()]*4
+    for _ in range(50): # ответ ушёл без флеша: начатый квант индекса завершается отдельно
+        if m.io is None:break
+        m.now+=1;m.checked('user_storage_poll')
+    assert m.io is None
     for slot,p in live:drop(m,slot,p)
     assert owned(m)==0
     small={'passes':len(m.passes),'maximum_instructions':max(m.passes),
@@ -113,7 +117,7 @@ def sessions_cancel_faults():
         m=ClearMachine();assert m.start_clear();m.clear_tick()
         if event=='epoch':m.write(m.addr('usb_bus_resets'),1)
         elif event=='savereset':m.checked('user_savereset')
-        else:m.checked('idclear_runtime_quiet',int(event=='quiet_server'))
+        else:m.checked('flash_exec_quiet',int(event=='quiet_server'))
         m.clear_drain();assert m.io is None
         assert m.wires==([wire()] if event=='quiet_server' else [])
         assert m.counters()==((7,129,8192) if event=='savereset' else (0,0,0));count+=1

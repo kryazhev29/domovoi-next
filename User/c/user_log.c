@@ -60,11 +60,6 @@ void log_setTime(uint32_t now){
   log_flushPending();
 }
 
-// Разрешить запись очереди после появления времени или истечения ожидания.
-void log_checkPending(void){
-  if (log_pendingCount && (log_timeKnown || device.worktime >= LOG_TIME_WAIT)) log_flushPending();
-}
-
 // Принять событие в ограниченную очередь журнала.
 static bool log_put(cellLog_s *cell){
   /* Запись во флеш делает только владелец журнала (log_storage_poll): здесь только очередь. */

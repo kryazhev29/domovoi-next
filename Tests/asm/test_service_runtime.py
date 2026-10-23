@@ -85,7 +85,7 @@ class ServiceMachine(StorageMachine):
 
     # Читает признак незавершённой операции связанного кода.
     def active(self):
-        return self.exec_active(6) != 0
+        return self.exec_active(6) != 0 or self.reply_kind() == 6
 
     # Выполняет один проход хранения и проверяет его бюджет.
     def tick(self):
@@ -178,7 +178,7 @@ def faults_and_lifetime():
                             ('usb_reset', 0), ('reset', 0)):
         m = ServiceMachine(); m.packet(17, channel=channel); m.tick()
         if action == 'cancel': m.checked('service_crc_cancel')
-        elif action == 'quiet': m.checked('service_crc_quiet', channel)
+        elif action == 'quiet': m.checked('flash_exec_quiet', channel)
         elif action == 'reconnect': m.checked('user_comm_session', 0)
         elif action == 'usb_reset': m.write(m.addr('usb_bus_resets'), 1)
         else: m.checked('user_savereset')
@@ -205,7 +205,7 @@ def faults_and_lifetime():
     drop(m,TABLE,held);m.restored_heap();checks += 1
 
     m = ServiceMachine(); m.packet(17)
-    m.checked('service_crc_quiet', 1)
+    m.checked('flash_exec_quiet', 1)
     m.u.reg_write(UC_ARM_REG_PRIMASK, 1)
     m.drain(); assert m.sent == [m.expected(17)]
     assert m.u.reg_read(UC_ARM_REG_PRIMASK) == 1

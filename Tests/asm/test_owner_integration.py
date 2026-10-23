@@ -54,6 +54,8 @@ def clear_scheduler():
         m = ClearMachine(); m.parse(); assert m.clear_active()
         costs = []
         for i in range(500):
+            if not m.exec_active(1):
+                m.clear_drain(); break # ответ уходит уже без работы
             for gate in ('flash_exec_idle', 'flash_exec_read_allowed',
                          'flash_exec_idle', 'flash_exec_read_allowed'):
                 assert not m.checked(gate), (action, gate)

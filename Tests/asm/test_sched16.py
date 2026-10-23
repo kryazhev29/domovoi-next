@@ -282,7 +282,7 @@ def factory_schedule(m):
     for _ in range(5000):
         m.now += 1
         m.checked('user_storage_poll')
-        if not m.exec_active(12):
+        if not m.exec_active(13):
             return m.checked('mem_recover',budget=3000000)
     raise AssertionError('factory schedule clear did not finish')
 

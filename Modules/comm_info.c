@@ -93,9 +93,10 @@ static void info_line(const uint8_t *p, uint16_t n)
   }
   else if (comm_at_prefix(p, n, "+QNWINFO:")) {
     memset(info.v.operator_code, 0, sizeof(info.v.operator_code));
-    const uint8_t *field = memchr(p, ',', n);
-    if (field) {
-      uint16_t pos = comm_at_spaces(p, n, (uint16_t)(field - p + 1u));
+    uint16_t comma = 0;
+    while (comma < n && p[comma] != ',') ++comma;
+    if (comma < n) {
+      uint16_t pos = comm_at_spaces(p, n, (uint16_t)(comma + 1u));
       uint8_t digits = 0;
       if (pos < n && p[pos++] == '"') {
         while (pos < n && digits < 6u && p[pos] >= '0' && p[pos] <= '9')

@@ -20,6 +20,8 @@ void log_ring_sent(uint8_t channel,uint8_t uniq,uint32_t next);
 uint8_t log_ring_init_step(void);
 // Возвращает первую запись самого старого сектора.
 uint32_t log_ring_next(uint32_t),log_ring_seek(uint32_t);
+// Считает по счётчикам кольца записи секторов, следующих за сектором адреса.
+uint16_t log_ring_count_after(uint32_t);
 // Запрашивает повторное восстановление состояния кольца.
 void log_ring_invalidate(void);
 // Публикует в ОЗУ результат полной проверенной очистки STORE.

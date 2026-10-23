@@ -171,7 +171,7 @@ bool mem_config_begin(const uint8_t *first, const uint8_t *second)
   if (table_fault || sj_runtime_blocked() || cfg_job.result || w25_async_active() || !cfg_boot_done) return false;
   cfg_job.snapshot = work_acquire(1024, WORK_CONFIG);
   if (!cfg_job.snapshot) return false;
-  if (flash_job.kind != FX_STORE && flash_job.kind != FX_FWSERVICE &&
+  if (flash_job.kind != FX_STORE && flash_job.kind != FX_FACTORY && flash_job.kind != FX_FWSERVICE &&
       !flash_exec_begin(FX_CONFIG, NULL)) {
     work_release(cfg_job.snapshot, WORK_CONFIG);
     cfg_job.snapshot = NULL;

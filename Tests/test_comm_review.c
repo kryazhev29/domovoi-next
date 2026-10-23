@@ -62,7 +62,7 @@ static void review_settings(void)
   strcpy(config.netOperator, "private.apn,user,password");
   slm.apn.source = SLM_APN_MANUAL;
   char cmd[128];
-  const char *apn = slm_steps[SLM_APN - SLM_AT_READY].command;
+  const char *apn = comm_at_nth(slm_commands, SLM_APN - SLM_AT_READY);
   comm_modem_build(cmd, sizeof(cmd), apn, NULL, 0);
   CHECK(!strcmp(cmd, "AT+QICSGP=1,1,\"private.apn\",\"user\",\"password\",1"));
   strcpy(config.netOperator, "private.apn");
@@ -74,7 +74,7 @@ static void review_settings(void)
   strcpy(config.netOperator, "bad\"apn"); CHECK(!comm_modem_valid_settings());
   config.netOperator[0] = 0;
   static const uint8_t expected[] = {0, 1, 0, 5, 3};
-  const char *rat = slm_steps[SLM_RAT_SET - SLM_AT_READY].command;
+  const char *rat = comm_at_nth(slm_commands, SLM_RAT_SET - SLM_AT_READY);
   for (unsigned i = 0; i < sizeof(expected); ++i) {
     config.netType = (uint8_t)i;
     comm_modem_build(cmd, sizeof(cmd), rat, NULL, 0);

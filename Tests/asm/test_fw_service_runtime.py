@@ -39,9 +39,20 @@ class FirmwareMachine(UploadMachine):
             self.alloc_trace.append(('snapshot',0));self.snapshot_ctx=self.ptr()
         if a==self.addr('mem_config_begin'):self.alloc_trace.append(('config_begin',0))
     # Читает адрес текущего контекста из связанного образа.
-    def ptr(self):return self.read_word(self.addr('flash_job')+4) if self.exec_active(3) else self.read_word(self.addr('fw_reply'))
-    # Читает фазу рабочего автомата.
-    def phase(self):return self.read_word(self.addr('flash_job')+1,1)&127 if self.exec_active(3) else self.read_word(self.ptr()+120,1) if self.ptr() else 0
+    def ptr(self):
+        if self.exec_active(3):return self.read_word(self.addr('flash_job')+4)
+        r=self.addr('fx_reply');f=fields('fx_reply_s')
+        return self.read_word(r+f['context']) if self.read_word(r+f['kind'],1)==3 else 0
+    # Читает фазу рабочего автомата: отложенный ответ — 16, после него — шаг возобновления.
+    def phase(self):
+        if self.exec_active(3):return self.read_word(self.addr('flash_job')+1,1)
+        if not self.ptr():return 0
+        r=self.addr('fx_reply');f=fields('fx_reply_s')
+        return 16 if self.read_word(r+f['packet']) else self.read_word(r+f['resume'],1)
+    # Подавлен ли ответ текущей работы либо отложенный ответ.
+    def quiet(self):
+        if self.exec_active(3):return self.read_word(self.addr('flash_job')+fields('flash_exec_job_t')['quiet'],1)
+        return self.read_word(self.addr('fx_reply')+fields('fx_reply_s')['quiet'],1)
     # Готовит базу и метаданные заданного сценария.
     def fixture(self,size=132):
         self.image=bytes((i*17+3)&255 for i in range(size));self.head=header(self.image)

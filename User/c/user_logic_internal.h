@@ -62,6 +62,8 @@ void server_rx_process(void);
 // Распознать кадр, CRC которого уже проверена сборщиком.
 // Вернуть свободное место для QIRD-backpressure.
 uint16_t user_comm_rx_capacity(void);
+bool text_terminated(const char *text, size_t capacity);
+void store_reset_request(void);
 // Принять очередную часть ещё не завершённого QIRD.
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count);
 // Разрешить разбор законченного QIRD либо отбросить его при ошибке.
@@ -129,8 +131,6 @@ uint8_t shedule_window(const cellShedule_s *s);
 bool log_blank(const cellLog_s *cell);
 // Пометить текущую запись отменённой без раннего освобождения флеша.
 void fw_async_cancel(void);
-// Подавить ответ записи при закрытии её канала.
-void fw_async_quiet(dataChanel_e channel);
 // Зафиксировать уникальный номер ответа текущему блоку.
 void fw_async_reply(uint8_t id);
 // Продвинуть проверенную запись блока и CRC полного образа.

@@ -179,10 +179,9 @@ static void wifi_asked(void) { wf.f.asking=0; wf.f.info=0; wf.info_at=ch.now; }
 
 static void wifi_begin(uint8_t op)
 {
-  static const char * const command[]={"TCPDIS=off", "TCPDISB=off,1", "E=off", "WMODE=STA",
-    "WSSSID=", "WSKEY=", "EVENT=on", "TCPTO=0", "NETP=TCP,CLIENT,", "TMODE=throughput",
-    "Z", "TCPLK", "WSLK", "PING=ya.ru", "TCPDIS=on,0", "WSLQ", "WSCAN"};
-  const char *text=command[op-W_OFF], *tail=NULL;
+  static const char commands[]="TCPDIS=off\0TCPDISB=off,1\0E=off\0WMODE=STA\0WSSSID=\0WSKEY=\0EVENT=on\0TCPTO=0\0"
+    "NETP=TCP,CLIENT,\0TMODE=throughput\0Z\0TCPLK\0WSLK\0PING=ya.ru\0TCPDIS=on,0\0WSLQ\0WSCAN";
+  const char *text=comm_at_nth(commands,(uint8_t)(op-W_OFF)), *tail=NULL;
   uint16_t number=0;
   if (op == W_OFF) tail=wf.f.ready && !wf.f.stop ? ",0" : ",1";
   if (op == W_SET_SSID) tail=(const char *)frame;

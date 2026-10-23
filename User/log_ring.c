@@ -12,7 +12,7 @@ enum {
     LOG_COMMIT=4, LOG_PUBLISH=5, LOG_REPAIR=6,
     LOG_REPLAY=7, LOG_CLOSE=10, LOG_INTENT=11, LOG_ERASE=12,
     LOG_HEADER=13, LOG_HEADER_COMMIT=14, LOG_ROTATED=15,
-    LOG_WRITE_WAIT=16, LOG_RETRY_INIT=17, LOG_RETRY_REPAIR=18
+    LOG_RETRY_INIT=17, LOG_RETRY_REPAIR=18
 };
 extern bool log_blank(const cellLog_s *);
 extern uint32_t log_lastIndex;
@@ -156,6 +156,14 @@ uint32_t log_ring_seek(uint32_t cursor)
   }
   return chosen==NONE?0:sector(chosen)+32u;
 }
+// Остаток выгрузки после сектора курсора: записи позднейших секторов целиком новее курсора,
+// их число даёт кольцо без чтения флеш.
+uint16_t log_ring_count_after(uint32_t address)
+{
+  uint16_t total=0;
+  for(uint8_t n=next_sector((uint8_t)((address-mem[MB_LOG].start)/4096u));n!=NONE;n=next_sector(n)) total+=lr.count[n];
+  return total;
+}
 // Продвигает адрес, полученный из кольца, до следующей записи.
 uint32_t log_ring_next(uint32_t address)
 {
@@ -207,14 +215,6 @@ static uint8_t fail(uint32_t now,bool rotation)
   } else flash_job.step=LOG_RETRY_REPAIR;
   return 3;
 }
-// Запускает проверяемую команду W25, сохраняя её следующий шаг.
-static bool start(uint32_t a,const uint8_t *p,uint16_t n,uint32_t now,uint8_t after)
-{
-  if(!w25_async_start(a,p,n,now)) return false;
-  log_job.after = after;
-  flash_job.step = LOG_WRITE_WAIT;
-  return true;
-}
 // Выбирает свободный сектор либо самый старый хвост кольца.
 static void target_select(void)
 {
@@ -247,16 +247,12 @@ uint8_t log_async_step(uint32_t now)
   uint16_t crc;
   if (flash_job.kind != FX_LOG) return 0;
   if (flash_job.result != FX_PENDING) return flash_job.result == FX_OK ? 2 : 3;
+  if (fx_waiting(now)) return 1;
+  // Ротация начинается с закрытия сектора: её отказ требует перечитать кольцо.
+  if (flash_job.step == FX_STEP_FAIL) return fail(now,flash_job.next>=LOG_CLOSE);
   if (flash_job.step == LOG_RETRY_INIT || flash_job.step == LOG_RETRY_REPAIR) {
     if ((int32_t)(now - log_job.retry_at) < 0) return 3;
     flash_job.step = flash_job.step == LOG_RETRY_INIT ? LOG_INIT : LOG_REPAIR;
-  }
-  if (flash_job.step == LOG_WRITE_WAIT) {
-    result=w25_async_poll(now);
-    if(result==1) return 1;
-    if(result!=2) return fail(now,log_job.after>=LOG_CLOSE);
-    flash_job.step=log_job.after;
-    return 1;
   }
   if(!w25_read_available()) return 1;
   switch(flash_job.step) {
@@ -301,10 +297,10 @@ uint8_t log_async_step(uint32_t now)
     flash_job.step=LOG_BODY;
     return 1;
   case LOG_BODY:
-    if(!start(log_job.address,(uint8_t *)&log_job.cell,28,now,LOG_COMMIT)) return fail(now,false);
+    fx_start(log_job.address,(uint8_t *)&log_job.cell,28,now,LOG_COMMIT);
     return 1;
   case LOG_COMMIT:
-    if(!start(log_job.address+28,(uint8_t *)&log_job.cell+28,4,now,LOG_PUBLISH)) return fail(now,false);
+    fx_start(log_job.address+28,(uint8_t *)&log_job.cell+28,4,now,LOG_PUBLISH);
     return 1;
   case LOG_PUBLISH: return log_publish();
   case LOG_REPAIR:
@@ -325,14 +321,15 @@ uint8_t log_async_step(uint32_t now)
     return 1;
   case LOG_CLOSE:
     lr.word=pair(lr.count[lr.head]);
-    if(!start(sector(lr.head)+20,(uint8_t *)&lr.word,4,now,LOG_INTENT)) return fail(now,true);
+    fx_start(sector(lr.head)+20,(uint8_t *)&lr.word,4,now,LOG_INTENT);
     return 1;
   case LOG_INTENT:
     lr.word=pair(lr.target);
-    if(!start(sector(lr.head)+24,(uint8_t *)&lr.word,4,now,LOG_ERASE)) return fail(now,true);
+    fx_start(sector(lr.head)+24,(uint8_t *)&lr.word,4,now,LOG_ERASE);
     return 1;
   case LOG_ERASE:
-    if(!start(sector(lr.target),0,0,now,LOG_HEADER)) return fail(now,true);
+    fx_start(sector(lr.target),0,0,now,LOG_HEADER);
+    if(!flash_job.wait) return 1;
     device.logsCount-=lr.count[lr.target];
     lr.count[lr.target]=0;
     lr.live&=~(1u<<lr.target);
@@ -344,10 +341,10 @@ uint8_t log_async_step(uint32_t now)
     lr.header[3]=log_lastIndex;
     lr.header[4]=~log_lastIndex;
     lr.header[5]=lr.header[6]=lr.header[7]=0xffffffffu;
-    if(!start(sector(lr.target)+4,(uint8_t *)lr.header+4,16,now,LOG_HEADER_COMMIT)) return fail(now,true);
+    fx_start(sector(lr.target)+4,(uint8_t *)lr.header+4,16,now,LOG_HEADER_COMMIT);
     return 1;
   case LOG_HEADER_COMMIT:
-    if(!start(sector(lr.target),(uint8_t *)lr.header,4,now,LOG_ROTATED)) return fail(now,true);
+    fx_start(sector(lr.target),(uint8_t *)lr.header,4,now,LOG_ROTATED);
     return 1;
   case LOG_ROTATED:
     lr.head=lr.target;

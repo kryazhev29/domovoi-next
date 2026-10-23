@@ -1,7 +1,7 @@
 // Доработка: Кряжев А., 2026
 // Выгрузка журнала и временных ID с устойчивыми курсорами подтверждения.
 // Кадр принадлежит автомату до успешной передачи; общий формат задаёт packet.c.
-// Отмена освобождает память, не подтверждая неотправленные записи.
+// Готовый кадр уходит отложенным ответом исполнителя; отмена освобождает память без подтверждения.
 #include "runtime_internal.h"
 #include "../log_ring.h"
 #include "../photo.h"
@@ -10,7 +10,6 @@ enum {
   UP_COPY=3, UP_FRAME=4, UP_SEND=5
 };
 extern uint16_t temp_unacked[2];
-extern uint32_t log_lastIndex;
 extern bool store_upload_request(uint8_t,dataChanel_e,uint8_t);
 extern void store_finish(uint8_t);
 extern uint16_t temp_index(dataChanel_e);
@@ -18,33 +17,21 @@ extern bool log_valid(const cellLog_s *);
 extern bool store_temp_ack(dataChanel_e);
 typedef struct {
   uint8_t *packet;
-  uint32_t pos,limit,epoch;
+  uint32_t pos,limit;
   uint16_t total,first,wanted,copied,seen,length;
-  uint8_t command,channel,uniq,reply_step;
+  uint8_t command,channel,uniq;
 } upload_s;
-RT_ASSERT(upload_size,sizeof(upload_s)==32);
-static upload_s *upload_reply;
+RT_ASSERT(upload_size,sizeof(upload_s)==28);
 // По одному намерению на канал; state: 1 ждёт, 2 принято, 3 завершено/истекло.
 static struct {
   uint32_t until;
   uint8_t command, uniq, state, ttl;
 } upload_pending[2];
-static upload_s *upload_current(void)
+// Контекст выгрузки: принятая работа либо отложенный ответ исполнителя.
+static upload_s *upload_busy(void)
 {
-  return flash_job.kind == FX_UPLOAD && flash_job.result == FX_PENDING ? flash_job.data.context : upload_reply;
-}
-static uint8_t up_phase(const upload_s *p)
-{
-  return flash_job.kind == FX_UPLOAD && flash_job.result == FX_PENDING ? flash_job.step : p->reply_step;
-}
-static void up_step(upload_s *p, uint8_t step)
-{
-  if (flash_job.kind == FX_UPLOAD && flash_job.result == FX_PENDING) flash_job.step = step;
-  else p->reply_step = step;
-  if (step == UP_SEND) {
-    upload_reply = p;
-    p->reply_step = step;
-  }
+  if (flash_job.kind == FX_UPLOAD && flash_job.result == FX_PENDING) return flash_job.data.context;
+  return fx_reply.kind == FX_UPLOAD ? fx_reply.context : NULL;
 }
 // Возвращает оба участка выгрузки; USB удерживает заимствованный кадр до завершения.
 static void upload_release(upload_s *p)
@@ -66,20 +53,19 @@ static upload_s *upload_acquire(void)
 // Освобождает кадр и контекст без подтверждения неотправленных данных.
 void upload_runtime_cancel(void)
 {
-  upload_s *p=upload_current();
+  upload_s *p=upload_busy();
   if(!p) return;
   if (upload_pending[p->channel].command == p->command && upload_pending[p->channel].uniq == p->uniq)
     upload_pending[p->channel].state = 3;
-  if (upload_reply == p) upload_reply = NULL;
-  if (flash_job.kind == FX_UPLOAD) flash_exec_finish(FX_CANCELLED);
+  if (fx_reply.kind == FX_UPLOAD) fx_reply_forget();
+  else flash_exec_finish(FX_CANCELLED);
   upload_release(p);
 }
-// Останавливает выгрузку при закрытии её канала.
+// Закрытый канал снимает намерение и неподтверждённый кадр; работу и ответ глушит исполнитель.
 void upload_runtime_quiet(uint8_t channel)
 {
   if (channel < 2) memset(&upload_pending[channel], 0, sizeof(upload_pending[0]));
   log_ring_quiet(channel);
-  if(upload_current() && upload_current()->channel==channel) upload_runtime_cancel();
 }
 // Отказ сохранения ACK возвращает принятое намерение в очередь с прежним сроком.
 void upload_pending_retry(uint8_t channel)
@@ -131,8 +117,9 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
 {
   upload_s *p;
   unsigned part=command==10?MB_LOG:MB_TEMPID;
+  uint8_t step=command==10?UP_INIT:UP_COUNT;
   if(channel>1) return false;
-  if(upload_current() || !flash_exec_idle() || !flash_exec_read_allowed()) return false;
+  if(upload_busy() || !flash_exec_idle() || !flash_exec_read_allowed()) return false;
   p=upload_acquire();
   if(!p) return false;
   if(!store_upload_request(command,channel,uniq)) { upload_release(p);
@@ -152,50 +139,65 @@ bool upload_runtime_begin(uint8_t command,dataChanel_e channel,uint8_t uniq)
   p->command=command;
   p->channel=channel;
   p->uniq=uniq;
-  p->reply_step=command==10?UP_INIT:UP_COUNT;
-  p->epoch=usb_bus_resets;
   p->pos=mem[part].start;
   p->limit=p->pos+mem[part].size;
   if(command==9) { p->pos=temp_normalize(temp_index(channel)); p->limit=temp_normalize(temp_next); }
-  flash_exec_args_t args = { p, p->reply_step };
+  flash_exec_args_t args = { p, step };
   if (!flash_exec_begin(FX_UPLOAD, &args)) {
     upload_release(p);
     return false;
   }
+  flash_job.channel=channel;
+  flash_job.uniq=uniq;
   return true;
 }
-// Считает записи, заполняет тело кадра и передаёт его выбранному каналу.
+// Ушедший кадр публикует неподтверждённую границу; подавленный ничего не двигает.
+uint8_t upload_sent(void *context, bool sent)
+{
+  upload_s *p=context;
+  if(sent && p->wanted) {
+    if(p->command==10) { log_ring_sent(p->channel,p->uniq,p->limit);
+    if(p->channel) device.status.readyLogData=1;
+    }
+    else { temp_unacked[p->channel]=p->seen;
+    device.status.readyID=1;
+    }
+  }
+  upload_runtime_cancel();
+  return 0;
+}
+// Считает записи, заполняет тело кадра и отдаёт его исполнителю для отправки.
 void upload_runtime_poll(void)
 {
-  upload_s *p=upload_current();
+  upload_s *p=flash_job.data.context;
   uint32_t record[8];
   uint8_t *b=(uint8_t *)record;
   uint16_t n;
   uint8_t command,result;
-  if(!p) return;
+  if(flash_job.kind != FX_UPLOAD || flash_job.result != FX_PENDING) return;
   command=p->command;
-  if(!p->channel && p->epoch!=usb_bus_resets) goto cancel;
-  switch(up_phase(p)) {
+  switch(flash_job.step) {
   case UP_INIT:
     result=log_ring_init_step();
     if(result==3) goto cancel;
     if(result==2) { p->pos=log_ring_seek(log_cursor32[p->channel]);
-    up_step(p, UP_COUNT);
+    flash_job.step=UP_COUNT;
     }
     return;
   case UP_COUNT:
     if(command==10) {
+      // Читается только сектор курсора; записи позднейших секторов считает кольцо.
       if(p->pos) {
+        uint32_t next;
         if(!w25_read_data(p->pos,b,32)) goto cancel;
-        if(log_valid((const cellLog_s *)b)) {
-          p->seen++;
-          if(record[0]>=log_cursor32[p->channel]) p->total++;
-          if(log_lastIndex<record[0]) log_lastIndex=record[0];
+        if(log_valid((const cellLog_s *)b) && record[0]>=log_cursor32[p->channel]) p->total++;
+        next=log_ring_next(p->pos);
+        if(next && ((next^p->pos)&~4095u)) { p->total+=log_ring_count_after(p->pos);
+        next=0;
         }
-        p->pos=log_ring_next(p->pos);
+        p->pos=next;
         return;
       }
-
     } else {
       if(p->pos!=p->limit) {
         uint32_t address=temp_address((uint16_t)p->pos);
@@ -206,9 +208,6 @@ void upload_runtime_poll(void)
       }
     }
     if(p->total<=p->first) {
-      upload_reply = p;
-      flash_exec_finish(FX_OK);
-      flash_exec_take_result();
       store_finish(command);
       p->length=14;
       p->packet[6]=255;
@@ -217,14 +216,14 @@ void upload_runtime_poll(void)
       p->packet[9]=p->packet[10]=p->packet[11]=0;
       p->wanted=0;
       packet_frame(p->packet,p->length-8);
-      up_step(p, UP_SEND);
-      return;
+      flash_job.step=UP_SEND;
+      goto send;
     }
     n=p->total-p->first;
     if(n>(command==10?32:100)) n=command==10?32:100;
     p->wanted=n;
     p->length=n*(command==10?32:10)+14;
-    up_step(p, UP_HEADER);
+    flash_job.step=UP_HEADER;
     return;
   case UP_HEADER:
     p->packet[6]=255;
@@ -234,7 +233,7 @@ void upload_runtime_poll(void)
     p->packet[11]=(uint8_t)p->wanted;
     p->pos=command==10?log_ring_seek(log_cursor32[p->channel]):temp_normalize(temp_index((dataChanel_e)p->channel));
     p->seen=0;
-    up_step(p, UP_COPY);
+    flash_job.step=UP_COPY;
     return;
   case UP_COPY:
     if(command!=10) {
@@ -255,33 +254,20 @@ void upload_runtime_poll(void)
       record[6]=record[7]=0;
       memcpy(p->packet+12+32*p->copied,b,32);
     }
-    if(++p->copied>=p->wanted) { up_step(p, UP_FRAME);
-    }
+    if(++p->copied>=p->wanted) flash_job.step=UP_FRAME;
     return;
   case UP_FRAME:
     packet_frame(p->packet,p->length-8);
-    up_step(p, UP_SEND);
-    if (flash_job.kind == FX_UPLOAD) flash_exec_finish(FX_OK);
-    return;
+    flash_job.step=UP_SEND;
+    /* FALLTHROUGH */
   case UP_SEND:
-    if(!reply_send(p->packet,p->length,p->channel)) return;
-    if(!p->channel && p->epoch!=usb_bus_resets) goto cancel;
-    if(!p->wanted) goto cancel;
-    if(command==10) { log_ring_sent(p->channel,p->uniq,p->limit);
-    if(p->channel) device.status.readyLogData=1;
-    }
-    else { temp_unacked[p->channel]=p->seen;
-    device.status.readyID=1;
-    }
-    break;
+send:
+    // Готовый кадр отдаётся исполнителю в том же проходе; занятый слот ждёт здесь.
+    if(fx_reply.kind) return;
+    fx_reply_post(FX_UPLOAD,p,p->packet,p->length,p->channel);
+    flash_exec_finish(FX_OK);
+    return;
   default: break;
   }
 cancel: upload_runtime_cancel();
-}
-bool upload_reply_poll(void)
-{
-  upload_s *p = upload_current();
-  if (!p || up_phase(p) != UP_SEND || flash_job.kind == FX_UPLOAD) return false;
-  upload_runtime_poll();
-  return upload_current() != p;
 }

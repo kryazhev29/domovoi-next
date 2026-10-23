@@ -179,11 +179,11 @@ def mutations():
     path = 'User/log_ring.c'
     cases = {
         'step3-source': ('source_until_verify', [(path,
-            '  log_job.after = after;',
-            '  log_job.after = after;\n  memset(&log_job.cell, 0, sizeof(log_job.cell));')]),
+            '    fx_start(log_job.address,(uint8_t *)&log_job.cell,28,now,LOG_COMMIT);',
+            '    fx_start(log_job.address,(uint8_t *)&log_job.cell,28,now,LOG_COMMIT);\n    memset(&log_job.cell, 0, sizeof(log_job.cell));')]),
         'step3-publication': ('publication_after_ok', [(path,
-            '    result=w25_async_poll(now);\n    if(result==1) return 1;',
-            '    result=w25_async_poll(now);\n    if (result == 1 && log_job.after == LOG_PUBLISH) return log_publish();\n    if(result==1) return 1;')]),
+            '  if (fx_waiting(now)) return 1;',
+            '  if (fx_waiting(now)) return flash_job.next == LOG_PUBLISH ? log_publish() : 1;')]),
     }
     return run(cases, 'test_flash_executor_step3', 'executor-step3-mutations')
 

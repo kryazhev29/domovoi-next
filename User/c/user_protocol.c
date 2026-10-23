@@ -2,15 +2,40 @@
 // Тела ответов SLDN, состояние ожидания и уведомления о синхронизации.
 // Заголовок и CRC формирует packet.c; ответ 11 полностью формирует answer11.
 // Канал владеет TX после принятия; неподтверждённые данные остаются у своих владельцев.
+// Поля device копируются в кадр по таблицам; packet_send молчит на чужом канале.
 #include "user_logic_internal.h"
 #include "../../Modules/comm_server.h"
 #include "prof.h"
+#include <stddef.h>
 enum { STATUS_EVENT_MASK = 0x28FFu, STATUS_EVENT_GAP_MS = 1000u };
 uint8_t sync_pending, sync_quiet;
 static struct { uint8_t due, percent, code, id; } fw_status_pending;
 static struct { uint8_t state; char id[10]; } reader_out;
 static uint16_t status_reported;
 static uint32_t status_reported_ms;
+// Поле кадра из device: позиция в кадре, смещение в device, длина.
+typedef struct { uint8_t dst, src, len; } field_s;
+#define F(dst, name, len) { dst, offsetof(device_s, name), len }
+#define FIELDS(t) t, sizeof(t) / sizeof *(t)
+static const field_s reg_fields[] = { // регистрация 1
+  F(9, IMEIGSM, 15), F(24, protocolVersion, 2), F(26, datetimeID, 4), F(30, datetimeGroup, 4),
+  F(34, datetimeShedule, 4), F(38, datetimeConfig, 4), F(42, datetimeHoliday, 4)
+};
+static const field_s status_fields[] = { F(9, datetime, 4), F(13, status, 2) }; // статус 1
+static const field_s status2_fields[] = { // статус 2
+  F(9, datetime, 4), F(13, csq, 1), F(14, balance, 2), F(16, firmwareVersion, 1),
+  F(17, buildDate, 4), F(21, bootVersion, 1), F(22, peripheryState, 8)
+};
+static const field_s ident_fields[] = { F(9, IMEIGSM, 15) }; // идентификация 100
+// Слитые поля таблиц лежат в device подряд.
+typedef char fields_adjacent[(offsetof(device_s, hardwareVersion) == offsetof(device_s, protocolVersion) + 1u &&
+                              offsetof(device_s, cgreg) == offsetof(device_s, creg) + 1u) ? 1 : -1];
+static const field_s cfg_status_fields[] = { // статус конфигуратора 101
+  F(9, datetime, 4), F(13, status, 2), F(15, firmwareVersion, 1), F(16, buildDate, 4),
+  F(20, bootVersion, 1), F(21, hardwareVersion, 1), F(22, csq, 1), F(23, balance, 2),
+  F(25, creg, 2), F(27, connected, 1), F(28, netType, 1), F(29, peripheryState, 8),
+  F(37, numbersCount, 2), F(39, moduleType, 1)
+};
 
 // Отметить таблицу для уведомления об окончании синхронизации.
 void sync_packet(uint8_t bit) { sync_pending |= bit; sync_quiet = SYNC_QUIET_S; }
@@ -48,6 +73,13 @@ static uint8_t *frame_begin(uint8_t *local, uint16_t size, dataChanel_e cch, uin
   return b;
 }
 
+// Скопировать поля device в полученный кадр по таблице.
+static uint8_t *frame_fields(uint8_t *b, const field_s *f, uint8_t n)
+{
+  if (b) for (; n; --n, ++f) memcpy(b + f->dst, (const uint8_t *)&device + f->src, f->len);
+  return b;
+}
+
 // Собрать произвольное тело ответа через общий кадр SLDN.
 void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cch, uint8_t uniqId){
   // весь кадр должен помещаться в 16-битную длину транспорта
@@ -73,101 +105,34 @@ void user_send_anyData(uint8_t id, uint8_t* data, uint16_t size, dataChanel_e cc
 
 // Передать регистрацию с IMEI и таймштампами таблиц.
 void user_send_registrationData(dataChanel_e cch){
-
-  uint16_t len = 40;
   uint8_t send_local[48];
-  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, TIMETOREGRESPONSE, uniqIDCnt, 1);
-  if (!send_buffer) return;
+  uint8_t *b = frame_fields(frame_begin(send_local, sizeof send_local, cch, TIMETOREGRESPONSE, uniqIDCnt, 1), FIELDS(reg_fields));
+  if (!b) return;
   uniqIDCnt++;
-  uint32_t tmp32;
-
-  // ------- меняемый блок ---------
-  memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
-
-  send_buffer[24] = device.protocolVersion; // версия протокола
-  send_buffer[25] = device.hardwareVersion; // версия железа
-
-  tmp32 = device.datetimeID;
-  memcpy(&send_buffer[26], (uint8_t*)&tmp32, 4); // таймштамп ИД
-  tmp32 = device.datetimeGroup;
-  memcpy(&send_buffer[30], (uint8_t*)&tmp32, 4); // таймштамп групп
-  tmp32 = device.datetimeShedule;
-  memcpy(&send_buffer[34], (uint8_t*)&tmp32, 4); // таймштамп засписаний
-  tmp32 = device.datetimeConfig;
-  memcpy(&send_buffer[38], (uint8_t*)&tmp32, 4); // таймштамп конфига
-  tmp32 = device.datetimeHoliday;
-  memcpy(&send_buffer[42], (uint8_t*)&tmp32, 4); // таймштамп празников
-  // ------- меняемый блок ---------
-
-  switch (cch){
-  case CH_USB:
-    packet_send(send_buffer, len, CH_USB);
-    break;
-
-  case CH_SERVER:
-    packet_send(send_buffer, len, CH_SERVER);
-    break;
-
-  }
+  packet_send(b, 40, (uint8_t)cch);
 }
 
 // Передать статус 1 и установить срок его подтверждения.
 void user_send_statusPack(dataChanel_e cch){
-
-  uint16_t len = 18;
   uint8_t send_local[26];
-  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, TIMETOSTATUSRESPONSE, uniqIDCnt, 2);
-  if (!send_buffer) return;
+  uint8_t *b = frame_fields(frame_begin(send_local, sizeof send_local, cch, TIMETOSTATUSRESPONSE, uniqIDCnt, 2), FIELDS(status_fields));
+  if (!b) return;
   uniqIDCnt++;
-  uint32_t tmp32;
-
-  // ------- меняемый блок ---------
-  tmp32 = device.datetime;
-  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
-  memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // статус
-  tmp32 = user_comm_rx_capacity();
-  memcpy(&send_buffer[15], (uint8_t*)&tmp32, 2); // Размер буфера входящих данных
-
-  memset(&send_buffer[17], 0, 7); // резерв
-  // ------- меняемый блок ---------
-
-  switch (cch){
-  case CH_USB:
-    packet_send(send_buffer, len, CH_USB);
-    break;
-
-  case CH_SERVER:
-    comm_server_status_sent(send_buffer[7]);
-    status_event_sent((uint16_t)(send_buffer[13] | (send_buffer[14] << 8)), timers_getMillis());
-    packet_send(send_buffer, len, CH_SERVER);
-    break;
-
+  uint16_t capacity = user_comm_rx_capacity();
+  memcpy(&b[15], &capacity, 2); // Размер буфера входящих данных
+  memset(&b[17], 0, 7); // резерв
+  if (cch == CH_SERVER){
+    comm_server_status_sent(b[7]);
+    status_event_sent((uint16_t)(b[13] | (b[14] << 8)), timers_getMillis());
   }
+  packet_send(b, 18, (uint8_t)cch);
 }
 
 // Передать статус 2 с уровнем сигнала и версиями.
 void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
-
-  uint16_t len = 24;
   uint8_t send_local[32];
-  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 255, uniqId, 3);
-  if (!send_buffer) return;
-  uint32_t tmp32;
-
-  // ------- меняемый блок ---------
-  tmp32 = device.datetime;
-  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
-  send_buffer[13] = device.csq; // уровень сигнала
-  tmp32 = device.balance;
-  memcpy(&send_buffer[14], (uint8_t*)&tmp32, 2); // баланс
-  send_buffer[16] = device.firmwareVersion; // версия прошивки
-  tmp32 = device.buildDate;
-  memcpy(&send_buffer[17], (uint8_t*)&tmp32, 4); // билд
-  send_buffer[21] = device.bootVersion; // версия загрузчика
-  memcpy(&send_buffer[22], (uint8_t*)&device.peripheryState, 8); // состояние периферии
-  // ------- меняемый блок ---------
-
-  packet_send(send_buffer, len, (uint8_t)cch);
+  uint8_t *b = frame_fields(frame_begin(send_local, sizeof send_local, cch, 255, uniqId, 3), FIELDS(status2_fields));
+  if (b) packet_send(b, 24, (uint8_t)cch);
 }
 
 // Отправить ожидающий результат обновления при освобождении серверного TX.
@@ -278,64 +243,28 @@ void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataCha
 
 // Передать идентификацию устройства конфигуратору.
 void user_send_identPackToConfigurator(dataChanel_e cch){
-
-  uint16_t len = 19;
   uint8_t send_local[27];
-  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 0, 0, 100);
-  if (!send_buffer) return;
-
-  // ------- меняемый блок ---------
-  memcpy(&send_buffer[9], (uint8_t*)&device.IMEIGSM, 15);
-  if (config.pinCode == 4321u)
-    send_buffer[24] = 1;
-  else
-    send_buffer[24] = 0;
-  // ------- меняемый блок ---------
-
-  packet_send(send_buffer, len, (uint8_t)cch);
+  uint8_t *b = frame_fields(frame_begin(send_local, sizeof send_local, cch, 0, 0, 100), FIELDS(ident_fields));
+  if (!b) return;
+  b[24] = config.pinCode == 4321u;
+  packet_send(b, 19, (uint8_t)cch);
 }
 
 // Передать состояние устройства конфигуратору.
 void user_send_statusPackToConfigurator(dataChanel_e cch){
   if (id_scan_cell) return; // кадр 101 ждёт полный счёт, приёмник удерживает запрос
-
   uint16_t len = 34;
   uint8_t send_local[42 + sizeof(fault_record)];
-  uint8_t *send_buffer = frame_begin(send_local, sizeof(send_local), cch, 0, 0, 101);
-  if (!send_buffer) return;
-  uint32_t tmp32;
-
-  // ------- меняемый блок ---------
-  tmp32 = device.datetime;
-  memcpy(&send_buffer[9], (uint8_t*)&tmp32, 4); // время
-  memcpy(&send_buffer[13], (uint8_t*)&device.status, 2); // статус
-  send_buffer[15] = device.firmwareVersion; // версия прошивки
-  tmp32 = device.buildDate;
-  memcpy(&send_buffer[16], (uint8_t*)&tmp32, 4); // билд
-  send_buffer[20] = device.bootVersion; // версия загрузчика
-  send_buffer[21] = device.hardwareVersion; // версия железа
-  send_buffer[22] = device.csq; // уровень сигнала
-  tmp32 = device.balance;
-  memcpy(&send_buffer[23], (uint8_t*)&tmp32, 2); // баланс
-  send_buffer[25] = device.creg;
-  send_buffer[26] = device.cgreg;
-  send_buffer[27] = device.connected;
-  send_buffer[28] = device.netType;
-  memcpy(&send_buffer[29], (uint8_t*)&device.peripheryState, 8); // состояние периферии
-  send_buffer[37] = _1B(device.numbersCount); // использовано памяти, кол-во ID
-  send_buffer[38] = _2B(device.numbersCount);
-  send_buffer[39] = device.moduleType;
-  // ------- меняемый блок ---------
-
+  uint8_t *b = frame_fields(frame_begin(send_local, sizeof send_local, cch, 0, 0, 101), FIELDS(cfg_status_fields));
+  if (!b) return;
   /* Необязательное расширение FLT1 после исходных данных статуса. */
   if (fault_record[0] == FAULT_RECORD_MAGIC) {
     uint16_t i;
     for (i = 0; i < sizeof(fault_record); i++)
-      send_buffer[40 + i] = ((volatile uint8_t*)fault_record)[i];
+      b[40 + i] = ((volatile uint8_t*)fault_record)[i];
     len += sizeof(fault_record);
   }
-
-  packet_send(send_buffer, len, (uint8_t)cch);
+  packet_send(b, len, (uint8_t)cch);
 }
 
 // Передать конфигурацию устройства конфигуратору.
@@ -356,9 +285,8 @@ bool user_getFWblockFromServer(dataChanel_e cch, uint16_t block){
   send_buffer[9] = _1B(block);  // номер блока
   send_buffer[10] = _2B(block);
 
-  if (cch == CH_SERVER) return packet_send(send_buffer, len, CH_SERVER);
-  if (cch == CH_USB) packet_send(send_buffer, len, CH_USB);
-  return true;
+  bool sent = packet_send(send_buffer, len, (uint8_t)cch);
+  return cch != CH_SERVER || sent;
 }
 
 // Определить необходимость внеочередного статуса с ограничением частоты.

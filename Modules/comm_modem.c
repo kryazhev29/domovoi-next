@@ -554,7 +554,7 @@ static uint8_t slm_issue(uint8_t step)
 {
   char cmd[128];
   uint16_t n = comm_modem_build(cmd, sizeof(cmd),
-    slm_steps[step - SLM_AT_READY].command, NULL, 0);
+    comm_at_nth(slm_commands, (uint8_t)(step - SLM_AT_READY)), NULL, 0);
   if (n >= sizeof(cmd)) return COMM_AT_INVALID;
   comm_at_request_t req = {(const uint8_t *)cmd, n, COMM_AT_TEXT,
     comm_timeouts[slm_steps[step - SLM_AT_READY].timeout]};

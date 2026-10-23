@@ -100,8 +100,8 @@ def mutations():
     source = (ROOT/'User/c/photo_runtime.inc').read_text(encoding='utf-8')
     mutations = {}
     for phase in ('PR_REQUEST_ERROR', 'PR_OFFSET_ERROR'):
-        old = 'if (!pj.quiet && photo->channel == CH_SERVER && comm_tx_busy()) {'
-        new = f'if (flash_job.step != {phase} && !pj.quiet && photo->channel == CH_SERVER && comm_tx_busy()) {{'
+        old = 'if (!fx_reply_ready(photo->channel, &pj.quiet, now)) break;'
+        new = f'if (flash_job.step != {phase} && !fx_reply_ready(photo->channel, &pj.quiet, now)) break;'
         assert source.count(old) == 1
         mutations[phase] = ('stale_reply', [('User/c/photo_runtime.c',
             '#include "photo_runtime.inc"', source.replace(old, new))])

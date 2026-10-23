@@ -100,23 +100,30 @@ bool w25_write_data (Int32U address, pInt8U src, Int16U len)
   return true;
 }
 
-// Стереть сектор -------------------------------------------------------------
-bool w25_erase_sector (Int32U address)
+// Общий синхронный шаг: стирание сектора (src NULL) или запись страницы; проверка у вызывающего.
+static bool w25_sync(Int32U address, pInt8U src, Int16U len)
 {
-  if (w25_job.active) return false;
   if (w25_busy() & 1u) return false;
 
   w25_WREN();
   if (!(w25_read_status() & 2u)) return false;
 
-  w25_command(0x20, address);
+  w25_command(src ? 0x02 : 0x20, address);
+  if (src) spi_send(src, len);
 
   w25_chip_OFF();
   w25_delay_OFF();
 
   bool ready = !(w25_busy() & 1u);
   w25_WRDI();
-  return ready && w25_verify(address & ~4095u, NULL, 4096);
+  return ready;
+}
+
+// Стереть сектор -------------------------------------------------------------
+bool w25_erase_sector (Int32U address)
+{
+  if (w25_job.active) return false;
+  return w25_sync(address, NULL, 0) && w25_verify(address & ~4095u, NULL, 4096);
 }
 
 // Чтение Id памяти -----------------------------------------------------------
@@ -220,20 +227,7 @@ static void w25_WRDI(void)
 // Запись страницы памяти не более 256 байт за один прогон --------------------
 static bool w25_page_program (Int32U address, pInt8U src, Int16U len)
 {
-  if (w25_busy() & 1u) return false;
-
-  w25_WREN();
-  if (!(w25_read_status() & 2u)) return false;
-
-  w25_command(0x02, address);
-  spi_send(src, len);
-
-  w25_chip_OFF();
-  w25_delay_OFF();
-
-  bool ready = !(w25_busy() & 1u);
-  w25_WRDI();
-  return ready && w25_verify(address, src, len);
+  return w25_sync(address, src, len) && w25_verify(address, src, len);
 }
 // Проверяем результат без буфера сектора в ОЗУ.
 static bool w25_verify(Int32U address, const uint8_t *src, Int16U len)

@@ -13,12 +13,12 @@
 #include "../flash_exec.h"
 struct flash_exec_args { void *context; uint8_t step; };
 enum { FX_INDEX_READ = 7 };
-enum { FS_ID = 30, FS_SYNC };
+enum { FS_ID = 30, FS_SYNC, FS_ID_DONE };
 void user_id_lookup_reset(void);
 typedef struct {
-  uint32_t address, epoch;
+  uint32_t address;
   uint16_t event;
-  uint8_t mode, count, type, outputs, started, reply, channel, uniq;
+  uint8_t mode, count, type, outputs, started, reply;
   uint8_t data[32];
 } store_io_s;
 extern uint16_t temp_next;
@@ -32,39 +32,40 @@ void user_access_complete(uint8_t outputs, codeType_e type, char *id, uint8_t co
 // Источники и продолжения принятой работы живут до verify и снятия результата.
 typedef struct {
   uint8_t *records;
-  uint8_t mb, cmd, channel, uniq, quiet, cancelled, failed, reply_wait, scan_full;
+  uint8_t mb, cmd, cancelled, failed, scan_full;
   // Количество приходит одним байтом; batch/position не превышают count.
   uint8_t count, position, batch, cell_size;
   uint16_t bytes, day, crc, numbers, last;
-  uint32_t stamp, sector, start, offset, sum, used, reply_until, crc_limit;
+  uint32_t stamp, sector, start, offset, sum, used, crc_limit;
 } table_job_s;
 typedef struct {
   uint8_t *data;
-  uint8_t channel, id, quiet, cancelled, code, final, reason;
+  uint8_t cancelled, code, final, reason;
   uint16_t offset, block;
-  uint32_t address, position, remaining, crc, expected_crc, usb_epoch;
+  uint32_t address, position, remaining, crc, expected_crc;
 } fw_block_job_s;
 typedef struct {
   cellLog_s cell;
   uint32_t address, retry_at;
-  uint8_t after, failures;
+  uint8_t failures;
 } log_job_s;
 typedef struct {
-  uint8_t after, task, quiet, cancelled, committed, address, reply_wait;
+  uint8_t after, task, cancelled, committed, address;
   // Кадр камеры до 506 Б; один шаг записи не больше 64 Б.
   uint16_t io_len, io_done;
   uint8_t io_step;
   uint16_t offset, count, requested_offset, first_offset, target_done;
   uint16_t send_size, send_offset, send_crc;
-  uint32_t io_address, scan, h[4], target, first, max_number, requested_number, reply_until;
+  uint32_t io_address, scan, h[4], target, first, max_number, requested_number;
 } photo_job_s;
 typedef struct {
   uint32_t address, end;
-  uint8_t phase, block, pending;
+  uint8_t block;
 } factory_job_s;
 
 typedef struct {
   uint8_t kind, step, result;
+  uint8_t wait; // Принятая команда W25 (1) или журнал сектора (2); ждёт fx_waiting.
   union {
     void *context;
     struct { uint32_t source[2], bucket; } index;
@@ -75,9 +76,32 @@ typedef struct {
     store_io_s storeio;
     factory_job_s factory;
   } data;
+  uint8_t next; // Шаг владельца после проверки принятой операции.
+  uint8_t channel, uniq, quiet; // Канал ответа (255 — нет), номер команды, подавление ответа.
+  uint32_t reply_until; // Срок ожидания серверного TX для ответа владельца.
 } flash_exec_job_t;
 extern flash_exec_job_t flash_job;
 void flash_exec_finish(flash_result_t result);
+// Отказ запуска и ошибка проверки дают владельцу один шаг.
+enum { FX_STEP_FAIL = 255 };
+// Ждёт принятую команду W25 или журнал; по итогу ставит next либо FX_STEP_FAIL.
+bool fx_waiting(uint32_t now);
+// Запускает проверяемую запись или стирание (src NULL) и шаг после проверки.
+void fx_start(uint32_t address, const uint8_t *src, uint16_t n, uint32_t now, uint8_t next);
+// Запускает журнальную замену сектора и шаг после фиксации.
+void fx_journal(uint32_t sector, sj_chunk_reader reader, const void *context, uint8_t next);
+// Серверный ответ ждёт свободный TX не дольше 2 с, затем владелец молчит.
+bool fx_reply_ready(uint8_t channel, uint8_t *quiet, uint32_t now);
+// Один отложенный ответ владельцев: кадр ждёт свободный канал, флеш уже свободен.
+// packet NULL — кадр ушёл или подавлен, владелец возобновляет работу шагом resume.
+typedef struct { void *context; const uint8_t *packet; uint16_t length; uint8_t kind, channel, quiet, resume; } fx_reply_s;
+extern fx_reply_s fx_reply;
+void fx_reply_post(uint8_t kind, void *context, const uint8_t *packet, uint16_t length, uint8_t channel);
+// Снимает отложенный ответ очистки или CRC вместе с его памятью.
+void fx_reply_drop(uint8_t kind);
+void fx_reply_forget(void);
+// После ухода кадра: 0 — память возвращена, иначе шаг возобновления работы владельца.
+uint8_t upload_sent(void *context, bool sent), fw_service_sent(void *context, bool sent);
 #include "../../Modules/comm_channel.h"
 // Состояние владельца настроек из user_store.c.
 typedef struct {
@@ -112,19 +136,18 @@ uint8_t usb_try_send(const uint8_t *packet, uint16_t size);
 uint8_t service_crc_begin_pack(uint8_t,uint8_t);
 uint8_t service_crc_begin_id(uint8_t,uint8_t,uint8_t);
 uint8_t service_crc_begin_config(uint8_t,uint8_t);
-void service_crc_poll(void),service_crc_cancel(void),service_crc_quiet(uint8_t);
+void service_crc_poll(void),service_crc_cancel(void);
 bool expiry_runtime_begin(void),expiry_runtime_writing(void);
 void expiry_runtime_poll(uint32_t),expiry_runtime_cancel(void);
 uint8_t idclear_runtime_begin(uint8_t,uint8_t);
-void idclear_runtime_poll(uint32_t),idclear_runtime_cancel(void),idclear_runtime_quiet(uint8_t);
+void idclear_runtime_poll(uint32_t),idclear_runtime_cancel(void);
 bool upload_runtime_begin(uint8_t,dataChanel_e,uint8_t);
 void upload_runtime_request(uint8_t,dataChanel_e,uint8_t,uint8_t),upload_pending_poll(void);
 void upload_pending_retry(uint8_t);
 void upload_runtime_poll(void),upload_runtime_cancel(void),upload_runtime_quiet(uint8_t);
-bool upload_reply_poll(void),fw_service_reply_poll(void);
 void *fw_service_busy(void);
 bool fw_service_begin(const uint8_t *,dataChanel_e,uint8_t);
-void fw_service_poll(void),fw_service_cancel(void),fw_service_quiet(uint8_t);
+void fw_service_poll(void),fw_service_cancel(void);
 // Записывает 16 бит в порядке байтов протокола.
 static inline void rt_put16(uint8_t *p, uint16_t v) { p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); }
 // Записывает 32 бита без требования выравнивания.

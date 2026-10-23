@@ -47,7 +47,7 @@ static uint32_t ix_bucket(const uint8_t *id)
    после обрыва признала бы полустёртый индекс. */
 static void ix_rebuild(void)
 {
-  bool pending = flash_job.kind == FX_INDEX && flash_job.result == FX_PENDING && flash_job.step <= IX_LOG_VALID;
+  bool pending = flash_job.kind == FX_INDEX && flash_job.result == FX_PENDING && flash_job.wait;
   ix.state = pending ? IX_DRAIN : IX_INVALIDATE;
   ix.step = 0;
 }
@@ -118,15 +118,14 @@ bool idindex_runtime_begin(void)
 void idindex_impl_poll(uint32_t base)
 {
   uint16_t rows[IX_SLOTS], n = 0;
-  uint8_t op, result;
+  uint8_t op;
   uint32_t address = 0;
   const uint8_t *source = NULL;
   if (flash_job.kind != FX_INDEX || flash_job.result != FX_PENDING) return;
+  if (fx_waiting(timers_getMillis()) && flash_job.wait) return; // итог без новой команды — в этом же проходе
+  if (flash_job.step == FX_STEP_FAIL) goto error;
   op = flash_job.step <= IX_LOG_VALID ? flash_job.step : 0;
   if (op) {
-    result = w25_async_poll(timers_getMillis());
-    if (result == 1) return;
-    if (result != 2) goto error;
     if (ix.state == IX_OFF) goto cancelled;
     if (ix.state == IX_DRAIN) {
       ix.state = IX_INVALIDATE;
@@ -210,8 +209,7 @@ complete:
   flash_exec_finish(FX_OK);
   return;
 start:
-  if (!w25_async_start(address, source, n, timers_getMillis())) goto error;
-  flash_job.step = op;
+  fx_start(address, source, n, timers_getMillis(), op);
   return;
 error:
   ix.state = IX_OFF;
