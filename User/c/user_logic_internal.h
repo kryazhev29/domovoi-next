@@ -63,7 +63,6 @@ void server_rx_process(void);
 // Вернуть свободное место для QIRD-backpressure.
 uint16_t user_comm_rx_capacity(void);
 bool text_terminated(const char *text, size_t capacity);
-void store_reset_request(void);
 // Принять очередную часть ещё не завершённого QIRD.
 uint16_t user_comm_rx(const uint8_t *data, uint16_t count);
 // Разрешить разбор законченного QIRD либо отбросить его при ошибке.
@@ -91,6 +90,9 @@ void unreg_sms_note(const char *id);
 void unreg_sms_poll(void);
 // Передать ожидающий ответ считывателя при свободном TX.
 void reader_reply_poll(void);
+// Отложенный ответ 11 серверу при занятом слоте.
+void answer_reply_poll(void);
+void answer_reply_drop(void);
 // Передать идентификацию устройства конфигуратору.
 void user_send_identPackToConfigurator(dataChanel_e cch);
 // Передать состояние устройства конфигуратору.

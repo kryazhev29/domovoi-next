@@ -119,6 +119,7 @@ void user_comm_session(bool open)
 {
   server_rx_reset();
   flash_exec_quiet(CH_SERVER);
+  answer_reply_drop();
   device.connectionhandle = 0; device.registredOnServer = 0;
   /* Поколение TCP отменяет неподтверждённый пакет; сохранённые курсоры и USB не трогаем. */
   temp_unacked[1] = 0; store.seen &= 5u;

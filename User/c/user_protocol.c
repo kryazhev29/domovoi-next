@@ -10,6 +10,9 @@
 enum { STATUS_EVENT_MASK = 0x28FFu, STATUS_EVENT_GAP_MS = 1000u };
 uint8_t sync_pending, sync_quiet;
 static struct { uint8_t due, percent, code, id; } fw_status_pending;
+// Ответы 11 серверу, не попавшие в занятый слот: очередь на три, лишний отбрасывается.
+static struct { uint8_t cmd, code, id; } answer_queue[3];
+static uint8_t answer_count;
 static struct { uint8_t state; char id[10]; } reader_out;
 static uint16_t status_reported;
 static uint32_t status_reported_ms;
@@ -216,15 +219,39 @@ void reader_reply_poll(void)
 }
 
 // Передать единый ответ 11 без повторного формирования CRC.
+/* Слот сервера бывает занят статусом или регистрацией в том же проходе (плата №1, 23.10.2026:
+   ответ на команду 2 терялся); такой ответ ждёт в answer_queue. */
 void user_send_answer_comand(uint8_t cmd, cmdCode_e cc, dataChanel_e cch, uint8_t uniqId)
 {
   uint8_t local[18];
   uint8_t *buffer = cch == CH_SERVER ? user_comm_acquire(sizeof(local)) : local;
-  if (!buffer) return;
+  if (!buffer) {
+    if (answer_count < sizeof answer_queue / sizeof *answer_queue) {
+      answer_queue[answer_count].cmd = cmd; answer_queue[answer_count].code = (uint8_t)cc;
+      answer_queue[answer_count].id = uniqId; answer_count++;
+    }
+    return;
+  }
   answer11(buffer, uniqId, cmd, (uint8_t)cc);
   if (cch == CH_USB) usb_send(buffer, sizeof(local));
   else if (cch == CH_SERVER) comm_tx_commit(sizeof(local));
 }
+
+// Передать первый отложенный ответ 11 при свободном слоте сервера.
+void answer_reply_poll(void)
+{
+  uint8_t *b;
+  if (!answer_count || !comm_server_online()) return;
+  b = user_comm_acquire(18);
+  if (!b) return;
+  answer11(b, answer_queue[0].id, answer_queue[0].cmd, answer_queue[0].code);
+  if (!comm_tx_commit(18)) return;
+  --answer_count;
+  memmove(answer_queue, answer_queue + 1, answer_count * sizeof *answer_queue);
+}
+
+// Новый сеанс TCP: ответы прошлого сеанса с его номерами не отправляются.
+void answer_reply_drop(void) { answer_count = 0; }
 
 // Передать таймштамп и CRC изменённой таблицы.
 void user_send_timeshtamp(shtamp_e sht, uint32_t time, uint16_t crcData, dataChanel_e cch, uint8_t uniqId){
