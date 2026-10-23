@@ -9,7 +9,7 @@ enum {
   FWS_BACKUP_HEADER=1, FWS_BACKUP_CRC=2, FWS_NEW_ERASE=4,
   FWS_NEW_HEADER=5, FWS_SAVE=6, FWS_SAVE_WAIT=8,
   FWS_COPY_ERASE=10, FWS_COPY_READ=11, FWS_COPY_WRITE=12,
-  FWS_COPY_HEADER=13, FWS_COPY_CRC=14, FWS_REPLY=16,
+  FWS_COPY_HEADER=13, FWS_COPY_CRC=14, FWS_COPY_WRITTEN=15, FWS_REPLY=16,
   FWS_REJECT=18
 };
 extern uint8_t fw_start_rejected(uint16_t,uint32_t,uint32_t,uint32_t,uint16_t);
@@ -36,17 +36,13 @@ static fw_service_s *fw_service_current(void)
 }
 static uint8_t fw_phase(const fw_service_s *p)
 {
-  return flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING ? flash_job.step & 127u : p->reply_step;
+  return flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING ? flash_job.step : p->reply_step;
 }
 static void fw_step(fw_service_s *p, uint8_t step)
 {
   if (flash_job.kind == FX_FWSERVICE && flash_job.result == FX_PENDING) flash_job.step = step;
   if (step == FWS_REPLY || flash_job.kind != FX_FWSERVICE) p->reply_step = step;
   if (step == FWS_REPLY) fw_reply = p;
-}
-static bool fw_waiting(void)
-{
-  return flash_job.kind == FX_FWSERVICE && (flash_job.step & 128u);
 }
 // Возвращает контекст занятого сервиса прошивки.
 void *fw_service_busy(void) { return fw_service_current();
@@ -62,7 +58,7 @@ void fw_service_cancel(void)
   if(!p) return;
   p->cancel = 1;
   p->quiet = 1;
-  if (fw_waiting() || (flash_job.kind == FX_FWSERVICE && mem_config_result() == 1)) return;
+  if (flash_job.kind == FX_FWSERVICE && (flash_job.wait || mem_config_result() == 1)) return;
   if (flash_job.kind == FX_FWSERVICE && mem_config_result()) mem_config_reset();
   if (fw_reply == p) fw_reply = NULL;
   work_release(p->reserve, WORK_FW_DATA);
@@ -135,45 +131,40 @@ publish:;
 void fw_service_poll(void)
 {
   fw_service_s *p=fw_service_current();
-  uint8_t phase,result,code=2;
+  uint8_t phase,result,code=2,next;
   uint32_t address,n;
   uint8_t *source;
   bool saved;
   fw_reason_e reason;
   if(!p) return;
+  if(flash_job.kind == FX_FWSERVICE && fx_waiting(timers_getMillis())) return;
   phase=fw_phase(p);
-  if(fw_waiting()) {
-    result=w25_async_poll(timers_getMillis());
-    if(result==1) return;
-    flash_job.step &= 127u;
-    if(p->cancel) goto cancel;
-    if(result!=2) goto io_error;
-    if(phase==FWS_NEW_ERASE) fw_step(p, FWS_NEW_HEADER);
-    else if(phase==FWS_NEW_HEADER) fw_step(p, FWS_SAVE);
-    else if(phase==FWS_COPY_ERASE) fw_step(p, FWS_COPY_READ);
-    else {
-      p->pos+=p->len;
-      fw_step(p, p->pos>=p->end?FWS_COPY_HEADER:(p->pos&4095u)?FWS_COPY_READ:FWS_COPY_ERASE);
-    }
-    return;
-  }
   if(p->cancel) goto cancel;
+  if(phase==FX_STEP_FAIL) { phase=flash_job.next; // Недостигнутый шаг задаёт причину отказа.
+  goto io_error;
+  }
   switch(phase) {
   case FWS_NEW_ERASE: case FWS_COPY_ERASE:
     address=mem[MB_FIRMWARE].start+(phase==FWS_COPY_ERASE?p->pos:0);
     source=NULL;
     n=0;
+    next=phase==FWS_COPY_ERASE?FWS_COPY_READ:FWS_NEW_HEADER;
     goto start;
   case FWS_NEW_HEADER: address=mem[MB_FIRMWARE].start;
   source=p->header;
   n=32;
+  next=FWS_SAVE;
   goto start;
   case FWS_COPY_WRITE: address=mem[MB_FIRMWARE].start+p->pos;
   source=p->data;
   n=p->len;
+  next=FWS_COPY_WRITTEN;
 start:
-    if(!w25_async_start(address,source,(uint16_t)n,timers_getMillis())) goto io_error;
-    flash_job.step |= 128u;
+    fx_start(address,source,(uint16_t)n,timers_getMillis(),next);
+    return;
+  case FWS_COPY_WRITTEN:
+    p->pos+=p->len;
+    fw_step(p, p->pos>=p->end?FWS_COPY_HEADER:(p->pos&4095u)?FWS_COPY_READ:FWS_COPY_ERASE);
     return;
   case FWS_COPY_READ:
     n=p->end-p->pos;
@@ -268,10 +259,10 @@ read_error:
 bad_crc: reason=phase==FWS_COPY_CRC?FW_REASON_CRC:FW_REASON_BAD_BACKUP;
 goto error_log;
 io_error:
-  if(fw_phase(p)<FWS_COPY_ERASE) goto cleanup;
+  if(phase<FWS_COPY_ERASE) goto cleanup;
   reason=FW_REASON_WRITE;
 error_log:
-  if(fw_phase(p)>=FWS_COPY_ERASE && fw_phase(p)<FWS_REPLY) {
+  if(phase>=FWS_COPY_ERASE && phase<FWS_REPLY) {
     fw_transfer_cancel(reason);
     if(p->channel && !device.registredOnServer) goto cancel;
     p->data[6]=255;

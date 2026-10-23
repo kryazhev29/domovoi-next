@@ -4,7 +4,7 @@
 // Смена USB-сеанса подавляет ответ, сохраняя завершение текущей команды W25.
 #include "runtime_internal.h"
 enum {
-  IDC_ERASE=1, IDC_WAIT=2, IDC_DONE=3, IDC_ERROR=4
+  IDC_ERASE=1, IDC_ERASED=2, IDC_DONE=3, IDC_ERROR=4
 };
 typedef struct {
   uint32_t cursor,end,epoch;
@@ -74,20 +74,21 @@ static void idclear_error(idclear_s *p)
 void idclear_runtime_poll(uint32_t now)
 {
   idclear_s *p=idclear_current();
-  uint8_t result;
   if(!p) return;
   if(p->epoch!=usb_bus_resets) p->quiet=1;
-  if(flash_job.step==IDC_ERASE || flash_job.step==IDC_WAIT) {
-    if(flash_job.step==IDC_WAIT) {
-      result=w25_async_poll(now);
-      if(result==1) return;
-      if(result!=2 || !counter_replaced(p->cursor)) { idclear_error(p);
-        return;
-      }
-      flash_job.step=IDC_ERASE;
-      p->cursor+=4096;
+  if(fx_waiting(now)) return;
+  if(flash_job.step==FX_STEP_FAIL) { idclear_error(p);
+    return;
+  }
+  if(flash_job.step==IDC_ERASED) {
+    if(!counter_replaced(p->cursor)) { idclear_error(p);
       return;
     }
+    flash_job.step=IDC_ERASE;
+    p->cursor+=4096;
+    return;
+  }
+  if(flash_job.step==IDC_ERASE) {
     if(p->cursor==p->end) {
       device.numbersCount=0;
       id_cells_end=0;
@@ -101,11 +102,8 @@ void idclear_runtime_poll(uint32_t now)
       idclear_release(FX_CANCELLED);
       return;
     }
-    if(!w25_async_start(p->cursor,NULL,0,now)) { idclear_error(p);
-      return;
-    }
-    flash_job.step=IDC_WAIT;
-    p->touched=1;
+    fx_start(p->cursor,NULL,0,now,IDC_ERASED);
+    if(flash_job.wait) p->touched=1;
     return;
   }
   if(!p->quiet && !reply_send(p->response,flash_job.step==IDC_DONE?11:18,0)) return;

@@ -17,7 +17,7 @@ enum {
   PR_IO = 1, PR_HEAD, PR_CAMERA, PR_LAZY_DONE,
     PR_DATA_DONE, PR_PHOTO_MARK, PR_PHOTO_DONE, PR_RECEIVE_DONE,
     PR_ACK_HEAD, PR_ACK_ADVANCE, PR_REQUEST_DONE, PR_SEND_FILL,
-    PR_SEND_COMMIT, PR_IO_WAIT, PR_REQUEST_ERROR, PR_OFFSET_ERROR
+    PR_SEND_COMMIT, PR_IO_DONE, PR_REQUEST_ERROR, PR_OFFSET_ERROR
 };
 static void photo_stop(void);
 static uint8_t photo_alloc(void);
@@ -157,16 +157,6 @@ static void pr_scan_finish(void)
   else pr_queue_publish();
 }
 
-// Ограничиваем ожидание транспорта, не задерживая основной цикл.
-static uint8_t pr_reply_expired(uint32_t now)
-{
-  if (!pj.reply_wait) {
-    pj.reply_wait = 1;
-    pj.reply_until = now + 2000;
-  }
-  return (int32_t)(now - pj.reply_until) >= 0;
-}
-
 // Разрешаем новую внешнюю команду после восстановления и освобождения флеш.
 static uint8_t pr_command_ready(void)
 {
@@ -291,15 +281,9 @@ void photo_storage_poll(uint32_t now)
     photo->pending = 0;
   }
   if (device.status.readyToUpdate) photo_storage_cancel();
-  if (flash_job.step == PR_IO_WAIT) {
-    uint8_t r = w25_async_poll(now);
-    if (r == 1) return;
-    if (r != 2) {
-      pr_fail();
-      return;
-    }
-    pj.io_done += pj.io_step;
-    flash_job.step = !pj.io_len || pj.io_done == pj.io_len ? pj.after : PR_IO;
+  if (fx_waiting(now)) return;
+  if (flash_job.step == FX_STEP_FAIL) {
+    pr_fail();
     return;
   }
   if (pj.cancelled && !pj.committed) {
@@ -315,13 +299,13 @@ void photo_storage_poll(uint32_t now)
       pj.io_step = n;
       // FX_PHOTO не допускает разбора следующего кадра до завершения записи.
       const uint8_t *source = pj.after == PR_DATA_DONE ? photo->frame + 4 : sjr.data;
-      if (!w25_async_start(pj.io_address + pj.io_done, !pj.io_len ? 0 : source + pj.io_done, n, now)) {
-        pr_fail();
-        break;
-      }
-      flash_job.step = PR_IO_WAIT;
+      fx_start(pj.io_address + pj.io_done, !pj.io_len ? 0 : source + pj.io_done, n, now, PR_IO_DONE);
       break;
     }
+  case PR_IO_DONE:
+    pj.io_done += pj.io_step;
+    flash_job.step = !pj.io_len || pj.io_done == pj.io_len ? pj.after : PR_IO;
+    break;
   case PR_HEAD: {
       uint16_t confirmed;
       bool physical=pj.task==PT_BOOT || pj.task==PT_FIND || pj.task==PT_OLD_REQUEST;
@@ -500,10 +484,7 @@ void photo_storage_poll(uint32_t now)
   case PR_OFFSET_ERROR:
   case PR_REQUEST_DONE: {
     uint8_t step = flash_job.step;
-    if (!pj.quiet && photo->channel == CH_SERVER && comm_tx_busy()) {
-      if (!pr_reply_expired(now)) break;
-      pj.quiet = 1;
-    }
+    if (!fx_reply_ready(photo->channel, &pj.quiet, now)) break;
     // Старый курсор и неверное смещение ждут TX так же, как успешный ответ.
     // При неверном смещении скан ещё не закончен: очередь не публикуем.
     if (step == PR_OFFSET_ERROR) pr_release(FX_OK);

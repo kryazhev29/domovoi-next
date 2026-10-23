@@ -13,8 +13,7 @@
 #include "../sched16.h"
 #include "photo_runtime.h"
 #include "../../Modules/comm_modem.h"
-enum { US_SAVE=1, US_ACK, US_CONFIG=6, US_RESET, US_REPLY,
-       US_COMMAND, US_FACTORY = 12 };
+enum { US_SAVE=1, US_ACK, US_CONFIG=6, US_RESET, US_REPLY, US_COMMAND };
 static void store_usb_session(void);
 uint8_t store_runtime, store_save_requested, store_reset_requested;
 // Последний проход с готовым хранилищем без запроса перезагрузки; 0 — такого ещё не было.
@@ -86,6 +85,40 @@ flash_result_t flash_exec_take_result(void)
   if ((kind >= FX_TABLE && kind <= FX_LOG) || kind == FX_STORE) idcrc_owner_released();
   return result;
 }
+// Принятая команда W25 или журнал сектора ждут здесь; итог переводит шаг владельца.
+bool fx_waiting(uint32_t now)
+{
+  uint8_t r;
+  if (!flash_job.wait) return false;
+  r = flash_job.wait == 1 ? w25_async_poll(now) : sj_runtime_poll(now);
+  if (r == 1) return true;
+  if (flash_job.wait == 2) sj_runtime_reset();
+  flash_job.wait = 0;
+  flash_job.step = r == 2 ? flash_job.next : FX_STEP_FAIL;
+  return false;
+}
+// Отказ запуска даёт тот же шаг FX_STEP_FAIL, что и ошибка проверки.
+void fx_start(uint32_t address, const uint8_t *src, uint16_t n, uint32_t now, uint8_t next)
+{
+  flash_job.next = next;
+  if (w25_async_start(address, src, n, now)) flash_job.wait = 1;
+  else flash_job.step = FX_STEP_FAIL;
+}
+void fx_journal(uint32_t sector, sj_chunk_reader reader, const void *context, uint8_t next)
+{
+  flash_job.next = next;
+  if (sj_runtime_begin(sector, reader, context)) flash_job.wait = 2;
+  else flash_job.step = FX_STEP_FAIL;
+}
+// Занятый серверный TX ждётся не дольше 2 с, затем ответ подавляется.
+bool fx_reply_ready(uint8_t channel, uint8_t *quiet, uint32_t now)
+{
+  if (*quiet || channel != CH_SERVER || !comm_tx_busy()) return true;
+  if (!flash_job.reply_until) flash_job.reply_until = (now + 2000u) | 1u;
+  if ((int32_t)(now - flash_job.reply_until) < 0) return false;
+  *quiet = 1;
+  return true;
+}
 // Единый допуск чтения: физическая команда и непубликованные таблицы закрывают NOR.
 // Проверка сроков закрывает чтение только на своей записи: её проход по базе дверь не держит.
 bool flash_exec_read_allowed(void)
@@ -93,7 +126,7 @@ bool flash_exec_read_allowed(void)
   if (w25_async_active() || !w25_read_available() || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
   if (flash_job.result == FX_PENDING &&
       (flash_job.kind == FX_IDCLEAR || (flash_job.kind == FX_EXPIRY && expiry_runtime_writing()) || flash_job.kind == FX_TABLE ||
-       (flash_job.kind == FX_STORE && (store_phase() == US_FACTORY || flash_job.step == FS_ID)))) return false;
+       flash_job.kind == FX_FACTORY || (flash_job.kind == FX_STORE && flash_job.step >= FS_ID))) return false;
   return true;
 }
 void flash_exec_cancel(void)
@@ -135,7 +168,7 @@ void flash_exec_quiet(uint8_t channel)
 {
   if (store.channel == channel) store.quiet = 1;
   if (factory.channel == channel) factory.reply = 0;
-  if (flash_job.kind == FX_STORE && flash_job.step == FS_ID && flash_job.data.storeio.channel == channel)
+  if (flash_job.kind == FX_STORE && flash_job.step >= FS_ID && flash_job.data.storeio.channel == channel)
     flash_job.data.storeio.reply = 0;
   idclear_runtime_quiet(channel);
   fw_service_quiet(channel);
@@ -220,6 +253,10 @@ dispatch:
     if (log_ring_ack_poll()) return;
     if (mem_config_result() == 1) mem_config_poll(now);
     else store_poll(now, mem_config_result());
+    return;
+  case FX_FACTORY:
+    if (mem_config_result() == 1) mem_config_poll(now);
+    else factory_poll(now);
     return;
   case FX_STORE:
     if (flash_job.step >= FS_ID) {
@@ -446,10 +483,6 @@ static bool store_reset_waits_log(uint32_t now)
 }
 static void store_poll(uint32_t now, uint8_t result)
 {
-  if (store_phase() == US_FACTORY) {
-    factory_poll(now);
-    return;
-  }
   if (store_phase() == US_REPLY) {
     if (flash_job.kind == FX_STORE) {
       flash_exec_finish(FX_OK);

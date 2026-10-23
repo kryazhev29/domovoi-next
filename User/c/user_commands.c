@@ -261,7 +261,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
               !user_activateOut(ptr[6] == 1, ptr[7] == 1, CT_SERVER, tempStrBuffer))
             res8 = CMD_RUNERROR;
         }
-        if (flash_job.kind == FX_STORE && flash_job.step == FS_ID) store_access_reply((uint8_t)cch, uniqId);
+        if (flash_job.kind == FX_STORE && flash_job.step >= FS_ID) store_access_reply((uint8_t)cch, uniqId);
         else user_send_answer_comand(ptr[4], res8, cch, uniqId);
       }
       else{

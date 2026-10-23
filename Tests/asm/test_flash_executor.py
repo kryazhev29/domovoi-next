@@ -1,7 +1,7 @@
 """Контракты единственного исполнителя в связанном IAR ELF."""
 from storage_machine import StorageMachine
 
-NONE, IDCLEAR, EXPIRY, FWSERVICE, UPLOAD, INDEX, CRC, TABLE, PHOTO, FWBLOCK, LOG, CONFIG, STORE = range(13)
+NONE, IDCLEAR, EXPIRY, FWSERVICE, UPLOAD, INDEX, CRC, TABLE, PHOTO, FWBLOCK, LOG, CONFIG, STORE, FACTORY = range(14)
 IDLE, PENDING, OK, ERROR, CANCELLED = range(5)
 
 

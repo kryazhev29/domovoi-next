@@ -5,7 +5,7 @@
 #include "runtime_internal.h"
 enum {
   EXP_SCAN=1, EXP_DIRECT=2,
-  EXP_START=4, EXP_JOURNAL=5
+  EXP_START=4, EXP_JOURNALED=5
 };
 extern bool id_endScan;
 extern uint32_t id_nextEnd;
@@ -36,6 +36,7 @@ void expiry_runtime_cancel(void)
   if (p) {
     idcrc_unknown();
     p->cancelled = 1;
+    sj_runtime_cancel(); // Идущий журнал прохода не фиксируется.
   }
 }
 // Освобождает флеш и память завершённой проверки.
@@ -89,16 +90,11 @@ void expiry_runtime_poll(uint32_t now)
   uint8_t *record;
   uint16_t index;
   uint32_t n,end;
-  uint8_t result;
-  if(!p) return;
-  if(flash_job.step==EXP_JOURNAL) {
-    if(p->cancelled) sj_runtime_cancel();
-    result=sj_runtime_poll(now);
-    if(result==1) return;
-    sj_runtime_reset();
-    if(result!=2) { if(sj_runtime_blocked()) mem_storage_ready=0;
-      goto retry;
-    }
+  if(!p || fx_waiting(now)) return;
+  if(flash_job.step==FX_STEP_FAIL) { if(sj_runtime_blocked()) mem_storage_ready=0;
+    goto retry;
+  }
+  if(flash_job.step==EXP_JOURNALED) {
     flash_job.step=EXP_SCAN;
     log_addControlEvent((logControl_e)138,(char *)p->record+2,255);
     if(p->cancelled) goto retry;
@@ -148,8 +144,7 @@ void expiry_runtime_poll(uint32_t now)
     return;
   }
   case EXP_START:
-    if(!sj_runtime_begin(p->target&~4095u,expiry_chunk,p)) goto retry;
-    flash_job.step=EXP_JOURNAL;
+    fx_journal(p->target&~4095u,expiry_chunk,p,EXP_JOURNALED);
     return;
   default: goto retry;
   }

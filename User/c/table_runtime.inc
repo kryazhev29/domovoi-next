@@ -5,7 +5,7 @@
 enum {
   TABLE_SECTOR=1, TABLE_JOURNAL=2, TABLE_CRC=3,
     TABLE_REPLY=4, TABLE_APPEND_CHECK=5, TABLE_APPEND_BODY=6,
-    TABLE_APPEND_BODY_WAIT=7, TABLE_APPEND_COMMIT=8, TABLE_APPEND_COMMIT_WAIT=9
+    TABLE_APPEND_COMMIT=7, TABLE_APPEND_DONE=8
 };
 #define table_job flash_job.data.table
 uint8_t table_fault;
@@ -191,6 +191,17 @@ static void table_runtime_finish(void)
 // Диспетчер вызывает только FX_TABLE/PENDING.
 void table_runtime_poll(uint32_t now)
 {
+  if (fx_waiting(now)) return;
+  // Отказ записи или журнала: остаток не пишется, итог сообщается после пересчёта.
+  if (flash_job.step==FX_STEP_FAIL) {
+    table_job.failed=1;
+    if (sj_runtime_blocked()) {
+      table_fault=1;
+      flash_job.step=TABLE_REPLY;
+    }
+    else table_scan_begin();
+    return;
+  }
   // Проверяем весь кадр до первой записи во флеш.
   if (flash_job.step==TABLE_APPEND_CHECK) {
     uint16_t index;
@@ -212,23 +223,11 @@ void table_runtime_poll(uint32_t now)
     }
     return;
   }
-  if (flash_job.step>=TABLE_APPEND_BODY && flash_job.step<=TABLE_APPEND_COMMIT_WAIT) {
+  if (flash_job.step>=TABLE_APPEND_BODY && flash_job.step<=TABLE_APPEND_DONE) {
     uint8_t *record=table_job.records+32u*table_job.position;
     uint16_t index;
-    uint8_t result;
     memcpy(&index,record,2);
-    if (flash_job.step==TABLE_APPEND_BODY_WAIT || flash_job.step==TABLE_APPEND_COMMIT_WAIT) {
-      result=w25_async_poll(now);
-      if (result==1) return;
-      if (result!=2) {
-        table_job.failed=1;
-        table_scan_begin();
-        return;
-      }
-      if (flash_job.step==TABLE_APPEND_BODY_WAIT) {
-        flash_job.step=TABLE_APPEND_COMMIT;
-        return;
-      }
+    if (flash_job.step==TABLE_APPEND_DONE) {
       table_job.numbers++;
       table_job.sum^=idindex_hash(index,record+2);
       if (index>table_job.last) table_job.last=index;
@@ -242,13 +241,10 @@ void table_runtime_poll(uint32_t now)
       table_scan_begin();
       return;
     }
-    if (!w25_async_start(table_job.start+32u*(index-1)+(flash_job.step==TABLE_APPEND_COMMIT?31:0),
-      record+(flash_job.step==TABLE_APPEND_COMMIT?31:0),flash_job.step==TABLE_APPEND_COMMIT?1:31,now)) {
-      table_job.failed=1;
-      table_scan_begin();
-      return;
-    }
-    flash_job.step=flash_job.step==TABLE_APPEND_BODY?TABLE_APPEND_BODY_WAIT:TABLE_APPEND_COMMIT_WAIT;
+    // Тело без признака, затем признак отдельной командой: оборванная ячейка не действует.
+    bool commit=flash_job.step==TABLE_APPEND_COMMIT;
+    fx_start(table_job.start+32u*(index-1)+(commit?31:0),record+(commit?31:0),commit?1:31,now,
+      commit?TABLE_APPEND_DONE:TABLE_APPEND_COMMIT);
     return;
   }
   if (flash_job.step==TABLE_SECTOR) {
@@ -269,25 +265,10 @@ void table_runtime_poll(uint32_t now)
       if (((table_job.start+(uint32_t)(index-1)*table_job.cell_size)&~4095u)!=table_job.sector) break;
       table_job.batch++;
     }
-    if (!sj_runtime_begin(table_job.sector,table_chunk,0)) {
-      table_job.failed=1;
-      table_scan_begin();
-    } else flash_job.step=TABLE_JOURNAL;
+    fx_journal(table_job.sector,table_chunk,0,TABLE_JOURNAL);
     return;
   }
-  if (flash_job.step==TABLE_JOURNAL) {
-    uint8_t result=sj_runtime_poll(now);
-    if (result==1) return;
-    sj_runtime_reset();
-    if (result!=2) {
-      table_job.failed=1;
-      if (sj_runtime_blocked()) {
-        table_fault=1;
-        flash_job.step=TABLE_REPLY;
-      }
-      else table_scan_begin();
-      return;
-    }
+  if (flash_job.step==TABLE_JOURNAL) { // сектор зафиксирован журналом
     table_job.position+=table_job.batch;
     if (table_job.position==table_job.count || table_job.cancelled) table_scan_begin();
     else flash_job.step=TABLE_SECTOR;
@@ -334,15 +315,5 @@ void table_runtime_poll(uint32_t now)
     while (--chunks && timers_getMillis()-started<1u);
     return;
   }
-  if (flash_job.step==TABLE_REPLY) {
-    if (!table_job.quiet && table_job.channel==CH_SERVER && comm_tx_busy()) {
-      if (!table_job.reply_wait) {
-        table_job.reply_wait=1;
-        table_job.reply_until=now+2000u;
-      }
-      if ((int32_t)(now-table_job.reply_until)<0) return;
-      table_job.quiet=1;
-    }
-    table_runtime_finish();
-  }
+  if (flash_job.step==TABLE_REPLY && fx_reply_ready(table_job.channel,&table_job.quiet,now)) table_runtime_finish();
 }

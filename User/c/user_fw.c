@@ -15,7 +15,7 @@ uint8_t fw_write_errors;
 uint32_t fw_rollback_end;
 #define fw_job flash_job.data.fwblock
 enum {
-  FA_ERASE=1, FA_WRITE, FA_HEADER, FA_CRC, FA_REPLY, FA_ERASE_WAIT, FA_WRITE_WAIT
+  FA_ERASE=1, FA_WRITE, FA_HEADER, FA_CRC, FA_REPLY
 };
 
 // Вернуть запрет управляющих действий во время обновления.
@@ -276,8 +276,8 @@ void fw_storage_poll(uint32_t now)
   uint16_t n;
   bootFWparam_s header;
   if (fw_job.channel == CH_USB && fw_job.usb_epoch != usb_bus_resets) fw_job.quiet = 1;
+  if (fx_waiting(now)) return;
   if (fw_job.cancelled) {
-    if ((flash_job.step == FA_ERASE_WAIT || flash_job.step == FA_WRITE_WAIT) && w25_async_poll(now) == 1) return;
     work_release(fw_job.data, WORK_FW_BLOCK);
     fw_job.data = NULL;
     flash_exec_finish(FX_CANCELLED);
@@ -298,24 +298,16 @@ void fw_storage_poll(uint32_t now)
     if (!fw_job.quiet) user_send_statusUpdateFW(20, fw_job.code, (dataChanel_e)fw_job.channel, fw_job.id);
     return;
   }
-  if (flash_job.step == FA_ERASE_WAIT || flash_job.step == FA_WRITE_WAIT) {
-    r = w25_async_poll(now);
-    if (r == 1) return;
-    if (r != 2) goto write_error;
-    if (flash_job.step == FA_WRITE_WAIT) fw_job.offset += 64u;
-    flash_job.step = FA_WRITE;
-    return;
-  }
+  if (flash_job.step == FX_STEP_FAIL) goto write_error;
   if (!w25_read_available()) return;
   if (flash_job.step == FA_ERASE) {
-    if (!w25_async_start((fw_job.address + 4095u) & ~4095u, NULL, 0, now)) goto write_error;
-    flash_job.step = FA_ERASE_WAIT;
+    fx_start((fw_job.address + 4095u) & ~4095u, NULL, 0, now, FA_WRITE);
     return;
   }
   if (flash_job.step == FA_WRITE) {
     if (fw_job.offset < 1024u) {
-      if (!w25_async_start(fw_job.address + fw_job.offset, fw_job.data + fw_job.offset, 64u, now)) goto write_error;
-      flash_job.step = FA_WRITE_WAIT;
+      fx_start(fw_job.address + fw_job.offset, fw_job.data + fw_job.offset, 64u, now, FA_WRITE);
+      fw_job.offset += 64u;
       return;
     }
 

@@ -1,7 +1,7 @@
 """Главные контракты шагов 4–7 единого исполнителя, без модели платы."""
 import struct
 
-from test_flash_executor import state, STORE, FWSERVICE, NONE, PENDING
+from test_flash_executor import state, STORE, FACTORY, FWSERVICE, NONE, PENDING
 from test_memory_runtime import config_machine
 from test_fw_service_runtime import FirmwareMachine
 
@@ -73,14 +73,14 @@ def factory_reset():
         m.stubs[m.addr('user_comm_sms')] = sms_reply
         assert m.checked('store_factory_request', channel, 73, 0, number if channel == 2 else 0)
         m.checked('user_factoryReset')
-        assert state(m)[0] == STORE and not m.answers
+        assert state(m)[0] == FACTORY and not m.answers
         if reset: m.write(m.addr('usb_bus_resets'), 1, 4)
         if fail:
             m.fault = ('poll', 1)
         for _ in range(5000):
             m.now += 1
             m.checked('user_storage_poll')
-            if state(m)[0] != STORE:
+            if state(m)[0] != FACTORY:
                 break
             assert not m.answers and not messages, 'factory success before completion'
         else:
@@ -119,8 +119,8 @@ def mutations():
     from test_flash_mutations import run
     return run({'step4-nested-config': ('nested_config', [
         ('User/c/memory_runtime.c',
-         'flash_job.kind != FX_STORE && flash_job.kind != FX_FWSERVICE &&',
-         'flash_job.kind != FX_STORE &&'),
+         'flash_job.kind != FX_STORE && flash_job.kind != FX_FACTORY && flash_job.kind != FX_FWSERVICE &&',
+         'flash_job.kind != FX_STORE && flash_job.kind != FX_FACTORY &&'),
     ]), 'step6-short-write': ('short_write_ownership', [
         ('Bootloader/app_update.c',
          'if (!trial || !flash_exec_begin(FX_STORE, &args)) return;',

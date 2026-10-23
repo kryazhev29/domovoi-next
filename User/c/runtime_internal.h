@@ -13,7 +13,7 @@
 #include "../flash_exec.h"
 struct flash_exec_args { void *context; uint8_t step; };
 enum { FX_INDEX_READ = 7 };
-enum { FS_ID = 30, FS_SYNC };
+enum { FS_ID = 30, FS_SYNC, FS_ID_DONE };
 void user_id_lookup_reset(void);
 typedef struct {
   uint32_t address, epoch;
@@ -32,11 +32,11 @@ void user_access_complete(uint8_t outputs, codeType_e type, char *id, uint8_t co
 // Источники и продолжения принятой работы живут до verify и снятия результата.
 typedef struct {
   uint8_t *records;
-  uint8_t mb, cmd, channel, uniq, quiet, cancelled, failed, reply_wait, scan_full;
+  uint8_t mb, cmd, channel, uniq, quiet, cancelled, failed, scan_full;
   // Количество приходит одним байтом; batch/position не превышают count.
   uint8_t count, position, batch, cell_size;
   uint16_t bytes, day, crc, numbers, last;
-  uint32_t stamp, sector, start, offset, sum, used, reply_until, crc_limit;
+  uint32_t stamp, sector, start, offset, sum, used, crc_limit;
 } table_job_s;
 typedef struct {
   uint8_t *data;
@@ -47,24 +47,25 @@ typedef struct {
 typedef struct {
   cellLog_s cell;
   uint32_t address, retry_at;
-  uint8_t after, failures;
+  uint8_t failures;
 } log_job_s;
 typedef struct {
-  uint8_t after, task, quiet, cancelled, committed, address, reply_wait;
+  uint8_t after, task, quiet, cancelled, committed, address;
   // Кадр камеры до 506 Б; один шаг записи не больше 64 Б.
   uint16_t io_len, io_done;
   uint8_t io_step;
   uint16_t offset, count, requested_offset, first_offset, target_done;
   uint16_t send_size, send_offset, send_crc;
-  uint32_t io_address, scan, h[4], target, first, max_number, requested_number, reply_until;
+  uint32_t io_address, scan, h[4], target, first, max_number, requested_number;
 } photo_job_s;
 typedef struct {
   uint32_t address, end;
-  uint8_t phase, block, pending;
+  uint8_t block;
 } factory_job_s;
 
 typedef struct {
   uint8_t kind, step, result;
+  uint8_t wait; // Принятая команда W25 (1) или журнал сектора (2); ждёт fx_waiting.
   union {
     void *context;
     struct { uint32_t source[2], bucket; } index;
@@ -75,9 +76,21 @@ typedef struct {
     store_io_s storeio;
     factory_job_s factory;
   } data;
+  uint8_t next; // Шаг владельца после проверки принятой операции.
+  uint32_t reply_until; // Срок ожидания серверного TX для ответа владельца.
 } flash_exec_job_t;
 extern flash_exec_job_t flash_job;
 void flash_exec_finish(flash_result_t result);
+// Отказ запуска и ошибка проверки дают владельцу один шаг.
+enum { FX_STEP_FAIL = 255 };
+// Ждёт принятую команду W25 или журнал; по итогу ставит next либо FX_STEP_FAIL.
+bool fx_waiting(uint32_t now);
+// Запускает проверяемую запись или стирание (src NULL) и шаг после проверки.
+void fx_start(uint32_t address, const uint8_t *src, uint16_t n, uint32_t now, uint8_t next);
+// Запускает журнальную замену сектора и шаг после фиксации.
+void fx_journal(uint32_t sector, sj_chunk_reader reader, const void *context, uint8_t next);
+// Серверный ответ ждёт свободный TX не дольше 2 с, затем владелец молчит.
+bool fx_reply_ready(uint8_t channel, uint8_t *quiet, uint32_t now);
 #include "../../Modules/comm_channel.h"
 // Состояние владельца настроек из user_store.c.
 typedef struct {

@@ -6,7 +6,7 @@
 typedef uint8_t flash_kind_t;
 enum { FX_NONE, FX_IDCLEAR, FX_EXPIRY, FX_FWSERVICE, FX_UPLOAD,
        FX_INDEX, FX_CRC, FX_TABLE, FX_PHOTO, FX_FWBLOCK, FX_LOG,
-       FX_CONFIG, FX_STORE };
+       FX_CONFIG, FX_STORE, FX_FACTORY };
 typedef uint8_t flash_result_t;
 enum { FX_IDLE, FX_PENDING, FX_OK, FX_ERROR, FX_CANCELLED };
 typedef struct flash_exec_args flash_exec_args_t;
