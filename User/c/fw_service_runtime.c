@@ -133,6 +133,22 @@ publish:;
   flash_job.uniq=uniq;
   return true;
 }
+// Готовый кадр уходит отложенным ответом сразу; занятый слот ждёт в шаге FWS_REPLY,
+// подавленный ответ не отменяет откат: копирование резерва продолжается.
+static void fw_service_reply(fw_service_s *p)
+{
+  flash_job.step = FWS_REPLY;
+  if(flash_job.quiet) {
+    if(fw_copy_due(p)) { p->pos = 0;
+      flash_job.step = FWS_COPY_ERASE;
+    }
+    else fw_service_cancel();
+    return;
+  }
+  if(fx_reply.kind) return;
+  fx_reply_post(FX_FWSERVICE,p,p->data,p->len,p->channel);
+  flash_exec_finish(p->result);
+}
 // Проверяет резерв, копирует прошивку и согласует сохранение со store.
 void fw_service_poll(void)
 {
@@ -246,17 +262,7 @@ handoff:
   case FWS_REJECT: code=p->reject_code;
   goto answer;
   case FWS_REPLY:
-    // Подавленный ответ не отменяет откат: копирование резерва продолжается.
-    if(flash_job.quiet) {
-      if(fw_copy_due(p)) { p->pos = 0;
-        flash_job.step = FWS_COPY_ERASE;
-        return;
-      }
-      goto cancel;
-    }
-    if(fx_reply.kind) return;
-    fx_reply_post(FX_FWSERVICE,p,p->data,p->len,p->channel);
-    flash_exec_finish(p->result);
+    fw_service_reply(p);
     return;
   default: return;
   }
@@ -285,7 +291,7 @@ error_log:
     packet_frame(p->data,5);
     p->len = 13;
     p->result = FX_ERROR;
-    flash_job.step = FWS_REPLY;
+    fw_service_reply(p);
     return;
   }
   fw_event_request((logUpdate_e)133,reason);
@@ -302,7 +308,7 @@ answer:
   answer11(p->data,p->uniq,19,code);
   p->len = 18;
   p->result = code ? FX_ERROR : FX_OK;
-  flash_job.step = FWS_REPLY;
+  fw_service_reply(p);
   return;
 cancel: fw_service_cancel();
 }

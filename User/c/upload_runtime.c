@@ -217,7 +217,7 @@ void upload_runtime_poll(void)
       p->wanted=0;
       packet_frame(p->packet,p->length-8);
       flash_job.step=UP_SEND;
-      return;
+      goto send;
     }
     n=p->total-p->first;
     if(n>(command==10?32:100)) n=command==10?32:100;
@@ -259,8 +259,10 @@ void upload_runtime_poll(void)
   case UP_FRAME:
     packet_frame(p->packet,p->length-8);
     flash_job.step=UP_SEND;
-    return;
+    /* FALLTHROUGH */
   case UP_SEND:
+send:
+    // Готовый кадр отдаётся исполнителю в том же проходе; занятый слот ждёт здесь.
     if(fx_reply.kind) return;
     fx_reply_post(FX_UPLOAD,p,p->packet,p->length,p->channel);
     flash_exec_finish(FX_OK);

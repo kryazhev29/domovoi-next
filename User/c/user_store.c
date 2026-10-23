@@ -135,11 +135,11 @@ void fx_reply_post(uint8_t kind, void *context, const uint8_t *packet, uint16_t 
   fx_reply.resume = 0;
 }
 // Отправляет отложенный ответ при свободном канале, затем владелец возобновляет работу
-// (resume) или его память возвращается.
-static void fx_reply_send(void)
+// (resume) или его память возвращается. true — кадр ушёл или снят.
+static bool fx_reply_send(void)
 {
-  if (!fx_reply.kind || !fx_reply.packet) return;
-  if (!fx_reply.quiet && !reply_send(fx_reply.packet, fx_reply.length, fx_reply.channel)) return;
+  if (!fx_reply.kind || !fx_reply.packet) return false;
+  if (!fx_reply.quiet && !reply_send(fx_reply.packet, fx_reply.length, fx_reply.channel)) return false;
   fx_reply.packet = NULL;
   switch (fx_reply.kind) {
   case FX_UPLOAD: fx_reply.resume = upload_sent(fx_reply.context, !fx_reply.quiet); break;
@@ -148,6 +148,7 @@ static void fx_reply_send(void)
   default: work_release(fx_reply.context, WORK_SERVICE); break;
   }
   if (!fx_reply.resume) fx_reply.kind = 0;
+  return true;
 }
 // Возобновляет работу владельца после ушедшего ответа, как только исполнитель свободен.
 static void fx_reply_resume(void)
@@ -514,9 +515,13 @@ void user_storage_poll(void)
     else if (store_ready_at && now - store_ready_at >= 30000u) user_savereset();
   }
   factory_reply();
+  // Отложенный ответ и возобновление работы — в начале прохода.
+  bool replied = fx_reply_send();
   fx_reply_resume();
   if (store_phase() == US_REPLY) store_reply();
   upload_pending_poll();
+  // Освободившийся TX завершает проход; следующая запись принимается отдельно.
+  if (replied && flash_job.kind == FX_NONE) return;
   flash_exec_poll(now);
   uint8_t cmd = flash_job.kind == FX_TABLE ? flash_job.data.table.cmd : 0;
   if (flash_job.kind <= FX_LOG) {
@@ -524,8 +529,6 @@ void user_storage_poll(void)
     // Сцены читаются после публикации TABLE и снятия результата.
     if (result >= FX_OK && (cmd == 14 || cmd == 16)) user_unblock_recheck(false);
   }
-  // Отложенный ответ уходит в конце прохода: кадр, собранный в этом проходе, не ждёт следующего.
-  fx_reply_send();
 }
 // Перезагрузка ждёт журнал не дольше 10 с от запроса и только при готовом хранилище.
 static bool store_reset_waits_log(uint32_t now)
