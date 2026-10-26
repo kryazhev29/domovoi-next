@@ -103,6 +103,27 @@ static void usb_wifi_command(uint8_t *ptr, uint16_t len, uint8_t uniqId)
   }
 }
 
+// Резервная выгрузка базы ID в NextConfig (USB 116, Алексей 26.10.2026). Тело: первая ячейка (2 Б).
+// Ответ: код (0 прочитано, 1 флеш занята — повторить), следующая ячейка (2 Б, 0 — конец),
+// число записей и записи по 32 Б как в памяти; за вызов не больше 256 ячеек и 7 записей.
+static void usb_ids_page(const uint8_t *ptr, uint16_t len, uint8_t uniqId)
+{
+  uint8_t reply[4u + 7u * sizeof(cellID_s)];
+  uint32_t cells = mem[MB_ID].size / sizeof(cellID_s), from = len > 4u ? (uint32_t)(ptr[5] | ptr[6] << 8) : 1u;
+  uint32_t cell = from ? from : 1u, stop = cell + 256u > cells + 1u ? cells + 1u : cell + 256u;
+  uint8_t n = 0;
+  reply[0] = !flash_exec_read_allowed();
+  for (; !reply[0] && cell < stop && n < 7u; ++cell) {
+    const cellID_s *c = (const cellID_s *)&reply[4u + n * sizeof(cellID_s)];
+    if (!mem_read(mem[MB_ID].start + (cell - 1u) * sizeof(cellID_s), (uint8_t *)c, sizeof(cellID_s))) reply[0] = 1;
+    else if (c->index != 0xffff && c->reserve[9] != 255) ++n; // пустые ячейки — как при стартовом скане
+  }
+  if (reply[0]) { n = 0; cell = from; }
+  else if (cell > cells) cell = 0;
+  reply[1] = (uint8_t)cell; reply[2] = (uint8_t)(cell >> 8); reply[3] = n;
+  user_send_anyData(116, reply, (uint16_t)(4u + n * sizeof(cellID_s)), CH_USB, uniqId);
+}
+
 // Выполнить одну команду с проверенными длиной и контрольной суммой.
 void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
 
@@ -486,6 +507,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       break;
 
     case 113: case 114: case 115: if (cch == CH_USB) usb_wifi_command(ptr,len,uniqId); break;
+    case 116: if (cch == CH_USB) usb_ids_page(ptr,len,uniqId); break;
 
     default: // команда не поддерживается
       code = CMD_UNDEFINE;

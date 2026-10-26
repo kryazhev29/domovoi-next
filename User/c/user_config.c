@@ -208,6 +208,8 @@ void user_factory_variables(device_s *saved)
   device.memID = memory;
   device.freeBufferSize = 2048;
   user_restore_device(saved);
+  // Нулевые таймштампы в регистрации снимают у сервера флаг проверки на завод (Алексей 26.10).
+  memset(&device.datetimeConfig, 0, offsetof(device_s, datetime) - offsetof(device_s, datetimeConfig));
   device.protocolVersion = PROTOCOL_VERSION;
   device.FWblockCount = 0;
   device.FWblockIdx = 0;

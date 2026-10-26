@@ -57,7 +57,10 @@ def factory_reset():
             events.append(tuple(m.args()[:2]));m.ret(1)
         m.stubs[m.addr('log_addSystemValue')] = system_value
         zero_fields = {'FWinProgress': 1, 'updateTimeout': 2, 'FWblockCount': 2, 'FWblockIdx': 2,
-                       'numbersCount': 2, 'tempIDsCount': 2, 'logsCount': 2, 'countPhoto': 2}
+                       'numbersCount': 2, 'tempIDsCount': 2, 'logsCount': 2, 'countPhoto': 2,
+                       # Нулевые таймштампы в регистрации снимают у сервера флаг проверки на завод.
+                       'datetimeConfig': 4, 'datetimeID': 4, 'datetimeShedule': 4,
+                       'datetimeGroup': 4, 'datetimeHoliday': 4}
         for name, width in zero_fields.items(): m.write(m.device + m.d[name], 7, width)
         m.u.mem_write(m.device + m.d['IMEIGSM'], b'867442070217472\0')
         m.write(m.device + m.d['firmwareVersion'], 71, 2)
