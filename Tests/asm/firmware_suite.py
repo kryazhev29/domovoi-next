@@ -183,5 +183,8 @@ def main():
 CASES["executor steps47"] = [("test_flash_executor_steps47", "run")]
 CASES["executor steps47 mutations"] = [("test_flash_executor_steps47", "mutations")]
 CORE += ("executor steps47", "executor steps47 mutations")
+CASES["usb ids"] = [("test_usb_ids", "run")]
+CASES["usb ids mutations"] = [("test_usb_ids", "mutations")]
+CORE += ("usb ids", "usb ids mutations")
 
 if __name__=='__main__':sys.exit(main())
