@@ -31,7 +31,13 @@ extern uint32_t id_nextEnd, log_lastIndex;
 extern bool id_endScan;
 extern logControl_e server_out_event;
 extern uint8_t unblock_active;
-enum { INPUT_GATE_CLOSED = 8 }; // Временный номер функции входа; менять только здесь.
+// Функции входов 1/2 по ТЗ «Домовой NEXT» п. 6.3.3.4 (user_inputs.c); 3 заодно датчик «ворота не закрыты».
+enum { IN_OFF = 0, IN_SMS_DRIVE = 1, IN_SMS_TAMPER = 2, IN_SMS_GATE = 3, IN_TRANSPORT = 4,
+       IN_PHOTO = 5, IN_BUTTON = 6, IN_UNBLOCK = 7 };
+bool input_assigned(uint8_t function);
+bool input_active(uint8_t function);
+void input_edge(uint8_t index, uint8_t state);
+void input_sms_poll(void);
 void user_unblock_input_poll(void);
 void user_unblock_poll(void);
 void user_unblock_recheck(bool restore);

@@ -2625,6 +2625,7 @@
                 </configuration>
             </file>
 <file><name>$PROJ_DIR$\User\c\user_access.c</name></file>
+<file><name>$PROJ_DIR$\User\c\user_inputs.c</name></file>
 <file><name>$PROJ_DIR$\User\c\user_ids.c</name></file>
 <file><name>$PROJ_DIR$\User\c\user_schedule.c</name></file>
 <file><name>$PROJ_DIR$\User\c\user_sms.c</name></file>
