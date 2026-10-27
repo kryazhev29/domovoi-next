@@ -186,5 +186,8 @@ CORE += ("executor steps47", "executor steps47 mutations")
 CASES["usb ids"] = [("test_usb_ids", "run")]
 CASES["usb ids mutations"] = [("test_usb_ids", "mutations")]
 CORE += ("usb ids", "usb ids mutations")
+CASES["status2"] = [("test_status2", "run")]
+CASES["status2 mutations"] = [("test_status2", "mutations")]
+CORE += ("status2", "status2 mutations")
 
 if __name__=='__main__':sys.exit(main())
