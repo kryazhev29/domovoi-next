@@ -5,6 +5,8 @@
 // Поля device копируются в кадр по таблицам; packet_send молчит на чужом канале.
 #include "user_logic_internal.h"
 #include "../../Modules/comm_server.h"
+#include "../../Modules/comm_info.h"
+#include "../../Modules/comm_channel.h"
 #include "prof.h"
 #include <stddef.h>
 enum { STATUS_EVENT_MASK = 0x28FFu, STATUS_EVENT_GAP_MS = 1000u };
@@ -131,11 +133,35 @@ void user_send_statusPack(dataChanel_e cch){
   packet_send(b, 18, (uint8_t)cch);
 }
 
-// Передать статус 2 с уровнем сигнала и версиями.
+// Индекс оператора для статуса 2 по коду сети MCC+MNC из QNWINFO (Протокол2 27.10: 0 не определён).
+// Россия 250: 01 МТС, 02 МегаФон, 99 Билайн, 20 Теле2, 11 Yota; прочий известный код - 255.
+static uint8_t operator_index(const char *code)
+{
+  static const char mnc[5][3] = { "01", "02", "99", "20", "11" };
+  if (!code[0]) return 0;
+  if (memcmp(code, "250", 3) == 0 && code[5] == 0)
+    for (uint8_t i = 0; i < 5u; ++i)
+      if (memcmp(code + 3, mnc[i], 2) == 0) return (uint8_t)(i + 1u);
+  return 255;
+}
+
+// Тип сети для статуса 2: 0 не определён, 1 2G, 2 3G, 3 LTE, 4 Wi-Fi (сервер через мост).
+static uint8_t net_kind(void)
+{
+  if (comm_channel_bridge()) return 4;
+  return device.netType == 1 ? 1 : device.netType == 3 ? 2 : device.netType == 4 ? 3 : 0;
+}
+
+// Передать статус 2: сигнал, версии, периферия, входы/выходы, оператор, тип сети.
 void user_send_statusPackSecond(dataChanel_e cch, uint8_t uniqId){
-  uint8_t send_local[32];
+  uint8_t send_local[40];
   uint8_t *b = frame_fields(frame_begin(send_local, sizeof send_local, cch, 255, uniqId, 3), FIELDS(status2_fields));
-  if (b) packet_send(b, 24, (uint8_t)cch);
+  if (!b) return;
+  b[30] = device.status.stateIn1; b[31] = device.status.stateIn2; // 0 пассивен, 1 активен
+  b[32] = device.status.stateOut1; b[33] = device.status.stateOut2; // 0 выключен, 1 включён
+  b[34] = operator_index(comm_info()->operator_code);
+  b[35] = net_kind();
+  packet_send(b, 30, (uint8_t)cch);
 }
 
 // Отправить ожидающий результат обновления при освобождении серверного TX.
