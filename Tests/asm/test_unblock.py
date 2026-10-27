@@ -590,22 +590,27 @@ def repeats255():
 
 
 def gate_sensor():
+    # Функция входа 3 «ворота не закрыты» (ТЗ 6.3.3.4): вход пассивен — ворота закрыты, активен — открыты.
+    CLOSED, OPEN = 0, 3300
     def setup(input_index=0, mask=2):
         m = UnblockMachine(mask)
-        m.write(m.addr('config') + m.cfg['inputMode'] + input_index, 8, 1)
-        m.adc = [0, 0]; m.adc_ok = 1
+        m.write(m.addr('config') + m.cfg['inputMode'] + input_index, 3, 1)
+        m.adc = [OPEN, OPEN]; m.adc_ok = 1
         m.stubs[m.addr('adc_startInjectedConvertion')] = lambda: m.ret(m.adc_ok)
         # Каналы платы IN1=8, IN2=9; проверяется настоящий порог user_readinputs.
         m.stubs[m.addr('adc_getinjectedvalue_mV')] = lambda: m.ret(m.adc[m.args()[0]-8])
         return m
-    def sample(m, one, two=0):
+    def sample(m, one, two=OPEN):
         m.adc = [one, two]; m.checked('user_readinputs')
     def pulses(m): return [x for x in m.loads if x[1] == 3]
     for input_index in (0, 1):
         m = setup(input_index); m.set_trigger('handUnBlock', 1)
         m.checked('user_unblock_recheck', 1)
         assert m.outputs() == (0, 0) and not pulses(m)
-        def level(v): sample(m, v if input_index == 0 else 0, v if input_index == 1 else 0)
+        # v — напряжение датчика прежней полярности (>3000 закрыто); на входе функции 3 оно инвертируется.
+        def level(v):
+            v = CLOSED if v > 3000 else OPEN
+            sample(m, v if input_index == 0 else OPEN, v if input_index == 1 else OPEN)
         for v in (3000, 3001, 3000, 3001): level(v)
         assert not pulses(m), 'дребезг открыл ворота'
         m.adc_ok = 0; level(3001); assert not pulses(m)
@@ -623,8 +628,8 @@ def gate_sensor():
         level(0); level(0); level(3300); level(3300)
         assert len(pulses(m)) == 2, 'датчик сработал без разблокировки'
     # Включение команды 5 уже даёт открытие; подтверждение датчика не дублирует его.
-    m=setup(); sample(m,3300); sample(m,3300); m.triggers_command(hand=1)
-    sample(m,3300); sample(m,3300); assert len(pulses(m)) == 1
+    m=setup(); sample(m,CLOSED); sample(m,CLOSED); m.triggers_command(hand=1)
+    sample(m,CLOSED); sample(m,CLOSED); assert len(pulses(m)) == 1
     # При включении функции через настоящую команду 12 закрытие обнаружится в опросах.
     m=setup(); m.write(m.addr('config')+m.cfg['inputMode'],0,1)
     m.set_trigger('handUnBlock',1); m.checked('user_unblock_recheck',1)
@@ -632,28 +637,28 @@ def gate_sensor():
     for name in ('comm_endpoints','user_comm_boot','rs485_init'): m.stubs[m.addr(name)] = m.ret
     c=m.addr('config'); m.u.mem_write(c+m.cfg['server1'],b'gate.gsmgate.ru:15010\0')
     m.u.mem_write(c+m.cfg['countryCode'],b'+7\0')
-    data=bytearray(m.u.mem_read(c,fields('config_s')['crc']+2)); data[m.cfg['inputMode']]=8
-    parse(m,12,data); m.finish_storage(); sample(m,3300); sample(m,3300)
+    data=bytearray(m.u.mem_read(c,fields('config_s')['crc']+2)); data[m.cfg['inputMode']]=3
+    parse(m,12,data); m.finish_storage(); sample(m,CLOSED); sample(m,CLOSED)
     assert len(pulses(m)) == 1
-    m.command(14,record(1)+tail(bytes([1])+bytes(7)),1); m.drain(); sample(m,3300)
+    m.command(14,record(1)+tail(bytes([1])+bytes(7)),1); m.drain(); sample(m,CLOSED)
     assert len(pulses(m)) == 1, 'команда 14 повторила закрытие'
     # Функция не назначена или отсутствует отдельное реле управления.
     for mask in (0,2,3):
         m=setup(mask=mask); m.set_trigger('handUnBlock',1); m.checked('user_unblock_recheck',1)
         if mask == 2: m.write(m.addr('config')+m.cfg['inputMode'],0,1)
-        sample(m,3300); sample(m,3300); assert not pulses(m)
+        sample(m,CLOSED); sample(m,CLOSED); assert not pulses(m)
     # Команда 14 включает ранее отсутствовавшую сцену: одно открытие, датчик его не дублирует.
     m=setup(); m.set_trigger('sheduleUnBlock',1); m.write(m.addr('log_timeKnown'),1,1)
-    sample(m,3300); sample(m,3300)
+    sample(m,CLOSED); sample(m,CLOSED)
     m.command(14,record(1)+tail(bytes([1])+bytes(7)),1); m.drain()
     assert m.effective() == 2 and pulses(m) == [(0, 3, 1, 0, 1)] and m.outputs() == (1,1)
-    sample(m,3300); assert len(pulses(m)) == 1
+    sample(m,CLOSED); assert len(pulses(m)) == 1
     m.advance(1000); assert m.outputs() == (0,0) and len(pulses(m)) == 1
     # Датчик сохраняет режим уровня и исходное состояние при снятии.
     for initial in (0,1):
         m=setup(); m.set_relay(0,'mode',1); m.checked('out_load',0,initial,0,0,0)
         m.set_trigger('handUnBlock',1); m.checked('user_unblock_recheck',1)
-        sample(m,3300); sample(m,3300); assert m.outputs() == (1,0)
+        sample(m,CLOSED); sample(m,CLOSED); assert m.outputs() == (1,0)
         m.set_trigger('handUnBlock',0); m.checked('user_unblock_recheck',0)
         assert m.outputs() == (initial,1)
     return {'gate_sensor_ADC_bounce_latch_inputs_config12_schedule14_inactive': 'PASS'}

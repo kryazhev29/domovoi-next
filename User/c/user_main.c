@@ -109,6 +109,7 @@ void user_loop(void)
     WG_process();
   fw_status_poll();
   unreg_sms_poll();
+  input_sms_poll(); /* SMS функций входов 1-3 серверу */
   reader_reply_poll(); /* пакет 8 ждёт свободного слота канала */
   answer_reply_poll(); /* ответ 11 серверу, не попавший в занятый слот */
 
@@ -332,6 +333,7 @@ void user_readinputs (void){
     else
       log_addSystemEvent(LOG_SYS_IN1OFF);
     device.laststatus.stateIn1 = device.status.stateIn1;
+    input_edge(0, device.status.stateIn1);
   }
 
   // вход 2
@@ -342,5 +344,6 @@ void user_readinputs (void){
     else
       log_addSystemEvent(LOG_SYS_IN2OFF);
     device.laststatus.stateIn2 = device.status.stateIn2;
+    input_edge(1, device.status.stateIn2);
   }
 }

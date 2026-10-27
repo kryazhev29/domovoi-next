@@ -53,8 +53,8 @@ static void unblock_open(uint8_t relays, bool entry)
 // Два одинаковых успешных опроса АЦП; повтор разрешён после двух опросов «открыто».
 void user_unblock_input_poll(void)
 {
-  uint8_t closed = (config.inputMode[0] == INPUT_GATE_CLOSED && device.status.stateIn1) ||
-                   (config.inputMode[1] == INPUT_GATE_CLOSED && device.status.stateIn2);
+  // Датчик «ворота не закрыты» - вход с функцией 3 (ТЗ 6.3.3.4): вход пассивен - ворота закрыты.
+  uint8_t closed = input_assigned(IN_SMS_GATE) && !input_active(IN_SMS_GATE);
   if (!unblock_active) unblock_gate &= 1u;
   if (closed != (unblock_gate & 1u)) unblock_gate ^= 1u;
   else if (!closed) unblock_gate = 0;
@@ -78,7 +78,9 @@ void user_unblock_recheck(bool restore)
     unblock_offline_since = device.worktime;
     unblock_offline = 0;
   } else if (device.worktime - unblock_offline_since >= 1800u) unblock_offline = 1;
-  if (!unblock_offline) {
+  // Аппаратная безусловная разблокировка (функция входа 7): оба реле, настройки выходов и офлайн не смотрим.
+  if (input_active(IN_UNBLOCK)) next = 3;
+  else if (!unblock_offline) {
     if (device.triggers.handUnBlock) next = 1;
     else if (device.triggers.sheduleUnBlock && log_timeKnown) {
       uint8_t scenes[8], r;
@@ -94,18 +96,20 @@ void user_unblock_recheck(bool restore)
       }
     }
   }
-  relays = !!config.rele[0].useInBlock | (!!config.rele[1].useInBlock << 1);
+  relays = next == 3 ? 3 : (!!config.rele[0].useInBlock | (!!config.rele[1].useInBlock << 1));
   if (!(unblock_pending & 2u) && !unblock_active && next) {
     unblock_open(relays, true);
     unblock_gate |= 2u; // Рабочее включение уже открыло: датчик не дублирует его.
   }
-  if (!next || (unblock_pending & 2u)) unblock_wait = 0;
+  if (!next || next == 3 || (unblock_pending & 2u)) unblock_wait = 0;
   // Сначала ИК, затем возврат уровня; смена назначения не обрывает импульс.
   if ((unblock_pending & 2u) || (!!next != !!unblock_active) || relays != unblock_relays)
     for (uint8_t n = 0; n < 2; ++n) {
       uint8_t i = (relays & 1u ? 0 : 1) ^ n, state;
       if (unblock_wait & (1u << i)) continue;
-      if (relays & (1u << i)) state = !next || unblock_wait;
+      // Аппаратная: реле разблокировки рвёт ИК (выключено), реле управления держит «открыть» (включено).
+      if (next == 3) state = config.rele[i].useInBlock ? OUT_OFF : OUT_ON;
+      else if (relays & (1u << i)) state = !next || unblock_wait;
       else if (!next && (unblock_level & (1u << i))) state = unblock_level >> 2;
       else if (unblock_relays & (1u << i)) state = OUT_OFF;
       else continue;
@@ -113,8 +117,9 @@ void user_unblock_recheck(bool restore)
     }
   if (!next) unblock_level = 0;
   if (next != unblock_active) {
-    if (unblock_active) log_addSystemEvent(unblock_active == 1 ? LOG_SYS_UNDLOCKHANDDIS : LOG_SYS_UNBLOCKSHEDDIS);
-    if (next) log_addSystemEvent(next == 1 ? LOG_SYS_UNDLOCKHANDEN : LOG_SYS_UNBLOCKSHEDEN);
+    if (unblock_active) log_addSystemEvent(unblock_active == 1 ? LOG_SYS_UNDLOCKHANDDIS :
+                                           unblock_active == 2 ? LOG_SYS_UNBLOCKSHEDDIS : LOG_SYS_HWUNBLOCKDIS);
+    if (next) log_addSystemEvent(next == 1 ? LOG_SYS_UNDLOCKHANDEN : next == 2 ? LOG_SYS_UNBLOCKSHEDEN : LOG_SYS_HWUNBLOCKEN);
   }
   unblock_active = next;
   unblock_relays = relays;
@@ -221,6 +226,9 @@ void user_checkIdAndControl(char *id, codeType_e tp){
   if (!flash_exec_read_allowed()) return;
 
   if (unblock_active) return;
+
+  // Датчик присутствия транспорта (функция входа 4): без сигнала звонки и ID со считывателей не рассматриваются.
+  if (tp != CT_SERVER && input_assigned(IN_TRANSPORT) && !input_active(IN_TRANSPORT)) return;
 
   bool onOut[2] = {false, false};
 
