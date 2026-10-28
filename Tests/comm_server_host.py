@@ -32,7 +32,7 @@ def unit():
     old = old.replace('#define usb_log_on(bit) 0', 'static unsigned net_log_mask;\n#undef usb_log_on\n#define usb_log_on(bit) (net_log_mask & (bit))')
     headers = '\n'.join(line for n in NEW_HEADERS for line in source(n).splitlines() if not line.startswith('#include "'))
     code = '\n'.join(line for n in NEW for line in source(n).splitlines() if not line.startswith('#include'))
-    user = source('User/c/user_*.c')
+    user = source('User/c/user_*.c').replace('\r\n', '\n')  # CRLF исходников ломает \n в шаблонах таблиц ниже
     rx = 'void server_rx_process(void);\nstatic void answer_reply_drop(void) {} /* очередь ответов 11 вне модели сервера */\n' + function(source('User/c/runtime_internal.h').replace('static inline ','static '),'rt_get16') + '\n' + re.sub(r'^#include[^\n]*', '', source('User/c/user_rx.c'), flags=re.M)
     # Сохранённый сборщик и его стык QIRD; настоящие CRC/границы/отложенное исполнение.
     # Таблицы полей кадров 1 и 2 и их сборщик берутся из того же источника.

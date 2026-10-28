@@ -14,6 +14,10 @@ typedef struct { uint16_t event; uint8_t type, count, outputs, started; } store_
 static struct { union { store_io_s storeio; } data; } flash_job;
 static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 static uint8_t unblock_active;
+/* Функции входов: датчик транспорта не назначен — доступ не ограничен. */
+enum { IN_TRANSPORT = 4 };
+static bool input_assigned(uint8_t function) { (void)function; return false; }
+static bool input_active(uint8_t function) { (void)function; return false; }
 static uint8_t wf_line[96]; /* строка моста прошивки: вне моста — буфер пассивного приёма */
 static struct {
   uint8_t rs485Mode;

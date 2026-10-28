@@ -86,23 +86,9 @@ static bool __attribute__((unused)) comm_server_online(void) { return server_onl
 static bool user_send_smsToServer(char *data)
 { if(sms_slot_busy)return false; CHECK(strlen(data) < sizeof(forwarded_text)); strcpy(forwarded_text, data); forwarded++; return true; }
 
-static size_t bounded_length(const char *p, size_t capacity)
-{ size_t n = 0; while (n < capacity && p[n]) n++; return n; }
-static char *checked_strcat(char *dest, size_t capacity, const char *source, size_t source_capacity)
-{
-    size_t source_len = bounded_length(source, source_capacity);
-    CHECK(source_len < source_capacity);
-    size_t used = bounded_length(dest, capacity);
-    CHECK(used < capacity && source_len < capacity - used);
-    memcpy(dest + used, source, source_len + 1);
-    return dest;
-}
-
-#define strcat(p, s) checked_strcat(p, __builtin_object_size(p, 1), s, __builtin_object_size(s, 1))
 /* КОД МОДУЛЯ */
 #define sms_received_call(n,d,first) user_smsreceived(n,d,(bool[]){first})
 #undef sprintf
-#undef strcat
 static void init(void)
 {
     memset(tempStrBuffer, 0, sizeof(tempStrBuffer)); memset(&config, 0, sizeof(config));
