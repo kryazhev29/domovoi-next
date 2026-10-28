@@ -67,7 +67,7 @@ static uint32_t id_first_pass(cellID_s *c) { (void)c; return 1; }
 static void id_set_first_pass(cellID_s *c, uint32_t t) { (void)c; (void)t; CHECK(0); }
 static void id_watch_end(uint32_t end) { (void)end; }
 static uint32_t id_time_end(cellID_s *c) { (void)c; return 0; }
-#define RS485_CAMERA 2u /* как в User/photo.h */
+#define RS485_CAMERA 9u /* как в User/photo.h */
 static uint8_t photo_start(uint8_t address) { (void)address; ++photos; return 0; }
 static void user_send_readedIDtoServer(uint8_t *id, uint8_t state)
 { ++replies; reply_state = state; memcpy(reply_id, id, 10); reply_id[10] = 0; }
