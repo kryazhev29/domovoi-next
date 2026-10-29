@@ -165,12 +165,14 @@ static void fx_reply_resume(void)
 }
 // Единый допуск чтения: физическая команда и непубликованные таблицы закрывают NOR.
 // Проверка сроков закрывает чтение только на своей записи: её проход по базе дверь не держит.
+// Запись ID (FS_ID, FS_ID_DONE) закрывает чтение; синхронный владелец FS_SYNC (команда 110, проба) читает сам.
 bool flash_exec_read_allowed(void)
 {
   if (w25_async_active() || !w25_read_available() || !mem_storage_ready || table_fault || sj_runtime_blocked()) return false;
   if (flash_job.result == FX_PENDING &&
       (flash_job.kind == FX_IDCLEAR || (flash_job.kind == FX_EXPIRY && expiry_runtime_writing()) || flash_job.kind == FX_TABLE ||
-       flash_job.kind == FX_FACTORY || (flash_job.kind == FX_STORE && flash_job.step >= FS_ID))) return false;
+       flash_job.kind == FX_FACTORY ||
+       (flash_job.kind == FX_STORE && (flash_job.step == FS_ID || flash_job.step == FS_ID_DONE)))) return false;
   return true;
 }
 void flash_exec_cancel(void)
