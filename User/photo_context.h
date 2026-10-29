@@ -10,6 +10,7 @@ typedef struct {
   // Курсор пакета 14 не подтверждает доставку: её фиксирует только команда 21.
   uint32_t readAddress;
   uint16_t size, written, offset, packet, used, frame_size;
+  uint32_t crc; // CRC32 принятого потока камеры номеров
   uint8_t stage, retry, syncAck, syncSeen, pending, requestId;
   dataChanel_e channel;
   uint8_t rx[PHOTO_PACKET], frame[PHOTO_PACKET];

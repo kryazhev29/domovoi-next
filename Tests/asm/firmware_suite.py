@@ -192,5 +192,8 @@ CORE += ("status2", "status2 mutations")
 CASES["inputs"] = [("test_inputs", n) for n in ("sms", "transport", "photo", "button", "hw_unblock")]
 CASES["inputs mutations"] = [("test_inputs", "mutations")]
 CORE += ("inputs", "inputs mutations")
+CASES["anpr"] = [("test_anpr", n) for n in ("plate_photo", "photo_faults", "poll_states", "busy_line")]
+CASES["anpr mutations"] = [("test_anpr", "mutations")]
+CORE += ("anpr", "anpr mutations")
 
 if __name__=='__main__':sys.exit(main())

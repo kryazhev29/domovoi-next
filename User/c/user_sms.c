@@ -134,7 +134,10 @@ void unreg_sms_poll(void)
 {
   char text[31];
   if (!unreg_sms_pending.due) return;
-  memcpy(text, unreg_sms_pending.id, 10);
-  memcpy(text + 10, ": ID is unregistred!", sizeof ": ID is unregistred!");
+  // Номер камеры короче 10 символов и добит нулями: текст идёт сразу за видимой частью.
+  const char *end = memchr(unreg_sms_pending.id, 0, 10);
+  uint8_t k = end ? (uint8_t)(end - unreg_sms_pending.id) : 10u;
+  memcpy(text, unreg_sms_pending.id, k);
+  memcpy(text + k, ": ID is unregistred!", sizeof ": ID is unregistred!");
   if (user_send_smsToServer(text)) unreg_sms_pending.due = 0;
 }

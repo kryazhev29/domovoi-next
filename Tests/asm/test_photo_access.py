@@ -18,8 +18,8 @@ class PassageMachine(PhotoMachine):
         self.stubs.pop(self.addr('log_addPhotoEvent'))
         self.write(self.addr('log_timeKnown'), 1, 1)
         self.write(self.device + self.d['datetime'], TODAY, 4)
-        # Домофон (тип 3) впереди двух фотокамер (тип 2): выбирается только первая камера, адрес 5.
-        self.u.mem_write(self.cfg + self.c['rs485Periphery'], bytes([2, 3, 0, 0, 0, 0, 5, 2, 6, 2, 0, 0, 0, 0, 0, 0]))
+        # Резервный тип 3 впереди двух фотокамер JPEG (тип 9): снимает первая камера, адрес 5.
+        self.u.mem_write(self.cfg + self.c['rs485Periphery'], bytes([2, 3, 0, 0, 0, 0, 5, 9, 6, 9, 0, 0, 0, 0, 0, 0]))
         for i in range(2):
             for name in ('onWiegand', 'onOther', 'onCmdServer', 'tImpulse', 'cnt'):
                 self.write(self.cfg + self.c['rele'] + i * 11 + self.rele[name], 1, 1)

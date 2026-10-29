@@ -41,7 +41,7 @@ class PhotoMachine(StorageMachine):
         super().__init__(flash);self.runtime_fields=fields('photo_runtime_s');self.job_fields=fields('photo_job_s');self.rx_count=0;self.commands=[];self.events=[];self.sent=[]
         self.expected_packet=0;self.transport_busy=False;self.capacity=2048;self.poll_costs=[];self.port_costs=[]
         config=fields('config_s');self.write(self.addr('config')+config['rs485Mode'],1,1)
-        self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,2]))
+        self.u.mem_write(self.addr('config')+config['rs485Periphery'],bytes([5,9]))  # адрес 5, фотокамера JPEG
         for name,fn in [('uart_init',self.ret),('uart_setRecTimeout',self.ret),
           ('uart_send',self.uart_send),('uart_getstate',lambda:self.ret(self.rx_count!=0)),
           ('uart_isReceiving',lambda:self.ret(0)),('uart_received',lambda:self.ret(self.rx_count)),
@@ -264,7 +264,7 @@ def camera_bridge_wait():
     assert m.answers[-1][1]==0 and m.pget('stage')==1
     from test_photo_access import ready
     m=ready();m.write(m.device+m.d['wifiModem'],1,1)
-    m.u.mem_write(m.cfg+m.c['rs485Periphery'],bytes((1,1,5,2)))
+    m.u.mem_write(m.cfg+m.c['rs485Periphery'],bytes((1,1,5,9)))
     assert m.checked('user_activateOut',1,1,6,0)
     assert len(m.loads)==2 and not m.active() and not m.commands
     print('camera: USB/server command + output refused with local Wi-Fi, normal without it PASS',flush=True)

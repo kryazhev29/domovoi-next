@@ -121,8 +121,11 @@ with TemporaryDirectory(prefix='domovoi-host-') as d:
         unit=source('Tests/test_tempid_meta.c').replace('/* ТИПЫ ПРОТОКОЛА */',typedefs(source('structures.h'),'cellID_s','codeType_e')).replace('/* КОД МОДУЛЯ */',function(source('User/c/user_*.c').replace('static inline bool id_equal','static bool id_equal'),'id_equal')+'\n'+ids[begin:end])
     elif kind=='rs485id':
         user=source('User/c/user_*.c')
-        types=typedefs(source('structures.h'),'codeType_e','logControl_e','cellID_s','cellGroup_s','cellShedule_s')
-        code='\n'.join(function(user,n) for n in ('reader_id','WG_readedID','rs485_readedID','user_checkIdAndControl','user_activateOut','user_access_complete','port_check_data'))
+        types=typedefs(source('structures.h'),'codeType_e','logControl_e','cmdCode_e','cellID_s','cellGroup_s','cellShedule_s')
+        # Типы камер и пауза повтора номера — из исходников, чтобы стенд не разошёлся с прошивкой.
+        types+='\n'.join(re.findall(r'(?m)^#define RS485_\w+.*$',source('User/photo.h')))+'\n'
+        types+=re.search(r'(?m)^#define CAMERA_HOLD_MS.*$',user).group(0)+'\n'
+        code='\n'.join(function(user,n) for n in ('reader_id','WG_readedID','rs485_readedID','camera_readedID','camera_repeat','user_checkIdAndControl','user_activateOut','user_access_complete','port_check_data'))
         unit=source('Tests/test_rs485_id.c').replace('/* ТИПЫ ПРОТОКОЛА */',types).replace('/* КОД МОДУЛЯ */',code)
     elif kind=='rs485owner':
         photo=source('User/c/photo_runtime.c')

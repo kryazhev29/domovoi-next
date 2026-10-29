@@ -88,7 +88,7 @@ def photo():
     assert not m.photos and 45 not in m.system_events, 'снимок без камеры'
     m = machine(5); c = m.addr('config')
     m.write(c + m.cfg['rs485Mode'], 1, 1)
-    m.u.mem_write(c + m.cfg['rs485Periphery'] + 2, bytes([7, 2]))  # устройство 2: адрес 7, фотокамера
+    m.u.mem_write(c + m.cfg['rs485Periphery'] + 2, bytes([7, 9]))  # устройство 2: адрес 7, фотокамера JPEG
     level(m, HIGH); assert m.photos == [7] and m.system_events.count(45) == 1
     level(m, HIGH); level(m, LOW); assert m.photos == [7], 'снимок без фронта'
     m.photo_code = 2; level(m, HIGH)
@@ -158,5 +158,5 @@ def mutations():
     ]), 'inputs-gate-polarity': ('gate', [
         ('User/c/user_access.c', 'input_assigned(IN_SMS_GATE) && !input_active(IN_SMS_GATE)', 'input_active(IN_SMS_GATE)'),
     ]), 'inputs-photo-event': ('photo', [
-        ('User/c/user_inputs.c', 'if (photo_start(config.rs485Periphery[i].address) == CMD_SUCCESS) log_addSystemEvent', 'photo_start(config.rs485Periphery[i].address); log_addSystemEvent'),
+        ('User/c/user_inputs.c', 'photo_start(config.rs485Periphery[i].address) == CMD_SUCCESS)', 'photo_start(config.rs485Periphery[i].address) != 255)'),
     ])}, 'test_inputs', 'inputs-mutations')

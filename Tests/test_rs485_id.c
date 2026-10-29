@@ -1,4 +1,5 @@
-// Доработка: Кряжев А., 2026. Пассивный режим 485: посылка -> ID, захват команды 6, маршруты RFID/прочие.
+// Доработка: Кряжев А., 2026. Пассивный режим 485: посылка -> ID, захват команды 6, маршруты RFID/прочие;
+// камера номеров: номер с камеры, один проход на номер в кадре, датчик транспорта, захват по адресу камеры.
 // Зависимости моделируются, код проверяемого модуля вставляет стенд (run_host.py work rs485id).
 // Проверки не используют физическую плату и сеть.
 #include <stdint.h>
@@ -14,10 +15,13 @@ typedef struct { uint16_t event; uint8_t type, count, outputs, started; } store_
 static struct { union { store_io_s storeio; } data; } flash_job;
 static logControl_e server_out_event = LOG_CON_OUTONBYAPI;
 static uint8_t unblock_active;
-/* Функции входов: датчик транспорта не назначен — доступ не ограничен. */
+/* Функции входов: датчик транспорта назначается и включается стендом. */
 enum { IN_TRANSPORT = 4 };
-static bool input_assigned(uint8_t function) { (void)function; return false; }
-static bool input_active(uint8_t function) { (void)function; return false; }
+static bool transport_assigned, transport_active;
+static bool input_assigned(uint8_t function) { return function == IN_TRANSPORT && transport_assigned; }
+static bool input_active(uint8_t function) { return function == IN_TRANSPORT && transport_active; }
+static uint32_t now_ms = 100000u;
+static uint32_t timers_getMillis(void) { return now_ms; }
 static uint8_t wf_line[96]; /* строка моста прошивки: вне моста — буфер пассивного приёма */
 static struct {
   uint8_t rs485Mode;
@@ -26,7 +30,7 @@ static struct {
 } config;
 static struct {
   uint32_t datetime;
-  uint8_t timeToGetID, sourceGetID, addressGetID, getPhoto;
+  uint8_t timeToGetID, sourceGetID, addressGetID, getPhoto, wifiModem;
   struct { uint8_t openAnyUser, autoRegistration; } status;
   struct { uint8_t openAllByShedule, smsUnreg; } triggers;
 } device;
@@ -37,7 +41,7 @@ static unsigned finds, loads, events, replies, notes, photos;
 static char find_id[11], event_id[11], reply_id[11];
 static uint8_t load_out[4], load_mode[4], event_type[4], reply_state;
 static bool flash_exec_read_allowed(void) { return read_allowed; }
-static bool __attribute__((unused)) user_access_ready(const char *id) { CHECK(strlen(id) == 10); return access_ready; }
+static bool __attribute__((unused)) user_access_ready(const char *id) { CHECK(strlen(id) <= 10); return access_ready; }
 static uint8_t user_findTempID(char *id) { (void)id; return temp_result; }
 static uint8_t user_findID(char *id, cellID_s *cell)
 {
@@ -71,13 +75,14 @@ static uint32_t id_first_pass(cellID_s *c) { (void)c; return 1; }
 static void id_set_first_pass(cellID_s *c, uint32_t t) { (void)c; (void)t; CHECK(0); }
 static void id_watch_end(uint32_t end) { (void)end; }
 static uint32_t id_time_end(cellID_s *c) { (void)c; return 0; }
-#define RS485_CAMERA 9u /* как в User/photo.h */
-static uint8_t photo_start(uint8_t address) { (void)address; ++photos; return 0; }
+static uint8_t photo_address, photo_code; /* последняя камера съёмки и её ответ */
+static cmdCode_e photo_start(uint8_t address) { photo_address = address; ++photos; return (cmdCode_e)photo_code; }
 static void user_send_readedIDtoServer(uint8_t *id, uint8_t state)
 { ++replies; reply_state = state; memcpy(reply_id, id, 10); reply_id[10] = 0; }
 /* Порт главного цикла для port_check_data: кадр в wf_line, пауза приёма уже прошла. */
-static unsigned polls, clears; static uint8_t port_state = 1, port_receiving, port_wifi; static uint16_t port_count;
+static unsigned polls, clears, camera_polls; static uint8_t port_state = 1, port_receiving, port_wifi; static uint16_t port_count;
 static void photo_poll(void) { ++polls; }
+static void anpr_poll(void) { ++camera_polls; }
 static bool __attribute__((unused)) comm_channel_wifi(void) { return port_wifi != 0; }
 static uint8_t uart_getstate(void) { return port_state; }
 static bool uart_isReceiving(void) { return port_receiving != 0; }
@@ -87,6 +92,7 @@ void user_checkIdAndControl(char *id, codeType_e tp);
 bool user_activateOut(bool out1, bool out2, codeType_e tp, char *id);
 void user_access_complete(uint8_t outputs, codeType_e tp, char *id, uint8_t cnt, bool started);
 bool rs485_readedID(const uint8_t *p, uint16_t n);
+void camera_readedID(char *id, uint8_t address);
 void WG_readedID(uint32_t id);
 void port_check_data(void);
 /* КОД МОДУЛЯ */
@@ -97,9 +103,18 @@ static void reset(void)
   config.rele[0].tImpulse = config.rele[0].cnt = config.rele[1].tImpulse = config.rele[1].cnt = 1;
   read_allowed = access_ready = true; find_result = 1; temp_result = 0;
   group_onRFID = group_onWiegand = group_onAuto = group_onPhone = 1; unblock_active = 0;
-  finds = loads = events = replies = notes = photos = polls = clears = 0;
-  find_id[0] = event_id[0] = reply_id[0] = 0; reply_state = 0;
+  finds = loads = events = replies = notes = photos = polls = clears = camera_polls = 0;
+  find_id[0] = event_id[0] = reply_id[0] = 0; reply_state = 0; photo_address = photo_code = 0;
   port_state = 1; port_receiving = port_wifi = 0; port_count = 0;
+  transport_assigned = transport_active = false;
+  now_ms += 1000000u; /* память повтора номера камеры от прошлого случая истекла */
+}
+/* Номер с камеры номеров по адресу 48 («0»), реле 1 разрешено «от камеры». */
+static void plate(const char *id)
+{
+  char copy[11] = {0};
+  memcpy(copy, id, strlen(id));
+  camera_readedID(copy, 48);
 }
 /* Посылка с линии в пассивном режиме, реле 1 разрешено «от 485 прочие». */
 static bool frame(const char *data, size_t n)
@@ -225,13 +240,69 @@ int main(void)
   port_wifi = 0; device.getPhoto = 5; port_check_data(); CHECK(polls == 3 && !clears && !loads);
   device.getPhoto = 0; read_allowed = false; port_check_data(); CHECK(polls == 3 && !clears && !loads);
   read_allowed = true; port_check_data(); CHECK(polls == 4 && clears == 1 && loads == 1);
-  /* Активный режим: кадр освобождается без разбора (сюда встанет опрос периферии). */
+  /* Активный режим: линию разбирает опрос камер номеров, пассивный разбор ID не идёт. */
   reset(); config.rele[0].onOther = 1; config.rs485Mode = 1; line("0012345678\r\n", 12);
-  port_check_data(); CHECK(clears == 1 && !loads && !finds);
+  port_check_data(); CHECK(camera_polls == 1 && !clears && !loads && !finds);
+  /* Выбранный Wi-Fi-модем или съёмка держат линию: ни опроса, ни разбора. */
+  device.wifiModem = 1; port_check_data(); CHECK(camera_polls == 1 && !clears);
+  device.wifiModem = 0; device.getPhoto = 48; port_check_data(); CHECK(camera_polls == 1 && polls == 3);
+  reset(); config.rele[0].onOther = 1; device.wifiModem = 1; line("0012345678\r\n", 12);
+  port_check_data(); CHECK(!clears && !loads && !finds && !camera_polls);
   /* Полный буфер: отброшен и освобождён. */
   reset(); config.rele[0].onOther = 1; memset(big, '1', sizeof(big)); line(big, sizeof(big));
   port_check_data(); CHECK(clears == 1 && !loads && !finds);
   CHECK(!photos);
-  puts("rs485id: last 10 printable chars, zero padding, garbage/long frames dropped, capture 6/source 3, RFID/other routes, port poll PASS");
+  /* Камера номеров: номер 9 символов и ноль (как отдаёт камера) — проход «от камеры», событие 73,
+     поиск в базе по всем 10 байтам, снимок прохода — первой камерой таблицы. */
+  reset(); config.rele[0].onCamera = 1; config.rs485Mode = 1;
+  config.rs485Periphery[1].address = 7; config.rs485Periphery[1].type = 16; /* кодовая панель — не камера */
+  config.rs485Periphery[2].address = 48; config.rs485Periphery[2].type = RS485_ANPR;
+  config.rs485Periphery[3].address = 5; config.rs485Periphery[3].type = RS485_CAMERA;
+  plate("A001XH197");
+  CHECK(finds && !memcmp(find_id, "A001XH197\0", 10) && loads == 1 && load_out[0] == 0);
+  CHECK(events == 1 && event_type[0] == LOG_CON_OUTONBYAVTO && !memcmp(event_id, "A001XH197\0", 10));
+  CHECK(photos == 1 && photo_address == 48);
+  /* Камера номеров не приняла съёмку (номера нет в кадре): снимает следующая камера таблицы. */
+  reset(); config.rele[0].onCamera = 1; config.rs485Mode = 1; photo_code = CMD_RUNERROR;
+  config.rs485Periphery[2].address = 48; config.rs485Periphery[2].type = RS485_ANPR;
+  config.rs485Periphery[3].address = 5; config.rs485Periphery[3].type = RS485_CAMERA;
+  plate("A001XH197"); CHECK(loads == 1 && photos == 2 && photo_address == 5);
+  /* Тот же номер, пока машина в кадре, второго прохода не даёт; каждое появление продлевает паузу. */
+  reset(); config.rele[0].onCamera = 1; plate("A001XH197"); CHECK(loads == 1);
+  unsigned seen = finds;
+  now_ms += CAMERA_HOLD_MS - 1; plate("A001XH197"); CHECK(loads == 1 && finds == seen && events == 1);
+  now_ms += CAMERA_HOLD_MS - 1; plate("A001XH197"); CHECK(loads == 1 && finds == seen);
+  /* Другой номер проверяется сразу; прежний после паузы CAMERA_HOLD_MS без него — новый проход. */
+  plate("C020PM177"); CHECK(loads == 2 && finds > seen && !strcmp(find_id, "C020PM177"));
+  plate("A001XH197"); CHECK(loads == 3);
+  now_ms += CAMERA_HOLD_MS; plate("A001XH197"); CHECK(loads == 4);
+  /* Номер не в базе: событие 65 один раз, пока номер в кадре. */
+  reset(); config.rele[0].onCamera = 1; find_result = 0;
+  plate("O777OO77"); plate("O777OO77"); CHECK(!loads && events == 1 && event_type[0] == LOG_CON_IDNOTINBASE);
+  /* Датчик транспорта без сигнала: номер не проверяется и не запоминается — подъехав, машина проходит. */
+  reset(); config.rele[0].onCamera = 1; transport_assigned = true;
+  plate("A001XH197"); CHECK(!loads && !finds && !events);
+  transport_active = true; plate("A001XH197"); CHECK(loads == 1 && events == 1);
+  /* Неготовый доступ пропускает номер без памяти: следующий ответ камеры его проверит. */
+  reset(); config.rele[0].onCamera = 1; access_ready = false;
+  plate("A001XH197"); CHECK(!loads && !finds);
+  access_ready = true; plate("A001XH197"); CHECK(loads == 1);
+  /* Камера без разрешения реле «от камеры» и группа без «автономера» не открывают. */
+  reset(); config.rele[0].onOther = config.rele[0].onRFID = config.rele[0].onWiegand = 1; plate("A001XH197");
+  CHECK(!loads && !finds);
+  reset(); config.rele[0].onCamera = 1; group_onAuto = 0; plate("A001XH197"); CHECK(!loads && finds == 1);
+  /* Захват команды 6 с 485 и адресом камеры: ответ 8 с номером, событие 78, проход не проверяется;
+     номер не запоминается — после захвата та же машина проверяется. */
+  reset(); config.rele[0].onCamera = 1; device.timeToGetID = 5; device.sourceGetID = 3; device.addressGetID = 48;
+  plate("A001XH197");
+  CHECK(replies == 1 && reply_state == 1 && !memcmp(reply_id, "A001XH197\0", 10) && !device.timeToGetID);
+  CHECK(events == 1 && event_type[0] == LOG_CON_RECVIDONREADER && !loads && !finds);
+  plate("A001XH197"); CHECK(loads == 1 && finds);
+  /* Захват с другого адреса 485 и захват Wiegand номер камеры не забирают и проход не дают. */
+  reset(); config.rele[0].onCamera = 1; device.timeToGetID = 5; device.sourceGetID = 3; device.addressGetID = 49;
+  plate("A001XH197"); CHECK(!replies && !events && !loads && device.timeToGetID == 5);
+  reset(); config.rele[0].onCamera = 1; device.timeToGetID = 5; device.sourceGetID = 1; device.addressGetID = 48;
+  plate("A001XH197"); CHECK(!replies && !events && !loads && device.timeToGetID == 5);
+  puts("rs485id: last 10 printable chars, zero padding, garbage/long frames dropped, capture 6/source 3, RFID/other routes, port poll, camera plate once/hold/transport/capture by address PASS");
   return 0;
 }

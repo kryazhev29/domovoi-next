@@ -195,6 +195,27 @@ bool rs485_readedID(const uint8_t *p, uint16_t n)
   return true;
 }
 
+// Номер камеры номеров (тип 8) — 10 Б, как их отдала камера: захват команды 6 берёт номер камеры
+// с адресом захвата; неготовый доступ пропускает кадр — камера пришлёт номер в следующем ответе.
+void camera_readedID(char *id, uint8_t address)
+{
+  if (user_access_ready(id)) reader_id(id, address == device.addressGetID ? 3u : 0u, CT_AUTO);
+}
+
+// Камера присылает номер, пока машина в кадре: проход по нему проверяется один раз; тот же номер
+// снова проверяется, только если его не было CAMERA_HOLD_MS (машина уезжала).
+#define CAMERA_HOLD_MS 15000u
+static bool camera_repeat(const char *id)
+{
+  static char last[10];
+  static uint32_t seen;
+  uint32_t now = timers_getMillis();
+  bool same = !memcmp(id, last, sizeof(last)) && now - seen < CAMERA_HOLD_MS;
+  memcpy(last, id, sizeof(last));
+  seen = now;
+  return same;
+}
+
 // Нормализовать номер звонящего и проверить доступ.
 bool user_incomingcall (const char* num, uint8_t typ)
 {
@@ -229,6 +250,8 @@ void user_checkIdAndControl(char *id, codeType_e tp){
 
   // Датчик присутствия транспорта (функция входа 4): без сигнала звонки и ID со считывателей не рассматриваются.
   if (tp != CT_SERVER && input_assigned(IN_TRANSPORT) && !input_active(IN_TRANSPORT)) return;
+  // После датчика: подъехавшая к нему машина с уже увиденным номером проверяется.
+  if (tp == CT_AUTO && camera_repeat(id)) return;
 
   bool onOut[2] = {false, false};
 
@@ -459,13 +482,12 @@ void user_access_complete(uint8_t outputs, codeType_e tp, char *id, uint8_t cnt,
       out_load(out, (tp == CT_SERVER) ? OUT_ON : OUT_INV, 0, 0, 0);
     }
   }
-  // Штатное фото не задерживает реле; занятая или недоступная камера пропускается.
+  // Штатное фото не задерживает реле; снимает первая камера, принявшая съёмку
+  // (камера номеров — только с номером в кадре), занятые и недоступные пропускаются.
   if (outputs && config.rs485Mode == 1)
     for (out = 0; out < 8; out++)
-      if (config.rs485Periphery[out].type == RS485_CAMERA) {
-        photo_start(config.rs485Periphery[out].address);
-        break;
-      }
+      if (RS485_IS_CAMERA(config.rs485Periphery[out].type) &&
+          photo_start(config.rs485Periphery[out].address) == CMD_SUCCESS) break;
   switch (tp){
   case CT_PHONE:
     log_addControlEvent(LOG_CON_OUTONBYPHONE, id, cnt);

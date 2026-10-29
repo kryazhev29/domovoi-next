@@ -50,7 +50,7 @@ typedef struct {
   uint8_t failures;
 } log_job_s;
 typedef struct {
-  uint8_t after, task, cancelled, committed, address;
+  uint8_t after, task, cancelled, committed, address, anpr;
   // Кадр камеры до 506 Б; один шаг записи не больше 64 Б.
   uint16_t io_len, io_done;
   uint8_t io_step;

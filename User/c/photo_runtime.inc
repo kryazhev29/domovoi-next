@@ -17,13 +17,15 @@ enum {
   PR_IO = 1, PR_HEAD, PR_CAMERA, PR_LAZY_DONE,
     PR_DATA_DONE, PR_PHOTO_MARK, PR_PHOTO_DONE, PR_RECEIVE_DONE,
     PR_ACK_HEAD, PR_ACK_ADVANCE, PR_REQUEST_DONE, PR_SEND_FILL,
-    PR_SEND_COMMIT, PR_IO_DONE, PR_REQUEST_ERROR, PR_OFFSET_ERROR
+    PR_SEND_COMMIT, PR_IO_DONE, PR_REQUEST_ERROR, PR_OFFSET_ERROR,
+    PR_STREAM_DONE, PR_STREAM_HEAD
 };
 static void photo_stop(void);
 static uint8_t photo_alloc(void);
 static void photo_command(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
 static void photo_issue(void);
 static void photo_frame(uint8_t *, uint16_t);
+static void photo_anpr(uint32_t);
 static void pr_tx_release(void);
 
 // Переходим к следующему сектору: чужих данных в секторе записи нет.
@@ -87,7 +89,7 @@ static bool pr_begin(uint8_t step)
 static void pr_write(uint32_t address, const uint8_t *p, uint16_t n, uint8_t after)
 {
   if (flash_job.kind != FX_PHOTO && !pr_begin(PR_IO)) return;
-  if (after != PR_DATA_DONE && p != sjr.data) memcpy(sjr.data, p, n);
+  if (after != PR_DATA_DONE && after != PR_STREAM_DONE && p != sjr.data) memcpy(sjr.data, p, n);
   pj.io_address = address;
   pj.io_len = n;
   // Нулевая длина означает стирание сектора.
@@ -169,14 +171,17 @@ cmdCode_e photo_start(uint8_t address)
 {
   if (device.wifiModem) return CMD_PARAMERROR;
   if (comm_channel_wifi()) return CMD_RUNERROR; // Сначала завершить попытки выключения старого моста.
-  uint8_t found = 0;
+  uint8_t type = 0;
   for (uint8_t i = 0; i < 8; i++) {
-    if (config.rs485Periphery[i].type == RS485_CAMERA && config.rs485Periphery[i].address == address) {
-      found = 1;
+    if (RS485_IS_CAMERA(config.rs485Periphery[i].type) && config.rs485Periphery[i].address == address) {
+      type = config.rs485Periphery[i].type;
       break;
     }
   }
-  if (!found || config.rs485Mode != 1) return CMD_PARAMERROR;
+  if (!type || config.rs485Mode != 1) return CMD_PARAMERROR;
+  // Камера номеров отдаёт снимок, только пока номер в кадре: без свежего номера место не стираем.
+  if (type == RS485_ANPR && (anpr.plate_addr != address || timers_getMillis() - anpr.plate >= ANPR_PLATE_MS))
+    return CMD_RUNERROR;
   if (!pr_command_ready()) return CMD_RUNERROR;
   // Курсор уже проверен сканом и выровнен по сектору: остаток не меньше 4096 Б.
   if (device.countPhoto>=20) return CMD_RUNERROR;
@@ -184,6 +189,7 @@ cmdCode_e photo_start(uint8_t address)
   pr_tx_release();
   if (!pr_begin(PR_CAMERA)) return CMD_RUNERROR;
   pj.address = address;
+  pj.anpr = type == RS485_ANPR;
   return CMD_SUCCESS;
 }
 
@@ -305,7 +311,7 @@ void photo_storage_poll(uint32_t now)
       if (n > sizeof(sjr.data)) n = sizeof(sjr.data);
       pj.io_step = n;
       // FX_PHOTO не допускает разбора следующего кадра до завершения записи.
-      const uint8_t *source = pj.after == PR_DATA_DONE ? photo->frame + 4 : sjr.data;
+      const uint8_t *source = pj.after == PR_DATA_DONE || pj.after == PR_STREAM_DONE ? photo->frame + 4 : sjr.data;
       fx_start(pj.io_address + pj.io_done, !pj.io_len ? 0 : source + pj.io_done, n, now, PR_IO_DONE);
       break;
     }
@@ -416,6 +422,11 @@ void photo_storage_poll(uint32_t now)
     photo->deadline = now;
     uart_init(rs485_baud(), 0, photo->rx, sizeof(photo->rx));
     device.getPhoto = pj.address;
+    // Камера номеров сообщает размер в конце потока: место — под наибольший снимок.
+    if (pj.anpr) {
+      if (pr_prepare(PHOTO_ANPR_MAX)) photo->stage = P_ERASE;
+      else photo_stop();
+    }
     pr_release(FX_OK);
     break;
   case PR_LAZY_DONE: photo_erased_to += MEMSECTORSIZE;
@@ -430,11 +441,18 @@ void photo_storage_poll(uint32_t now)
         pr_release(FX_OK);
         break;
       }
-      pj.h[2] = PHOTO_FORMAT;
-      pj.committed = 1;
-      pr_write(photo->address+8,(uint8_t *)pj.h+8,4,PR_PHOTO_DONE);
-      break;
     }
+    /* FALLTHROUGH */
+  case PR_STREAM_HEAD: // заголовок записан: метка формата публикует снимок
+    pj.h[2] = PHOTO_FORMAT;
+    pj.committed = 1;
+    pr_write(photo->address+8,(uint8_t *)pj.h+8,4,PR_PHOTO_DONE);
+    break;
+  case PR_STREAM_DONE:
+    photo->written += pj.io_len;
+    photo->used = 0;
+    pr_release(FX_OK);
+    break;
   case PR_PHOTO_MARK:
     pj.h[2]=PHOTO_RECEIVE;
     pr_write(photo->address+8,(uint8_t *)pj.h+8,4,PR_RECEIVE_DONE);
@@ -452,7 +470,7 @@ void photo_storage_poll(uint32_t now)
     device.newAddressPhoto = pr_next(photo->address, photo->size);
     pr.last_number = photo->stamp;
     log_addPhotoEvent(photo->stamp);
-    photo_command(0x0e, 0, 0, 0xf0, 0xf0);
+    if (photo->stage == P_DATA) photo_command(0x0e, 0, 0, 0xf0, 0xf0); // последний ACK — только C328
     photo_stop();
     break;
   case PR_ACK_HEAD:
@@ -595,7 +613,8 @@ void photo_poll(void)
     if (photo->pending && photo->channel == CH_USB && pr.usb_epoch != usb_bus_resets) photo->pending = 0;
     if (device.status.readyToUpdate) photo_storage_cancel();
     else {
-      if (photo->stage && uart_getstate() && !uart_isReceiving()) {
+      if (photo->stage >= P_ERASE) photo_anpr(now);
+      else if (photo->stage && uart_getstate() && !uart_isReceiving()) {
         uint16_t n = uart_received();
         if (n > sizeof(photo->rx)) {
           photo_stop();
@@ -624,7 +643,7 @@ void photo_poll(void)
       if (photo->stage && (uint32_t)(now - photo->started) >= 60000u) {
         photo_stop();
       }
-      if (photo->stage && (int32_t)(now - photo->deadline) >= 0 &&
+      if (photo->stage && photo->stage < P_ERASE && (int32_t)(now - photo->deadline) >= 0 &&
         (photo->stage == P_DATA || (uint32_t)(now - photo->last) >= 50u)) {
         if (photo->stage != P_DATA || pr_data_ready()) {
           /* C328: SYNC до 60 раз, ACK обычно после ~25; на 30 (1,5 с) камера на плате №1 21.10 раз не ответила. */
@@ -638,7 +657,8 @@ void photo_poll(void)
         }
       }
       if (flash_job.kind == FX_PHOTO) return;
-      if (photo->pending) {
+      // Поток камеры номеров не ждёт: выгрузка снимков сервером продолжается после съёмки.
+      if (photo->pending && photo->stage < P_ERASE) {
         if ((uint32_t)(now - photo_pending_since) >= 60000 ||
           (photo->channel == CH_SERVER && !comm_channel_ready())) photo->pending = 0;
         else {

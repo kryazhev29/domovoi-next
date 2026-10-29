@@ -21,13 +21,15 @@ bool input_active(uint8_t function)
          (config.inputMode[1] == function && device.status.stateIn2);
 }
 
-// Снимок по тревоге: камера из таблицы 485 в активном режиме; занятая камера пропускается без события.
+// Снимок по тревоге: первая камера таблицы 485 (активный режим), принявшая съёмку; камера номеров
+// снимает только с номером в кадре. Занятые камеры пропускаются, без съёмки нет и события.
 static void input_photo(void)
 {
   if (config.rs485Mode != 1) return;
   for (uint8_t i = 0; i < 8; ++i)
-    if (config.rs485Periphery[i].type == RS485_CAMERA) {
-      if (photo_start(config.rs485Periphery[i].address) == CMD_SUCCESS) log_addSystemEvent(LOG_SYS_IN_PHOTO);
+    if (RS485_IS_CAMERA(config.rs485Periphery[i].type) &&
+        photo_start(config.rs485Periphery[i].address) == CMD_SUCCESS) {
+      log_addSystemEvent(LOG_SYS_IN_PHOTO);
       return;
     }
 }
