@@ -47,8 +47,9 @@ CASES = (
     ('deact-error-fails', b'action == MODEM_ANY || action == MODEM_APN_QUERY', b'action == MODEM_APN_QUERY', MODEM),
     ('query-error-reopens', b'    query.cmd = NULL; return;', b'    query.cmd = NULL;', CHANNEL),
     ('csq-not-parsed', b'info.v.csq = v[0] <= 99u ? (uint8_t)v[0] : 99u;', b'(void)v;', INFO),
-    ('stale-info-offline', b'    info.v.csq = 99; info.v.creg', b'    info.v.csq = info.v.csq; info.v.creg', INFO),
-    ('no-session-reset', b'rc.hooks->reset_session();', b''),
+    ('stale-info-offline', b'    info.v.csq = 99; info.v.creg = info.v.cgreg = info.v.net = info.ps = 0;',
+     b'    info.v.csq = info.v.csq; info.v.creg = info.v.cgreg = info.v.net = info.ps = 0;', INFO),
+    ('no-session-reset', b'if (!comm_channel_modem_reset()) rc.hooks->reset_session();', b'(void)comm_channel_modem_reset();'),
 )
 
 

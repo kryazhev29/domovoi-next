@@ -36,7 +36,7 @@ def run():
         'D14-ID-digits': ('registration_write', [(sms,
             "if (arg[i] < '0' || arg[i] > '9') goto format_error;", 'if (false) goto format_error;')]),
         'D14-SMS-false-success': ('registration_write', [(sms,
-            'if (!user_addIdToTempBuffer(arg, CT_OTHER)) { strcat(reply, ": Error"); break; }',
+            'if (!user_addIdToTempBuffer(arg, CT_OTHER)) { sms_append(end, ": Error"); break; }',
             'user_addIdToTempBuffer(arg, CT_OTHER);')]),
         'D14-autoreg-false-event': ('registration_write', [(access,
             'found == 0 && user_addIdToTempBuffer(id, tp)',

@@ -5,7 +5,6 @@ from test_access_reads import AccessMachine
 from test_fw_service_runtime import FirmwareMachine, owned, FW_CONTEXT
 from test_service_runtime import ServiceMachine
 from storage_machine import fields
-from unicorn import UC_HOOK_MEM_WRITE
 from iar_image import result_path
 
 
@@ -65,12 +64,13 @@ def rollback():
             m.until(lambda: m.phase() == 10)
             ctx = m.ptr(); m.checked('user_storage_poll')
             assert m.exec_active(3)
-            writes = []
+            writes, watching = [], [True]
             def watch(u, access, address, size, value, data):
-                if ctx <= address < ctx+128:
+                if watching[0] and ctx <= address < ctx+128:
                     assert owned(m) & (1 << (FW_CONTEXT-1)), 'write after release'
                     writes.append(address)
-            hook = m.u.hook_add(UC_HOOK_MEM_WRITE, watch, begin=ctx, end=ctx+127)
+            # UC_HOOK_MEM_WRITE на memset внутри IT-блока (FWS_COPY_READ) портит ITSTATE Unicorn 2.1.4.
+            m.watch_writes(ctx, ctx+127, watch)
             if fault == 'poll': m.checked('fw_service_poll')
             m.fault = (fault, m.counts[fault]+1)
             m.busy = True
@@ -79,7 +79,7 @@ def rollback():
             m.busy = False; m.drain()
             assert m.sent[-1][8] == 4 and m.sent[-1][10] == 253
             assert not owned(m) & (1 << (FW_CONTEXT-1)) and not m.checked('fw_service_busy')
-            m.u.hook_del(hook)
+            watching[0] = False
             m.until(lambda: not owned(m))
             cases += 1
     return cases

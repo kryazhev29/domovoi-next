@@ -44,7 +44,7 @@ def run():
         ('at', 'idle-fragment-old-timestamp', 'if (state == IDLE && !line_count && !cr) started = now_ms;', ''),
         ('modem', 'busy-start-is-fatal', 'if (result == COMM_AT_BUSY) {', 'if (0) {'),
         ('modem', 'busy-start-unbounded', 'if (slm.attempt.now - slm.attempt.next >= comm_timeouts[COMM_T_AT_SIMPLE]) slm_fail(SLM_ERR_TIMEOUT);', 'if (0) slm_fail(SLM_ERR_TIMEOUT);'),
-        ('channel', 'data-echo-left-enabled', '"QISDE=0"', '"QISDE=1"'),
+        ('channel', 'data-echo-left-enabled', '"QISDE=0\\0"', '"QISDE=1\\0"'),
         ('uart', 'idle-steals-rx-byte', 'status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)', 'status & (USART_SR_IDLE | USART_SR_ORE | USART_SR_FE | USART_SR_NE)'),
         ('modem', 'power-noise-not-cleared', 'if (p == COMM_PWR_READY) {\n        comm_uart_init(115200);', 'if (p == COMM_PWR_READY) {'),
         ('modem', 'reject-valid-current-rat', 'values[0] <= 8)', 'values[0] <= 5)'),
@@ -155,7 +155,7 @@ def user_mutations(out):
         ('sms-backpressure-ignored', "comm_server_online() && !user_send_smsToServer(data)", "comm_server_online() && !user_send_smsToServer(data) && 0"),
         ('sms-offline-blocks-queue', "comm_server_online() && !user_send_smsToServer(data)", "!user_send_smsToServer(data)"),
         ('sms-command-forwarded', "device.triggers.smsToAdmin && *data != '#'", 'device.triggers.smsToAdmin'),
-        ('sms-command-wrong', 'return i + 1u;', 'return i + 2u;'),
+        ('sms-command-wrong', '"add\\0imei\\0status\\0reset\\0setout\\0default\\0"', '"?\\0add\\0imei\\0status\\0reset\\0setout\\0default\\0"'),
     )
     for label, old, new, *group in cases:
         with TemporaryDirectory(dir=out) as tmp:

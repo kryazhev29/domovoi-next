@@ -209,8 +209,12 @@ def mutations():
                          if ins.mnemonic == 'bl' and int(ins.op_str.lstrip('#'), 0) == timer]
                 assert len(calls) == 2, calls
                 if mode == 'chunk-cap':
+                    # Предел порций — регистр, который цикл уменьшает на 1 перед вторым чтением таймера;
+                    # рядом с первым чтением стоит и шаг TABLE_REPLY = 4 ветки отмены.
+                    counter = next(ins.op_str.split(',')[0] for ins in reversed(code[calls[0]:calls[-1]])
+                                   if ins.mnemonic in ('subs', 'subs.w') and ins.op_str.endswith(', #1'))
                     candidates = [ins for ins in code[max(0, calls[0]-3):calls[0]+4]
-                                  if ins.mnemonic in ('movs', 'mov.w') and ins.op_str.endswith(', #4')]
+                                  if ins.mnemonic in ('movs', 'mov.w') and ins.op_str == counter + ', #4']
                     assert len(candidates) == 1, [(c.mnemonic, c.op_str) for c in candidates]
                     ins = candidates[0]
                     address = ins.address

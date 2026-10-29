@@ -73,10 +73,19 @@ def run():
             for authorized in (0, 1):
                 reference, wire = command(m, 250, channel, authorized)
                 assert reference and not wire
-                for code in (111, 113):
-                    answers, wires = command(m, code, channel, authorized)
-                    assert not wires and len(answers) == len(reference)
-                    assert [a[1:] for a in answers] == [a[1:] for a in reference]
+                answers, wires = command(m, 111, channel, authorized)
+                assert not wires and len(answers) == len(reference)
+                assert [a[1:] for a in answers] == [a[1:] for a in reference]
+                # USB 113 с 19.10 — состояние моста Wi-Fi в обоих профилях (wifi_dr164.md), не пакет DWT:
+                # без ПИН — запрос ПИН, как у любой команды; по серверу команда только для USB молчит.
+                answers, wires = command(m, 113, channel, authorized)
+                from test_stage4_usb import frames
+                wires = frames(b''.join(wires))
+                if channel == 0 and not authorized:
+                    assert not wires and [a[1:] for a in answers] == [a[1:] for a in reference]
+                else:
+                    assert not answers and len(wires) == (channel == 0)
+                    assert all(p[8] == 113 and len(p) >= 8 + 3 + 6 for p in wires)
 
     for mask in (0, 1):
         from unicorn.arm_const import UC_ARM_REG_PRIMASK

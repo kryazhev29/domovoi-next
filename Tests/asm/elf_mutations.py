@@ -19,18 +19,18 @@ from capstone import Cs,CS_ARCH_ARM,CS_MODE_THUMB,CS_MODE_MCLASS
 
 
 def patch(m,symbol,mode):
-    impl=symbol.replace("idindex_","idindex_impl_",1)
-    if mode in ("pending","verified") and impl in m.symbols:symbol=impl
     a=m.addr(symbol);code=bytes(m.u.mem_read(a,2048));offset=0
     if mode in ('return-zero','return-one','no-op'):
         replacement=b'\x01\x20\x70\x47' if mode=='return-one' else b'\x00\x20\x70\x47' if mode=='return-zero' else b'\x70\x47'
     else:
-        target=m.addr('idcrc_io_poll' if 'idcrc_io_poll' in m.symbols else 'w25_async_poll');seen=False;offset=None
+        target=m.addr('idcrc_io_poll' if 'idcrc_io_poll' in m.symbols else 'w25_async_poll');seen=False;offset=None;result='r0'
         md=Cs(CS_ARCH_ARM,CS_MODE_THUMB|CS_MODE_MCLASS)
         want=1 if mode=='pending' else 2
         for ins in md.disasm(code,a):
             if ins.mnemonic=='bl' and int(ins.op_str.lstrip('#'),0)==target:seen=True
-            if seen and ins.mnemonic=='cmp' and ins.size==2 and ins.op_str.endswith(', #'+str(want)):
+            # fx_waiting переносит итог опроса из r0 (mov r5, r0) и до него сравнивает вид ожидания с 2.
+            if seen and ins.mnemonic=='mov' and ins.op_str.endswith(', r0'):result=ins.op_str.split(',')[0]
+            if seen and ins.mnemonic=='cmp' and ins.size==2 and ins.op_str==result+', #'+str(want):
                 word=int.from_bytes(ins.bytes,'little')
                 assert word&0xf800==0x2800
                 offset=ins.address-a;replacement=((word&0xff00)|(0 if want==1 else 3)).to_bytes(2,'little');break
@@ -68,17 +68,18 @@ def cases():
     def blank(m=m):assert not m.call('fast_all_ff',0x21000000,1)
     add('blank-dirty',m,'fast_all_ff','return-one',blank)
 
+    # С этапа 1 хранилища (23.10) индекс и фото ждут W25 в исполнителе fx_waiting, журнал сектора — сам.
     for mode in ('pending','verified'):
         m=IndexMachine();expected,_,_=m.setup((1,2))
         def index(m=m,expected=expected):
             m.drain_index();assert m.state()==3 and m.flash[0x300000:0x340000]==expected
-        add('index-'+mode,m,'idindex_poll',mode,index)
+        add('index-'+mode,m,'fx_waiting',mode,index)
         m=StorageMachine();m.flash[0x4101f]=0;m.command(13,rows([1]),1)
         def table(m=m):m.drain();assert len(m.timestamps)==1
         add('journal-'+mode,m,'sj_runtime_poll',mode,table)
         m=PhotoMachine();m.boot_media()
         def photo(m=m):m.capture(b'x'*116)
-        add('photo-'+mode,m,'photo_storage_poll',mode,photo)
+        add('photo-'+mode,m,'fx_waiting',mode,photo)
 
     m=StorageMachine();m.command(13,rows([1,129]),2)
     def cancel(m=m):
