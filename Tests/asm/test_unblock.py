@@ -474,7 +474,7 @@ def capture_id():
         m.put_group(1)
         if known:
             m.put_id(1, b'0000123456')
-        parse(m, 6, b'\x02\x01\x00')
+        parse(m, 6, b'\x02\x01\x00', channel=1)
         assert m.answers[-1][:2] == (6, 0)
         m.checked('WG_readedID', 0x123456)
         assert m.events == [(78, b'0000123456', 0)] and not m.loads
@@ -493,6 +493,18 @@ def capture_id():
         m.checked('WG_readedID', 0x123456)
         assert m.events[0][0] == (71 if known else 65), m.events
         assert bool(m.loads) == known
+    # Захват из NextConfig (USB): ответ 8 уходит в USB, серверный слот не занимается.
+    m = UnblockMachine(mask=0)
+    m.put_group(1)
+    parse(m, 6, b'\x02\x01\x00')
+    m.checked('WG_readedID', 0x123456)
+    acquired = []
+    m.stubs[m.addr('comm_tx_acquire')] = lambda: (acquired.append(1), m.ret(0))
+    m.packets.clear()
+    m.checked('reader_reply_poll')
+    assert not acquired and len(m.packets) == 1 and m.packets[0][8:20] == b'\x08\x01' + b'0000123456'
+    m.checked('reader_reply_poll')
+    assert len(m.packets) == 1
     # Чужой интерфейс захвата тоже не разрешает проход по Wiegand.
     m = UnblockMachine(mask=0)
     m.put_group(1)

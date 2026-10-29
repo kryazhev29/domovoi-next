@@ -105,10 +105,10 @@ static uint8_t uniqIDCnt, legacy_frame[1040];
 static uint16_t legacy_count;
 static uint8_t link_wire[98];
 static uint16_t link_wire_size;
-// Перехватить настоящий кадр 112 на границе USB.
+// Перехватить настоящий кадр USB (112, ответ считывателя 8) на границе USB.
 static bool usb_send(uint8_t *p, uint16_t n)
 {
-  CHECK(n == sizeof(link_wire));
+  CHECK(n <= sizeof(link_wire));
   memcpy(link_wire, p, n);
   link_wire_size = n;
   return true;
@@ -712,7 +712,7 @@ static void pending_update_tests(void)
 static void reader_tests(void)
 {
   server_reset(); uint16_t cap; uint8_t *p=comm_tx_acquire(&cap); CHECK(p); memset(p,0,12); CHECK(comm_tx_commit(12));
-  user_send_readedIDtoServer(NULL,255); reader_reply_poll(); CHECK(ch.frame_count==12);
+  reader_request(CH_SERVER); user_send_readedIDtoServer(NULL,255); reader_reply_poll(); CHECK(ch.frame_count==12);
   unsigned i; for (i=0;!(sent_count==22 && sent_frame[8]==8) && i<1000;++i) { transport_tick(10); reader_reply_poll(); }
   CHECK(sent_count==22 && sent_frame[8]==8 && sent_frame[9]==255);
   for (i=10;i<20;++i) CHECK(sent_frame[i]==0);
@@ -722,7 +722,13 @@ static void reader_tests(void)
   /* Отправлен один раз: дальше пакетов 8 нет. */
   sent_frame[8]=0; for (i=0;i<300;++i) { transport_tick(10); reader_reply_poll(); }
   CHECK(sent_frame[8]!=8);
-  puts("reader reply: packet 8 waits for a free slot, timeout and card both delivered once PASS");
+  /* Захват из NextConfig: номер уходит в USB, серверу ничего. */
+  reader_request(CH_USB); link_wire_size=0; user_send_readedIDtoServer((uint8_t*)"A001XH197\0",1); reader_reply_poll();
+  CHECK(link_wire_size==22 && link_wire[8]==8 && link_wire[9]==1 && !memcmp(link_wire+10,"A001XH197\0",10));
+  CHECK(crc16_calc(link_wire+4,16)==(uint16_t)(link_wire[20]|link_wire[21]<<8));
+  link_wire_size=0; for (i=0;i<300;++i) { transport_tick(10); reader_reply_poll(); }
+  CHECK(link_wire_size==0 && sent_frame[8]!=8);
+  puts("reader reply: packet 8 waits for a free slot, timeout and card both delivered once; USB capture answers USB PASS");
 }
 /* ВОССТАНОВЛЕНИЕ */
 /* ВЫЗОВ */

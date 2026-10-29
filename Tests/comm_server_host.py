@@ -52,8 +52,8 @@ def unit():
     status += '\n'+ '\n'.join(function(user,n) for n in ('status_event_due','status_event_sent'))
     status = 'uint8_t status_event_due(uint16_t,uint32_t);\nvoid status_event_sent(uint16_t,uint32_t);\n'+status
 
-    status += '\n'+re.search(r'static struct \{ uint8_t state; char id\[10\]; \} reader_out;', user).group(0)
-    status += '\n'+'\n'.join(function(user,n) for n in ('user_send_readedIDtoServer','reader_reply_poll'))
+    status += '\n'+re.search(r'static struct \{ uint8_t state, channel; char id\[10\]; \} reader_out;', user).group(0)
+    status += '\n'+'\n'.join(function(user,n) for n in ('reader_request','user_send_readedIDtoServer','reader_reply_poll'))
     status += '\n'+'\n'.join(function(source('User/c/runtime_internal.h').replace('static inline ','static '),n) for n in ('rt_put16','rt_put32'))
     packet = function(source('User/packet.c'),'packet_frame')+'\n'+function(source('User/packet.c'),'packet_send')
     # USB-резерв проверяет ELF-стенд; модель модема не передаёт через USB.

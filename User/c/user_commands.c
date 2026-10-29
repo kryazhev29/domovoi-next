@@ -241,6 +241,7 @@ void user_parse_comand(uint8_t* ptr, dataChanel_e cch){
       device.timeToGetID = ptr[5];
       device.sourceGetID = ptr[6];
       device.addressGetID = ptr[7];
+      reader_request(cch);
       code = CMD_SUCCESS;
       break;
 

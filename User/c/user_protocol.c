@@ -15,7 +15,7 @@ static struct { uint8_t due, percent, code, id; } fw_status_pending;
 // Ответы 11 серверу, не попавшие в занятый слот: очередь на три, лишний отбрасывается.
 static struct { uint8_t cmd, code, id; } answer_queue[3];
 static uint8_t answer_count;
-static struct { uint8_t state; char id[10]; } reader_out;
+static struct { uint8_t state, channel; char id[10]; } reader_out;
 static uint16_t status_reported;
 static uint32_t status_reported_ms;
 // Поле кадра из device: позиция в кадре, смещение в device, длина.
@@ -225,23 +225,26 @@ bool user_send_smsToServer(char *sms)
   return false;
 }
 
-// Зафиксировать ответ считывателя до отправки серверу.
+// Запомнить канал команды 6: ответ 8 уходит туда, откуда пришёл захват (сервер или NextConfig по USB).
+void reader_request(dataChanel_e cch) { reader_out.channel = (uint8_t)cch; }
+
+// Зафиксировать ответ считывателя до отправки в канал захвата.
 void user_send_readedIDtoServer(uint8_t* id, uint8_t cmdState){
   reader_out.state = cmdState; // 1 - ID считан, 255 - время вышло
   if (id == 0) memset(reader_out.id, 0, 10);
   else memcpy(reader_out.id, id, 10);
 }
 
-// Передать ожидающий ответ считывателя при свободном TX.
+// Передать ожидающий ответ считывателя, когда канал захвата свободен.
 void reader_reply_poll(void)
 {
-  uint8_t *b;
+  uint8_t usb[22], *b;
   if (!reader_out.state) return;
-  b = user_comm_acquire(22);
+  b = reader_out.channel == CH_SERVER ? user_comm_acquire(22) : usb;
   if (!b) return;
   b[6] = 255; b[7] = uniqIDCnt++; b[8] = 8; b[9] = reader_out.state;
   memcpy(b + 10, reader_out.id, 10);
-  if (packet_send(b, 14, CH_SERVER)) reader_out.state = 0;
+  if (packet_send(b, 14, reader_out.channel)) reader_out.state = 0;
 }
 
 // Передать единый ответ 11 без повторного формирования CRC.

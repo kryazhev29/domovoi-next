@@ -94,7 +94,8 @@ void fw_status_poll(void);
 void unreg_sms_note(const char *id);
 // Передать ожидающее уведомление, когда слот SMS свободен.
 void unreg_sms_poll(void);
-// Передать ожидающий ответ считывателя при свободном TX.
+// Канал команды 6, куда уйдёт ответ 8, и передача ответа, когда канал свободен.
+void reader_request(dataChanel_e cch);
 void reader_reply_poll(void);
 // Отложенный ответ 11 серверу при занятом слоте.
 void answer_reply_poll(void);
